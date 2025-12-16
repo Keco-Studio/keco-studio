@@ -67,7 +67,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // Build breadcrumbs from current route params
   const buildBreadcrumbs = (): BreadcrumbItem[] => {
     const breadcrumbs: BreadcrumbItem[] = [];
-
+    
     if (currentProjectId) {
       breadcrumbs.push({
         label: projectName || 'Project',
