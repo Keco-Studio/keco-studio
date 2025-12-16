@@ -218,6 +218,41 @@
   gap: 0.25rem;
 }
 
+.treeWrapper {
+  margin: 0 0.75rem;
+}
+
+.tree {
+  background: transparent;
+}
+
+.tree :global(.ant-tree) {
+  background: transparent;
+}
+
+.tree :global(.ant-tree-treenode) {
+  padding: 2px 0;
+}
+
+.tree :global(.ant-tree-node-content-wrapper) {
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.tree :global(.ant-tree-node-content-wrapper:hover) {
+  background-color: #f8fafc;
+}
+
+.tree :global(.ant-tree-treenode-selected > .ant-tree-node-content-wrapper),
+.tree :global(.ant-tree-node-content-wrapper.ant-tree-node-selected) {
+  background-color: #fff1f2 !important;
+  color: #e11d48 !important;
+}
+
+.tree :global(.ant-tree-indent-unit) {
+  width: 12px;
+}
+
 .item {
   margin: 0 0.75rem;
   display: flex;

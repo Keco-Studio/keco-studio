@@ -18,7 +18,7 @@ type TopBarProps = {
 export function TopBar({ breadcrumb = [] }: TopBarProps) {
   const router = useRouter();
   const { breadcrumbs } = useNavigation();
-  const { userProfile } = useAuth();
+  const { userProfile, signOut } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -51,6 +51,11 @@ export function TopBar({ breadcrumb = [] }: TopBarProps) {
     if (path && index < displayBreadcrumbs.length - 1) {
       router.push(path);
     }
+  };
+
+  const handleLogout = async () => {
+    setShowUserMenu(false);
+    await signOut();
   };
 
   return (
@@ -92,7 +97,13 @@ export function TopBar({ breadcrumb = [] }: TopBarProps) {
           </div>
           {showUserMenu && (
             <div className={styles.userMenu}>
-              {/* TODO: Add user menu items when design is ready */}
+              <button
+                type="button"
+                className={styles.userMenuItem}
+                onClick={handleLogout}
+              >
+                Logout
+              </button>
             </div>
           )}
         </div>

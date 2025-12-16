@@ -4,13 +4,16 @@ import projectIcon from "@/app/assets/images/projectIcon.svg";
 import libraryIcon from "@/app/assets/images/libraryIcon.svg";
 import loginProductIcon from "@/app/assets/images/loginProductIcon.svg";
 import Image from "next/image";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
+import { Tree } from "antd";
+import { DataNode, EventDataNode } from "antd/es/tree";
 import { useSupabase } from "@/lib/SupabaseContext";
 import { NewProjectModal } from "@/components/projects/NewProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
 import { listProjects, Project, deleteProject } from "@/lib/services/projectService";
 import { listLibraries, Library, deleteLibrary } from "@/lib/services/libraryService";
+import { SupabaseClient } from "@supabase/supabase-js";
 import styles from "./Sidebar.module.css";
 
 type UserProfile = {
@@ -25,6 +28,8 @@ type SidebarProps = {
   userProfile?: UserProfile | null;
   onAuthRequest?: () => void;
 };
+
+type AssetRow = { id: string; name: string; library_id: string };
 
 export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const router = useRouter();
@@ -88,6 +93,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   // data state
   const [projects, setProjects] = useState<Project[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
+  const [assets, setAssets] = useState<Record<string, AssetRow[]>>({});
 
   const [loadingProjects, setLoadingProjects] = useState(false);
   const [loadingLibraries, setLoadingLibraries] = useState(false);
@@ -119,6 +125,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const fetchLibraries = async (projectId?: string | null) => {
     if (!projectId) {
       setLibraries([]);
+      setAssets({});
       return;
     }
     setLoadingLibraries(true);
@@ -141,6 +148,27 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     fetchLibraries(currentIds.projectId);
   }, [currentIds.projectId]);
 
+  const fetchAssets = useCallback(async (libraryId?: string | null) => {
+    if (!libraryId) return;
+    try {
+      const { data, error } = await supabase
+        .from('library_assets')
+        .select('id,name,library_id')
+        .eq('library_id', libraryId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      setAssets((prev) => ({ ...prev, [libraryId]: (data as AssetRow[]) || [] }));
+    } catch (err) {
+      console.error('Failed to load assets', err);
+    }
+  }, [supabase]);
+
+  useEffect(() => {
+    if (currentIds.libraryId) {
+      fetchAssets(currentIds.libraryId);
+    }
+  }, [currentIds.libraryId, fetchAssets]);
+
   // actions
   const handleProjectClick = (projectId: string) => {
     router.push(`/${projectId}`);
@@ -148,6 +176,77 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const handleLibraryClick = (projectId: string, libraryId: string) => {
     router.push(`/${projectId}/${libraryId}`);
+    fetchAssets(libraryId);
+  };
+
+  const handleAssetClick = (projectId: string, libraryId: string, assetId: string) => {
+    router.push(`/${projectId}/${libraryId}/${assetId}`);
+  };
+
+  const treeData: DataNode[] = useMemo(() => {
+    const libs = libraries.filter((lib) =>
+      currentIds.projectId ? lib.project_id === currentIds.projectId : true
+    );
+    return libs.map<DataNode>((lib) => ({
+      title: lib.name,
+      key: `library-${lib.id}`,
+      isLeaf: false,
+      children: (assets[lib.id] || []).map<DataNode>((asset) => ({
+        title: asset.name,
+        key: `asset-${asset.id}`,
+        isLeaf: true,
+      })),
+    }));
+  }, [libraries, assets, currentIds.projectId]);
+
+  const selectedKey = useMemo(() => {
+    const parts = pathname.split("/").filter(Boolean);
+    if (parts.length >= 3) {
+      return [`asset-${parts[2]}`];
+    }
+    if (parts.length === 2) {
+      return [`library-${parts[1]}`];
+    }
+    if (parts.length === 1) {
+      return [`project-${parts[0]}`];
+    }
+    return [];
+  }, [pathname]);
+
+  const onSelect = (_keys: React.Key[], info: any) => {
+    const key: string = info.node.key;
+    if (key.startsWith('library-')) {
+      const id = key.replace('library-', '');
+      const projId = libraries.find((l) => l.id === id)?.project_id || currentIds.projectId || '';
+      handleLibraryClick(projId, id);
+    } else if (key.startsWith('asset-')) {
+      const assetId = key.replace('asset-', '');
+      let libId: string | null = null;
+      let projId: string | null = null;
+      Object.entries(assets).some(([lId, arr]) => {
+        const found = arr.find((a) => a.id === assetId);
+        if (found) {
+          libId = lId;
+          const lib = libraries.find((l) => l.id === lId);
+          projId = lib?.project_id || null;
+          return true;
+        }
+        return false;
+      });
+      if (libId && projId) {
+        handleAssetClick(projId, libId, assetId);
+      }
+    }
+  };
+
+  const onExpand = async (_keys: React.Key[], info: { node: EventDataNode }) => {
+    const key = info.node.key as string;
+    if (key.startsWith('library-')) {
+      const id = key.replace('library-', '');
+      if (!assets[id]) {
+        await fetchAssets(id);
+      }
+    }
   };
 
   const handleProjectDelete = async (projectId: string, e: React.MouseEvent) => {
@@ -211,7 +310,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       <div className={styles.content}>
         <div className={styles.sectionTitle}>
           <span>Projects</span>
-          <button className={styles.addButton} onClick={() => setShowProjectModal(true)}>+</button>
+          <button
+            className={styles.addButton}
+            onClick={() => setShowProjectModal(true)}
+            title="New Project"
+          >
+            +
+          </button>
         </div>
         {loadingProjects && <div className={styles.hint}>Loading projects...</div>}
         <div className={styles.sectionList}>
@@ -224,7 +329,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 onClick={() => handleProjectClick(project.id)}
               >
                 <Image
-                  src={projectIcon} 
+                  src={projectIcon}
                   alt="Project"
                   width={20}
                   height={20}
@@ -247,6 +352,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             <div className={styles.hint}>No projects. Create one.</div>
           )}
         </div>
+
         <div className={styles.sectionTitle}>
           <span>Libraries</span>
           <button
@@ -260,34 +366,17 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         </div>
         {loadingLibraries && <div className={styles.hint}>Loading libraries...</div>}
         <div className={styles.sectionList}>
-          {libraries.map((lib) => {
-            const isActive = currentIds.libraryId === lib.id;
-            return (
-              <div
-                key={lib.id}
-                className={`${styles.item} ${isActive ? styles.itemActive : styles.itemInactive}`}
-                onClick={() => handleLibraryClick(lib.project_id, lib.id)}
-              >
-                <Image
-                  src={libraryIcon}
-                  alt="Library"
-                  width={20}
-                  height={20}
-                  className={styles.itemIcon}
-                />
-                <span className={styles.itemText}>{lib.name}</span>
-                <span className={styles.itemActions}>
-                  <button
-                    className={styles.iconButton}
-                    aria-label="Delete library"
-                    onClick={(e) => handleLibraryDelete(lib.id, e)}
-                  >
-                    ×
-                  </button>
-                </span>
-              </div>
-            );
-          })}
+          <div className={styles.treeWrapper}>
+            <Tree
+              className={styles.tree}
+              showIcon={false}
+              treeData={treeData}
+              selectedKeys={selectedKey}
+              onSelect={onSelect}
+              onExpand={onExpand}
+              defaultExpandAll={true}
+            />
+          </div>
           {!loadingLibraries && currentIds.projectId && libraries.length === 0 && (
             <div className={styles.hint}>No libraries. Create one.</div>
           )}

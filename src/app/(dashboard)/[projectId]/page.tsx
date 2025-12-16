@@ -5,6 +5,8 @@ import { useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject, Project } from '@/lib/services/projectService';
 import { listLibraries, Library } from '@/lib/services/libraryService';
+import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
+import Image from 'next/image';
 
 export default function ProjectPage() {
   const params = useParams();
@@ -90,6 +92,9 @@ export default function ProjectPage() {
                   border: '1px solid #e2e8f0',
                   borderRadius: '10px',
                   background: 'white',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
                 }}
               >
                 <div style={{ fontWeight: 600, color: '#0f172a' }}>{library.name}</div>
@@ -98,6 +103,7 @@ export default function ProjectPage() {
                     {library.description}
                   </div>
                 )}
+                <Image src={predefineSettingIcon} alt="predefineSettingIcon" width={25} height={25} />
               </div>
             ))}
           </div>

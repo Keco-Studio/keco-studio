@@ -3,8 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { getProject, Project } from '@/lib/services/projectService';
-import { getLibrary, Library } from '@/lib/services/libraryService';
 import { useAuth } from '@/lib/contexts/AuthContext';
 
 type FieldDef = {
@@ -18,20 +16,30 @@ type FieldDef = {
   order_index: number;
 };
 
-export default function LibraryPage() {
+type AssetRow = {
+  id: string;
+  name: string;
+  library_id: string;
+};
+
+type ValueRow = {
+  field_id: string;
+  value_json: any;
+};
+
+export default function AssetPage() {
   const params = useParams();
   const supabase = useSupabase();
+  const { userProfile } = useAuth();
   const projectId = params.projectId as string;
   const libraryId = params.libraryId as string;
-  
-  const [project, setProject] = useState<Project | null>(null);
-  const [library, setLibrary] = useState<Library | null>(null);
+  const assetId = params.assetId as string;
+
+  const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([]);
+  const [asset, setAsset] = useState<AssetRow | null>(null);
+  const [values, setValues] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { userProfile } = useAuth();
-  const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([]);
-  const [assetName, setAssetName] = useState('');
-  const [values, setValues] = useState<Record<string, any>>({});
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
@@ -42,84 +50,61 @@ export default function LibraryPage() {
       if (!map[f.section]) map[f.section] = [];
       map[f.section].push(f);
     });
-    // ensure order within section
-    Object.keys(map).forEach((key) => {
-      map[key] = map[key].slice().sort((a, b) => a.order_index - b.order_index);
-    });
+    Object.keys(map).forEach((k) => (map[k] = map[k].slice().sort((a, b) => a.order_index - b.order_index)));
     return map;
   }, [fieldDefs]);
 
-  const fetchDefinitions = async () => {
-    const { data, error } = await supabase
-      .from('library_field_definitions')
-      .select('*')
-      .eq('library_id', libraryId)
-      .order('section', { ascending: true })
-      .order('order_index', { ascending: true });
-    if (error) throw error;
-    setFieldDefs((data as FieldDef[]) || []);
-  };
-
   useEffect(() => {
-    const fetchData = async () => {
-      if (!projectId || !libraryId) return;
-      
+    const load = async () => {
       setLoading(true);
       setError(null);
-      
       try {
-        const [projectData, libraryData] = await Promise.all([
-          getProject(supabase, projectId),
-          getLibrary(supabase, libraryId, projectId),
-        ]);
-        
-        if (!projectData) {
-          setError('Project not found');
-          return;
-        }
-        
-        if (!libraryData) {
-          setError('Library not found');
-          return;
-        }
-        
-        setProject(projectData);
-        setLibrary(libraryData);
-        await fetchDefinitions();
+        const [{ data: defs, error: defErr }, { data: assetRow, error: assetErr }, { data: vals, error: valErr }] =
+          await Promise.all([
+            supabase
+              .from('library_field_definitions')
+              .select('*')
+              .eq('library_id', libraryId)
+              .order('section', { ascending: true })
+              .order('order_index', { ascending: true }),
+            supabase.from('library_assets').select('id,name,library_id').eq('id', assetId).single(),
+            supabase.from('library_asset_values').select('field_id,value_json').eq('asset_id', assetId),
+          ]);
+
+        if (defErr) throw defErr;
+        if (assetErr) throw assetErr;
+        if (!assetRow) throw new Error('Asset not found');
+        if (assetRow.library_id !== libraryId) throw new Error('Asset not in this library');
+        if (valErr) throw valErr;
+
+        setFieldDefs((defs as FieldDef[]) || []);
+        setAsset(assetRow as AssetRow);
+        const valueMap: Record<string, any> = {};
+        (vals as ValueRow[] | null)?.forEach((v) => {
+          valueMap[v.field_id] = v.value_json;
+        });
+        setValues(valueMap);
       } catch (e: any) {
-        setError(e?.message || 'Failed to load library');
+        setError(e?.message || 'Failed to load asset');
       } finally {
         setLoading(false);
       }
     };
-
-    fetchData();
-  }, [projectId, libraryId, supabase]);
+    if (assetId && libraryId) {
+      load();
+    }
+  }, [assetId, libraryId, supabase]);
 
   const handleValueChange = (fieldId: string, value: any) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
   };
 
-  const handleCreateAsset = async () => {
+  const handleSave = async () => {
     setSaveError(null);
     setSaveSuccess(null);
-    if (!assetName.trim()) {
-      setSaveError('Asset name is required');
-      return;
-    }
+    if (!asset) return;
     setSaving(true);
     try {
-      // create asset
-      const { data: asset, error: assetErr } = await supabase
-        .from('library_assets')
-        .insert({ library_id: libraryId, name: assetName.trim() })
-        .select()
-        .single();
-      if (assetErr) throw assetErr;
-
-      const assetId = asset.id as string;
-
-      // build values payload
       const payload = fieldDefs.map((f) => {
         const raw = values[f.id];
         let v: any = raw;
@@ -136,7 +121,7 @@ export default function LibraryPage() {
         } else {
           v = raw ?? null;
         }
-        return { asset_id: assetId, field_id: f.id, value_json: v };
+        return { asset_id: asset.id, field_id: f.id, value_json: v };
       });
 
       if (payload.length > 0) {
@@ -146,11 +131,9 @@ export default function LibraryPage() {
         if (valErr) throw valErr;
       }
 
-      setSaveSuccess('Asset created');
-      setAssetName('');
-      setValues({});
+      setSaveSuccess('Saved');
     } catch (e: any) {
-      setSaveError(e?.message || 'Failed to create asset');
+      setSaveError(e?.message || 'Save failed');
     } finally {
       setSaving(false);
     }
@@ -159,7 +142,7 @@ export default function LibraryPage() {
   if (loading) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <div>Loading library...</div>
+        <div>Loading asset...</div>
       </div>
     );
   }
@@ -172,10 +155,10 @@ export default function LibraryPage() {
     );
   }
 
-  if (!library || !project) {
+  if (!asset) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <div>Library not found</div>
+        <div>Asset not found</div>
       </div>
     );
   }
@@ -184,38 +167,24 @@ export default function LibraryPage() {
     <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22 }}>{library.name}</h1>
-          <div style={{ color: '#64748b' }}>{project.name}</div>
+          <h1 style={{ margin: 0, fontSize: 22 }}>{asset.name}</h1>
+          <div style={{ color: '#64748b' }}>Asset ID: {asset.id}</div>
         </div>
-        <div style={{ color: '#64748b' }}>
-          字段数：{fieldDefs.length} | 分区：{Object.keys(sections).length}
-        </div>
+        {saveError && (
+          <div style={{ padding: '8px 10px', borderRadius: 8, background: '#fef2f2', color: '#b91c1c' }}>{saveError}</div>
+        )}
+        {saveSuccess && (
+          <div style={{ padding: '8px 10px', borderRadius: 8, background: '#ecfdf3', color: '#166534' }}>{saveSuccess}</div>
+        )}
       </div>
-
-      {saveError && (
-        <div style={{ padding: '10px 12px', borderRadius: 8, background: '#fef2f2', color: '#b91c1c' }}>
-          {saveError}
-        </div>
-      )}
-      {saveSuccess && (
-        <div style={{ padding: '10px 12px', borderRadius: 8, background: '#ecfdf3', color: '#166534' }}>
-          {saveSuccess}
-        </div>
-      )}
 
       {!userProfile && <div style={{ color: '#dc2626' }}>Please sign in to edit.</div>}
 
       {userProfile && (
         <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 16, background: '#fff' }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
-            <input
-              style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }}
-              placeholder="Asset name"
-              value={assetName}
-              onChange={(e) => setAssetName(e.target.value)}
-            />
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
             <button
-              onClick={handleCreateAsset}
+              onClick={handleSave}
               disabled={saving}
               style={{
                 padding: '10px 14px',
@@ -226,13 +195,13 @@ export default function LibraryPage() {
                 cursor: 'pointer',
               }}
             >
-              {saving ? 'Saving...' : 'Add New Asset'}
+              {saving ? 'Saving...' : 'Save'}
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14, marginTop: 12 }}>
             {Object.keys(sections).length === 0 && (
-              <div style={{ color: '#94a3b8' }}>还没有表头定义，请先在 Predefine 设置字段。</div>
+              <div style={{ color: '#94a3b8' }}>No field definitions. Define headers in Predefine.</div>
             )}
             {Object.entries(sections).map(([sectionName, fields]) => (
               <div
@@ -280,7 +249,12 @@ export default function LibraryPage() {
                         </label>
                       );
                     }
-                    const inputType = f.data_type === 'int' || f.data_type === 'float' ? 'number' : f.data_type === 'date' ? 'date' : 'text';
+                    const inputType =
+                      f.data_type === 'int' || f.data_type === 'float'
+                        ? 'number'
+                        : f.data_type === 'date'
+                        ? 'date'
+                        : 'text';
                     return (
                       <label key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         <span>{label}</span>
@@ -303,4 +277,5 @@ export default function LibraryPage() {
     </div>
   );
 }
+
 
