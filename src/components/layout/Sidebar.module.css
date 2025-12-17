@@ -151,7 +151,7 @@
   font-size: 0.875rem;
   color: #334155;
   outline: none;
-  ring: 0;
+  outline: none;
 }
 
 .searchInput:focus {
@@ -219,7 +219,8 @@
 }
 
 .treeWrapper {
-  margin: 0 0.75rem;
+  margin: 0;
+  padding: 0;
 }
 
 .tree {
@@ -230,27 +231,123 @@
   background: transparent;
 }
 
+/* Tree node styling with dividers */
 .tree :global(.ant-tree-treenode) {
-  padding: 2px 0;
+  padding: 0;
+  margin: 0 0.75rem;
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-height: 36px;
+  width: calc(100% - 1.5rem);
+}
+
+/* Add divider line that spans the full width of the sidebar */
+.tree :global(.ant-tree-treenode)::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: -0.75rem;
+  right: -0.75rem;
+  height: 1px;
+  background-color: #e2e8f0;
+}
+
+/* Remove border from last node */
+.tree :global(.ant-tree-treenode:last-child)::after {
+  display: none;
 }
 
 .tree :global(.ant-tree-node-content-wrapper) {
-  padding: 4px 8px;
-  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0;
+  flex: 1 1 auto;
+  margin-left: 0;
+  margin-right: 0;
+  transition: background-color 0.2s;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  box-sizing: border-box;
+  width: 0; /* Force flex to calculate width correctly */
+  position: relative; /* 为绝对定位的itemActions提供定位上下文 */
+}
+
+.tree :global(.ant-tree-node-content-wrapper) .itemRow {
+  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Ensure itemText in tree node has padding to avoid overlap with delete button */
+.tree :global(.ant-tree-node-content-wrapper) .itemText {
+  padding-right: 2rem; /* 为删除按钮留出空间，避免文字重叠 */
 }
 
 .tree :global(.ant-tree-node-content-wrapper:hover) {
   background-color: #f8fafc;
+  border-radius: 0.5rem;
 }
 
+/* Selected state: full-width background from content to end (like project itemActive) */
+.tree :global(.ant-tree-treenode-selected) {
+  background-color: transparent;
+}
+
+/* Switcher should not have background color */
+.tree :global(.ant-tree-treenode-selected .ant-tree-switcher) {
+  background-color: transparent !important;
+}
+
+/* Background starts from content (not indent) and covers to the end with rounded corners */
+/* Extend to match project item right edge (sidebar right - 0.75rem) */
 .tree :global(.ant-tree-treenode-selected > .ant-tree-node-content-wrapper),
 .tree :global(.ant-tree-node-content-wrapper.ant-tree-node-selected) {
   background-color: #fff1f2 !important;
   color: #e11d48 !important;
+  border-radius: 0.5rem !important;
 }
+
+/* Ensure indent area is transparent (background starts from content, not indent) */
+.tree :global(.ant-tree-treenode-selected .ant-tree-indent) {
+  background-color: transparent !important;
+}
+
 
 .tree :global(.ant-tree-indent-unit) {
   width: 12px;
+}
+
+/* Hide expand/collapse icon for library nodes (isLeaf: true) */
+/* Ant Design Tree automatically hides switcher for isLeaf nodes */
+
+/* Ensure proper indentation for nested folders */
+.tree :global(.ant-tree-indent) {
+  display: inline-block;
+  height: 100%;
+  vertical-align: top;
+}
+
+/* Ensure switcher has proper styling and is vertically centered */
+.tree :global(.ant-tree-switcher) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  flex-shrink: 0;
+  cursor: pointer;
+  line-height: 1;
+  background-color: transparent !important;
+}
+
+/* Ensure switcher icon is vertically centered */
+.tree :global(.ant-tree-switcher-icon) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 12px;
 }
 
 .item {
@@ -263,6 +360,7 @@
   font-size: 0.875rem;
   cursor: pointer;
   transition: background-color 0.2s;
+  position: relative;
 }
 
 .itemActive {
@@ -282,12 +380,45 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding-right: 2rem; /* 为删除按钮留出空间，避免文字重叠 */
 }
 
 .itemActions {
   margin-left: auto;
   display: flex;
   gap: 6px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+/* Project item actions: position delete button relative to sidebar's right edge */
+/* .item has margin-right: 0.75rem, so item's right edge is 0.75rem from sidebar right edge */
+/* .item has padding-right: 0.75rem, so original delete button was at item right edge - 0.75rem (padding) */
+/* To maintain same position: right = 0.75rem (padding distance from item right edge) */
+/* Total distance from sidebar right edge = 0.75rem (item margin) + 0.75rem (right offset) = 1.5rem */
+.item .itemActions {
+  position: absolute;
+  right: 0.75rem; /* 距离item右边界0.75rem，距离sidebar右边界1.5rem（0.75rem margin + 0.75rem right） */
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 0;
+}
+
+/* Tree item actions: position delete button relative to sidebar's right edge */
+/* .ant-tree-treenode has margin-right: 0.75rem, so tree node's right edge is 0.75rem from sidebar right edge */
+/* .ant-tree-node-content-wrapper has padding-right: 0.75rem */
+/* To align with project item: right = 0.75rem (same as project item) */
+/* Total distance from sidebar right edge = 0.75rem (tree node margin) + 0.75rem (right offset) = 1.5rem */
+.tree :global(.ant-tree-treenode) {
+  position: relative;
+}
+
+.tree :global(.ant-tree-node-content-wrapper) .itemActions {
+  position: absolute;
+  right: 0.75rem; /* 距离content-wrapper右边界0.75rem，距离sidebar右边界1.5rem（0.75rem margin + 0.75rem right） */
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 0;
 }
 
 .iconButton {
@@ -300,6 +431,10 @@
   align-items: center;
   justify-content: center;
   border-radius: 4px;
+  font-size: 1.25rem;
+  line-height: 1;
+  width: 1.25rem;
+  height: 1.25rem;
 }
 
 .iconButton:hover {
@@ -316,6 +451,12 @@
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
+  width: 100%;
+  min-width: 0;
+  flex: 1 1 0;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 .itemMain {
@@ -323,5 +464,51 @@
   align-items: center;
   gap: 0.35rem;
   min-width: 0;
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.createButton {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.875rem;
+  color: #64748b;
+  transition: background-color 0.2s, color 0.2s;
+  border-radius: 0;
+  display: flex;
+  align-items: center;
+  min-height: 36px;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.createButton:hover {
+  background-color: #f8fafc;
+  color: #334155;
+}
+
+.createButtonText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Prevent create button node from being selected/highlighted */
+.tree :global(.ant-tree-node-content-wrapper) button.createButton {
+  width: 100%;
+  height: 100%;
+}
+
+/* Override tree node selection styles for create button nodes */
+.tree :global(.ant-tree-treenode[data-node-key*="folder-create-"]) .ant-tree-node-content-wrapper:hover {
+  background-color: transparent !important;
+}
+
+.tree :global(.ant-tree-treenode[data-node-key*="folder-create-"]) .ant-tree-node-content-wrapper.ant-tree-node-selected {
+  background-color: transparent !important;
 }
 

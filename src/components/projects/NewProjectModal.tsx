@@ -9,7 +9,7 @@ import styles from './NewProjectModal.module.css';
 type NewProjectModalProps = {
   open: boolean;
   onClose: () => void;
-  onCreated: (projectId: string, defaultLibraryId: string) => void;
+  onCreated: (projectId: string, defaultFolderId: string) => void;
 };
 
 export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalProps) {
@@ -34,15 +34,16 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
     setSubmitting(true);
     setError(null);
     try {
-      const { projectId, defaultLibraryId } = await createProject(supabase, {
+      const { projectId, defaultFolderId } = await createProject(supabase, {
         name: trimmed,
         description,
       });
-      onCreated(projectId, defaultLibraryId);
+      onCreated(projectId, defaultFolderId);
       setName('');
       setDescription('');
       onClose();
     } catch (e: any) {
+      console.error('Project creation error:', e);
       setError(e?.message || 'Failed to create project');
     } finally {
       setSubmitting(false);

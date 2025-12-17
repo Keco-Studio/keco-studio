@@ -5,6 +5,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 export type Library = {
   id: string;
   project_id: string;
+  folder_id: string | null;
   name: string;
   description: string | null;
   created_at: string;
@@ -15,6 +16,7 @@ type CreateLibraryInput = {
   projectId: string;
   name: string;
   description?: string;
+  folderId?: string;
 };
 
 const trimOrNull = (value?: string | null) => {
@@ -27,16 +29,31 @@ const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
 async function resolveProjectId(supabase: SupabaseClient, projectIdOrName: string): Promise<string> {
-  if (isUuid(projectIdOrName)) return projectIdOrName;
+  if (!projectIdOrName || projectIdOrName.trim() === '') {
+    throw new Error('Project ID or name is required');
+  }
+  
+  if (isUuid(projectIdOrName)) {
+    return projectIdOrName;
+  }
+  
+  console.log('Resolving project by name:', projectIdOrName);
   const { data, error } = await supabase
     .from('projects')
     .select('id')
-    .eq('name', projectIdOrName)
+    .eq('name', projectIdOrName.trim())
     .limit(1)
-    .single();
-  if (error || !data) {
-    throw new Error('Project not found');
+    .maybeSingle();
+    
+  if (error) {
+    console.error('Error resolving project ID:', error);
+    throw new Error(`Project not found: ${error.message}`);
   }
+  
+  if (!data || !data.id) {
+    throw new Error(`Project not found: ${projectIdOrName}`);
+  }
+  
   return data.id;
 }
 
@@ -53,10 +70,32 @@ export async function createLibrary(
 
   const projectId = await resolveProjectId(supabase, input.projectId);
 
+  // Validate folder_id if provided
+  let folderId: string | null = null;
+  if (input.folderId) {
+    if (!isUuid(input.folderId)) {
+      throw new Error('Invalid folder ID format');
+    }
+    
+    // Check if folder exists and belongs to the same project
+    const { data: folderData, error: folderError } = await supabase
+      .from('folders')
+      .select('project_id')
+      .eq('id', input.folderId)
+      .single();
+      
+    if (folderError || !folderData || folderData.project_id !== projectId) {
+      throw new Error('Folder not found or does not belong to the project');
+    }
+    
+    folderId = input.folderId;
+  }
+
   const { data, error } = await supabase
     .from('libraries')
     .insert({
       project_id: projectId,
+      folder_id: folderId,
       name,
       description,
     })
@@ -64,6 +103,9 @@ export async function createLibrary(
     .single();
 
   if (error) {
+    if (error.code === '23505') {
+      throw new Error('A library with this name already exists in the project or folder.');
+    }
     throw error;
   }
 
@@ -72,15 +114,38 @@ export async function createLibrary(
 
 export async function listLibraries(
   supabase: SupabaseClient,
-  projectId: string
+  projectId: string,
+  folderId?: string
 ): Promise<Library[]> {
   const resolvedProjectId = await resolveProjectId(supabase, projectId);
 
-  const { data, error } = await supabase
+  let query = supabase
     .from('libraries')
     .select('*')
-    .eq('project_id', resolvedProjectId)
-    .order('created_at', { ascending: true });
+    .eq('project_id', resolvedProjectId);
+
+  // If folderId is provided, filter by folder_id
+  // If folderId is undefined, return ALL libraries (both root and nested)
+  // Only filter by null if folderId is explicitly null (not undefined)
+  if (folderId !== undefined) {
+    if (folderId === null) {
+      // Explicitly request root libraries only
+      query = query.is('folder_id', null);
+    } else {
+      if (!isUuid(folderId)) {
+        throw new Error('Invalid folder ID format');
+      }
+      query = query.eq('folder_id', folderId);
+    }
+  }
+  // If folderId is undefined, don't filter - return all libraries
+
+  const { data, error } = await query.order('created_at', { ascending: true });
+  
+  if (error) {
+    console.error('Error listing libraries:', error);
+    console.error('Query params:', { projectId: resolvedProjectId, folderId });
+  }
 
   if (error) {
     throw error;

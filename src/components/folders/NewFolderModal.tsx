@@ -3,21 +3,20 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { createLibrary } from '@/lib/services/libraryService';
-import styles from './NewLibraryModal.module.css';
+import { createFolder } from '@/lib/services/folderService';
+import styles from './NewFolderModal.module.css';
 
-type NewLibraryModalProps = {
+type NewFolderModalProps = {
   open: boolean;
   projectId: string;
-  folderId?: string | null;
+  parentFolderId?: string | null;
   onClose: () => void;
-  onCreated: (libraryId: string) => void;
+  onCreated: (folderId: string) => void;
 };
 
-export function NewLibraryModal({ open, projectId, folderId, onClose, onCreated }: NewLibraryModalProps) {
+export function NewFolderModal({ open, projectId, parentFolderId, onClose, onCreated }: NewFolderModalProps) {
   const supabase = useSupabase();
   const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -30,24 +29,22 @@ export function NewLibraryModal({ open, projectId, folderId, onClose, onCreated 
   const handleSubmit = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError('Library name is required');
+      setError('Folder name is required');
       return;
     }
     setSubmitting(true);
     setError(null);
     try {
-      const libraryId = await createLibrary(supabase, {
+      const folderId = await createFolder(supabase, {
         projectId,
         name: trimmed,
-        description,
-        folderId: folderId || undefined,
+        parentFolderId: parentFolderId || undefined,
       });
-      onCreated(libraryId);
+      onCreated(folderId);
       setName('');
-      setDescription('');
       onClose();
     } catch (e: any) {
-      setError(e?.message || 'Failed to create library');
+      setError(e?.message || 'Failed to create folder');
     } finally {
       setSubmitting(false);
     }
@@ -57,29 +54,24 @@ export function NewLibraryModal({ open, projectId, folderId, onClose, onCreated 
     <div className={styles.backdrop}>
       <div className={styles.modal}>
         <div className={styles.header}>
-          <div className={styles.title}>New Library</div>
+          <div className={styles.title}>New Folder</div>
           <button className={styles.close} onClick={onClose} aria-label="Close">
             ×
           </button>
         </div>
 
         <div className={styles.field}>
-          <label className={styles.label}>Library name *</label>
+          <label className={styles.label}>Folder name *</label>
           <input
             className={styles.input}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="Enter library name"
-          />
-        </div>
-
-        <div className={styles.field}>
-          <label className={styles.label}>Description (optional)</label>
-          <input
-            className={styles.input}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="Add a short note"
+            placeholder="Enter folder name"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleSubmit();
+              }
+            }}
           />
         </div>
 
@@ -98,7 +90,8 @@ export function NewLibraryModal({ open, projectId, folderId, onClose, onCreated 
           </button>
         </div>
       </div>
-    </div>
-  , document.body);
+    </div>,
+    document.body
+  );
 }
 
