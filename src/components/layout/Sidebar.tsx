@@ -141,9 +141,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   };
 
+  // Keep sidebar projects in sync:
+  // - initial mount
+  // - whenever the route changes (e.g. project created from /projects and we navigate to /[projectId])
   useEffect(() => {
     fetchProjects();
-  }, []);
+  }, [pathname]);
 
   useEffect(() => {
     fetchLibraries(currentIds.projectId);
@@ -437,6 +440,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             onClick={() => setShowLibraryModal(true)}
             disabled={!currentIds.projectId}
             title={currentIds.projectId ? "New Library" : "Select a project first"}
+            aria-label={currentIds.projectId ? "New Library" : "Select a project first"}
           >
             +
           </button>

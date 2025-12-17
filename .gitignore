@@ -1,16 +1,13 @@
 node_modules/
 .next/
 out/
-dist/
-build/
+.cache/
 coverage/
-*.log
-.env*
+playwright-report/
+playwright-reports/
+playwright/.cache/
+.eslintcache
+.env
+.env.*
 .DS_Store
-
-# Playwright
-/test-results/
-/playwright-report/
-/blob-report/
-/playwright/.cache/
-/playwright/.auth/
+Thumbs.db

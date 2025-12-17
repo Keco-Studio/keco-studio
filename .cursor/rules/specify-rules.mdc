@@ -5,6 +5,8 @@ Auto-generated from all feature plans. Last updated: 2025-12-11
 ## Active Technologies
 - TypeScript, Next.js 14 App Router, React 18. + Supabase client (existing), Next.js/React, CSS modules, TipTap editor (already used). (001-project-library-create)
 - Supabase Postgres with migrations; RLS enforced. (001-project-library-create)
+- TypeScript 5.9, Next.js 16 (App Router), React 19 + `@playwright/test` 1.57, `@supabase/auth-helpers-nextjs`, `@supabase/supabase-js`, Ant Design, CSS modules (001-playwright-auth-tests)
+- Supabase PostgreSQL (local), seeded via `supabase/seed.sql` (001-playwright-auth-tests)
 
 - TypeScript 5.9.3 (strict mode) + Next.js 16.0.7 (App Router), React 19.2.1, @tiptap/react 2.7.4, @supabase/supabase-js 2.86.2 (001-tiptap-collaboration)
 
@@ -24,10 +26,10 @@ npm test && npm run lint
 TypeScript 5.9.3 (strict mode): Follow standard conventions
 
 ## Recent Changes
+- 001-playwright-auth-tests: Added TypeScript 5.9, Next.js 16 (App Router), React 19 + `@playwright/test` 1.57, `@supabase/auth-helpers-nextjs`, `@supabase/supabase-js`, Ant Design, CSS modules
 - 001-project-library-create: Added TypeScript, Next.js 14 App Router, React 18. + Supabase client (existing), Next.js/React, CSS modules, TipTap editor (already used).
 - 001-tiptap-collaboration: Added [if applicable, e.g., PostgreSQL, CoreData, files or N/A]
 
-- 001-tiptap-collaboration: Added TypeScript 5.9.3 (strict mode) + Next.js 16.0.7 (App Router), React 19.2.1, @tiptap/react 2.7.4, @supabase/supabase-js 2.86.2
 
 <!-- MANUAL ADDITIONS START -->
 <!-- MANUAL ADDITIONS END -->
