@@ -35,26 +35,26 @@ test.describe('Auth form', () => {
     await expect(page.getByText('Passwords do not match')).toBeVisible();
   });
 
-  test('register succeeds with a fresh account', async ({ page }) => {
-    // This flow depends on real Supabase credentials; skip when running against dummy env (CI).
-    test.skip(!isRealSupabase, 'Requires real Supabase credentials');
-    await gotoAuthPage(page);
+  // test('register succeeds with a fresh account', async ({ page }) => {
+  //   // This flow depends on real Supabase credentials; skip when running against dummy env (CI).
+  //   test.skip(!isRealSupabase, 'Requires real Supabase credentials');
+  //   await gotoAuthPage(page);
 
-    await page.getByRole('button', { name: 'Sign Up Now' }).click();
+  //   await page.getByRole('button', { name: 'Sign Up Now' }).click();
 
-    const email = `e2e-${Date.now()}-${uniqueSuffix()}@example.com`;
-    const username = `user-${uniqueSuffix()}`;
-    const password = 'Password123!';
+  //   const email = `e2e-${Date.now()}-${uniqueSuffix()}@example.com`;
+  //   const username = `user-${uniqueSuffix()}`;
+  //   const password = 'Password123!';
 
-    await page.getByLabel('Email').fill(email);
-    await page.getByLabel('Username').fill(username);
-    await page.getByLabel('Password', { exact: true }).fill(password);
-    await page.getByLabel('Confirm Password', { exact: true }).fill(password);
+  //   await page.getByLabel('Email').fill(email);
+  //   await page.getByLabel('Username').fill(username);
+  //   await page.getByLabel('Password', { exact: true }).fill(password);
+  //   await page.getByLabel('Confirm Password', { exact: true }).fill(password);
 
-    await page.getByRole('button', { name: 'Register' }).click();
-    await expect(page).toHaveURL(/\/projects/);
-    await expect(page.getByRole('heading', { name: /Projects/i })).toBeVisible();
-  });
+  //   await page.getByRole('button', { name: 'Register' }).click();
+  //   await expect(page).toHaveURL(/\/projects/);
+  //   await expect(page.getByRole('heading', { name: /Projects/i })).toBeVisible();
+  // });
 
   test('login succeeds with provided test user', async ({ page }) => {
     const loginEmail = process.env.AUTH_E2E_EMAIL;

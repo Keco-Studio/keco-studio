@@ -6,6 +6,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject, Project } from '@/lib/services/projectService';
 import { getLibrary, Library } from '@/lib/services/libraryService';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import styles from './page.module.css';
 
 type FieldDef = {
   id: string;
@@ -158,7 +159,7 @@ export default function LibraryPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
+      <div className={styles.loadingContainer}>
         <div>Loading library...</div>
       </div>
     );
@@ -166,50 +167,50 @@ export default function LibraryPage() {
 
   if (error) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <div style={{ color: '#dc2626' }}>{error}</div>
+      <div className={styles.errorContainer}>
+        <div className={styles.errorText}>{error}</div>
       </div>
     );
   }
 
   if (!library || !project) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
+      <div className={styles.notFoundContainer}>
         <div>Library not found</div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+    <div className={styles.container}>
+      <div className={styles.header}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 22 }}>{library.name}</h1>
-          <div style={{ color: '#64748b' }}>{project.name}</div>
+          <h1 className={styles.title}>{library.name}</h1>
+          <div className={styles.subtitle}>{project.name}</div>
         </div>
-        <div style={{ color: '#64748b' }}>
+        <div className={styles.subtitle}>
           字段数：{fieldDefs.length} | 分区：{Object.keys(sections).length}
         </div>
       </div>
 
       {saveError && (
-        <div style={{ padding: '10px 12px', borderRadius: 8, background: '#fef2f2', color: '#b91c1c' }}>
+        <div className={styles.saveError}>
           {saveError}
         </div>
       )}
       {saveSuccess && (
-        <div style={{ padding: '10px 12px', borderRadius: 8, background: '#ecfdf3', color: '#166534' }}>
+        <div className={styles.saveSuccess}>
           {saveSuccess}
         </div>
       )}
 
-      {!userProfile && <div style={{ color: '#dc2626' }}>Please sign in to edit.</div>}
+      {!userProfile && <div className={styles.authWarning}>Please sign in to edit.</div>}
 
       {userProfile && (
-        <div style={{ border: '1px solid #e5e7eb', borderRadius: 10, padding: 16, background: '#fff' }}>
-          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginBottom: 16 }}>
+        <div className={styles.formContainer}>
+          <div className={styles.inputRow}>
             <input
-              style={{ flex: 1, padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }}
+              className={styles.assetNameInput}
               placeholder="Asset name"
               value={assetName}
               onChange={(e) => setAssetName(e.target.value)}
@@ -217,41 +218,29 @@ export default function LibraryPage() {
             <button
               onClick={handleCreateAsset}
               disabled={saving}
-              style={{
-                padding: '10px 14px',
-                borderRadius: 8,
-                border: 'none',
-                background: '#4f46e5',
-                color: '#fff',
-                cursor: 'pointer',
-              }}
+              className={styles.addButton}
             >
               {saving ? 'Saving...' : 'Add New Asset'}
             </button>
           </div>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div className={styles.fieldsContainer}>
             {Object.keys(sections).length === 0 && (
-              <div style={{ color: '#94a3b8' }}>还没有表头定义，请先在 Predefine 设置字段。</div>
+              <div className={styles.emptyFieldsMessage}>还没有表头定义，请先在 Predefine 设置字段。</div>
             )}
             {Object.entries(sections).map(([sectionName, fields]) => (
               <div
                 key={sectionName}
-                style={{
-                  border: '1px solid #e5e7eb',
-                  borderRadius: 10,
-                  padding: 12,
-                  background: '#f8fafc',
-                }}
+                className={styles.section}
               >
-                <div style={{ fontWeight: 700, marginBottom: 10 }}>{sectionName}</div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 12 }}>
+                <div className={styles.sectionTitle}>{sectionName}</div>
+                <div className={styles.fieldsGrid}>
                   {fields.map((f) => {
                     const value = values[f.id] ?? (f.data_type === 'boolean' ? false : '');
                     const label = f.label + (f.required ? ' *' : '');
                     if (f.data_type === 'boolean') {
                       return (
-                        <label key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <label key={f.id} className={styles.checkboxLabel}>
                           <input
                             type="checkbox"
                             checked={!!value}
@@ -263,12 +252,12 @@ export default function LibraryPage() {
                     }
                     if (f.data_type === 'enum') {
                       return (
-                        <label key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        <label key={f.id} className={styles.fieldLabel}>
                           <span>{label}</span>
                           <select
                             value={value || ''}
                             onChange={(e) => handleValueChange(f.id, e.target.value || null)}
-                            style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }}
+                            className={styles.fieldSelect}
                           >
                             <option value="">-- Select --</option>
                             {(f.enum_options || []).map((opt) => (
@@ -282,13 +271,13 @@ export default function LibraryPage() {
                     }
                     const inputType = f.data_type === 'int' || f.data_type === 'float' ? 'number' : f.data_type === 'date' ? 'date' : 'text';
                     return (
-                      <label key={f.id} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <label key={f.id} className={styles.fieldLabel}>
                         <span>{label}</span>
                         <input
                           type={inputType}
                           value={value ?? ''}
                           onChange={(e) => handleValueChange(f.id, e.target.value)}
-                          style={{ padding: 10, borderRadius: 8, border: '1px solid #e5e7eb' }}
+                          className={styles.fieldInput}
                           placeholder={f.label}
                         />
                       </label>

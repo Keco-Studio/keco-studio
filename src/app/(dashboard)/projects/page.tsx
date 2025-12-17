@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { listProjects, Project } from '@/lib/services/projectService';
 import { NewProjectModal } from '@/components/projects/NewProjectModal';
+import styles from './page.module.css';
 
 export default function ProjectsPage() {
   const supabase = useSupabase();
@@ -41,47 +42,34 @@ export default function ProjectsPage() {
   };
 
   return (
-    <div style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 style={{ margin: 0, fontSize: '20px' }}>Projects</h1>
+    <div className={styles.container}>
+      <div className={styles.header}>
+        <h1 className={styles.title}>Projects</h1>
         <button
           onClick={() => setShowModal(true)}
-          style={{
-            padding: '8px 12px',
-            borderRadius: '8px',
-            border: 'none',
-            background: '#4f46e5',
-            color: 'white',
-            cursor: 'pointer',
-          }}
+          className={styles.newProjectButton}
         >
           New Project
         </button>
       </div>
 
       {loading && <div>Loading projects...</div>}
-      {error && <div style={{ color: '#dc2626' }}>{error}</div>}
+      {error && <div className={styles.error}>{error}</div>}
 
       {!loading && projects.length === 0 && (
-        <div style={{ color: '#64748b' }}>No projects yet. Create your first project.</div>
+        <div className={styles.emptyMessage}>No projects yet. Create your first project.</div>
       )}
 
-      <div style={{ display: 'grid', gap: '0.75rem' }}>
+      <div className={styles.projectsGrid}>
         {projects.map((project) => (
           <div
             key={project.id}
             onClick={() => goToProject(project.id)}
-            style={{
-              padding: '12px 14px',
-              border: '1px solid #e2e8f0',
-              borderRadius: '10px',
-              cursor: 'pointer',
-              background: 'white',
-            }}
+            className={styles.projectCard}
           >
-            <div style={{ fontWeight: 600, color: '#0f172a' }}>{project.name}</div>
+            <div className={styles.projectName}>{project.name}</div>
             {project.description && (
-              <div style={{ color: '#475569', fontSize: '14px', marginTop: '4px' }}>
+              <div className={styles.projectDescription}>
                 {project.description}
               </div>
             )}

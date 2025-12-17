@@ -7,6 +7,7 @@ import { getProject, Project } from '@/lib/services/projectService';
 import { listLibraries, Library } from '@/lib/services/libraryService';
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
 import Image from 'next/image';
+import styles from './page.module.css';
 
 export default function ProjectPage() {
   const params = useParams();
@@ -51,7 +52,7 @@ export default function ProjectPage() {
 
   if (loading) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
+      <div className={styles.loadingContainer}>
         <div>Loading project...</div>
       </div>
     );
@@ -59,15 +60,15 @@ export default function ProjectPage() {
 
   if (error) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
-        <div style={{ color: '#dc2626' }}>{error}</div>
+      <div className={styles.errorContainer}>
+        <div className={styles.errorText}>{error}</div>
       </div>
     );
   }
 
   if (!project) {
     return (
-      <div style={{ padding: '2rem', textAlign: 'center' }}>
+      <div className={styles.notFoundContainer}>
         <div>Project not found</div>
       </div>
     );
@@ -79,50 +80,33 @@ export default function ProjectPage() {
   };
 
   return (
-    <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+    <div className={styles.container}>
       <div>
-        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#0f172a', marginBottom: '1rem' }}>
+        <h2 className={styles.sectionTitle}>
           Libraries
         </h2>
         {libraries.length === 0 ? (
-          <div style={{ color: '#64748b', padding: '1rem', background: '#f8fafc', borderRadius: '8px' }}>
+          <div className={styles.emptyLibraries}>
             No libraries in this project yet.
           </div>
         ) : (
-          <div style={{ display: 'grid', gap: '0.75rem' }}>
+          <div className={styles.librariesGrid}>
             {libraries.map((library) => (
               <div
                 key={library.id}
-                style={{
-                  padding: '12px 14px',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: '10px',
-                  background: 'white',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  gap: '12px',
-                }}
+                className={styles.libraryCard}
               >
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: '#0f172a' }}>{library.name}</div>
+                <div className={styles.libraryInfo}>
+                  <div className={styles.libraryName}>{library.name}</div>
                   {library.description && (
-                    <div style={{ color: '#475569', fontSize: '14px', marginTop: '4px' }}>
+                    <div className={styles.libraryDescription}>
                       {library.description}
                     </div>
                   )}
                 </div>
                 <button
                   onClick={(e) => handleLibraryPredefineClick(library.id, e)}
-                  style={{
-                    border: 'none',
-                    background: 'transparent',
-                    padding: 0,
-                    cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  className={styles.settingsButton}
                   aria-label="Library sections settings"
                 >
                   <Image src={predefineSettingIcon} alt="predefineSettingIcon" width={25} height={25} />

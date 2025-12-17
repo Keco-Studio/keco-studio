@@ -1,0 +1,39 @@
+.fieldItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.dragHandle {
+  cursor: grab;
+  display: flex;
+  align-items: center;
+}
+
+.fieldInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.fieldLabel {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.requiredMark {
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.fieldActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+

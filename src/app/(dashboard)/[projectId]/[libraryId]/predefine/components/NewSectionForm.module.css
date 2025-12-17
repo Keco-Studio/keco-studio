@@ -1,0 +1,35 @@
+.newSectionContainer {
+  margin-bottom: 24px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 16px;
+}
+
+.addFieldTrigger {
+  margin-top: 16px;
+}
+
+.errorsContainer {
+  margin-bottom: 16px;
+  padding: 12px;
+  border-radius: 6px;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.newSectionActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.saveButton {
+  background: #8726EE;
+  border-color: #8726EE;
+}
+

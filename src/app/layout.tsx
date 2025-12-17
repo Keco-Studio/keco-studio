@@ -10,7 +10,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <SupabaseProvider>
             <AuthProvider>
               <NavigationProvider>
-            {children}
+                {children}
               </NavigationProvider>
             </AuthProvider>
           </SupabaseProvider>

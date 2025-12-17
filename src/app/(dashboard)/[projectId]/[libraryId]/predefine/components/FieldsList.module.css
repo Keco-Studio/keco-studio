@@ -1,0 +1,12 @@
+.fieldsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.emptyFields {
+  text-align: center;
+  padding: 40px;
+  color: #94a3b8;
+}
+

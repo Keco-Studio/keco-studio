@@ -1,0 +1,74 @@
+.loadingContainer,
+.errorContainer,
+.notFoundContainer {
+  padding: 2rem;
+  text-align: center;
+}
+
+.errorText {
+  color: #dc2626;
+}
+
+.container {
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+  margin-bottom: 1rem;
+}
+
+.emptyLibraries {
+  color: #64748b;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.librariesGrid {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.libraryCard {
+  padding: 12px 14px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+
+.libraryInfo {
+  flex: 1;
+}
+
+.libraryName {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.libraryDescription {
+  color: #475569;
+  font-size: 14px;
+  margin-top: 4px;
+}
+
+.settingsButton {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
