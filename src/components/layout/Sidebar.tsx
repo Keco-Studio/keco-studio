@@ -1,9 +1,15 @@
 'use client';
 
 import projectIcon from "@/app/assets/images/projectIcon.svg";
-import libraryIcon from "@/app/assets/images/libraryIcon.svg";
+import libraryIconLeft from "@/app/assets/images/libraryIconLeft.svg";
+import libraryIconRight from "@/app/assets/images/libraryIconRight.svg";
 import loginProductIcon from "@/app/assets/images/loginProductIcon.svg";
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
+import folderExpandIcon from "@/app/assets/images/folderExpandIcon.svg";
+import folderCollapseIcon from "@/app/assets/images/folderCollapseIcon.svg";
+import folderIcon from "@/app/assets/images/folderIcon.svg";
+import plusHorizontal from "@/app/assets/images/plusHorizontal.svg";
+import plusVertical from "@/app/assets/images/plusVertical.svg";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -110,13 +116,24 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
 
   const currentIds = useMemo(() => {
     const parts = pathname.split("/").filter(Boolean);
-    // Handle /[projectId]/[libraryId] structure
+    // Handle /[projectId]/[libraryId] or /[projectId]/folder/[folderId] structure
     const projectId = parts[0] || null;
-    const libraryId = parts[1] || null;
-    return { projectId, libraryId };
+    let libraryId: string | null = null;
+    let folderId: string | null = null;
+    
+    if (parts.length >= 2 && parts[1] === 'folder' && parts[2]) {
+      // URL format: /[projectId]/folder/[folderId]
+      folderId = parts[2];
+    } else if (parts.length >= 2) {
+      // URL format: /[projectId]/[libraryId]
+      libraryId = parts[1];
+    }
+    
+    return { projectId, libraryId, folderId };
   }, [pathname]);
 
   const fetchProjects = async () => {
@@ -132,7 +149,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   };
 
-  const fetchFoldersAndLibraries = async (projectId?: string | null) => {
+  const fetchFoldersAndLibraries = useCallback(async (projectId?: string | null) => {
     if (!projectId) {
       setFolders([]);
       setLibraries([]);
@@ -155,15 +172,60 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setLoadingFolders(false);
       setLoadingLibraries(false);
     }
-  };
+  }, [supabase]);
 
   useEffect(() => {
     fetchProjects();
   }, []);
 
+  // 跟踪当前项目ID，用于检测项目切换
+  const prevProjectIdRef = useRef<string | null>(null);
+
   useEffect(() => {
     fetchFoldersAndLibraries(currentIds.projectId);
-  }, [currentIds.projectId]);
+    // 切换项目时重置展开状态
+    if (prevProjectIdRef.current !== currentIds.projectId) {
+      setExpandedKeys([]);
+      prevProjectIdRef.current = currentIds.projectId;
+    }
+  }, [currentIds.projectId, fetchFoldersAndLibraries]);
+
+  // Sync selectedFolderId from URL
+  useEffect(() => {
+    if (currentIds.folderId) {
+      setSelectedFolderId(currentIds.folderId);
+    } else {
+      // Only clear if we're not on a folder page
+      const parts = pathname.split("/").filter(Boolean);
+      if (parts.length < 3 || parts[1] !== 'folder') {
+        setSelectedFolderId(null);
+      }
+    }
+  }, [currentIds.folderId, pathname]);
+
+  // 初始化展开状态：当文件夹数据加载完成后，默认展开所有文件夹
+  // 只在 expandedKeys 为空时（首次加载或项目切换后）设置默认展开
+  useEffect(() => {
+    if (folders.length > 0 && expandedKeys.length === 0) {
+      setExpandedKeys(folders.map((f) => `folder-${f.id}`));
+    }
+  }, [folders, expandedKeys.length]);
+
+  // 监听libraryCreated事件，当从其他页面创建library时刷新Sidebar数据
+  useEffect(() => {
+    const handleLibraryCreated = (event: CustomEvent) => {
+      // 刷新当前项目的folders和libraries数据
+      if (currentIds.projectId) {
+        fetchFoldersAndLibraries(currentIds.projectId);
+      }
+    };
+
+    window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
+    
+    return () => {
+      window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
+    };
+  }, [currentIds.projectId, fetchFoldersAndLibraries]);
 
   const fetchAssets = useCallback(async (libraryId?: string | null) => {
     if (!libraryId) return;
@@ -250,23 +312,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         totalLibraries: projectLibraries.length,
         librariesByFolderKeys: Array.from(librariesByFolder.keys()),
         librariesByFolder: Object.fromEntries(librariesByFolder),
-        folders: projectFolders.map(f => ({ id: f.id, name: f.name, parent_folder_id: f.parent_folder_id }))
+        folders: projectFolders.map(f => ({ id: f.id, name: f.name }))
       });
     }
     
-    // Group folders by parent_folder_id
-    const foldersByParent = new Map<string | null, Folder[]>();
-    projectFolders.forEach((folder) => {
-      const parentId = folder.parent_folder_id;
-      if (!foldersByParent.has(parentId)) {
-        foldersByParent.set(parentId, []);
-      }
-      foldersByParent.get(parentId)!.push(folder);
-    });
-    
-    // Recursive function to build folder tree
+    // Build folder node (simplified: no nested folders, all folders are root level)
     const buildFolderNode = (folder: Folder): DataNode => {
-      const childFolders = foldersByParent.get(folder.id) || [];
       // Get libraries for this folder (folder.id is string, so it matches Map key)
       // Ensure folder.id is converted to string for Map lookup
       const folderLibraries = librariesByFolder.get(String(folder.id)) || [];
@@ -274,7 +325,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       // Debug: log folder node building
       if (process.env.NODE_ENV === 'development') {
         console.log(`Building folder node: ${folder.name} (id: ${folder.id})`, {
-          childFolders: childFolders.length,
           folderLibraries: folderLibraries.length,
           folderLibrariesNames: folderLibraries.map(l => l.name)
         });
@@ -287,12 +337,33 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             className={styles.createButton}
             onClick={(e) => {
               e.stopPropagation();
+              if (!currentIds.projectId) {
+                setError('Please select a project first');
+                return;
+              }
               setSelectedFolderId(folder.id);
-              setAddButtonRef(e.currentTarget);
-              setShowAddMenu(true);
+              setShowLibraryModal(true);
             }}
           >
-            <span className={styles.createButtonText}>+ Create new library</span>
+            <span className={styles.createButtonText}>
+              <span className={styles.plusIcon}>
+                <Image
+                  src={plusHorizontal}
+                  alt=""
+                  width={17}
+                  height={2}
+                  className={styles.plusHorizontal}
+                />
+                <Image
+                  src={plusVertical}
+                  alt=""
+                  width={2}
+                  height={17}
+                  className={styles.plusVertical}
+                />
+              </span>
+              {' '}Create new library
+            </span>
           </button>
         ),
         key: `folder-create-${folder.id}`,
@@ -301,20 +372,28 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       
       const children: DataNode[] = [
         createButtonNode, // Always first
-        ...childFolders.map(buildFolderNode),
         ...folderLibraries.map((lib) => {
           const libProjectId = lib.project_id;
           return {
             title: (
               <div className={styles.itemRow}>
                 <div className={styles.itemMain}>
-                  <Image
-                    src={libraryIcon}
-                    alt="Library"
-                    width={16}
-                    height={16}
-                    className={styles.itemIcon}
-                  />
+                  <div className={styles.libraryIconContainer}>
+                    <Image
+                      src={libraryIconLeft}
+                      alt=""
+                      width={12}
+                      height={20}
+                      className={styles.libraryIconPart}
+                    />
+                    <Image
+                      src={libraryIconRight}
+                      alt=""
+                      width={12}
+                      height={20}
+                      className={styles.libraryIconPart}
+                    />
+                  </div>
                   <span className={styles.itemText}>{lib.name}</span>
                 </div>
                 <div className={styles.itemActions}>
@@ -326,8 +405,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     <Image
                       src={predefineSettingIcon}
                       alt="Predefine"
-                      width={18}
-                      height={18}
+                      width={22}
+                      height={22}
                     />
                   </button>
                   <button
@@ -370,6 +449,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         title: (
           <div className={styles.itemRow}>
             <div className={styles.itemMain}>
+              <Image
+                src={folderIcon}
+                alt="Folder"
+                width={22}
+                height={18}
+                className={styles.itemIcon}
+              />
               <span className={styles.itemText} style={{ fontWeight: 500 }}>{folder.name}</span>
             </div>
             <div className={styles.itemActions}>
@@ -391,9 +477,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     
     const result: DataNode[] = [];
     
-    // Add root folders (parent_folder_id is null)
-    const rootFolders = foldersByParent.get(null) || [];
-    rootFolders.forEach((folder) => {
+    // Add all folders (all folders are root level now, no nesting)
+    projectFolders.forEach((folder) => {
       result.push(buildFolderNode(folder));
     });
     
@@ -405,13 +490,22 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         title: (
           <div className={styles.itemRow}>
             <div className={styles.itemMain}>
-              <Image
-                src={libraryIcon}
-                alt="Library"
-                width={16}
-                height={16}
-                className={styles.itemIcon}
-              />
+              <div className={styles.libraryIconContainer}>
+                <Image
+                  src={libraryIconLeft}
+                  alt=""
+                  width={12}
+                  height={20}
+                  className={styles.libraryIconPart}
+                />
+                <Image
+                  src={libraryIconRight}
+                  alt=""
+                  width={12}
+                  height={20}
+                  className={styles.libraryIconPart}
+                />
+              </div>
               <span className={styles.itemText}>{lib.name}</span>
             </div>
             <div className={styles.itemActions}>
@@ -466,23 +560,27 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   }, [folders, libraries, assets, currentIds.projectId, handleLibraryPredefineClick, handleAssetDelete]);
 
   const selectedKey = useMemo(() => {
-    const parts = pathname.split("/").filter(Boolean);
     const keys: string[] = [];
     
-    // Add selected folder if any
-    if (selectedFolderId) {
-      keys.push(`folder-${selectedFolderId}`);
+    // Add selected folder from URL
+    if (currentIds.folderId) {
+      keys.push(`folder-${currentIds.folderId}`);
     }
     
     // Add selected library or asset
-    if (parts.length >= 3) {
-      keys.push(`asset-${parts[2]}`);
-    } else if (parts.length === 2) {
-      keys.push(`library-${parts[1]}`);
+    if (currentIds.libraryId) {
+      const parts = pathname.split("/").filter(Boolean);
+      if (parts.length >= 3 && parts[1] !== 'folder') {
+        // Asset: /[projectId]/[libraryId]/[assetId]
+        keys.push(`asset-${parts[2]}`);
+      } else {
+        // Library: /[projectId]/[libraryId]
+        keys.push(`library-${currentIds.libraryId}`);
+      }
     }
     
     return keys;
-  }, [pathname, selectedFolderId]);
+  }, [pathname, currentIds.folderId, currentIds.libraryId]);
 
   const onSelect = (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
@@ -493,7 +591,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setSelectedFolderId(folderId);
     } else if (key.startsWith('folder-')) {
       const id = key.replace('folder-', '');
-      setSelectedFolderId(id);
+      // Navigate to folder page
+      if (currentIds.projectId) {
+        router.push(`/${currentIds.projectId}/folder/${id}`);
+      }
     } else if (key.startsWith('library-')) {
       const id = key.replace('library-', '');
       setSelectedFolderId(null); // Clear folder selection when library is selected
@@ -520,7 +621,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   };
 
-  const onExpand = async (_keys: React.Key[], info: { node: EventDataNode }) => {
+  const onExpand = async (keys: React.Key[], info: { node: EventDataNode }) => {
+    // 更新展开状态
+    setExpandedKeys(keys);
+    
     const key = info.node.key as string;
     if (key.startsWith('library-')) {
       const id = key.replace('library-', '');
@@ -529,6 +633,19 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       }
     }
     // Folders don't need to fetch anything on expand
+  };
+
+  // 自定义展开/折叠图标
+  const switcherIcon = ({ expanded }: { expanded: boolean }) => {
+    return (
+      <Image
+        src={expanded ? folderExpandIcon : folderCollapseIcon}
+        alt={expanded ? "展开" : "折叠"}
+        width={expanded ? 14 : 8}
+        height={expanded ? 8 : 14}
+        style={{ display: 'block' }}
+      />
+    );
   };
 
   const handleProjectDelete = async (projectId: string, e: React.MouseEvent) => {
@@ -578,16 +695,23 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   };
 
-  const handleLibraryCreated = () => {
+  const handleLibraryCreated = (libraryId: string) => {
     setShowLibraryModal(false);
+    const createdFolderId = selectedFolderId;
     setSelectedFolderId(null); // Clear selection after creation
     fetchFoldersAndLibraries(currentIds.projectId);
+    // Dispatch event to notify FolderPage to refresh
+    window.dispatchEvent(new CustomEvent('libraryCreated', {
+      detail: { folderId: createdFolderId, libraryId }
+    }));
   };
 
   const handleFolderCreated = () => {
     setShowFolderModal(false);
     setSelectedFolderId(null); // Clear selection after creation
     fetchFoldersAndLibraries(currentIds.projectId);
+    // Dispatch event to notify ProjectPage to refresh
+    window.dispatchEvent(new CustomEvent('folderCreated'));
   };
 
   const handleAddButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -711,8 +835,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               selectedKeys={selectedKey}
               onSelect={onSelect}
               onExpand={onExpand}
-                  defaultExpandedKeys={folders.map((f) => `folder-${f.id}`)}
-                  defaultExpandAll={false}
+              switcherIcon={switcherIcon}
+              expandedKeys={expandedKeys}
             />
           </div>
               {!loadingFolders && !loadingLibraries && folders.length === 0 && libraries.length === 0 && (
@@ -734,14 +858,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onClose={() => setShowLibraryModal(false)}
         projectId={currentIds.projectId || ''}
         folderId={selectedFolderId}
-        onCreated={() => handleLibraryCreated()}
+        onCreated={handleLibraryCreated}
       />
 
       <NewFolderModal
         open={showFolderModal}
         onClose={() => setShowFolderModal(false)}
         projectId={currentIds.projectId || ''}
-        parentFolderId={selectedFolderId}
         onCreated={handleFolderCreated}
       />
 

@@ -1,0 +1,110 @@
+.card {
+  background: white;
+  border: 1px solid #E5E5E5;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.card:hover {
+  border-color: #D1D5DB;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.card.selected {
+  border-color: #FF69B4;
+  border-width: 2px;
+}
+
+.thumbnailContainer {
+  width: 100%;
+  height: 105px;
+  overflow: hidden;
+  background: #F6F6F6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cardFooter {
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex: 1;
+}
+
+.libraryInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.libraryIconContainer {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 20px;
+}
+
+.libraryIconPart {
+  display: block;
+  flex-shrink: 0;
+}
+
+.libraryName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardActions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+  align-items: center;
+}
+
+.actionButton {
+  background: white;
+  border: 1px solid #E5E5E5;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  transition: background-color 0.2s, border-color 0.2s;
+  width: 28px;
+  height: 28px;
+}
+
+.actionButton:hover {
+  background-color: #F8F9FA;
+  border-color: #D1D5DB;
+}
+
+.actionButton:active {
+  background-color: #E9ECEF;
+}
+
+.actionButtonActive {
+  background-color: #FF69B4 !important;
+  border-color: #FF69B4 !important;
+}
+

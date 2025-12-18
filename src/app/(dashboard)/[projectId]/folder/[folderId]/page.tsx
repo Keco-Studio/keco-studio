@@ -3,24 +3,22 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { getProject, Project } from '@/lib/services/projectService';
-import { listFolders, Folder } from '@/lib/services/folderService';
+import { getFolder, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library } from '@/lib/services/libraryService';
-import { FolderCard } from '@/components/folders/FolderCard';
 import { LibraryCard } from '@/components/folders/LibraryCard';
 import { LibraryListView } from '@/components/folders/LibraryListView';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { NewLibraryModal } from '@/components/libraries/NewLibraryModal';
-import styles from './ProjectPage.module.css';
+import styles from './FolderPage.module.css';
 
-export default function ProjectPage() {
+export default function FolderPage() {
   const params = useParams();
   const router = useRouter();
   const supabase = useSupabase();
   const projectId = params.projectId as string;
+  const folderId = params.folderId as string;
   
-  const [project, setProject] = useState<Project | null>(null);
-  const [folders, setFolders] = useState<Folder[]>([]);
+  const [folder, setFolder] = useState<Folder | null>(null);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -28,68 +26,51 @@ export default function ProjectPage() {
   const [showLibraryModal, setShowLibraryModal] = useState(false);
 
   const fetchData = useCallback(async () => {
-    if (!projectId) return;
+    if (!projectId || !folderId) return;
     
     setLoading(true);
     setError(null);
     
     try {
-      const [projectData, foldersData, librariesData] = await Promise.all([
-        getProject(supabase, projectId),
-        listFolders(supabase, projectId),
-        listLibraries(supabase, projectId, null), // Get only root libraries (folder_id is null)
+      const [folderData, librariesData] = await Promise.all([
+        getFolder(supabase, folderId),
+        listLibraries(supabase, projectId, folderId),
       ]);
       
-      if (!projectData) {
-        setError('Project not found');
+      if (!folderData) {
+        setError('Folder not found');
         return;
       }
       
-      setProject(projectData);
-      setFolders(foldersData);
+      setFolder(folderData);
       setLibraries(librariesData);
     } catch (e: any) {
-      setError(e?.message || 'Failed to load project');
+      setError(e?.message || 'Failed to load folder');
     } finally {
       setLoading(false);
     }
-  }, [projectId, supabase]);
+  }, [projectId, folderId, supabase]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
 
-  // Listen for folder and library creation events to refresh the list
+  // Listen for library creation events to refresh the list
   useEffect(() => {
-    const handleFolderCreated = () => {
-      fetchData();
-    };
-
     const handleLibraryCreated = (event: CustomEvent) => {
       const createdFolderId = event.detail?.folderId;
-      // Only refresh if the library was created at root level (no folder)
-      if (!createdFolderId) {
+      // Only refresh if the library was created in the current folder
+      if (!createdFolderId || createdFolderId === folderId) {
         fetchData();
       }
     };
 
-    window.addEventListener('folderCreated' as any, handleFolderCreated as EventListener);
     window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
     
     return () => {
-      window.removeEventListener('folderCreated' as any, handleFolderCreated as EventListener);
       window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
     };
-  }, [fetchData]);
-
-  const handleFolderClick = (folderId: string) => {
-    router.push(`/${projectId}/folder/${folderId}`);
-  };
-
-  const handleFolderMoreClick = (folderId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    // 功能暂不实现
-  };
+  }, [folderId, fetchData]);
 
   const handleLibraryClick = (libraryId: string) => {
     router.push(`/${projectId}/${libraryId}`);
@@ -149,14 +130,14 @@ export default function ProjectPage() {
     fetchData();
     // Dispatch event to notify Sidebar
     window.dispatchEvent(new CustomEvent('libraryCreated', {
-      detail: { folderId: null, libraryId }
+      detail: { folderId, libraryId }
     }));
   };
 
   if (loading) {
     return (
       <div className={styles.container}>
-        <div className={styles.loading}>Loading project...</div>
+        <div className={styles.loading}>Loading folder...</div>
       </div>
     );
   }
@@ -169,40 +150,30 @@ export default function ProjectPage() {
     );
   }
 
-  if (!project) {
+  if (!folder) {
     return (
       <div className={styles.container}>
-        <div className={styles.error}>Project not found</div>
+        <div className={styles.error}>Folder not found</div>
       </div>
     );
   }
 
-  const hasItems = folders.length > 0 || libraries.length > 0;
-
   return (
     <div className={styles.container}>
-      {hasItems && (
-        <LibraryToolbar
-          onCreateLibrary={handleCreateLibrary}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-        />
-      )}
-      {!hasItems ? (
+      <div className={styles.header}>
+        <h1 className={styles.title}>Resource Folder</h1>
+      </div>
+      <LibraryToolbar
+        onCreateLibrary={handleCreateLibrary}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+      />
+      {libraries.length === 0 ? (
         <div className={styles.emptyState}>
-          <div className={styles.emptyText}>No folders or libraries in this project yet.</div>
+          <div className={styles.emptyText}>No libraries in this folder yet.</div>
         </div>
       ) : viewMode === 'grid' ? (
         <div className={styles.grid}>
-          {folders.map((folder) => (
-            <FolderCard
-              key={folder.id}
-              folder={folder}
-              projectId={projectId}
-              onClick={handleFolderClick}
-              onMoreClick={handleFolderMoreClick}
-            />
-          ))}
           {libraries.map((library) => (
             <LibraryCard
               key={library.id}
@@ -240,7 +211,7 @@ export default function ProjectPage() {
         open={showLibraryModal}
         onClose={() => setShowLibraryModal(false)}
         projectId={projectId}
-        folderId={null}
+        folderId={folderId}
         onCreated={handleLibraryCreated}
       />
     </div>

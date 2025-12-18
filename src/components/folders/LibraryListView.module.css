@@ -1,0 +1,130 @@
+.tableContainer {
+  width: 100%;
+  background: white;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.headerCell {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 400;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background-color: white;
+  border-bottom: 1px solid #E5E5E5;
+}
+
+.headerCell:first-child {
+  width: auto;
+  min-width: 200px;
+  padding-left: 76px;
+}
+
+.headerCell:nth-child(2) {
+  width: 120px;
+}
+
+.headerCell:nth-child(3),
+.headerCell:nth-child(4) {
+  width: 150px;
+}
+
+.headerCell:last-child {
+  width: 100px;
+}
+
+.tableRow {
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid #E5E5E5;
+}
+
+.tableRow:last-child {
+  border-bottom: none;
+}
+
+.tableRow:hover {
+  background-color: #F8F9FA;
+}
+
+.tableRowSelected {
+  background-color: #FFF1F2 !important;
+}
+
+.cell {
+  padding: 12px 16px;
+  font-size: 14px;
+  color: #21272A;
+}
+
+.libraryNameCell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.libraryIcon {
+  flex-shrink: 0;
+}
+
+.libraryName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #21272A;
+  height: 22px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+.assetsText {
+  font-size: 14px;
+  color: #64748b;
+}
+
+.dateText {
+  font-size: 14px;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.actionButtons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.actionButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: white;
+  border: 1px solid #E5E5E5;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+  padding: 0;
+}
+
+.actionButton:hover {
+  background-color: #F8F9FA;
+  border-color: #D1D5DB;
+}
+
+.actionButtonActive {
+  background-color: #FF69B4 !important;
+  border-color: #FF69B4 !important;
+}
+

@@ -274,6 +274,14 @@
   position: relative; /* 为绝对定位的itemActions提供定位上下文 */
 }
 
+/* Add left padding to leaf nodes (library and create button) to align with folder icon */
+/* This compensates for the missing switcher on leaf nodes */
+.tree :global(.ant-tree-treenode[data-node-key*="library-"]) .ant-tree-node-content-wrapper,
+.tree :global(.ant-tree-treenode[data-node-key*="asset-"]) .ant-tree-node-content-wrapper,
+.tree :global(.ant-tree-treenode[data-node-key*="folder-create-"]) .ant-tree-node-content-wrapper {
+  padding-left: calc(0.75rem + 24px); /* 0.75rem original padding + 24px switcher width */
+}
+
 .tree :global(.ant-tree-node-content-wrapper) .itemRow {
   width: 100%;
   flex: 1 1 auto;
@@ -339,6 +347,13 @@
   cursor: pointer;
   line-height: 1;
   background-color: transparent !important;
+  box-shadow: none !important;
+}
+
+/* 移除所有可能的阴影方块伪元素 */
+.tree :global(.ant-tree-switcher)::before,
+.tree :global(.ant-tree-switcher)::after {
+  display: none !important;
 }
 
 /* Ensure switcher icon is vertically centered */
@@ -446,6 +461,18 @@
   flex-shrink: 0;
 }
 
+.libraryIconContainer {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  height: 20px;
+}
+
+.libraryIconPart {
+  display: block;
+  flex-shrink: 0;
+}
+
 .itemRow {
   display: flex;
   align-items: center;
@@ -472,7 +499,7 @@
   width: 100%;
   background: none;
   border: none;
-  padding: 0.5rem 0.75rem;
+  padding: 0.5rem 0.75rem 0.5rem 0;
   text-align: left;
   cursor: pointer;
   font-size: 0.875rem;
@@ -495,6 +522,27 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.plusIcon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.plusHorizontal,
+.plusVertical {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
 }
 
 /* Prevent create button node from being selected/highlighted */

@@ -5,7 +5,6 @@ import { SupabaseClient } from '@supabase/supabase-js';
 export type Folder = {
   id: string;
   project_id: string;
-  parent_folder_id: string | null;
   name: string;
   description: string | null;
   created_at: string;
@@ -16,7 +15,6 @@ type CreateFolderInput = {
   projectId: string;
   name: string;
   description?: string;
-  parentFolderId?: string | null;
 };
 
 const trimOrNull = (value?: string | null) => {
@@ -55,32 +53,10 @@ export async function createFolder(
 
   const projectId = await resolveProjectId(supabase, input.projectId);
 
-  // Validate parent_folder_id if provided
-  let parentFolderId: string | null = null;
-  if (input.parentFolderId) {
-    if (!isUuid(input.parentFolderId)) {
-      throw new Error('Invalid parent folder ID format');
-    }
-    
-    // Check if parent folder exists and belongs to the same project
-    const { data: parentData, error: parentError } = await supabase
-      .from('folders')
-      .select('project_id')
-      .eq('id', input.parentFolderId)
-      .single();
-      
-    if (parentError || !parentData || parentData.project_id !== projectId) {
-      throw new Error('Parent folder not found or does not belong to the project');
-    }
-    
-    parentFolderId = input.parentFolderId;
-  }
-
   const { data, error } = await supabase
     .from('folders')
     .insert({
       project_id: projectId,
-      parent_folder_id: parentFolderId,
       name,
       description,
     })
@@ -89,7 +65,7 @@ export async function createFolder(
 
   if (error) {
     if (error.code === '23505') {
-      throw new Error('A folder with this name already exists in the project or parent folder.');
+      throw new Error('A folder with this name already exists in the project.');
     }
     throw error;
   }
