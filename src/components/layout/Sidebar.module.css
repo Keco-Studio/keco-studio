@@ -331,3 +331,13 @@
   min-width: 0;
 }
 
+.itemAddIcon {
+  font-size: 0.9rem;
+  color: #9ca3af;
+}
+
+.itemAddText {
+  font-size: 0.85rem;
+  color: #9ca3af;
+}
+

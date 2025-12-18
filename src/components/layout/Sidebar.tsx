@@ -217,6 +217,27 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     );
     return libs.map<DataNode>((lib) => {
       const libProjectId = lib.project_id;
+      const assetRows: DataNode[] = (assets[lib.id] || []).map<DataNode>((asset) => ({
+        title: (
+          <div className={styles.itemRow}>
+            <div className={styles.itemMain}>
+              <span className={styles.itemText}>{asset.name}</span>
+            </div>
+            <div className={styles.itemActions}>
+              <button
+                className={styles.iconButton}
+                aria-label="Delete asset"
+                onClick={(e) => handleAssetDelete(asset.id, lib.id, e)}
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        ),
+        key: `asset-${asset.id}`,
+        isLeaf: true,
+      }));
+
       return {
         title: (
           <div className={styles.itemRow}>
@@ -255,29 +276,24 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         ),
         key: `library-${lib.id}`,
         isLeaf: false,
-        children: (assets[lib.id] || []).map<DataNode>((asset) => ({
-          title: (
-            <div className={styles.itemRow}>
-              <div className={styles.itemMain}>
-                <span className={styles.itemText}>{asset.name}</span>
+        children: [
+          {
+            title: (
+              <div className={styles.itemRow}>
+                <div className={styles.itemMain}>
+                  <span className={styles.itemAddIcon}>+</span>
+                  <span className={styles.itemAddText}>Add New Asset</span>
+                </div>
               </div>
-              <div className={styles.itemActions}>
-                <button
-                  className={styles.iconButton}
-                  aria-label="Delete asset"
-                  onClick={(e) => handleAssetDelete(asset.id, lib.id, e)}
-                >
-                  ×
-                </button>
-              </div>
-            </div>
-          ),
-          key: `asset-${asset.id}`,
-          isLeaf: true,
-        })),
+            ),
+            key: `add-asset-${lib.id}`,
+            isLeaf: true,
+          },
+          ...assetRows,
+        ],
       };
     });
-  }, [libraries, assets, currentIds.projectId, handleLibraryPredefineClick, handleAssetDelete]);
+  }, [libraries, assets, currentIds.projectId, handleLibraryPredefineClick, handleAssetDelete, handleAssetDelete]);
 
   const selectedKey = useMemo(() => {
     const parts = pathname.split("/").filter(Boolean);
@@ -295,7 +311,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const onSelect = (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
-    if (key.startsWith('library-')) {
+    if (key.startsWith('add-asset-')) {
+      const libId = key.replace('add-asset-', '');
+      const lib = libraries.find((l) => l.id === libId);
+      const projId = lib?.project_id || currentIds.projectId;
+      if (projId && libId) {
+        router.push(`/${projId}/${libId}/asset/new`);
+      }
+    } else if (key.startsWith('library-')) {
       const id = key.replace('library-', '');
       const projId = libraries.find((l) => l.id === id)?.project_id || currentIds.projectId || '';
       handleLibraryClick(projId, id);
@@ -327,11 +350,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         await fetchAssets(id);
       }
     }
-  };
-
-  const handleAddAssetClick = () => {
-    if (!currentIds.projectId || !currentIds.libraryId) return;
-    router.push(`/${currentIds.projectId}/${currentIds.libraryId}/asset/new`);
   };
 
   const handleProjectDelete = async (projectId: string, e: React.MouseEvent) => {
@@ -449,23 +467,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               aria-label={currentIds.projectId ? "New Library" : "Select a project first"}
             >
               +
-            </button>
-            <button
-              className={styles.addButton}
-              onClick={handleAddAssetClick}
-              disabled={!currentIds.projectId || !currentIds.libraryId}
-              title={
-                currentIds.projectId && currentIds.libraryId
-                  ? "Add new asset to current library"
-                  : "Select a library first"
-              }
-              aria-label={
-                currentIds.projectId && currentIds.libraryId
-                  ? "Add new asset to current library"
-                  : "Select a library first"
-              }
-            >
-              Add asset
             </button>
           </div>
         </div>
