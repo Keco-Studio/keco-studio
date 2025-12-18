@@ -30,7 +30,6 @@
   display: flex;
   align-items: center;
   gap: 12px;
-  flex: 1;
   min-width: 0;
 }
 
@@ -90,7 +89,16 @@
   flex-shrink: 0;
 }
 
-.configButton,
+.configButton {
+  padding: 0;
+  border: none;
+  padding: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 4px;
+}
+
 .deleteButton {
   padding: 4px;
   min-width: auto;

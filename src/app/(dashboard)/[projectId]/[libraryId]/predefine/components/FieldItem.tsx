@@ -4,6 +4,7 @@ import Image from 'next/image';
 import type { FieldConfig, FieldType } from '../types';
 import { FIELD_TYPE_OPTIONS, getFieldTypeIcon } from '../utils';
 import predefineLabelDelIcon from '@/app/assets/images/predefineLabelDelIcon.svg';
+import predefineLabelConfigIcon from '@/app/assets/images/predefineLabelConfigIcon.svg';
 import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
 import styles from './FieldItem.module.css';
 
@@ -137,6 +138,9 @@ export function FieldItem({
         {field.required && <span className={styles.requiredMark}>*</span>}
       </div>
       <div className={styles.fieldActions}>
+        <button className={styles.configButton}>
+          <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+        </button>
         {!isFirst && (
           <Button
             type="text"

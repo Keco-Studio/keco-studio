@@ -55,13 +55,17 @@
 }
 
 .addButton {
+  padding: 0;
   border: none;
-  padding: 0 0 0 8px;
+  padding: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-radius: 4px;
 }
 
 .addButton:hover:not(:disabled) {
-  /* border-color: #8726EE;
-  background-color: #f9fafb; */
+  background-color: #f3f4f6;
 }
 
 .addButton:disabled {
