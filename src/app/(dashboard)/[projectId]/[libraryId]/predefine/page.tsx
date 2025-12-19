@@ -325,6 +325,7 @@ export default function PredefinePage() {
             onCancel={cancelCreatingNewSection}
             onSave={handleSaveNewSection}
             saving={saving}
+            isFirstSection={false}
           />
         </div>
       ),
@@ -401,6 +402,7 @@ export default function PredefinePage() {
                   onCancel={cancelCreatingNewSection}
                   onSave={handleSaveNewSection}
                   saving={saving}
+                  isFirstSection={sections.length === 0}
                 />
               ) : (
                 <div className={styles.emptySectionsContainer}>
@@ -420,30 +422,29 @@ export default function PredefinePage() {
             </div>
 
             {sections.length > 0 && (
-              <div className={styles.saveButtonContainer}>
+              <div>
                 {activeSectionId && !isCreatingNewSection && (
-                  <Button
-                    type="primary"
-                    size="large"
-                    // icon={
-                    //   <Image src={predefineLabelDelIcon} alt="Delete" width={20} height={20} />
-                    // }
-                    onClick={() => handleDeleteSection(activeSectionId)}
-                    loading={saving}
-                    className={styles.deleteButton}
-                  >
-                    Delete Section
-                  </Button>
+                  <div className={styles.saveButtonContainer}>
+                    <Button
+                      type="primary"
+                      size="large"
+                      onClick={() => handleDeleteSection(activeSectionId)}
+                      loading={saving}
+                      className={styles.deleteButton}
+                    >
+                      Delete Section
+                    </Button>
+                    <Button
+                      type="primary"
+                      size="large"
+                      onClick={() => saveSchema()}
+                      loading={saving}
+                      className={styles.saveButton}
+                    >
+                      {saving ? 'Saving...' : 'Save Schema'}
+                    </Button>
+                  </div>
                 )}
-                <Button
-                  type="primary"
-                  size="large"
-                  onClick={() => saveSchema()}
-                  loading={saving}
-                  className={styles.saveButton}
-                >
-                  {saving ? 'Saving...' : 'Save Schema'}
-                </Button>
               </div>
             )}
           </>

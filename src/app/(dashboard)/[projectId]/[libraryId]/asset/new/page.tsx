@@ -6,14 +6,18 @@ import { ConfigProvider, Tabs } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getLibrary, Library } from '@/lib/services/libraryService';
+import { getFieldTypeIcon } from '../../predefine/utils';
 import styles from './page.module.css';
+import Image from 'next/image';
+import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
+import predefineLabelConfigIcon from '@/app/assets/images/predefineLabelConfigIcon.svg';
 
 type FieldDef = {
   id: string;
   library_id: string;
   section: string;
   label: string;
-  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date';
+  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'media' | 'reference';
   enum_options: string[] | null;
   required: boolean;
   order_index: number;
@@ -26,6 +30,8 @@ const DATA_TYPE_LABEL: Record<FieldDef['data_type'], string> = {
   boolean: 'Boolean',
   enum: 'Option',
   date: 'Date',
+  media: 'Media/File',
+  reference: 'Reference',
 };
 
 export default function NewAssetPage() {
@@ -39,7 +45,6 @@ export default function NewAssetPage() {
 
   const [library, setLibrary] = useState<Library | null>(null);
   const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([]);
-  const [assetName, setAssetName] = useState('');
   const [values, setValues] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -58,6 +63,25 @@ export default function NewAssetPage() {
     });
     return map;
   }, [fieldDefs]);
+
+  // Find the name field from the first section (should be the first field with label="name")
+  const nameField = useMemo(() => {
+    if (fieldDefs.length === 0) return null;
+    const firstSection = sections[Object.keys(sections)[0]];
+    if (!firstSection || firstSection.length === 0) return null;
+    // The first field in the first section should be the "name" field
+    const firstField = firstSection[0];
+    if (firstField.label === 'name' && firstField.data_type === 'string') {
+      return firstField;
+    }
+    return null;
+  }, [fieldDefs, sections]);
+
+  // Get asset name from the name field value
+  const assetName = useMemo(() => {
+    if (!nameField) return '';
+    return values[nameField.id] || '';
+  }, [nameField, values]);
 
   useEffect(() => {
     const load = async () => {
@@ -103,15 +127,19 @@ export default function NewAssetPage() {
   const handleSave = async () => {
     setSaveError(null);
     setSaveSuccess(null);
-    if (!assetName.trim()) {
-      setSaveError('Asset name is required');
+    
+    // Get asset name from the name field
+    const nameValue = assetName.trim();
+    if (!nameValue) {
+      setSaveError('Asset name is required (please fill in the "name" field)');
       return;
     }
+
     setSaving(true);
     try {
       const { data: asset, error: assetErr } = await supabase
         .from('library_assets')
-        .insert({ library_id: libraryId, name: assetName.trim() })
+        .insert({ library_id: libraryId, name: nameValue })
         .select()
         .single();
       if (assetErr) throw assetErr;
@@ -131,6 +159,8 @@ export default function NewAssetPage() {
           v = raw || null;
         } else if (f.data_type === 'enum') {
           v = raw || null;
+        } else if (f.data_type === 'media' || f.data_type === 'reference') {
+          v = raw || null;
         } else {
           v = raw ?? null;
         }
@@ -145,7 +175,6 @@ export default function NewAssetPage() {
       }
 
       setSaveSuccess('Asset created');
-      setAssetName('');
       setValues({});
 
       // Navigate to edit page for further changes
@@ -195,11 +224,7 @@ export default function NewAssetPage() {
         <div className={styles.contentWrapper}>
           <div className={styles.header}>
             <div>
-              <div className={styles.breadcrumb}>
-                {projectId} / {library.name} / Add new asset
-              </div>
               <h1 className={styles.title}>{assetName || 'New asset'}</h1>
-              <div className={styles.subtitle}>Fill in the template defined in Predefine.</div>
             </div>
             <div className={styles.headerRight}>
               {saveError && <div className={styles.saveError}>{saveError}</div>}
@@ -222,16 +247,6 @@ export default function NewAssetPage() {
 
           {userProfile && (
             <div className={styles.formContainer}>
-              <div className={styles.assetNameRow}>
-                <label className={styles.assetNameLabel}>Asset name</label>
-                <input
-                  className={styles.nameInput}
-                  placeholder="Type asset display name..."
-                  value={assetName}
-                  onChange={(e) => setAssetName(e.target.value)}
-                />
-              </div>
-
               <div className={styles.fieldsContainer}>
                 {sectionKeys.length === 0 && (
                   <div className={styles.emptyFieldsMessage}>
@@ -250,11 +265,6 @@ export default function NewAssetPage() {
                           label: sectionName,
                           children: (
                             <div className={styles.tabContent}>
-                              <div className={styles.sectionHeaderRow}>
-                                <div className={styles.sectionHeaderLabel}>Label text</div>
-                                <div className={styles.sectionHeaderType}>Data type</div>
-                                <div className={styles.sectionHeaderValue}>Value</div>
-                              </div>
                               <div className={styles.fieldsList}>
                                 {fields.map((f) => {
                                   const value =
@@ -264,6 +274,9 @@ export default function NewAssetPage() {
                                   if (f.data_type === 'boolean') {
                                     return (
                                       <div key={f.id} className={styles.fieldRow}>
+                                        <div className={styles.dragHandle}>
+                                          <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                        </div>
                                         <div className={styles.fieldMeta}>
                                           <span className={styles.fieldLabel}>
                                             {label}
@@ -271,10 +284,17 @@ export default function NewAssetPage() {
                                               <span className={styles.requiredMark}>*</span>
                                             )}
                                           </span>
-                                        </div>
-                                        <div className={styles.dataTypeTag}>
-                                          {DATA_TYPE_LABEL[f.data_type]}
-                                        </div>
+                                          <div className={styles.dataTypeTag}>
+                                            <Image
+                                              src={getFieldTypeIcon(f.data_type)}
+                                              alt=""
+                                              width={16}
+                                              height={16}
+                                              className={styles.dataTypeIcon}
+                                            />
+                                            {DATA_TYPE_LABEL[f.data_type]}
+                                          </div>
+                                        </div>                                       
                                         <div className={styles.fieldControl}>
                                           <label className={styles.checkboxLabel}>
                                             <input
@@ -287,6 +307,9 @@ export default function NewAssetPage() {
                                             <span>Enabled</span>
                                           </label>
                                         </div>
+                                        <button className={styles.configButton}>
+                                          <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+                                        </button>
                                       </div>
                                     );
                                   }
@@ -294,6 +317,9 @@ export default function NewAssetPage() {
                                   if (f.data_type === 'enum') {
                                     return (
                                       <div key={f.id} className={styles.fieldRow}>
+                                        <div className={styles.dragHandle}>
+                                          <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                        </div>
                                         <div className={styles.fieldMeta}>
                                           <span className={styles.fieldLabel}>
                                             {label}
@@ -301,10 +327,17 @@ export default function NewAssetPage() {
                                               <span className={styles.requiredMark}>*</span>
                                             )}
                                           </span>
-                                        </div>
-                                        <div className={styles.dataTypeTag}>
-                                          {DATA_TYPE_LABEL[f.data_type]}
-                                        </div>
+                                          <div className={styles.dataTypeTag}>
+                                            <Image
+                                              src={getFieldTypeIcon(f.data_type)}
+                                              alt=""
+                                              width={16}
+                                              height={16}
+                                              className={styles.dataTypeIcon}
+                                            />
+                                            {DATA_TYPE_LABEL[f.data_type]}
+                                          </div>
+                                        </div>                                        
                                         <div className={styles.fieldControl}>
                                           <select
                                             value={value || ''}
@@ -324,6 +357,9 @@ export default function NewAssetPage() {
                                             ))}
                                           </select>
                                         </div>
+                                        <button className={styles.configButton}>
+                                          <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+                                        </button>
                                       </div>
                                     );
                                   }
@@ -337,6 +373,9 @@ export default function NewAssetPage() {
 
                                   return (
                                     <div key={f.id} className={styles.fieldRow}>
+                                      <div className={styles.dragHandle}>
+                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                      </div>
                                       <div className={styles.fieldMeta}>
                                         <span className={styles.fieldLabel}>
                                           {label}
@@ -344,9 +383,16 @@ export default function NewAssetPage() {
                                             <span className={styles.requiredMark}>*</span>
                                           )}
                                         </span>
-                                      </div>
-                                      <div className={styles.dataTypeTag}>
-                                        {DATA_TYPE_LABEL[f.data_type]}
+                                        <div className={styles.dataTypeTag}>
+                                          <Image
+                                            src={getFieldTypeIcon(f.data_type)}
+                                            alt=""
+                                            width={16}
+                                            height={16}
+                                            className={styles.dataTypeIcon}
+                                          />
+                                          {DATA_TYPE_LABEL[f.data_type]}
+                                        </div>
                                       </div>
                                       <div className={styles.fieldControl}>
                                         <input
@@ -359,6 +405,9 @@ export default function NewAssetPage() {
                                           placeholder={f.label}
                                         />
                                       </div>
+                                      <button className={styles.configButton}>
+                                        <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+                                      </button>
                                     </div>
                                   );
                                 })}

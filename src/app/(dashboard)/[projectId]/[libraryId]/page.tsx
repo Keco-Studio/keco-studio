@@ -218,7 +218,7 @@ export default function LibraryPage() {
       <div className={styles.header}>
         <div>
           <h1 className={styles.title}>{library.name}</h1>
-          <div className={styles.subtitle}>{project.name}</div>
+          <div className={styles.subtitle}>{library.description}</div>
         </div>
         <div className={styles.subtitle}>
           字段数：{fieldDefs.length} | 分区：{Object.keys(sections).length}

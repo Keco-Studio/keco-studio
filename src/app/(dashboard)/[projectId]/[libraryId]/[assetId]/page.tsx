@@ -2,19 +2,35 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { ConfigProvider, Tabs } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { getFieldTypeIcon } from '../predefine/utils';
 import styles from './page.module.css';
+import Image from 'next/image';
+import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
+import predefineLabelConfigIcon from '@/app/assets/images/predefineLabelConfigIcon.svg';
 
 type FieldDef = {
   id: string;
   library_id: string;
   section: string;
   label: string;
-  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date';
+  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'media' | 'reference';
   enum_options: string[] | null;
   required: boolean;
   order_index: number;
+};
+
+const DATA_TYPE_LABEL: Record<FieldDef['data_type'], string> = {
+  string: 'String',
+  int: 'Int',
+  float: 'Float',
+  boolean: 'Boolean',
+  enum: 'Option',
+  date: 'Date',
+  media: 'Media/File',
+  reference: 'Reference',
 };
 
 type AssetRow = {
@@ -41,9 +57,6 @@ export default function AssetPage() {
   const [values, setValues] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
   const sections = useMemo(() => {
     const map: Record<string, FieldDef[]> = {};
@@ -96,49 +109,6 @@ export default function AssetPage() {
     }
   }, [assetId, libraryId, supabase]);
 
-  const handleValueChange = (fieldId: string, value: any) => {
-    setValues((prev) => ({ ...prev, [fieldId]: value }));
-  };
-
-  const handleSave = async () => {
-    setSaveError(null);
-    setSaveSuccess(null);
-    if (!asset) return;
-    setSaving(true);
-    try {
-      const payload = fieldDefs.map((f) => {
-        const raw = values[f.id];
-        let v: any = raw;
-        if (f.data_type === 'int') {
-          v = raw === '' || raw === undefined ? null : parseInt(raw, 10);
-        } else if (f.data_type === 'float') {
-          v = raw === '' || raw === undefined ? null : parseFloat(raw);
-        } else if (f.data_type === 'boolean') {
-          v = !!raw;
-        } else if (f.data_type === 'date') {
-          v = raw || null;
-        } else if (f.data_type === 'enum') {
-          v = raw || null;
-        } else {
-          v = raw ?? null;
-        }
-        return { asset_id: asset.id, field_id: f.id, value_json: v };
-      });
-
-      if (payload.length > 0) {
-        const { error: valErr } = await supabase
-          .from('library_asset_values')
-          .upsert(payload, { onConflict: 'asset_id,field_id' });
-        if (valErr) throw valErr;
-      }
-
-      setSaveSuccess('Saved');
-    } catch (e: any) {
-      setSaveError(e?.message || 'Save failed');
-    } finally {
-      setSaving(false);
-    }
-  };
 
   if (loading) {
     return (
@@ -164,106 +134,237 @@ export default function AssetPage() {
     );
   }
 
+  const sectionKeys = Object.keys(sections);
+
   return (
-    <div className={styles.container}>
-      <div className={styles.header}>
-        <div>
-          <h1 className={styles.title}>{asset.name}</h1>
-          <div className={styles.subtitle}>Asset ID: {asset.id}</div>
-        </div>
-        {saveError && (
-          <div className={styles.saveError}>{saveError}</div>
-        )}
-        {saveSuccess && (
-          <div className={styles.saveSuccess}>{saveSuccess}</div>
-        )}
-      </div>
-
-      {!userProfile && <div className={styles.authWarning}>Please sign in to edit.</div>}
-
-      {userProfile && (
-        <div className={styles.formContainer}>
-          <div className={styles.saveButtonContainer}>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className={styles.saveButton}
-            >
-              {saving ? 'Saving...' : 'Save'}
-            </button>
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: '#8726EE',
+        },
+      }}
+    >
+      <div className={styles.container}>
+        <div className={styles.contentWrapper}>
+          <div className={styles.header}>
+            <div>
+              <h1 className={styles.title}>{asset.name}</h1>
+            </div>
           </div>
 
-          <div className={styles.fieldsContainer}>
-            {Object.keys(sections).length === 0 && (
-              <div className={styles.emptyFieldsMessage}>No field definitions. Define headers in Predefine.</div>
-            )}
-            {Object.entries(sections).map(([sectionName, fields]) => (
-              <div
-                key={sectionName}
-                className={styles.section}
-              >
-                <div className={styles.sectionTitle}>{sectionName}</div>
-                <div className={styles.fieldsGrid}>
-                  {fields.map((f) => {
-                    const value = values[f.id] ?? (f.data_type === 'boolean' ? false : '');
-                    const label = f.label + (f.required ? ' *' : '');
-                    if (f.data_type === 'boolean') {
-                      return (
-                        <label key={f.id} className={styles.checkboxLabel}>
-                          <input
-                            type="checkbox"
-                            checked={!!value}
-                            onChange={(e) => handleValueChange(f.id, e.target.checked)}
-                          />
-                          {label}
-                        </label>
-                      );
-                    }
-                    if (f.data_type === 'enum') {
-                      return (
-                        <label key={f.id} className={styles.fieldLabel}>
-                          <span>{label}</span>
-                          <select
-                            value={value || ''}
-                            onChange={(e) => handleValueChange(f.id, e.target.value || null)}
-                            className={styles.fieldSelect}
-                          >
-                            <option value="">-- Select --</option>
-                            {(f.enum_options || []).map((opt) => (
-                              <option key={opt} value={opt}>
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      );
-                    }
-                    const inputType =
-                      f.data_type === 'int' || f.data_type === 'float'
-                        ? 'number'
-                        : f.data_type === 'date'
-                        ? 'date'
-                        : 'text';
-                    return (
-                      <label key={f.id} className={styles.fieldLabel}>
-                        <span>{label}</span>
-                        <input
-                          type={inputType}
-                          value={value ?? ''}
-                          onChange={(e) => handleValueChange(f.id, e.target.value)}
-                          className={styles.fieldInput}
-                          placeholder={f.label}
-                        />
-                      </label>
-                    );
-                  })}
+          <div className={styles.formContainer}>
+            <div className={styles.fieldsContainer}>
+              {sectionKeys.length === 0 && (
+                <div className={styles.emptyFieldsMessage}>
+                  还没有表头定义，请先在 Predefine 设置字段。
                 </div>
-              </div>
-            ))}
+              )}
+
+              {sectionKeys.length > 0 && (
+                <div className={styles.tabsContainer}>
+                  <Tabs
+                    defaultActiveKey={sectionKeys[0]}
+                    items={sectionKeys.map((sectionName) => {
+                      const fields = sections[sectionName] || [];
+                      return {
+                        key: sectionName,
+                        label: sectionName,
+                        children: (
+                          <div className={styles.tabContent}>
+                            <div className={styles.fieldsList}>
+                              {fields.map((f) => {
+                                const value =
+                                  values[f.id] ?? (f.data_type === 'boolean' ? false : '');
+                                const label = f.label;
+
+                                if (f.data_type === 'boolean') {
+                                  return (
+                                    <div key={f.id} className={styles.fieldRow}>
+                                      <div className={styles.dragHandle}>
+                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                      </div>
+                                      <div className={styles.fieldMeta}>
+                                        <span className={styles.fieldLabel}>
+                                          {label}
+                                          {f.required && (
+                                            <span className={styles.requiredMark}>*</span>
+                                          )}
+                                        </span>
+                                        <div className={styles.dataTypeTag}>
+                                          <Image
+                                            src={getFieldTypeIcon(f.data_type)}
+                                            alt=""
+                                            width={16}
+                                            height={16}
+                                            className={styles.dataTypeIcon}
+                                          />
+                                          {DATA_TYPE_LABEL[f.data_type]}
+                                        </div>
+                                      </div>                                   
+                                      <div className={styles.fieldControl}>
+                                        <label className={styles.checkboxLabel}>
+                                          <input
+                                            type="checkbox"
+                                            checked={!!value}
+                                            disabled
+                                            className={styles.disabledInput}
+                                          />
+                                          <span>Enabled</span>
+                                        </label>
+                                      </div>
+                                      <button className={styles.configButton} disabled>
+                                        <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+                                      </button>
+                                    </div>
+                                  );
+                                }
+
+                                if (f.data_type === 'enum') {
+                                  return (
+                                    <div key={f.id} className={styles.fieldRow}>
+                                      <div className={styles.dragHandle}>
+                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                      </div>
+                                      <div className={styles.fieldMeta}>
+                                        <span className={styles.fieldLabel}>
+                                          {label}
+                                          {f.required && (
+                                            <span className={styles.requiredMark}>*</span>
+                                          )}
+                                        </span>
+                                        <div className={styles.dataTypeTag}>
+                                          <Image
+                                            src={getFieldTypeIcon(f.data_type)}
+                                            alt=""
+                                            width={16}
+                                            height={16}
+                                            className={styles.dataTypeIcon}
+                                          />
+                                          {DATA_TYPE_LABEL[f.data_type]}
+                                        </div>
+                                      </div>                                    
+                                      <div className={styles.fieldControl}>
+                                        <select
+                                          value={value || ''}
+                                          disabled
+                                          className={`${styles.fieldSelect} ${styles.disabledInput}`}
+                                        >
+                                          <option value="">Select option...</option>
+                                          {(f.enum_options || []).map((opt) => (
+                                            <option key={opt} value={opt}>
+                                              {opt}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                      <button className={styles.configButton} disabled>
+                                        <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+                                      </button>
+                                    </div>
+                                  );
+                                }
+
+                                if (f.data_type === 'reference' || f.data_type === 'media') {
+                                  return (
+                                    <div key={f.id} className={styles.fieldRow}>
+                                      <div className={styles.dragHandle}>
+                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                      </div>
+                                      <div className={styles.fieldMeta}>
+                                        <span className={styles.fieldLabel}>
+                                          {label}
+                                          {f.required && (
+                                            <span className={styles.requiredMark}>*</span>
+                                          )}
+                                        </span>
+                                        <div className={styles.dataTypeTag}>
+                                          <Image
+                                            src={getFieldTypeIcon(f.data_type)}
+                                            alt=""
+                                            width={16}
+                                            height={16}
+                                            className={styles.dataTypeIcon}
+                                          />
+                                          {DATA_TYPE_LABEL[f.data_type]}
+                                        </div>
+                                      </div>                                     
+                                      <div className={styles.fieldControl}>
+                                        <div className={`${styles.fieldInput} ${styles.disabledInput}`} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                          {value ? (
+                                            <>
+                                              <span>{typeof value === 'string' ? value : JSON.stringify(value)}</span>
+                                              <Image src={predefineLabelConfigIcon} alt="Expand" width={16} height={16} />
+                                            </>
+                                          ) : (
+                                            <span style={{ color: '#9ca3af' }}>No value</span>
+                                          )}
+                                        </div>
+                                      </div>
+                                      <button className={styles.configButton} disabled>
+                                        <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+                                      </button>
+                                    </div>
+                                  );
+                                }
+
+                                const inputType =
+                                  f.data_type === 'int' || f.data_type === 'float'
+                                    ? 'number'
+                                    : f.data_type === 'date'
+                                    ? 'date'
+                                    : 'text';
+
+                                return (
+                                  <div key={f.id} className={styles.fieldRow}>
+                                    <div className={styles.dragHandle}>
+                                      <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                    </div>
+                                    <div className={styles.fieldMeta}>
+                                      <span className={styles.fieldLabel}>
+                                        {label}
+                                        {f.required && (
+                                          <span className={styles.requiredMark}>*</span>
+                                        )}
+                                      </span>
+                                      <div className={styles.dataTypeTag}>
+                                        <Image
+                                          src={getFieldTypeIcon(f.data_type)}
+                                          alt=""
+                                          width={16}
+                                          height={16}
+                                          className={styles.dataTypeIcon}
+                                        />
+                                        {DATA_TYPE_LABEL[f.data_type]}
+                                      </div>
+                                    </div>
+                                    <div className={styles.fieldControl}>
+                                      <input
+                                        type={inputType}
+                                        value={value ?? ''}
+                                        disabled
+                                        className={`${styles.fieldInput} ${styles.disabledInput}`}
+                                        placeholder={f.label}
+                                      />
+                                    </div>
+                                    <button className={styles.configButton} disabled>
+                                      <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+                                    </button>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ),
+                      };
+                    })}
+                  />
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      )}
-    </div>
+      </div>
+    </ConfigProvider>
   );
 }
 

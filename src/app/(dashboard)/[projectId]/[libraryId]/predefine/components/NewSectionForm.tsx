@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Button, Input } from 'antd';
 import Image from 'next/image';
 import type { FieldConfig } from '../types';
@@ -16,12 +16,27 @@ interface NewSectionFormProps {
   onCancel: () => void;
   onSave: (section: { name: string; fields: FieldConfig[] }) => Promise<void>;
   saving?: boolean;
+  isFirstSection?: boolean;
 }
 
-export function NewSectionForm({ onCancel, onSave, saving }: NewSectionFormProps) {
+export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = false }: NewSectionFormProps) {
   const [sectionName, setSectionName] = useState('');
   const [fields, setFields] = useState<FieldConfig[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+
+  // 如果是第一个section，初始化时自动添加mandatory的name字段
+  useEffect(() => {
+    if (isFirstSection && fields.length === 0) {
+      const nameField: FieldConfig = {
+        id: uid(),
+        label: 'name',
+        dataType: 'string',
+        required: true,
+      };
+      setFields([nameField]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFirstSection]);
 
   const handleAddField = (fieldData: Omit<FieldConfig, 'id'>) => {
     const parsed = fieldSchema.safeParse(fieldData);
@@ -40,6 +55,26 @@ export function NewSectionForm({ onCancel, onSave, saving }: NewSectionFormProps
   };
 
   const handleChangeField = (fieldId: string, fieldData: Omit<FieldConfig, 'id'>) => {
+    // 如果是第一个section的mandatory name字段，不允许修改label和dataType
+    if (isFirstSection) {
+      const field = fields.find((f) => f.id === fieldId);
+      if (field && field.label === 'name' && field.dataType === 'string') {
+        // 只允许修改required属性，不允许修改label和dataType
+        const parsed = fieldSchema.safeParse({
+          ...fieldData,
+          label: 'name',
+          dataType: 'string',
+        });
+        if (!parsed.success) {
+          setErrors(parsed.error.issues.map((i) => i.message));
+          return;
+        }
+        setFields((prev) => prev.map((f) => (f.id === fieldId ? { ...f, required: parsed.data.required } : f)));
+        setErrors([]);
+        return;
+      }
+    }
+
     const parsed = fieldSchema.safeParse(fieldData);
     if (!parsed.success) {
       setErrors(parsed.error.issues.map((i) => i.message));
@@ -110,6 +145,7 @@ export function NewSectionForm({ onCancel, onSave, saving }: NewSectionFormProps
           onChangeField={handleChangeField}
           onDeleteField={handleDeleteField}
           disabled={saving}
+          isFirstSection={isFirstSection}
         />
         <FieldForm
           onSubmit={handleAddField}
@@ -127,7 +163,7 @@ export function NewSectionForm({ onCancel, onSave, saving }: NewSectionFormProps
       )}
 
       <div className={styles.newSectionActions}>
-        <Button onClick={onCancel} disabled={saving}>
+        <Button onClick={onCancel} disabled={saving} className={styles.cancelButton}>
           Cancel
         </Button>
         <Button

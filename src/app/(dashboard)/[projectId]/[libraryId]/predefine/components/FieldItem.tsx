@@ -15,6 +15,7 @@ interface FieldItemProps {
   onDelete: (fieldId: string) => void;
   isFirst?: boolean;
   disabled?: boolean;
+  isMandatoryNameField?: boolean;
 }
 
 export function FieldItem({
@@ -23,6 +24,7 @@ export function FieldItem({
   onDelete,
   isFirst = false,
   disabled,
+  isMandatoryNameField = false,
 }: FieldItemProps) {
   const [showSlashMenu, setShowSlashMenu] = useState(false);
   const dataTypeInputRef = useRef<any>(null);
@@ -34,6 +36,10 @@ export function FieldItem({
   };
 
   const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // 如果是mandatory的name字段，不允许修改label
+    if (isMandatoryNameField) {
+      return;
+    }
     const { id, ...rest } = field;
     onChangeField(field.id, {
       ...rest,
@@ -42,6 +48,11 @@ export function FieldItem({
   };
 
   const handleSlashMenuSelect = (dataType: FieldType) => {
+    // 如果是mandatory的name字段，不允许修改type
+    if (isMandatoryNameField) {
+      setShowSlashMenu(false);
+      return;
+    }
     const { id, ...rest } = field;
     onChangeField(field.id, {
       ...rest,
@@ -57,6 +68,10 @@ export function FieldItem({
   };
 
   const handleDataTypeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // 如果是mandatory的name字段，不允许打开slash menu
+    if (isMandatoryNameField) {
+      return;
+    }
     if (e.key === '/') {
       e.preventDefault();
       setShowSlashMenu(true);
@@ -92,7 +107,7 @@ export function FieldItem({
             value={field.label}
             className={styles.labelInput}
             onChange={handleLabelChange}
-            disabled={disabled}
+            disabled={disabled || isMandatoryNameField}
           />
         </div>
         <div className={styles.dataTypeDisplay}>
@@ -103,7 +118,7 @@ export function FieldItem({
             readOnly
             onKeyDown={handleDataTypeKeyDown}
             className={styles.dataTypeInput}
-            disabled={disabled}
+            disabled={disabled || isMandatoryNameField}
             prefix={
               <Image
                 src={getFieldTypeIcon(field.dataType)}
@@ -141,7 +156,7 @@ export function FieldItem({
         <button className={styles.configButton}>
           <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
         </button>
-        {!isFirst && (
+        {!isFirst && !isMandatoryNameField && (
           <Button
             type="text"
             size="small"

@@ -12,7 +12,7 @@ type FieldDefinitionRow = {
   library_id: string;
   section: string;
   label: string;
-  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date';
+  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'media' | 'reference';
   enum_options: string[] | null;
   required: boolean;
   order_index: number;

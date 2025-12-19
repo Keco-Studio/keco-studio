@@ -33,27 +33,27 @@
   border-color: #8726EE;
 }
 
+.cancelButton{
+  width: 124px;
+  height: 40px;
+}
 
 .headerRow {
-  display: grid;
-  grid-template-columns: auto 1fr 160px 80px;
+  display: flex;
   align-items: center;
-  padding: 0 16px;
-  margin-bottom: 4px;
-  font-size: 12px;
-  font-weight: 500;
-  color: #9ca3af;
+  padding: 12px 70px 0;
 }
 
 .headerLabel {
-  grid-column: 2 / 3;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  width: 395px;
 }
 
 .headerDataType {
-  grid-column: 3 / 4;
-  text-align: left;
-}
-
-.headerActions {
-  grid-column: 4 / 5;
+  font-size: 14px;
+  font-weight: 500;
+  color: #64748b;
+  min-width: 60px;
 }
