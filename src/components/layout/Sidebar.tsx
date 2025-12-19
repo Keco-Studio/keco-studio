@@ -206,13 +206,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [currentIds.folderId, pathname]);
 
-  // 初始化展开状态：当文件夹数据加载完成后，默认展开所有文件夹
-  // 只在 expandedKeys 为空时（首次加载或项目切换后）设置默认展开
-  useEffect(() => {
-    if (folders.length > 0 && expandedKeys.length === 0) {
-      setExpandedKeys(folders.map((f) => `folder-${f.id}`));
-    }
-  }, [folders, expandedKeys.length]);
 
   // 监听libraryCreated事件，当从其他页面创建library时刷新Sidebar数据
   useEffect(() => {
@@ -856,6 +849,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     onExpand={onExpand}
                     switcherIcon={switcherIcon}
                     expandedKeys={expandedKeys}
+                    motion={false}
                   />
                 </div>
                 {!loadingFolders &&

@@ -288,6 +288,28 @@
   padding-left: calc(0.75rem + 24px); /* 0.75rem original padding + 24px switcher width */
 }
 
+/* Ensure add-asset nodes have minimum width to prevent text from appearing word by word */
+.tree :global(.ant-tree-treenode[data-node-key*="add-asset-"]) .ant-tree-node-content-wrapper {
+  min-width: 120px !important; /* Ensure enough width for "Add New Asset" text */
+  width: auto !important; /* Override width: 0 to prevent word-by-word appearance */
+  transition: none !important; /* Disable transition to prevent word-by-word appearance */
+}
+
+/* Disable Ant Design Tree's internal animation for add-asset nodes */
+.tree :global(.ant-tree-treenode[data-node-key*="add-asset-"]) {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* Disable Ant Design Tree's child list animation that might cause word-by-word appearance */
+.tree :global(.ant-tree-child-tree) {
+  transition: none !important;
+}
+
+.tree :global(.ant-tree-child-tree-open) {
+  transition: none !important;
+}
+
 .tree :global(.ant-tree-node-content-wrapper) .itemRow {
   width: 100%;
   flex: 1 1 auto;
@@ -574,5 +596,23 @@
 .itemAddText {
   font-size: 0.85rem;
   color: #9ca3af;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0; /* Prevent text from shrinking during animation */
+}
+
+/* Ensure itemMain in add-asset nodes has enough width to display text fully */
+.tree :global(.ant-tree-treenode[data-node-key*="add-asset-"]) .itemMain {
+  min-width: max-content !important; /* Ensure text displays fully without word-by-word appearance */
+  width: auto !important; /* Override any width constraints */
+  overflow: visible !important; /* Ensure text is not clipped during animation */
+}
+
+/* Ensure itemAddText in add-asset nodes renders immediately with full width */
+.tree :global(.ant-tree-treenode[data-node-key*="add-asset-"]) .itemAddText {
+  min-width: max-content !important;
+  width: auto !important;
+  display: inline-block !important; /* Ensure text renders as a single unit */
 }
 

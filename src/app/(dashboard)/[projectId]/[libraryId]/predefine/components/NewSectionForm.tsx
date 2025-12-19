@@ -45,8 +45,14 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
       return;
     }
 
-    const field: FieldConfig = { id: uid(), ...parsed.data };
-      setFields((prev) => [...prev, field]);
+    const field: FieldConfig = {
+      id: uid(),
+      label: parsed.data.label,
+      dataType: parsed.data.dataType,
+      required: parsed.data.required,
+      ...(parsed.data.enumOptions && { enumOptions: parsed.data.enumOptions }),
+    };
+    setFields((prev) => [...prev, field]);
     setErrors([]);
   };
 
