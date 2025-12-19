@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, useCallback } from 'react';
 import { z } from 'zod';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useParams } from 'next/navigation';
@@ -161,7 +161,7 @@ export default function PredefinePage() {
     await saveSchema(allSections);
   };
 
-  const saveSchema = async (sectionsToSave: SectionConfig[] = sections) => {
+  const saveSchema = useCallback(async (sectionsToSave: SectionConfig[] = sections) => {
     if (!libraryId) {
       message.error('Missing libraryId, cannot save');
       return;
@@ -210,7 +210,25 @@ export default function PredefinePage() {
     } finally {
       setSaving(false);
     }
-  };
+  }, [sections, libraryId, isCreatingNewSection, reloadSections, supabase]);
+
+  // Listen to top bar "Save" button for Predefine
+  useEffect(() => {
+    const handler = () => {
+      // Trigger schema save when top bar Save is clicked
+      void saveSchema();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('predefine-save', handler);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('predefine-save', handler);
+      }
+    };
+  }, [saveSchema]);
 
   const handleDeleteSection = async (sectionId: string) => {
     if (!libraryId) {
@@ -388,14 +406,13 @@ export default function PredefinePage() {
                     }}
                     items={tabItems}
                   />
-                  <Button
-                    type="primary"
-                    icon={<Image src={predefineLabelAddIcon} alt="Add" width={20} height={20} />}
+                  <button
                     onClick={startCreatingNewSection}
                     className={styles.addSectionButton}
                   >
+                    <Image src={predefineLabelAddIcon} alt="Add" width={20} height={20} />
                     Add Section
-                  </Button>
+                  </button>
                 </>
               ) : isCreatingNewSection ? (
                 <NewSectionForm
@@ -426,8 +443,6 @@ export default function PredefinePage() {
                 {activeSectionId && !isCreatingNewSection && (
                   <div className={styles.saveButtonContainer}>
                     <Button
-                      type="primary"
-                      size="large"
                       onClick={() => handleDeleteSection(activeSectionId)}
                       loading={saving}
                       className={styles.deleteButton}
@@ -435,8 +450,6 @@ export default function PredefinePage() {
                       Delete Section
                     </Button>
                     <Button
-                      type="primary"
-                      size="large"
                       onClick={() => saveSchema()}
                       loading={saving}
                       className={styles.saveButton}

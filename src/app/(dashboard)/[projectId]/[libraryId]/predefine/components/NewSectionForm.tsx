@@ -167,8 +167,6 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
           Cancel
         </Button>
         <Button
-          type="primary"
-          size="large"
           onClick={handleSave}
           loading={saving}
           className={styles.saveButton}

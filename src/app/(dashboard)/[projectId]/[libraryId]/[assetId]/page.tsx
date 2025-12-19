@@ -44,6 +44,8 @@ type ValueRow = {
   value_json: any;
 };
 
+type AssetMode = 'view' | 'edit';
+
 export default function AssetPage() {
   const params = useParams();
   const supabase = useSupabase();
@@ -57,6 +59,10 @@ export default function AssetPage() {
   const [values, setValues] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [mode, setMode] = useState<AssetMode>('view');
 
   const sections = useMemo(() => {
     const map: Record<string, FieldDef[]> = {};
@@ -109,6 +115,76 @@ export default function AssetPage() {
     }
   }, [assetId, libraryId, supabase]);
 
+  // Listen to top bar Viewing / Editing toggle
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ mode?: AssetMode }>;
+      const nextMode = custom.detail?.mode;
+      if (nextMode === 'view' || nextMode === 'edit') {
+        setMode(nextMode);
+        // Clear status messages when switching mode
+        setSaveError(null);
+        setSaveSuccess(null);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('asset-mode-change', handler as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('asset-mode-change', handler as EventListener);
+      }
+    };
+  }, []);
+
+  const handleValueChange = (fieldId: string, value: any) => {
+    setValues((prev) => ({ ...prev, [fieldId]: value }));
+  };
+
+  const handleSave = async () => {
+    if (!asset) return;
+    setSaveError(null);
+    setSaveSuccess(null);
+    setSaving(true);
+    try {
+      const payload = fieldDefs.map((f) => {
+        const raw = values[f.id];
+        let v: any = raw;
+        if (f.data_type === 'int') {
+          v = raw === '' || raw === undefined ? null : parseInt(raw, 10);
+        } else if (f.data_type === 'float') {
+          v = raw === '' || raw === undefined ? null : parseFloat(raw);
+        } else if (f.data_type === 'boolean') {
+          v = !!raw;
+        } else if (f.data_type === 'date') {
+          v = raw || null;
+        } else if (f.data_type === 'enum') {
+          v = raw || null;
+        } else if (f.data_type === 'media' || f.data_type === 'reference') {
+          v = raw || null;
+        } else {
+          v = raw ?? null;
+        }
+        return { asset_id: asset.id, field_id: f.id, value_json: v };
+      });
+
+      if (payload.length > 0) {
+        const { error: valErr } = await supabase
+          .from('library_asset_values')
+          .upsert(payload, { onConflict: 'asset_id,field_id' });
+        if (valErr) throw valErr;
+      }
+
+      setSaveSuccess('Saved');
+    } catch (e: any) {
+      setSaveError(e?.message || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
 
   if (loading) {
     return (
@@ -144,16 +220,29 @@ export default function AssetPage() {
         },
       }}
     >
-      <div className={styles.container}>
+    <div className={styles.container}>
         <div className={styles.contentWrapper}>
-          <div className={styles.header}>
-            <div>
-              <h1 className={styles.title}>{asset.name}</h1>
+      <div className={styles.header}>
+        <div>
+          <h1 className={styles.title}>{asset.name}</h1>
+        </div>
+            <div className={styles.headerRight}>
+              {saveError && <div className={styles.saveError}>{saveError}</div>}
+              {saveSuccess && <div className={styles.saveSuccess}>{saveSuccess}</div>}
+              {userProfile && mode === 'edit' && (
+            <button
+              onClick={handleSave}
+              disabled={saving}
+                  className={styles.primaryButton}
+            >
+                  {saving ? 'Saving...' : 'Save changes'}
+            </button>
+              )}
             </div>
           </div>
 
           <div className={styles.formContainer}>
-            <div className={styles.fieldsContainer}>
+          <div className={styles.fieldsContainer}>
               {sectionKeys.length === 0 && (
                 <div className={styles.emptyFieldsMessage}>
                   还没有表头定义，请先在 Predefine 设置字段。
@@ -172,13 +261,13 @@ export default function AssetPage() {
                         children: (
                           <div className={styles.tabContent}>
                             <div className={styles.fieldsList}>
-                              {fields.map((f) => {
+                  {fields.map((f) => {
                                 const value =
                                   values[f.id] ?? (f.data_type === 'boolean' ? false : '');
                                 const label = f.label;
 
-                                if (f.data_type === 'boolean') {
-                                  return (
+                    if (f.data_type === 'boolean') {
+                      return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
                                         <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
@@ -203,24 +292,33 @@ export default function AssetPage() {
                                       </div>                                   
                                       <div className={styles.fieldControl}>
                                         <label className={styles.checkboxLabel}>
-                                          <input
-                                            type="checkbox"
-                                            checked={!!value}
-                                            disabled
+                          <input
+                            type="checkbox"
+                            checked={!!value}
+                                            disabled={mode === 'view'}
+                                            onChange={
+                                              mode === 'edit'
+                                                ? (e) =>
+                                                    handleValueChange(
+                                                      f.id,
+                                                      e.target.checked
+                                                    )
+                                                : undefined
+                                            }
                                             className={styles.disabledInput}
-                                          />
+                          />
                                           <span>Enabled</span>
-                                        </label>
+                        </label>
                                       </div>
                                       <button className={styles.configButton} disabled>
                                         <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
                                       </button>
                                     </div>
-                                  );
-                                }
+                      );
+                    }
 
-                                if (f.data_type === 'enum') {
-                                  return (
+                    if (f.data_type === 'enum') {
+                      return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
                                         <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
@@ -244,25 +342,36 @@ export default function AssetPage() {
                                         </div>
                                       </div>                                    
                                       <div className={styles.fieldControl}>
-                                        <select
-                                          value={value || ''}
-                                          disabled
-                                          className={`${styles.fieldSelect} ${styles.disabledInput}`}
-                                        >
+                          <select
+                            value={value || ''}
+                                          disabled={mode === 'view'}
+                                          onChange={
+                                            mode === 'edit'
+                                              ? (e) =>
+                                                  handleValueChange(
+                                                    f.id,
+                                                    e.target.value || null
+                                                  )
+                                              : undefined
+                                          }
+                                          className={`${styles.fieldSelect} ${
+                                            mode === 'view' ? styles.disabledInput : ''
+                                          }`}
+                          >
                                           <option value="">Select option...</option>
-                                          {(f.enum_options || []).map((opt) => (
-                                            <option key={opt} value={opt}>
-                                              {opt}
-                                            </option>
-                                          ))}
-                                        </select>
+                            {(f.enum_options || []).map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
                                       </div>
                                       <button className={styles.configButton} disabled>
                                         <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
                                       </button>
                                     </div>
-                                  );
-                                }
+                      );
+                    }
 
                                 if (f.data_type === 'reference' || f.data_type === 'media') {
                                   return (
@@ -289,7 +398,16 @@ export default function AssetPage() {
                                         </div>
                                       </div>                                     
                                       <div className={styles.fieldControl}>
-                                        <div className={`${styles.fieldInput} ${styles.disabledInput}`} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <div
+                                          className={`${styles.fieldInput} ${
+                                            mode === 'view' ? styles.disabledInput : ''
+                                          }`}
+                                          style={{
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '8px',
+                                          }}
+                                        >
                                           {value ? (
                                             <>
                                               <span>{typeof value === 'string' ? value : JSON.stringify(value)}</span>
@@ -307,14 +425,14 @@ export default function AssetPage() {
                                   );
                                 }
 
-                                const inputType =
-                                  f.data_type === 'int' || f.data_type === 'float'
-                                    ? 'number'
-                                    : f.data_type === 'date'
-                                    ? 'date'
-                                    : 'text';
+                    const inputType =
+                      f.data_type === 'int' || f.data_type === 'float'
+                        ? 'number'
+                        : f.data_type === 'date'
+                        ? 'date'
+                        : 'text';
 
-                                return (
+                    return (
                                   <div key={f.id} className={styles.fieldRow}>
                                     <div className={styles.dragHandle}>
                                       <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
@@ -338,22 +456,30 @@ export default function AssetPage() {
                                       </div>
                                     </div>
                                     <div className={styles.fieldControl}>
-                                      <input
-                                        type={inputType}
-                                        value={value ?? ''}
-                                        disabled
-                                        className={`${styles.fieldInput} ${styles.disabledInput}`}
-                                        placeholder={f.label}
-                                      />
+                        <input
+                          type={inputType}
+                          value={value ?? ''}
+                                        disabled={mode === 'view'}
+                                        onChange={
+                                          mode === 'edit'
+                                            ? (e) =>
+                                                handleValueChange(f.id, e.target.value)
+                                            : undefined
+                                        }
+                                        className={`${styles.fieldInput} ${
+                                          mode === 'view' ? styles.disabledInput : ''
+                                        }`}
+                          placeholder={f.label}
+                        />
                                     </div>
                                     <button className={styles.configButton} disabled>
                                       <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
                                     </button>
                                   </div>
-                                );
-                              })}
-                            </div>
-                          </div>
+                    );
+                  })}
+                </div>
+              </div>
                         ),
                       };
                     })}
@@ -363,7 +489,7 @@ export default function AssetPage() {
             </div>
           </div>
         </div>
-      </div>
+    </div>
     </ConfigProvider>
   );
 }

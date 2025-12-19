@@ -29,13 +29,20 @@
 }
 
 .saveButton {
-  background: #8726EE;
-  border-color: #8726EE;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border: none;
+  background-color: #f5f3ff;
+  color: #4c1d95;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s, box-shadow 0.2s;
 }
 
 .cancelButton{
-  width: 124px;
-  height: 40px;
+  
 }
 
 .headerRow {

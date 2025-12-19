@@ -68,6 +68,81 @@
   gap: 0.5rem;
 }
 
+.topbarPillButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: none;
+  background-color: #f5f3ff;
+  color: #4c1d95;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s, box-shadow 0.2s;
+}
+
+.topbarPillPrimary {
+  background-color: #ede9fe;
+  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3);
+}
+
+.topbarPillButton:hover {
+  background-color: #e0e7ff;
+}
+
+.topbarPillIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.assetModeGroup {
+  display: inline-flex;
+  background-color: #f9fafb;
+  border-radius: 9999px;
+  padding: 2px;
+  border: 1px solid #e5e7eb;
+}
+
+.assetModeButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 9999px;
+  border: none;
+  background-color: transparent;
+  color: #6b7280;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.assetModeButtonActive {
+  background-color: #ede9fe;
+  color: #4c1d95;
+}
+
+.shareButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid #e5e7eb;
+  background-color: #ffffff;
+  color: #374151;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+}
+
+.shareButton:hover {
+  background-color: #f9fafb;
+  border-color: #d1d5db;
+}
+
 .userContainer {
   position: relative;
   margin-left: 0.5rem;
