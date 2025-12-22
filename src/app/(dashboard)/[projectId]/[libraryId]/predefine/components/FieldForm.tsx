@@ -12,9 +12,10 @@ interface FieldFormProps {
   onSubmit: (field: Omit<FieldConfig, 'id'>) => void;
   onCancel?: () => void;
   disabled?: boolean;
+  onFieldChange?: (field: Omit<FieldConfig, 'id'> | null) => void;
 }
 
-export function FieldForm({ initialField, onSubmit, onCancel, disabled }: FieldFormProps) {
+export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldChange }: FieldFormProps) {
   const [field, setField] = useState<Omit<FieldConfig, 'id'>>(
     initialField || {
       label: '',
@@ -29,6 +30,18 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled }: FieldF
   const inputRef = useRef<any>(null);
   const dataTypeInputRef = useRef<any>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
+
+  // Notify parent of field changes
+  useEffect(() => {
+    if (onFieldChange) {
+      // Only pass field if it has content (label is not empty)
+      if (field.label.trim()) {
+        onFieldChange(field);
+      } else {
+        onFieldChange(null);
+      }
+    }
+  }, [field, onFieldChange]);
 
   useEffect(() => {
     if (initialField) {
@@ -81,6 +94,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled }: FieldF
         required: false,
         enumOptions: [],
       });
+      setDataTypeSelected(false); // Reset dataType selection state
     }
     setShowSlashMenu(false);
   };

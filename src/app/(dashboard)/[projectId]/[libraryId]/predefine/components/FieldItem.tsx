@@ -6,6 +6,7 @@ import { FIELD_TYPE_OPTIONS, getFieldTypeIcon } from '../utils';
 import predefineLabelDelIcon from '@/app/assets/images/predefineLabelDelIcon.svg';
 import predefineLabelConfigIcon from '@/app/assets/images/predefineLabelConfigIcon.svg';
 import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
+import predefineTypeSwitchIcon from '@/app/assets/images/predefineTypeSwitchIcon.svg';
 import styles from './FieldItem.module.css';
 
 interface FieldItemProps {
@@ -127,6 +128,24 @@ export function FieldItem({
                 height={16}
               />
             }
+            suffix={
+              !isMandatoryNameField && (
+                <button
+                  type="button"
+                  className={styles.typeSwitchButton}
+                  onClick={() => !disabled && setShowSlashMenu(true)}
+                  disabled={disabled}
+                  title="Choose type"
+                >
+                  <Image
+                    src={predefineTypeSwitchIcon}
+                    alt="Switch type"
+                    width={16}
+                    height={16}
+                  />
+                </button>
+              )
+            }
           />
           {showSlashMenu && (
             <div ref={slashMenuRef} className={styles.slashMenu}>
@@ -153,9 +172,12 @@ export function FieldItem({
         {field.required && <span className={styles.requiredMark}>*</span>}
       </div>
       <div className={styles.fieldActions}>
-        <button className={styles.configButton}>
-          <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
-        </button>
+        {/* Only show configure icon for Reference and Option (enum) data types */}
+        {(field.dataType === 'reference' || field.dataType === 'enum') && (
+          <button className={styles.configButton}>
+            <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+          </button>
+        )}
         {!isFirst && !isMandatoryNameField && (
           <Button
             type="text"

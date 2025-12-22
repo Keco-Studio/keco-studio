@@ -34,21 +34,30 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
         data_type: FieldType;
         required: boolean;
         enum_options: string[] | null;
+        order_index: number;
       }[];
 
-      // Group by section name
-      const sectionMap = new Map<string, SectionConfig>();
+      // Group by section name and track minimum order_index for each section
+      const sectionMap = new Map<string, { section: SectionConfig; minOrderIndex: number }>();
 
       rows.forEach((row) => {
         const sectionName = row.section;
         if (!sectionMap.has(sectionName)) {
           sectionMap.set(sectionName, {
-            id: uid(),
-            name: sectionName,
-            fields: [],
+            section: {
+              id: uid(),
+              name: sectionName,
+              fields: [],
+            },
+            minOrderIndex: row.order_index,
           });
+        } else {
+          const grouped = sectionMap.get(sectionName)!;
+          if (row.order_index < grouped.minOrderIndex) {
+            grouped.minOrderIndex = row.order_index;
+          }
         }
-        const section = sectionMap.get(sectionName)!;
+        const grouped = sectionMap.get(sectionName)!;
         const field = {
           id: uid(),
           label: row.label,
@@ -56,10 +65,14 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
           required: row.required,
           enumOptions: row.data_type === 'enum' ? row.enum_options ?? [] : undefined,
         };
-        section.fields.push(field);
+        grouped.section.fields.push(field);
       });
 
-      const loadedSections = Array.from(sectionMap.values());
+      // Sort sections by their minimum order_index
+      const loadedSections = Array.from(sectionMap.values())
+        .sort((a, b) => a.minOrderIndex - b.minOrderIndex)
+        .map((entry) => entry.section);
+      
       setSections(loadedSections);
       return loadedSections;
     } catch (e: any) {

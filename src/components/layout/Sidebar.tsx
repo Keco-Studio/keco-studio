@@ -495,7 +495,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                         setError('Please select a project first');
                         return;
                       }
-                      router.push(`/${libProjectId}/${lib.id}/asset/new`);
+                      router.push(`/${libProjectId}/${lib.id}/new`);
                     }}
                   >
                     <span className={styles.createButtonText}>
@@ -648,7 +648,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     setError('Please select a project first');
                     return;
                   }
-                  router.push(`/${libProjectId}/${lib.id}/asset/new`);
+                  router.push(`/${libProjectId}/${lib.id}/new`);
                 }}
               >
                 <span className={styles.createButtonText}>
@@ -739,7 +739,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const libraryId = key.replace('add-asset-', '');
       const lib = libraries.find((l) => l.id === libraryId);
       if (lib && currentIds.projectId) {
-        router.push(`/${currentIds.projectId}/${libraryId}/asset/new`);
+        router.push(`/${currentIds.projectId}/${libraryId}/new`);
       }
     } else if (key.startsWith('folder-')) {
       const id = key.replace('folder-', '');

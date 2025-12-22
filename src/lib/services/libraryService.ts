@@ -10,6 +10,7 @@ export type Library = {
   description: string | null;
   created_at: string;
   updated_at: string;
+  asset_count?: number; // Number of assets in this library
 };
 
 type CreateLibraryInput = {
@@ -151,7 +152,38 @@ export async function listLibraries(
     throw error;
   }
 
-  return data || [];
+  const libraries = data || [];
+
+  // If no libraries, return empty array
+  if (libraries.length === 0) {
+    return libraries.map(lib => ({ ...lib, asset_count: 0 }));
+  }
+
+  // Get asset counts for all libraries in one query
+  const libraryIds = libraries.map(lib => lib.id);
+  const { data: assetCounts, error: countError } = await supabase
+    .from('library_assets')
+    .select('library_id')
+    .in('library_id', libraryIds);
+
+  if (countError) {
+    console.error('Error fetching asset counts:', countError);
+    // If count query fails, return libraries with 0 counts
+    return libraries.map(lib => ({ ...lib, asset_count: 0 }));
+  }
+
+  // Count assets per library
+  const countMap = new Map<string, number>();
+  (assetCounts || []).forEach(asset => {
+    const currentCount = countMap.get(asset.library_id) || 0;
+    countMap.set(asset.library_id, currentCount + 1);
+  });
+
+  // Merge asset counts into libraries
+  return libraries.map(lib => ({
+    ...lib,
+    asset_count: countMap.get(lib.id) || 0,
+  }));
 }
 
 export async function getLibrary(

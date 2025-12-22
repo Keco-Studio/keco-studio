@@ -111,13 +111,20 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
       // Resolve current asset name
       if (currentAssetId) {
-        const { data, error } = await supabase
-          .from('library_assets')
-          .select('name')
-          .eq('id', currentAssetId)
-          .single();
-        if (mounted) {
-          setAssetName(error ? null : data?.name ?? null);
+        // Special handling for new asset creation
+        if (currentAssetId === 'new') {
+          if (mounted) {
+            setAssetName('New Asset');
+          }
+        } else {
+          const { data, error } = await supabase
+            .from('library_assets')
+            .select('name')
+            .eq('id', currentAssetId)
+            .single();
+          if (mounted) {
+            setAssetName(error ? null : data?.name ?? null);
+          }
         }
       } else {
         setAssetName(null);

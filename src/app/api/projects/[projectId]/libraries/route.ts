@@ -142,6 +142,39 @@ export async function GET(_req: Request, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json(data ?? []);
+  const libraries = data ?? [];
+
+  // If no libraries, return empty array with asset_count
+  if (libraries.length === 0) {
+    return NextResponse.json(libraries.map((lib: any) => ({ ...lib, asset_count: 0 })));
+  }
+
+  // Get asset counts for all libraries in one query
+  const libraryIds = libraries.map((lib: any) => lib.id);
+  const { data: assetCounts, error: countError } = await supabase
+    .from('library_assets')
+    .select('library_id')
+    .in('library_id', libraryIds);
+
+  if (countError) {
+    console.error('Error fetching asset counts:', countError);
+    // If count query fails, return libraries with 0 counts
+    return NextResponse.json(libraries.map((lib: any) => ({ ...lib, asset_count: 0 })));
+  }
+
+  // Count assets per library
+  const countMap = new Map<string, number>();
+  (assetCounts || []).forEach((asset: any) => {
+    const currentCount = countMap.get(asset.library_id) || 0;
+    countMap.set(asset.library_id, currentCount + 1);
+  });
+
+  // Merge asset counts into libraries
+  const librariesWithCounts = libraries.map((lib: any) => ({
+    ...lib,
+    asset_count: countMap.get(lib.id) || 0,
+  }));
+
+  return NextResponse.json(librariesWithCounts);
 }
 

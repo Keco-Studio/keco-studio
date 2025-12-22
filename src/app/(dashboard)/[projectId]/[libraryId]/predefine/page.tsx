@@ -42,6 +42,8 @@ export default function PredefinePage() {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const [loadingAfterSave, setLoadingAfterSave] = useState(false);
+  // Track pending field for each section (field in FieldForm that hasn't been submitted yet)
+  const [pendingFields, setPendingFields] = useState<Map<string, Omit<FieldConfig, 'id'> | null>>(new Map());
 
   const activeSection = useMemo(
     () => sections.find((s) => s.id === activeSectionId) || null,
@@ -168,9 +170,22 @@ export default function PredefinePage() {
       return;
     }
 
+    // Check if there are any pending fields and add them to their respective sections
+    const finalSections = sectionsToSave.map((section) => {
+      const pendingField = pendingFields.get(section.id);
+      if (pendingField && pendingField.label.trim()) {
+        // Add the pending field to this section
+        return {
+          ...section,
+          fields: [...section.fields, { id: uid(), ...pendingField }],
+        };
+      }
+      return section;
+    });
+
     // Validate all sections
     const parsed = z.array(sectionSchema).safeParse(
-      sectionsToSave.map((s) => ({
+      finalSections.map((s) => ({
         name: s.name,
         fields: s.fields.map((f) => ({
           label: f.label,
@@ -190,9 +205,12 @@ export default function PredefinePage() {
     setErrors([]);
     try {
       // Use incremental update to preserve field IDs and asset data
-      await saveSchemaIncremental(supabase, libraryId, sectionsToSave);
+      await saveSchemaIncremental(supabase, libraryId, finalSections);
 
       message.success('Saved successfully, loading...');
+
+      // Clear pending fields after successful save
+      setPendingFields(new Map());
 
       // If creating new section, exit creation mode and reload sections
       if (isCreatingNewSection) {
@@ -215,7 +233,7 @@ export default function PredefinePage() {
     } finally {
       setSaving(false);
     }
-  }, [sections, libraryId, isCreatingNewSection, reloadSections, supabase]);
+  }, [sections, libraryId, isCreatingNewSection, reloadSections, supabase, pendingFields]);
 
   // Broadcast predefine UI state (e.g. whether creating a new section) to TopBar
   useEffect(() => {
@@ -325,7 +343,7 @@ export default function PredefinePage() {
     };
   }, [isCreatingNewSection, activeSectionId, cancelCreatingNewSection, handleDeleteSection]);
 
-  const baseTabItems = sections.map((section): TabsProps['items'][0] => ({
+  const baseTabItems = sections.map((section, sectionIndex): TabsProps['items'][0] => ({
     key: section.id,
     label: section.name,
     children: (
@@ -366,10 +384,18 @@ export default function PredefinePage() {
           onChangeField={(fieldId, data) => handleChangeField(section.id, fieldId, data)}
           onDeleteField={(fieldId) => handleDeleteField(section.id, fieldId)}
           disabled={saving}
+          isFirstSection={sectionIndex === 0}
         />
         <FieldForm
           onSubmit={(data) => handleAddField(section.id, data)}
           disabled={saving}
+          onFieldChange={(field) => {
+            setPendingFields((prev) => {
+              const newMap = new Map(prev);
+              newMap.set(section.id, field);
+              return newMap;
+            });
+          }}
         />
       </div>
     ),

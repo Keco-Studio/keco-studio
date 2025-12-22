@@ -11,7 +11,7 @@
 
 .container {
   min-height: 100vh;
-  padding: 24px;
+  padding: 32px 48px;
 }
 
 .contentWrapper {
@@ -29,7 +29,7 @@
 .title {
   margin: 0;
   font-size: 32px;
-  font-weight: 400;
+  font-weight: 600;
   color: #111827;
 }
 
@@ -74,6 +74,7 @@
 .formContainer {
   margin-top: 8px;
   border-radius: 10px;
+  padding: 20px 20px 24px;
   background: #fff;
 }
 
@@ -102,17 +103,14 @@
 }
 
 .primaryButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
-  border-radius: 9999px;
+  padding: 8px 16px;
+  border-radius: 8px;
   border: none;
-  background-color: #f5f3ff;
-  color: #4c1d95;
-  font-size: 0.875rem;
+  background: #8726ee;
+  color: #fff;
   cursor: pointer;
-  transition: background-color 0.2s, box-shadow 0.2s;
+  font-size: 14px;
+  font-weight: 500;
 }
 
 .primaryButton:disabled {
@@ -165,7 +163,7 @@
 }
 
 .tabContent {
-  padding: 30px 24px 0;
+  padding: 16px 0 0;
 }
 
 .sectionHeaderRow {
@@ -262,7 +260,9 @@
   padding-right: 12px;
   padding-bottom: 2px;
   padding-left: 12px;
-  background: #0000001C;
+  /* background: #0000001C; */
+  background: #5E00FF14;
+
 }
 
 .dataTypeIcon {

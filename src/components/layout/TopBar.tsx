@@ -33,6 +33,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [assetMode, setAssetMode] = useState<AssetMode>('view');
+  const [isCreatingNewAsset, setIsCreatingNewAsset] = useState(false);
   const [isPredefineCreatingNewSection, setIsPredefineCreatingNewSection] = useState(false);
   const [predefineActiveSectionId, setPredefineActiveSectionId] = useState<string | null>(null);
 
@@ -61,7 +62,30 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   // Reset asset mode when navigating to a different asset
   useEffect(() => {
     setAssetMode('view');
+    setIsCreatingNewAsset(false);
   }, [currentAssetId]);
+
+  // Listen to asset page mode updates (for create/view/edit detection)
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ mode?: string; isNewAsset?: boolean }>;
+      if (custom.detail?.isNewAsset === true) {
+        setIsCreatingNewAsset(true);
+      } else {
+        setIsCreatingNewAsset(false);
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('asset-page-mode', handler as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('asset-page-mode', handler as EventListener);
+      }
+    };
+  }, []);
 
   // Listen to Predefine page state updates (e.g. creating new section)
   useEffect(() => {
@@ -103,7 +127,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   };
 
   const isPredefine = pathname?.includes('/predefine');
-  const isAssetDetail = !!currentAssetId && !pathname?.includes('/asset/new');
+  const isAssetDetail = !!currentAssetId;
 
   const handlePredefineSave = () => {
     // Let Predefine page handle actual save via a window event
@@ -139,6 +163,13 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     // Placeholder share behavior
     // eslint-disable-next-line no-console
     console.log('Share asset');
+  };
+
+  const handleCreateAsset = () => {
+    // Trigger asset save from the asset page
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('asset-create-save'));
+    }
   };
 
   const renderRightContent = () => {
@@ -177,37 +208,53 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     }
 
     if (isAssetDetail) {
-      return (
-        <>
-          <div className={styles.assetModeGroup}>
-            <button
-              className={`${styles.assetModeButton} ${
-                assetMode === 'view' ? styles.assetModeButtonActive : ''
-              }`}
-              onClick={() => changeAssetMode('view')}
-            >
-              <Image src={assetViewIcon} alt="Viewing" width={16} height={16} />
-              <span>Viewing</span>
-            </button>
-            <button
-              className={`${styles.assetModeButton} ${
-                assetMode === 'edit' ? styles.assetModeButtonActive : ''
-              }`}
-              onClick={() => changeAssetMode('edit')}
-            >
-              <Image src={assetEditIcon} alt="Editing" width={16} height={16} />
-              <span>Editing</span>
-            </button>
-          </div>
+      if (isCreatingNewAsset) {
+        // Create mode - show Create Asset button
+        return (
           <button
-            className={styles.shareButton}
-            onClick={handleShareClick}
+            className={`${styles.topbarPillButton} ${styles.topbarPillPrimary}`}
+            onClick={handleCreateAsset}
           >
-            <Image src={assetShareIcon} alt="Share" width={16} height={16} />
-            <span>Share</span>
+            <span className={styles.topbarPillIcon}>
+              <Image src={topbarPredefinePublishIcon} alt="Create" width={16} height={16} />
+            </span>
+            <span>Create Asset</span>
           </button>
-        </>
-      );
+        );
+      } else {
+        // View/Edit mode - show mode toggle and share
+        return (
+          <>
+            <div className={styles.assetModeGroup}>
+              <button
+                className={`${styles.assetModeButton} ${
+                  assetMode === 'view' ? styles.assetModeButtonActive : ''
+                }`}
+                onClick={() => changeAssetMode('view')}
+              >
+                <Image src={assetViewIcon} alt="Viewing" width={16} height={16} />
+                <span>Viewing</span>
+              </button>
+              <button
+                className={`${styles.assetModeButton} ${
+                  assetMode === 'edit' ? styles.assetModeButtonActive : ''
+                }`}
+                onClick={() => changeAssetMode('edit')}
+              >
+                <Image src={assetEditIcon} alt="Editing" width={16} height={16} />
+                <span>Editing</span>
+              </button>
+            </div>
+            <button
+              className={styles.shareButton}
+              onClick={handleShareClick}
+            >
+              <Image src={assetShareIcon} alt="Share" width={16} height={16} />
+              <span>Share</span>
+            </button>
+          </>
+        );
+      }
     }
 
     // Default icon group

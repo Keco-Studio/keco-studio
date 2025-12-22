@@ -23,6 +23,7 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
   const [sectionName, setSectionName] = useState('');
   const [fields, setFields] = useState<FieldConfig[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
+  const [pendingField, setPendingField] = useState<Omit<FieldConfig, 'id'> | null>(null);
 
   // If this is the first section, automatically add mandatory name field on initialization
   useEffect(() => {
@@ -98,14 +99,30 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
       return;
     }
 
-    if (fields.length === 0) {
+    // If there's a pending field with data, add it first
+    let finalFields = fields;
+    if (pendingField && pendingField.label.trim()) {
+      const parsed = fieldSchema.safeParse(pendingField);
+      if (parsed.success) {
+        const newField: FieldConfig = {
+          id: uid(),
+          label: parsed.data.label,
+          dataType: parsed.data.dataType,
+          required: parsed.data.required,
+          ...(parsed.data.enumOptions && { enumOptions: parsed.data.enumOptions }),
+        };
+        finalFields = [...fields, newField];
+      }
+    }
+
+    if (finalFields.length === 0) {
       setErrors(['At least one field is required']);
       return;
     }
 
     setErrors([]);
-    await onSave({ name: trimmedName, fields });
-  }, [sectionName, fields, onSave]);
+    await onSave({ name: trimmedName, fields: finalFields });
+  }, [sectionName, fields, pendingField, onSave]);
 
   // Listen to top bar "Save" button when creating new section
   useEffect(() => {
@@ -174,6 +191,7 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
           onSubmit={handleAddField}
           onCancel={onCancel}
           disabled={saving}
+          onFieldChange={setPendingField}
         />
       </div>
 

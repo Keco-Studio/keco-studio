@@ -52,6 +52,27 @@
   width: 140px;
 }
 
+.typeSwitchButton {
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s;
+  height: 16px;
+}
+
+.typeSwitchButton:hover {
+  opacity: 0.7;
+}
+
+.typeSwitchButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
 .dataTypeButton {
   display: inline-flex;
   align-items: center;

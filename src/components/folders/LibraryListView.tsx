@@ -114,7 +114,9 @@ export function LibraryListView({
                   </div>
                 </td>
                 <td className={styles.cell}>
-                  <span className={styles.assetsText}>0 assets</span>
+                  <span className={styles.assetsText}>
+                    {library.asset_count ?? 0} {library.asset_count === 1 ? 'asset' : 'assets'}
+                  </span>
                 </td>
                 <td className={styles.cell}>
                   <span className={styles.dateText}>{formatDate(library.created_at)}</span>

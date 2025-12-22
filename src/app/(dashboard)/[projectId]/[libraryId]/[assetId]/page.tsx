@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useParams, useRouter } from 'next/navigation';
 import { ConfigProvider, Tabs } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { getLibrary, Library } from '@/lib/services/libraryService';
 import { getFieldTypeIcon } from '../predefine/utils';
 import styles from './page.module.css';
 import Image from 'next/image';
@@ -44,16 +45,21 @@ type ValueRow = {
   value_json: any;
 };
 
-type AssetMode = 'view' | 'edit';
+type AssetMode = 'view' | 'edit' | 'create';
 
 export default function AssetPage() {
   const params = useParams();
   const supabase = useSupabase();
+  const router = useRouter();
   const { userProfile } = useAuth();
   const projectId = params.projectId as string;
   const libraryId = params.libraryId as string;
   const assetId = params.assetId as string;
+  
+  // Check if this is a new asset creation
+  const isNewAsset = assetId === 'new';
 
+  const [library, setLibrary] = useState<Library | null>(null);
   const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([]);
   const [asset, setAsset] = useState<AssetRow | null>(null);
   const [values, setValues] = useState<Record<string, any>>({});
@@ -62,7 +68,8 @@ export default function AssetPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
-  const [mode, setMode] = useState<AssetMode>('view');
+  const [mode, setMode] = useState<AssetMode>(isNewAsset ? 'create' : 'view');
+  const [navigating, setNavigating] = useState(false);
 
   const sections = useMemo(() => {
     const map: Record<string, FieldDef[]> = {};
@@ -74,49 +81,110 @@ export default function AssetPage() {
     return map;
   }, [fieldDefs]);
 
+  // Find the name field from the first section (for new assets)
+  const nameField = useMemo(() => {
+    if (!isNewAsset || fieldDefs.length === 0) return null;
+    const firstSectionKey = Object.keys(sections)[0];
+    const firstSection = sections[firstSectionKey];
+    if (!firstSection || firstSection.length === 0) return null;
+    const firstField = firstSection[0];
+    if (firstField.label === 'name' && firstField.data_type === 'string') {
+      return firstField;
+    }
+    return null;
+  }, [isNewAsset, fieldDefs, sections]);
+
+  // Get asset name (from name field for new assets, or from asset data for existing)
+  const assetName = useMemo(() => {
+    if (isNewAsset) {
+      if (!nameField) return '';
+      return values[nameField.id] || '';
+    }
+    return asset?.name || '';
+  }, [isNewAsset, nameField, values, asset]);
+
   useEffect(() => {
     const load = async () => {
+      if (!libraryId) return;
       setLoading(true);
       setError(null);
       try {
-        const [{ data: defs, error: defErr }, { data: assetRow, error: assetErr }, { data: vals, error: valErr }] =
-          await Promise.all([
+        if (isNewAsset) {
+          // Load library and field definitions only
+          const [lib, defsRes] = await Promise.all([
+            getLibrary(supabase, libraryId, projectId),
             supabase
               .from('library_field_definitions')
               .select('*')
               .eq('library_id', libraryId)
               .order('section', { ascending: true })
               .order('order_index', { ascending: true }),
-            supabase.from('library_assets').select('id,name,library_id').eq('id', assetId).single(),
-            supabase.from('library_asset_values').select('field_id,value_json').eq('asset_id', assetId),
           ]);
 
-        if (defErr) throw defErr;
-        if (assetErr) throw assetErr;
-        if (!assetRow) throw new Error('Asset not found');
-        if (assetRow.library_id !== libraryId) throw new Error('Asset not in this library');
-        if (valErr) throw valErr;
+          if (!lib) {
+            setError('Library not found');
+            return;
+          }
 
-        setFieldDefs((defs as FieldDef[]) || []);
-        setAsset(assetRow as AssetRow);
-        const valueMap: Record<string, any> = {};
-        (vals as ValueRow[] | null)?.forEach((v) => {
-          valueMap[v.field_id] = v.value_json;
-        });
-        setValues(valueMap);
+          if (defsRes.error) {
+            throw defsRes.error;
+          }
+
+          setLibrary(lib);
+          setFieldDefs((defsRes.data as FieldDef[]) || []);
+        } else {
+          // Load field definitions, asset, and values
+          const [{ data: defs, error: defErr }, { data: assetRow, error: assetErr }, { data: vals, error: valErr }] =
+            await Promise.all([
+              supabase
+                .from('library_field_definitions')
+                .select('*')
+                .eq('library_id', libraryId)
+                .order('section', { ascending: true })
+                .order('order_index', { ascending: true }),
+              supabase.from('library_assets').select('id,name,library_id').eq('id', assetId).single(),
+              supabase.from('library_asset_values').select('field_id,value_json').eq('asset_id', assetId),
+            ]);
+
+          if (defErr) throw defErr;
+          if (assetErr) throw assetErr;
+          if (!assetRow) throw new Error('Asset not found');
+          if (assetRow.library_id !== libraryId) throw new Error('Asset not in this library');
+          if (valErr) throw valErr;
+
+          setFieldDefs((defs as FieldDef[]) || []);
+          setAsset(assetRow as AssetRow);
+          const valueMap: Record<string, any> = {};
+          (vals as ValueRow[] | null)?.forEach((v) => {
+            valueMap[v.field_id] = v.value_json;
+          });
+          setValues(valueMap);
+        }
       } catch (e: any) {
-        setError(e?.message || 'Failed to load asset');
+        setError(e?.message || (isNewAsset ? 'Failed to load library' : 'Failed to load asset'));
       } finally {
         setLoading(false);
       }
     };
-    if (assetId && libraryId) {
-      load();
-    }
-  }, [assetId, libraryId, supabase]);
+    
+    load();
+  }, [assetId, libraryId, projectId, supabase, isNewAsset]);
 
-  // Listen to top bar Viewing / Editing toggle
+  // Notify TopBar about current mode
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent('asset-page-mode', {
+          detail: { mode, isNewAsset },
+        })
+      );
+    }
+  }, [mode, isNewAsset]);
+
+  // Listen to top bar Viewing / Editing toggle (only for existing assets)
+  useEffect(() => {
+    if (isNewAsset) return; // New assets don't need mode toggle from TopBar
+    
     const handler = (event: Event) => {
       const custom = event as CustomEvent<{ mode?: AssetMode }>;
       const nextMode = custom.detail?.mode;
@@ -137,59 +205,147 @@ export default function AssetPage() {
         window.removeEventListener('asset-mode-change', handler as EventListener);
       }
     };
-  }, []);
+  }, [isNewAsset]);
 
   const handleValueChange = (fieldId: string, value: any) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
   };
 
-  const handleSave = async () => {
-    if (!asset) return;
+  const handleSave = useCallback(async () => {
     setSaveError(null);
     setSaveSuccess(null);
-    setSaving(true);
-    try {
-      const payload = fieldDefs.map((f) => {
-        const raw = values[f.id];
-        let v: any = raw;
-        if (f.data_type === 'int') {
-          v = raw === '' || raw === undefined ? null : parseInt(raw, 10);
-        } else if (f.data_type === 'float') {
-          v = raw === '' || raw === undefined ? null : parseFloat(raw);
-        } else if (f.data_type === 'boolean') {
-          v = !!raw;
-        } else if (f.data_type === 'date') {
-          v = raw || null;
-        } else if (f.data_type === 'enum') {
-          v = raw || null;
-        } else if (f.data_type === 'media' || f.data_type === 'reference') {
-          v = raw || null;
-        } else {
-          v = raw ?? null;
-        }
-        return { asset_id: asset.id, field_id: f.id, value_json: v };
-      });
-
-      if (payload.length > 0) {
-        const { error: valErr } = await supabase
-          .from('library_asset_values')
-          .upsert(payload, { onConflict: 'asset_id,field_id' });
-        if (valErr) throw valErr;
+    
+    if (isNewAsset) {
+      // Create new asset
+      const nameValue = assetName.trim();
+      if (!nameValue) {
+        setSaveError('Asset name is required (please fill in the "name" field)');
+        return;
       }
 
-      setSaveSuccess('Saved');
-    } catch (e: any) {
-      setSaveError(e?.message || 'Save failed');
-    } finally {
-      setSaving(false);
-    }
-  };
+      setSaving(true);
+      try {
+        const { data: newAsset, error: assetErr } = await supabase
+          .from('library_assets')
+          .insert({ library_id: libraryId, name: nameValue })
+          .select()
+          .single();
+        if (assetErr) throw assetErr;
 
+        const newAssetId = newAsset.id as string;
+
+        const payload = fieldDefs.map((f) => {
+          const raw = values[f.id];
+          let v: any = raw;
+          if (f.data_type === 'int') {
+            v = raw === '' || raw === undefined ? null : parseInt(raw, 10);
+          } else if (f.data_type === 'float') {
+            v = raw === '' || raw === undefined ? null : parseFloat(raw);
+          } else if (f.data_type === 'boolean') {
+            v = !!raw;
+          } else if (f.data_type === 'date') {
+            v = raw || null;
+          } else if (f.data_type === 'enum') {
+            v = raw || null;
+          } else if (f.data_type === 'media' || f.data_type === 'reference') {
+            v = raw || null;
+          } else {
+            v = raw ?? null;
+          }
+          return { asset_id: newAssetId, field_id: f.id, value_json: v };
+        });
+
+        if (payload.length > 0) {
+          const { error: valErr } = await supabase
+            .from('library_asset_values')
+            .upsert(payload, { onConflict: 'asset_id,field_id' });
+          if (valErr) throw valErr;
+        }
+
+        setSaveSuccess('Asset created successfully! Loading asset page...');
+        setValues({});
+        setNavigating(true);
+
+        // Dispatch event to notify Sidebar to refresh assets
+        window.dispatchEvent(new CustomEvent('assetCreated', {
+          detail: { libraryId, assetId: newAssetId }
+        }));
+
+        // Navigate to edit page for further changes with a slight delay
+        setTimeout(() => {
+          router.push(`/${projectId}/${libraryId}/${newAssetId}`);
+        }, 500);
+      } catch (e: any) {
+        setSaveError(e?.message || 'Failed to create asset');
+      } finally {
+        setSaving(false);
+      }
+    } else {
+      // Update existing asset
+      if (!asset) return;
+      
+      setSaving(true);
+      try {
+        const payload = fieldDefs.map((f) => {
+          const raw = values[f.id];
+          let v: any = raw;
+          if (f.data_type === 'int') {
+            v = raw === '' || raw === undefined ? null : parseInt(raw, 10);
+          } else if (f.data_type === 'float') {
+            v = raw === '' || raw === undefined ? null : parseFloat(raw);
+          } else if (f.data_type === 'boolean') {
+            v = !!raw;
+          } else if (f.data_type === 'date') {
+            v = raw || null;
+          } else if (f.data_type === 'enum') {
+            v = raw || null;
+          } else if (f.data_type === 'media' || f.data_type === 'reference') {
+            v = raw || null;
+          } else {
+            v = raw ?? null;
+          }
+          return { asset_id: asset.id, field_id: f.id, value_json: v };
+        });
+
+        if (payload.length > 0) {
+          const { error: valErr } = await supabase
+            .from('library_asset_values')
+            .upsert(payload, { onConflict: 'asset_id,field_id' });
+          if (valErr) throw valErr;
+        }
+
+        setSaveSuccess('Saved');
+      } catch (e: any) {
+        setSaveError(e?.message || 'Save failed');
+      } finally {
+        setSaving(false);
+      }
+    }
+  }, [isNewAsset, assetName, supabase, libraryId, fieldDefs, values, asset, router, projectId]);
+
+  // Listen to TopBar Create Asset button click for new assets
+  useEffect(() => {
+    if (!isNewAsset) return;
+    
+    const handler = () => {
+      handleSave();
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('asset-create-save', handler as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('asset-create-save', handler as EventListener);
+      }
+    };
+  }, [isNewAsset, handleSave]);
 
   if (loading) {
     return (
       <div className={styles.loadingContainer}>
-        <div>Loading asset...</div>
+        <div>{isNewAsset ? 'Loading library...' : 'Loading asset...'}</div>
       </div>
     );
   }
@@ -202,7 +358,7 @@ export default function AssetPage() {
     );
   }
 
-  if (!asset) {
+  if (!isNewAsset && !asset) {
     return (
       <div className={styles.notFoundContainer}>
         <div>Asset not found</div>
@@ -224,12 +380,12 @@ export default function AssetPage() {
         <div className={styles.contentWrapper}>
       <div className={styles.header}>
         <div>
-          <h1 className={styles.title}>{asset.name}</h1>
+          <h1 className={styles.title}>{assetName || 'New asset'}</h1>
         </div>
             <div className={styles.headerRight}>
               {saveError && <div className={styles.saveError}>{saveError}</div>}
               {saveSuccess && <div className={styles.saveSuccess}>{saveSuccess}</div>}
-              {userProfile && mode === 'edit' && (
+              {!isNewAsset && userProfile && mode === 'edit' && (
             <button
               onClick={handleSave}
               disabled={saving}
@@ -240,6 +396,10 @@ export default function AssetPage() {
               )}
             </div>
           </div>
+
+          {!userProfile && isNewAsset && (
+            <div className={styles.authWarning}>Please sign in to add assets.</div>
+          )}
 
           <div className={styles.formContainer}>
           <div className={styles.fieldsContainer}>
@@ -297,7 +457,7 @@ export default function AssetPage() {
                             checked={!!value}
                                             disabled={mode === 'view'}
                                             onChange={
-                                              mode === 'edit'
+                                              mode !== 'view'
                                                 ? (e) =>
                                                     handleValueChange(
                                                       f.id,
@@ -305,14 +465,12 @@ export default function AssetPage() {
                                                     )
                                                 : undefined
                                             }
-                                            className={styles.disabledInput}
+                                            className={mode === 'view' ? styles.disabledInput : ''}
                           />
                                           <span>Enabled</span>
                         </label>
                                       </div>
-                                      <button className={styles.configButton} disabled>
-                                        <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
-                                      </button>
+                                      {/* Only Reference and Option (enum) show configure icon */}
                                     </div>
                       );
                     }
@@ -346,7 +504,7 @@ export default function AssetPage() {
                             value={value || ''}
                                           disabled={mode === 'view'}
                                           onChange={
-                                            mode === 'edit'
+                                            mode !== 'view'
                                               ? (e) =>
                                                   handleValueChange(
                                                     f.id,
@@ -418,9 +576,12 @@ export default function AssetPage() {
                                           )}
                                         </div>
                                       </div>
-                                      <button className={styles.configButton} disabled>
-                                        <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
-                                      </button>
+                                      {/* Only Reference shows configure icon, not Media */}
+                                      {f.data_type === 'reference' && (
+                                        <button className={styles.configButton} disabled>
+                                          <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+                                        </button>
+                                      )}
                                     </div>
                                   );
                                 }
@@ -461,7 +622,7 @@ export default function AssetPage() {
                           value={value ?? ''}
                                         disabled={mode === 'view'}
                                         onChange={
-                                          mode === 'edit'
+                                          mode !== 'view'
                                             ? (e) =>
                                                 handleValueChange(f.id, e.target.value)
                                             : undefined
@@ -472,9 +633,7 @@ export default function AssetPage() {
                           placeholder={f.label}
                         />
                                     </div>
-                                    <button className={styles.configButton} disabled>
-                                      <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
-                                    </button>
+                                    {/* Only Reference and Option (enum) show configure icon */}
                                   </div>
                     );
                   })}
