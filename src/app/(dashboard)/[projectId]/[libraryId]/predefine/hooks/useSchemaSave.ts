@@ -8,6 +8,7 @@ interface FieldDefinitionRow {
   label: string;
   data_type: string;
   enum_options: string[] | null;
+  reference_libraries: string[] | null;
   required: boolean;
   order_index: number;
 }
@@ -37,7 +38,7 @@ export async function saveSchemaIncremental(
   });
 
   // Build maps for new definitions
-  const newMap = new Map<string, { section: string; label: string; data_type: string; enum_options: string[] | null; required: boolean; order_index: number }>();
+  const newMap = new Map<string, { section: string; label: string; data_type: string; enum_options: string[] | null; reference_libraries: string[] | null; required: boolean; order_index: number }>();
   const sectionsToKeep = new Set<string>();
 
   sectionsToSave.forEach((section, sectionIdx) => {
@@ -49,6 +50,7 @@ export async function saveSchemaIncremental(
         label: field.label,
         data_type: field.dataType,
         enum_options: field.dataType === 'enum' ? field.enumOptions ?? [] : null,
+        reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
         required: field.required,
         order_index: sectionIdx * 1000 + fieldIdx,
       });
@@ -70,6 +72,7 @@ export async function saveSchemaIncremental(
       if (
         row.data_type !== newDef.data_type ||
         JSON.stringify(row.enum_options) !== JSON.stringify(newDef.enum_options) ||
+        JSON.stringify(row.reference_libraries) !== JSON.stringify(newDef.reference_libraries) ||
         row.required !== newDef.required ||
         row.order_index !== newDef.order_index
       ) {
@@ -77,6 +80,7 @@ export async function saveSchemaIncremental(
           ...row,
           data_type: newDef.data_type,
           enum_options: newDef.enum_options,
+          reference_libraries: newDef.reference_libraries,
           required: newDef.required,
           order_index: newDef.order_index,
         });
@@ -97,6 +101,7 @@ export async function saveSchemaIncremental(
       label: def.label,
       data_type: def.data_type,
       enum_options: def.enum_options,
+      reference_libraries: def.reference_libraries,
       required: def.required,
       order_index: def.order_index,
     });
@@ -118,6 +123,7 @@ export async function saveSchemaIncremental(
       .update({
         data_type: row.data_type,
         enum_options: row.enum_options,
+        reference_libraries: row.reference_libraries,
         required: row.required,
         order_index: row.order_index,
       })

@@ -110,6 +110,10 @@
   flex-shrink: 0;
 }
 
+.configButtonWrapper {
+  position: relative;
+}
+
 .configButton {
   padding: 0;
   border: none;
@@ -180,6 +184,150 @@
 
 .slashMenuItem:hover {
   background-color: #f3f4f6;
+}
+
+/* Config menu styles */
+.configMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 300px;
+  max-width: 400px;
+  z-index: 1000;
+  padding: 12px;
+}
+
+.configMenuHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.configMenuHeader span {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.addOptionButton {
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: #3b82f6;
+  color: #ffffff;
+  font-size: 20px;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.addOptionButton:hover {
+  background: #2563eb;
+}
+
+.addOptionButton:active {
+  background: #1d4ed8;
+}
+
+.optionsList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.optionItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.optionInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.removeOptionButton {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #e5e7eb;
+  background: #ffffff;
+  color: #6b7280;
+  font-size: 20px;
+  line-height: 1;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.removeOptionButton:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+  color: #dc2626;
+}
+
+.removeOptionButton:active {
+  background: #e5e7eb;
+}
+
+.emptyOptionsMessage {
+  padding: 20px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.referenceConfig {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.libraryTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  background: #e0e7ff;
+  color: #3730a3;
+  border-radius: 4px;
+  font-size: 12px;
+  margin: 2px;
+}
+
+.libraryTagClose {
+  border: none;
+  background: none;
+  color: #3730a3;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 4px;
+  font-size: 16px;
+  line-height: 1;
+  font-weight: bold;
+  transition: color 0.2s;
+}
+
+.libraryTagClose:hover {
+  color: #1e1b4b;
 }
 
 

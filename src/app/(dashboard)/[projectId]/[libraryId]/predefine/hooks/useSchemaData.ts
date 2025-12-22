@@ -29,11 +29,13 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
       if (fetchError) throw fetchError;
 
       const rows = (data || []) as {
+        id: string;
         section: string;
         label: string;
         data_type: FieldType;
         required: boolean;
         enum_options: string[] | null;
+        reference_libraries: string[] | null;
         order_index: number;
       }[];
 
@@ -59,11 +61,12 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
         }
         const grouped = sectionMap.get(sectionName)!;
         const field = {
-          id: uid(),
+          id: row.id,
           label: row.label,
           dataType: row.data_type,
           required: row.required,
           enumOptions: row.data_type === 'enum' ? row.enum_options ?? [] : undefined,
+          referenceLibraries: row.data_type === 'reference' ? row.reference_libraries ?? [] : undefined,
         };
         grouped.section.fields.push(field);
       });

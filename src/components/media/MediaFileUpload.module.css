@@ -1,0 +1,238 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+}
+
+.fileInput {
+  display: none;
+}
+
+.uploadButton {
+  padding: 8px 16px;
+  background-color: #8726ee;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+}
+
+.uploadButton:hover:not(:disabled) {
+  background-color: #7020d0;
+}
+
+.uploadButton:disabled {
+  background-color: #9ca3af;
+  cursor: not-allowed;
+}
+
+.fileInfo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  gap: 12px;
+}
+
+.fileDetails {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.fileIcon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.fileMetadata {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.fileName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fileSize {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.fileActions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.actionButton,
+.deleteButton {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+  background-color: white;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.actionButton:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.deleteButton:hover:not(:disabled) {
+  background-color: #fee;
+  border-color: #fca5a5;
+  color: #dc2626;
+}
+
+.actionButton:disabled,
+.deleteButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.progressMessage {
+  padding: 8px 12px;
+  background-color: #eff6ff;
+  color: #1e40af;
+  border-radius: 4px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.errorMessage {
+  padding: 8px 12px;
+  background-color: #fef2f2;
+  color: #dc2626;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+/* Modal styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  padding: 20px;
+}
+
+.modalContent {
+  background-color: white;
+  border-radius: 8px;
+  max-width: 90vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.modalTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 600px;
+}
+
+.modalCloseButton {
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: #6b7280;
+  transition: color 0.2s;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.modalCloseButton:hover {
+  color: #111827;
+}
+
+.modalBody {
+  padding: 20px;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+.previewImage {
+  max-width: 100%;
+  max-height: calc(90vh - 160px);
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+.modalFooter {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 16px 20px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.modalButton {
+  padding: 8px 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background-color: white;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.modalButton:hover {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.modalButton:first-child {
+  background-color: #8726ee;
+  color: white;
+  border-color: #8726ee;
+}
+
+.modalButton:first-child:hover {
+  background-color: #7020d0;
+  border-color: #7020d0;
+}
+

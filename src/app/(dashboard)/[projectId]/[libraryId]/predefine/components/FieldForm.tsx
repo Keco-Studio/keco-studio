@@ -1,10 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
-import { Input, Button } from 'antd';
+import { Input, Button, Select } from 'antd';
 import Image from 'next/image';
 import type { FieldConfig, FieldType } from '../types';
 import { FIELD_TYPE_OPTIONS, getFieldTypeIcon } from '../utils';
 import predefineLabelAddIcon from '@/app/assets/images/predefineLabelAddIcon.svg';
 import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
+import predefineLabelConfigIcon from '@/app/assets/images/predefineLabelConfigIcon.svg';
+import { useSupabase } from '@/lib/SupabaseContext';
+import { useParams } from 'next/navigation';
+import { listLibraries, type Library } from '@/lib/services/libraryService';
 import styles from './FieldForm.module.css';
 
 interface FieldFormProps {
@@ -16,20 +20,32 @@ interface FieldFormProps {
 }
 
 export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldChange }: FieldFormProps) {
+  const supabase = useSupabase();
+  const params = useParams();
+  const projectId = params?.projectId as string | undefined;
+  const currentLibraryId = params?.libraryId as string | undefined;
+  
   const [field, setField] = useState<Omit<FieldConfig, 'id'>>(
     initialField || {
       label: '',
       dataType: 'string',
       required: false,
       enumOptions: [],
+      referenceLibraries: [],
     }
   );
   const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [showConfigMenu, setShowConfigMenu] = useState(false);
+  const [libraries, setLibraries] = useState<Library[]>([]);
+  const [loadingLibraries, setLoadingLibraries] = useState(false);
+  
   // Whether data type has been selected via slash, used to control placeholder display
   const [dataTypeSelected, setDataTypeSelected] = useState(!!initialField);
   const inputRef = useRef<any>(null);
   const dataTypeInputRef = useRef<any>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
+  const configMenuRef = useRef<HTMLDivElement>(null);
+  const configButtonRef = useRef<HTMLButtonElement>(null);
 
   // Notify parent of field changes
   useEffect(() => {
@@ -41,7 +57,8 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
         onFieldChange(null);
       }
     }
-  }, [field, onFieldChange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [field]);
 
   useEffect(() => {
     if (initialField) {
@@ -54,6 +71,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
         dataType: 'string',
         required: false,
         enumOptions: [],
+        referenceLibraries: [],
       });
       setDataTypeSelected(false);
     }
@@ -77,12 +95,81 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
     }
   }, [showSlashMenu]);
 
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      
+      // Check if click is on Ant Design Select dropdown
+      const isSelectDropdown = (target as Element).closest?.('.ant-select-dropdown');
+      if (isSelectDropdown) {
+        return; // Don't close if clicking on Select dropdown
+      }
+      
+      if (
+        configMenuRef.current &&
+        !configMenuRef.current.contains(target) &&
+        configButtonRef.current &&
+        !configButtonRef.current.contains(target)
+      ) {
+        setShowConfigMenu(false);
+      }
+    };
+
+    if (showConfigMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showConfigMenu]);
+
+  // Load libraries when config menu is opened for reference type
+  useEffect(() => {
+    if (showConfigMenu && field.dataType === 'reference' && projectId) {
+      setLoadingLibraries(true);
+      
+      const loadLibrariesWithFolders = async () => {
+        try {
+          const libs = await listLibraries(supabase, projectId);
+          // Filter out current library
+          const filteredLibs = libs.filter(lib => lib.id !== currentLibraryId);
+          
+          // Load folder names for libraries that have folders
+          const libsWithFolders = await Promise.all(
+            filteredLibs.map(async (lib) => {
+              if (lib.folder_id) {
+                const { data: folder } = await supabase
+                  .from('folders')
+                  .select('name')
+                  .eq('id', lib.folder_id)
+                  .single();
+                return { ...lib, folder_name: folder?.name };
+              }
+              return lib;
+            })
+          );
+          
+          setLibraries(libsWithFolders);
+        } catch (error) {
+          console.error('Failed to load libraries:', error);
+          setLibraries([]);
+        } finally {
+          setLoadingLibraries(false);
+        }
+      };
+      
+      loadLibrariesWithFolders();
+    }
+  }, [showConfigMenu, field.dataType, projectId, currentLibraryId, supabase]);
+
   const handleSubmit = () => {
     const payload = {
       ...field,
       enumOptions:
         field.dataType === 'enum'
           ? (field.enumOptions || []).filter((v) => v.trim().length > 0)
+          : undefined,
+      referenceLibraries:
+        field.dataType === 'reference'
+          ? (field.referenceLibraries || []).filter((v) => v && v.trim().length > 0)
           : undefined,
     };
     onSubmit(payload);
@@ -93,6 +180,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
         dataType: 'string',
         required: false,
         enumOptions: [],
+        referenceLibraries: [],
       });
       setDataTypeSelected(false); // Reset dataType selection state
     }
@@ -130,6 +218,39 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
   const getDataTypeLabel = (value: FieldType) => {
     const option = FIELD_TYPE_OPTIONS.find((opt) => opt.value === value);
     return option?.label ?? '';
+  };
+
+  const handleAddOption = () => {
+    const currentOptions = field.enumOptions ?? [];
+    setField((p) => ({
+      ...p,
+      enumOptions: [...currentOptions, ''],
+    }));
+  };
+
+  const handleOptionChange = (index: number, value: string) => {
+    const newOptions = [...(field.enumOptions ?? [])];
+    newOptions[index] = value;
+    setField((p) => ({
+      ...p,
+      enumOptions: newOptions,
+    }));
+  };
+
+  const handleRemoveOption = (index: number) => {
+    const newOptions = [...(field.enumOptions ?? [])];
+    newOptions.splice(index, 1);
+    setField((p) => ({
+      ...p,
+      enumOptions: newOptions,
+    }));
+  };
+
+  const handleReferenceLibrariesChange = (selectedLibraryIds: string[]) => {
+    setField((p) => ({
+      ...p,
+      referenceLibraries: selectedLibraryIds,
+    }));
   };
 
   const isEditing = !!initialField;
@@ -200,23 +321,86 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
           </div>
         )}
       </div>
-      {field.dataType === 'enum' && (
-        <Input
-          placeholder="Enum options (comma separated)"
-          value={(field.enumOptions || []).join(',')}
-          onChange={(e) =>
-            setField((p) => ({
-              ...p,
-              enumOptions: e.target.value
-                .split(',')
-                .map((v) => v.trim())
-                .filter((v) => v.length > 0),
-            }))
-          }
-          className={styles.enumInput}
-          disabled={disabled}
-        />
-      )}
+      <div className={styles.fieldActions}>
+        {(field.dataType === 'reference' || field.dataType === 'enum') && (
+          <div className={styles.configButtonWrapper}>
+            <button 
+              ref={configButtonRef}
+              className={styles.configButton}
+              onClick={() => !disabled && setShowConfigMenu(!showConfigMenu)}
+              disabled={disabled}
+              title="Configure options"
+            >
+              <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+            </button>
+            {showConfigMenu && field.dataType === 'enum' && (
+              <div ref={configMenuRef} className={styles.configMenu}>
+                <div className={styles.configMenuHeader}>
+                  <span>Predefine options</span>
+                  <button 
+                    className={styles.addOptionButton}
+                    onClick={handleAddOption}
+                    title="Add option"
+                  >
+                    +
+                  </button>
+                </div>
+                <div className={styles.optionsList}>
+                  {(field.enumOptions ?? []).map((option, index) => (
+                    <div key={index} className={styles.optionItem}>
+                      <Input
+                        value={option}
+                        onChange={(e) => handleOptionChange(index, e.target.value)}
+                        placeholder={`${index + 1}`}
+                        className={styles.optionInput}
+                      />
+                      <button
+                        className={styles.removeOptionButton}
+                        onClick={() => handleRemoveOption(index)}
+                        title="Remove option"
+                      >
+                        −
+                      </button>
+                    </div>
+                  ))}
+                  {(field.enumOptions ?? []).length === 0 && (
+                    <div className={styles.emptyOptionsMessage}>
+                      Click + to add options
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {showConfigMenu && field.dataType === 'reference' && (
+              <div ref={configMenuRef} className={styles.configMenu}>
+                <div className={styles.configMenuHeader}>
+                  <span>Choose libraries</span>
+                </div>
+                <div className={styles.referenceConfig}>
+                  <Select
+                    mode="multiple"
+                    style={{ width: '100%' }}
+                    placeholder="Select libraries to reference"
+                    value={field.referenceLibraries ?? []}
+                    onChange={handleReferenceLibrariesChange}
+                    loading={loadingLibraries}
+                    options={libraries.map((lib) => ({
+                      label: (lib as any).folder_name ? `${lib.name} (${(lib as any).folder_name})` : lib.name,
+                      value: lib.id,
+                    }))}
+                    maxTagCount="responsive"
+                  />
+                  {(field.referenceLibraries ?? []).length === 0 && (
+                    <div className={styles.emptyOptionsMessage}>
+                      Select libraries that this field can reference
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
       <div className={styles.actions}>
         {isEditing && onCancel && (
           <Button onClick={onCancel} className={styles.cancelButton} disabled={disabled}>

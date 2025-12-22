@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { Button, Input } from 'antd';
+import { Button, Input, Select } from 'antd';
 import Image from 'next/image';
 import type { FieldConfig, FieldType } from '../types';
 import { FIELD_TYPE_OPTIONS, getFieldTypeIcon } from '../utils';
@@ -7,6 +7,9 @@ import predefineLabelDelIcon from '@/app/assets/images/predefineLabelDelIcon.svg
 import predefineLabelConfigIcon from '@/app/assets/images/predefineLabelConfigIcon.svg';
 import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
 import predefineTypeSwitchIcon from '@/app/assets/images/predefineTypeSwitchIcon.svg';
+import { useSupabase } from '@/lib/SupabaseContext';
+import { useParams } from 'next/navigation';
+import { listLibraries, type Library } from '@/lib/services/libraryService';
 import styles from './FieldItem.module.css';
 
 interface FieldItemProps {
@@ -27,9 +30,20 @@ export function FieldItem({
   disabled,
   isMandatoryNameField = false,
 }: FieldItemProps) {
+  const supabase = useSupabase();
+  const params = useParams();
+  const projectId = params?.projectId as string | undefined;
+  const currentLibraryId = params?.libraryId as string | undefined;
+  
   const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [showConfigMenu, setShowConfigMenu] = useState(false);
+  const [libraries, setLibraries] = useState<Library[]>([]);
+  const [loadingLibraries, setLoadingLibraries] = useState(false);
+  
   const dataTypeInputRef = useRef<any>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
+  const configMenuRef = useRef<HTMLDivElement>(null);
+  const configButtonRef = useRef<HTMLButtonElement>(null);
 
   const getDataTypeLabel = (value: FieldType) => {
     const option = FIELD_TYPE_OPTIONS.find((opt) => opt.value === value);
@@ -79,6 +93,43 @@ export function FieldItem({
     }
   };
 
+  const handleAddOption = () => {
+    const { id, ...rest } = field;
+    const currentOptions = rest.enumOptions ?? [];
+    onChangeField(field.id, {
+      ...rest,
+      enumOptions: [...currentOptions, ''],
+    });
+  };
+
+  const handleOptionChange = (index: number, value: string) => {
+    const { id, ...rest } = field;
+    const newOptions = [...(rest.enumOptions ?? [])];
+    newOptions[index] = value;
+    onChangeField(field.id, {
+      ...rest,
+      enumOptions: newOptions,
+    });
+  };
+
+  const handleRemoveOption = (index: number) => {
+    const { id, ...rest } = field;
+    const newOptions = [...(rest.enumOptions ?? [])];
+    newOptions.splice(index, 1);
+    onChangeField(field.id, {
+      ...rest,
+      enumOptions: newOptions,
+    });
+  };
+
+  const handleReferenceLibrariesChange = (selectedLibraryIds: string[]) => {
+    const { id, ...rest } = field;
+    onChangeField(field.id, {
+      ...rest,
+      referenceLibraries: selectedLibraryIds,
+    });
+  };
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -96,6 +147,71 @@ export function FieldItem({
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [showSlashMenu]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      
+      // Check if click is on Ant Design Select dropdown
+      const isSelectDropdown = (target as Element).closest?.('.ant-select-dropdown');
+      if (isSelectDropdown) {
+        return; // Don't close if clicking on Select dropdown
+      }
+      
+      if (
+        configMenuRef.current &&
+        !configMenuRef.current.contains(target) &&
+        configButtonRef.current &&
+        !configButtonRef.current.contains(target)
+      ) {
+        setShowConfigMenu(false);
+      }
+    };
+
+    if (showConfigMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [showConfigMenu]);
+
+  // Load libraries when config menu is opened for reference type
+  useEffect(() => {
+    if (showConfigMenu && field.dataType === 'reference' && projectId) {
+      setLoadingLibraries(true);
+      
+      const loadLibrariesWithFolders = async () => {
+        try {
+          const libs = await listLibraries(supabase, projectId);
+          // Filter out current library
+          const filteredLibs = libs.filter(lib => lib.id !== currentLibraryId);
+          
+          // Load folder names for libraries that have folders
+          const libsWithFolders = await Promise.all(
+            filteredLibs.map(async (lib) => {
+              if (lib.folder_id) {
+                const { data: folder } = await supabase
+                  .from('folders')
+                  .select('name')
+                  .eq('id', lib.folder_id)
+                  .single();
+                return { ...lib, folder_name: folder?.name };
+              }
+              return lib;
+            })
+          );
+          
+          setLibraries(libsWithFolders);
+        } catch (error) {
+          console.error('Failed to load libraries:', error);
+          setLibraries([]);
+        } finally {
+          setLoadingLibraries(false);
+        }
+      };
+      
+      loadLibrariesWithFolders();
+    }
+  }, [showConfigMenu, field.dataType, projectId, currentLibraryId, supabase]);
 
   return (
     <div className={`${styles.fieldItem} ${disabled ? styles.disabled : ''}`}>
@@ -174,9 +290,82 @@ export function FieldItem({
       <div className={styles.fieldActions}>
         {/* Only show configure icon for Reference and Option (enum) data types */}
         {(field.dataType === 'reference' || field.dataType === 'enum') && (
-          <button className={styles.configButton}>
-            <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
-          </button>
+          <div className={styles.configButtonWrapper}>
+            <button 
+              ref={configButtonRef}
+              className={styles.configButton}
+              onClick={() => !disabled && setShowConfigMenu(!showConfigMenu)}
+              disabled={disabled}
+              title="Configure options"
+            >
+              <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+            </button>
+            {showConfigMenu && field.dataType === 'enum' && (
+              <div ref={configMenuRef} className={styles.configMenu}>
+                <div className={styles.configMenuHeader}>
+                  <span>Predefine options</span>
+                  <button 
+                    className={styles.addOptionButton}
+                    onClick={handleAddOption}
+                    title="Add option"
+                  >
+                    +
+                  </button>
+                </div>
+                <div className={styles.optionsList}>
+                  {(field.enumOptions ?? []).map((option, index) => (
+                    <div key={index} className={styles.optionItem}>
+                      <Input
+                        value={option}
+                        onChange={(e) => handleOptionChange(index, e.target.value)}
+                        placeholder={`${index + 1}`}
+                        className={styles.optionInput}
+                      />
+                      <button
+                        className={styles.removeOptionButton}
+                        onClick={() => handleRemoveOption(index)}
+                        title="Remove option"
+                      >
+                        −
+                      </button>
+                    </div>
+                  ))}
+                  {(field.enumOptions ?? []).length === 0 && (
+                    <div className={styles.emptyOptionsMessage}>
+                      Click + to add options
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+            {showConfigMenu && field.dataType === 'reference' && (
+              <div ref={configMenuRef} className={styles.configMenu}>
+                <div className={styles.configMenuHeader}>
+                  <span>Choose libraries</span>
+                </div>
+                <div className={styles.referenceConfig}>
+                  <Select
+                    mode="multiple"
+                    style={{ width: '100%' }}
+                    placeholder="Select libraries to reference"
+                    value={field.referenceLibraries ?? []}
+                    onChange={handleReferenceLibrariesChange}
+                    loading={loadingLibraries}
+                    options={libraries.map((lib) => ({
+                      label: (lib as any).folder_name ? `${lib.name} (${(lib as any).folder_name})` : lib.name,
+                      value: lib.id,
+                    }))}
+                    maxTagCount="responsive"
+                  />
+                  {(field.referenceLibraries ?? []).length === 0 && (
+                    <div className={styles.emptyOptionsMessage}>
+                      Select libraries that this field can reference
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
         )}
         {!isFirst && !isMandatoryNameField && (
           <Button

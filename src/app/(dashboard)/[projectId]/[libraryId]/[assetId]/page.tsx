@@ -11,6 +11,9 @@ import styles from './page.module.css';
 import Image from 'next/image';
 import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
 import predefineLabelConfigIcon from '@/app/assets/images/predefineLabelConfigIcon.svg';
+import { MediaFileUpload } from '@/components/media/MediaFileUpload';
+import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
+import { AssetReferenceSelector } from '@/components/asset/AssetReferenceSelector';
 
 type FieldDef = {
   id: string;
@@ -19,6 +22,7 @@ type FieldDef = {
   label: string;
   data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'media' | 'reference';
   enum_options: string[] | null;
+  reference_libraries: string[] | null;
   required: boolean;
   order_index: number;
 };
@@ -531,7 +535,7 @@ export default function AssetPage() {
                       );
                     }
 
-                                if (f.data_type === 'reference' || f.data_type === 'media') {
+                                if (f.data_type === 'media') {
                                   return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
@@ -556,32 +560,51 @@ export default function AssetPage() {
                                         </div>
                                       </div>                                     
                                       <div className={styles.fieldControl}>
-                                        <div
-                                          className={`${styles.fieldInput} ${
-                                            mode === 'view' ? styles.disabledInput : ''
-                                          }`}
-                                          style={{
-                                            display: 'flex',
-                                            alignItems: 'center',
-                                            gap: '8px',
-                                          }}
-                                        >
-                                          {value ? (
-                                            <>
-                                              <span>{typeof value === 'string' ? value : JSON.stringify(value)}</span>
-                                              <Image src={predefineLabelConfigIcon} alt="Expand" width={16} height={16} />
-                                            </>
-                                          ) : (
-                                            <span style={{ color: '#9ca3af' }}>No value</span>
-                                          )}
-                                        </div>
+                                        <MediaFileUpload
+                                          value={value as MediaFileMetadata | null}
+                                          onChange={(newValue) => handleValueChange(f.id, newValue)}
+                                          disabled={mode === 'view'}
+                                        />
                                       </div>
-                                      {/* Only Reference shows configure icon, not Media */}
-                                      {f.data_type === 'reference' && (
-                                        <button className={styles.configButton} disabled>
-                                          <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
-                                        </button>
-                                      )}
+                                    </div>
+                                  );
+                                }
+
+                                if (f.data_type === 'reference') {
+                                  return (
+                                    <div key={f.id} className={styles.fieldRow}>
+                                      <div className={styles.dragHandle}>
+                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                      </div>
+                                      <div className={styles.fieldMeta}>
+                                        <span className={styles.fieldLabel}>
+                                          {label}
+                                          {f.required && (
+                                            <span className={styles.requiredMark}>*</span>
+                                          )}
+                                        </span>
+                                        <div className={styles.dataTypeTag}>
+                                          <Image
+                                            src={getFieldTypeIcon(f.data_type)}
+                                            alt=""
+                                            width={16}
+                                            height={16}
+                                            className={styles.dataTypeIcon}
+                                          />
+                                          {DATA_TYPE_LABEL[f.data_type]}
+                                        </div>
+                                      </div>                                     
+                                      <div className={styles.fieldControl}>
+                                        <AssetReferenceSelector
+                                          value={value}
+                                          onChange={(newValue) => handleValueChange(f.id, newValue)}
+                                          referenceLibraries={f.reference_libraries ?? []}
+                                          disabled={mode === 'view'}
+                                        />
+                                      </div>
+                                      <button className={styles.configButton} disabled>
+                                        <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+                                      </button>
                                     </div>
                                   );
                                 }

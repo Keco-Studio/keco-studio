@@ -6,6 +6,7 @@ export type FieldConfig = {
   dataType: FieldType;
   required: boolean;
   enumOptions?: string[];
+  referenceLibraries?: string[]; // For reference type: which libraries can be referenced
 };
 
 export type SectionConfig = {
