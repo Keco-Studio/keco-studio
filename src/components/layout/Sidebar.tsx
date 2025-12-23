@@ -561,7 +561,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               <Image
                 src={folderIcon}
                 alt="Folder"
-                width={22}
+                width={24}
                 height={18}
                 className={styles.itemIcon}
               />

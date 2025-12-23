@@ -302,7 +302,7 @@
 .tree :global(.ant-tree-treenode[data-node-key*="library-"]) .ant-tree-node-content-wrapper,
 .tree :global(.ant-tree-treenode[data-node-key*="asset-"]) .ant-tree-node-content-wrapper,
 .tree :global(.ant-tree-treenode[data-node-key*="folder-create-"]) .ant-tree-node-content-wrapper {
-  padding-left: calc(0.75rem + 24px); /* 0.75rem original padding + 24px switcher width */
+  padding-left: calc(0.75rem + 12px); /* 继续减少使图标对齐 */
 }
 
 
@@ -370,7 +370,7 @@
 
 
 .tree :global(.ant-tree-indent-unit) {
-  width: 12px;
+  width: 0px; /* 移除缩进，使子节点与父节点对齐 */
 }
 
 /* Hide expand/collapse icon for library nodes (isLeaf: true) */
