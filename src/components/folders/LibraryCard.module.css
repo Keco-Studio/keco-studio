@@ -55,8 +55,12 @@
 .libraryIconContainer {
   display: flex;
   align-items: center;
+  justify-content: center;
   flex-shrink: 0;
-  height: 20px;
+  width: 40px;
+  height: 40px;
+  background: #FF6CAA;
+  border-radius: 12px;
 }
 
 .libraryIconPart {
