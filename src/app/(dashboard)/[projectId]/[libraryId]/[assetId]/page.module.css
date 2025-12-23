@@ -236,6 +236,17 @@
   font-size: 14px;
 }
 
+/* Hide spinner buttons for number inputs with noSpinner class */
+.noSpinner::-webkit-outer-spin-button,
+.noSpinner::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.noSpinner[type=number] {
+  -moz-appearance: textfield;
+}
+
 .disabledInput {
   background-color: #f3f4f6;
   color: #6b7280;

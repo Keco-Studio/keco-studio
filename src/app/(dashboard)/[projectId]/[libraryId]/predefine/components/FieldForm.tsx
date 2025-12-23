@@ -208,11 +208,8 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
     }, 0);
   };
 
-  const handleDataTypeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === '/') {
-      e.preventDefault();
-      setShowSlashMenu(true);
-    }
+  const handleDataTypeFocus = () => {
+    setShowSlashMenu(true);
   };
 
   const getDataTypeLabel = (value: FieldType) => {
@@ -282,10 +279,10 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
       <div className={styles.dataTypeDisplay}>
         <Input
           ref={dataTypeInputRef}
-          placeholder="/ Slash Action..."
+          placeholder="Click to Select"
           value={dataTypeSelected ? getDataTypeLabel(field.dataType) : ''}
           readOnly
-          onKeyDown={handleDataTypeKeyDown}
+          onFocus={handleDataTypeFocus}
           className={styles.dataTypeInput}
           disabled={disabled}
           prefix={
@@ -301,7 +298,6 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
         />
         {showSlashMenu && (
           <div ref={slashMenuRef} className={styles.slashMenu}>
-            <div className={styles.slashMenuHeader}>Data Type</div>
             {FIELD_TYPE_OPTIONS.map((option) => (
               <div
                 key={option.value}
@@ -351,7 +347,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
                       <Input
                         value={option}
                         onChange={(e) => handleOptionChange(index, e.target.value)}
-                        placeholder={`${index + 1}`}
+                        placeholder="enter new option here"
                         className={styles.optionInput}
                       />
                       <button

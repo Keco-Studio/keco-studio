@@ -13,7 +13,7 @@ import sectionHeaderStyles from './SectionHeader.module.css';
 import predefineExpandIcon from '@/app/assets/images/predefineExpandIcon.svg';
 
 interface NewSectionFormProps {
-  onCancel: () => void;
+  onCancel?: () => void;
   onSave: (section: { name: string; fields: FieldConfig[] }) => Promise<void>;
   saving?: boolean;
   isFirstSection?: boolean;
@@ -152,7 +152,7 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
             </div>
             <div className={sectionHeaderStyles.lineSeparator}></div>
             <div className={sectionHeaderStyles.sectionNameContainer}>
-              <div className={sectionHeaderStyles.dragHandle}>
+              <div className={sectionHeaderStyles.dragHandle} style={{ visibility: 'hidden' }}>
                 <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
               </div>
               <Input

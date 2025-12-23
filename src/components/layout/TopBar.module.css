@@ -103,17 +103,13 @@
   padding: 6px 14px;
   border-radius: 9999px;
   border: none;
-  background-color: #f5f3ff;
+  background-color: #5E00FF14;
   color: #4c1d95;
   font-size: 0.875rem;
   cursor: pointer;
   transition: background-color 0.2s, box-shadow 0.2s;
 }
 
-.topbarPillPrimary {
-  background-color: #ede9fe;
-  box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.3);
-}
 
 .topbarPillButton:hover {
   background-color: #e0e7ff;
@@ -148,7 +144,7 @@
 }
 
 .assetModeButtonActive {
-  background-color: #ede9fe;
+  background-color:  #5E00FF14;
   color: #4c1d95;
 }
 

@@ -265,7 +265,6 @@ export function FieldItem({
           />
           {showSlashMenu && (
             <div ref={slashMenuRef} className={styles.slashMenu}>
-              <div className={styles.slashMenuHeader}>Data Type</div>
               {FIELD_TYPE_OPTIONS.map((option) => (
                 <div
                   key={option.value}
@@ -318,7 +317,7 @@ export function FieldItem({
                       <Input
                         value={option}
                         onChange={(e) => handleOptionChange(index, e.target.value)}
-                        placeholder={`${index + 1}`}
+                        placeholder="enter new option here"
                         className={styles.optionInput}
                       />
                       <button

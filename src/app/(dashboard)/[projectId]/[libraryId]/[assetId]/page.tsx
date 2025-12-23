@@ -219,6 +219,23 @@ export default function AssetPage() {
     setSaveError(null);
     setSaveSuccess(null);
     
+    // Validate int fields before saving
+    for (const f of fieldDefs) {
+      if (f.data_type === 'int') {
+        const raw = values[f.id];
+        if (raw !== '' && raw !== undefined && raw !== null) {
+          const strValue = String(raw).trim();
+          if (strValue !== '') {
+            // Check if value contains decimal point or is not a valid integer
+            if (strValue.includes('.') || !/^-?\d+$/.test(strValue)) {
+              setSaveError(`Field "${f.label}" must be an integer (no decimals allowed). Please enter a valid integer.`);
+              return;
+            }
+          }
+        }
+      }
+    }
+    
     if (isNewAsset) {
       // Create new asset
       const nameValue = assetName.trim();
@@ -528,9 +545,6 @@ export default function AssetPage() {
                             ))}
                           </select>
                                       </div>
-                                      <button className={styles.configButton} disabled>
-                                        <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
-                                      </button>
                                     </div>
                       );
                     }
@@ -602,9 +616,6 @@ export default function AssetPage() {
                                           disabled={mode === 'view'}
                                         />
                                       </div>
-                                      <button className={styles.configButton} disabled>
-                                        <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
-                                      </button>
                                     </div>
                                   );
                                 }
@@ -615,6 +626,11 @@ export default function AssetPage() {
                         : f.data_type === 'date'
                         ? 'date'
                         : 'text';
+                    
+                    // Add class to hide spinner for int type
+                    const inputClassName = f.data_type === 'int' 
+                      ? `${styles.fieldInput} ${styles.noSpinner} ${mode === 'view' ? styles.disabledInput : ''}`
+                      : `${styles.fieldInput} ${mode === 'view' ? styles.disabledInput : ''}`;
 
                     return (
                                   <div key={f.id} className={styles.fieldRow}>
@@ -650,9 +666,7 @@ export default function AssetPage() {
                                                 handleValueChange(f.id, e.target.value)
                                             : undefined
                                         }
-                                        className={`${styles.fieldInput} ${
-                                          mode === 'view' ? styles.disabledInput : ''
-                                        }`}
+                                        className={inputClassName}
                           placeholder={f.label}
                         />
                                     </div>

@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect, useCallback } from 'react';
 import { z } from 'zod';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useParams } from 'next/navigation';
-import { Tabs, Button, message, ConfigProvider } from 'antd';
+import { Tabs, Button, message, ConfigProvider, Input } from 'antd';
 import type { TabsProps } from 'antd/es/tabs';
 import Image from 'next/image';
 import predefineLabelAddIcon from '@/app/assets/images/predefineLabelAddIcon.svg';
@@ -31,7 +31,7 @@ export default function PredefinePage() {
   const params = useParams();
   const libraryId = params?.libraryId as string | undefined;
 
-  const { sections, setSections, reload: reloadSections } = useSchemaData({
+  const { sections, setSections, loading: sectionsLoading, reload: reloadSections } = useSchemaData({
     libraryId,
     supabase,
   });
@@ -44,6 +44,10 @@ export default function PredefinePage() {
   const [loadingAfterSave, setLoadingAfterSave] = useState(false);
   // Track pending field for each section (field in FieldForm that hasn't been submitted yet)
   const [pendingFields, setPendingFields] = useState<Map<string, Omit<FieldConfig, 'id'> | null>>(new Map());
+  // Track temporary section name edits (only applied on save)
+  const [tempSectionNames, setTempSectionNames] = useState<Map<string, string>>(new Map());
+  // Track if we've already checked for auto-enter new section mode (to avoid re-triggering)
+  const [autoEnterChecked, setAutoEnterChecked] = useState(false);
 
   const activeSection = useMemo(
     () => sections.find((s) => s.id === activeSectionId) || null,
@@ -69,16 +73,35 @@ export default function PredefinePage() {
 
   // Set first section as active when sections load or when activeSectionId becomes invalid
   useEffect(() => {
+    // Only update active section after loading is complete
+    if (sectionsLoading) return;
+    
     if (sections.length > 0) {
       // If no active section or active section no longer exists, set first section as active
       if (!activeSectionId || !sections.find((s) => s.id === activeSectionId)) {
         setActiveSectionId(sections[0].id);
       }
+      // If we're in creating mode but sections now exist, exit creating mode
+      if (isCreatingNewSection) {
+        setIsCreatingNewSection(false);
+      }
     } else {
       // If no sections, clear activeSectionId
       setActiveSectionId(null);
     }
-  }, [sections, activeSectionId]);
+  }, [sections, activeSectionId, sectionsLoading, isCreatingNewSection]);
+
+  // Auto-enter new section creation mode when predefine template is empty (only after data is loaded)
+  useEffect(() => {
+    // Only check once after loading completes and we haven't checked yet
+    if (!sectionsLoading && !autoEnterChecked) {
+      setAutoEnterChecked(true);
+      // If no sections exist, auto-enter new section creation mode
+      if (sections.length === 0) {
+        setIsCreatingNewSection(true);
+      }
+    }
+  }, [sectionsLoading, sections.length, autoEnterChecked]);
 
   const startCreatingNewSection = useCallback(() => {
     setIsCreatingNewSection(true);
@@ -171,16 +194,24 @@ export default function PredefinePage() {
     }
 
     // Check if there are any pending fields and add them to their respective sections
+    // Also apply temporary section name changes
     const finalSections = sectionsToSave.map((section) => {
       const pendingField = pendingFields.get(section.id);
-      if (pendingField && pendingField.label.trim()) {
-        // Add the pending field to this section
-        return {
-          ...section,
-          fields: [...section.fields, { id: uid(), ...pendingField }],
-        };
+      const tempName = tempSectionNames.get(section.id);
+      
+      let updatedSection = { ...section };
+      
+      // Apply temp section name if exists
+      if (tempName !== undefined) {
+        updatedSection.name = tempName;
       }
-      return section;
+      
+      // Add pending field if exists
+      if (pendingField && pendingField.label.trim()) {
+        updatedSection.fields = [...updatedSection.fields, { id: uid(), ...pendingField }];
+      }
+      
+      return updatedSection;
     });
 
     // Validate all sections
@@ -209,8 +240,9 @@ export default function PredefinePage() {
 
       message.success('Saved successfully, loading...');
 
-      // Clear pending fields after successful save
+      // Clear pending fields and temp section names after successful save
       setPendingFields(new Map());
+      setTempSectionNames(new Map());
 
       // If creating new section, exit creation mode and reload sections
       if (isCreatingNewSection) {
@@ -233,7 +265,7 @@ export default function PredefinePage() {
     } finally {
       setSaving(false);
     }
-  }, [sections, libraryId, isCreatingNewSection, reloadSections, supabase, pendingFields]);
+  }, [sections, libraryId, isCreatingNewSection, reloadSections, supabase, pendingFields, tempSectionNames]);
 
   // Broadcast predefine UI state (e.g. whether creating a new section) to TopBar
   useEffect(() => {
@@ -357,14 +389,23 @@ export default function PredefinePage() {
               </div>
               <div className={sectionHeaderStyles.lineSeparator}></div>
               <div className={sectionHeaderStyles.sectionNameContainer}>
-                <div className={sectionHeaderStyles.dragHandle}>
+                <div className={sectionHeaderStyles.dragHandle} style={{ visibility: 'hidden' }}>
                   <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
                 </div>
-                {section.name ? (
-                  <span className={sectionHeaderStyles.sectionNameDisplay}>{section.name}</span>
-                ) : (
-                  <span className={sectionHeaderStyles.noSectionSelected}>No section selected</span>
-                )}
+                <Input
+                  value={tempSectionNames.get(section.id) ?? section.name}
+                  onChange={(e) => {
+                    const newName = e.target.value;
+                    setTempSectionNames((prev) => {
+                      const newMap = new Map(prev);
+                      newMap.set(section.id, newName);
+                      return newMap;
+                    });
+                  }}
+                  className={sectionHeaderStyles.sectionNameInput}
+                  placeholder="section name"
+                  disabled={saving}
+                />
               </div>
             </div>
           </div>
@@ -403,17 +444,18 @@ export default function PredefinePage() {
 
   const tabItems: TabsProps['items'] = [...baseTabItems];
 
-  if (sections.length > 0 && isCreatingNewSection) {
+  // Add "New Section" tab when creating new section
+  if (isCreatingNewSection) {
     tabItems.push({
       key: NEW_SECTION_TAB_KEY,
-      label: 'New section',
+      label: 'New Section',
       children: (
         <div className={styles.tabContent}>
           <NewSectionForm
-            onCancel={cancelCreatingNewSection}
+            onCancel={sections.length > 0 ? cancelCreatingNewSection : undefined}
             onSave={handleSaveNewSection}
             saving={saving}
-            isFirstSection={false}
+            isFirstSection={sections.length === 0}
           />
         </div>
       ),
@@ -464,7 +506,7 @@ export default function PredefinePage() {
 
           <>
             <div className={styles.tabsContainer}>
-              {sections.length > 0 ? (
+              {(sections.length > 0 || isCreatingNewSection) && (
                 <>
                   <Tabs
                     activeKey={
@@ -482,56 +524,18 @@ export default function PredefinePage() {
                     }}
                     items={tabItems}
                   />
-                  <Button
-                    type="primary"
-                    icon={<Image src={predefineLabelAddIcon} alt="Add" width={20} height={20} />}
-                    onClick={startCreatingNewSection}
-                    className={styles.addSectionButton}
-                  >
-                    Add Section
-                  </Button>
+                  {sections.length > 0 && (
+                    <button
+                      onClick={startCreatingNewSection}
+                      className={styles.addSectionButton}
+                    >
+                      <Image src={predefineLabelAddIcon} alt="Add" width={20} height={20} />
+                      Add Section
+                    </button>
+                  )}
                 </>
-              ) : isCreatingNewSection ? (
-                <NewSectionForm
-                  onCancel={cancelCreatingNewSection}
-                  onSave={handleSaveNewSection}
-                  saving={saving}
-                  isFirstSection={sections.length === 0}
-                />
-              ) : (
-                <div className={styles.emptySectionsContainer}>
-                  <div className={styles.emptySectionsMessage}>
-                    No sections yet. Add a section to get started.
-                  </div>
-                  <Button
-                    type="primary"
-                    icon={<Image src={predefineLabelAddIcon} alt="Add" width={20} height={20} />}
-                    onClick={startCreatingNewSection}
-                    className={styles.saveButton}
-                  >
-                    Add Section
-                  </Button>
-                </div>
               )}
             </div>
-
-            {/* {sections.length > 0 && (
-              <div>
-                {activeSectionId && !isCreatingNewSection && (
-                  <div className={styles.saveButtonContainer}>
-                    <Button
-                      type="primary"
-                      size="large"
-                      onClick={() => saveSchema()}
-                      loading={saving}
-                      className={styles.saveButton}
-                    >
-                      {saving ? 'Saving...' : 'Save Schema'}
-                    </Button>
-                  </div>
-                )}
-              </div>
-            )} */}
           </>
         </div>
       </div>
