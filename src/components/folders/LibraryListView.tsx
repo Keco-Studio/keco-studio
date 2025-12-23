@@ -9,8 +9,12 @@ import moreOptionsIcon from "@/app/assets/images/moreOptionsIcon.svg";
 import { LibraryCardMenu } from './LibraryCardMenu';
 import styles from './LibraryListView.module.css';
 
+type LibraryWithAssetCount = Library & {
+  assetCount?: number;
+};
+
 type LibraryListViewProps = {
-  libraries: Library[];
+  libraries: LibraryWithAssetCount[];
   projectId: string;
   onLibraryClick?: (libraryId: string) => void;
   onSettingsClick?: (libraryId: string, e: React.MouseEvent) => void;
@@ -114,7 +118,9 @@ export function LibraryListView({
                   </div>
                 </td>
                 <td className={styles.cell}>
-                  <span className={styles.assetsText}>0 assets</span>
+                  <span className={styles.assetsText}>
+                    {library.assetCount ?? 0} assets
+                  </span>
                 </td>
                 <td className={styles.cell}>
                   <span className={styles.dateText}>{formatDate(library.created_at)}</span>

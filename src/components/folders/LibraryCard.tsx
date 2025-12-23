@@ -14,6 +14,7 @@ import styles from './LibraryCard.module.css';
 type LibraryCardProps = {
   library: Library;
   projectId: string;
+  assetCount?: number;
   onSettingsClick?: (libraryId: string, e: React.MouseEvent) => void;
   onMoreClick?: (libraryId: string, e: React.MouseEvent) => void;
   onClick?: (libraryId: string) => void;
@@ -28,7 +29,8 @@ type LibraryCardProps = {
 
 export function LibraryCard({ 
   library, 
-  projectId, 
+  projectId,
+  assetCount = 0,
   onSettingsClick,
   onMoreClick,
   onClick,
@@ -105,7 +107,10 @@ export function LibraryCard({
                 className={styles.libraryIconPart}
               />
             </div>
-            <span className={styles.libraryName}>{library.name}</span>
+            <div className={styles.libraryNameContainer}>
+              <span className={styles.libraryName}>{library.name}</span>
+              <span className={styles.assetCount}>{assetCount} assets</span>
+            </div>
           </div>
           <div className={styles.cardActions}>
             <button

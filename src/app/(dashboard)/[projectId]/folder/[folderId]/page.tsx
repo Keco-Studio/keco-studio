@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getFolder, Folder } from '@/lib/services/folderService';
-import { listLibraries, Library } from '@/lib/services/libraryService';
+import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
 import { LibraryCard } from '@/components/folders/LibraryCard';
 import { LibraryListView } from '@/components/folders/LibraryListView';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
@@ -28,6 +28,7 @@ export default function FolderPage() {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [assetCounts, setAssetCounts] = useState<Record<string, number>>({});
 
   const fetchData = useCallback(async () => {
     if (!projectId || !folderId) return;
@@ -58,6 +59,18 @@ export default function FolderPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Fetch asset counts when libraries change
+  useEffect(() => {
+    async function fetchAssetCounts() {
+      if (libraries.length > 0) {
+        const libraryIds = libraries.map(lib => lib.id);
+        const counts = await getLibrariesAssetCounts(supabase, libraryIds);
+        setAssetCounts(counts);
+      }
+    }
+    fetchAssetCounts();
+  }, [libraries, supabase]);
 
   // Listen for library creation/deletion events to refresh the list
   useEffect(() => {
@@ -227,6 +240,7 @@ export default function FolderPage() {
               key={library.id}
               library={library}
               projectId={projectId}
+              assetCount={assetCounts[library.id] || 0}
               onClick={handleLibraryClick}
               onSettingsClick={handleLibrarySettingsClick}
               onMoreClick={handleLibraryMoreClick}
@@ -242,7 +256,10 @@ export default function FolderPage() {
         </div>
       ) : (
         <LibraryListView
-          libraries={libraries}
+          libraries={libraries.map(lib => ({
+            ...lib,
+            assetCount: assetCounts[lib.id] || 0
+          }))}
           projectId={projectId}
           onLibraryClick={handleLibraryClick}
           onSettingsClick={handleLibrarySettingsClick}

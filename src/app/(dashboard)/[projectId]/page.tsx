@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject, Project } from '@/lib/services/projectService';
 import { listFolders, Folder } from '@/lib/services/folderService';
-import { listLibraries, Library } from '@/lib/services/libraryService';
+import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
 import Image from 'next/image';
 import styles from './page.module.css';
@@ -28,6 +28,7 @@ export default function ProjectPage() {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [assetCounts, setAssetCounts] = useState<Record<string, number>>({}); 
 
   const fetchData = useCallback(async () => {
     if (!projectId) return;
@@ -94,6 +95,19 @@ export default function ProjectPage() {
       window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
     };
   }, [fetchData, projectId]);
+
+  
+  useEffect(() => {
+    async function fetchAssetCounts() {
+      if (libraries.length > 0) {
+        const libraryIds = libraries.map(lib => lib.id);
+        const counts = await getLibrariesAssetCounts(supabase, libraryIds);
+        setAssetCounts(counts);
+      }
+    }
+    fetchAssetCounts();
+  }, [libraries, supabase]);
+
 
   const handleFolderClick = (folderId: string) => {
     router.push(`/${projectId}/folder/${folderId}`);
@@ -221,6 +235,7 @@ export default function ProjectPage() {
               key={library.id}
               library={library}
               projectId={projectId}
+              assetCount={assetCounts[library.id] || 0} 
               onClick={handleLibraryClick}
               onSettingsClick={handleLibrarySettingsClick}
               onMoreClick={handleLibraryMoreClick}
@@ -236,7 +251,10 @@ export default function ProjectPage() {
         </div>
       ) : (
         <LibraryListView
-          libraries={libraries}
+          libraries={libraries.map(lib => ({
+            ...lib,
+            assetCount: assetCounts[lib.id] || 0
+          }))}
           projectId={projectId}
           onLibraryClick={handleLibraryClick}
           onSettingsClick={handleLibrarySettingsClick}

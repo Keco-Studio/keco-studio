@@ -236,3 +236,48 @@ export async function checkLibraryNameExists(
   return (data && data.length > 0) || false;
 }
 
+
+export async function getLibraryAssetCount(
+  supabase: SupabaseClient,
+  libraryId: string
+): Promise<number> {
+  const { count, error } = await supabase
+    .from('library_assets')
+    .select('*', { count: 'exact', head: true })
+    .eq('library_id', libraryId);
+
+  if (error) {
+    console.error('Error fetching asset count:', error);
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
+
+export async function getLibrariesAssetCounts(
+  supabase: SupabaseClient,
+  libraryIds: string[]
+): Promise<Record<string, number>> {
+  if (libraryIds.length === 0) return {};
+
+  const { data, error } = await supabase
+    .from('library_assets')
+    .select('library_id')
+    .in('library_id', libraryIds);
+
+  if (error) {
+    console.error('Error fetching asset counts:', error);
+    return {};
+  }
+
+
+  const counts: Record<string, number> = {};
+  libraryIds.forEach(id => counts[id] = 0);
+  
+  data?.forEach((row: { library_id: string }) => {
+    counts[row.library_id] = (counts[row.library_id] || 0) + 1;
+  });
+
+  return counts;
+}
