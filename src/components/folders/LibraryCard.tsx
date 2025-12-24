@@ -4,8 +4,7 @@ import { useState, useRef } from 'react';
 import Image from 'next/image';
 import { Tooltip } from 'antd';
 import { Library } from '@/lib/services/libraryService';
-import libraryIconLeft from "@/app/assets/images/libraryIconLeft.svg";
-import libraryIconRight from "@/app/assets/images/libraryIconRight.svg";
+import libraryCardIcon from "@/app/assets/images/LibraryCardIcon.svg";
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
 import moreOptionsIcon from "@/app/assets/images/moreOptionsIcon.svg";
 import tableThumbnail from "@/app/assets/images/tableThumbnail.svg";
@@ -94,18 +93,10 @@ export function LibraryCard({
           <div className={styles.libraryInfo}>
             <div className={styles.libraryIconContainer}>
               <Image
-                src={libraryIconLeft}
-                alt=""
-                width={12}
-                height={20}
-                className={styles.libraryIconPart}
-              />
-              <Image
-                src={libraryIconRight}
-                alt=""
-                width={12}
-                height={20}
-                className={styles.libraryIconPart}
+                src={libraryCardIcon}
+                alt="Library"
+                width={24}
+                height={24}
               />
             </div>
             <div className={styles.libraryNameContainer}>
