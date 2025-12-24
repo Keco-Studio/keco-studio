@@ -33,6 +33,10 @@ export function LibraryAssetsTable({
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [newRowData, setNewRowData] = useState<Record<string, any>>({});
   const [isSaving, setIsSaving] = useState(false);
+  
+  // Edit mode state: track which row is being edited and its data
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [editingRowData, setEditingRowData] = useState<Record<string, any>>({});
 
   const hasSections = sections.length > 0;
   const hasProperties = properties.length > 0;
@@ -65,9 +69,50 @@ export function LibraryAssetsTable({
     setNewRowData({});
   };
 
-  // Handle input change
+  // Handle input change for new row
   const handleInputChange = (propertyId: string, value: any) => {
     setNewRowData((prev) => ({ ...prev, [propertyId]: value }));
+  };
+
+  // Handle input change for editing row
+  const handleEditInputChange = (propertyId: string, value: any) => {
+    setEditingRowData((prev) => ({ ...prev, [propertyId]: value }));
+  };
+
+  // Handle edit row
+  const handleEditRow = (row: AssetRow) => {
+    // Prevent editing if adding a new row
+    if (isAddingRow) {
+      alert('Please finish adding the new asset first.');
+      return;
+    }
+    setEditingRowId(row.id);
+    // Initialize editing data with current values
+    setEditingRowData(row.propertyValues);
+  };
+
+  // Handle save edited row
+  const handleSaveEditedRow = async (assetId: string, assetName: string) => {
+    if (!onUpdateAsset) return;
+
+    setIsSaving(true);
+    try {
+      await onUpdateAsset(assetId, assetName, editingRowData);
+      // Reset editing state
+      setEditingRowId(null);
+      setEditingRowData({});
+    } catch (error) {
+      console.error('Failed to update asset:', error);
+      alert('Failed to update asset. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle cancel editing
+  const handleCancelEditing = () => {
+    setEditingRowId(null);
+    setEditingRowData({});
   };
 
   if (!hasProperties) {
@@ -167,43 +212,105 @@ export function LibraryAssetsTable({
           </tr>
         </thead>
         <tbody className={styles.body}>
-          {rows.map((row, index) => (
-            <tr
-              key={row.id}
-              className={styles.row}
-            >
-              <td className={styles.numberCell}>{index + 1}</td>
-              {orderedProperties.map((property) => {
-                const value = row.propertyValues[property.key];
-                const display =
-                  value === null || value === undefined || value === ''
-                    ? null
-                    : String(value);
+          {rows.map((row, index) => {
+            const isEditing = editingRowId === row.id;
 
-                return (
-                  <td
-                    key={property.id}
-                    className={styles.cell}
-                  >
-                    {display ? (
-                      display
-                    ) : (
-                      <span className={styles.placeholderValue}>—</span>
-                    )}
-                  </td>
-                );
-              })}
-              <td className={styles.actionsCell}>
-                <button
-                  className={styles.actionButton}
-                  onClick={() => onDeleteAsset && onDeleteAsset(row.id)}
-                  title="Delete asset"
-                >
-                  ×
-                </button>
-              </td>
-            </tr>
-          ))}
+            return (
+              <tr
+                key={row.id}
+                className={isEditing ? styles.editRow : styles.row}
+              >
+                <td className={styles.numberCell}>{index + 1}</td>
+                {orderedProperties.map((property) => {
+                  if (isEditing) {
+                    // Editing mode: show input
+                    const editValue = editingRowData[property.key] !== undefined 
+                      ? editingRowData[property.key] 
+                      : row.propertyValues[property.key] || '';
+                    
+                    return (
+                      <td key={property.id} className={styles.editCell}>
+                        <Input
+                          value={editValue}
+                          onChange={(e) => handleEditInputChange(property.key, e.target.value)}
+                          placeholder={`Enter ${property.name.toLowerCase()}`}
+                          className={styles.editInput}
+                          disabled={isSaving}
+                        />
+                      </td>
+                    );
+                  } else {
+                    // View mode: show text
+                    const value = row.propertyValues[property.key];
+                    const display =
+                      value === null || value === undefined || value === ''
+                        ? null
+                        : String(value);
+
+                    return (
+                      <td
+                        key={property.id}
+                        className={styles.cell}
+                      >
+                        {display ? (
+                          display
+                        ) : (
+                          <span className={styles.placeholderValue}>—</span>
+                        )}
+                      </td>
+                    );
+                  }
+                })}
+                <td className={styles.actionsCell}>
+                  {isEditing ? (
+                    // Editing mode: show save/cancel buttons
+                    <div className={styles.editActions}>
+                      <Button
+                        type="primary"
+                        size="small"
+                        onClick={() => {
+                          // Get asset name from first property
+                          const assetName = editingRowData[orderedProperties[0]?.key] || row.name || 'Untitled';
+                          handleSaveEditedRow(row.id, assetName);
+                        }}
+                        loading={isSaving}
+                        disabled={isSaving}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={handleCancelEditing}
+                        disabled={isSaving}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    // View mode: show edit/delete buttons
+                    <div className={styles.viewActions}>
+                      <button
+                        className={styles.actionButton}
+                        onClick={() => handleEditRow(row)}
+                        title="Edit asset"
+                        disabled={editingRowId !== null || isAddingRow}
+                      >
+                        ✎
+                      </button>
+                      <button
+                        className={`${styles.actionButton} ${styles.deleteButton}`}
+                        onClick={() => onDeleteAsset && onDeleteAsset(row.id)}
+                        title="Delete asset"
+                        disabled={editingRowId !== null || isAddingRow}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
           
           {/* Add new asset row */}
           {isAddingRow ? (
@@ -216,6 +323,7 @@ export function LibraryAssetsTable({
                     onChange={(e) => handleInputChange(property.id, e.target.value)}
                     placeholder={`Enter ${property.name.toLowerCase()}`}
                     className={styles.editInput}
+                    disabled={isSaving}
                   />
                 </td>
               ))}
@@ -245,7 +353,15 @@ export function LibraryAssetsTable({
               <td colSpan={totalColumns}>
                 <button
                   className={styles.addButton}
-                  onClick={() => setIsAddingRow(true)}
+                  onClick={() => {
+                    // Prevent adding if editing a row
+                    if (editingRowId) {
+                      alert('Please finish editing the current asset first.');
+                      return;
+                    }
+                    setIsAddingRow(true);
+                  }}
+                  disabled={editingRowId !== null}
                 >
                   + Add New Asset
                 </button>
