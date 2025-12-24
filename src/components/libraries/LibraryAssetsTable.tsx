@@ -448,19 +448,6 @@ export function LibraryAssetsTable({
         <Button key="close" onClick={handleCloseModal}>
           Close
         </Button>,
-        <Button
-          key="open"
-          type="primary"
-          onClick={() => {
-            if (selectedAsset) {
-              const projectId = params.projectId as string;
-              const libraryId = params.libraryId as string;
-              router.push(`/${projectId}/${libraryId}/${selectedAsset.id}`);
-            }
-          }}
-        >
-          Open Full Page
-        </Button>,
       ]}
       width={700}
       className={styles.assetDetailModal}
