@@ -1,7 +1,3 @@
-下面是你提供内容的**完整英文版 README.md**，结构、编号和语义与原中文版本严格对应，适合直接作为项目的英文说明文件使用。
-
----
-
 # Keco Studio Local Deployment Guide (macOS / Windows)
 
 This document describes how to locally deploy and run the `keco-studio` project on **macOS or Windows**.
