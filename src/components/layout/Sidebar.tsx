@@ -1,8 +1,7 @@
 'use client';
 
 import projectIcon from "@/app/assets/images/projectIcon.svg";
-import libraryIconLeft from "@/app/assets/images/libraryIconLeft.svg";
-import libraryIconRight from "@/app/assets/images/libraryIconRight.svg";
+import libraryBookIcon from "@/app/assets/images/LibraryBookIcon.svg";
 import loginProductIcon from "@/app/assets/images/loginProductIcon.svg";
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
 import folderExpandIcon from "@/app/assets/images/folderExpandIcon.svg";
@@ -13,6 +12,7 @@ import plusVertical from "@/app/assets/images/plusVertical.svg";
 import createProjectIcon from "@/app/assets/images/createProjectIcon.svg";
 import addProjectIcon from "@/app/assets/images/addProjectIcon.svg";
 import searchIcon from "@/app/assets/images/searchIcon.svg";
+import projectRightIcon from "@/app/assets/images/ProjectRightIcon.svg";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -442,18 +442,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 <div className={styles.itemMain}>
                   <div className={styles.libraryIconContainer}>
                     <Image
-                      src={libraryIconLeft}
-                      alt=""
-                      width={12}
-                      height={20}
-                      className={styles.libraryIconPart}
-                    />
-                    <Image
-                      src={libraryIconRight}
-                      alt=""
-                      width={12}
-                      height={20}
-                      className={styles.libraryIconPart}
+                      src={libraryBookIcon}
+                      alt="Library"
+                      width={24}
+                      height={24}
                     />
                   </div>
                   <span className={styles.itemText}>{lib.name}</span>
@@ -601,18 +593,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             <div className={styles.itemMain}>
               <div className={styles.libraryIconContainer}>
                 <Image
-                  src={libraryIconLeft}
-                  alt=""
-                  width={12}
-                  height={20}
-                  className={styles.libraryIconPart}
-                />
-                <Image
-                  src={libraryIconRight}
-                  alt=""
-                  width={12}
-                  height={20}
-                  className={styles.libraryIconPart}
+                  src={libraryBookIcon}
+                  alt="Library"
+                  width={24}
+                  height={24}
                 />
               </div>
               <span className={styles.itemText}>{lib.name}</span>
@@ -981,7 +965,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                         className={styles.infoIconWrapper}
                         onClick={(e) => e.stopPropagation()}
                       >
-                        <span className={styles.infoIcon}>i</span>
+                        <Image
+                          src={projectRightIcon}
+                          alt="Info"
+                          width={24}
+                          height={24}
+                        />
                       </div>
                     </Tooltip>
                   )}

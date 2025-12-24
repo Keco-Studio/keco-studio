@@ -57,15 +57,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
-  background: #FF6CAA;
-  border-radius: 12px;
-}
-
-.libraryIconPart {
-  display: block;
-  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
 }
 
 .libraryNameContainer {
