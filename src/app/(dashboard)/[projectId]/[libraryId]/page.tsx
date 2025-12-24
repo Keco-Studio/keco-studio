@@ -16,6 +16,9 @@ import {
   getLibraryAssetsWithProperties,
   getLibrarySchema,
   getLibrarySummary,
+  createAsset,
+  updateAsset,
+  deleteAsset,
 } from '@/lib/services/libraryAssetsService';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import styles from './page.module.css';
@@ -189,6 +192,33 @@ export default function LibraryPage() {
     }
   };
 
+  // Callback for saving new asset from table
+  const handleSaveAssetFromTable = async (assetName: string, propertyValues: Record<string, any>) => {
+    await createAsset(supabase, libraryId, assetName, propertyValues);
+    // Refresh asset rows
+    const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+    setAssetRows(rows);
+  };
+
+  // Callback for updating asset from table
+  const handleUpdateAssetFromTable = async (assetId: string, assetName: string, propertyValues: Record<string, any>) => {
+    await updateAsset(supabase, assetId, assetName, propertyValues);
+    // Refresh asset rows
+    const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+    setAssetRows(rows);
+  };
+
+  // Callback for deleting asset from table
+  const handleDeleteAssetFromTable = async (assetId: string) => {
+    if (!confirm('Are you sure you want to delete this asset?')) {
+      return;
+    }
+    await deleteAsset(supabase, assetId);
+    // Refresh asset rows
+    const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+    setAssetRows(rows);
+  };
+
   if (loading) {
     return (
       <div className={styles.loadingContainer}>
@@ -242,6 +272,9 @@ export default function LibraryPage() {
         sections={tableSections}
         properties={tableProperties}
         rows={assetRows}
+        onSaveAsset={handleSaveAssetFromTable}
+        onUpdateAsset={handleUpdateAssetFromTable}
+        onDeleteAsset={handleDeleteAssetFromTable}
       />
 
       {saveError && (

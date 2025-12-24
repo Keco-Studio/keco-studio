@@ -221,3 +221,104 @@ export async function getLibraryAssetsWithProperties(
   return Array.from(rowsByAssetId.values());
 }
 
+// T010: Create a new asset with property values
+export async function createAsset(
+  supabase: SupabaseClient,
+  libraryId: string,
+  assetName: string,
+  propertyValues: Record<string, any>
+): Promise<string> {
+  // Step 1: Insert the asset
+  const { data: assetData, error: assetError } = await supabase
+    .from('library_assets')
+    .insert({
+      library_id: libraryId,
+      name: assetName,
+    })
+    .select('id')
+    .single();
+
+  if (assetError) {
+    throw assetError;
+  }
+
+  const assetId = assetData.id;
+
+  // Step 2: Insert property values
+  if (Object.keys(propertyValues).length > 0) {
+    const valueRows = Object.entries(propertyValues)
+      .filter(([_, value]) => value !== null && value !== undefined && value !== '')
+      .map(([fieldId, value]) => ({
+        asset_id: assetId,
+        field_id: fieldId,
+        value_json: value,
+      }));
+
+    if (valueRows.length > 0) {
+      const { error: valuesError } = await supabase
+        .from('library_asset_values')
+        .insert(valueRows);
+
+      if (valuesError) {
+        // Rollback: delete the asset if values insertion fails
+        await supabase.from('library_assets').delete().eq('id', assetId);
+        throw valuesError;
+      }
+    }
+  }
+
+  return assetId;
+}
+
+// T011: Update an existing asset and its property values
+export async function updateAsset(
+  supabase: SupabaseClient,
+  assetId: string,
+  assetName: string,
+  propertyValues: Record<string, any>
+): Promise<void> {
+  // Step 1: Update the asset name
+  const { error: assetError } = await supabase
+    .from('library_assets')
+    .update({ name: assetName })
+    .eq('id', assetId);
+
+  if (assetError) {
+    throw assetError;
+  }
+
+  // Step 2: Upsert property values
+  if (Object.keys(propertyValues).length > 0) {
+    const valueRows = Object.entries(propertyValues).map(([fieldId, value]) => ({
+      asset_id: assetId,
+      field_id: fieldId,
+      value_json: value,
+    }));
+
+    const { error: valuesError } = await supabase
+      .from('library_asset_values')
+      .upsert(valueRows, {
+        onConflict: 'asset_id,field_id',
+      });
+
+    if (valuesError) {
+      throw valuesError;
+    }
+  }
+}
+
+// T012: Delete an asset (values will be cascade deleted)
+export async function deleteAsset(
+  supabase: SupabaseClient,
+  assetId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from('library_assets')
+    .delete()
+    .eq('id', assetId);
+
+  if (error) {
+    throw error;
+  }
+}
+
