@@ -267,7 +267,7 @@ export function LibraryAssetsTable({
                       </td>
                     );
                   } else {
-                    // View mode: show text
+                    // View mode: show text with double-click to edit
                     const value = row.propertyValues[property.key];
                     const display =
                       value === null || value === undefined || value === ''
@@ -278,6 +278,15 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         className={styles.cell}
+                        onDoubleClick={() => {
+                          // Prevent editing if already adding a new row
+                          if (isAddingRow) {
+                            alert('Please finish adding the new asset first.');
+                            return;
+                          }
+                          handleEditRow(row);
+                        }}
+                        title="Double-click to edit"
                       >
                         {isNameField ? (
                           // Name field: show text + view detail button
@@ -335,16 +344,8 @@ export function LibraryAssetsTable({
                       </Button>
                     </div>
                   ) : (
-                    // View mode: show edit/delete buttons
+                    // View mode: show delete button only
                     <div className={styles.viewActions}>
-                      <button
-                        className={styles.actionButton}
-                        onClick={() => handleEditRow(row)}
-                        title="Edit asset"
-                        disabled={editingRowId !== null || isAddingRow}
-                      >
-                        ✎
-                      </button>
                       <button
                         className={`${styles.actionButton} ${styles.deleteButton}`}
                         onClick={() => onDeleteAsset && onDeleteAsset(row.id)}

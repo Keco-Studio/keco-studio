@@ -73,6 +73,12 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.cell:hover {
+  background-color: #f9fafb;
 }
 
 /* Cell content with view button */
