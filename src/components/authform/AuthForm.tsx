@@ -47,6 +47,18 @@ export default function AuthForm() {
     setMode(next);
     setMessage(null);
     setErrorMsg(null);
+    // Reset form states when switching views
+    setRegForm({
+      email: "",
+      username: "",
+      password: "",
+      confirmPassword: "",
+    });
+    setLoginForm({
+      email: "",
+      password: "",
+    });
+    setPasswordError(false);
   };
 
   const updateReg =
@@ -82,7 +94,7 @@ export default function AuthForm() {
         options: { data: { username } },
       });
       if (error) throw error;
-      setMessage("Sign-up succeeded and profiles are synced");
+      setMessage("Sign-up succeeded");
     } catch (err: any) {
       setErrorMsg(err?.message || "Sign-up failed");
     } finally {

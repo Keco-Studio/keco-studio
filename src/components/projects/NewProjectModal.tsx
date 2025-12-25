@@ -81,9 +81,10 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
             <Image src={projectIcon} alt="Project icon" width={52} height={52} />
           </div>
           <div className={styles.nameInputContainer}>
-            <label className={styles.nameLabel}>Project Name</label>
+            <label htmlFor="project-name" className={styles.nameLabel}>Project Name</label>
           <input
-              className={styles.nameInput}
+            id="project-name"
+            className={styles.nameInput}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Enter project name"
@@ -92,14 +93,16 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
         </div>
 
         <div className={styles.notesContainer}>
-          <label className={styles.notesLabel}>
+          <label htmlFor="project-description" className={styles.notesLabel}>
             <span className={styles.notesLabelText}>Add notes for this project</span>
             <span className={styles.notesLabelLimit}> (250 characters limit)</span>
           </label>
           <div className={styles.textareaWrapper}>
             <textarea
+              id="project-description"
+              name="project-description"
               className={styles.textarea}
-            value={description}
+              value={description}
               onChange={(e) => {
                 if (e.target.value.length <= 250) {
                   setDescription(e.target.value);

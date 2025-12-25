@@ -81,8 +81,9 @@ export function NewLibraryModal({ open, projectId, folderId, onClose, onCreated 
 
         <div className={styles.nameContainer}>
           <div className={styles.nameInputContainer}>
-            <label className={styles.nameLabel}>Library Name</label>
+            <label htmlFor="library-name" className={styles.nameLabel}>Library Name</label>
             <input
+              id="library-name"
               className={styles.nameInput}
               value={name}
               onChange={(e) => setName(e.target.value)}
@@ -92,12 +93,14 @@ export function NewLibraryModal({ open, projectId, folderId, onClose, onCreated 
         </div>
 
         <div className={styles.notesContainer}>
-          <label className={styles.notesLabel}>
+          <label htmlFor="library-description" className={styles.notesLabel}>
             <span className={styles.notesLabelText}>Add notes for this Library</span>
             <span className={styles.notesLabelLimit}> (250 characters limit)</span>
           </label>
           <div className={styles.textareaWrapper}>
             <textarea
+              id="library-description"
+              name="library-description"
               className={styles.textarea}
               value={description}
               onChange={(e) => {
