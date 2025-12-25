@@ -293,7 +293,9 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
                 width={16}
                 height={16}
               />
-            ) : undefined
+            ) : (
+              <span style={{ width: 16, height: 16, display: 'inline-block' }} />
+            )
           }
         />
         {showSlashMenu && (

@@ -16,10 +16,12 @@
 
 .headerRowTop {
   background: #f8fafc;
+  border-bottom: 2px solid #e2e8f0;
 }
 
 .headerRowBottom {
   background: #f9fafb;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .headerCell {
@@ -37,9 +39,21 @@
   text-align: center;
   border-left: 1px solid #e2e8f0;
   border-right: 1px solid #e2e8f0;
-  font-size: 12px;
+  font-size: 14px;
+  font-weight: 700;
   text-transform: uppercase;
-  color: #6b7280;
+  color: #475569;
+  letter-spacing: 0.05em;
+  padding: 14px 16px;
+  background: linear-gradient(to bottom, #f1f5f9, #f8fafc);
+}
+
+.propertyHeaderCell {
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  padding: 12px 16px;
+  border-left: 1px solid #f1f5f9;
 }
 
 .assetHeaderCell {
@@ -52,13 +66,68 @@
 
 .cell {
   padding: 10px 16px;
-  vertical-align: top;
+  vertical-align: middle;
   font-size: 13px;
   line-height: 1.5;
   color: #111827;
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.cell:hover {
+  background-color: #f9fafb;
+}
+
+/* Cell content with view button */
+.cellContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  gap: 8px;
+}
+
+.cellText {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+/* View detail button (only in name field) */
+.viewDetailButton {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s, background-color 0.2s, transform 0.1s;
+}
+
+/* Show button when hovering over the row */
+.row:hover .viewDetailButton {
+  opacity: 1;
+}
+
+/* Button hover effect */
+.viewDetailButton:hover {
+  background-color: #f1f5f9;
+  opacity: 1 !important;
+}
+
+/* Button active effect */
+.viewDetailButton:active {
+  background-color: #e2e8f0;
+  transform: scale(0.95);
 }
 
 .assetCell {
@@ -83,5 +152,239 @@
   background: #f9fafb;
 }
 
+/* Number column styles */
+.numberColumnHeader {
+  width: 60px;
+  text-align: center;
+  background: #f1f5f9;
+  font-weight: 700;
+  color: #64748b;
+  font-size: 13px;
+  vertical-align: middle;
+}
 
+.numberCell {
+  width: 60px;
+  text-align: center;
+  padding: 10px 8px;
+  font-size: 13px;
+  color: #94a3b8;
+  font-weight: 500;
+  background: #fafbfc;
+}
+
+/* Actions column styles */
+.actionsColumnHeader {
+  width: 120px;
+  text-align: center;
+  background: #f1f5f9;
+  font-weight: 700;
+  color: #64748b;
+  font-size: 13px;
+  vertical-align: middle;
+}
+
+.actionsCell {
+  width: 120px;
+  text-align: center;
+  padding: 10px 16px;
+  vertical-align: middle;
+}
+
+.viewActions {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+}
+
+.actionButton {
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: #94a3b8;
+  transition: all 0.2s;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.actionButton:hover {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #3b82f6;
+}
+
+.actionButton.deleteButton:hover {
+  background: #fee2e2;
+  border-color: #fecaca;
+  color: #dc2626;
+}
+
+.actionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  color: #cbd5e1;
+}
+
+.actionButton:disabled:hover {
+  background: none;
+  border-color: #e2e8f0;
+  color: #cbd5e1;
+}
+
+/* Edit row styles */
+.editRow {
+  background: #fffbeb;
+  border-bottom: 1px solid #fde68a;
+}
+
+.editRow:hover {
+  background: #fffbeb;
+}
+
+.editCell {
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+
+.editInput {
+  width: 100%;
+  font-size: 13px;
+}
+
+.editActions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+/* Add row styles */
+.addRow {
+  background: #fafbfc;
+  border-top: 2px solid #e2e8f0;
+}
+
+.addRow:hover {
+  background: #f8fafc;
+}
+
+.addButton {
+  width: 100%;
+  padding: 12px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: #8b5cf6;
+  transition: color 0.2s;
+  text-align: center;
+}
+
+.addButton:hover {
+  color: #7c3aed;
+}
+
+.addButton:active {
+  color: #6d28d9;
+}
+
+.addButton:disabled {
+  color: #cbd5e1;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.addButton:disabled:hover {
+  color: #cbd5e1;
+}
+
+/* Modal styles */
+.assetDetailModal {
+  top: 40px;
+}
+
+.modalTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.modalAssetName {
+  font-size: 16px;
+  font-weight: 500;
+  color: #8b5cf6;
+  padding: 2px 12px;
+  background: #f3e8ff;
+  border-radius: 6px;
+}
+
+.modalContent {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 16px 0;
+}
+
+.modalSection {
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 20px;
+}
+
+.modalSection:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.modalSectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #64748b;
+  letter-spacing: 0.05em;
+  margin: 0 0 16px 0;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #f1f5f9;
+}
+
+.modalFields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+}
+
+.modalField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modalFieldLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: #64748b;
+  text-transform: capitalize;
+}
+
+.modalFieldValue {
+  font-size: 14px;
+  color: #0f172a;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+}
 
