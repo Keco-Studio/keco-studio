@@ -177,6 +177,8 @@
   height: 40px;
   border-radius: 16px;
   background: rgba(255, 0, 94, 0.06);
+  border: none;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -202,6 +204,22 @@
   z-index: 100;
   min-width: 120px;
   overflow: hidden;
+}
+
+.userMenuItem {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 0.875rem;
+  color: #334155;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.userMenuItem:hover {
+  background-color: #f8fafc;
 }
 
 .button {
