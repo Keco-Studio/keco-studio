@@ -308,13 +308,16 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       <div className={styles.right}>
         {renderRightContent()}
         <div className={styles.userContainer} ref={menuRef}>
-          <div
+          <button
             className={styles.userAvatar}
             onClick={() => setShowUserMenu(!showUserMenu)}
+            aria-label="User menu"
+            data-testid="user-menu"
+            type="button"
           >
             {/* Fallback avatar icon */}
             <Image src={homeDefaultUserIcon} alt="User" width={20} height={20} />
-          </div>
+          </button>
           {showUserMenu && (
             <div className={styles.userMenu}>
               <button
