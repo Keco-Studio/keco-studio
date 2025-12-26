@@ -45,4 +45,5 @@ Seeds the remote Supabase database with test users for E2E testing in GitHub Act
 - The script is idempotent: it safely handles existing users and won't create duplicates
 - The `seed-remote.sql` file dynamically gets the `instance_id` from the remote database
 - This is different from `supabase/seed.sql` which uses a hardcoded local instance_id
+- The script automatically resolves hostnames to IPv4 addresses to avoid IPv6 connectivity issues in GitHub Actions
 

@@ -24,6 +24,19 @@ fi
 echo "Seeding remote Supabase database..."
 echo "Using seed file: $SEED_FILE"
 
+# Extract hostname from the connection URL
+DB_HOST=$(echo "$SUPABASE_DB_URL" | sed -E 's|.*@([^:]+):.*|\1|')
+
+# Try to resolve to IPv4 address to avoid IPv6 connectivity issues in GitHub Actions
+if command -v getent > /dev/null; then
+  IPV4_ADDR=$(getent ahostsv4 "$DB_HOST" | head -n1 | awk '{print $1}')
+  if [ -n "$IPV4_ADDR" ]; then
+    echo "Resolved $DB_HOST to IPv4: $IPV4_ADDR"
+    # Replace hostname with IPv4 address in the connection URL
+    SUPABASE_DB_URL=$(echo "$SUPABASE_DB_URL" | sed "s|@$DB_HOST:|@$IPV4_ADDR:|")
+  fi
+fi
+
 # Execute the seed SQL file using psql
 psql "$SUPABASE_DB_URL" -f "$SEED_FILE"
 
