@@ -13,6 +13,9 @@ jobs:
       # If secrets are not set, tests that require real Supabase will be skipped
       NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+      # Database URL for seeding (optional, only needed if you want to seed test users)
+      # Format: postgresql://postgres:[password]@[host]:[port]/postgres
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-node@v4
@@ -20,6 +23,14 @@ jobs:
         node-version: lts/*
     - name: Install dependencies
       run: npm ci
+    - name: Install PostgreSQL client
+      run: sudo apt-get update && sudo apt-get install -y postgresql-client
+    - name: Seed remote database with test users
+      if: env.SUPABASE_DB_URL != ''
+      run: |
+        chmod +x scripts/seed-remote.sh
+        ./scripts/seed-remote.sh
+      continue-on-error: true
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
     - name: Run Playwright tests
