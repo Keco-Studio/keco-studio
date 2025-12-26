@@ -9,8 +9,10 @@ jobs:
     timeout-minutes: 60
     runs-on: ubuntu-latest
     env:
-      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy-key
+      # Use GitHub Secrets for Supabase credentials
+      # If secrets are not set, tests that require real Supabase will be skipped
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-node@v4

@@ -1,16 +1,16 @@
 import { test, expect } from '@playwright/test';
-import { ProjectPage } from '../tests/e2e/pages/project.page';
-import { LibraryPage } from '../tests/e2e/pages/library.page';
-import { PredefinedPage } from '../tests/e2e/pages/predefined.page';
-import { AssetPage } from '../tests/e2e/pages/asset.page';
-import { LoginPage } from '../tests/e2e/pages/login.page';
+import { ProjectPage } from '../pages/project.page';
+import { LibraryPage } from '../pages/library.page';
+import { PredefinedPage } from '../pages/predefined.page';
+import { AssetPage } from '../pages/asset.page';
+import { LoginPage } from '../pages/login.page';
 
-import { projects } from '../tests/e2e/fixures/projects';
-import { libraries } from '../tests/e2e/fixures/libraries';
-import { DEFAULT_RESOURCE_FOLDER, folders } from '../tests/e2e/fixures/folders';
-import { predefinedTemplates } from '../tests/e2e/fixures/predefined';
-import { assets } from '../tests/e2e/fixures/assets';
-import { users } from '../tests/e2e/fixures/users';
+import { projects } from '../fixures/projects';
+import { libraries } from '../fixures/libraries';
+import { DEFAULT_RESOURCE_FOLDER, folders } from '../fixures/folders';
+import { predefinedTemplates } from '../fixures/predefined';
+import { assets } from '../fixures/assets';
+import { users } from '../fixures/users';
 
 /**
  * Happy Path E2E Test
