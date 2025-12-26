@@ -184,6 +184,8 @@ export default function LibraryPage() {
       setSaveSuccess('Asset created');
       setAssetName('');
       setValues({});
+      // Notify Sidebar to refresh assets for this library
+      window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
     } catch (e: any) {
       setSaveError(e?.message || 'Failed to create asset');
     } finally {
@@ -197,6 +199,8 @@ export default function LibraryPage() {
     // Refresh asset rows
     const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
     setAssetRows(rows);
+    // Notify Sidebar to refresh assets for this library
+    window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
   };
 
   // Callback for updating asset from table

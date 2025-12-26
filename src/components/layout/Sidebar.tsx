@@ -258,21 +258,26 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [currentIds.libraryId, fetchAssets]);
 
-  // Listen to assetCreated event to refresh assets list for the library when asset is created
+  // Listen for asset creation/update events to refresh the sidebar
   useEffect(() => {
-    const handleAssetCreated = (event: CustomEvent) => {
-      const { libraryId } = event.detail;
-      if (libraryId) {
-        fetchAssets(libraryId);
+    const handleAssetChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ libraryId: string }>;
+      if (customEvent.detail?.libraryId) {
+        fetchAssets(customEvent.detail.libraryId);
       }
     };
 
-    window.addEventListener('assetCreated' as any, handleAssetCreated as EventListener);
-    
+    window.addEventListener('assetCreated', handleAssetChange);
+    window.addEventListener('assetUpdated', handleAssetChange);
+    window.addEventListener('assetDeleted', handleAssetChange);
+
     return () => {
-      window.removeEventListener('assetCreated' as any, handleAssetCreated as EventListener);
+      window.removeEventListener('assetCreated', handleAssetChange);
+      window.removeEventListener('assetUpdated', handleAssetChange);
+      window.removeEventListener('assetDeleted', handleAssetChange);
     };
   }, [fetchAssets]);
+
 
   // actions
   const handleProjectClick = (projectId: string) => {
@@ -306,6 +311,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         .delete()
         .eq('id', assetId);
       if (error) throw error;
+      // Notify that asset was deleted
+      window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
       await fetchAssets(libraryId);
       
       // Check if currently viewing this asset, if so navigate to library page
@@ -715,7 +722,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     });
     
     return result;
-  }, [folders, libraries, assets, currentIds.projectId, handleLibraryPredefineClick, handleAssetDelete, handleFolderDelete, handleLibraryDelete]);
+  }, [folders, libraries, assets, currentIds.projectId, handleLibraryPredefineClick, handleAssetDelete, handleFolderDelete, handleLibraryDelete, router]);
 
   const selectedKey = useMemo(() => {
     const keys: string[] = [];
