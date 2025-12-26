@@ -4,7 +4,11 @@ import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Input, Select, Avatar, Spin } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
+import Image from 'next/image';
 import { useSupabase } from '@/lib/SupabaseContext';
+import libraryAssetTable4Icon from '@/app/assets/images/LibraryAssetTable4.svg';
+import libraryAssetTable5Icon from '@/app/assets/images/LibraryAssetTable5.svg';
+import libraryAssetTable6Icon from '@/app/assets/images/LibraryAssetTable6.svg';
 import styles from './AssetReferenceModal.module.css';
 
 type Asset = {
@@ -42,6 +46,12 @@ export function AssetReferenceModal({
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
   const [tempSelectedAssetId, setTempSelectedAssetId] = useState<string | null>(value || null);
+  const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
+  const [hoveredAssetDetails, setHoveredAssetDetails] = useState<{
+    name: string;
+    libraryName: string;
+  } | null>(null);
+  const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Load libraries
@@ -166,11 +176,47 @@ export function AssetReferenceModal({
     return colors[index];
   };
 
+  // Load asset details when hovering
+  useEffect(() => {
+    if (!hoveredAssetId) {
+      setHoveredAssetDetails(null);
+      return;
+    }
+
+    const loadAssetDetails = async () => {
+      setLoadingAssetDetails(true);
+      try {
+        const { data, error } = await supabase
+          .from('library_assets')
+          .select('id, name, library_id, libraries(name)')
+          .eq('id', hoveredAssetId)
+          .single();
+
+        if (error) throw error;
+        
+        if (data) {
+          setHoveredAssetDetails({
+            name: data.name,
+            libraryName: (data.libraries as any)?.name || 'Unknown Library',
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load asset details:', error);
+        setHoveredAssetDetails(null);
+      } finally {
+        setLoadingAssetDetails(false);
+      }
+    };
+
+    loadAssetDetails();
+  }, [hoveredAssetId, supabase]);
+
   if (!open) return null;
 
   return createPortal(
     <div className={styles.backdrop}>
-      <div ref={modalRef} className={styles.modal}>
+      <div className={styles.modalContainer}>
+        <div ref={modalRef} className={styles.modal}>
         <div className={styles.header}>
           <div className={styles.title}>APPLY REFERENCE</div>
           <button className={styles.closeButton} onClick={handleCancel} aria-label="Close">
@@ -219,6 +265,8 @@ export function AssetReferenceModal({
                     tempSelectedAssetId === asset.id ? styles.assetCardSelected : ''
                   }`}
                   onClick={() => handleAssetSelect(asset)}
+                  onMouseEnter={() => setHoveredAssetId(asset.id)}
+                  onMouseLeave={() => setHoveredAssetId(null)}
                   title={asset.name}
                 >
                   <Avatar
@@ -242,6 +290,89 @@ export function AssetReferenceModal({
             Apply
           </button>
         </div>
+      </div>
+
+      {/* Buffer area to prevent flickering */}
+      {hoveredAssetDetails && <div className={styles.bufferArea} />}
+
+      {/* Asset Card Panel */}
+      {hoveredAssetDetails && (
+        <div
+          className={styles.assetCardPanel}
+          onMouseEnter={() => {
+            // Keep panel visible when hovering over it
+          }}
+          onMouseLeave={() => {
+            setHoveredAssetId(null);
+          }}
+        >
+          <div className={styles.assetCardHeader}>
+            <div className={styles.assetCardTitle}>ASSET CARD</div>
+            <button
+              className={styles.assetCardCloseButton}
+              onClick={() => setHoveredAssetId(null)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+          <div className={styles.assetCardContent}>
+            {loadingAssetDetails ? (
+              <div className={styles.assetCardLoading}>
+                <Spin />
+              </div>
+            ) : hoveredAssetDetails ? (
+              <>
+                <div className={styles.assetCardDetailsSection}>
+                  <div className={styles.assetCardDetailsLabel}>Details</div>
+                  <div className={styles.assetCardDetailsContent}>
+                    <div className={styles.assetCardDetailRow}>
+                      <div className={styles.assetCardIconWrapper}>
+                        <Avatar
+                          size={48}
+                          style={{ 
+                            backgroundColor: '#FF6CAA',
+                            borderRadius: '6px'
+                          }}
+                          className={styles.assetCardIconAvatar}
+                        >
+                          {getAvatarText(hoveredAssetDetails.name)}
+                        </Avatar>
+                      </div>
+                      <div className={styles.assetCardDetailInfo}>
+                        <div className={styles.assetCardDetailItem}>
+                          <span className={styles.assetCardDetailLabel}>Name</span>
+                          <span className={styles.assetCardDetailValue}>{hoveredAssetDetails.name}</span>
+                        </div>
+                        <div className={styles.assetCardDetailItem}>
+                          <span className={styles.assetCardDetailLabel}>From Library</span>
+                          <div className={styles.assetCardLibraryLink}>
+                            <Image
+                              src={libraryAssetTable5Icon}
+                              alt=""
+                              width={16}
+                              height={16}
+                              className={styles.assetCardLibraryIcon}
+                            />
+                            <span className={styles.assetCardLibraryName}>{hoveredAssetDetails.libraryName}</span>
+                            <Image
+                              src={libraryAssetTable6Icon}
+                              alt=""
+                              width={16}
+                              height={16}
+                              className={styles.assetCardLibraryArrow}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
       </div>
     </div>,
     document.body
