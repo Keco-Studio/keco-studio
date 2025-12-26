@@ -10,7 +10,11 @@ import {
 import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { type MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
+import { 
+  type MediaFileMetadata,
+  isImageFile,
+  getFileIcon 
+} from '@/lib/services/mediaFileUploadService';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
 import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
 import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
@@ -465,6 +469,69 @@ export function LibraryAssetsTable({
                           />
                         </td>
                       );
+                  }
+                  
+                  // Check if this is a media type field
+                  if (property.dataType === 'media') {
+                    const value = row.propertyValues[property.key];
+                    let mediaValue: MediaFileMetadata | null = null;
+                    
+                    // Parse media value (could be object or JSON string)
+                    if (value) {
+                      if (typeof value === 'string') {
+                        try {
+                          mediaValue = JSON.parse(value) as MediaFileMetadata;
+                        } catch {
+                          // If parsing fails, try to treat as URL (legacy format)
+                          mediaValue = null;
+                        }
+                      } else if (typeof value === 'object' && value !== null) {
+                        mediaValue = value as MediaFileMetadata;
+                      }
+                    }
+                    
+                    return (
+                      <td
+                        key={property.id}
+                        className={styles.cell}
+                      >
+                        {mediaValue ? (
+                          <div className={styles.mediaCellContent}>
+                            {isImageFile(mediaValue.fileType) ? (
+                              <div className={styles.mediaThumbnail}>
+                                <Image
+                                  src={mediaValue.url}
+                                  alt={mediaValue.fileName}
+                                  width={32}
+                                  height={32}
+                                  className={styles.mediaThumbnailImage}
+                                  unoptimized
+                                  onError={(e) => {
+                                    // Fallback to icon if image fails to load
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                    const parent = target.parentElement;
+                                    if (parent) {
+                                      const icon = document.createElement('span');
+                                      icon.className = styles.mediaFileIcon;
+                                      icon.textContent = getFileIcon(mediaValue!.fileType);
+                                      parent.appendChild(icon);
+                                    }
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <span className={styles.mediaFileIcon}>{getFileIcon(mediaValue.fileType)}</span>
+                            )}
+                            <span className={styles.mediaFileName} title={mediaValue.fileName}>
+                              {mediaValue.fileName}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className={styles.placeholderValue}>—</span>
+                        )}
+                      </td>
+                    );
                   }
                   
                   // Other fields: show text only (no editing for now)
