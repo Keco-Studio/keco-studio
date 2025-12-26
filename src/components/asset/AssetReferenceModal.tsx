@@ -3,12 +3,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Input, Select, Avatar, Spin } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
 import Image from 'next/image';
 import { useSupabase } from '@/lib/SupabaseContext';
 import libraryAssetTable4Icon from '@/app/assets/images/LibraryAssetTable4.svg';
 import libraryAssetTable5Icon from '@/app/assets/images/LibraryAssetTable5.svg';
 import libraryAssetTable6Icon from '@/app/assets/images/LibraryAssetTable6.svg';
+import applyReferenceIcon from '@/app/assets/images/ApplyReference.svg';
+import applyReference2Icon from '@/app/assets/images/ApplyReference2.svg';
+import applyReference3Icon from '@/app/assets/images/ApplyReference3.svg';
+import applyReference4Icon from '@/app/assets/images/ApplyReference4.svg';
+import projectIcon from '@/app/assets/images/projectIcon.svg';
 import styles from './AssetReferenceModal.module.css';
 
 type Asset = {
@@ -274,34 +278,75 @@ export function AssetReferenceModal({
         <div className={styles.header}>
           <div className={styles.title}>APPLY REFERENCE</div>
           <button className={styles.closeButton} onClick={handleCancel} aria-label="Close">
-            ×
+            <Image
+              src={applyReference4Icon}
+              alt="Close"
+              width={24}
+              height={24}
+            />
           </button>
         </div>
 
         <div className={styles.content}>
           <div className={styles.searchContainer}>
-            <Input
-              prefix={<SearchOutlined />}
-              placeholder="Search"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className={styles.searchInput}
-            />
+            <div className={styles.searchInputWrapper}>
+              <Image
+                src={applyReferenceIcon}
+                alt="Search"
+                width={20}
+                height={20}
+                className={styles.searchIcon}
+              />
+              <Input
+                placeholder="Search"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className={styles.searchInput}
+                bordered={false}
+              />
+            </div>
           </div>
 
           <div className={styles.libraryContainer}>
-            <Select
-              value={selectedLibraryId}
-              onChange={setSelectedLibraryId}
-              className={styles.librarySelect}
-              style={{ width: '100%' }}
-            >
-              {libraries.map((lib) => (
-                <Select.Option key={lib.id} value={lib.id}>
-                  {lib.name}
-                </Select.Option>
-              ))}
-            </Select>
+            <div className={styles.librarySelectWrapper}>
+              <Image
+                src={projectIcon}
+                alt="Library"
+                width={20}
+                height={20}
+                className={styles.libraryIcon}
+              />
+              <div className={styles.selectWithArrow}>
+                <Select
+                  value={selectedLibraryId}
+                  onChange={setSelectedLibraryId}
+                  className={styles.librarySelect}
+                  bordered={false}
+                  suffixIcon={null}
+                  dropdownMatchSelectWidth={false}
+                >
+                  {libraries.map((lib) => (
+                    <Select.Option key={lib.id} value={lib.id}>
+                      {lib.name}
+                    </Select.Option>
+                  ))}
+                </Select>
+                <Image
+                  src={applyReference3Icon}
+                  alt=""
+                  width={16}
+                  height={16}
+                  className={styles.selectArrowIcon}
+                />
+              </div>
+            </div>
+            <Image
+              src={applyReference2Icon}
+              alt="View toggle"
+              width={20}
+              height={20}
+              className={styles.viewToggleIcon}
+            />
           </div>
 
           <div className={styles.assetsGrid}>
