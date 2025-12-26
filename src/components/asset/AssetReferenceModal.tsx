@@ -314,7 +314,7 @@ export function AssetReferenceModal({
                 value={searchText}
                 onChange={(e) => setSearchText(e.target.value)}
                 className={styles.searchInput}
-                bordered={false}
+                variant="borderless"
               />
             </div>
           </div>
@@ -333,9 +333,9 @@ export function AssetReferenceModal({
                   value={selectedLibraryId}
                   onChange={setSelectedLibraryId}
                   className={styles.librarySelect}
-                  bordered={false}
+                  variant="borderless"
                   suffixIcon={null}
-                  dropdownMatchSelectWidth={false}
+                  popupMatchSelectWidth={false}
                 >
                   {libraries.map((lib) => (
                     <Select.Option key={lib.id} value={lib.id}>
