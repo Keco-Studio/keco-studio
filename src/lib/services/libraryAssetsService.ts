@@ -14,6 +14,7 @@ type FieldDefinitionRow = {
   label: string;
   data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'media' | 'reference';
   enum_options: string[] | null;
+  reference_libraries: string[] | null; // Array of library IDs that can be referenced
   required: boolean;
   order_index: number;
 };
@@ -142,6 +143,8 @@ export async function getLibrarySchema(
       key: row.id, // propertyValues keyed by field definition id
       name: row.label,
       valueType: mapDataTypeToValueType(row.data_type),
+      dataType: row.data_type,
+      referenceLibraries: row.reference_libraries || undefined,
       orderIndex: row.order_index,
     });
   }

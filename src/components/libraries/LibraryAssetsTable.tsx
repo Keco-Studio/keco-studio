@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Input, Select, Button } from 'antd';
+import React, { useState, useEffect } from 'react';
+import { Input, Select, Button, Avatar } from 'antd';
 import Image from 'next/image';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -7,7 +7,12 @@ import {
   PropertyConfig,
   SectionConfig,
 } from '@/lib/types/libraryAssets';
+import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
+import { useSupabase } from '@/lib/SupabaseContext';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
+import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
+import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
+import libraryAssetTable3Icon from '@/app/assets/images/LibraryAssetTable3.svg';
 import styles from './LibraryAssetsTable.module.css';
 
 export type LibraryAssetsTableProps = {
@@ -39,13 +44,188 @@ export function LibraryAssetsTable({
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingRowData, setEditingRowData] = useState<Record<string, any>>({});
 
+  // Modal state for reference selector
+  const [referenceModalOpen, setReferenceModalOpen] = useState(false);
+  const [referenceModalProperty, setReferenceModalProperty] = useState<PropertyConfig | null>(null);
+  const [referenceModalValue, setReferenceModalValue] = useState<string | null>(null);
+  const [referenceModalRowId, setReferenceModalRowId] = useState<string | null>(null);
+  
+  // Asset names cache for display
+  const [assetNamesCache, setAssetNamesCache] = useState<Record<string, string>>({});
+
   // Router for navigation
   const router = useRouter();
   const params = useParams();
+  const supabase = useSupabase();
 
   const hasSections = sections.length > 0;
   const hasProperties = properties.length > 0;
   const hasRows = rows.length > 0;
+
+  // Helper functions for Avatar
+  const getAvatarText = (name: string) => {
+    return name.charAt(0).toUpperCase();
+  };
+
+  const getAvatarColor = (name: string) => {
+    const colors = ['#f56a00', '#7265e6', '#ffbf00', '#00a2ae', '#87d068', '#f50', '#2db7f5', '#108ee9'];
+    const index = name.charCodeAt(0) % colors.length;
+    return colors[index];
+  };
+
+  // Load asset name by ID
+  useEffect(() => {
+    const loadAssetNames = async () => {
+      // Collect all asset IDs from property values
+      const assetIds = new Set<string>();
+      
+      // From rows
+      rows.forEach(row => {
+        properties.forEach(prop => {
+          if (prop.dataType === 'reference') {
+            const value = row.propertyValues[prop.key];
+            if (value && typeof value === 'string') {
+              assetIds.add(value);
+            }
+          }
+        });
+      });
+      
+      // From editing data
+      if (editingRowId) {
+        properties.forEach(prop => {
+          if (prop.dataType === 'reference') {
+            const value = editingRowData[prop.key];
+            if (value && typeof value === 'string') {
+              assetIds.add(value);
+            }
+          }
+        });
+      }
+      
+      // From new row data
+      if (isAddingRow) {
+        properties.forEach(prop => {
+          if (prop.dataType === 'reference') {
+            const value = newRowData[prop.key];
+            if (value && typeof value === 'string') {
+              assetIds.add(value);
+            }
+          }
+        });
+      }
+      
+      if (assetIds.size === 0) return;
+      
+      // Load asset names
+      try {
+        const { data, error } = await supabase
+          .from('library_assets')
+          .select('id, name')
+          .in('id', Array.from(assetIds));
+        
+        if (error) throw error;
+        
+        const namesMap: Record<string, string> = {};
+        (data || []).forEach(asset => {
+          namesMap[asset.id] = asset.name;
+        });
+        
+        setAssetNamesCache(prev => ({ ...prev, ...namesMap }));
+      } catch (error) {
+        console.error('Failed to load asset names:', error);
+      }
+    };
+    
+    loadAssetNames();
+  }, [rows, editingRowData, newRowData, properties, editingRowId, isAddingRow, supabase]);
+
+  // Handle opening reference modal
+  const handleOpenReferenceModal = (property: PropertyConfig, currentValue: string | null, rowId: string) => {
+    setReferenceModalProperty(property);
+    setReferenceModalValue(currentValue);
+    setReferenceModalRowId(rowId);
+    setReferenceModalOpen(true);
+  };
+
+  // Handle applying reference selection
+  const handleApplyReference = async (assetId: string | null) => {
+    if (!referenceModalProperty || !referenceModalRowId) return;
+    
+    if (referenceModalRowId === 'new') {
+      // For new row, update newRowData
+      handleInputChange(referenceModalProperty.key, assetId);
+    } else {
+      // For existing row, update the asset
+      const row = rows.find(r => r.id === referenceModalRowId);
+      
+      if (row && onUpdateAsset) {
+        // Update the asset with the new reference value
+        const updatedPropertyValues = { ...row.propertyValues };
+        updatedPropertyValues[referenceModalProperty.key] = assetId;
+        
+        await onUpdateAsset(row.id, row.name, updatedPropertyValues);
+      }
+    }
+    
+    setReferenceModalOpen(false);
+    setReferenceModalProperty(null);
+    setReferenceModalValue(null);
+    setReferenceModalRowId(null);
+  };
+
+  // Reference Field Component
+  const ReferenceField = ({
+    property,
+    assetId,
+    rowId,
+    assetNamesCache,
+  }: {
+    property: PropertyConfig;
+    assetId: string | null;
+    rowId: string;
+    assetNamesCache: Record<string, string>;
+  }) => {
+    const hasValue = assetId && assetId.trim() !== '';
+    const assetName = hasValue ? (assetNamesCache[assetId] || assetId) : '';
+    const [isHovered, setIsHovered] = useState(false);
+    
+    return (
+      <div
+        className={styles.referenceFieldWrapper}
+        onMouseEnter={() => setIsHovered(true)}
+        onMouseLeave={() => setIsHovered(false)}
+      >
+        <Image
+          src={libraryAssetTableIcon}
+          alt=""
+          width={16}
+          height={16}
+          className={styles.referenceDiamondIcon}
+        />
+        {hasValue && (
+          <Avatar
+            size={16}
+            style={{ backgroundColor: getAvatarColor(assetName) }}
+            className={styles.referenceAvatar}
+          >
+            {getAvatarText(assetName)}
+          </Avatar>
+        )}
+        <Image
+          src={isHovered ? libraryAssetTable3Icon : libraryAssetTable2Icon}
+          alt=""
+          width={16}
+          height={16}
+          className={styles.referenceArrowIcon}
+          onClick={(e) => {
+            e.stopPropagation();
+            handleOpenReferenceModal(property, assetId, rowId);
+          }}
+        />
+      </div>
+    );
+  };
 
   // Handle save new asset
   const handleSaveNewAsset = async () => {
@@ -235,116 +415,80 @@ export function LibraryAssetsTable({
         </thead>
         <tbody className={styles.body}>
           {rows.map((row, index) => {
-            const isEditing = editingRowId === row.id;
-
             return (
               <tr
                 key={row.id}
-                className={isEditing ? styles.editRow : styles.row}
+                className={styles.row}
               >
                 <td className={styles.numberCell}>{index + 1}</td>
                 {orderedProperties.map((property, propertyIndex) => {
                   // Check if this is the first property (name field)
                   const isNameField = propertyIndex === 0;
                   
-                  if (isEditing) {
-                    // Editing mode: show input
-                    const editValue = editingRowData[property.key] !== undefined 
-                      ? editingRowData[property.key] 
-                      : row.propertyValues[property.key] || '';
-                    
-                    return (
-                      <td key={property.id} className={styles.editCell}>
-                        <Input
-                          value={editValue}
-                          onChange={(e) => handleEditInputChange(property.key, e.target.value)}
-                          placeholder={`Enter ${property.name.toLowerCase()}`}
-                          className={styles.editInput}
-                          disabled={isSaving}
-                        />
-                      </td>
-                    );
-                  } else {
-                    // View mode: show text with double-click to edit
+                  // Check if this is a reference type field
+                  if (property.dataType === 'reference' && property.referenceLibraries) {
                     const value = row.propertyValues[property.key];
-                    const display =
-                      value === null || value === undefined || value === ''
-                        ? null
-                        : String(value);
-
-                    return (
-                      <td
-                        key={property.id}
-                        className={styles.cell}
-                        onDoubleClick={() => {
-                          // Prevent editing if already adding a new row
-                          if (isAddingRow) {
-                            alert('Please finish adding the new asset first.');
-                            return;
-                          }
-                          handleEditRow(row);
-                        }}
-                        title="Double-click to edit"
-                      >
-                        {isNameField ? (
-                          // Name field: show text + view detail button
-                          <div className={styles.cellContent}>
-                            <span className={styles.cellText}>
-                              {display ? display : <span className={styles.placeholderValue}>—</span>}
-                            </span>
-                            <button
-                              className={styles.viewDetailButton}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleViewAssetDetail(row, e);
-                              }}
-                              title="View asset details (Ctrl/Cmd+Click for new tab)"
-                            >
-                              <Image
-                                src={assetTableIcon}
-                                alt="View"
-                                width={20}
-                                height={20}
-                              />
-                            </button>
-                          </div>
-                        ) : (
-                          // Other fields: show text only
-                          display ? display : <span className={styles.placeholderValue}>—</span>
-                        )}
-                      </td>
-                    );
+                    const assetId = value ? String(value) : null;
+                    
+                      return (
+                        <td
+                          key={property.id}
+                          className={styles.cell}
+                        >
+                          <ReferenceField
+                            property={property}
+                            assetId={assetId}
+                            rowId={row.id}
+                            assetNamesCache={assetNamesCache}
+                          />
+                        </td>
+                      );
                   }
+                  
+                  // Other fields: show text only (no editing for now)
+                  const value = row.propertyValues[property.key];
+                  let display: string | null = null;
+                  
+                  if (value !== null && value !== undefined && value !== '') {
+                    display = String(value);
+                  }
+
+                  return (
+                    <td
+                      key={property.id}
+                      className={styles.cell}
+                    >
+                      {isNameField ? (
+                        // Name field: show text + view detail button
+                        <div className={styles.cellContent}>
+                          <span className={styles.cellText}>
+                            {display ? display : <span className={styles.placeholderValue}>—</span>}
+                          </span>
+                          <button
+                            className={styles.viewDetailButton}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleViewAssetDetail(row, e);
+                            }}
+                            title="View asset details (Ctrl/Cmd+Click for new tab)"
+                          >
+                            <Image
+                              src={assetTableIcon}
+                              alt="View"
+                              width={20}
+                              height={20}
+                            />
+                          </button>
+                        </div>
+                      ) : (
+                        // Other fields: show text only
+                        display ? display : <span className={styles.placeholderValue}>—</span>
+                      )}
+                    </td>
+                  );
                 })}
                 <td className={styles.actionsCell}>
-                  {isEditing ? (
-                    // Editing mode: show save/cancel buttons
-                    <div className={styles.editActions}>
-                      <Button
-                        type="primary"
-                        size="small"
-                        onClick={() => {
-                          // Get asset name from first property
-                          const assetName = editingRowData[orderedProperties[0]?.key] || row.name || 'Untitled';
-                          handleSaveEditedRow(row.id, assetName);
-                        }}
-                        loading={isSaving}
-                        disabled={isSaving}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        size="small"
-                        onClick={handleCancelEditing}
-                        disabled={isSaving}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  ) : (
-                    // View mode: no actions
-                    null
-                  )}
+                  {/* No actions for now */}
                 </td>
               </tr>
             );
@@ -354,17 +498,37 @@ export function LibraryAssetsTable({
           {isAddingRow ? (
             <tr className={styles.editRow}>
               <td className={styles.numberCell}>{rows.length + 1}</td>
-              {orderedProperties.map((property) => (
-                <td key={property.id} className={styles.editCell}>
-                  <Input
-                    value={newRowData[property.id] || ''}
-                    onChange={(e) => handleInputChange(property.id, e.target.value)}
-                    placeholder={`Enter ${property.name.toLowerCase()}`}
-                    className={styles.editInput}
-                    disabled={isSaving}
-                  />
-                </td>
-              ))}
+              {orderedProperties.map((property) => {
+                // Check if this is a reference type field
+                if (property.dataType === 'reference' && property.referenceLibraries) {
+                  const assetId = newRowData[property.key] ? String(newRowData[property.key]) : null;
+                  
+                  return (
+                    <td key={property.id} className={styles.editCell}>
+                      <div className={styles.referenceInputContainer}>
+                        <ReferenceField
+                          property={property}
+                          assetId={assetId}
+                          rowId="new"
+                          assetNamesCache={assetNamesCache}
+                        />
+                      </div>
+                    </td>
+                  );
+                }
+                
+                return (
+                  <td key={property.id} className={styles.editCell}>
+                    <Input
+                      value={newRowData[property.key] || ''}
+                      onChange={(e) => handleInputChange(property.key, e.target.value)}
+                      placeholder={`Enter ${property.name.toLowerCase()}`}
+                      className={styles.editInput}
+                      disabled={isSaving}
+                    />
+                  </td>
+                );
+              })}
               <td className={styles.actionsCell}>
                 <div className={styles.editActions}>
                   <Button
@@ -409,6 +573,21 @@ export function LibraryAssetsTable({
         </tbody>
       </table>
     </div>
+    
+    {/* Reference Selection Modal */}
+    {referenceModalProperty && (
+      <AssetReferenceModal
+        open={referenceModalOpen}
+        value={referenceModalValue}
+        referenceLibraries={referenceModalProperty.referenceLibraries || []}
+        onClose={() => {
+          setReferenceModalOpen(false);
+          setReferenceModalProperty(null);
+          setReferenceModalValue(null);
+        }}
+        onApply={handleApplyReference}
+      />
+    )}
     </>
   );
 }
