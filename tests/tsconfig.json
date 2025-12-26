@@ -13,7 +13,7 @@
   },
   "include": [
     "**/*.ts"
-  ],
+, "../src/happy-path.spec.ts"  ],
   "exclude": [
     "node_modules"
   ]
