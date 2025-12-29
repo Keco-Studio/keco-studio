@@ -14,14 +14,17 @@ import {
   type MediaFileMetadata,
 } from '@/lib/services/mediaFileUploadService';
 import styles from './MediaFileUpload.module.css';
+import assetFileUploadIcon from '@/app/assets/images/assetFileUploadIcon.svg';
+import assetFileIcon from '@/app/assets/images/assetFileIcon.svg';
 
 interface MediaFileUploadProps {
   value?: MediaFileMetadata | null;
   onChange: (value: MediaFileMetadata | null) => void;
   disabled?: boolean;
+  fieldType?: 'image' | 'file';
 }
 
-export function MediaFileUpload({ value, onChange, disabled }: MediaFileUploadProps) {
+export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image' }: MediaFileUploadProps) {
   const supabase = useSupabase();
   const { userProfile } = useAuth();
   const [uploading, setUploading] = useState(false);
@@ -70,6 +73,10 @@ export function MediaFileUpload({ value, onChange, disabled }: MediaFileUploadPr
     }
   };
 
+  const handleReplace = () => {
+    fileInputRef.current?.click();
+  };
+
   const handleDelete = async () => {
     if (!value?.path) return;
 
@@ -107,6 +114,11 @@ export function MediaFileUpload({ value, onChange, disabled }: MediaFileUploadPr
     fileInputRef.current?.click();
   };
 
+  const uploadLabel = fieldType === 'image' ? 'upload image' : 'upload file';
+  const acceptTypes = fieldType === 'image' 
+    ? 'image/*' 
+    : '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv';
+
   return (
     <div className={styles.container}>
       <input
@@ -115,7 +127,7 @@ export function MediaFileUpload({ value, onChange, disabled }: MediaFileUploadPr
         onChange={handleFileSelect}
         disabled={disabled || uploading}
         className={styles.fileInput}
-        accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,image/*"
+        accept={acceptTypes}
       />
 
       {!value && (
@@ -125,69 +137,45 @@ export function MediaFileUpload({ value, onChange, disabled }: MediaFileUploadPr
           disabled={disabled || uploading}
           className={styles.uploadButton}
         >
-          {uploading ? uploadProgress : 'Choose file to upload'}
+          <Image src={assetFileUploadIcon} alt="" width={24} height={24} />
+          {uploading ? uploadProgress : uploadLabel}
         </button>
       )}
 
       {value && (
-        <div className={styles.fileInfo}>
-          <div className={styles.fileDetails}>
-            {isImageFile(value.fileType) ? (
+        <div className={styles.uploadedFileContainer}>
+          <div className={styles.fileInfoClickable} onClick={handleView} title="Click to view">
+            {fieldType === 'image' && isImageFile(value.fileType) ? (
               <div className={styles.imageThumbnail}>
                 <Image
                   src={value.url}
                   alt={value.fileName}
-                  width={48}
-                  height={48}
+                  width={40}
+                  height={40}
                   className={styles.thumbnailImage}
                   unoptimized
                   onError={(e) => {
-                    // Fallback to icon if image fails to load
                     const target = e.target as HTMLImageElement;
                     target.style.display = 'none';
-                    const parent = target.parentElement;
-                    if (parent) {
-                      const icon = document.createElement('span');
-                      icon.className = styles.fileIcon;
-                      icon.textContent = getFileIcon(value.fileType);
-                      parent.appendChild(icon);
-                    }
                   }}
                 />
               </div>
             ) : (
-              <span className={styles.fileIcon}>{getFileIcon(value.fileType)}</span>
+              <div className={styles.fileIconWrapper}>
+                <Image src={assetFileIcon} alt="" width={24} height={24} />
+              </div>
             )}
-            <div className={styles.fileMetadata}>
-              <div className={styles.fileName}>{value.fileName}</div>
-              <div className={styles.fileSize}>{formatFileSize(value.fileSize)}</div>
-            </div>
+            <span className={styles.uploadedFileName}>{value.fileName}</span>
           </div>
-          <div className={styles.fileActions}>
-            <button
-              type="button"
-              onClick={handleView}
-              className={styles.actionButton}
-              disabled={disabled}
-              title="View file"
-            >
-              👁️ View
-            </button>
-            <button
-              type="button"
-              onClick={handleDelete}
-              className={styles.deleteButton}
-              disabled={disabled || uploading}
-              title="Delete file"
-            >
-              🗑️ Delete
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={handleReplace}
+            disabled={disabled || uploading}
+            className={styles.replaceButton}
+          >
+            replace
+          </button>
         </div>
-      )}
-
-      {uploadProgress && (
-        <div className={styles.progressMessage}>{uploadProgress}</div>
       )}
 
       {error && <div className={styles.errorMessage}>{error}</div>}

@@ -155,7 +155,7 @@
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   width: 300px;
-  height: 290px;
+  height: 330px;
   padding: 4px 4px;
   position: absolute;
   top: calc(100% + 4px);
@@ -189,24 +189,38 @@
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  min-width: 300px;
-  max-width: 400px;
+  width: 350px;
+  height: 220px;
   z-index: 1000;
-  padding: 12px;
 }
 
 .configMenuHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
+  padding-left: 13px;
+  width: 100%;
+  height: 45px;
   border-bottom: 1px solid #e5e7eb;
+  background: #FF005E0F;
 }
 
 .configMenuHeader span {
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 600;
+  color: #111827;
+}
+
+.referenceConfig {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.referenceConfigHeader {
+  font-size: 14px;
+  font-weight: 500;
   color: #111827;
 }
 
@@ -238,15 +252,35 @@
 .optionsList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  max-height: 300px;
+  gap: 10px;
+  padding: 10px 10px 20px 10px;
+  height: 90%;
+}
+
+.optionsListHeaderContainer{
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.optionsListHeader {
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.optionsListItemsContainer{
+  max-height: 110px;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .optionItem {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 
 .optionInput {
@@ -286,13 +320,7 @@
   padding: 20px;
   text-align: center;
   color: #9ca3af;
-  font-size: 13px;
-}
-
-.referenceConfig {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  font-size: 15px;
 }
 
 .libraryTag {
@@ -324,4 +352,8 @@
   color: #1e1b4b;
 }
 
+:global(.ant-select-outlined.ant-select-multiple .ant-select-selection-item) {
+  background: #5E00FF14;
+  border: 1px solid #8726EE6B;
+}
 

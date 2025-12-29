@@ -4,9 +4,17 @@ import { useState, useEffect, useRef } from 'react';
 import { Input, Select, Avatar, Spin } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import Image from 'next/image';
+import { useRouter, useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import assetRefBookIcon from '@/app/assets/images/assetRefBookIcon.svg';
 import assetRefExpandIcon from '@/app/assets/images/assetRefExpandIcon.svg';
+import assetRefMenuGridIcon from '@/app/assets/images/assetRefMenuGridIcon.svg';
+import assetRefMenuLibIcon from '@/app/assets/images/assetRefMenuLibIcon.svg';
+import assetRefAssetMenuExpandIcon from '@/app/assets/images/assetRefAssetMenuExpandIcon.svg';
+import assetRefAssetInfoIcon from '@/app/assets/images/assetRefAssetInfoIcon.svg';
+import assetRefInputLeftIcon from '@/app/assets/images/assetRefInputLeftIcon.svg';
+import assetRefDetailLibExpandIcon from '@/app/assets/images/assetRefDetailLibExpandIcon.svg';
+import assetRefDetailLibIcon from '@/app/assets/images/assetRefDetailLibIcon.svg';
 import styles from './AssetReferenceSelector.module.css';
 
 type Asset = {
@@ -35,6 +43,8 @@ export function AssetReferenceSelector({
   disabled = false,
 }: AssetReferenceSelectorProps) {
   const supabase = useSupabase();
+  const router = useRouter();
+  const params = useParams();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [filteredAssets, setFilteredAssets] = useState<Asset[]>([]);
@@ -45,9 +55,13 @@ export function AssetReferenceSelector({
   const [showExpandedInfo, setShowExpandedInfo] = useState(false);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [expandedAssetDetails, setExpandedAssetDetails] = useState<any>(null);
+  const [hoveredAsset, setHoveredAsset] = useState<Asset | null>(null);
+  const [hoveredAssetDetails, setHoveredAssetDetails] = useState<any>(null);
+  const [hoverPosition, setHoverPosition] = useState<{ top: number; left: number } | null>(null);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Load libraries
   useEffect(() => {
@@ -157,38 +171,13 @@ export function AssetReferenceSelector({
     }
   }, [searchText, assets]);
 
-  // Handle clicking outside dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Node;
-      
-      // Check if click is on Ant Design Select dropdown
-      const isSelectDropdown = (target as Element).closest?.('.ant-select-dropdown');
-      if (isSelectDropdown) {
-        return; // Don't close if clicking on Select dropdown
-      }
-      
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(target) &&
-        inputContainerRef.current &&
-        !inputContainerRef.current.contains(target)
-      ) {
-        setShowDropdown(false);
-      }
-    };
-
-    if (showDropdown) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [showDropdown]);
-
   const handleAssetSelect = (asset: Asset) => {
     setSelectedAsset(asset);
     onChange?.(asset.id);
     setShowDropdown(false);
     setSearchText('');
+    setHoveredAsset(null);
+    setHoveredAssetDetails(null);
   };
 
   const handleClear = () => {
@@ -196,6 +185,60 @@ export function AssetReferenceSelector({
     onChange?.(null);
     setExpandedAssetDetails(null);
     setShowExpandedInfo(false);
+  };
+
+  const handleAssetHover = async (asset: Asset, event: React.MouseEvent) => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+
+    const cardElement = event.currentTarget as HTMLElement;
+    const rect = cardElement.getBoundingClientRect();
+
+    hoverTimeoutRef.current = setTimeout(async () => {
+      setHoveredAsset(asset);
+      
+      // Calculate position: show to the right of the card
+      setHoverPosition({
+        top: rect.top,
+        left: rect.right + 8,
+      });
+      
+      // Load asset details
+      try {
+        const { data: libraryData } = await supabase
+          .from('libraries')
+          .select('name')
+          .eq('id', asset.library_id)
+          .single();
+
+        setHoveredAssetDetails({
+          asset,
+          library: libraryData,
+        });
+      } catch (error) {
+        console.error('Failed to load hovered asset details:', error);
+      }
+    }, 300); // 300ms delay before showing details
+  };
+
+  const handleAssetLeave = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    // Delay clearing to allow mouse to move to the popup
+    hoverTimeoutRef.current = setTimeout(() => {
+      setHoveredAsset(null);
+      setHoveredAssetDetails(null);
+      setHoverPosition(null);
+    }, 200);
+  };
+
+  const handleLibraryClick = (libraryId: string) => {
+    const projectId = params.projectId;
+    if (projectId) {
+      router.push(`/${projectId}/${libraryId}`);
+    }
   };
 
   const handleExpand = async () => {
@@ -246,90 +289,104 @@ export function AssetReferenceSelector({
       <div ref={inputContainerRef} className={styles.inputContainer}>
         <div
           className={`${styles.inputField} ${disabled ? styles.disabled : ''}`}
-          onClick={() => !disabled && setShowDropdown(true)}
         >
-          {selectedAsset ? (
-            <div className={styles.selectedAsset}>
-              <Image src={assetRefBookIcon} alt="" width={16} height={16} />
-              <span>{selectedAsset.name}</span>
-              {!disabled && (
+          <div className={styles.selectedAsset}>
+            <div className={styles.selectedAssetLeft}>
+              <Image src={assetRefInputLeftIcon} alt="" width={16} height={16} />
+              <Image 
+                src={assetRefAssetMenuExpandIcon} 
+                alt="" 
+                width={16} 
+                height={16} 
+                onClick={() => !disabled && setShowDropdown(true)}
+                style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}
+              />
+              {selectedAsset ? (
+                <span>{selectedAsset.name}</span>
+              ) : (
+                <span className={styles.placeholder}>Select asset...</span>
+              )}
+            </div>
+            <div className={styles.selectedAssetRight}>
+              {selectedAsset && (
                 <button
-                  className={styles.clearButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleClear();
-                  }}
+                  className={styles.expandButton}
+                  onClick={handleExpand}
+                  title="View details"
                 >
-                  ×
+                  <Image src={assetRefAssetInfoIcon} alt="" width={16} height={16} />
                 </button>
               )}
             </div>
-          ) : (
-            <span className={styles.placeholder}>Select asset...</span>
-          )}
+          </div>
         </div>
-        
-        {selectedAsset && (
-          <button
-            className={styles.expandButton}
-            onClick={handleExpand}
-            title="View details"
-          >
-            <Image src={assetRefExpandIcon} alt="Expand" width={16} height={16} />
-          </button>
-        )}
       </div>
 
       {showDropdown && !disabled && (
         <div ref={dropdownRef} className={styles.dropdown}>
           <div className={styles.dropdownHeader}>
-            <Select
-              value={selectedLibraryId}
-              onChange={setSelectedLibraryId}
-              className={styles.librarySelect}
-              style={{ width: '100%' }}
+            <span className={styles.dropdownHeaderText}>APPLY REFERENCE</span>
+            <button
+              className={styles.closeButton}
+              onClick={() => setShowDropdown(false)}
             >
-              {libraries.map((lib) => (
-                <Select.Option key={lib.id} value={lib.id}>
-                  {lib.name}
-                </Select.Option>
-              ))}
-            </Select>
-            
-            <Input
-              prefix={<SearchOutlined />}
-              placeholder="Search"
-              value={searchText}
-              onChange={(e) => setSearchText(e.target.value)}
-              className={styles.searchInput}
-            />
+              ×
+            </button>
           </div>
 
-          <div className={styles.assetsGrid}>
-            {loading ? (
-              <div className={styles.loading}>
-                <Spin />
-              </div>
-            ) : filteredAssets.length === 0 ? (
-              <div className={styles.emptyMessage}>No assets found</div>
-            ) : (
-              filteredAssets.map((asset) => (
-                <div
-                  key={asset.id}
-                  className={styles.assetCard}
-                  onClick={() => handleAssetSelect(asset)}
-                  title={asset.name}
+          <div className={styles.dropdownContent}>
+            <div className={styles.dropdownContentHeader}>
+              <Input
+                prefix={<SearchOutlined />}
+                placeholder="Search"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                className={styles.searchInput}
+              />
+              <div className={styles.librarySelectContainer}>
+                <Select
+                  value={selectedLibraryId}
+                  onChange={setSelectedLibraryId}
+                  className={styles.librarySelect}
                 >
-                  <Avatar
-                    style={{ backgroundColor: getAvatarColor(asset.name) }}
-                    size={48}
-                  >
-                    {getAvatarText(asset.name)}
-                  </Avatar>
-                  <div className={styles.assetName}>{asset.name}</div>
+                  {libraries.map((lib) => (
+                    <Select.Option key={lib.id} value={lib.id}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Image src={assetRefMenuLibIcon} alt="" width={16} height={16} />
+                        <span>{lib.name}</span>
+                      </div>
+                    </Select.Option>
+                  ))}
+                </Select>
+                <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} />
+              </div>
+            </div>
+            <div className={styles.assetsGrid}>
+              {loading ? (
+                <div className={styles.loading}>
+                  <Spin />
                 </div>
-              ))
-            )}
+              ) : filteredAssets.length === 0 ? (
+                <div className={styles.emptyMessage}>No assets found</div>
+              ) : (
+                filteredAssets.map((asset) => (
+                  <div
+                    key={asset.id}
+                    className={styles.assetCard}
+                    onClick={() => handleAssetSelect(asset)}
+                    onMouseEnter={(e) => handleAssetHover(asset, e)}
+                    onMouseLeave={handleAssetLeave}
+                  >
+                    <Avatar
+                      style={{ backgroundColor: getAvatarColor(asset.name) }}
+                      size={30}
+                    >
+                      {getAvatarText(asset.name)}
+                    </Avatar>
+                  </div>
+                  ))
+                )}
+            </div>
           </div>
         </div>
       )}
@@ -346,25 +403,90 @@ export function AssetReferenceSelector({
             </button>
           </div>
           <div className={styles.expandedContent}>
-            <div className={styles.infoRow}>
-              <span className={styles.infoLabel}>Library:</span>
-              <span className={styles.infoValue}>{selectedAsset?.library_name}</span>
-            </div>
-            <div className={styles.infoRow}>
-              <span className={styles.infoLabel}>ID:</span>
-              <span className={styles.infoValue}>{expandedAssetDetails.asset?.id}</span>
-            </div>
-            {expandedAssetDetails.fields.slice(0, 3).map((field: any) => {
-              const valueRow = expandedAssetDetails.values.find((v: any) => v.field_id === field.id);
-              return (
-                <div key={field.id} className={styles.infoRow}>
-                  <span className={styles.infoLabel}>{field.label}:</span>
-                  <span className={styles.infoValue}>
-                    {valueRow?.value_json?.toString() || '-'}
-                  </span>
+            <div className={styles.detailsTitle}>Details</div>
+            <div className={styles.detailsContent}>
+              <div className={styles.avatarSection}>
+                <Avatar
+                  style={{ backgroundColor: getAvatarColor(selectedAsset?.name || '') }}
+                  size={60}
+                >
+                  {getAvatarText(selectedAsset?.name || '')}
+                </Avatar>
+              </div>
+              <div className={styles.detailsContentRight}>
+                <div className={styles.detailsSection}>
+                  <div className={styles.detailLabel}>Name</div>
+                  <div className={styles.detailValue}>{selectedAsset?.name}</div>
                 </div>
-              );
-            })}
+                <div className={styles.detailsSection}>
+                  <div className={styles.detailLabel}>From Library</div>
+                  <div 
+                    className={styles.libraryLink}
+                    onClick={() => selectedAsset && handleLibraryClick(selectedAsset.library_id)}
+                  >
+                    <Image src={assetRefDetailLibIcon} alt="" width={20} height={20} />
+                    <span>{selectedAsset?.library_name}</span>
+                    <Image src={assetRefDetailLibExpandIcon} alt="" width={20} height={20} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hoveredAsset && hoveredAssetDetails && hoverPosition && (
+        <div 
+          className={styles.hoverInfo}
+          style={{
+            top: `${hoverPosition.top}px`,
+            left: `${hoverPosition.left}px`,
+          }}
+          onMouseEnter={() => {
+            if (hoverTimeoutRef.current) {
+              clearTimeout(hoverTimeoutRef.current);
+            }
+          }}
+          onMouseLeave={handleAssetLeave}
+        >
+          <div className={styles.expandedHeader}>
+            <h4>{hoveredAsset.name}</h4>
+            <button
+              className={styles.closeButton}
+              onClick={handleAssetLeave}
+            >
+              ×
+            </button>
+          </div>
+          <div className={styles.expandedContent}>
+            <div className={styles.detailsTitle}>Details</div>
+            <div className={styles.detailsContent}>
+              <div className={styles.avatarSection}>
+                <Avatar
+                  style={{ backgroundColor: getAvatarColor(hoveredAsset.name) }}
+                  size={60}
+                >
+                  {getAvatarText(hoveredAsset.name)}
+                </Avatar>
+              </div>
+              <div className={styles.detailsContentRight}>
+                <div className={styles.detailsSection}>
+                  <div className={styles.detailLabel}>Name</div>
+                  <div className={styles.detailValue}>{hoveredAsset.name}</div>
+                </div>
+                <div className={styles.detailsSection}>
+                  <div className={styles.detailLabel}>From Library</div>
+                  <div 
+                    className={styles.libraryLink}
+                    onClick={() => handleLibraryClick(hoveredAsset.library_id)}
+                  >
+                    <Image src={assetRefDetailLibIcon} alt="" width={20} height={20} />
+                    <span>{hoveredAssetDetails.library?.name || hoveredAsset.library_name}</span>
+                    <Image src={assetRefDetailLibExpandIcon} alt="" width={20} height={20} />
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       )}

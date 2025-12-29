@@ -334,33 +334,38 @@ export function FieldItem({
             {showConfigMenu && field.dataType === 'enum' && (
               <div ref={configMenuRef} className={styles.configMenu}>
                 <div className={styles.configMenuHeader}>
-                  <span>Predefine options</span>
-                  <button 
-                    className={styles.addOptionButton}
-                    onClick={handleAddOption}
-                    title="Add option"
-                  >
-                    +
-                  </button>
+                  <span>CONFIGURE PROPERTY</span>
                 </div>
                 <div className={styles.optionsList}>
-                  {(field.enumOptions ?? []).map((option, index) => (
-                    <div key={index} className={styles.optionItem}>
-                      <Input
-                        value={option}
-                        onChange={(e) => handleOptionChange(index, e.target.value)}
-                        placeholder="enter new option here"
-                        className={styles.optionInput}
-                      />
-                      <button
-                        className={styles.removeOptionButton}
-                        onClick={() => handleRemoveOption(index)}
-                        title="Remove option"
-                      >
-                        −
-                      </button>
-                    </div>
-                  ))}
+                  <div className={styles.optionsListHeaderContainer}>
+                    <span className={styles.optionsListHeader}>Predefine options</span>
+                    <button 
+                      className={styles.addOptionButton}
+                      onClick={handleAddOption}
+                      title="Add option"
+                    >
+                      +
+                    </button>
+                  </div>
+                  <div className={styles.optionsListItemsContainer}>  
+                    {(field.enumOptions ?? []).map((option, index) => (
+                      <div key={index} className={styles.optionItem}>
+                        <Input
+                          value={option}
+                          onChange={(e) => handleOptionChange(index, e.target.value)}
+                          placeholder="enter new option here"
+                          className={styles.optionInput}
+                        />
+                        <button
+                          className={styles.removeOptionButton}
+                          onClick={() => handleRemoveOption(index)}
+                          title="Remove option"
+                        >
+                          −
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                   {(field.enumOptions ?? []).length === 0 && (
                     <div className={styles.emptyOptionsMessage}>
                       Click + to add options
@@ -372,9 +377,10 @@ export function FieldItem({
             {showConfigMenu && field.dataType === 'reference' && (
               <div ref={configMenuRef} className={styles.configMenu}>
                 <div className={styles.configMenuHeader}>
-                  <span>Choose libraries</span>
+                  <span>ADD USER DEFINED REFERENCE</span>
                 </div>
                 <div className={styles.referenceConfig}>
+                  <span className={styles.referenceConfigHeader}>Choose library</span>
                   <Select
                     mode="multiple"
                     style={{ width: '100%' }}

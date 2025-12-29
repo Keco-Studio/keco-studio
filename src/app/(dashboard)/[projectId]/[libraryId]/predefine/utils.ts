@@ -6,6 +6,7 @@ import predefineTypeRefIcon from '@/app/assets/images/predefineTypeRefIcon.svg';
 import predefineTypeMediaIcon from '@/app/assets/images/predefineTypeMediaIcon.svg';
 import predefineTypeBoolenIcon from '@/app/assets/images/predefineTypeBoolenIcon.svg';
 import predefineTypeFloatIcon from '@/app/assets/images/predefineTypeFloatIcon.svg';
+import predefineTypeFileIcon from '@/app/assets/images/predefineTypeFileIcon.svg';
 
 export const getFieldTypeIcon = (dataType: FieldType) => {
   switch (dataType) {
@@ -19,8 +20,10 @@ export const getFieldTypeIcon = (dataType: FieldType) => {
       return predefineTypeOptIcon;
     case 'reference':
       return predefineTypeRefIcon;
-    case 'media':
+    case 'image':
       return predefineTypeMediaIcon;
+    case 'file':
+      return predefineTypeFileIcon;
     case 'boolean':
       return predefineTypeBoolenIcon;
     default:
@@ -31,7 +34,8 @@ export const getFieldTypeIcon = (dataType: FieldType) => {
 export const FIELD_TYPE_OPTIONS = [
   { label: 'String', value: 'string' },
   { label: 'Option', value: 'enum' },
-  { label: 'Media/File', value: 'media' },
+  { label: 'Image', value: 'image' },
+  { label: 'File', value: 'file' },
   { label: 'Boolean', value: 'boolean' },
   { label: 'Reference', value: 'reference' },
   { label: 'Int', value: 'int' },

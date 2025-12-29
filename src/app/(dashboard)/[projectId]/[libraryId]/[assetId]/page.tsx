@@ -20,7 +20,7 @@ type FieldDef = {
   library_id: string;
   section: string;
   label: string;
-  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'media' | 'reference';
+  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference';
   enum_options: string[] | null;
   reference_libraries: string[] | null;
   required: boolean;
@@ -34,7 +34,8 @@ const DATA_TYPE_LABEL: Record<FieldDef['data_type'], string> = {
   boolean: 'Boolean',
   enum: 'Option',
   date: 'Date',
-  media: 'Media/File',
+  image: 'Image',
+  file: 'File',
   reference: 'Reference',
 };
 
@@ -135,7 +136,13 @@ export default function AssetPage() {
           }
 
           setLibrary(lib);
-          setFieldDefs((defsRes.data as FieldDef[]) || []);
+          // Migrate legacy 'media' type to 'image' for backward compatibility
+          const defs = (defsRes.data as FieldDef[]) || [];
+          const migratedDefs = defs.map(def => ({
+            ...def,
+            data_type: def.data_type === 'media' as any ? 'image' : def.data_type
+          }));
+          setFieldDefs(migratedDefs);
         } else {
           // Load field definitions, asset, and values
           const [{ data: defs, error: defErr }, { data: assetRow, error: assetErr }, { data: vals, error: valErr }] =
@@ -156,7 +163,13 @@ export default function AssetPage() {
           if (assetRow.library_id !== libraryId) throw new Error('Asset not in this library');
           if (valErr) throw valErr;
 
-          setFieldDefs((defs as FieldDef[]) || []);
+          // Migrate legacy 'media' type to 'image' for backward compatibility
+          const fieldDefs = (defs as FieldDef[]) || [];
+          const migratedDefs = fieldDefs.map(def => ({
+            ...def,
+            data_type: def.data_type === 'media' as any ? 'image' : def.data_type
+          }));
+          setFieldDefs(migratedDefs);
           setAsset(assetRow as AssetRow);
           const valueMap: Record<string, any> = {};
           (vals as ValueRow[] | null)?.forEach((v) => {
@@ -268,7 +281,7 @@ export default function AssetPage() {
             v = raw || null;
           } else if (f.data_type === 'enum') {
             v = raw || null;
-          } else if (f.data_type === 'media' || f.data_type === 'reference') {
+          } else if (f.data_type === 'image' || f.data_type === 'file' || f.data_type === 'reference') {
             v = raw || null;
           } else {
             v = raw ?? null;
@@ -320,7 +333,7 @@ export default function AssetPage() {
             v = raw || null;
           } else if (f.data_type === 'enum') {
             v = raw || null;
-          } else if (f.data_type === 'media' || f.data_type === 'reference') {
+          } else if (f.data_type === 'image' || f.data_type === 'file' || f.data_type === 'reference') {
             v = raw || null;
           } else {
             v = raw ?? null;
@@ -537,7 +550,6 @@ export default function AssetPage() {
                                             mode === 'view' ? styles.disabledInput : ''
                                           }`}
                           >
-                                          <option value="">Select option...</option>
                             {(f.enum_options || []).map((opt) => (
                               <option key={opt} value={opt}>
                                 {opt}
@@ -549,7 +561,7 @@ export default function AssetPage() {
                       );
                     }
 
-                                if (f.data_type === 'media') {
+                                if (f.data_type === 'image' || f.data_type === 'file') {
                                   return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
@@ -578,6 +590,7 @@ export default function AssetPage() {
                                           value={value as MediaFileMetadata | null}
                                           onChange={(newValue) => handleValueChange(f.id, newValue)}
                                           disabled={mode === 'view'}
+                                          fieldType={f.data_type}
                                         />
                                       </div>
                                     </div>

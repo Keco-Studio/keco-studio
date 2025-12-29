@@ -236,6 +236,22 @@
   font-size: 14px;
 }
 
+.fieldSelect {
+  padding-right: 30px;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: url('@/app/assets/images/assetOptionsExpandIcon.svg');
+  background-repeat: no-repeat;
+  background-position: right 5px center;
+  background-size: 20px;
+}
+
+.fieldSelect:focus{
+  border-color: #8726EE6B;
+  outline: none;
+}
+
 /* Hide spinner buttons for number inputs with noSpinner class */
 .noSpinner::-webkit-outer-spin-button,
 .noSpinner::-webkit-inner-spin-button {

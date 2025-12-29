@@ -18,7 +18,7 @@ export type PropertyConfig = {
   key: string;
   name: string;
   valueType: 'string' | 'number' | 'boolean' | 'enum' | 'tag' | 'other';
-  dataType?: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'media' | 'reference';
+  dataType?: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference';
   referenceLibraries?: string[]; // For reference type: which libraries can be referenced
   orderIndex: number;
 };

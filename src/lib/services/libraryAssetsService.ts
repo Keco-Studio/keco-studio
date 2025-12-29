@@ -12,7 +12,7 @@ type FieldDefinitionRow = {
   library_id: string;
   section: string;
   label: string;
-  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'media' | 'reference';
+  data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference';
   enum_options: string[] | null;
   reference_libraries: string[] | null; // Array of library IDs that can be referenced
   required: boolean;
@@ -118,7 +118,11 @@ export async function getLibrarySchema(
 
   const properties: PropertyConfig[] = [];
 
-  for (const row of rows) {
+  for (let row of rows) {
+    // Migrate legacy 'media' type to 'image' for backward compatibility
+    if (row.data_type === 'media' as any) {
+      row = { ...row, data_type: 'image' };
+    }
     let grouped = sectionsByName.get(row.section);
     if (!grouped) {
       const sectionId = `${row.library_id}:${row.section}`;

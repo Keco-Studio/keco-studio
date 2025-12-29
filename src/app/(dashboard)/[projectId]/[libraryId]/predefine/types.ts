@@ -1,4 +1,4 @@
-export type FieldType = 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'media' | 'reference';
+export type FieldType = 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference';
 
 export type FieldConfig = {
   id: string;

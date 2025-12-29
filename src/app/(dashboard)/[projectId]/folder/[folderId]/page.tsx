@@ -9,6 +9,7 @@ import { LibraryCard } from '@/components/folders/LibraryCard';
 import { LibraryListView } from '@/components/folders/LibraryListView';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { NewLibraryModal } from '@/components/libraries/NewLibraryModal';
+import { NewFolderModal } from '@/components/folders/NewFolderModal';
 import libraryEmptyIcon from '@/app/assets/images/libraryEmptyIcon.svg';
 import plusHorizontal from '@/app/assets/images/plusHorizontal.svg';
 import plusVertical from '@/app/assets/images/plusVertical.svg';
@@ -28,6 +29,7 @@ export default function FolderPage() {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [showFolderModal, setShowFolderModal] = useState(false);
   const [assetCounts, setAssetCounts] = useState<Record<string, number>>({});
 
   const fetchData = useCallback(async () => {
@@ -148,8 +150,19 @@ export default function FolderPage() {
     console.log('Delete:', libraryId);
   };
 
+  const handleCreateFolder = () => {
+    setShowFolderModal(true);
+  };
+
   const handleCreateLibrary = () => {
     setShowLibraryModal(true);
+  };
+
+  const handleFolderCreated = () => {
+    setShowFolderModal(false);
+    fetchData();
+    // Dispatch event to notify Sidebar
+    window.dispatchEvent(new CustomEvent('folderCreated'));
   };
 
   const handleLibraryCreated = (libraryId: string) => {
@@ -191,6 +204,7 @@ export default function FolderPage() {
         <h1 className={styles.title}>Resource Folder</h1>
       </div>
       <LibraryToolbar
+        onCreateFolder={handleCreateFolder}
         onCreateLibrary={handleCreateLibrary}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
@@ -278,6 +292,12 @@ export default function FolderPage() {
         projectId={projectId}
         folderId={folderId}
         onCreated={handleLibraryCreated}
+      />
+      <NewFolderModal
+        open={showFolderModal}
+        onClose={() => setShowFolderModal(false)}
+        projectId={projectId}
+        onCreated={handleFolderCreated}
       />
     </div>
   );

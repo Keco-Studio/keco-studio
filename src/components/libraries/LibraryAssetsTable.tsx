@@ -499,8 +499,8 @@ export function LibraryAssetsTable({
                       );
                   }
                   
-                  // Check if this is a media type field
-                  if (property.dataType === 'media') {
+                  // Check if this is an image or file type field
+                  if (property.dataType === 'image' || property.dataType === 'file') {
                     const value = row.propertyValues[property.key];
                     let mediaValue: MediaFileMetadata | null = null;
                     
@@ -634,8 +634,8 @@ export function LibraryAssetsTable({
                   );
                 }
                 
-                // Check if this is a media type field
-                if (property.dataType === 'media') {
+                // Check if this is an image or file type field
+                if (property.dataType === 'image' || property.dataType === 'file') {
                   const mediaValue = newRowData[property.key] as MediaFileMetadata | null | undefined;
                   return (
                     <td key={property.id} className={styles.editCell}>
@@ -643,6 +643,7 @@ export function LibraryAssetsTable({
                         value={mediaValue || null}
                         onChange={(value) => handleMediaFileChange(property.key, value)}
                         disabled={isSaving}
+                        fieldType={property.dataType}
                       />
                     </td>
                   );

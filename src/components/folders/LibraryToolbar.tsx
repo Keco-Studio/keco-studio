@@ -7,9 +7,11 @@ import plusVertical from "@/app/assets/images/plusVertical.svg";
 import searchIcon from "@/app/assets/images/searchIcon.svg";
 import listViewIcon from "@/app/assets/images/listViewIcon.svg";
 import gridViewIcon from "@/app/assets/images/gridViewIcon.svg";
+import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
 import styles from './LibraryToolbar.module.css';
 
 type LibraryToolbarProps = {
+  onCreateFolder?: () => void;
   onCreateLibrary?: () => void;
   onSearchChange?: (value: string) => void;
   viewMode?: 'list' | 'grid';
@@ -17,12 +19,15 @@ type LibraryToolbarProps = {
 };
 
 export function LibraryToolbar({
+  onCreateFolder,
   onCreateLibrary,
   onSearchChange,
   viewMode = 'grid',
   onViewModeChange,
 }: LibraryToolbarProps) {
   const [searchValue, setSearchValue] = useState('');
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [createButtonRef, setCreateButtonRef] = useState<HTMLButtonElement | null>(null);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -44,12 +49,31 @@ export function LibraryToolbar({
     }
   };
 
+  const handleCreateButtonClick = () => {
+    setShowAddMenu(!showAddMenu);
+  };
+
+  const handleCreateFolder = () => {
+    setShowAddMenu(false);
+    if (onCreateFolder) {
+      onCreateFolder();
+    }
+  };
+
+  const handleCreateLibrary = () => {
+    setShowAddMenu(false);
+    if (onCreateLibrary) {
+      onCreateLibrary();
+    }
+  };
+
   return (
     <div className={styles.toolbar}>
       <button
+        ref={setCreateButtonRef}
         className={styles.createButton}
-        onClick={onCreateLibrary}
-        aria-label="Create Library"
+        onClick={handleCreateButtonClick}
+        aria-label="Create Folder/Library"
       >
         <span className={styles.plusIcon}>
           <Image
@@ -67,7 +91,7 @@ export function LibraryToolbar({
             className={styles.plusVertical}
           />
         </span>
-        <span className={styles.createButtonText}>Create Library</span>
+        <span className={styles.createButtonText}>Create Folder/Library</span>
       </button>
       
       <div className={styles.searchContainer}>
@@ -113,6 +137,14 @@ export function LibraryToolbar({
           />
         </button>
       </div>
+
+      <AddLibraryMenu
+        open={showAddMenu}
+        anchorElement={createButtonRef}
+        onClose={() => setShowAddMenu(false)}
+        onCreateFolder={handleCreateFolder}
+        onCreateLibrary={handleCreateLibrary}
+      />
     </div>
   );
 }

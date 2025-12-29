@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const fieldSchema = z.object({
   label: z.string().trim().min(1, 'Label is required'),
-  dataType: z.enum(['string', 'int', 'float', 'boolean', 'enum', 'date', 'media', 'reference']),
+  dataType: z.enum(['string', 'int', 'float', 'boolean', 'enum', 'date', 'image', 'file', 'reference']),
   required: z.boolean(),
   enumOptions: z.array(z.string().trim().min(1)).optional(),
 });

@@ -222,13 +222,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   }, [currentIds.folderId, pathname]);
 
   // Initialize expanded state: expand all folders by default when folder data is loaded
-  // Only set default expansion on first load (when not initialized and expandedKeys is empty)
+  // Only set default expansion on first load (when not initialized)
   useEffect(() => {
-    if (folders.length > 0 && !hasInitializedExpandedKeys.current && expandedKeys.length === 0) {
+    if (folders.length > 0 && !hasInitializedExpandedKeys.current) {
       setExpandedKeys(folders.map((f) => `folder-${f.id}`));
       hasInitializedExpandedKeys.current = true;
     }
-  }, [folders, expandedKeys.length]);
+  }, [folders]);
 
   // Listen to libraryCreated event to refresh Sidebar data when library is created from other pages
   useEffect(() => {

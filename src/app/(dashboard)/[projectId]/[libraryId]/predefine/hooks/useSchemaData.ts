@@ -60,13 +60,20 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
           }
         }
         const grouped = sectionMap.get(sectionName)!;
+        
+        // Migrate legacy 'media' type to 'image' for backward compatibility
+        let dataType = row.data_type;
+        if (dataType === 'media' as any) {
+          dataType = 'image' as FieldType;
+        }
+        
         const field = {
           id: row.id,
           label: row.label,
-          dataType: row.data_type,
+          dataType: dataType,
           required: row.required,
-          enumOptions: row.data_type === 'enum' ? row.enum_options ?? [] : undefined,
-          referenceLibraries: row.data_type === 'reference' ? row.reference_libraries ?? [] : undefined,
+          enumOptions: dataType === 'enum' ? row.enum_options ?? [] : undefined,
+          referenceLibraries: dataType === 'reference' ? row.reference_libraries ?? [] : undefined,
         };
         grouped.section.fields.push(field);
       });
