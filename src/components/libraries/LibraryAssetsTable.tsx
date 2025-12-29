@@ -19,6 +19,8 @@ import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
 import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
 import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
 import libraryAssetTable3Icon from '@/app/assets/images/LibraryAssetTable3.svg';
+import noassetIcon1 from '@/app/assets/images/NoassetIcon1.svg';
+import noassetIcon2 from '@/app/assets/images/NoassetIcon2.svg';
 import styles from './LibraryAssetsTable.module.css';
 
 export type LibraryAssetsTableProps = {
@@ -344,7 +346,26 @@ export function LibraryAssetsTable({
     return (
       <div className={styles.tableContainer}>
         <div className={styles.emptyState}>
-          No properties configured yet. Please configure fields in Predefine first.
+          <Image
+            src={noassetIcon1}
+            alt=""
+            width={72}
+            height={72}
+            className={styles.emptyStateIcon}
+          />
+          <p className={styles.emptyStateText}>
+            There is no any asset here. You need to create an asset firstly.
+          </p>
+          <button className={styles.predefineButton}>
+            <Image
+              src={noassetIcon2}
+              alt=""
+              width={24}
+              height={24}
+              className={styles.predefineButtonIcon}
+            />
+            <span>Predefine</span>
+          </button>
         </div>
       </div>
     );

@@ -139,9 +139,58 @@
 }
 
 .emptyState {
-  padding: 16px;
+  padding: clamp(80px, 15vh, 200px) 16px;
   text-align: center;
-  color: #64748b;
+  color: #21272A;
+  /* display: flex; */
+}
+
+.emptyStateIcon {
+  display: block;
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 24px;
+}
+
+.emptyStateText {
+  margin: 0 0 24px;
+  font-family: 'Roboto', sans-serif;
+  font-size: 16px;
+  font-weight: 500 !important;
+  line-height: 100%;
+  letter-spacing: 0;
+  color: #21272A;
+  max-width: 700px;
+  margin-left: auto;
+  margin-right: auto;
+  text-align: center;
+}
+
+.predefineButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 24px;
+  background-color: rgba(94, 0, 255, 0.08);
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  font-family: 'Roboto', sans-serif;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 100%;
+  letter-spacing: 0.5px;
+  color: #1A1A1A;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+
+.predefineButtonIcon {
+  display: block;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
 }
 
 .body {
