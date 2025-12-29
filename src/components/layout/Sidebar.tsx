@@ -27,6 +27,7 @@ import { listProjects, Project, deleteProject } from "@/lib/services/projectServ
 import { listLibraries, Library, deleteLibrary } from "@/lib/services/libraryService";
 import { listFolders, Folder, deleteFolder } from "@/lib/services/folderService";
 import { SupabaseClient } from "@supabase/supabase-js";
+import { ContextMenu, ContextMenuAction } from "./ContextMenu";
 import styles from "./Sidebar.module.css";
 
 type UserProfile = {
@@ -123,6 +124,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   // Loading states for after creation
   const [loadingAfterCreate, setLoadingAfterCreate] = useState(false);
   const [createMessage, setCreateMessage] = useState<string>('');
+  
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    type: 'project' | 'library' | 'folder' | 'asset';
+    id: string;
+  } | null>(null);
 
   const currentIds = useMemo(() => {
     const parts = pathname.split("/").filter(Boolean);
@@ -464,7 +473,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           const libProjectId = lib.project_id;
           return {
             title: (
-              <div className={styles.itemRow}>
+              <div 
+                className={styles.itemRow}
+                onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
+              >
                 <div className={styles.itemMain}>
                   <div className={styles.libraryIconContainer}>
                     <Image
@@ -495,13 +507,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       />
                     </button>
                   </Tooltip>
-                  <button
-                    className={styles.iconButton}
-                    aria-label="Delete library"
-                    onClick={(e) => handleLibraryDelete(lib.id, e)}
-                  >
-                    ×
-                  </button>
                 </div>
               </div>
             ),
@@ -549,18 +554,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               // Existing assets
               ...(assets[lib.id] || []).map<DataNode>((asset) => ({
                 title: (
-                  <div className={styles.itemRow}>
+                  <div 
+                    className={styles.itemRow}
+                    onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
+                  >
                     <div className={styles.itemMain}>
                       <span className={styles.itemText}>{asset.name}</span>
                     </div>
                     <div className={styles.itemActions}>
-                      <button
-                        className={styles.iconButton}
-                        aria-label="Delete asset"
-                        onClick={(e) => handleAssetDelete(asset.id, lib.id, e)}
-                      >
-                        ×
-                      </button>
                     </div>
                   </div>
                 ),
@@ -574,7 +575,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       
       return {
         title: (
-          <div className={styles.itemRow}>
+          <div 
+            className={styles.itemRow}
+            onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
+          >
             <div className={styles.itemMain}>
               <Image
                 src={folderIcon}
@@ -586,13 +590,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               <span className={styles.itemText} style={{ fontWeight: 500 }}>{folder.name}</span>
             </div>
             <div className={styles.itemActions}>
-              <button
-                className={styles.iconButton}
-                aria-label="Delete folder"
-                onClick={(e) => handleFolderDelete(folder.id, e)}
-              >
-                ×
-              </button>
             </div>
           </div>
         ),
@@ -615,7 +612,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const libProjectId = lib.project_id;
       result.push({
         title: (
-          <div className={styles.itemRow}>
+          <div 
+            className={styles.itemRow}
+            onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
+          >
             <div className={styles.itemMain}>
               <div className={styles.libraryIconContainer}>
                 <Image
@@ -646,13 +646,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   />
                 </button>
               </Tooltip>
-              <button
-                className={styles.iconButton}
-                aria-label="Delete library"
-                onClick={(e) => handleLibraryDelete(lib.id, e)}
-              >
-                ×
-              </button>
             </div>
           </div>
         ),
@@ -705,13 +698,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   <span className={styles.itemText}>{asset.name}</span>
                 </div>
                 <div className={styles.itemActions}>
-                  <button
-                    className={styles.iconButton}
-                    aria-label="Delete asset"
-                    onClick={(e) => handleAssetDelete(asset.id, lib.id, e)}
-                  >
-                    ×
-                  </button>
                 </div>
               </div>
             ),
@@ -723,7 +709,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     });
     
     return result;
-  }, [folders, libraries, assets, currentIds.projectId, handleLibraryPredefineClick, handleAssetDelete, handleFolderDelete, handleLibraryDelete, router]);
+  }, [folders, libraries, assets, currentIds.projectId, handleLibraryPredefineClick, router]);
 
   const selectedKey = useMemo(() => {
     const keys: string[] = [];
@@ -820,6 +806,84 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         style={{ display: 'block' }}
       />
     );
+  };
+
+  // Context menu handlers
+  const handleContextMenu = (e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      type,
+      id,
+    });
+  };
+
+  const handleContextMenuAction = (action: ContextMenuAction) => {
+    if (!contextMenu) return;
+    
+    // TODO: Implement actions
+    console.log(`Action: ${action} on ${contextMenu.type} with id: ${contextMenu.id}`);
+    
+    // For now, only handle delete action
+    if (action === 'delete') {
+      if (contextMenu.type === 'project') {
+        if (window.confirm('Delete this project? All libraries under it will be removed.')) {
+          deleteProject(supabase, contextMenu.id).then(() => {
+            fetchProjects();
+          }).catch((err: any) => {
+            setError(err?.message || 'Failed to delete project');
+          });
+        }
+      } else if (contextMenu.type === 'library') {
+        if (window.confirm('Delete this library?')) {
+          const libraryToDelete = libraries.find(lib => lib.id === contextMenu.id);
+          const deletedFolderId = libraryToDelete?.folder_id || null;
+          deleteLibrary(supabase, contextMenu.id).then(() => {
+            fetchFoldersAndLibraries(currentIds.projectId!);
+            window.dispatchEvent(new CustomEvent('libraryDeleted', {
+              detail: { folderId: deletedFolderId, libraryId: contextMenu.id, projectId: currentIds.projectId }
+            }));
+          }).catch((err: any) => {
+            setError(err?.message || 'Failed to delete library');
+          });
+        }
+      } else if (contextMenu.type === 'folder') {
+        if (window.confirm('Delete this folder? All libraries and subfolders under it will be removed.')) {
+          deleteFolder(supabase, contextMenu.id).then(() => {
+            fetchFoldersAndLibraries(currentIds.projectId!);
+            window.dispatchEvent(new CustomEvent('folderDeleted', {
+              detail: { folderId: contextMenu.id, projectId: currentIds.projectId }
+            }));
+          }).catch((err: any) => {
+            setError(err?.message || 'Failed to delete folder');
+          });
+        }
+      } else if (contextMenu.type === 'asset') {
+        if (window.confirm('Delete this asset?')) {
+          const libraryId = Object.keys(assets).find(libId => 
+            assets[libId].some(asset => asset.id === contextMenu.id)
+          );
+          if (libraryId) {
+            supabase
+              .from('library_assets')
+              .delete()
+              .eq('id', contextMenu.id)
+              .then(async (result) => {
+                if (result.error) {
+                  console.error('Failed to delete asset', result.error);
+                } else {
+                  await fetchAssets(libraryId);
+                  window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
+                }
+              });
+          }
+        }
+      }
+    }
+    
+    setContextMenu(null);
   };
 
   const handleProjectDelete = async (projectId: string, e: React.MouseEvent) => {
@@ -969,6 +1033,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 key={project.id}
                 className={`${styles.item} ${isActive ? styles.itemActive : styles.itemInactive}`}
                 onClick={() => handleProjectClick(project.id)}
+                onContextMenu={(e) => handleContextMenu(e, 'project', project.id)}
               >
                 <Image
                   src={projectIcon}
@@ -1000,13 +1065,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       </div>
                     </Tooltip>
                   )}
-                  <button
-                    className={styles.iconButton}
-                    aria-label="Delete project"
-                    onClick={(e) => handleProjectDelete(project.id, e)}
-                  >
-                    ×
-                  </button>
                 </span>
               </div>
             );
@@ -1104,6 +1162,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onCreateFolder={handleCreateFolder}
         onCreateLibrary={handleCreateLibrary}
       />
+      
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onClose={() => setContextMenu(null)}
+          onAction={handleContextMenuAction}
+        />
+      )}
     </aside>
   );
 }
