@@ -4,7 +4,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { JSONContent } from '@tiptap/core';
+// import type { JSONContent } from '@tiptap/core';
 import type { SharedDocument } from '../types/shared-document';
 
 /**
@@ -37,14 +37,14 @@ export async function createDocument(
   supabase: SupabaseClient,
   docId: string,
   ownerId: string,
-  content: JSONContent
+  // content: JSONContent
 ): Promise<SharedDocument> {
   const { data, error } = await supabase
     .from('shared_documents')
     .insert({
       doc_id: docId,
       owner_id: ownerId,
-      content,
+      // content,
     })
     .select('id, doc_id, owner_id, content, updated_at, created_at')
     .single();
@@ -64,12 +64,12 @@ export async function createDocument(
 export async function updateDocumentContent(
   supabase: SupabaseClient,
   docId: string,
-  content: JSONContent
+  // content: JSONContent
 ): Promise<{ updated_at: string }> {
   const { data, error } = await supabase
     .from('shared_documents')
     .update({
-      content,
+      // content,
       // updated_at is automatically set by trigger
     })
     .eq('doc_id', docId)
