@@ -686,6 +686,46 @@
   display: inline-block !important; /* Ensure text renders as a single unit */
 }
 
+/* Predefine page special view */
+.predefineItem {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(94, 0, 255, 0.08);
+  border-radius: 8px;
+}
+
+.predefineCloseButton {
+  margin-right: 0;
+  padding: 4px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.predefineItemMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0; /* Allow flex item to shrink below content size */
+  overflow: hidden; /* Enable text truncation */
+}
+
+/* Text ellipsis for predefine item */
+.predefineItemMain .itemText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0; /* Allow text to shrink */
+}
+
 .iconButton {
   background: none;
   border: none;
@@ -772,7 +812,7 @@
   display: flex;
   align-items: center;
   margin: 0;
-  padding-left: 0; /* 🎯 尝试调整按钮本身的 padding */
+  padding-left: 0;
   box-sizing: border-box;
 }
 
@@ -849,4 +889,44 @@
   min-width: max-content !important;
   width: auto !important;
   display: inline-block !important; /* Ensure text renders as a single unit */
+}
+
+/* Predefine page special view */
+.predefineItem {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(94, 0, 255, 0.08);
+  border-radius: 8px;
+}
+
+.predefineCloseButton {
+  margin-right: 0;
+  padding: 4px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.predefineItemMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0; /* Allow flex item to shrink below content size */
+  overflow: hidden; /* Enable text truncation */
+}
+
+/* Text ellipsis for predefine item */
+.predefineItemMain .itemText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0; /* Allow text to shrink */
 }

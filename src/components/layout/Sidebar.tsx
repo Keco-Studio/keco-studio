@@ -1015,91 +1015,95 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       </div>
 
       <div className={styles.content}>
-        <div className={styles.sectionTitle}>
-          <span>Projects</span>
-          <button
-            className={styles.addButton}
-            onClick={() => setShowProjectModal(true)}
-            title="New Project"
-          >
-            <Image
-              src={addProjectIcon}
-              alt="Add project"
-              width={24}
-              height={24}
-            />
-          </button>
-        </div>
-        {loadingProjects && <div className={styles.hint}>Loading projects...</div>}
-        {loadingAfterCreate && <div className={styles.loadingAfterCreate}>{createMessage}</div>}
-        <div className={styles.sectionList}>
-          {projects.map((project) => {
-            const isActive = currentIds.projectId === project.id;
-            return (
-              <div
-                key={project.id}
-                className={`${styles.item} ${isActive ? styles.itemActive : styles.itemInactive}`}
-                onClick={() => handleProjectClick(project.id)}
-                onContextMenu={(e) => handleContextMenu(e, 'project', project.id)}
+        {!currentIds.isPredefinePage && (
+          <>
+            <div className={styles.sectionTitle}>
+              <span>Projects</span>
+              <button
+                className={styles.addButton}
+                onClick={() => setShowProjectModal(true)}
+                title="New Project"
               >
                 <Image
-                  src={projectIcon}
-                  alt="Project"
-                  width={20}
-                  height={20}
-                  className={styles.itemIcon}
+                  src={addProjectIcon}
+                  alt="Add project"
+                  width={24}
+                  height={24}
                 />
-                <span className={styles.itemText}>{project.name}</span>
-                <span className={styles.itemActions}>
-                  {project.description && (
-                    <Tooltip
-                      title={project.description}
-                      placement="top"
-                      styles={{
-                        root: { maxWidth: '300px' }
-                      }}
-                    >
-                      <div
-                        className={styles.infoIconWrapper}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Image
-                          src={projectRightIcon}
-                          alt="Info"
-                          width={24}
-                          height={24}
-                        />
-                      </div>
-                    </Tooltip>
-                  )}
-                </span>
-              </div>
-            );
-          })}
-          {!loadingProjects && projects.length === 0 && (
-            <button
-              className={styles.createProjectButton}
-              onClick={() => setShowProjectModal(true)}
-            >
-              <Image
-                src={createProjectIcon}
-                alt="Project"
-                width={24}
-                height={24}
-                className={styles.itemIcon}
-              />
-              <span className={styles.itemText}>Create Project</span>
-            </button>
-          )}
-        </div>
+              </button>
+            </div>
+            {loadingProjects && <div className={styles.hint}>Loading projects...</div>}
+            {loadingAfterCreate && <div className={styles.loadingAfterCreate}>{createMessage}</div>}
+            <div className={styles.sectionList}>
+              {projects.map((project) => {
+                const isActive = currentIds.projectId === project.id;
+                return (
+                  <div
+                    key={project.id}
+                    className={`${styles.item} ${isActive ? styles.itemActive : styles.itemInactive}`}
+                    onClick={() => handleProjectClick(project.id)}
+                    onContextMenu={(e) => handleContextMenu(e, 'project', project.id)}
+                  >
+                    <Image
+                      src={projectIcon}
+                      alt="Project"
+                      width={20}
+                      height={20}
+                      className={styles.itemIcon}
+                    />
+                    <span className={styles.itemText}>{project.name}</span>
+                    <span className={styles.itemActions}>
+                      {project.description && (
+                        <Tooltip
+                          title={project.description}
+                          placement="top"
+                          styles={{
+                            root: { maxWidth: '300px' }
+                          }}
+                        >
+                          <div
+                            className={styles.infoIconWrapper}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Image
+                              src={projectRightIcon}
+                              alt="Info"
+                              width={24}
+                              height={24}
+                            />
+                          </div>
+                        </Tooltip>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+              {!loadingProjects && projects.length === 0 && (
+                <button
+                  className={styles.createProjectButton}
+                  onClick={() => setShowProjectModal(true)}
+                >
+                  <Image
+                    src={createProjectIcon}
+                    alt="Project"
+                    width={24}
+                    height={24}
+                    className={styles.itemIcon}
+                  />
+                  <span className={styles.itemText}>Create Project</span>
+                </button>
+              )}
+            </div>
+          </>
+        )}
 
         {currentIds.projectId &&
           projects.length > 0 &&
           projects.some((p) => p.id === currentIds.projectId) && (
             <>
-              <div className={styles.sectionTitle}>
-                <span>Libraries</span>
-                {!currentIds.isPredefinePage && (
+              {!currentIds.isPredefinePage && (
+                <div className={styles.sectionTitle}>
+                  <span>Libraries</span>
                   <button
                     ref={setAddButtonRef}
                     className={styles.addButton}
@@ -1113,9 +1117,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       height={24}
                     />
                   </button>
-                )}
-              </div>
-              {(loadingFolders || loadingLibraries) && (
+                </div>
+              )}
+              {(loadingFolders || loadingLibraries) && !currentIds.isPredefinePage && (
                 <div className={styles.hint}>Loading libraries...</div>
               )}
               <div className={styles.sectionList}>
@@ -1125,33 +1129,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     const currentLibrary = libraries.find(lib => lib.id === currentIds.libraryId);
                     const libraryName = currentLibrary?.name || 'Library';
                     return (
-                      <div 
-                        className={styles.itemRow} 
-                        style={{ 
-                          padding: '8px 12px', 
-                          marginBottom: '8px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '8px'
-                        }}
-                      >
+                      <div className={styles.predefineItem}>
                         <button
-                          className={styles.iconButton}
+                          className={`${styles.iconButton} ${styles.predefineCloseButton}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (currentIds.projectId && currentIds.libraryId) {
                               router.push(`/${currentIds.projectId}/${currentIds.libraryId}`);
                             }
-                          }}
-                          style={{ 
-                            marginRight: '0',
-                            padding: '4px', 
-                            cursor: 'pointer',
-                            border: 'none',
-                            background: 'transparent',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center'
                           }}
                           title="Back to library"
                         >
@@ -1162,15 +1147,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                             height={24}
                           />
                         </button>
-                        <div 
-                          className={styles.itemMain} 
-                          style={{ 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            gap: '8px',
-                            flex: 1
-                          }}
-                        >
+                        <div className={styles.predefineItemMain}>
                           <Image
                             src={sidebarFolderIcon}
                             alt="Library"
