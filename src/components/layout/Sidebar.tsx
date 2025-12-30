@@ -13,6 +13,11 @@ import createProjectIcon from "@/app/assets/images/createProjectIcon.svg";
 import addProjectIcon from "@/app/assets/images/addProjectIcon.svg";
 import searchIcon from "@/app/assets/images/searchIcon.svg";
 import projectRightIcon from "@/app/assets/images/ProjectRightIcon.svg";
+import sidebarFolderIcon from "@/app/assets/images/SidebarFloderIcon.svg";
+import sidebarFolderIcon2 from "@/app/assets/images/SidebarFolderIcon2.svg";
+import sidebarFolderIcon3 from "@/app/assets/images/SidebarFloderIcon3.svg";
+import sidebarFolderIcon4 from "@/app/assets/images/SidebarFloderIcon4.svg";
+import sidebarFolderIcon5 from "@/app/assets/images/SidebarFolderInco5.svg";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -135,20 +140,32 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const currentIds = useMemo(() => {
     const parts = pathname.split("/").filter(Boolean);
-    // Handle /[projectId]/[libraryId] or /[projectId]/folder/[folderId] structure
+    // Handle /[projectId]/[libraryId] or /[projectId]/folder/[folderId] or /[projectId]/[libraryId]/predefine structure
     const projectId = parts[0] || null;
     let libraryId: string | null = null;
     let folderId: string | null = null;
+    let isPredefinePage = false;
+    let assetId: string | null = null;
+    let isLibraryPage = false; // True when on /[projectId]/[libraryId] (not predefine, not asset)
     
     if (parts.length >= 2 && parts[1] === 'folder' && parts[2]) {
       // URL format: /[projectId]/folder/[folderId]
       folderId = parts[2];
-    } else if (parts.length >= 2) {
-      // URL format: /[projectId]/[libraryId]
+    } else if (parts.length >= 3 && parts[2] === 'predefine') {
+      // URL format: /[projectId]/[libraryId]/predefine
       libraryId = parts[1];
+      isPredefinePage = true;
+    } else if (parts.length >= 3) {
+      // URL format: /[projectId]/[libraryId]/[assetId] or /[projectId]/[libraryId]/new
+      libraryId = parts[1];
+      assetId = parts[2];
+    } else if (parts.length >= 2) {
+      // URL format: /[projectId]/[libraryId] - library page
+      libraryId = parts[1];
+      isLibraryPage = true;
     }
     
-    return { projectId, libraryId, folderId };
+    return { projectId, libraryId, folderId, isPredefinePage, assetId, isLibraryPage };
   }, [pathname]);
 
   const fetchProjects = useCallback(async () => {
@@ -471,13 +488,36 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         createButtonNode, // Always first
         ...folderLibraries.map((lib) => {
           const libProjectId = lib.project_id;
+          // Show selected state when on library page OR when viewing an asset in this library
+          const isCurrentLibrary = currentIds.libraryId === lib.id && (currentIds.isLibraryPage || !!currentIds.assetId);
+          // Show icons only when viewing an asset (not on library page)
+          const showAssetPageIcons = currentIds.libraryId === lib.id && !!currentIds.assetId;
           return {
             title: (
               <div 
-                className={styles.itemRow}
+                className={`${styles.itemRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
                 onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
               >
                 <div className={styles.itemMain}>
+                  {showAssetPageIcons && (
+                    <button
+                      className={styles.libraryBackButton}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (currentIds.projectId) {
+                          router.push(`/${currentIds.projectId}`);
+                        }
+                      }}
+                      title="Back to tree view"
+                    >
+                      <Image
+                        src={sidebarFolderIcon3}
+                        alt="Back"
+                        width={24}
+                        height={24}
+                      />
+                    </button>
+                  )}
                   <div className={styles.libraryIconContainer}>
                     <Image
                       src={libraryBookIcon}
@@ -500,7 +540,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
                     >
                       <Image
-                        src={predefineSettingIcon}
+                        src={showAssetPageIcons ? sidebarFolderIcon4 : predefineSettingIcon}
                         alt="Predefine"
                         width={22}
                         height={22}
@@ -552,22 +592,25 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 isLeaf: true,
               },
               // Existing assets
-              ...(assets[lib.id] || []).map<DataNode>((asset) => ({
-                title: (
-                  <div 
-                    className={styles.itemRow}
-                    onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
-                  >
-                    <div className={styles.itemMain}>
-                      <span className={styles.itemText}>{asset.name}</span>
+              ...(assets[lib.id] || []).map<DataNode>((asset) => {
+                const isCurrentAsset = currentIds.assetId === asset.id;
+                return {
+                  title: (
+                    <div 
+                      className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
+                      onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
+                    >
+                      <div className={styles.itemMain}>
+                        <span className={styles.itemText}>{asset.name}</span>
+                      </div>
+                      <div className={styles.itemActions}>
+                      </div>
                     </div>
-                    <div className={styles.itemActions}>
-                    </div>
-                  </div>
-                ),
-                key: `asset-${asset.id}`,
-                isLeaf: true,
-              })),
+                  ),
+                  key: `asset-${asset.id}`,
+                  isLeaf: true,
+                };
+              }),
             ],
           };
         }),
@@ -610,13 +653,36 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     const rootLibraries = librariesByFolder.get('') || [];
     rootLibraries.forEach((lib) => {
       const libProjectId = lib.project_id;
+      // Show selected state when on library page OR when viewing an asset in this library
+      const isCurrentLibrary = currentIds.libraryId === lib.id && (currentIds.isLibraryPage || !!currentIds.assetId);
+      // Show icons only when viewing an asset (not on library page)
+      const showAssetPageIcons = currentIds.libraryId === lib.id && !!currentIds.assetId;
       result.push({
         title: (
           <div 
-            className={styles.itemRow}
+            className={`${styles.itemRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
             onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
           >
             <div className={styles.itemMain}>
+              {showAssetPageIcons && (
+                <button
+                  className={styles.libraryBackButton}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (currentIds.projectId) {
+                      router.push(`/${currentIds.projectId}`);
+                    }
+                  }}
+                  title="Back to tree view"
+                >
+                  <Image
+                    src={sidebarFolderIcon3}
+                    alt="Back"
+                    width={24}
+                    height={24}
+                  />
+                </button>
+              )}
               <div className={styles.libraryIconContainer}>
                 <Image
                   src={libraryBookIcon}
@@ -639,10 +705,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
                 >
                   <Image
-                    src={predefineSettingIcon}
+                    src={showAssetPageIcons ? sidebarFolderIcon4 : predefineSettingIcon}
                     alt="Predefine"
-                    width={18}
-                    height={18}
+                    width={22}
+                    height={22}
                   />
                 </button>
               </Tooltip>
@@ -691,25 +757,28 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             isLeaf: true,
           },
           // Existing assets
-          ...(assets[lib.id] || []).map<DataNode>((asset) => ({
-            title: (
-              <div className={styles.itemRow}>
-                <div className={styles.itemMain}>
-                  <span className={styles.itemText}>{asset.name}</span>
+          ...(assets[lib.id] || []).map<DataNode>((asset) => {
+            const isCurrentAsset = currentIds.assetId === asset.id;
+            return {
+              title: (
+                <div className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}>
+                  <div className={styles.itemMain}>
+                    <span className={styles.itemText}>{asset.name}</span>
+                  </div>
+                  <div className={styles.itemActions}>
+                  </div>
                 </div>
-                <div className={styles.itemActions}>
-                </div>
-              </div>
-            ),
-            key: `asset-${asset.id}`,
-            isLeaf: true,
-          })),
+              ),
+              key: `asset-${asset.id}`,
+              isLeaf: true,
+            };
+          }),
         ],
       });
     });
     
     return result;
-  }, [folders, libraries, assets, currentIds.projectId, handleLibraryPredefineClick, router]);
+  }, [folders, libraries, assets, currentIds.projectId, currentIds.libraryId, currentIds.isLibraryPage, currentIds.assetId, handleLibraryPredefineClick, router]);
 
   const selectedKey = useMemo(() => {
     const keys: string[] = [];
@@ -721,18 +790,19 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     
     // Add selected library or asset
     if (currentIds.libraryId) {
-      const parts = pathname.split("/").filter(Boolean);
-      if (parts.length >= 3 && parts[1] !== 'folder') {
+      if (currentIds.assetId && currentIds.assetId !== 'new' && currentIds.assetId !== 'predefine') {
         // Asset: /[projectId]/[libraryId]/[assetId]
-        keys.push(`asset-${parts[2]}`);
-      } else {
+        keys.push(`asset-${currentIds.assetId}`);
+        // Also select the library when viewing an asset
+        keys.push(`library-${currentIds.libraryId}`);
+      } else if (currentIds.isLibraryPage) {
         // Library: /[projectId]/[libraryId]
         keys.push(`library-${currentIds.libraryId}`);
       }
     }
     
     return keys;
-  }, [pathname, currentIds.folderId, currentIds.libraryId]);
+  }, [pathname, currentIds.folderId, currentIds.libraryId, currentIds.assetId, currentIds.isLibraryPage]);
 
   const onSelect = (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
@@ -1008,127 +1078,287 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       </div>
 
       <div className={styles.content}>
-        <div className={styles.sectionTitle}>
-          <span>Projects</span>
-          <button
-            className={styles.addButton}
-            onClick={() => setShowProjectModal(true)}
-            title="New Project"
-          >
-            <Image
-              src={addProjectIcon}
-              alt="Add project"
-              width={24}
-              height={24}
-            />
-          </button>
-        </div>
-        {loadingProjects && <div className={styles.hint}>Loading projects...</div>}
-        {loadingAfterCreate && <div className={styles.loadingAfterCreate}>{createMessage}</div>}
-        <div className={styles.sectionList}>
-          {projects.map((project) => {
-            const isActive = currentIds.projectId === project.id;
-            return (
-              <div
-                key={project.id}
-                className={`${styles.item} ${isActive ? styles.itemActive : styles.itemInactive}`}
-                onClick={() => handleProjectClick(project.id)}
-                onContextMenu={(e) => handleContextMenu(e, 'project', project.id)}
+        {!currentIds.isPredefinePage && !currentIds.assetId && (
+          <>
+            <div className={styles.sectionTitle}>
+              <span>Projects</span>
+              <button
+                className={styles.addButton}
+                onClick={() => setShowProjectModal(true)}
+                title="New Project"
               >
                 <Image
-                  src={projectIcon}
-                  alt="Project"
-                  width={20}
-                  height={20}
-                  className={styles.itemIcon}
+                  src={addProjectIcon}
+                  alt="Add project"
+                  width={24}
+                  height={24}
                 />
-                <span className={styles.itemText}>{project.name}</span>
-                <span className={styles.itemActions}>
-                  {project.description && (
-                    <Tooltip
-                      title={project.description}
-                      placement="top"
-                      styles={{
-                        root: { maxWidth: '300px' }
-                      }}
-                    >
-                      <div
-                        className={styles.infoIconWrapper}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <Image
-                          src={projectRightIcon}
-                          alt="Info"
-                          width={24}
-                          height={24}
-                        />
-                      </div>
-                    </Tooltip>
-                  )}
-                </span>
-              </div>
-            );
-          })}
-          {!loadingProjects && projects.length === 0 && (
-            <button
-              className={styles.createProjectButton}
-              onClick={() => setShowProjectModal(true)}
-            >
-              <Image
-                src={createProjectIcon}
-                alt="Project"
-                width={24}
-                height={24}
-                className={styles.itemIcon}
-              />
-              <span className={styles.itemText}>Create Project</span>
-            </button>
-          )}
-        </div>
+              </button>
+            </div>
+            {loadingProjects && <div className={styles.hint}>Loading projects...</div>}
+            {loadingAfterCreate && <div className={styles.loadingAfterCreate}>{createMessage}</div>}
+            <div className={styles.sectionList}>
+              {projects.map((project) => {
+                const isActive = currentIds.projectId === project.id;
+                return (
+                  <div
+                    key={project.id}
+                    className={`${styles.item} ${isActive ? styles.itemActive : styles.itemInactive}`}
+                    onClick={() => handleProjectClick(project.id)}
+                    onContextMenu={(e) => handleContextMenu(e, 'project', project.id)}
+                  >
+                    <Image
+                      src={projectIcon}
+                      alt="Project"
+                      width={20}
+                      height={20}
+                      className={styles.itemIcon}
+                    />
+                    <span className={styles.itemText}>{project.name}</span>
+                    <span className={styles.itemActions}>
+                      {project.description && (
+                        <Tooltip
+                          title={project.description}
+                          placement="top"
+                          styles={{
+                            root: { maxWidth: '300px' }
+                          }}
+                        >
+                          <div
+                            className={styles.infoIconWrapper}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Image
+                              src={projectRightIcon}
+                              alt="Info"
+                              width={24}
+                              height={24}
+                            />
+                          </div>
+                        </Tooltip>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+              {!loadingProjects && projects.length === 0 && (
+                <button
+                  className={styles.createProjectButton}
+                  onClick={() => setShowProjectModal(true)}
+                >
+                  <Image
+                    src={createProjectIcon}
+                    alt="Project"
+                    width={24}
+                    height={24}
+                    className={styles.itemIcon}
+                  />
+                  <span className={styles.itemText}>Create Project</span>
+                </button>
+              )}
+            </div>
+          </>
+        )}
 
         {currentIds.projectId &&
           projects.length > 0 &&
           projects.some((p) => p.id === currentIds.projectId) && (
             <>
-              <div className={styles.sectionTitle}>
-                <span>Libraries</span>
-                <button
-                  ref={setAddButtonRef}
-                  className={styles.addButton}
-                  onClick={handleAddButtonClick}
-                  title="Add new folder or library"
-                >
-                  <Image
-                    src={addProjectIcon}
-                    alt="Add library"
-                    width={24}
-                    height={24}
-                  />
-                </button>
-              </div>
-              {(loadingFolders || loadingLibraries) && (
+              {!currentIds.isPredefinePage && !currentIds.assetId && (
+                <div className={styles.sectionTitle}>
+                  <span>Libraries</span>
+                  <button
+                    ref={setAddButtonRef}
+                    className={styles.addButton}
+                    onClick={handleAddButtonClick}
+                    title="Add new folder or library"
+                  >
+                    <Image
+                      src={addProjectIcon}
+                      alt="Add library"
+                      width={24}
+                      height={24}
+                    />
+                  </button>
+                </div>
+              )}
+              {(loadingFolders || loadingLibraries) && !currentIds.isPredefinePage && (
                 <div className={styles.hint}>Loading libraries...</div>
               )}
               <div className={styles.sectionList}>
-                <div className={styles.treeWrapper}>
-                  <Tree
-                    className={styles.tree}
-                    showIcon={false}
-                    treeData={treeData}
-                    selectedKeys={selectedKey}
-                    onSelect={onSelect}
-                    onExpand={onExpand}
-                    switcherIcon={switcherIcon}
-                    expandedKeys={expandedKeys}
-                    motion={false}
-                  />
-                </div>
-                {!loadingFolders &&
-                  !loadingLibraries &&
-                  folders.length === 0 &&
-                  libraries.length === 0 && (
-                    <div className={styles.hint}>No libraries. Create one.</div>
-                  )}
+                {currentIds.isPredefinePage && currentIds.libraryId ? (
+                  // Predefine page: Show special view with close button
+                  (() => {
+                    const currentLibrary = libraries.find(lib => lib.id === currentIds.libraryId);
+                    const libraryName = currentLibrary?.name || 'Library';
+                    return (
+                      <div className={styles.predefineItem}>
+                        <button
+                          className={`${styles.iconButton} ${styles.predefineCloseButton}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (currentIds.projectId && currentIds.libraryId) {
+                              router.push(`/${currentIds.projectId}/${currentIds.libraryId}`);
+                            }
+                          }}
+                          title="Back to library"
+                        >
+                          <Image
+                            src={sidebarFolderIcon2}
+                            alt="Close"
+                            width={24}
+                            height={24}
+                          />
+                        </button>
+                        <div className={styles.predefineItemMain}>
+                          <Image
+                            src={sidebarFolderIcon}
+                            alt="Library"
+                            width={24}
+                            height={24}
+                          />
+                          <span className={styles.itemText} style={{ fontWeight: 500 }}>
+                            Predefine {libraryName} Library
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()
+                ) : currentIds.assetId && currentIds.libraryId ? (
+                  // Asset page: Show library with assets list
+                  (() => {
+                    const currentLibrary = libraries.find(lib => lib.id === currentIds.libraryId);
+                    const libraryName = currentLibrary?.name || 'Library';
+                    const libraryAssets = assets[currentIds.libraryId] || [];
+                    return (
+                      <>
+                        {/* Library item */}
+                        <div className={`${styles.itemRow} ${styles.libraryItemActiveWithPadding}`}>
+                          <div className={styles.itemMain}>
+                            <button
+                              className={styles.libraryBackButton}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                if (currentIds.projectId) {
+                                  router.push(`/${currentIds.projectId}`);
+                                }
+                              }}
+                              title="Back to tree view"
+                            >
+                              <Image
+                                src={sidebarFolderIcon3}
+                                alt="Back"
+                                width={24}
+                                height={24}
+                              />
+                            </button>
+                            <div className={styles.libraryIconContainer}>
+                              <Image
+                                src={libraryBookIcon}
+                                alt="Library"
+                                width={24}
+                                height={24}
+                              />
+                            </div>
+                            <span className={styles.itemText}>{libraryName}</span>
+                          </div>
+                          <div className={styles.itemActions}>
+                            <Tooltip
+                              title="Predefine asset here"
+                              placement="top"
+                              color="#8B5CF6"
+                            >
+                              <button
+                                className={styles.iconButton}
+                                aria-label="Library sections"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (currentIds.projectId && currentIds.libraryId) {
+                                    handleLibraryPredefineClick(currentIds.projectId, currentIds.libraryId, e);
+                                  }
+                                }}
+                              >
+                                <Image
+                                  src={sidebarFolderIcon4}
+                                  alt="Predefine"
+                                  width={22}
+                                  height={22}
+                                />
+                              </button>
+                            </Tooltip>
+                          </div>
+                        </div>
+                        {/* Add new asset button */}
+                        <button
+                          className={`${styles.createButton} ${styles.createButtonAligned}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (currentIds.projectId && currentIds.libraryId) {
+                              router.push(`/${currentIds.projectId}/${currentIds.libraryId}/new`);
+                            }
+                          }}
+                        >
+                          <span className={styles.createButtonText}>
+                            <Image
+                              src={sidebarFolderIcon5}
+                              alt="Add"
+                              width={24}
+                              height={24}
+                            />
+                            {' '}Add new asset
+                          </span>
+                        </button>
+                        {/* Assets list */}
+                        <div className={styles.assetList}>
+                          {libraryAssets.map((asset) => {
+                            const isCurrentAsset = currentIds.assetId === asset.id;
+                            return (
+                              <div
+                                key={asset.id}
+                                className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
+                                onClick={() => {
+                                  if (currentIds.projectId && currentIds.libraryId) {
+                                    handleAssetClick(currentIds.projectId, currentIds.libraryId, asset.id);
+                                  }
+                                }}
+                                onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
+                              >
+                                <div className={styles.itemMain}>
+                                  <span className={styles.itemText}>{asset.name}</span>
+                                </div>
+                                <div className={styles.itemActions}>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    );
+                  })()
+                ) : (
+                  // Normal view: Show tree structure
+                  <>
+                    <div className={styles.treeWrapper}>
+                      <Tree
+                        className={styles.tree}
+                        showIcon={false}
+                        treeData={treeData}
+                        selectedKeys={selectedKey}
+                        onSelect={onSelect}
+                        onExpand={onExpand}
+                        switcherIcon={switcherIcon}
+                        expandedKeys={expandedKeys}
+                        motion={false}
+                      />
+                    </div>
+                    {!loadingFolders &&
+                      !loadingLibraries &&
+                      folders.length === 0 &&
+                      libraries.length === 0 && (
+                        <div className={styles.hint}>No libraries. Create one.</div>
+                      )}
+                  </>
+                )}
               </div>
             </>
           )}

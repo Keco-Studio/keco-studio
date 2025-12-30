@@ -686,6 +686,119 @@
   display: inline-block !important; /* Ensure text renders as a single unit */
 }
 
+/* Predefine page special view */
+.predefineItem {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(94, 0, 255, 0.08);
+  border-radius: 8px;
+}
+
+.predefineCloseButton {
+  margin-right: 0;
+  padding: 4px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.predefineItemMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0; /* Allow flex item to shrink below content size */
+  overflow: hidden; /* Enable text truncation */
+}
+
+/* Text ellipsis for predefine item */
+.predefineItemMain .itemText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0; /* Allow text to shrink */
+}
+
+/* Library item active state (when on library page) */
+.libraryItemActive {
+  background-color: #fff1f2 !important;
+  border-radius: 8px;
+}
+
+/* Library item active state with padding (when viewing an asset) */
+.libraryItemActiveWithPadding {
+  background-color: #fff1f2 !important;
+  border-radius: 8px;
+  padding: 8px 12px !important;
+  min-height: 40px;
+}
+
+.libraryBackButton {
+  margin-right: 8px;
+  padding: 0;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Asset item active state (when viewing an asset) */
+.assetItemActive {
+  background-color: rgba(255, 0, 94, 0.06) !important;
+  border-radius: 8px;
+  min-height: 40px;
+}
+
+/* Asset list container (when on asset page) */
+.assetList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 0 !important; /* Remove margin-top, use margin-bottom on createButton instead */
+}
+
+.assetList .itemRow {
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+.assetList .itemRow:hover {
+  background-color: #f8fafc;
+}
+
+/* Aligned create button for asset page (aligned with back button) */
+.createButtonAligned {
+  padding: 8px 12px !important; /* Same padding as asset list items for consistent height */
+  height: 40px !important; /* Fixed height to match asset items exactly */
+  min-height: 40px !important; /* Same height as asset list items */
+  display: flex !important;
+  align-items: center !important; /* Vertical center content */
+  box-sizing: border-box !important;
+  margin: 0 !important; /* Remove all margins */
+}
+
+/* Adjust icon position to align with library back button */
+.createButtonAligned .createButtonText {
+  margin-left: 0 !important; /* Remove any default margin */
+  padding-left: 0 !important; /* Remove any default padding */
+}
+
+/* The icon should align with the back button which is at position: 
+   library padding-left (12px) + back button position (0px) = 12px from library container edge
+   But since createButtonAligned also has padding-left 12px, the icon should be at 0px from createButtonText start */
+
 .iconButton {
   background: none;
   border: none;
@@ -772,7 +885,7 @@
   display: flex;
   align-items: center;
   margin: 0;
-  padding-left: 0; /* 🎯 尝试调整按钮本身的 padding */
+  padding-left: 0;
   box-sizing: border-box;
 }
 
@@ -850,3 +963,116 @@
   width: auto !important;
   display: inline-block !important; /* Ensure text renders as a single unit */
 }
+
+/* Predefine page special view */
+.predefineItem {
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: rgba(94, 0, 255, 0.08);
+  border-radius: 8px;
+}
+
+.predefineCloseButton {
+  margin-right: 0;
+  padding: 4px;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.predefineItemMain {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0; /* Allow flex item to shrink below content size */
+  overflow: hidden; /* Enable text truncation */
+}
+
+/* Text ellipsis for predefine item */
+.predefineItemMain .itemText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0; /* Allow text to shrink */
+}
+
+/* Library item active state (when on library page) */
+.libraryItemActive {
+  background-color: #fff1f2 !important;
+  border-radius: 8px;
+}
+
+/* Library item active state with padding (when viewing an asset) */
+.libraryItemActiveWithPadding {
+  background-color: #fff1f2 !important;
+  border-radius: 8px;
+  padding: 8px 12px !important;
+  min-height: 40px;
+}
+
+.libraryBackButton {
+  margin-right: 8px;
+  padding: 0;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* Asset item active state (when viewing an asset) */
+.assetItemActive {
+  background-color: rgba(255, 0, 94, 0.06) !important;
+  border-radius: 8px;
+  min-height: 40px;
+}
+
+/* Asset list container (when on asset page) */
+.assetList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 0 !important; /* Remove margin-top, use margin-bottom on createButton instead */
+}
+
+.assetList .itemRow {
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+.assetList .itemRow:hover {
+  background-color: #f8fafc;
+}
+
+/* Aligned create button for asset page (aligned with back button) */
+.createButtonAligned {
+  padding: 8px 12px !important; /* Same padding as asset list items for consistent height */
+  height: 40px !important; /* Fixed height to match asset items exactly */
+  min-height: 40px !important; /* Same height as asset list items */
+  display: flex !important;
+  align-items: center !important; /* Vertical center content */
+  box-sizing: border-box !important;
+  margin: 0 !important; /* Remove all margins */
+}
+
+/* Adjust icon position to align with library back button */
+.createButtonAligned .createButtonText {
+  margin-left: 0 !important; /* Remove any default margin */
+  padding-left: 0 !important; /* Remove any default padding */
+}
+
+/* The icon should align with the back button which is at position: 
+   library padding-left (12px) + back button position (0px) = 12px from library container edge
+   But since createButtonAligned also has padding-left 12px, the icon should be at 0px from createButtonText start */
