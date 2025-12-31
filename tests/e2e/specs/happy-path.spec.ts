@@ -61,6 +61,43 @@ test.describe('Happy Path - Complete User Journey', () => {
     await loginPage.login(users.seedEmpty3);
     await loginPage.expectLoginSuccess();
 
+    // Verify authentication state is ready for API calls
+    // This is critical in CI environments where auth state may take longer to establish
+    await page.waitForFunction(
+      () => {
+        try {
+          // Check if Supabase auth token exists and is valid in sessionStorage
+          const keys = Object.keys(sessionStorage);
+          for (const key of keys) {
+            if (key.includes('sb-') && key.includes('auth-token')) {
+              const value = sessionStorage.getItem(key);
+              if (value) {
+                try {
+                  const parsed = JSON.parse(value);
+                  // Verify token structure contains access_token
+                  if (parsed && parsed.access_token && parsed.access_token.length > 10) {
+                    return true;
+                  }
+                } catch {
+                  // If parsing fails, token might be in different format
+                  if (value.length > 10) {
+                    return true;
+                  }
+                }
+              }
+            }
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 30000 }
+    );
+
+    // Additional wait to ensure Supabase client is fully initialized
+    await page.waitForTimeout(2000);
+
     // Now navigate to projects page
     // await projectPage.goto();
   });

@@ -149,11 +149,41 @@ export class LoginPage {
     // This ensures all API calls (including auth verification) are complete
     await this.page.waitForLoadState('networkidle', { timeout: 30000 });
     
-    // Strategy 4: Additional wait to ensure authentication state is fully established
-    // This is important after adding authorization checks
-    await this.page.waitForTimeout(2000); // Wait 2 seconds for auth state to stabilize
+    // Strategy 4: Wait for sessionStorage to contain Supabase auth token
+    // In CI environments, there may be a delay between login and session storage update
+    await this.page.waitForFunction(
+      () => {
+        try {
+          // Check if Supabase auth token exists in sessionStorage
+          // Supabase stores auth in sessionStorage with key like 'sb-<project-ref>-auth-token'
+          const keys = Object.keys(sessionStorage);
+          const hasAuthToken = keys.some(key => 
+            key.includes('sb-') && key.includes('auth-token')
+          );
+          if (hasAuthToken) {
+            // Verify token is not empty
+            for (const key of keys) {
+              if (key.includes('sb-') && key.includes('auth-token')) {
+                const value = sessionStorage.getItem(key);
+                if (value && value.length > 10) {
+                  return true;
+                }
+              }
+            }
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 30000 }
+    );
     
-    // Strategy 5: Wait for projects heading or verify we're not on login page
+    // Strategy 5: Additional wait to ensure authentication state is fully established
+    // This is important after adding authorization checks
+    await this.page.waitForTimeout(3000); // Wait 3 seconds for auth state to stabilize
+    
+    // Strategy 6: Wait for projects heading or verify we're not on login page
     // Note: If redirected to project detail page, this may not be visible,
     // but we've already verified URL change and network idle, so login was successful
     const projectsHeading = this.page.getByRole('heading', { name: /projects/i });

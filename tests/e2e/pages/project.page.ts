@@ -60,6 +60,28 @@ export class ProjectPage {
    * @param project - Project data with name and optional description
    */
   async createProject(project: ProjectData): Promise<void> {
+    // Verify authentication state before creating project
+    // This prevents 401 errors in CI environments
+    await this.page.waitForFunction(
+      () => {
+        try {
+          const keys = Object.keys(sessionStorage);
+          for (const key of keys) {
+            if (key.includes('sb-') && key.includes('auth-token')) {
+              const value = sessionStorage.getItem(key);
+              if (value && value.length > 10) {
+                return true;
+              }
+            }
+          }
+          return false;
+        } catch {
+          return false;
+        }
+      },
+      { timeout: 15000 }
+    );
+
     // Click create project button
     await this.createProjectButton.click();
 
@@ -80,9 +102,13 @@ export class ProjectPage {
 
     // Wait for modal to close and navigation to complete
     await expect(this.projectNameInput).not.toBeVisible({ timeout: 10000 });
+    
+    // Wait for network to be idle and all API calls to complete
     await this.page.waitForLoadState('networkidle', { timeout: 30000 });
+    
     // Additional wait to ensure authorization checks are complete
-    await this.page.waitForTimeout(1000);
+    // In CI environments, Supabase auth state may take longer to stabilize
+    await this.page.waitForTimeout(3000);
   }
 
   /**
@@ -128,7 +154,8 @@ export class ProjectPage {
     await this.page.waitForLoadState('networkidle', { timeout: 30000 });
     
     // Additional wait to ensure authorization checks are complete
-    await this.page.waitForTimeout(1000);
+    // In CI environments, Supabase auth state may take longer to stabilize
+    await this.page.waitForTimeout(2000);
   }
 
   /**
