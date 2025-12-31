@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyProjectOwnership } from '@/lib/services/authorizationService';
 
 type Params = { params: Promise<{ projectId: string }> };
 
@@ -34,7 +35,12 @@ export async function GET(_req: Request, { params }: Params) {
   let projectId: string;
   try {
     projectId = await resolveProjectId(supabase, projectIdParam);
+    // verify project ownership
+    await verifyProjectOwnership(supabase, projectId);
   } catch (e: any) {
+    if (e.name === 'AuthorizationError') {
+      return NextResponse.json({ error: e.message }, { status: 403 });
+    }
     return NextResponse.json({ error: e?.message || 'Project not found' }, { status: 404 });
   }
 
@@ -74,7 +80,12 @@ export async function POST(request: Request, { params }: Params) {
   let projectId: string;
   try {
     projectId = await resolveProjectId(supabase, projectIdParam);
+    // verify project ownership
+    await verifyProjectOwnership(supabase, projectId);
   } catch (e: any) {
+    if (e.name === 'AuthorizationError') {
+      return NextResponse.json({ error: e.message }, { status: 403 });
+    }
     return NextResponse.json({ error: e?.message || 'Project not found' }, { status: 404 });
   }
 

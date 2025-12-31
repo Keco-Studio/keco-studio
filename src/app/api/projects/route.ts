@@ -12,9 +12,11 @@ export async function GET() {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  // only return projects owned by the current user
   const { data, error } = await supabase
     .from('projects')
     .select('*')
+    .eq('owner_id', user.id)
     .order('created_at', { ascending: true });
 
   if (error) {

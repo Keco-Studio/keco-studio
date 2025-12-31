@@ -6,6 +6,10 @@ import {
   SectionConfig,
 } from '@/lib/types/libraryAssets';
 import { getLibrary } from '@/lib/services/libraryService';
+import {
+  verifyLibraryAccess,
+  verifyAssetAccess,
+} from './authorizationService';
 
 type FieldDefinitionRow = {
   id: string;
@@ -91,6 +95,9 @@ export async function getLibrarySchema(
   sections: SectionConfig[];
   properties: PropertyConfig[];
 }> {
+  // verify library access
+  await verifyLibraryAccess(supabase, libraryId);
+  
   const { data, error } = await supabase
     .from('library_field_definitions')
     .select('*')
@@ -177,6 +184,9 @@ export async function getLibraryAssetsWithProperties(
   supabase: SupabaseClient,
   libraryId: string
 ): Promise<AssetRow[]> {
+  // verify library access
+  await verifyLibraryAccess(supabase, libraryId);
+  
   const { data: assetData, error: assetError } = await supabase
     .from('library_assets')
     .select('id, library_id, name')
@@ -235,6 +245,9 @@ export async function createAsset(
   assetName: string,
   propertyValues: Record<string, any>
 ): Promise<string> {
+  // verify library access
+  await verifyLibraryAccess(supabase, libraryId);
+  
   // Step 1: Insert the asset
   const { data: assetData, error: assetError } = await supabase
     .from('library_assets')
@@ -284,6 +297,9 @@ export async function updateAsset(
   assetName: string,
   propertyValues: Record<string, any>
 ): Promise<void> {
+  // verify asset access
+  await verifyAssetAccess(supabase, assetId);
+  
   // Step 1: Update the asset name
   const { error: assetError } = await supabase
     .from('library_assets')
@@ -311,6 +327,25 @@ export async function updateAsset(
     if (valuesError) {
       throw valuesError;
     }
+  }
+}
+
+// T012: Delete an asset and its property values
+export async function deleteAsset(
+  supabase: SupabaseClient,
+  assetId: string
+): Promise<void> {
+  // verify asset access
+  await verifyAssetAccess(supabase, assetId);
+  
+  // delete asset (cascade delete will handle associated values)
+  const { error } = await supabase
+    .from('library_assets')
+    .delete()
+    .eq('id', assetId);
+
+  if (error) {
+    throw error;
   }
 }
 

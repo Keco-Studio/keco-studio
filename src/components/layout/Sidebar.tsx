@@ -31,6 +31,7 @@ import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { listProjects, Project, deleteProject } from "@/lib/services/projectService";
 import { listLibraries, Library, deleteLibrary } from "@/lib/services/libraryService";
 import { listFolders, Folder, deleteFolder } from "@/lib/services/folderService";
+import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ContextMenu, ContextMenuAction } from "./ContextMenu";
 import styles from "./Sidebar.module.css";
@@ -332,11 +333,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     e.stopPropagation();
     if (!window.confirm('Delete this asset?')) return;
     try {
-      const { error } = await supabase
-        .from('library_assets')
-        .delete()
-        .eq('id', assetId);
-      if (error) throw error;
+          
+      await deleteAsset(supabase, assetId);
       // Notify that asset was deleted
       window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
       await fetchAssets(libraryId);
@@ -349,6 +347,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       }
     } catch (err) {
       console.error('Failed to delete asset', err);
+      alert(err instanceof Error ? err.message : 'Failed to delete asset');
     }
   }, [supabase, fetchAssets, pathname, currentIds.projectId, router]);
 

@@ -1,6 +1,10 @@
 'use client';
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import {
+  verifyProjectOwnership,
+  verifyLibraryAccess,
+} from './authorizationService';
 
 export type Library = {
   id: string;
@@ -70,6 +74,8 @@ export async function createLibrary(
   }
 
   const projectId = await resolveProjectId(supabase, input.projectId);
+  
+  await verifyProjectOwnership(supabase, projectId);
 
   // Validate folder_id if provided
   let folderId: string | null = null;
@@ -119,6 +125,9 @@ export async function listLibraries(
   folderId?: string
 ): Promise<Library[]> {
   const resolvedProjectId = await resolveProjectId(supabase, projectId);
+  
+  // verify project ownership
+  await verifyProjectOwnership(supabase, resolvedProjectId);
 
   let query = supabase
     .from('libraries')
@@ -191,15 +200,23 @@ export async function getLibrary(
   libraryId: string,
   projectId?: string
 ): Promise<Library | null> {
-  let query = supabase.from('libraries').select('*');
-
+  // verify library access
   if (isUuid(libraryId)) {
-    query = query.eq('id', libraryId);
+    await verifyLibraryAccess(supabase, libraryId);
   } else {
     if (!projectId) {
       throw new Error('Project id is required when using a library name.');
     }
     const resolvedProjectId = await resolveProjectId(supabase, projectId);
+    await verifyProjectOwnership(supabase, resolvedProjectId);
+  }
+  
+  let query = supabase.from('libraries').select('*');
+
+  if (isUuid(libraryId)) {
+    query = query.eq('id', libraryId);
+  } else {
+    const resolvedProjectId = await resolveProjectId(supabase, projectId!);
     query = query.eq('project_id', resolvedProjectId).eq('name', libraryId);
   }
 
@@ -216,6 +233,9 @@ export async function deleteLibrary(
   supabase: SupabaseClient,
   libraryId: string
 ): Promise<void> {
+  // verify library access
+  await verifyLibraryAccess(supabase, libraryId);
+  
   const { error } = await supabase.from('libraries').delete().eq('id', libraryId);
   if (error) {
     throw error;
@@ -234,6 +254,9 @@ export async function checkLibraryNameExists(
   }
 
   const resolvedProjectId = await resolveProjectId(supabase, projectId);
+  
+  // verify project ownership
+  await verifyProjectOwnership(supabase, resolvedProjectId);
 
   let query = supabase
     .from('libraries')
@@ -273,6 +296,9 @@ export async function getLibraryAssetCount(
   supabase: SupabaseClient,
   libraryId: string
 ): Promise<number> {
+  // verify library access
+  await verifyLibraryAccess(supabase, libraryId);
+  
   const { count, error } = await supabase
     .from('library_assets')
     .select('*', { count: 'exact', head: true })
@@ -292,6 +318,11 @@ export async function getLibrariesAssetCounts(
   libraryIds: string[]
 ): Promise<Record<string, number>> {
   if (libraryIds.length === 0) return {};
+
+  // verify library access
+  for (const libraryId of libraryIds) {
+    await verifyLibraryAccess(supabase, libraryId);
+  }
 
   const { data, error } = await supabase
     .from('library_assets')

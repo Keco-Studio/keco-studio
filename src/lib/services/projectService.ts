@@ -1,6 +1,11 @@
 'use client';
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import {
+  verifyProjectCreation,
+  verifyProjectOwnership,
+  getCurrentUserId,
+} from './authorizationService';
 
 export type Project = {
   id: string;
@@ -27,6 +32,9 @@ export async function createProject(
   supabase: SupabaseClient,
   input: CreateProjectInput
 ): Promise<{ projectId: string; defaultFolderId: string }> {
+  // verfiy user is authenticated
+  await verifyProjectCreation(supabase);
+
   const name = input.name.trim();
   const description = trimOrNull(input.description ?? null);
 
@@ -118,9 +126,13 @@ export async function createProject(
 }
 
 export async function listProjects(supabase: SupabaseClient): Promise<Project[]> {
+  // 
+  const userId = await getCurrentUserId(supabase);
+  
   const { data, error } = await supabase
     .from('projects')
     .select('*')
+    .eq('owner_id', userId)
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -134,6 +146,9 @@ export async function getProject(
   supabase: SupabaseClient,
   projectId: string
 ): Promise<Project | null> {
+ 
+  await verifyProjectOwnership(supabase, projectId);
+  
   const { data, error } = await supabase
     .from('projects')
     .select('*')
@@ -155,6 +170,9 @@ export async function deleteProject(
   supabase: SupabaseClient,
   projectId: string
 ): Promise<void> {
+ 
+  await verifyProjectOwnership(supabase, projectId);
+  
   const { error } = await supabase.from('projects').delete().eq('id', projectId);
   if (error) {
     throw error;
@@ -165,15 +183,20 @@ export async function checkProjectNameExists(
   supabase: SupabaseClient,
   projectName: string
 ): Promise<boolean> {
+
+  const userId = await getCurrentUserId(supabase);
+  
   const trimmed = projectName.trim();
   if (!trimmed) {
     return false;
   }
 
+
   const { data, error } = await supabase
     .from('projects')
     .select('id')
     .eq('name', trimmed)
+    .eq('owner_id', userId)
     .limit(1);
 
   if (error) {

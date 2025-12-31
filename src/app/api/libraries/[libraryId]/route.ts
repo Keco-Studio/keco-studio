@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { verifyLibraryAccess } from '@/lib/services/authorizationService';
 
 type Params = { params: Promise<{ libraryId: string }> };
 
@@ -17,6 +18,19 @@ export async function GET(_req: Request, { params }: Params) {
   }
 
   const { libraryId } = await params;
+  
+  // verify library access
+  if (isUuid(libraryId)) {
+    try {
+      await verifyLibraryAccess(supabase, libraryId);
+    } catch (e: any) {
+      if (e.name === 'AuthorizationError') {
+        return NextResponse.json({ error: e.message }, { status: 403 });
+      }
+      return NextResponse.json({ error: e?.message || 'Library not found' }, { status: 404 });
+    }
+  }
+  
   let query = supabase.from('libraries').select('*');
   if (isUuid(libraryId)) {
     query = query.eq('id', libraryId);

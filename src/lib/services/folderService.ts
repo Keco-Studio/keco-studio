@@ -1,6 +1,10 @@
 'use client';
 
 import { SupabaseClient } from '@supabase/supabase-js';
+import {
+  verifyProjectOwnership,
+  verifyFolderAccess,
+} from './authorizationService';
 
 export type Folder = {
   id: string;
@@ -52,6 +56,9 @@ export async function createFolder(
   }
 
   const projectId = await resolveProjectId(supabase, input.projectId);
+  
+  // verify project ownership
+  await verifyProjectOwnership(supabase, projectId);
 
   const { data, error } = await supabase
     .from('folders')
@@ -78,6 +85,9 @@ export async function listFolders(
   projectId: string
 ): Promise<Folder[]> {
   const resolvedProjectId = await resolveProjectId(supabase, projectId);
+  
+  // verify project ownership
+  await verifyProjectOwnership(supabase, resolvedProjectId);
 
   const { data, error } = await supabase
     .from('folders')
@@ -99,6 +109,9 @@ export async function getFolder(
   if (!isUuid(folderId)) {
     throw new Error('Invalid folder ID format');
   }
+
+  // verify folder access
+  await verifyFolderAccess(supabase, folderId);
 
   const { data, error } = await supabase
     .from('folders')
@@ -124,6 +137,9 @@ export async function updateFolder(
   if (!isUuid(folderId)) {
     throw new Error('Invalid folder ID format');
   }
+
+  // verify folder access
+  await verifyFolderAccess(supabase, folderId);
 
   const name = updates.name?.trim();
   const description = trimOrNull(updates.description ?? null);
@@ -163,6 +179,9 @@ export async function deleteFolder(
   if (!isUuid(folderId)) {
     throw new Error('Invalid folder ID format');
   }
+
+  // verify folder access
+  await verifyFolderAccess(supabase, folderId);
 
   // First, delete all libraries associated with this folder (cascade delete)
   // Query libraries first to get their IDs, then delete them individually
