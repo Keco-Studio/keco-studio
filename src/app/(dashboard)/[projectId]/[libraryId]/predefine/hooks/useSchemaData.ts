@@ -1,3 +1,4 @@
+'use client';
 import { useState, useEffect, useCallback } from 'react';
 import type { SectionConfig, FieldType } from '../types';
 import { uid } from '../types';

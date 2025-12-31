@@ -1,3 +1,4 @@
+'use client';
 import { useState, useEffect } from 'react';
 import type { FieldConfig } from '../types';
 import { FieldItem } from './FieldItem';

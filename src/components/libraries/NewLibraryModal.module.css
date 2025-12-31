@@ -12,7 +12,7 @@
   background: white;
   border-radius: 22px;
   border: 1px solid #e2e8f0;
-  padding: 24px 24px 0 24px;
+  padding: 24px;
   width: 988px;
   height: 376px;
   max-width: calc(100vw - 40px);
@@ -193,7 +193,7 @@
 .footer {
   width: 954px;
   max-width: 100%;
-  height: 61px;
+  min-height: 61px;
   display: flex;
   justify-content: flex-end;
   align-items: center;
@@ -205,11 +205,6 @@
   flex-shrink: 0;
   margin-top: auto;
   position: relative;
-  margin-left: -24px;
-  margin-right: -24px;
-  margin-bottom: 0;
-  padding-left: 24px;
-  padding-right: 24px;
 }
 
 .button {

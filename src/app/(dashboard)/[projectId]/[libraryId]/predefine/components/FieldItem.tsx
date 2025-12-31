@@ -1,3 +1,4 @@
+'use client';
 import { useRef, useState, useEffect } from 'react';
 import { Button, Input, Select } from 'antd';
 import Image from 'next/image';
