@@ -14,7 +14,6 @@ import addProjectIcon from "@/app/assets/images/addProjectIcon.svg";
 import searchIcon from "@/app/assets/images/searchIcon.svg";
 import projectRightIcon from "@/app/assets/images/ProjectRightIcon.svg";
 import sidebarFolderIcon from "@/app/assets/images/SidebarFloderIcon.svg";
-import sidebarFolderIcon2 from "@/app/assets/images/SidebarFolderIcon2.svg";
 import sidebarFolderIcon3 from "@/app/assets/images/SidebarFloderIcon3.svg";
 import sidebarFolderIcon4 from "@/app/assets/images/SidebarFloderIcon4.svg";
 import sidebarFolderIcon5 from "@/app/assets/images/SidebarFolderInco5.svg";
@@ -1203,7 +1202,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                           title="Back to library"
                         >
                           <Image
-                            src={sidebarFolderIcon2}
+                            src={sidebarFolderIcon3}
                             alt="Close"
                             width={24}
                             height={24}
