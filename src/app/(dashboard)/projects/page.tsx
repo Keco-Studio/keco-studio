@@ -38,6 +38,19 @@ export default function ProjectsPage() {
     fetchProjects();
   }, [fetchProjects]);
 
+  // Listen to projectCreated event to refresh when project is created from Sidebar
+  useEffect(() => {
+    const handleProjectCreated = () => {
+      fetchProjects();
+    };
+
+    window.addEventListener('projectCreated' as any, handleProjectCreated as EventListener);
+    
+    return () => {
+      window.removeEventListener('projectCreated' as any, handleProjectCreated as EventListener);
+    };
+  }, [fetchProjects]);
+
   useEffect(() => {
     // Show create project breadcrumb when there are no projects
     setShowCreateProjectBreadcrumb(!loading && projects.length === 0);
@@ -48,6 +61,8 @@ export default function ProjectsPage() {
 
   const handleCreated = (projectId: string) => {
     fetchProjects();
+    // Dispatch event to notify Sidebar to refresh
+    window.dispatchEvent(new CustomEvent('projectCreated'));
     router.push(`/${projectId}`);
   };
 

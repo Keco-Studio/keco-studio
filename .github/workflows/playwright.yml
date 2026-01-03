@@ -32,8 +32,9 @@ jobs:
       continue-on-error: true
     - name: Install Playwright Browsers
       run: npx playwright install --with-deps
-    - name: Run Playwright tests
-      run: npx playwright test
+    - name: Run Playwright tests (sequential)
+      run: npm run test:e2e:sequential
+      continue-on-error: false
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:

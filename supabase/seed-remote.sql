@@ -230,6 +230,199 @@ begin
     end if;
   end;
 
+  -- ==========================================
+  -- Destructive Test Users
+  -- These accounts have pre-populated data for deletion testing
+  -- ==========================================
+  
+  -- Destructive Test User 1
+  declare
+    v_destruct_user1_id uuid;
+    v_destruct_project1_id uuid;
+    v_destruct_folder1_id uuid;
+    v_destruct_library1_id uuid;
+    v_destruct_library_root1_id uuid;
+    v_destruct_asset1_id uuid;
+  begin
+    -- Get or create user
+    select id into v_destruct_user1_id from auth.users 
+    where email = 'seed-destruct-1@mailinator.com';
+    
+    if v_destruct_user1_id is null then
+      insert into auth.users (
+        instance_id, email, encrypted_password,
+        raw_app_meta_data, raw_user_meta_data,
+        created_at, updated_at, aud, role,
+        email_confirmed_at, confirmation_sent_at, last_sign_in_at,
+        confirmation_token, recovery_token, email_change_token_new,
+        email_change_token_current, email_change, reauthentication_token
+      )
+      values (
+        '00000000-0000-0000-0000-000000000000',
+        'seed-destruct-1@mailinator.com',
+        crypt('Password123!', gen_salt('bf')),
+        jsonb_build_object('provider', 'email', 'providers', array['email']),
+        jsonb_build_object('username', 'seed-destruct-1'),
+        now(), now(),
+        'authenticated', 'authenticated',
+        now(), now(), now(),
+        '', '', '', '', '', ''
+      )
+      returning id into v_destruct_user1_id;
+    end if;
+    
+    -- Get or create project
+    select id into v_destruct_project1_id from public.projects 
+    where owner_id = v_destruct_user1_id and name = 'Destruct Test Project 1';
+    
+    if v_destruct_project1_id is null then
+      insert into public.projects (owner_id, name, description)
+      values (v_destruct_user1_id, 'Destruct Test Project 1', 'Project for deletion testing')
+      returning id into v_destruct_project1_id;
+    end if;
+    
+    -- Get or create folder
+    select id into v_destruct_folder1_id from public.folders
+    where project_id = v_destruct_project1_id and name = 'Test Folder 1';
+    
+    if v_destruct_folder1_id is null then
+      insert into public.folders (project_id, name, description)
+      values (v_destruct_project1_id, 'Test Folder 1', 'Folder for deletion testing')
+      returning id into v_destruct_folder1_id;
+    end if;
+    
+    -- Get or create library in folder
+    select id into v_destruct_library1_id from public.libraries
+    where project_id = v_destruct_project1_id and name = 'Test Library 1';
+    
+    if v_destruct_library1_id is null then
+      insert into public.libraries (project_id, folder_id, name, description)
+      values (v_destruct_project1_id, v_destruct_folder1_id, 'Test Library 1', 'Library for deletion testing')
+      returning id into v_destruct_library1_id;
+      
+      -- Add field definitions
+      insert into public.library_field_definitions (library_id, label, data_type, section, order_index, required)
+      values 
+        (v_destruct_library1_id, 'Name', 'string', 'General', 0, true),
+        (v_destruct_library1_id, 'Type', 'string', 'General', 1, true),
+        (v_destruct_library1_id, 'Description', 'string', 'General', 2, false);
+    end if;
+    
+    -- Get or create root library
+    select id into v_destruct_library_root1_id from public.libraries
+    where project_id = v_destruct_project1_id and name = 'Root Library 1';
+    
+    if v_destruct_library_root1_id is null then
+      insert into public.libraries (project_id, name, description)
+      values (v_destruct_project1_id, 'Root Library 1', 'Root-level library for deletion testing')
+      returning id into v_destruct_library_root1_id;
+    end if;
+    
+    -- Create asset if it doesn't exist
+    if not exists (
+      select 1 from public.library_assets 
+      where library_id = v_destruct_library1_id 
+      and name = 'Test Asset 1'
+    ) then
+      insert into public.library_assets (library_id, name)
+      values (v_destruct_library1_id, 'Test Asset 1');
+    end if;
+  end;
+
+  -- Destructive Test User 2
+  declare
+    v_destruct_user2_id uuid;
+    v_destruct_project2_id uuid;
+    v_destruct_folder2_id uuid;
+    v_destruct_library2_id uuid;
+    v_destruct_library_root2_id uuid;
+    v_destruct_asset2_id uuid;
+  begin
+    -- Get or create user
+    select id into v_destruct_user2_id from auth.users 
+    where email = 'seed-destruct-2@mailinator.com';
+    
+    if v_destruct_user2_id is null then
+      insert into auth.users (
+        instance_id, email, encrypted_password,
+        raw_app_meta_data, raw_user_meta_data,
+        created_at, updated_at, aud, role,
+        email_confirmed_at, confirmation_sent_at, last_sign_in_at,
+        confirmation_token, recovery_token, email_change_token_new,
+        email_change_token_current, email_change, reauthentication_token
+      )
+      values (
+        '00000000-0000-0000-0000-000000000000',
+        'seed-destruct-2@mailinator.com',
+        crypt('Password123!', gen_salt('bf')),
+        jsonb_build_object('provider', 'email', 'providers', array['email']),
+        jsonb_build_object('username', 'seed-destruct-2'),
+        now(), now(),
+        'authenticated', 'authenticated',
+        now(), now(), now(),
+        '', '', '', '', '', ''
+      )
+      returning id into v_destruct_user2_id;
+    end if;
+    
+    -- Get or create project
+    select id into v_destruct_project2_id from public.projects 
+    where owner_id = v_destruct_user2_id and name = 'Destruct Test Project 2';
+    
+    if v_destruct_project2_id is null then
+      insert into public.projects (owner_id, name, description)
+      values (v_destruct_user2_id, 'Destruct Test Project 2', 'Project for deletion testing')
+      returning id into v_destruct_project2_id;
+    end if;
+    
+    -- Get or create folder
+    select id into v_destruct_folder2_id from public.folders
+    where project_id = v_destruct_project2_id and name = 'Test Folder 2';
+    
+    if v_destruct_folder2_id is null then
+      insert into public.folders (project_id, name, description)
+      values (v_destruct_project2_id, 'Test Folder 2', 'Folder for deletion testing')
+      returning id into v_destruct_folder2_id;
+    end if;
+    
+    -- Get or create library in folder
+    select id into v_destruct_library2_id from public.libraries
+    where project_id = v_destruct_project2_id and name = 'Test Library 2';
+    
+    if v_destruct_library2_id is null then
+      insert into public.libraries (project_id, folder_id, name, description)
+      values (v_destruct_project2_id, v_destruct_folder2_id, 'Test Library 2', 'Library for deletion testing')
+      returning id into v_destruct_library2_id;
+      
+      -- Add field definitions
+      insert into public.library_field_definitions (library_id, label, data_type, section, order_index, required)
+      values 
+        (v_destruct_library2_id, 'Name', 'string', 'General', 0, true),
+        (v_destruct_library2_id, 'Type', 'string', 'General', 1, true),
+        (v_destruct_library2_id, 'Description', 'string', 'General', 2, false);
+    end if;
+    
+    -- Get or create root library
+    select id into v_destruct_library_root2_id from public.libraries
+    where project_id = v_destruct_project2_id and name = 'Root Library 2';
+    
+    if v_destruct_library_root2_id is null then
+      insert into public.libraries (project_id, name, description)
+      values (v_destruct_project2_id, 'Root Library 2', 'Root-level library for deletion testing')
+      returning id into v_destruct_library_root2_id;
+    end if;
+    
+    -- Create asset if it doesn't exist
+    if not exists (
+      select 1 from public.library_assets 
+      where library_id = v_destruct_library2_id 
+      and name = 'Test Asset 2'
+    ) then
+      insert into public.library_assets (library_id, name)
+      values (v_destruct_library2_id, 'Test Asset 2');
+    end if;
+  end;
+
 end $$;
 
 commit;

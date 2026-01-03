@@ -117,9 +117,21 @@ export class ProjectPage {
    */
   async openProject(projectName: string): Promise<void> {
     // Find and click the project by its name
-    const projectCard = this.page.getByRole('button', { name: projectName })
-      .or(this.page.getByRole('link', { name: projectName }))
-      .or(this.page.getByText(projectName, { exact: true }).first());
+    // Use title attribute for reliable matching (handles truncated names in sidebar)
+    const sidebar = this.page.locator('aside');
+    const projectByTitle = sidebar.locator(`[title="${projectName}"]`);
+    const titleExists = await projectByTitle.count() > 0;
+    
+    let projectCard;
+    if (titleExists) {
+      // Found in sidebar by title attribute
+      projectCard = projectByTitle.first();
+    } else {
+      // Try other strategies (for project cards in main content area)
+      projectCard = this.page.getByRole('button', { name: projectName })
+        .or(this.page.getByRole('link', { name: projectName }))
+        .or(this.page.getByText(projectName).first());
+    }
 
     await expect(projectCard).toBeVisible();
     await projectCard.click();
@@ -133,8 +145,10 @@ export class ProjectPage {
    * @param projectName - Name of the project to verify
    */
   async expectProjectExists(projectName: string): Promise<void> {
-    const projectItem = this.page.getByText(projectName, { exact: true });
-    await expect(projectItem).toBeVisible();
+    // Use title attribute for reliable matching (handles truncated names)
+    const sidebar = this.page.locator('aside');
+    const projectByTitle = sidebar.locator(`[title="${projectName}"]`);
+    await expect(projectByTitle).toBeVisible();
   }
 
   /**
@@ -163,7 +177,9 @@ export class ProjectPage {
    * @param projectName - Name of the project
    */
   getProjectByName(projectName: string): Locator {
-    return this.page.getByText(projectName, { exact: true });
+    // Use title attribute for reliable matching (handles truncated names)
+    const sidebar = this.page.locator('aside');
+    return sidebar.locator(`[title="${projectName}"]`).first();
   }
 
   /**
@@ -175,6 +191,69 @@ export class ProjectPage {
     if (expectedText) {
       await expect(this.errorMessage).toContainText(expectedText);
     }
+  }
+
+  /**
+   * Delete a project by its name (from sidebar using context menu)
+   * @param projectName - Name of the project to delete
+   */
+  async deleteProject(projectName: string): Promise<void> {
+    // Find the project in the sidebar
+    // Note: Project names may be truncated in display, but full name is in title attribute
+    const sidebar = this.page.locator('aside');
+    
+    // Strategy 1: Try to find by title attribute (contains full name)
+    const projectByTitle = sidebar.locator(`[title="${projectName}"]`);
+    const titleExists = await projectByTitle.count() > 0;
+    
+    let projectItem;
+    if (titleExists) {
+      // Use title attribute (most reliable for truncated names)
+      projectItem = projectByTitle.first();
+    } else {
+      // Strategy 2: Use partial text match (without exact: true)
+      projectItem = sidebar.getByText(projectName);
+    }
+    
+    // Wait for project to be visible
+    await expect(projectItem).toBeVisible({ timeout: 5000 });
+    
+    // Right-click on the project to open context menu
+    await projectItem.click({ button: 'right' });
+    
+    // Wait for context menu to appear
+    const contextMenu = this.page.locator('[class*="contextMenu"]');
+    await expect(contextMenu).toBeVisible({ timeout: 5000 });
+    
+    // Set up dialog handler BEFORE clicking delete
+    this.page.once('dialog', async dialog => {
+      await dialog.accept();
+    });
+    
+    // Click the Delete button in the context menu
+    const deleteButton = contextMenu.getByRole('button', { name: /^delete$/i })
+      .or(contextMenu.locator('button[class*="deleteItem"]'));
+    await expect(deleteButton).toBeVisible({ timeout: 5000 });
+    await deleteButton.click();
+    
+    // Wait for deletion to complete
+    await this.page.waitForLoadState('networkidle');
+  }
+
+  /**
+   * Assert project is deleted (not visible in sidebar)
+   * @param projectName - Name of the project to verify deletion
+   */
+  async expectProjectDeleted(projectName: string): Promise<void> {
+    const sidebar = this.page.locator('aside');
+    
+    // Check by title attribute (more reliable for truncated names)
+    const projectByTitle = sidebar.locator(`[title="${projectName}"]`);
+    await expect(projectByTitle).not.toBeVisible({ timeout: 5000 });
+    
+    // Also check by partial text match as a backup
+    const projectByText = sidebar.getByText(projectName);
+    await expect(projectByText).not.toBeVisible({ timeout: 5000 });
   }
 
   /**

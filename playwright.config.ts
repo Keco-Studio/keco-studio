@@ -22,13 +22,13 @@ dotenv.config({
 export default defineConfig({
   testDir: './tests',
   /* Run tests in files in parallel */
-  fullyParallel: true,
+  fullyParallel: false, // IMPORTANT: Tests must run sequentially because destructive.spec.ts depends on happy-path.spec.ts
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
   /* Opt out of parallel tests on CI. */
-  workers: process.env.CI ? 1 : undefined,
+  workers: 1, // Run tests sequentially to maintain dependencies between test files
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
@@ -39,7 +39,7 @@ export default defineConfig({
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on',
     launchOptions: {
-      slowMo: 1000, // Slow down each step by 1 second (for debugging)
+      slowMo: process.env.CI ? 0 : 1000, // Only slow down in local development, not in CI
     },
   },
 

@@ -50,6 +50,12 @@ type SidebarProps = {
 
 type AssetRow = { id: string; name: string; library_id: string };
 
+// Helper function to truncate text with ellipsis
+const truncateText = (text: string, maxLength: number): string => {
+  if (text.length <= maxLength) return text;
+  return text.slice(0, maxLength) + '...';
+};
+
 export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
@@ -210,6 +216,19 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     fetchProjects();
   }, [fetchProjects]);
 
+  // Listen to projectCreated event to refresh Sidebar data when project is created from other pages
+  useEffect(() => {
+    const handleProjectCreated = () => {
+      fetchProjects();
+    };
+
+    window.addEventListener('projectCreated' as any, handleProjectCreated as EventListener);
+    
+    return () => {
+      window.removeEventListener('projectCreated' as any, handleProjectCreated as EventListener);
+    };
+  }, [fetchProjects]);
+
   // Track current project ID to detect project switching
   const prevProjectIdRef = useRef<string | null>(null);
   // Track whether expanded state has been initialized (to avoid re-expanding after user manually collapses)
@@ -247,7 +266,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [folders]);
 
-  // Listen to libraryCreated event to refresh Sidebar data when library is created from other pages
+  // Listen to library/folder created/deleted events to refresh Sidebar data when changed from other pages
   useEffect(() => {
     const handleLibraryCreated = (event: CustomEvent) => {
       // Refresh folders and libraries data for current project
@@ -256,10 +275,39 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       }
     };
 
+    const handleFolderCreated = () => {
+      // Refresh folders and libraries data for current project
+      if (currentIds.projectId) {
+        fetchFoldersAndLibraries(currentIds.projectId);
+      }
+    };
+
+    const handleLibraryDeleted = (event: CustomEvent) => {
+      // Refresh folders and libraries data for current project
+      const deletedProjectId = event.detail?.projectId;
+      if (currentIds.projectId && deletedProjectId === currentIds.projectId) {
+        fetchFoldersAndLibraries(currentIds.projectId);
+      }
+    };
+
+    const handleFolderDeleted = (event: CustomEvent) => {
+      // Refresh folders and libraries data for current project
+      const deletedProjectId = event.detail?.projectId;
+      if (currentIds.projectId && deletedProjectId === currentIds.projectId) {
+        fetchFoldersAndLibraries(currentIds.projectId);
+      }
+    };
+
     window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
+    window.addEventListener('folderCreated' as any, handleFolderCreated as EventListener);
+    window.addEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
+    window.addEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
     
     return () => {
       window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
+      window.removeEventListener('folderCreated' as any, handleFolderCreated as EventListener);
+      window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
+      window.removeEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
     };
   }, [currentIds.projectId, fetchFoldersAndLibraries]);
 
@@ -900,6 +948,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         if (window.confirm('Delete this project? All libraries under it will be removed.')) {
           deleteProject(supabase, contextMenu.id).then(() => {
             fetchProjects();
+            // If currently viewing the deleted project, navigate to home
+            if (currentIds.projectId === contextMenu.id) {
+              router.push('/');
+            }
           }).catch((err: any) => {
             setError(err?.message || 'Failed to delete project');
           });
@@ -913,17 +965,29 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             window.dispatchEvent(new CustomEvent('libraryDeleted', {
               detail: { folderId: deletedFolderId, libraryId: contextMenu.id, projectId: currentIds.projectId }
             }));
+            // If the deleted library is currently being viewed, navigate to project page
+            if (currentIds.libraryId === contextMenu.id && currentIds.projectId) {
+              router.push(`/${currentIds.projectId}`);
+            }
           }).catch((err: any) => {
             setError(err?.message || 'Failed to delete library');
           });
         }
       } else if (contextMenu.type === 'folder') {
         if (window.confirm('Delete this folder? All libraries and subfolders under it will be removed.')) {
+          // Check if any libraries under this folder are being viewed
+          const librariesInFolder = libraries.filter(lib => lib.folder_id === contextMenu.id);
+          const isViewingLibraryInFolder = librariesInFolder.some(lib => lib.id === currentIds.libraryId);
+          
           deleteFolder(supabase, contextMenu.id).then(() => {
             fetchFoldersAndLibraries(currentIds.projectId!);
             window.dispatchEvent(new CustomEvent('folderDeleted', {
               detail: { folderId: contextMenu.id, projectId: currentIds.projectId }
             }));
+            // If currently viewing the folder page or a library in this folder, navigate to project page
+            if ((currentIds.folderId === contextMenu.id || isViewingLibraryInFolder) && currentIds.projectId) {
+              router.push(`/${currentIds.projectId}`);
+            }
           }).catch((err: any) => {
             setError(err?.message || 'Failed to delete folder');
           });
@@ -944,6 +1008,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 } else {
                   await fetchAssets(libraryId);
                   window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
+                  // Check if currently viewing this asset, if so navigate to library page
+                  const parts = pathname.split("/").filter(Boolean);
+                  if (parts.length >= 3 && parts[2] === contextMenu.id && currentIds.projectId) {
+                    router.push(`/${currentIds.projectId}/${libraryId}`);
+                  }
                 }
               });
           }
@@ -974,6 +1043,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setLoadingAfterCreate(true);
     setCreateMessage('Project created, loading...');
     await fetchProjects();
+    // Dispatch event to notify other components (like ProjectsPage) to refresh
+    window.dispatchEvent(new CustomEvent('projectCreated'));
     // Navigate to the new project and refresh folders/libraries
     if (projectId) {
       router.push(`/${projectId}`);
@@ -1112,7 +1183,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       height={20}
                       className={styles.itemIcon}
                     />
-                    <span className={styles.itemText}>{project.name}</span>
+                    <span className={styles.itemText} title={project.name}>
+                      {truncateText(project.name, 20)}
+                    </span>
                     <span className={styles.itemActions}>
                       {project.description && (
                         <Tooltip

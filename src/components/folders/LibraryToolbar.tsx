@@ -16,6 +16,12 @@ type LibraryToolbarProps = {
   onSearchChange?: (value: string) => void;
   viewMode?: 'list' | 'grid';
   onViewModeChange?: (mode: 'list' | 'grid') => void;
+  /**
+   * Mode of the toolbar:
+   * - 'project': Show "Create" button with menu for both folder and library
+   * - 'folder': Show "Create Library" button that directly opens library modal
+   */
+  mode?: 'project' | 'folder';
 };
 
 export function LibraryToolbar({
@@ -24,6 +30,7 @@ export function LibraryToolbar({
   onSearchChange,
   viewMode = 'grid',
   onViewModeChange,
+  mode = 'project',
 }: LibraryToolbarProps) {
   const [searchValue, setSearchValue] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -50,7 +57,15 @@ export function LibraryToolbar({
   };
 
   const handleCreateButtonClick = () => {
-    setShowAddMenu(!showAddMenu);
+    if (mode === 'folder') {
+      // In folder mode, directly create library
+      if (onCreateLibrary) {
+        onCreateLibrary();
+      }
+    } else {
+      // In project mode, show menu to choose between folder and library
+      setShowAddMenu(!showAddMenu);
+    }
   };
 
   const handleCreateFolder = () => {
@@ -73,7 +88,7 @@ export function LibraryToolbar({
         ref={setCreateButtonRef}
         className={styles.createButton}
         onClick={handleCreateButtonClick}
-        aria-label="Create Folder/Library"
+        aria-label={mode === 'folder' ? 'Create Library' : 'Create Folder/Library'}
       >
         <span className={styles.plusIcon}>
           <Image
@@ -91,7 +106,9 @@ export function LibraryToolbar({
             className={styles.plusVertical}
           />
         </span>
-        <span className={styles.createButtonText}>Create Folder/Library</span>
+        <span className={styles.createButtonText}>
+          {mode === 'folder' ? 'Create Library' : 'Create'}
+        </span>
       </button>
       
       <div className={styles.searchContainer}>
@@ -138,13 +155,16 @@ export function LibraryToolbar({
         </button>
       </div>
 
-      <AddLibraryMenu
-        open={showAddMenu}
-        anchorElement={createButtonRef}
-        onClose={() => setShowAddMenu(false)}
-        onCreateFolder={handleCreateFolder}
-        onCreateLibrary={handleCreateLibrary}
-      />
+      {/* Only show menu in project mode */}
+      {mode === 'project' && (
+        <AddLibraryMenu
+          open={showAddMenu}
+          anchorElement={createButtonRef}
+          onClose={() => setShowAddMenu(false)}
+          onCreateFolder={handleCreateFolder}
+          onCreateLibrary={handleCreateLibrary}
+        />
+      )}
     </div>
   );
 }

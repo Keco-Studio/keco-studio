@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { z } from 'zod';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useParams } from 'next/navigation';
-import { Tabs, Button, message, ConfigProvider, Input } from 'antd';
+import { Tabs, Button, App, ConfigProvider, Input } from 'antd';
 import type { TabsProps } from 'antd/es/tabs';
 import Image from 'next/image';
 import predefineLabelAddIcon from '@/app/assets/images/predefineLabelAddIcon.svg';
@@ -26,7 +26,8 @@ import predefineExpandIcon from '@/app/assets/images/predefineExpandIcon.svg';
 
 const NEW_SECTION_TAB_KEY = '__new_section__';
 
-export default function PredefinePage() {
+function PredefinePageContent() {
+  const { message } = App.useApp();
   const supabase = useSupabase();
   const params = useParams();
   const libraryId = params?.libraryId as string | undefined;
@@ -472,21 +473,7 @@ export default function PredefinePage() {
   }
 
   return (
-    <ConfigProvider
-      theme={{
-        token: {
-          colorPrimary: '#8726EE',
-        },
-        components: {
-          Tabs: {
-            itemActiveColor: '#8726EE',
-            itemSelectedColor: '#8726EE',
-            inkBarColor: '#8726EE',
-          },
-        },
-      }}
-    >
-      <div className={styles.container}>
+    <div className={styles.container}>
         <div className={styles.contentWrapper}>
           <div className={styles.header}>
             <div>
@@ -548,6 +535,28 @@ export default function PredefinePage() {
           </>
         </div>
       </div>
+  );
+}
+
+export default function PredefinePage() {
+  return (
+    <ConfigProvider
+      theme={{
+        token: {
+          colorPrimary: '#8726EE',
+        },
+        components: {
+          Tabs: {
+            itemActiveColor: '#8726EE',
+            itemSelectedColor: '#8726EE',
+            inkBarColor: '#8726EE',
+          },
+        },
+      }}
+    >
+      <App>
+        <PredefinePageContent />
+      </App>
     </ConfigProvider>
   );
 }

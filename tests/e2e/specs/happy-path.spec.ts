@@ -58,7 +58,7 @@ test.describe('Happy Path - Complete User Journey', () => {
     // Authenticate user before navigating to projects
     const loginPage = new LoginPage(page);
     await loginPage.goto();
-    await loginPage.login(users.seedEmpty3);
+    await loginPage.login(users.seedEmpty);
     await loginPage.expectLoginSuccess();
 
     // Verify authentication state is ready for API calls
@@ -153,10 +153,8 @@ test.describe('Happy Path - Complete User Journey', () => {
       await predefinedPage.expectTemplateCreated();
       
       // Navigate back to library page to create asset
-      // Instead of goBack(), click on the library name in the sidebar to navigate
-      const sidebar = libraryPage.page.getByRole('tree');
-      const libraryLink = sidebar.getByText(libraries.breed.name, { exact: true });
-      await libraryLink.click();
+      // Note: In predefine page, sidebar doesn't show library tree, so we navigate via URL
+      await libraryPage.navigateBackToLibraryFromPredefine();
       await libraryPage.waitForPageLoad();
       
       // Create breed asset

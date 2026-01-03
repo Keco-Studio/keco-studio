@@ -311,6 +311,26 @@ export class LibraryPage {
   }
 
   /**
+   * Navigate back to library page from predefine page
+   * Note: In predefine page, sidebar doesn't show library tree, so we navigate via URL
+   */
+  async navigateBackToLibraryFromPredefine(): Promise<void> {
+    // Extract projectId and libraryId from current URL
+    // Expected URL format: /[projectId]/[libraryId]/predefine
+    const currentUrl = this.page.url();
+    const match = currentUrl.match(/\/([^/]+)\/([^/]+)\/predefine$/);
+    
+    if (match && match.length >= 3) {
+      const projectId = match[1];
+      const libraryId = match[2];
+      await this.page.goto(`/${projectId}/${libraryId}`);
+      await this.page.waitForLoadState('networkidle');
+    } else {
+      throw new Error(`Unable to extract projectId and libraryId from URL: ${currentUrl}`);
+    }
+  }
+
+  /**
    * Assert library exists in the current view
    * @param libraryName - Name of the library to verify
    */
@@ -350,6 +370,94 @@ export class LibraryPage {
     await expect(this.folderNameInput).not.toBeVisible({ timeout: 10000 });
     // Wait for page to refresh
     await this.page.waitForLoadState('networkidle');
+  }
+
+  /**
+   * Delete a library by its name (from sidebar using context menu)
+   * @param libraryName - Name of the library to delete
+   */
+  async deleteLibrary(libraryName: string): Promise<void> {
+    // Find the library in the sidebar tree
+    const sidebar = this.page.getByRole('tree');
+    const libraryItem = sidebar.getByText(libraryName, { exact: true });
+    
+    // Wait for library to be visible
+    await expect(libraryItem).toBeVisible({ timeout: 5000 });
+    
+    // Right-click on the library to open context menu
+    await libraryItem.click({ button: 'right' });
+    
+    // Wait for context menu to appear
+    const contextMenu = this.page.locator('[class*="contextMenu"]');
+    await expect(contextMenu).toBeVisible({ timeout: 5000 });
+    
+    // Set up dialog handler BEFORE clicking delete
+    this.page.once('dialog', async dialog => {
+      await dialog.accept();
+    });
+    
+    // Click the Delete button in the context menu
+    const deleteButton = contextMenu.getByRole('button', { name: /^delete$/i })
+      .or(contextMenu.locator('button[class*="deleteItem"]'));
+    await expect(deleteButton).toBeVisible({ timeout: 5000 });
+    await deleteButton.click();
+    
+    // Wait for deletion to complete
+    await this.page.waitForLoadState('networkidle');
+  }
+
+  /**
+   * Assert library is deleted (not visible in sidebar)
+   * @param libraryName - Name of the library to verify deletion
+   */
+  async expectLibraryDeleted(libraryName: string): Promise<void> {
+    const sidebar = this.page.getByRole('tree');
+    const libraryItem = sidebar.getByText(libraryName, { exact: true });
+    await expect(libraryItem).not.toBeVisible({ timeout: 5000 });
+  }
+
+  /**
+   * Delete a folder by its name (from sidebar using context menu)
+   * @param folderName - Name of the folder to delete
+   */
+  async deleteFolder(folderName: string): Promise<void> {
+    // Find the folder in the sidebar tree
+    const sidebar = this.page.getByRole('tree');
+    const folderItem = sidebar.getByText(folderName, { exact: true });
+    
+    // Wait for folder to be visible
+    await expect(folderItem).toBeVisible({ timeout: 5000 });
+    
+    // Right-click on the folder to open context menu
+    await folderItem.click({ button: 'right' });
+    
+    // Wait for context menu to appear
+    const contextMenu = this.page.locator('[class*="contextMenu"]');
+    await expect(contextMenu).toBeVisible({ timeout: 5000 });
+    
+    // Set up dialog handler BEFORE clicking delete
+    this.page.once('dialog', async dialog => {
+      await dialog.accept();
+    });
+    
+    // Click the Delete button in the context menu
+    const deleteButton = contextMenu.getByRole('button', { name: /^delete$/i })
+      .or(contextMenu.locator('button[class*="deleteItem"]'));
+    await expect(deleteButton).toBeVisible({ timeout: 5000 });
+    await deleteButton.click();
+    
+    // Wait for deletion to complete
+    await this.page.waitForLoadState('networkidle');
+  }
+
+  /**
+   * Assert folder is deleted (not visible in sidebar)
+   * @param folderName - Name of the folder to verify deletion
+   */
+  async expectFolderDeleted(folderName: string): Promise<void> {
+    const sidebar = this.page.getByRole('tree');
+    const folderItem = sidebar.getByText(folderName, { exact: true });
+    await expect(folderItem).not.toBeVisible({ timeout: 5000 });
   }
 
   /**

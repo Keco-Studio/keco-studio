@@ -32,6 +32,12 @@
     "lint": "next lint",
     "test:e2e": "playwright test",
     "test:e2e:clean": "tsx scripts/clean-remote-test-data.ts && playwright test",
+    "test:e2e:sequential": "playwright test tests/e2e/specs/auth.spec.ts tests/e2e/specs/security.spec.ts tests/e2e/specs/happy-path.spec.ts tests/e2e/specs/destructive.spec.ts",
+    "test:e2e:core": "playwright test tests/e2e/specs/happy-path.spec.ts tests/e2e/specs/destructive.spec.ts",
+    "test:auth": "playwright test tests/e2e/specs/auth.spec.ts",
+    "test:security": "playwright test tests/e2e/specs/security.spec.ts",
+    "test:happy": "playwright test tests/e2e/specs/happy-path.spec.ts",
+    "test:destructive": "playwright test tests/e2e/specs/destructive.spec.ts",
     "seed:api": "tsx scripts/seed-via-api.ts",
     "clean:test-data": "tsx scripts/clean-remote-test-data.ts"
   }

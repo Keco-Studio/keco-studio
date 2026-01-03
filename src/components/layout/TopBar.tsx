@@ -124,6 +124,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const handleLogout = async () => {
     setShowUserMenu(false);
     await signOut();
+    // Navigate to home page after logout
+    router.push('/');
   };
 
   const isPredefine = pathname?.includes('/predefine');

@@ -344,6 +344,127 @@ export class AssetPage {
   }
 
   /**
+   * Delete an asset by its name (from sidebar using context menu)
+   * @param assetName - Name of the asset to delete
+   * @param libraryName - Name of the library containing the asset (needed to expand the library first)
+   */
+  async deleteAsset(assetName: string, libraryName: string): Promise<void> {
+    const sidebar = this.page.getByRole('tree');
+    
+    // Step 1: Find the library in sidebar
+    const libraryItem = sidebar.getByText(libraryName, { exact: true });
+    await expect(libraryItem).toBeVisible({ timeout: 5000 });
+    
+    // Check if asset is already visible (library might be expanded)
+    const assetItem = sidebar.getByText(assetName, { exact: true });
+    const isAssetVisible = await assetItem.isVisible({ timeout: 1000 }).catch(() => false);
+    
+    if (!isAssetVisible) {
+      // Library is not expanded, need to expand it
+      // Strategy: Use Ant Design Tree's switcher element to expand the node
+      
+      // Find the library's treeitem (Ant Design Tree uses role="treeitem")
+      const libraryTreeItem = sidebar.locator(`[role="treeitem"]`).filter({ hasText: libraryName });
+      await expect(libraryTreeItem).toBeVisible({ timeout: 5000 });
+      
+      // Check if library is already expanded using aria-expanded attribute
+      const ariaExpanded = await libraryTreeItem.getAttribute('aria-expanded');
+      
+      if (ariaExpanded !== 'true') {
+        // Library is collapsed, need to expand it
+        // Try multiple strategies to expand the node:
+        
+        // Strategy 1: Try to click the switcher using Ant Design's class
+        // The switcher is usually a span with class containing 'switcher'
+        const switcherSelectors = [
+          '.ant-tree-switcher',
+          'span[class*="switcher"]',
+          '[class*="ant-tree-switcher"]'
+        ];
+        
+        let expanded = false;
+        
+        for (const selector of switcherSelectors) {
+          const switcher = libraryTreeItem.locator(selector).first();
+          const switcherVisible = await switcher.isVisible({ timeout: 500 }).catch(() => false);
+          
+          if (switcherVisible) {
+            try {
+              await switcher.click();
+              await this.page.waitForTimeout(500);
+              
+              // Check if expansion worked
+              const newAriaExpanded = await libraryTreeItem.getAttribute('aria-expanded');
+              if (newAriaExpanded === 'true') {
+                expanded = true;
+                break;
+              }
+            } catch (error) {
+              // Continue to next strategy
+              continue;
+            }
+          }
+        }
+        
+        // Strategy 2: If switcher click didn't work, try keyboard navigation
+        if (!expanded) {
+          // Focus the tree item and press Right arrow to expand
+          await libraryTreeItem.focus();
+          await this.page.keyboard.press('ArrowRight');
+          await this.page.waitForTimeout(500);
+          
+          // Check if expansion worked
+          const newAriaExpanded = await libraryTreeItem.getAttribute('aria-expanded');
+          if (newAriaExpanded === 'true') {
+            expanded = true;
+          }
+        }
+        
+        // Strategy 3: Last resort - click the library text itself
+        if (!expanded) {
+          await libraryItem.click();
+          await this.page.waitForTimeout(500);
+        }
+      }
+      
+      // Wait for assets to be loaded and visible
+      await expect(assetItem).toBeVisible({ timeout: 10000 });
+    }
+    
+    // Step 2: Right-click on the asset to open context menu
+    await assetItem.click({ button: 'right' });
+    
+    // Wait for context menu to appear
+    const contextMenu = this.page.locator('[class*="contextMenu"]');
+    await expect(contextMenu).toBeVisible({ timeout: 5000 });
+    
+    // Step 3: Set up dialog handler BEFORE clicking delete
+    // Handle confirmation dialog
+    this.page.once('dialog', async dialog => {
+      await dialog.accept();
+    });
+    
+    // Click the Delete button in the context menu
+    const deleteButton = contextMenu.getByRole('button', { name: /^delete$/i })
+      .or(contextMenu.locator('button[class*="deleteItem"]'));
+    await expect(deleteButton).toBeVisible({ timeout: 5000 });
+    await deleteButton.click();
+    
+    // Wait for deletion to complete
+    await this.page.waitForLoadState('networkidle');
+  }
+
+  /**
+   * Assert asset is deleted (not visible in sidebar)
+   * @param assetName - Name of the asset to verify deletion
+   */
+  async expectAssetDeleted(assetName: string): Promise<void> {
+    const sidebar = this.page.getByRole('tree');
+    const assetItem = sidebar.getByText(assetName, { exact: true });
+    await expect(assetItem).not.toBeVisible({ timeout: 5000 });
+  }
+
+  /**
    * Wait for assets page to be fully loaded
    */
   async waitForPageLoad(): Promise<void> {

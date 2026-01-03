@@ -70,6 +70,14 @@ export default function ProjectPage() {
       fetchData();
     };
 
+    const handleFolderDeleted = (event: CustomEvent) => {
+      const deletedProjectId = event.detail?.projectId;
+      // Only refresh if the folder was deleted from current project
+      if (deletedProjectId === projectId) {
+        fetchData();
+      }
+    };
+
     const handleLibraryCreated = (event: CustomEvent) => {
       const createdFolderId = event.detail?.folderId;
       // Only refresh if the library was created at root level (no folder)
@@ -88,11 +96,13 @@ export default function ProjectPage() {
     };
 
     window.addEventListener('folderCreated' as any, handleFolderCreated as EventListener);
+    window.addEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
     window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
     window.addEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
     
     return () => {
       window.removeEventListener('folderCreated' as any, handleFolderCreated as EventListener);
+      window.removeEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
       window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
       window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
     };
@@ -223,6 +233,7 @@ export default function ProjectPage() {
     <div className={styles.container}>
       {hasItems && (
         <LibraryToolbar
+          mode="project"
           onCreateFolder={handleCreateFolder}
           onCreateLibrary={handleCreateLibrary}
           viewMode={viewMode}

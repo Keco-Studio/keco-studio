@@ -116,6 +116,26 @@ export const users = {
     email: 'seed-empty@mailinator.com',
     password: 'IncorrectPassword!',
   } as UserCredentials,
+
+  /**
+   * Destructive test user 1 - Pre-populated with complete test data
+   * Includes: Project → Folder → Library → Asset
+   * Used for deletion testing without depending on creation flows
+   */
+  seedDestruct1: {
+    email: 'seed-destruct-1@mailinator.com',
+    password: 'Password123!',
+  } as UserCredentials,
+
+  /**
+   * Destructive test user 2 - Pre-populated with complete test data
+   * Includes: Project → Folder → Library → Asset
+   * Used for parallel deletion testing or when first destructive account is in use
+   */
+  seedDestruct2: {
+    email: 'seed-destruct-2@mailinator.com',
+    password: 'Password123!',
+  } as UserCredentials,
 };
 
 /**
