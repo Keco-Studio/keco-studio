@@ -32,7 +32,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const { userProfile, signOut } = useAuth();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [assetMode, setAssetMode] = useState<AssetMode>('view');
+  const [assetMode, setAssetMode] = useState<AssetMode>('edit');
   const [isCreatingNewAsset, setIsCreatingNewAsset] = useState(false);
   const [isPredefineCreatingNewSection, setIsPredefineCreatingNewSection] = useState(false);
   const [predefineActiveSectionId, setPredefineActiveSectionId] = useState<string | null>(null);
@@ -61,7 +61,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   // Reset asset mode when navigating to a different asset
   useEffect(() => {
-    setAssetMode('view');
+    setAssetMode('edit');
     setIsCreatingNewAsset(false);
   }, [currentAssetId]);
 

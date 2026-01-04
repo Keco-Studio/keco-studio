@@ -25,6 +25,7 @@ export default function ProjectPage() {
   const [project, setProject] = useState<Project | null>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
+  const [folderLibraries, setFolderLibraries] = useState<Record<string, Library[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
@@ -50,9 +51,19 @@ export default function ProjectPage() {
         return;
       }
       
+      // Fetch libraries for each folder
+      const folderLibrariesMap: Record<string, Library[]> = {};
+      await Promise.all(
+        foldersData.map(async (folder) => {
+          const libs = await listLibraries(supabase, projectId, folder.id);
+          folderLibrariesMap[folder.id] = libs;
+        })
+      );
+      
       setProject(projectData);
       setFolders(foldersData);
       setLibraries(librariesData);
+      setFolderLibraries(folderLibrariesMap);
     } catch (e: any) {
       setError(e?.message || 'Failed to load project');
     } finally {
@@ -79,18 +90,15 @@ export default function ProjectPage() {
     };
 
     const handleLibraryCreated = (event: CustomEvent) => {
-      const createdFolderId = event.detail?.folderId;
-      // Only refresh if the library was created at root level (no folder)
-      if (!createdFolderId) {
-        fetchData();
-      }
+      // Refresh data whenever a library is created in the current project
+      // This includes both root level libraries and libraries in folders
+      fetchData();
     };
 
     const handleLibraryDeleted = (event: CustomEvent) => {
-      const deletedFolderId = event.detail?.folderId;
       const deletedProjectId = event.detail?.projectId;
-      // Only refresh if the library was deleted from root level (no folder) and belongs to current project
-      if (!deletedFolderId && deletedProjectId === projectId) {
+      // Refresh data if the library was deleted from current project
+      if (deletedProjectId === projectId) {
         fetchData();
       }
     };
@@ -251,6 +259,7 @@ export default function ProjectPage() {
               key={folder.id}
               folder={folder}
               projectId={projectId}
+              libraries={folderLibraries[folder.id] || []}
               onClick={handleFolderClick}
               onMoreClick={handleFolderMoreClick}
             />

@@ -73,7 +73,7 @@ export default function AssetPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
-  const [mode, setMode] = useState<AssetMode>(isNewAsset ? 'create' : 'view');
+  const [mode, setMode] = useState<AssetMode>(isNewAsset ? 'create' : 'edit');
   const [navigating, setNavigating] = useState(false);
 
   const sections = useMemo(() => {
@@ -356,6 +356,16 @@ export default function AssetPage() {
       }
     }
   }, [isNewAsset, assetName, supabase, libraryId, fieldDefs, values, asset, router, projectId]);
+
+  // Auto-clear save success message after 2 seconds
+  useEffect(() => {
+    if (saveSuccess) {
+      const timer = setTimeout(() => {
+        setSaveSuccess(null);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [saveSuccess]);
 
   // Listen to TopBar Create Asset button click for new assets
   useEffect(() => {
