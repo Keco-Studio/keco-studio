@@ -14,8 +14,15 @@
 
 import { createClient } from '@supabase/supabase-js';
 import * as dotenv from 'dotenv';
+import path from 'path';
 
-dotenv.config();
+// Load environment variables from .env and .env.local
+// .env.local will override .env (same as Next.js and Playwright config)
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ 
+  path: path.resolve(__dirname, '../.env.local'), 
+  override: true // Allow .env.local variables to override .env
+});
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
