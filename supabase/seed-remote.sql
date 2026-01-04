@@ -288,7 +288,7 @@ begin
     
     if v_happy_path_user_id is null then
       insert into auth.users (
-        instance_id, email, encrypted_password,
+        id, instance_id, email, encrypted_password,
         raw_app_meta_data, raw_user_meta_data,
         created_at, updated_at, aud, role,
         email_confirmed_at, confirmation_sent_at, last_sign_in_at,
@@ -296,6 +296,7 @@ begin
         email_change_token_current, email_change, reauthentication_token
       )
       values (
+        gen_random_uuid(),
         v_instance_id,
         'seed-happy-path@mailinator.com',
         crypt('Password123!', gen_salt('bf')),
