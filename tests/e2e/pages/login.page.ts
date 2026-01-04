@@ -130,6 +130,12 @@ export class LoginPage {
    * Assert successful login message or redirect to dashboard
    */
   async expectLoginSuccess(): Promise<void> {
+    // CI environments are significantly slower - use longer timeouts
+    const isCI = process.env.CI === 'true';
+    const longTimeout = isCI ? 60000 : 30000;
+    const mediumTimeout = isCI ? 30000 : 15000;
+    const shortTimeout = isCI ? 15000 : 5000;
+    
     // After successful login, user is redirected to the projects dashboard
     // In CI environments, page load can be slower, so we use multiple strategies:
     
@@ -139,32 +145,29 @@ export class LoginPage {
       const path = url.pathname;
       // Match /projects or /{projectId} (project detail page) - anything except root
       return path !== '/' && path !== '';
-    }, { timeout: 30000 });
+    }, { timeout: longTimeout });
     
-    // Strategy 2: Wait for auth form to disappear (DashboardLayout shows dashboard after 1.5s delay)
-    // The DashboardLayout component has a 1.5 second delay after login to show success message
-    await expect(this.loginHeading).not.toBeVisible({ timeout: 30000 });
-    
-    // Strategy 3: Wait for network to be idle (ensures page is fully loaded)
+    // Strategy 2: Wait for network to be idle first (ensures page is fully loaded)
     // This ensures all API calls (including auth verification) are complete
-    await this.page.waitForLoadState('networkidle', { timeout: 30000 });
+    await this.page.waitForLoadState('networkidle', { timeout: longTimeout });
+    
+    // Strategy 3: Wait for auth form to disappear (DashboardLayout shows dashboard after 1.5s delay)
+    // The DashboardLayout component has a 1.5 second delay after login to show success message
+    await expect(this.loginHeading).not.toBeVisible({ timeout: mediumTimeout });
     
     // Strategy 4: Wait for sessionStorage to contain Supabase auth token
     // In CI environments, there may be a delay between login and session storage update
     await this.page.waitForFunction(
       () => {
         try {
-          // Check if Supabase auth token exists in sessionStorage
-          // Supabase stores auth in sessionStorage with key like 'sb-<project-ref>-auth-token'
-          const keys = Object.keys(sessionStorage);
-          const hasAuthToken = keys.some(key => 
-            key.includes('sb-') && key.includes('auth-token')
-          );
-          if (hasAuthToken) {
-            // Verify token is not empty
+          // Check if Supabase auth token exists in sessionStorage or localStorage
+          // Supabase stores auth in storage with key like 'sb-<project-ref>-auth-token'
+          const storages = [sessionStorage, localStorage];
+          for (const storage of storages) {
+            const keys = Object.keys(storage);
             for (const key of keys) {
               if (key.includes('sb-') && key.includes('auth-token')) {
-                const value = sessionStorage.getItem(key);
+                const value = storage.getItem(key);
                 if (value && value.length > 10) {
                   return true;
                 }
@@ -176,23 +179,23 @@ export class LoginPage {
           return false;
         }
       },
-      { timeout: 30000 }
+      { timeout: mediumTimeout }
     );
     
     // Strategy 5: Additional wait to ensure authentication state is fully established
-    // This is important after adding authorization checks
-    await this.page.waitForTimeout(3000); // Wait 3 seconds for auth state to stabilize
+    // This is important after adding authorization checks - longer wait for CI
+    await this.page.waitForTimeout(isCI ? 5000 : 2000);
     
     // Strategy 6: Wait for projects heading or verify we're not on login page
     // Note: If redirected to project detail page, this may not be visible,
     // but we've already verified URL change and network idle, so login was successful
     const projectsHeading = this.page.getByRole('heading', { name: /projects/i });
     try {
-      await expect(projectsHeading).toBeVisible({ timeout: 10000 });
+      await expect(projectsHeading).toBeVisible({ timeout: shortTimeout });
     } catch {
       // If projects heading not found, verify we're at least not on login page
       // This handles the case where login redirects directly to a project page
-      await expect(this.loginHeading).not.toBeVisible({ timeout: 5000 });
+      await expect(this.loginHeading).not.toBeVisible({ timeout: shortTimeout });
     }
   }
 

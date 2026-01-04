@@ -31,6 +31,11 @@ export default defineConfig({
   workers: 1, // Run tests sequentially to maintain dependencies between test files
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
+  /* Global timeout settings - CI environments are slower */
+  timeout: process.env.CI ? 60000 : 30000, // 60s for CI, 30s for local
+  expect: {
+    timeout: process.env.CI ? 15000 : 5000, // 15s for CI assertions, 5s for local
+  },
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('')`. */
@@ -38,6 +43,9 @@ export default defineConfig({
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
     trace: 'on',
+    /* Action timeout - CI environments need more time */
+    actionTimeout: process.env.CI ? 30000 : 10000,
+    navigationTimeout: process.env.CI ? 60000 : 30000,
     launchOptions: {
       slowMo: process.env.CI ? 0 : 1000, // Only slow down in local development, not in CI
     },
