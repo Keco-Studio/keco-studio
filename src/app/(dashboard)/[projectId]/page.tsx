@@ -6,6 +6,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject, Project } from '@/lib/services/projectService';
 import { listFolders, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
+import { AuthorizationError } from '@/lib/services/authorizationService';
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
 import Image from 'next/image';
 import styles from './page.module.css';
@@ -46,7 +47,9 @@ export default function ProjectPage() {
       ]);
       
       if (!projectData) {
-        setError('Project not found');
+        // Project not found - redirect immediately without showing error
+        // Use window.location for immediate redirect to prevent any flash of content
+        window.location.replace('/projects');
         return;
       }
       
@@ -54,11 +57,28 @@ export default function ProjectPage() {
       setFolders(foldersData);
       setLibraries(librariesData);
     } catch (e: any) {
+      // If it's an authorization error, redirect immediately without showing error
+      // This provides better UX and security (no flash of error message)
+      if (e instanceof AuthorizationError || e?.name === 'AuthorizationError' || 
+          e?.message?.includes('Unauthorized')) {
+        // Use window.location for immediate redirect to prevent any flash of content
+        window.location.replace('/projects');
+        return;
+      }
+      
+      // For "not found" errors, also redirect (due to RLS, this means unauthorized)
+      // But we keep it generic to avoid information leakage
+      if (e?.message?.includes('not found')) {
+        // Use window.location for immediate redirect
+        window.location.replace('/projects');
+        return;
+      }
+      
+      // For other unexpected errors, show error message
       setError(e?.message || 'Failed to load project');
-    } finally {
       setLoading(false);
     }
-  }, [projectId, supabase]);
+  }, [projectId, supabase, router]);
 
   useEffect(() => {
     fetchData();
