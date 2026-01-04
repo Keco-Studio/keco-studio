@@ -46,6 +46,12 @@ begin
       now(), now(), now(),
       '', '', '', '', '', ''
     from u;
+  else
+    -- User exists, ensure password is correct
+    update auth.users 
+    set encrypted_password = crypt('Password123!', gen_salt('bf')),
+        updated_at = now()
+    where email = 'seed-empty@mailinator.com';
   end if;
 
   -- User 2: empty account (for parallel testing)
@@ -75,6 +81,12 @@ begin
       now(), now(), now(),
       '', '', '', '', '', ''
     from u;
+  else
+    -- User exists, ensure password is correct
+    update auth.users 
+    set encrypted_password = crypt('Password123!', gen_salt('bf')),
+        updated_at = now()
+    where email = 'seed-empty-2@mailinator.com';
   end if;
 
   -- User 3: empty account (for parallel testing)
@@ -104,6 +116,12 @@ begin
       now(), now(), now(),
       '', '', '', '', '', ''
     from u;
+  else
+    -- User exists, ensure password is correct
+    update auth.users 
+    set encrypted_password = crypt('Password123!', gen_salt('bf')),
+        updated_at = now()
+    where email = 'seed-empty-3@mailinator.com';
   end if;
 
   -- User 4: empty account (for parallel testing)
@@ -133,6 +151,12 @@ begin
       now(), now(), now(),
       '', '', '', '', '', ''
     from u;
+  else
+    -- User exists, ensure password is correct
+    update auth.users 
+    set encrypted_password = crypt('Password123!', gen_salt('bf')),
+        updated_at = now()
+    where email = 'seed-empty-4@mailinator.com';
   end if;
 
   -- User 5: has one empty project
@@ -164,6 +188,12 @@ begin
         '', '', '', '', '', ''
       )
       returning id into v_user5_id;
+    else
+      -- User exists, ensure password is correct
+      update auth.users 
+      set encrypted_password = crypt('Password123!', gen_salt('bf')),
+          updated_at = now()
+      where id = v_user5_id;
     end if;
     
     -- Create project if it doesn't exist
@@ -207,6 +237,12 @@ begin
         '', '', '', '', '', ''
       )
       returning id into v_user6_id;
+    else
+      -- User exists, ensure password is correct
+      update auth.users 
+      set encrypted_password = crypt('Password123!', gen_salt('bf')),
+          updated_at = now()
+      where id = v_user6_id;
     end if;
     
     -- Get or create project
@@ -271,6 +307,12 @@ begin
         '', '', '', '', '', ''
       )
       returning id into v_happy_path_user_id;
+    else
+      -- User exists, ensure password is correct (may have been created with different password)
+      update auth.users 
+      set encrypted_password = crypt('Password123!', gen_salt('bf')),
+          updated_at = now()
+      where id = v_happy_path_user_id;
     end if;
     
     -- Get or create project
