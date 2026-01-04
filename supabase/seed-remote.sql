@@ -272,42 +272,7 @@ begin
   -- Used by destructive.spec.ts for deletion testing
   -- ==========================================
   
-  -- User 7: Happy Path Test User
-  if not exists (select 1 from auth.users where email = 'seed-happy-path@mailinator.com') then
-    with u as (
-      select
-        gen_random_uuid() as id,
-        crypt('Password123!', gen_salt('bf')) as enc_pwd
-    )
-    insert into auth.users (
-      id, instance_id, email, encrypted_password,
-      raw_app_meta_data, raw_user_meta_data,
-      created_at, updated_at, aud, role,
-      email_confirmed_at, confirmation_sent_at, last_sign_in_at,
-      confirmation_token, recovery_token, email_change_token_new,
-      email_change_token_current, email_change, reauthentication_token
-    )
-    select
-      u.id,
-      v_instance_id,
-      'seed-happy-path@mailinator.com',
-      u.enc_pwd,
-      jsonb_build_object('provider', 'email', 'providers', array['email']),
-      jsonb_build_object('username', 'seed-happy-path'),
-      now(), now(),
-      'authenticated', 'authenticated',
-      now(), now(), now(),
-      '', '', '', '', '', ''
-    from u;
-  else
-    -- User exists, ensure password is correct
-    update auth.users 
-    set encrypted_password = crypt('Password123!', gen_salt('bf')),
-        updated_at = now()
-    where email = 'seed-happy-path@mailinator.com';
-  end if;
-  
-  -- Create happy path user's data (project, folders, libraries, assets)
+  -- User 7: Happy Path Test User (following same pattern as User 5 and User 6)
   declare
     v_happy_user_id uuid;
     v_happy_project_id uuid;
@@ -316,25 +281,50 @@ begin
     v_happy_breed_origin_field_id uuid;
     v_happy_breed_asset_id uuid;
   begin
-    -- Get the user ID
-    select id into v_happy_user_id from auth.users 
-    where email = 'seed-happy-path@mailinator.com';
+    -- Get or create user
+    select id into v_happy_user_id from auth.users where email = 'seed-happy-path@mailinator.com';
     
-    -- Create project if not exists
-    if not exists (
-      select 1 from public.projects 
-      where owner_id = v_happy_user_id 
-      and name = 'Livestock Management Project'
-    ) then
+    if v_happy_user_id is null then
+      insert into auth.users (
+        id, instance_id, email, encrypted_password,
+        raw_app_meta_data, raw_user_meta_data,
+        created_at, updated_at, aud, role,
+        email_confirmed_at, confirmation_sent_at, last_sign_in_at,
+        confirmation_token, recovery_token, email_change_token_new,
+        email_change_token_current, email_change, reauthentication_token
+      )
+      values (
+        gen_random_uuid(),
+        v_instance_id,
+        'seed-happy-path@mailinator.com',
+        crypt('Password123!', gen_salt('bf')),
+        jsonb_build_object('provider', 'email', 'providers', array['email']),
+        jsonb_build_object('username', 'seed-happy-path'),
+        now(), now(),
+        'authenticated', 'authenticated',
+        now(), now(), now(),
+        '', '', '', '', '', ''
+      )
+      returning id into v_happy_user_id;
+    else
+      -- User exists, ensure password is correct
+      update auth.users 
+      set encrypted_password = crypt('Password123!', gen_salt('bf')),
+          updated_at = now()
+      where id = v_happy_user_id;
+    end if;
+    
+    -- Get or create project
+    select id into v_happy_project_id from public.projects 
+    where owner_id = v_happy_user_id and name = 'Livestock Management Project';
+    
+    if v_happy_project_id is null then
       insert into public.projects (owner_id, name, description)
       values (v_happy_user_id, 'Livestock Management Project', 'End-to-end test project for livestock asset management')
       returning id into v_happy_project_id;
-    else
-      select id into v_happy_project_id from public.projects
-      where owner_id = v_happy_user_id and name = 'Livestock Management Project';
     end if;
     
-    -- Create direct folder if not exists
+    -- Create direct folder if it doesn't exist
     if not exists (
       select 1 from public.folders 
       where project_id = v_happy_project_id 
@@ -344,39 +334,55 @@ begin
       values (v_happy_project_id, 'Direct Folder', 'Folder created directly under project');
     end if;
     
-    -- Create breed library if not exists
-    if not exists (
-      select 1 from public.libraries 
-      where project_id = v_happy_project_id 
-      and name = 'Breed Library'
-    ) then
+    -- Get or create breed library
+    select id into v_happy_breed_library_id from public.libraries
+    where project_id = v_happy_project_id and name = 'Breed Library';
+    
+    if v_happy_breed_library_id is null then
       insert into public.libraries (project_id, name, description)
       values (v_happy_project_id, 'Breed Library', 'Reference library for livestock breeds')
       returning id into v_happy_breed_library_id;
-      
-      -- Add field definitions for Breed Template
+    end if;
+    
+    -- Get or create field definitions
+    select id into v_happy_breed_name_field_id from public.library_field_definitions
+    where library_id = v_happy_breed_library_id and label = 'name';
+    
+    if v_happy_breed_name_field_id is null then
       insert into public.library_field_definitions (library_id, label, data_type, section, order_index, required)
       values (v_happy_breed_library_id, 'name', 'string', 'Basic Information', 0, true)
       returning id into v_happy_breed_name_field_id;
-      
+    end if;
+    
+    select id into v_happy_breed_origin_field_id from public.library_field_definitions
+    where library_id = v_happy_breed_library_id and label = 'Origin';
+    
+    if v_happy_breed_origin_field_id is null then
       insert into public.library_field_definitions (library_id, label, data_type, section, order_index, required)
       values (v_happy_breed_library_id, 'Origin', 'string', 'Basic Information', 1, false)
       returning id into v_happy_breed_origin_field_id;
-      
-      -- Create breed asset
+    end if;
+    
+    -- Get or create breed asset
+    select id into v_happy_breed_asset_id from public.library_assets
+    where library_id = v_happy_breed_library_id and name = 'Black Goat Breed';
+    
+    if v_happy_breed_asset_id is null then
       insert into public.library_assets (library_id, name)
       values (v_happy_breed_library_id, 'Black Goat Breed')
       returning id into v_happy_breed_asset_id;
-      
-      -- Insert field values for the breed asset
-      insert into public.library_asset_values (asset_id, field_id, value_json)
-      values (v_happy_breed_asset_id, v_happy_breed_name_field_id, '"Black Goat Breed"'::jsonb);
-      
-      insert into public.library_asset_values (asset_id, field_id, value_json)
-      values (v_happy_breed_asset_id, v_happy_breed_origin_field_id, '"African Highlands"'::jsonb);
     end if;
     
-    -- Create direct library if not exists
+    -- Insert or update field values for the breed asset
+    insert into public.library_asset_values (asset_id, field_id, value_json)
+    values (v_happy_breed_asset_id, v_happy_breed_name_field_id, '"Black Goat Breed"'::jsonb)
+    on conflict (asset_id, field_id) do update set value_json = '"Black Goat Breed"'::jsonb;
+    
+    insert into public.library_asset_values (asset_id, field_id, value_json)
+    values (v_happy_breed_asset_id, v_happy_breed_origin_field_id, '"African Highlands"'::jsonb)
+    on conflict (asset_id, field_id) do update set value_json = '"African Highlands"'::jsonb;
+    
+    -- Create direct library if it doesn't exist
     if not exists (
       select 1 from public.libraries 
       where project_id = v_happy_project_id 
