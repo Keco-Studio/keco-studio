@@ -80,6 +80,17 @@ const TEST_USERS: TestUserWithData[] = [
     libraryName: 'Seed Library B1',
     libraryDescription: 'Empty library',
   },
+  // Happy path test user (for destructive tests)
+  {
+    email: 'seed-happy-path@mailinator.com',
+    password: 'Password123!',
+    username: 'seed-happy-path',
+    emailConfirm: true,
+    projectName: 'Livestock Management Project',
+    projectDescription: 'End-to-end test project for livestock asset management',
+    libraryName: 'Breed Library',
+    libraryDescription: 'Reference library for livestock breeds',
+  },
 ];
 
 async function main() {

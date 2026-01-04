@@ -272,7 +272,42 @@ begin
   -- Used by destructive.spec.ts for deletion testing
   -- ==========================================
   
-  -- User 7: Happy Path Test User (following same pattern as User 5 and User 6)
+  -- User 7: Happy Path Test User (using same pattern as User 1-4 for user creation)
+  if not exists (select 1 from auth.users where email = 'seed-happy-path@mailinator.com') then
+    with u as (
+      select
+        gen_random_uuid() as id,
+        crypt('Password123!', gen_salt('bf')) as enc_pwd
+    )
+    insert into auth.users (
+      id, instance_id, email, encrypted_password,
+      raw_app_meta_data, raw_user_meta_data,
+      created_at, updated_at, aud, role,
+      email_confirmed_at, confirmation_sent_at, last_sign_in_at,
+      confirmation_token, recovery_token, email_change_token_new,
+      email_change_token_current, email_change, reauthentication_token
+    )
+    select
+      u.id,
+      v_instance_id,
+      'seed-happy-path@mailinator.com',
+      u.enc_pwd,
+      jsonb_build_object('provider', 'email', 'providers', array['email']),
+      jsonb_build_object('username', 'seed-happy-path'),
+      now(), now(),
+      'authenticated', 'authenticated',
+      now(), now(), now(),
+      '', '', '', '', '', ''
+    from u;
+  else
+    -- User exists, ensure password is correct
+    update auth.users 
+    set encrypted_password = crypt('Password123!', gen_salt('bf')),
+        updated_at = now()
+    where email = 'seed-happy-path@mailinator.com';
+  end if;
+  
+  -- Create happy path user's data (project, folders, libraries, assets)
   declare
     v_happy_user_id uuid;
     v_happy_project_id uuid;
@@ -281,38 +316,9 @@ begin
     v_happy_breed_origin_field_id uuid;
     v_happy_breed_asset_id uuid;
   begin
-    -- Get or create user
-    select id into v_happy_user_id from auth.users where email = 'seed-happy-path@mailinator.com';
-    
-    if v_happy_user_id is null then
-      insert into auth.users (
-        id, instance_id, email, encrypted_password,
-        raw_app_meta_data, raw_user_meta_data,
-        created_at, updated_at, aud, role,
-        email_confirmed_at, confirmation_sent_at, last_sign_in_at,
-        confirmation_token, recovery_token, email_change_token_new,
-        email_change_token_current, email_change, reauthentication_token
-      )
-      values (
-        gen_random_uuid(),
-        v_instance_id,
-        'seed-happy-path@mailinator.com',
-        crypt('Password123!', gen_salt('bf')),
-        jsonb_build_object('provider', 'email', 'providers', array['email']),
-        jsonb_build_object('username', 'seed-happy-path'),
-        now(), now(),
-        'authenticated', 'authenticated',
-        now(), now(), now(),
-        '', '', '', '', '', ''
-      )
-      returning id into v_happy_user_id;
-    else
-      -- User exists, ensure password is correct
-      update auth.users 
-      set encrypted_password = crypt('Password123!', gen_salt('bf')),
-          updated_at = now()
-      where id = v_happy_user_id;
-    end if;
+    -- Get the user ID
+    select id into v_happy_user_id from auth.users 
+    where email = 'seed-happy-path@mailinator.com';
     
     -- Get or create project
     select id into v_happy_project_id from public.projects 
