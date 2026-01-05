@@ -11,6 +11,8 @@ import styles from './page.module.css';
 import Image from 'next/image';
 import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
 import predefineLabelConfigIcon from '@/app/assets/images/predefineLabelConfigIcon.svg';
+import noassetIcon1 from '@/app/assets/images/NoassetIcon1.svg';
+import noassetIcon2 from '@/app/assets/images/NoassetIcon2.svg';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { AssetReferenceSelector } from '@/components/asset/AssetReferenceSelector';
@@ -223,6 +225,11 @@ export default function AssetPage() {
       }
     };
   }, [isNewAsset]);
+
+  // Handle navigate to predefine page
+  const handlePredefineClick = () => {
+    router.push(`/${projectId}/${libraryId}/predefine`);
+  };
 
   const handleValueChange = (fieldId: string, value: any) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -448,8 +455,27 @@ export default function AssetPage() {
           <div className={styles.formContainer}>
           <div className={styles.fieldsContainer}>
               {sectionKeys.length === 0 && (
-                <div className={styles.emptyFieldsMessage}>
-                  No field definitions yet. Please configure fields in Predefine first.
+                <div className={styles.emptyState}>
+                  <Image
+                    src={noassetIcon1}
+                    alt=""
+                    width={72}
+                    height={72}
+                    className={styles.emptyStateIcon}
+                  />
+                  <p className={styles.emptyStateText}>
+                    There is no any asset here. You need to create an asset firstly.
+                  </p>
+                  <button className={styles.predefineButton} onClick={handlePredefineClick}>
+                    <Image
+                      src={noassetIcon2}
+                      alt=""
+                      width={24}
+                      height={24}
+                      className={styles.predefineButtonIcon}
+                    />
+                    <span>Predefine</span>
+                  </button>
                 </div>
               )}
 

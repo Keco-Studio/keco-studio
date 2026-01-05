@@ -1368,6 +1368,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                           onClick={(e) => {
                             e.stopPropagation();
                             if (currentIds.projectId && currentIds.libraryId) {
+                              // Navigate to new asset page
+                              // If library has no properties, the page will show predefine prompt (NoassetIcon1.svg)
+                              // If library has properties, the page will show the form to create new asset
                               router.push(`/${currentIds.projectId}/${currentIds.libraryId}/new`);
                             }
                           }}
