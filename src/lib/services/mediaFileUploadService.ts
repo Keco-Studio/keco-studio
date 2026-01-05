@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getCurrentUserId } from './authorizationService';
 
 const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_TYPES = [
@@ -74,6 +75,12 @@ export async function uploadMediaFile(
     throw new Error('Storage bucket is not configured');
   }
 
+  // Verify user is authenticated and matches the provided userId
+  const currentUserId = await getCurrentUserId(supabase);
+  if (currentUserId !== userId) {
+    throw new Error('Unauthorized: You can only upload files to your own folder');
+  }
+
   const validation = validateMediaFile(file);
   if (!validation.ok) {
     throw new Error(validation.error || 'Invalid file');
@@ -116,6 +123,16 @@ export async function deleteMediaFile(
   filePath: string
 ): Promise<void> {
   const bucket = getBucketName();
+  
+  // Verify user is authenticated
+  const currentUserId = await getCurrentUserId(supabase);
+  
+  // Extract userId from file path (format: {userId}/{filename})
+  const pathParts = filePath.split('/');
+  if (pathParts.length < 2 || pathParts[0] !== currentUserId) {
+    throw new Error('Unauthorized: You can only delete your own files');
+  }
+
   const { error } = await supabase.storage.from(bucket).remove([filePath]);
 
   if (error) {

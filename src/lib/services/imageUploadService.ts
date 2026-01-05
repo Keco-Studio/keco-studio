@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { getCurrentUserId } from './authorizationService';
 
 const MAX_SIZE_BYTES = 5 * 1024 * 1024;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -47,12 +48,19 @@ export async function uploadImageFile(
     throw new Error(buildMissingBucketMessage('tiptap-images'));
   }
 
+  // Verify user is authenticated
+  const userId = await getCurrentUserId(supabase);
+
   const validation = validateImageFile(file);
   if (!validation.ok) {
     throw new Error(validation.error || 'Invalid file');
   }
 
-  const uniqueKey = `${crypto.randomUUID?.() || Date.now()}-${file.name}`;
+  // Store files under user's folder: {userId}/{timestamp}-{filename}
+  // This ensures users can only upload to their own folder
+  const timestamp = Date.now();
+  const sanitizedFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const uniqueKey = `${userId}/${timestamp}-${sanitizedFileName}`;
 
   const { data, error } = await supabase.storage.from(bucket).upload(uniqueKey, file, {
     contentType: file.type,

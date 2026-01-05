@@ -55,6 +55,9 @@ export function LibraryAssetsTable({
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingRowData, setEditingRowData] = useState<Record<string, any>>({});
 
+  // Ref for table container to detect clicks outside
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+
   // Modal state for reference selector
   const [referenceModalOpen, setReferenceModalOpen] = useState(false);
   const [referenceModalProperty, setReferenceModalProperty] = useState<PropertyConfig | null>(null);
@@ -455,6 +458,76 @@ export function LibraryAssetsTable({
     setNewRowData({});
   };
 
+  // Handle click outside to auto-save new asset or cancel editing
+  useEffect(() => {
+    const handleClickOutside = async (event: MouseEvent) => {
+      if (isSaving) return;
+
+      // Check if click is outside the table container
+      if (tableContainerRef.current && !tableContainerRef.current.contains(event.target as Node)) {
+        // Handle new row auto-save
+        if (isAddingRow) {
+          // Check if we have at least some data to save
+          const hasData = Object.keys(newRowData).some(key => {
+            const value = newRowData[key];
+            return value !== null && value !== undefined && value !== '';
+          });
+
+          if (hasData && onSaveAsset) {
+            // Get asset name from first property (assuming first property is name)
+            const assetName = newRowData[properties[0]?.id] || 'Untitled';
+            
+            setIsSaving(true);
+            try {
+              await onSaveAsset(assetName, newRowData);
+              // Reset state
+              setIsAddingRow(false);
+              setNewRowData({});
+            } catch (error) {
+              console.error('Failed to save asset:', error);
+              // Don't show alert on auto-save, just log the error
+            } finally {
+              setIsSaving(false);
+            }
+          } else if (!hasData) {
+            // If no data, just cancel
+            setIsAddingRow(false);
+            setNewRowData({});
+          }
+        }
+        
+        // Handle editing row auto-save
+        if (editingRowId) {
+          const row = rows.find(r => r.id === editingRowId);
+          if (row && onUpdateAsset) {
+            // Get asset name from first property (use properties array directly)
+            const assetName = editingRowData[properties[0]?.key] || row.name || 'Untitled';
+            
+            setIsSaving(true);
+            try {
+              await onUpdateAsset(editingRowId, String(assetName), editingRowData);
+              // Reset editing state
+              setEditingRowId(null);
+              setEditingRowData({});
+            } catch (error) {
+              console.error('Failed to update asset:', error);
+              // Don't show alert on auto-save, just log the error
+            } finally {
+              setIsSaving(false);
+            }
+          }
+        }
+      }
+    };
+
+    if (isAddingRow || editingRowId) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [isAddingRow, editingRowId, isSaving, newRowData, editingRowData, onSaveAsset, onUpdateAsset, properties, rows]);
+
   // Handle input change for new row
   const handleInputChange = (propertyId: string, value: any) => {
     setNewRowData((prev) => ({ ...prev, [propertyId]: value }));
@@ -616,12 +689,12 @@ export function LibraryAssetsTable({
 
   const { groups, orderedProperties } = grouped;
 
-  // Calculate total columns: # + properties + actions
-  const totalColumns = 1 + orderedProperties.length + 1;
+  // Calculate total columns: # + properties (no actions column)
+  const totalColumns = 1 + orderedProperties.length;
 
   return (
     <>
-      <div className={styles.tableContainer}>
+      <div className={styles.tableContainer} ref={tableContainerRef}>
         <table className={styles.table}>
         <thead>
           {/* First row: Section headers (Basic Info, Visual Info, etc.) */}
@@ -643,13 +716,6 @@ export function LibraryAssetsTable({
                 {group.section.name}
               </th>
             ))}
-            <th
-              rowSpan={2}
-              scope="col"
-              className={`${styles.headerCell} ${styles.actionsColumnHeader}`}
-            >
-              Actions
-            </th>
           </tr>
           {/* Second row: Property headers (name, skill, clod, etc.) */}
           <tr className={styles.headerRowBottom}>
@@ -727,30 +793,6 @@ export function LibraryAssetsTable({
                       </td>
                     );
                   })}
-                  <td className={styles.actionsCell}>
-                    <div className={styles.editActions}>
-                      <Button
-                        type="primary"
-                        size="small"
-                        onClick={() => {
-                          // Get asset name from first property
-                          const assetName = editingRowData[orderedProperties[0]?.key] || row.name || 'Untitled';
-                          handleSaveEditedRow(row.id, String(assetName));
-                        }}
-                        loading={isSaving}
-                        disabled={isSaving}
-                      >
-                        Save
-                      </Button>
-                      <Button
-                        size="small"
-                        onClick={handleCancelEditing}
-                        disabled={isSaving}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </td>
                 </tr>
               );
             }
@@ -904,9 +946,6 @@ export function LibraryAssetsTable({
                     </td>
                   );
                 })}
-                <td className={styles.actionsCell}>
-                  {/* No actions for now */}
-                </td>
               </tr>
             );
           })}
@@ -961,29 +1000,9 @@ export function LibraryAssetsTable({
                       className={styles.editInput}
                       disabled={isSaving}
                     />
-                  </td>
-                );
-              })}
-              <td className={styles.actionsCell}>
-                <div className={styles.editActions}>
-                  <Button
-                    type="primary"
-                    size="small"
-                    onClick={handleSaveNewAsset}
-                    loading={isSaving}
-                    disabled={isSaving}
-                  >
-                    Save
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={handleCancelAdding}
-                    disabled={isSaving}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </td>
+                    </td>
+                  );
+                })}
             </tr>
           ) : (
             <tr className={styles.addRow}>
