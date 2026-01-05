@@ -175,8 +175,11 @@ export function LibraryAssetsTable({
     if (referenceModalRowId === 'new') {
       // For new row, update newRowData
       handleInputChange(referenceModalProperty.key, assetId);
+    } else if (editingRowId === referenceModalRowId) {
+      // For row being edited, update editingRowData
+      handleEditInputChange(referenceModalProperty.key, assetId);
     } else {
-      // For existing row, update the asset
+      // For existing row not in edit mode, update the asset directly
       const row = rows.find(r => r.id === referenceModalRowId);
       
       if (row && onUpdateAsset) {
@@ -290,6 +293,25 @@ export function LibraryAssetsTable({
   // Handle input change for editing row
   const handleEditInputChange = (propertyId: string, value: any) => {
     setEditingRowData((prev) => ({ ...prev, [propertyId]: value }));
+  };
+
+  // Handle media file change for editing row
+  const handleEditMediaFileChange = (propertyId: string, value: MediaFileMetadata | null) => {
+    setEditingRowData((prev) => ({ ...prev, [propertyId]: value }));
+  };
+
+  // Handle double click on cell to start editing
+  const handleCellDoubleClick = (row: AssetRow) => {
+    // Prevent editing if adding a new row
+    if (isAddingRow) {
+      return;
+    }
+    // If already editing this row, do nothing
+    if (editingRowId === row.id) {
+      return;
+    }
+    // Start editing
+    handleEditRow(row);
   };
 
   // Handle edit row
@@ -469,6 +491,91 @@ export function LibraryAssetsTable({
         </thead>
         <tbody className={styles.body}>
           {rows.map((row, index) => {
+            const isEditing = editingRowId === row.id;
+            
+            // If this row is being edited, show edit row
+            if (isEditing) {
+              return (
+                <tr
+                  key={row.id}
+                  className={styles.editRow}
+                >
+                  <td className={styles.numberCell}>{index + 1}</td>
+                  {orderedProperties.map((property) => {
+                    // Check if this is a reference type field
+                    if (property.dataType === 'reference' && property.referenceLibraries) {
+                      const assetId = editingRowData[property.key] ? String(editingRowData[property.key]) : null;
+                      
+                      return (
+                        <td key={property.id} className={styles.editCell}>
+                          <div className={styles.referenceInputContainer}>
+                            <ReferenceField
+                              property={property}
+                              assetId={assetId}
+                              rowId={row.id}
+                              assetNamesCache={assetNamesCache}
+                            />
+                          </div>
+                        </td>
+                      );
+                    }
+                    
+                    // Check if this is an image or file type field
+                    if (property.dataType === 'image' || property.dataType === 'file') {
+                      const mediaValue = editingRowData[property.key] as MediaFileMetadata | null | undefined;
+                      return (
+                        <td key={property.id} className={styles.editCell}>
+                          <MediaFileUpload
+                            value={mediaValue || null}
+                            onChange={(value) => handleEditMediaFileChange(property.key, value)}
+                            disabled={isSaving}
+                            fieldType={property.dataType}
+                          />
+                        </td>
+                      );
+                    }
+                    
+                    return (
+                      <td key={property.id} className={styles.editCell}>
+                        <Input
+                          value={editingRowData[property.key] || ''}
+                          onChange={(e) => handleEditInputChange(property.key, e.target.value)}
+                          placeholder={`Enter ${property.name.toLowerCase()}`}
+                          className={styles.editInput}
+                          disabled={isSaving}
+                        />
+                      </td>
+                    );
+                  })}
+                  <td className={styles.actionsCell}>
+                    <div className={styles.editActions}>
+                      <Button
+                        type="primary"
+                        size="small"
+                        onClick={() => {
+                          // Get asset name from first property
+                          const assetName = editingRowData[orderedProperties[0]?.key] || row.name || 'Untitled';
+                          handleSaveEditedRow(row.id, String(assetName));
+                        }}
+                        loading={isSaving}
+                        disabled={isSaving}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={handleCancelEditing}
+                        disabled={isSaving}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            }
+            
+            // Normal display row
             return (
               <tr
                 key={row.id}
@@ -488,6 +595,8 @@ export function LibraryAssetsTable({
                         <td
                           key={property.id}
                           className={styles.cell}
+                          onDoubleClick={() => handleCellDoubleClick(row)}
+                          title="双击编辑"
                         >
                           <ReferenceField
                             property={property}
@@ -522,6 +631,8 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         className={styles.cell}
+                        onDoubleClick={() => handleCellDoubleClick(row)}
+                        title="双击编辑"
                       >
                         {mediaValue ? (
                           <div className={styles.mediaCellContent}>
@@ -562,7 +673,7 @@ export function LibraryAssetsTable({
                     );
                   }
                   
-                  // Other fields: show text only (no editing for now)
+                  // Other fields: show text only
                   const value = row.propertyValues[property.key];
                   let display: string | null = null;
                   
@@ -574,6 +685,8 @@ export function LibraryAssetsTable({
                     <td
                       key={property.id}
                       className={styles.cell}
+                      onDoubleClick={() => handleCellDoubleClick(row)}
+                      title="双击编辑"
                     >
                       {isNameField ? (
                         // Name field: show text + view detail button
