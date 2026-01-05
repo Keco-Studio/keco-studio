@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Input, Select, Button, Avatar, Spin } from 'antd';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
@@ -225,51 +225,57 @@ export function LibraryAssetsTable({
     loadAssetNames();
   }, [rows, editingRowData, newRowData, properties, editingRowId, isAddingRow, supabase]);
 
-  // Handle mouse enter on avatar
-  const handleAvatarMouseEnter = (assetId: string, element: HTMLDivElement, e: React.MouseEvent) => {
+  // Handle mouse enter on avatar - use useCallback to prevent recreating on each render
+  const handleAvatarMouseEnter = useCallback((assetId: string, element: HTMLDivElement) => {
     // Clear any pending hide timeout
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
     }
-    avatarRefs.current.set(assetId, element);
     
-    // Get position immediately
-    const rect = element.getBoundingClientRect();
-    setHoveredAvatarPosition({
-      x: rect.right + 8, // Position to the right of avatar
-      y: rect.top,
+    // Only update ref if it's different
+    if (avatarRefs.current.get(assetId) !== element) {
+      avatarRefs.current.set(assetId, element);
+    }
+    
+    // Get position immediately using requestAnimationFrame to avoid layout thrashing
+    requestAnimationFrame(() => {
+      const rect = element.getBoundingClientRect();
+      setHoveredAvatarPosition({
+        x: rect.right + 8, // Position to the right of avatar
+        y: rect.top,
+      });
     });
     
     setHoveredAssetId(assetId);
-  };
+  }, []);
 
-  // Handle mouse leave on avatar with delay
-  const handleAvatarMouseLeave = () => {
+  // Handle mouse leave on avatar with delay - use useCallback
+  const handleAvatarMouseLeave = useCallback(() => {
     // Set a delay before hiding
     hideTimeoutRef.current = setTimeout(() => {
       setHoveredAssetId(null);
       hideTimeoutRef.current = null;
     }, 200); // 200ms delay
-  };
+  }, []);
 
-  // Handle mouse enter on asset card panel
-  const handleAssetCardMouseEnter = () => {
+  // Handle mouse enter on asset card panel - use useCallback
+  const handleAssetCardMouseEnter = useCallback(() => {
     // Clear any pending hide timeout
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
     }
-  };
+  }, []);
 
-  // Handle mouse leave on asset card panel with delay
-  const handleAssetCardMouseLeave = () => {
+  // Handle mouse leave on asset card panel with delay - use useCallback
+  const handleAssetCardMouseLeave = useCallback(() => {
     // Set a delay before hiding
     hideTimeoutRef.current = setTimeout(() => {
       setHoveredAssetId(null);
       hideTimeoutRef.current = null;
     }, 200); // 200ms delay
-  };
+  }, []);
 
   // Handle opening reference modal
   const handleOpenReferenceModal = (property: PropertyConfig, currentValue: string | null, rowId: string) => {
@@ -308,21 +314,48 @@ export function LibraryAssetsTable({
     setReferenceModalRowId(null);
   };
 
-  // Reference Field Component
-  const ReferenceField = ({
+  // Reference Field Component - memoized to prevent unnecessary re-renders
+  const ReferenceField = React.memo<{
+    property: PropertyConfig;
+    assetId: string | null;
+    rowId: string;
+    assetNamesCache: Record<string, string>;
+    onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
+    onAvatarMouseLeave: () => void;
+    onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
+  }>(({
     property,
     assetId,
     rowId,
     assetNamesCache,
+    onAvatarMouseEnter,
+    onAvatarMouseLeave,
+    onOpenReferenceModal,
   }: {
     property: PropertyConfig;
     assetId: string | null;
     rowId: string;
     assetNamesCache: Record<string, string>;
+    onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
+    onAvatarMouseLeave: () => void;
+    onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
   }) => {
     const hasValue = assetId && assetId.trim() !== '';
     const assetName = hasValue ? (assetNamesCache[assetId] || assetId) : '';
     const [isHovered, setIsHovered] = useState(false);
+    
+    // Use ref to store element reference without triggering re-renders
+    const avatarRef = useRef<HTMLDivElement | null>(null);
+    
+    // Set ref and store in map only when element mounts/unmounts
+    const setAvatarRef = useCallback((el: HTMLDivElement | null) => {
+      if (el && assetId) {
+        avatarRef.current = el;
+        avatarRefs.current.set(assetId, el);
+      } else if (!el && assetId && avatarRefs.current.get(assetId) === avatarRef.current) {
+        avatarRefs.current.delete(assetId);
+      }
+    }, [assetId]);
     
     return (
       <div
@@ -339,22 +372,16 @@ export function LibraryAssetsTable({
         />
         {hasValue && assetId && (
           <div
-            ref={(el) => {
-              if (el) {
-                avatarRefs.current.set(assetId, el);
-              } else {
-                avatarRefs.current.delete(assetId);
-              }
-            }}
+            ref={setAvatarRef}
             onMouseEnter={(e) => {
               e.stopPropagation();
-              if (assetId) {
-                handleAvatarMouseEnter(assetId, e.currentTarget, e);
+              if (assetId && avatarRef.current) {
+                onAvatarMouseEnter(assetId, avatarRef.current);
               }
             }}
             onMouseLeave={(e) => {
               e.stopPropagation();
-              handleAvatarMouseLeave();
+              onAvatarMouseLeave();
             }}
             className={styles.referenceAvatarWrapper}
           >
@@ -379,7 +406,7 @@ export function LibraryAssetsTable({
           onClick={(e) => {
             e.stopPropagation();
             e.preventDefault();
-            handleOpenReferenceModal(property, assetId, rowId);
+            onOpenReferenceModal(property, assetId, rowId);
           }}
           onDoubleClick={(e) => {
             // Prevent double click from bubbling to cell
@@ -388,7 +415,18 @@ export function LibraryAssetsTable({
         />
       </div>
     );
-  };
+  }, (prevProps, nextProps) => {
+    // Custom comparison function to prevent unnecessary re-renders
+    return (
+      prevProps.assetId === nextProps.assetId &&
+      prevProps.rowId === nextProps.rowId &&
+      prevProps.property.id === nextProps.property.id &&
+      prevProps.assetNamesCache[prevProps.assetId || ''] === nextProps.assetNamesCache[nextProps.assetId || '']
+    );
+  });
+
+  // Set display name for debugging
+  ReferenceField.displayName = 'ReferenceField';
 
   // Handle save new asset
   const handleSaveNewAsset = async () => {
@@ -653,6 +691,9 @@ export function LibraryAssetsTable({
                               assetId={assetId}
                               rowId={row.id}
                               assetNamesCache={assetNamesCache}
+                              onAvatarMouseEnter={handleAvatarMouseEnter}
+                              onAvatarMouseLeave={handleAvatarMouseLeave}
+                              onOpenReferenceModal={handleOpenReferenceModal}
                             />
                           </div>
                         </td>
@@ -742,6 +783,9 @@ export function LibraryAssetsTable({
                             assetId={assetId}
                             rowId={row.id}
                             assetNamesCache={assetNamesCache}
+                            onAvatarMouseEnter={handleAvatarMouseEnter}
+                            onAvatarMouseLeave={handleAvatarMouseLeave}
+                            onOpenReferenceModal={handleOpenReferenceModal}
                           />
                         </td>
                       );
@@ -884,6 +928,9 @@ export function LibraryAssetsTable({
                           assetId={assetId}
                           rowId="new"
                           assetNamesCache={assetNamesCache}
+                          onAvatarMouseEnter={handleAvatarMouseEnter}
+                          onAvatarMouseLeave={handleAvatarMouseLeave}
+                          onOpenReferenceModal={handleOpenReferenceModal}
                         />
                       </div>
                     </td>
