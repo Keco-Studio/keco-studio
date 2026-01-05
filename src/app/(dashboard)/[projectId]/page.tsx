@@ -8,6 +8,9 @@ import { listFolders, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
 import { AuthorizationError } from '@/lib/services/authorizationService';
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
+import projectNoFolderPreIcon from "@/app/assets/images/projectNoFolderPreIcon.svg";
+import plusHorizontal from "@/app/assets/images/plusHorizontal.svg";
+import plusVertical from "@/app/assets/images/plusVertical.svg";
 import Image from 'next/image';
 import styles from './page.module.css';
 import { FolderCard } from '@/components/folders/FolderCard';
@@ -16,6 +19,7 @@ import { LibraryListView } from '@/components/folders/LibraryListView';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { NewLibraryModal } from '@/components/libraries/NewLibraryModal';
 import { NewFolderModal } from '@/components/folders/NewFolderModal';
+import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
 
 export default function ProjectPage() {
   const params = useParams();
@@ -33,6 +37,8 @@ export default function ProjectPage() {
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [assetCounts, setAssetCounts] = useState<Record<string, number>>({}); 
+  const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [createButtonRef, setCreateButtonRef] = useState<HTMLButtonElement | null>(null); 
 
   const fetchData = useCallback(async () => {
     if (!projectId) return;
@@ -67,6 +73,7 @@ export default function ProjectPage() {
       setFolders(foldersData);
       setLibraries(librariesData);
       setFolderLibraries(folderLibrariesMap);
+      setLoading(false);
     } catch (e: any) {
       // If it's an authorization error, redirect immediately without showing error
       // This provides better UX and security (no flash of error message)
@@ -259,18 +266,55 @@ export default function ProjectPage() {
 
   return (
     <div className={styles.container}>
-      {hasItems && (
-        <LibraryToolbar
-          mode="project"
-          onCreateFolder={handleCreateFolder}
-          onCreateLibrary={handleCreateLibrary}
-          viewMode={viewMode}
-          onViewModeChange={setViewMode}
-        />
-      )}
+      <LibraryToolbar
+        mode="project"
+        title={project?.name}
+        onCreateFolder={handleCreateFolder}
+        onCreateLibrary={handleCreateLibrary}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+      />
       {!hasItems ? (
         <div className={styles.emptyState}>
-          <div className={styles.emptyText}>No folders or libraries in this project yet.</div>
+          <Image
+            src={projectNoFolderPreIcon}
+            alt="No folders or libraries"
+            width={72}
+            height={72}
+            className={styles.emptyIcon}
+          />
+          <div className={styles.emptyText}>There is no any folder or library here in this project yet.</div>
+          <button
+            ref={setCreateButtonRef}
+            className={styles.createButton}
+            onClick={() => setShowCreateMenu(!showCreateMenu)}
+            aria-label="Create Folder/Library"
+          >
+            <span className={styles.plusIcon}>
+              <Image
+                src={plusHorizontal}
+                alt=""
+                width={17}
+                height={2}
+                className={styles.plusHorizontal}
+              />
+              <Image
+                src={plusVertical}
+                alt=""
+                width={2}
+                height={17}
+                className={styles.plusVertical}
+              />
+            </span>
+            <span className={styles.createButtonText}>Create</span>
+          </button>
+          <AddLibraryMenu
+            open={showCreateMenu}
+            anchorElement={createButtonRef}
+            onClose={() => setShowCreateMenu(false)}
+            onCreateFolder={handleCreateFolder}
+            onCreateLibrary={handleCreateLibrary}
+          />
         </div>
       ) : viewMode === 'grid' ? (
         <div className={styles.grid}>

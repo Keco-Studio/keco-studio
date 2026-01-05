@@ -92,16 +92,73 @@
 }
 
 .emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
   padding: 3rem 2rem;
   text-align: center;
-  background: #f8fafc;
-  border-radius: 8px;
-  border: 1px solid #e2e8f0;
+  min-height: 400px;
+}
+
+.emptyIcon {
+  display: block;
 }
 
 .emptyText {
-  color: #64748b;
+  color: #000000;
+  font-size: 16px;
+  font-weight: 400;
+}
+
+.createButton {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  height: 32px;
+  border: none;
+  border-radius: 6px;
+  color: #21272A;
+  background-color: #fff;
+  border: 1px solid #BCBCBC;
   font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.createButton:hover {
+  background-color: #f0f0f0;
+}
+
+.createButton:active {
+  background-color: #f0f0f0;
+}
+
+.plusIcon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.plusHorizontal,
+.plusVertical {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.createButtonText {
+  line-height: 1;
 }
 
 .grid {
