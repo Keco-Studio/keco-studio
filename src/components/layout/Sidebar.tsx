@@ -522,7 +522,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   className={styles.plusVertical}
                 />
               </span>
-              {' '}Create new library
+             Create new library
             </span>
           </button>
         ),
@@ -630,7 +630,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                           className={styles.plusVertical}
                         />
                       </span>
-                      {' '}Add new asset
+                      Add new asset
                     </span>
                   </button>
                 ),
@@ -795,7 +795,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       className={styles.plusVertical}
                     />
                   </span>
-                  {' '}Add new asset
+                  Add new asset
                 </span>
               </button>
             ),
@@ -1382,7 +1382,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                               width={24}
                               height={24}
                             />
-                            {' '}Add new asset
+                            Add new asset
                           </span>
                         </button>
                         {/* Assets list */}
@@ -1432,7 +1432,18 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       !loadingLibraries &&
                       folders.length === 0 &&
                       libraries.length === 0 && (
-                        <div className={styles.hint}>No libraries. Create one.</div>
+                        <div className={styles.sidebarEmptyState}>
+                          <Image
+                            src={folderIcon}
+                            alt="No folders or libraries"
+                            width={22}
+                            height={18}
+                            className={styles.emptyIcon}
+                          />
+                          <div className={styles.sidebarEmptyText}>
+                            No folder or library in this project yet.
+                          </div>
+                        </div>
                       )}
                   </>
                 )}

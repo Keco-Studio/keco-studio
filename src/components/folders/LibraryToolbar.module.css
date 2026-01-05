@@ -8,6 +8,15 @@
   justify-content: flex-end;
 }
 
+.title {
+  margin: 0;
+  margin-right: auto;
+  font-size: 24px;
+  font-weight: 600;
+  color: #21272A;
+  line-height: 1.2;
+}
+
 .createButton {
   display: flex;
   align-items: center;

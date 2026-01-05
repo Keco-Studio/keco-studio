@@ -187,11 +187,9 @@ export default function FolderPage() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <h1 className={styles.title}>{folder.name}</h1>
-      </div>
       <LibraryToolbar
         mode="folder"
+        title={folder?.name}
         onCreateLibrary={handleCreateLibrary}
         viewMode={viewMode}
         onViewModeChange={setViewMode}

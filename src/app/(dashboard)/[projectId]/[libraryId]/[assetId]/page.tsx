@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ConfigProvider, Tabs } from 'antd';
+import { ConfigProvider, Tabs, Switch } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getLibrary, Library } from '@/lib/services/libraryService';
@@ -521,26 +521,21 @@ export default function AssetPage() {
                                         </div>
                                       </div>                                   
                                       <div className={styles.fieldControl}>
-                                        <label className={styles.checkboxLabel}>
-                          <input
-                            type="checkbox"
-                            checked={!!value}
+                                        <div className={styles.booleanToggle}>
+                                          <Switch
+                                            checked={!!value}
                                             disabled={mode === 'view'}
                                             onChange={
                                               mode !== 'view'
-                                                ? (e) =>
-                                                    handleValueChange(
-                                                      f.id,
-                                                      e.target.checked
-                                                    )
+                                                ? (checked) => handleValueChange(f.id, checked)
                                                 : undefined
                                             }
-                                            className={mode === 'view' ? styles.disabledInput : ''}
-                          />
-                                          <span>Enabled</span>
-                        </label>
+                                          />
+                                          <span className={styles.booleanLabel}>
+                                            {value ? 'True' : 'False'}
+                                          </span>
+                                        </div>
                                       </div>
-                                      {/* Only Reference and Option (enum) show configure icon */}
                                     </div>
                       );
                     }

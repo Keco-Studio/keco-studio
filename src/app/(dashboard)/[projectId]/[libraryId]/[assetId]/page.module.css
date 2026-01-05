@@ -363,6 +363,18 @@
   width: 372px;
 }
 
+.booleanToggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.booleanLabel {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 500;
+}
+
 .configButton {
   padding: 0;
   border: none;

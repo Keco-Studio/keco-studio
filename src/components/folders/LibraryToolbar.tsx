@@ -22,6 +22,12 @@ type LibraryToolbarProps = {
    * - 'folder': Show "Create Library" button that directly opens library modal
    */
   mode?: 'project' | 'folder';
+  /**
+   * Title to display on the left side of the toolbar
+   * - For project page: project name
+   * - For folder page: folder name
+   */
+  title?: string;
 };
 
 export function LibraryToolbar({
@@ -31,6 +37,7 @@ export function LibraryToolbar({
   viewMode = 'grid',
   onViewModeChange,
   mode = 'project',
+  title,
 }: LibraryToolbarProps) {
   const [searchValue, setSearchValue] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -84,6 +91,9 @@ export function LibraryToolbar({
 
   return (
     <div className={styles.toolbar}>
+      {title && (
+        <h1 className={styles.title}>{title}</h1>
+      )}
       <button
         ref={setCreateButtonRef}
         className={styles.createButton}

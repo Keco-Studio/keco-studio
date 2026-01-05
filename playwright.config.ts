@@ -22,13 +22,13 @@ dotenv.config({
 export default defineConfig({
   testDir: './tests',
   /* Run tests in files in parallel */
-  fullyParallel: false, // IMPORTANT: Tests must run sequentially because destructive.spec.ts depends on happy-path.spec.ts
+  fullyParallel: true, // Enable parallel execution for better performance
   /* Fail the build on CI if you accidentally left test.only in the source code. */
   forbidOnly: !!process.env.CI,
   /* Retry on CI only */
   retries: process.env.CI ? 2 : 0,
-  /* Opt out of parallel tests on CI. */
-  workers: 1, // Run tests sequentially to maintain dependencies between test files
+  /* Parallel workers - maximize CPU usage while avoiding resource exhaustion */
+  workers: process.env.CI ? '50%' : undefined, // CI: 50% of cores, Local: auto-detect optimal workers
   /* Reporter to use. See https://playwright.dev/docs/test-reporters */
   reporter: 'html',
   /* Global timeout settings - CI environments are slower */

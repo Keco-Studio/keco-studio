@@ -270,10 +270,22 @@ export function AssetReferenceSelector({
     return name.charAt(0).toUpperCase();
   };
 
-  const getAvatarColor = (name: string) => {
-    const colors = ['#f56a00', '#7265e6', '#ffbf00', '#00a2ae', '#87d068', '#f50', '#2db7f5', '#108ee9'];
-    const index = name.charCodeAt(0) % colors.length;
-    return colors[index];
+  // Color palette for asset icons - using the same palette as AssetReferenceModal and LibraryAssetsTable
+  const assetColorPalette = [
+    '#f56a00', '#7265e6', '#ffbf00', '#00a2ae', '#87d068', '#f50', '#2db7f5', '#108ee9',
+    '#FF6CAA', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#faad14', '#a0d911',
+    '#1890ff', '#f5222d', '#fa541c', '#2f54eb', '#096dd9', '#531dab', '#c41d7f', '#cf1322',
+    '#d4380d', '#7cb305', '#389e0d', '#0958d9', '#1d39c4', '#10239e', '#061178', '#780650'
+  ];
+
+  // Generate consistent color for an asset based on its ID and name
+  // This ensures the same asset gets the same color across different views (table, card, modal)
+  const getAvatarColor = (assetId: string, name: string) => {
+    // Use both ID and name to generate a more unique hash
+    const hash = assetId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) +
+                 name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const index = hash % assetColorPalette.length;
+    return assetColorPalette[index];
   };
 
   if (referenceLibraries.length === 0) {
@@ -302,7 +314,17 @@ export function AssetReferenceSelector({
                 style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}
               />
               {selectedAsset ? (
-                <span>{selectedAsset.name}</span>
+
+              <Avatar
+                size={16}
+                style={{ 
+                  backgroundColor: getAvatarColor(selectedAsset.id, selectedAsset.name),
+                  borderRadius: '2.4px'
+                }}
+                className={styles.referenceAvatar}
+              >
+                {getAvatarText(selectedAsset.name)}
+              </Avatar>
               ) : (
                 <span className={styles.placeholder}>Select asset...</span>
               )}
@@ -378,7 +400,7 @@ export function AssetReferenceSelector({
                     onMouseLeave={handleAssetLeave}
                   >
                     <Avatar
-                      style={{ backgroundColor: getAvatarColor(asset.name) }}
+                      style={{ backgroundColor: getAvatarColor(asset.id, asset.name) }}
                       size={30}
                     >
                       {getAvatarText(asset.name)}
@@ -407,7 +429,7 @@ export function AssetReferenceSelector({
             <div className={styles.detailsContent}>
               <div className={styles.avatarSection}>
                 <Avatar
-                  style={{ backgroundColor: getAvatarColor(selectedAsset?.name || '') }}
+                  style={{ backgroundColor: getAvatarColor(selectedAsset?.id || '', selectedAsset?.name || '') }}
                   size={60}
                 >
                   {getAvatarText(selectedAsset?.name || '')}
@@ -463,7 +485,7 @@ export function AssetReferenceSelector({
             <div className={styles.detailsContent}>
               <div className={styles.avatarSection}>
                 <Avatar
-                  style={{ backgroundColor: getAvatarColor(hoveredAsset.name) }}
+                  style={{ backgroundColor: getAvatarColor(hoveredAsset.id, hoveredAsset.name) }}
                   size={60}
                 >
                   {getAvatarText(hoveredAsset.name)}

@@ -4,10 +4,16 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+
 jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shardIndex: [1, 2, 3, 4]
+        shardTotal: [4]
     env:
       # Use GitHub Secrets for Supabase credentials
       # If secrets are not set, tests that require real Supabase will be skipped
@@ -15,29 +21,63 @@ jobs:
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
       # Service Role Key for seeding test users via Admin API (more reliable than direct DB connection)
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+    
     steps:
     - uses: actions/checkout@v4
+    
     - uses: actions/setup-node@v4
       with:
         node-version: lts/*
+        # Enable npm caching for faster dependency installation
+        cache: 'npm'
+    
+    # Install dependencies with caching
     - name: Install dependencies
       run: npm ci
+    
+    # Cache Playwright browsers - significantly speeds up workflow
+    - name: Get Playwright version
+      id: playwright-version
+      run: echo "PLAYWRIGHT_VERSION=$(node -e "console.log(require('./package-lock.json').packages['node_modules/@playwright/test'].version)")" >> $GITHUB_OUTPUT
+    
+    - name: Cache Playwright browsers
+      uses: actions/cache@v4
+      id: playwright-cache
+      with:
+        path: ~/.cache/ms-playwright
+        key: playwright-${{ runner.os }}-${{ steps.playwright-version.outputs.PLAYWRIGHT_VERSION }}
+    
+    # Only install browsers if cache miss
+    - name: Install Playwright Browsers
+      if: steps.playwright-cache.outputs.cache-hit != 'true'
+      run: npx playwright install --with-deps chromium
+    
+    # Install system dependencies if browsers were cached
+    - name: Install Playwright system dependencies
+      if: steps.playwright-cache.outputs.cache-hit == 'true'
+      run: npx playwright install-deps chromium
+    
+    # Clean test data before seeding
     - name: Clean test data before seeding
       if: env.SUPABASE_SERVICE_ROLE_KEY != ''
       run: npm run clean:test-data
       continue-on-error: true
+    
+    # Seed test users
     - name: Seed test users via Supabase Admin API
       if: env.SUPABASE_SERVICE_ROLE_KEY != ''
       run: npm run seed:api
       continue-on-error: true
-    - name: Install Playwright Browsers
-      run: npx playwright install --with-deps
-    - name: Run Playwright tests (sequential)
-      run: npm run test:e2e:sequential
+    
+    # Run tests with sharding for parallel execution
+    - name: Run Playwright tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
+      run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
       continue-on-error: false
+    
+    # Upload test results for each shard
     - uses: actions/upload-artifact@v4
       if: ${{ !cancelled() }}
       with:
-        name: playwright-report
+        name: playwright-report-${{ matrix.shardIndex }}
         path: playwright-report/
         retention-days: 30

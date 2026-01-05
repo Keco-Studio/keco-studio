@@ -244,7 +244,6 @@
 
 .treeWrapper {
   margin: 0;
-  padding: 0;
 }
 
 .tree {
@@ -257,12 +256,12 @@
 
 /* Tree node styling with dividers */
 .tree :global(.ant-tree-treenode) {
-  padding: 0;
   position: relative;
   display: flex;
   align-items: stretch;
   height: 40px;
   width: 100%;
+  padding-left: 8px;
 }
 
 /* Remove any before pseudo-elements that might cause gaps */
@@ -306,7 +305,6 @@
 }
 
 .tree :global(.ant-tree-node-content-wrapper) {
-  padding: 0 0.75rem;
   border-radius: 0;
   flex: 1 1 auto;
   margin: 0;
@@ -316,6 +314,7 @@
   align-items: center;
   min-width: 0;
   box-sizing: border-box;
+  padding-left: 0;
   width: 0; /* Force flex to calculate width correctly */
   position: relative; /* Provide positioning context for absolutely positioned itemActions */
 }
@@ -407,7 +406,7 @@
 
 
 .tree :global(.ant-tree-indent-unit) {
-  width: 0px; /* 移除缩进，使子节点与父节点对齐 */
+  width: 16px; /* 为文件夹下的子节点（library）添加缩进 */
 }
 
 /* Hide expand/collapse icon for library nodes (isLeaf: true) */
@@ -425,12 +424,19 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
+  width: 15px;
   flex-shrink: 0;
   cursor: pointer;
   line-height: 1;
   background-color: transparent !important;
   box-shadow: none !important;
+  margin-right: 10px;
+}
+
+/* Hide noop switcher for leaf nodes to save space */
+.tree :global(.ant-tree-switcher-noop) {
+  width: 0 !important;
+  margin: 0 !important;
 }
 
 /* Remove all possible shadow square pseudo-elements */
@@ -780,7 +786,7 @@
 
 /* Aligned create button for asset page (aligned with back button) */
 .createButtonAligned {
-  padding: 8px 12px !important; /* Same padding as asset list items for consistent height */
+  padding: 8px 12px!important; /* Same padding as asset list items for consistent height, with 16px left indent */
   height: 40px !important; /* Fixed height to match asset items exactly */
   min-height: 40px !important; /* Same height as asset list items */
   display: flex !important;
@@ -799,280 +805,29 @@
    library padding-left (12px) + back button position (0px) = 12px from library container edge
    But since createButtonAligned also has padding-left 12px, the icon should be at 0px from createButtonText start */
 
-.iconButton {
-  background: none;
-  border: none;
-  color: #cbd5e1;
-  cursor: pointer;
-  padding: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 4px;
-  font-size: 1.25rem;
-  line-height: 1;
-  width: 1.25rem;
-  height: 1.25rem;
-}
-
-.iconButton:hover {
-  background: #f8fafc;
-  color: #475569;
-}
-
-/* Info icon styles for project description tooltip */
-.infoIconWrapper {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  cursor: help;
-  transition: opacity 0.2s;
-  flex-shrink: 0;
-}
-
-.infoIconWrapper:hover {
-  opacity: 0.7;
-}
-
-
-.itemIcon {
-  flex-shrink: 0;
-}
-
-.libraryIconContainer {
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  justify-content: center;
-}
-
-.itemRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  width: 100%;
-  min-width: 0;
-  flex: 1 1 0;
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-.itemMain {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  min-width: 0;
-  flex: 0 1 auto;
-  overflow: hidden;
-}
-
-.createButton {
-  width: 100%;
-  background: none;
-  border: none;
-  text-align: left;
-  cursor: pointer;
-  font-size: 0.875rem;
-  color: #64748b;
-  transition: background-color 0.2s, color 0.2s;
-  border-radius: 0;
-  display: flex;
-  align-items: center;
-  margin: 0;
-  padding-left: 0;
-  box-sizing: border-box;
-}
-
-.createButton:hover {
-  background-color: #f8fafc;
-  color: #334155;
-}
-
-.createButtonText {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-}
-
-.plusIcon {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 18px;
-  flex-shrink: 0;
-}
-
-.plusHorizontal,
-.plusVertical {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-/* Prevent create button node from being selected/highlighted */
-.tree :global(.ant-tree-node-content-wrapper) button.createButton {
-  width: 100%;
-  height: 100%;
-}
-
-/* Override tree node selection styles for create button nodes */
-.tree :global(.ant-tree-treenode[data-node-key*="folder-create-"]) .ant-tree-node-content-wrapper:hover {
-  background-color: transparent !important;
-}
-
-.tree :global(.ant-tree-treenode[data-node-key*="folder-create-"]) .ant-tree-node-content-wrapper.ant-tree-node-selected {
-  background-color: transparent !important;
-}
-
-.itemAddIcon {
-  font-size: 0.9rem;
-  color: #9ca3af;
-}
-
-.itemAddText {
-  font-size: 0.85rem;
-  color: #9ca3af;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex-shrink: 0; /* Prevent text from shrinking during animation */
-}
-
-/* Ensure itemMain in add-asset nodes has enough width to display text fully */
-.tree :global(.ant-tree-treenode[data-node-key*="add-asset-"]) .itemMain {
-  min-width: max-content !important; /* Ensure text displays fully without word-by-word appearance */
-  width: auto !important; /* Override any width constraints */
-  overflow: visible !important; /* Ensure text is not clipped during animation */
-}
-
-/* Ensure itemAddText in add-asset nodes renders immediately with full width */
-.tree :global(.ant-tree-treenode[data-node-key*="add-asset-"]) .itemAddText {
-  min-width: max-content !important;
-  width: auto !important;
-  display: inline-block !important; /* Ensure text renders as a single unit */
-}
-
-/* Predefine page special view */
-.predefineItem {
-  padding: 8px 12px;
-  margin-bottom: 8px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background-color: rgba(94, 0, 255, 0.08);
-  border-radius: 8px;
-}
-
-.predefineCloseButton {
-  margin-right: 0;
-  padding: 4px;
-  cursor: pointer;
-  border: none;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.predefineItemMain {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0; /* Allow flex item to shrink below content size */
-  overflow: hidden; /* Enable text truncation */
-}
-
-/* Text ellipsis for predefine item */
-.predefineItemMain .itemText {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0; /* Allow text to shrink */
-}
-
-/* Library item active state (when on library page) */
-.libraryItemActive {
-  background-color: #fff1f2 !important;
-  border-radius: 8px;
-}
-
-/* Library item active state with padding (when viewing an asset) */
-.libraryItemActiveWithPadding {
-  background-color: #fff1f2 !important;
-  border-radius: 8px;
-  padding: 8px 12px !important;
-  min-height: 40px;
-}
-
-.libraryBackButton {
-  margin-right: 8px;
-  padding: 0;
-  cursor: pointer;
-  border: none;
-  background: transparent;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-/* Asset item active state (when viewing an asset) */
-.assetItemActive {
-  background-color: rgba(255, 0, 94, 0.06) !important;
-  border-radius: 8px;
-  min-height: 40px;
-}
-
-/* Asset list container (when on asset page) */
-.assetList {
+/* Sidebar empty state */
+.sidebarEmptyState {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-top: 0 !important; /* Remove margin-top, use margin-bottom on createButton instead */
-}
-
-.assetList .itemRow {
-  cursor: pointer;
-  padding: 8px 12px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px 16px;
+  text-align: center;
+  background: #f8fafc;
   border-radius: 8px;
-  transition: background-color 0.2s;
+  border: 1px solid #e2e8f0;
 }
 
-.assetList .itemRow:hover {
-  background-color: #f8fafc;
+.sidebarEmptyState .emptyIcon {
+  display: block;
+  width: 22px;
+  height: 18px;
 }
 
-/* Aligned create button for asset page (aligned with back button) */
-.createButtonAligned {
-  padding: 8px 12px !important; /* Same padding as asset list items for consistent height */
-  height: 40px !important; /* Fixed height to match asset items exactly */
-  min-height: 40px !important; /* Same height as asset list items */
-  display: flex !important;
-  align-items: center !important; /* Vertical center content */
-  box-sizing: border-box !important;
-  margin: 0 !important; /* Remove all margins */
+.sidebarEmptyText {
+  color: #7D7D7D;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.4;
 }
-
-/* Adjust icon position to align with library back button */
-.createButtonAligned .createButtonText {
-  margin-left: 0 !important; /* Remove any default margin */
-  padding-left: 0 !important; /* Remove any default padding */
-}
-
-/* The icon should align with the back button which is at position: 
-   library padding-left (12px) + back button position (0px) = 12px from library container edge
-   But since createButtonAligned also has padding-left 12px, the icon should be at 0px from createButtonText start */
