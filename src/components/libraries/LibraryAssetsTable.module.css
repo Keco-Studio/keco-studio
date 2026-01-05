@@ -456,6 +456,12 @@
   display: inline-block;
 }
 
+.referenceAvatarWrapper {
+  position: relative;
+  display: inline-flex;
+  cursor: pointer;
+}
+
 .referenceAvatar {
   flex-shrink: 0;
   display: inline-flex;
@@ -521,5 +527,167 @@
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+}
+
+/* Asset Card Panel styles - for hovering over reference avatar */
+.assetCardBridge {
+  position: fixed;
+  width: 40px;
+  height: 24px;
+  background: transparent;
+  pointer-events: auto;
+  z-index: 2002;
+}
+
+.assetCardPanel {
+  position: fixed;
+  background: white;
+  border-radius: 8px;
+  width: 320px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  z-index: 2001;
+  pointer-events: auto;
+}
+
+.assetCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  background: #FFF0F5;
+  border-bottom: 1px solid #e5e7eb;
+  border-radius: 8px 8px 0 0;
+}
+
+.assetCardTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.assetCardCloseButton {
+  background: transparent;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.assetCardCloseButton:hover {
+  color: #111827;
+}
+
+.assetCardContent {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+}
+
+.assetCardLoading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 40px 20px;
+}
+
+.assetCardDetailsSection {
+  padding: 20px;
+}
+
+.assetCardDetailsLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: #374151;
+  margin-bottom: 16px;
+}
+
+.assetCardDetailsContent {
+  display: flex;
+  flex-direction: column;
+}
+
+.assetCardDetailRow {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.assetCardIconWrapper {
+  flex-shrink: 0;
+}
+
+.assetCardIconAvatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 600;
+  color: white;
+}
+
+.assetCardDetailInfo {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.assetCardDetailItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.assetCardDetailLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: #6b7280;
+}
+
+.assetCardDetailValue {
+  font-size: 14px;
+  color: #111827;
+  font-weight: 400;
+}
+
+.assetCardLibraryLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.assetCardLibraryLink:hover {
+  opacity: 0.8;
+}
+
+.assetCardLibraryIcon {
+  flex-shrink: 0;
+}
+
+.assetCardLibraryName {
+  font-size: 14px;
+  color: #8726ee;
+  font-weight: 500;
+}
+
+.assetCardLibraryArrow {
+  flex-shrink: 0;
 }
 

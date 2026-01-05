@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Input, Select, Button, Avatar } from 'antd';
+import React, { useState, useEffect, useRef } from 'react';
+import { Input, Select, Button, Avatar, Spin } from 'antd';
+import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -19,6 +20,8 @@ import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
 import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
 import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
 import libraryAssetTable3Icon from '@/app/assets/images/LibraryAssetTable3.svg';
+import libraryAssetTable5Icon from '@/app/assets/images/LibraryAssetTable5.svg';
+import libraryAssetTable6Icon from '@/app/assets/images/LibraryAssetTable6.svg';
 import noassetIcon1 from '@/app/assets/images/NoassetIcon1.svg';
 import noassetIcon2 from '@/app/assets/images/NoassetIcon2.svg';
 import styles from './LibraryAssetsTable.module.css';
@@ -61,6 +64,17 @@ export function LibraryAssetsTable({
   // Asset names cache for display
   const [assetNamesCache, setAssetNamesCache] = useState<Record<string, string>>({});
 
+  // Hover state for asset card
+  const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
+  const [hoveredAssetDetails, setHoveredAssetDetails] = useState<{
+    name: string;
+    libraryName: string;
+  } | null>(null);
+  const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
+  const [hoveredAvatarPosition, setHoveredAvatarPosition] = useState<{ x: number; y: number } | null>(null);
+  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const avatarRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
   // Router for navigation
   const router = useRouter();
   const params = useParams();
@@ -92,6 +106,57 @@ export function LibraryAssetsTable({
     const index = hash % assetColorPalette.length;
     return assetColorPalette[index];
   };
+
+  // Load asset details when hovering
+  useEffect(() => {
+    if (!hoveredAssetId) {
+      setHoveredAssetDetails(null);
+      setHoveredAvatarPosition(null);
+      return;
+    }
+
+    // Clear any pending hide timeout
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+
+    const loadAssetDetails = async () => {
+      setLoadingAssetDetails(true);
+      try {
+        const { data, error } = await supabase
+          .from('library_assets')
+          .select('id, name, library_id, libraries(name)')
+          .eq('id', hoveredAssetId)
+          .single();
+
+        if (error) throw error;
+        
+        if (data) {
+          setHoveredAssetDetails({
+            name: data.name,
+            libraryName: (data.libraries as any)?.name || 'Unknown Library',
+          });
+        }
+      } catch (error) {
+        console.error('Failed to load asset details:', error);
+        setHoveredAssetDetails(null);
+      } finally {
+        setLoadingAssetDetails(false);
+      }
+    };
+
+    loadAssetDetails();
+  }, [hoveredAssetId, supabase]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Load asset name by ID
   useEffect(() => {
@@ -160,6 +225,52 @@ export function LibraryAssetsTable({
     loadAssetNames();
   }, [rows, editingRowData, newRowData, properties, editingRowId, isAddingRow, supabase]);
 
+  // Handle mouse enter on avatar
+  const handleAvatarMouseEnter = (assetId: string, element: HTMLDivElement, e: React.MouseEvent) => {
+    // Clear any pending hide timeout
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+    avatarRefs.current.set(assetId, element);
+    
+    // Get position immediately
+    const rect = element.getBoundingClientRect();
+    setHoveredAvatarPosition({
+      x: rect.right + 8, // Position to the right of avatar
+      y: rect.top,
+    });
+    
+    setHoveredAssetId(assetId);
+  };
+
+  // Handle mouse leave on avatar with delay
+  const handleAvatarMouseLeave = () => {
+    // Set a delay before hiding
+    hideTimeoutRef.current = setTimeout(() => {
+      setHoveredAssetId(null);
+      hideTimeoutRef.current = null;
+    }, 200); // 200ms delay
+  };
+
+  // Handle mouse enter on asset card panel
+  const handleAssetCardMouseEnter = () => {
+    // Clear any pending hide timeout
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+
+  // Handle mouse leave on asset card panel with delay
+  const handleAssetCardMouseLeave = () => {
+    // Set a delay before hiding
+    hideTimeoutRef.current = setTimeout(() => {
+      setHoveredAssetId(null);
+      hideTimeoutRef.current = null;
+    }, 200); // 200ms delay
+  };
+
   // Handle opening reference modal
   const handleOpenReferenceModal = (property: PropertyConfig, currentValue: string | null, rowId: string) => {
     setReferenceModalProperty(property);
@@ -227,16 +338,37 @@ export function LibraryAssetsTable({
           className={styles.referenceDiamondIcon}
         />
         {hasValue && assetId && (
-          <Avatar
-            size={16}
-            style={{ 
-              backgroundColor: getAvatarColor(assetId, assetName),
-              borderRadius: '2.4px'
+          <div
+            ref={(el) => {
+              if (el) {
+                avatarRefs.current.set(assetId, el);
+              } else {
+                avatarRefs.current.delete(assetId);
+              }
             }}
-            className={styles.referenceAvatar}
+            onMouseEnter={(e) => {
+              e.stopPropagation();
+              if (assetId) {
+                handleAvatarMouseEnter(assetId, e.currentTarget, e);
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.stopPropagation();
+              handleAvatarMouseLeave();
+            }}
+            className={styles.referenceAvatarWrapper}
           >
-            {getAvatarText(assetName)}
-          </Avatar>
+            <Avatar
+              size={16}
+              style={{ 
+                backgroundColor: getAvatarColor(assetId, assetName),
+                borderRadius: '2.4px'
+              }}
+              className={styles.referenceAvatar}
+            >
+              {getAvatarText(assetName)}
+            </Avatar>
+          </div>
         )}
         <Image
           src={isHovered ? libraryAssetTable3Icon : libraryAssetTable2Icon}
@@ -246,7 +378,12 @@ export function LibraryAssetsTable({
           className={styles.referenceArrowIcon}
           onClick={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             handleOpenReferenceModal(property, assetId, rowId);
+          }}
+          onDoubleClick={(e) => {
+            // Prevent double click from bubbling to cell
+            e.stopPropagation();
           }}
         />
       </div>
@@ -301,7 +438,7 @@ export function LibraryAssetsTable({
   };
 
   // Handle double click on cell to start editing
-  const handleCellDoubleClick = (row: AssetRow) => {
+  const handleCellDoubleClick = (row: AssetRow, e: React.MouseEvent) => {
     // Prevent editing if adding a new row
     if (isAddingRow) {
       return;
@@ -310,6 +447,8 @@ export function LibraryAssetsTable({
     if (editingRowId === row.id) {
       return;
     }
+    // Prevent event bubbling to avoid conflicts
+    e.stopPropagation();
     // Start editing
     handleEditRow(row);
   };
@@ -595,7 +734,7 @@ export function LibraryAssetsTable({
                         <td
                           key={property.id}
                           className={styles.cell}
-                          onDoubleClick={() => handleCellDoubleClick(row)}
+                          onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                           title="双击编辑"
                         >
                           <ReferenceField
@@ -631,7 +770,7 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         className={styles.cell}
-                        onDoubleClick={() => handleCellDoubleClick(row)}
+                        onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                         title="双击编辑"
                       >
                         {mediaValue ? (
@@ -685,7 +824,7 @@ export function LibraryAssetsTable({
                     <td
                       key={property.id}
                       className={styles.cell}
-                      onDoubleClick={() => handleCellDoubleClick(row)}
+                      onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                       title="双击编辑"
                     >
                       {isNameField ? (
@@ -699,6 +838,10 @@ export function LibraryAssetsTable({
                             onClick={(e) => {
                               e.stopPropagation();
                               handleViewAssetDetail(row, e);
+                            }}
+                            onDoubleClick={(e) => {
+                              // Prevent double click from bubbling to cell
+                              e.stopPropagation();
                             }}
                             title="View asset details (Ctrl/Cmd+Click for new tab)"
                           >
@@ -832,6 +975,98 @@ export function LibraryAssetsTable({
         }}
         onApply={handleApplyReference}
       />
+    )}
+
+    {/* Asset Card Panel - shown when hovering over avatar */}
+    {hoveredAssetId && hoveredAvatarPosition && (typeof document !== 'undefined') && createPortal(
+      <>
+        {/* Invisible bridge to prevent mouse from leaving */}
+        <div
+          className={styles.assetCardBridge}
+          style={{
+            left: `${hoveredAvatarPosition.x - 40}px`,
+            top: `${hoveredAvatarPosition.y}px`,
+          }}
+          onMouseEnter={handleAssetCardMouseEnter}
+          onMouseLeave={handleAssetCardMouseLeave}
+        />
+        <div
+          className={styles.assetCardPanel}
+          style={{
+            left: `${hoveredAvatarPosition.x}px`,
+            top: `${hoveredAvatarPosition.y}px`,
+          }}
+          onMouseEnter={handleAssetCardMouseEnter}
+          onMouseLeave={handleAssetCardMouseLeave}
+        >
+          <div className={styles.assetCardHeader}>
+            <div className={styles.assetCardTitle}>ASSET CARD</div>
+            <button
+              className={styles.assetCardCloseButton}
+              onClick={() => setHoveredAssetId(null)}
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
+          <div className={styles.assetCardContent}>
+            {loadingAssetDetails ? (
+              <div className={styles.assetCardLoading}>
+                <Spin />
+              </div>
+            ) : hoveredAssetDetails ? (
+              <>
+                <div className={styles.assetCardDetailsSection}>
+                  <div className={styles.assetCardDetailsLabel}>Details</div>
+                  <div className={styles.assetCardDetailsContent}>
+                    <div className={styles.assetCardDetailRow}>
+                      <div className={styles.assetCardIconWrapper}>
+                        <Avatar
+                          size={48}
+                          style={{ 
+                            backgroundColor: hoveredAssetId ? getAvatarColor(hoveredAssetId, hoveredAssetDetails.name) : '#FF6CAA',
+                            borderRadius: '6px'
+                          }}
+                          className={styles.assetCardIconAvatar}
+                        >
+                          {getAvatarText(hoveredAssetDetails.name)}
+                        </Avatar>
+                      </div>
+                      <div className={styles.assetCardDetailInfo}>
+                        <div className={styles.assetCardDetailItem}>
+                          <span className={styles.assetCardDetailLabel}>Name</span>
+                          <span className={styles.assetCardDetailValue}>{hoveredAssetDetails.name}</span>
+                        </div>
+                        <div className={styles.assetCardDetailItem}>
+                          <span className={styles.assetCardDetailLabel}>From Library</span>
+                          <div className={styles.assetCardLibraryLink}>
+                            <Image
+                              src={libraryAssetTable5Icon}
+                              alt=""
+                              width={16}
+                              height={16}
+                              className={styles.assetCardLibraryIcon}
+                            />
+                            <span className={styles.assetCardLibraryName}>{hoveredAssetDetails.libraryName}</span>
+                            <Image
+                              src={libraryAssetTable6Icon}
+                              alt=""
+                              width={16}
+                              height={16}
+                              className={styles.assetCardLibraryArrow}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      </>,
+      document.body
     )}
     </>
   );
