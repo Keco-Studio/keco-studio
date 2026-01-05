@@ -45,6 +45,8 @@ function PredefinePageContent() {
   const [loadingAfterSave, setLoadingAfterSave] = useState(false);
   // Track pending field for each section (field in FieldForm that hasn't been submitted yet)
   const [pendingFields, setPendingFields] = useState<Map<string, Omit<FieldConfig, 'id'> | null>>(new Map());
+  // Use ref to store latest pendingFields for synchronous access in saveSchema
+  const pendingFieldsRef = useRef<Map<string, Omit<FieldConfig, 'id'> | null>>(new Map());
   // Track temporary section name edits (only applied on save)
   const [tempSectionNames, setTempSectionNames] = useState<Map<string, string>>(new Map());
   // Track if we've already checked for auto-enter new section mode (to avoid re-triggering)
@@ -204,8 +206,9 @@ function PredefinePageContent() {
 
     // Check if there are any pending fields and add them to their respective sections
     // Also apply temporary section name changes
+    // Use ref to get latest pendingFields value to avoid stale closure issue
     const finalSections = sectionsToSave.map((section) => {
-      const pendingField = pendingFields.get(section.id);
+      const pendingField = pendingFieldsRef.current.get(section.id);
       const tempName = tempSectionNames.get(section.id);
       
       let updatedSection = { ...section };
@@ -216,7 +219,21 @@ function PredefinePageContent() {
       }
       
       // Add pending field if exists
+      console.log('Checking pendingField for section:', section.id, {
+        pendingField,
+        hasPendingField: !!pendingField,
+        label: pendingField?.label,
+        dataType: pendingField?.dataType,
+        referenceLibraries: pendingField?.referenceLibraries,
+      });
       if (pendingField && pendingField.label.trim()) {
+        // Debug: Log pendingField to verify referenceLibraries is included
+        if (pendingField.dataType === 'reference') {
+          console.log('Saving reference field:', {
+            label: pendingField.label,
+            referenceLibraries: pendingField.referenceLibraries,
+          });
+        }
         updatedSection.fields = [...updatedSection.fields, { id: uid(), ...pendingField }];
       }
       
@@ -250,7 +267,9 @@ function PredefinePageContent() {
       message.success('Saved successfully, loading...');
 
       // Clear pending fields and temp section names after successful save
-      setPendingFields(new Map());
+      const emptyMap = new Map();
+      setPendingFields(emptyMap);
+      pendingFieldsRef.current = emptyMap;
       setTempSectionNames(new Map());
 
       // If creating new section, exit creation mode and reload sections
@@ -274,7 +293,7 @@ function PredefinePageContent() {
     } finally {
       setSaving(false);
     }
-  }, [sections, libraryId, isCreatingNewSection, reloadSections, supabase, pendingFields, tempSectionNames]);
+  }, [sections, libraryId, isCreatingNewSection, reloadSections, supabase, tempSectionNames]);
 
   // Broadcast predefine UI state (e.g. whether creating a new section) to TopBar
   useEffect(() => {
@@ -443,7 +462,21 @@ function PredefinePageContent() {
           onFieldChange={(field) => {
             setPendingFields((prev) => {
               const newMap = new Map(prev);
-              newMap.set(section.id, field);
+              // Only update if field is not null
+              // This prevents useEffect from overwriting manually set values with null
+              if (field !== null) {
+                newMap.set(section.id, field);
+                // Update ref synchronously to ensure saveSchema can access latest value
+                pendingFieldsRef.current = newMap;
+              } else {
+                // Only clear if there's no existing field with data
+                const existing = prev.get(section.id);
+                if (!existing || !existing.label.trim()) {
+                  newMap.delete(section.id);
+                  pendingFieldsRef.current = newMap;
+                }
+                // If existing field has data, don't clear it (ignore null from useEffect)
+              }
               return newMap;
             });
           }}
