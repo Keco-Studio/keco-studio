@@ -323,6 +323,11 @@ export function AssetReferenceModal({
                 value={selectedLibraryId}
                 onChange={setSelectedLibraryId}
                 className={styles.librarySelect}
+                getPopupContainer={(triggerNode) => {
+                  // Render dropdown inside modal container to ensure proper z-index
+                  return modalRef.current || document.body;
+                }}
+                popupMatchSelectWidth={true}
               >
                 {libraries.map((lib) => (
                   <Select.Option key={lib.id} value={lib.id}>
@@ -333,7 +338,7 @@ export function AssetReferenceModal({
                   </Select.Option>
                 ))}
               </Select>
-              <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} className={styles.selectArrowIcon} />
+              <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} />
             </div>
           </div>
 
