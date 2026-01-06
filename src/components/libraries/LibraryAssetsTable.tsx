@@ -82,42 +82,73 @@ export function LibraryAssetsTable({
   // Optimistic update: track newly added assets to show them immediately
   // Format: { tempId: AssetRow }
   const [optimisticNewAssets, setOptimisticNewAssets] = useState<Map<string, AssetRow>>(new Map());
+  
+  // Optimistic update: track edited assets to show updates immediately
+  // Format: { rowId: { name, propertyValues } }
+  const [optimisticEditUpdates, setOptimisticEditUpdates] = useState<Map<string, { name: string; propertyValues: Record<string, any> }>>(new Map());
 
   // Clean up optimistic assets when rows are updated (parent refresh)
-  // This ensures that when a real asset is added from the parent, we remove the optimistic one
+  // This ensures that when a real asset is added/updated from the parent, we remove the optimistic one
   useEffect(() => {
-    if (optimisticNewAssets.size === 0) return;
+    let hasChanges = false;
     
-    // Check if any optimistic asset matches a new row (by name and property values)
-    // If so, remove the optimistic asset as it's been replaced by the real one
-    setOptimisticNewAssets(prev => {
-      const newMap = new Map(prev);
-      let hasChanges = false;
-      
-      for (const [tempId, optimisticAsset] of newMap.entries()) {
-        // Check if there's a real row with matching name and similar property values
-        const matchingRow = rows.find(row => {
-          if (row.name !== optimisticAsset.name) return false;
-          // Check if property values match (allowing for some differences due to data transformation)
-          const optimisticKeys = Object.keys(optimisticAsset.propertyValues);
-          const rowKeys = Object.keys(row.propertyValues);
-          if (optimisticKeys.length !== rowKeys.length) return false;
-          // If most keys match, consider it a match
-          const matchingKeys = optimisticKeys.filter(key => 
-            optimisticAsset.propertyValues[key] === row.propertyValues[key]
-          );
-          return matchingKeys.length >= optimisticKeys.length * 0.8; // 80% match threshold
-        });
+    // Clean up optimistic new assets
+    if (optimisticNewAssets.size > 0) {
+      setOptimisticNewAssets(prev => {
+        const newMap = new Map(prev);
         
-        if (matchingRow) {
-          newMap.delete(tempId);
-          hasChanges = true;
+        for (const [tempId, optimisticAsset] of newMap.entries()) {
+          // Check if there's a real row with matching name and similar property values
+          const matchingRow = rows.find(row => {
+            if (row.name !== optimisticAsset.name) return false;
+            // Check if property values match (allowing for some differences due to data transformation)
+            const optimisticKeys = Object.keys(optimisticAsset.propertyValues);
+            const rowKeys = Object.keys(row.propertyValues);
+            if (optimisticKeys.length !== rowKeys.length) return false;
+            // If most keys match, consider it a match
+            const matchingKeys = optimisticKeys.filter(key => 
+              optimisticAsset.propertyValues[key] === row.propertyValues[key]
+            );
+            return matchingKeys.length >= optimisticKeys.length * 0.8; // 80% match threshold
+          });
+          
+          if (matchingRow) {
+            newMap.delete(tempId);
+            hasChanges = true;
+          }
         }
-      }
-      
-      return hasChanges ? newMap : prev;
-    });
-  }, [rows, optimisticNewAssets.size]);
+        
+        return hasChanges ? newMap : prev;
+      });
+    }
+    
+    // Clean up optimistic edit updates
+    if (optimisticEditUpdates.size > 0) {
+      setOptimisticEditUpdates(prev => {
+        const newMap = new Map(prev);
+        
+        for (const [rowId, optimisticUpdate] of newMap.entries()) {
+          const realRow = rows.find(row => row.id === rowId);
+          if (realRow) {
+            // Check if the real row matches the optimistic update (indicating parent has refreshed)
+            // Compare name and property values to see if they match
+            const nameMatches = realRow.name === optimisticUpdate.name;
+            const valuesMatch = Object.keys(optimisticUpdate.propertyValues).every(key => {
+              return realRow.propertyValues[key] === optimisticUpdate.propertyValues[key];
+            });
+            
+            // If they match, remove the optimistic update as parent has refreshed
+            if (nameMatches && valuesMatch) {
+              newMap.delete(rowId);
+              hasChanges = true;
+            }
+          }
+        }
+        
+        return hasChanges ? newMap : prev;
+      });
+    }
+  }, [rows, optimisticNewAssets.size, optimisticEditUpdates.size]);
 
   // Ref for table container to detect clicks outside
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -660,15 +691,43 @@ export function LibraryAssetsTable({
             // Get asset name from first property (use properties array directly)
             const assetName = editingRowData[properties[0]?.key] || row.name || 'Untitled';
             
+            // Apply optimistic update immediately
+            setOptimisticEditUpdates(prev => {
+              const newMap = new Map(prev);
+              newMap.set(editingRowId, {
+                name: String(assetName),
+                propertyValues: { ...editingRowData }
+              });
+              return newMap;
+            });
+            
+            // Reset editing state immediately for better UX
+            setEditingRowId(null);
+            const savedEditingRowData = { ...editingRowData };
+            setEditingRowData({});
+            
             setIsSaving(true);
             try {
-              await onUpdateAsset(editingRowId, String(assetName), editingRowData);
-              // Reset editing state
-              setEditingRowId(null);
-              setEditingRowData({});
+              await onUpdateAsset(editingRowId, String(assetName), savedEditingRowData);
+              // Remove optimistic update after a short delay to allow parent to refresh
+              setTimeout(() => {
+                setOptimisticEditUpdates(prev => {
+                  const newMap = new Map(prev);
+                  newMap.delete(editingRowId);
+                  return newMap;
+                });
+              }, 500);
             } catch (error) {
               console.error('Failed to update asset:', error);
-              // Don't show alert on auto-save, just log the error
+              // On error, revert optimistic update
+              setOptimisticEditUpdates(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(editingRowId);
+                return newMap;
+              });
+              // Restore editing state so user can try again
+              setEditingRowId(editingRowId);
+              setEditingRowData(savedEditingRowData);
             } finally {
               setIsSaving(false);
             }
@@ -737,14 +796,43 @@ export function LibraryAssetsTable({
   const handleSaveEditedRow = async (assetId: string, assetName: string) => {
     if (!onUpdateAsset) return;
 
+    // Apply optimistic update immediately
+    setOptimisticEditUpdates(prev => {
+      const newMap = new Map(prev);
+      newMap.set(assetId, {
+        name: String(assetName),
+        propertyValues: { ...editingRowData }
+      });
+      return newMap;
+    });
+
+    // Reset editing state immediately for better UX
+    setEditingRowId(null);
+    const savedEditingRowData = { ...editingRowData };
+    setEditingRowData({});
+
     setIsSaving(true);
     try {
-      await onUpdateAsset(assetId, assetName, editingRowData);
-      // Reset editing state
-      setEditingRowId(null);
-      setEditingRowData({});
+      await onUpdateAsset(assetId, assetName, savedEditingRowData);
+      // Remove optimistic update after a short delay to allow parent to refresh
+      setTimeout(() => {
+        setOptimisticEditUpdates(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(assetId);
+          return newMap;
+        });
+      }, 500);
     } catch (error) {
       console.error('Failed to update asset:', error);
+      // On error, revert optimistic update
+      setOptimisticEditUpdates(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(assetId);
+        return newMap;
+      });
+      // Restore editing state so user can try again
+      setEditingRowId(assetId);
+      setEditingRowData(savedEditingRowData);
       alert('Failed to update asset. Please try again.');
     } finally {
       setIsSaving(false);
@@ -959,11 +1047,24 @@ export function LibraryAssetsTable({
         </thead>
         <tbody className={styles.body}>
           {(() => {
-            // Combine real rows with optimistic new assets
-            const allRows = [
-              ...rows.filter(row => !deletedAssetIds.has(row.id)),
-              ...Array.from(optimisticNewAssets.values())
-            ];
+            // Combine real rows with optimistic new assets and apply optimistic edit updates
+            const allRows = rows
+              .filter(row => !deletedAssetIds.has(row.id))
+              .map(row => {
+                const optimisticUpdate = optimisticEditUpdates.get(row.id);
+                if (optimisticUpdate) {
+                  return {
+                    ...row,
+                    name: optimisticUpdate.name,
+                    propertyValues: { ...row.propertyValues, ...optimisticUpdate.propertyValues }
+                  };
+                }
+                return row;
+              });
+            
+            // Add optimistic new assets
+            allRows.push(...Array.from(optimisticNewAssets.values()));
+            
             return allRows;
           })()
             .map((row, index) => {
