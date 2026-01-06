@@ -78,6 +78,46 @@ export function LibraryAssetsTable({
   
   // Optimistic update: track deleted asset IDs to hide them immediately
   const [deletedAssetIds, setDeletedAssetIds] = useState<Set<string>>(new Set());
+  
+  // Optimistic update: track newly added assets to show them immediately
+  // Format: { tempId: AssetRow }
+  const [optimisticNewAssets, setOptimisticNewAssets] = useState<Map<string, AssetRow>>(new Map());
+
+  // Clean up optimistic assets when rows are updated (parent refresh)
+  // This ensures that when a real asset is added from the parent, we remove the optimistic one
+  useEffect(() => {
+    if (optimisticNewAssets.size === 0) return;
+    
+    // Check if any optimistic asset matches a new row (by name and property values)
+    // If so, remove the optimistic asset as it's been replaced by the real one
+    setOptimisticNewAssets(prev => {
+      const newMap = new Map(prev);
+      let hasChanges = false;
+      
+      for (const [tempId, optimisticAsset] of newMap.entries()) {
+        // Check if there's a real row with matching name and similar property values
+        const matchingRow = rows.find(row => {
+          if (row.name !== optimisticAsset.name) return false;
+          // Check if property values match (allowing for some differences due to data transformation)
+          const optimisticKeys = Object.keys(optimisticAsset.propertyValues);
+          const rowKeys = Object.keys(row.propertyValues);
+          if (optimisticKeys.length !== rowKeys.length) return false;
+          // If most keys match, consider it a match
+          const matchingKeys = optimisticKeys.filter(key => 
+            optimisticAsset.propertyValues[key] === row.propertyValues[key]
+          );
+          return matchingKeys.length >= optimisticKeys.length * 0.8; // 80% match threshold
+        });
+        
+        if (matchingRow) {
+          newMap.delete(tempId);
+          hasChanges = true;
+        }
+      }
+      
+      return hasChanges ? newMap : prev;
+    });
+  }, [rows, optimisticNewAssets.size]);
 
   // Ref for table container to detect clicks outside
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -457,19 +497,55 @@ export function LibraryAssetsTable({
 
   // Handle save new asset
   const handleSaveNewAsset = async () => {
-    if (!onSaveAsset) return;
+    if (!onSaveAsset || !library) return;
 
     // Get asset name from first property (assuming first property is name)
     const assetName = newRowData[properties[0]?.id] || 'Untitled';
 
+    // Create optimistic asset row with temporary ID
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const optimisticAsset: AssetRow = {
+      id: tempId,
+      libraryId: library.id,
+      name: String(assetName),
+      propertyValues: { ...newRowData },
+    };
+
+    // Optimistically add the asset to the display immediately
+    setOptimisticNewAssets(prev => {
+      const newMap = new Map(prev);
+      newMap.set(tempId, optimisticAsset);
+      return newMap;
+    });
+
+    // Reset adding state immediately for better UX
+    setIsAddingRow(false);
+    const savedNewRowData = { ...newRowData };
+    setNewRowData({});
+
     setIsSaving(true);
     try {
-      await onSaveAsset(assetName, newRowData);
-      // Reset state
-      setIsAddingRow(false);
-      setNewRowData({});
+      await onSaveAsset(assetName, savedNewRowData);
+      // Remove optimistic asset after a short delay to allow parent to refresh
+      // The parent refresh will replace it with the real asset
+      setTimeout(() => {
+        setOptimisticNewAssets(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(tempId);
+          return newMap;
+        });
+      }, 500);
     } catch (error) {
       console.error('Failed to save asset:', error);
+      // On error, revert optimistic update - remove the optimistic asset
+      setOptimisticNewAssets(prev => {
+        const newMap = new Map(prev);
+        newMap.delete(tempId);
+        return newMap;
+      });
+      // Restore adding state so user can try again
+      setIsAddingRow(true);
+      setNewRowData(savedNewRowData);
       alert('Failed to save asset. Please try again.');
     } finally {
       setIsSaving(false);
@@ -520,19 +596,53 @@ export function LibraryAssetsTable({
             return value !== null && value !== undefined && value !== '';
           });
 
-          if (hasData && onSaveAsset) {
+          if (hasData && onSaveAsset && library) {
             // Get asset name from first property (assuming first property is name)
             const assetName = newRowData[properties[0]?.id] || 'Untitled';
             
+            // Create optimistic asset row with temporary ID
+            const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+            const optimisticAsset: AssetRow = {
+              id: tempId,
+              libraryId: library.id,
+              name: String(assetName),
+              propertyValues: { ...newRowData },
+            };
+
+            // Optimistically add the asset to the display immediately
+            setOptimisticNewAssets(prev => {
+              const newMap = new Map(prev);
+              newMap.set(tempId, optimisticAsset);
+              return newMap;
+            });
+
+            // Reset adding state immediately for better UX
+            setIsAddingRow(false);
+            const savedNewRowData = { ...newRowData };
+            setNewRowData({});
+            
             setIsSaving(true);
             try {
-              await onSaveAsset(assetName, newRowData);
-              // Reset state
-              setIsAddingRow(false);
-              setNewRowData({});
+              await onSaveAsset(assetName, savedNewRowData);
+              // Remove optimistic asset after a short delay to allow parent to refresh
+              setTimeout(() => {
+                setOptimisticNewAssets(prev => {
+                  const newMap = new Map(prev);
+                  newMap.delete(tempId);
+                  return newMap;
+                });
+              }, 500);
             } catch (error) {
               console.error('Failed to save asset:', error);
-              // Don't show alert on auto-save, just log the error
+              // On error, revert optimistic update
+              setOptimisticNewAssets(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(tempId);
+                return newMap;
+              });
+              // Restore adding state so user can try again
+              setIsAddingRow(true);
+              setNewRowData(savedNewRowData);
             } finally {
               setIsSaving(false);
             }
@@ -848,8 +958,14 @@ export function LibraryAssetsTable({
           </tr>
         </thead>
         <tbody className={styles.body}>
-          {rows
-            .filter(row => !deletedAssetIds.has(row.id))
+          {(() => {
+            // Combine real rows with optimistic new assets
+            const allRows = [
+              ...rows.filter(row => !deletedAssetIds.has(row.id)),
+              ...Array.from(optimisticNewAssets.values())
+            ];
+            return allRows;
+          })()
             .map((row, index) => {
             const isEditing = editingRowId === row.id;
             
