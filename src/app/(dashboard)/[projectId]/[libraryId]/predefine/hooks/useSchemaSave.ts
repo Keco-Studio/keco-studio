@@ -139,6 +139,10 @@ export async function saveSchemaIncremental(
       .insert(toInsert);
     if (insertError) throw insertError;
   }
+  
+  // Invalidate cache after successful save
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`field-definitions:${libraryId}`);
 }
 
 

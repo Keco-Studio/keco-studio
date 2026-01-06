@@ -202,7 +202,17 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     return { projectId, libraryId, folderId, isPredefinePage, assetId, isLibraryPage };
   }, [pathname]);
 
+  // Track if a fetch is already in progress to prevent duplicate requests
+  const fetchingProjectsRef = useRef(false);
+  const fetchingFoldersLibrariesRef = useRef<string | null>(null);
+
   const fetchProjects = useCallback(async () => {
+    // Prevent duplicate concurrent requests
+    if (fetchingProjectsRef.current) {
+      return;
+    }
+    
+    fetchingProjectsRef.current = true;
     setLoadingProjects(true);
     setError(null);
     try {
@@ -212,6 +222,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setError(e?.message || "Failed to load projects");
     } finally {
       setLoadingProjects(false);
+      fetchingProjectsRef.current = false;
     }
   }, [supabase]);
 
@@ -222,6 +233,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setAssets({});
       return;
     }
+    
+    // Prevent duplicate concurrent requests for the same project
+    if (fetchingFoldersLibrariesRef.current === projectId) {
+      return;
+    }
+    
+    fetchingFoldersLibrariesRef.current = projectId;
     setLoadingFolders(true);
     setLoadingLibraries(true);
     setError(null);
@@ -237,6 +255,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } finally {
       setLoadingFolders(false);
       setLoadingLibraries(false);
+      fetchingFoldersLibrariesRef.current = null;
     }
   }, [supabase]);
 
@@ -339,18 +358,37 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     };
   }, [currentIds.projectId, fetchFoldersAndLibraries]);
 
+  const fetchingAssetsRef = useRef<Set<string>>(new Set());
+
   const fetchAssets = useCallback(async (libraryId?: string | null) => {
     if (!libraryId) return;
+    
+    // Prevent duplicate concurrent requests for the same library
+    if (fetchingAssetsRef.current.has(libraryId)) {
+      return;
+    }
+    
+    fetchingAssetsRef.current.add(libraryId);
     try {
-      const { data, error } = await supabase
-        .from('library_assets')
-        .select('id,name,library_id')
-        .eq('library_id', libraryId)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      setAssets((prev) => ({ ...prev, [libraryId]: (data as AssetRow[]) || [] }));
+      // Use cache to prevent duplicate requests
+      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+      const cacheKey = `assets:list:${libraryId}`;
+      
+      const data = await globalRequestCache.fetch(cacheKey, async () => {
+        const { data, error } = await supabase
+          .from('library_assets')
+          .select('id,name,library_id')
+          .eq('library_id', libraryId)
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        return (data as AssetRow[]) || [];
+      });
+      
+      setAssets((prev) => ({ ...prev, [libraryId]: data }));
     } catch (err) {
       console.error('Failed to load assets', err);
+    } finally {
+      fetchingAssetsRef.current.delete(libraryId);
     }
   }, [supabase]);
 

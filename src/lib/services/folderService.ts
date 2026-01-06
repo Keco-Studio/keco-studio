@@ -77,6 +77,10 @@ export async function createFolder(
     throw error;
   }
 
+  // Invalidate cache after successful creation
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`folders:list:${projectId}`);
+
   return data.id;
 }
 
@@ -89,17 +93,23 @@ export async function listFolders(
   // verify project ownership
   await verifyProjectOwnership(supabase, resolvedProjectId);
 
-  const { data, error } = await supabase
-    .from('folders')
-    .select('*')
-    .eq('project_id', resolvedProjectId)
-    .order('created_at', { ascending: true });
+  // Use request cache to prevent duplicate requests
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = `folders:list:${resolvedProjectId}`;
+  
+  return globalRequestCache.fetch(cacheKey, async () => {
+    const { data, error } = await supabase
+      .from('folders')
+      .select('*')
+      .eq('project_id', resolvedProjectId)
+      .order('created_at', { ascending: true });
 
-  if (error) {
-    throw error;
-  }
+    if (error) {
+      throw error;
+    }
 
-  return (data ?? []) as Folder[];
+    return (data ?? []) as Folder[];
+  });
 }
 
 export async function getFolder(
@@ -113,20 +123,26 @@ export async function getFolder(
   // verify folder access
   await verifyFolderAccess(supabase, folderId);
 
-  const { data, error } = await supabase
-    .from('folders')
-    .select('*')
-    .eq('id', folderId)
-    .single();
+  // Use request cache to prevent duplicate requests
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = `folder:${folderId}`;
+  
+  return globalRequestCache.fetch(cacheKey, async () => {
+    const { data, error } = await supabase
+      .from('folders')
+      .select('*')
+      .eq('id', folderId)
+      .single();
 
-  if (error) {
-    if (error.code === 'PGRST116') {
-      return null;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        return null;
+      }
+      throw error;
     }
-    throw error;
-  }
 
-  return data;
+    return data;
+  });
 }
 
 export async function updateFolder(
@@ -137,6 +153,9 @@ export async function updateFolder(
   if (!isUuid(folderId)) {
     throw new Error('Invalid folder ID format');
   }
+
+  // Get folder info before update to invalidate proper caches
+  const folder = await getFolder(supabase, folderId);
 
   // verify folder access
   await verifyFolderAccess(supabase, folderId);
@@ -169,6 +188,13 @@ export async function updateFolder(
       throw new Error('A folder with this name already exists in the project.');
     }
     throw error;
+  }
+
+  // Invalidate caches
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`folder:${folderId}`);
+  if (folder) {
+    globalRequestCache.invalidate(`folders:list:${folder.project_id}`);
   }
 }
 
@@ -211,6 +237,9 @@ export async function deleteFolder(
     }
   }
 
+  // Get folder info before deletion to invalidate proper caches
+  const folder = await getFolder(supabase, folderId);
+
   // Then delete the folder
   const { error } = await supabase
     .from('folders')
@@ -219,5 +248,15 @@ export async function deleteFolder(
 
   if (error) {
     throw error;
+  }
+
+  // Invalidate caches
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`folder:${folderId}`);
+  if (folder) {
+    globalRequestCache.invalidate(`folders:list:${folder.project_id}`);
+    // Also invalidate library lists that might be affected
+    globalRequestCache.invalidate(`libraries:list:${folder.project_id}:all`);
+    globalRequestCache.invalidate(`libraries:list:${folder.project_id}:${folderId}`);
   }
 }

@@ -107,9 +107,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Additional delay to ensure Supabase client is fully initialized
-      // This is especially important in CI/test environments
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Removed unnecessary 500ms delay - cache will handle deduplication
 
       const isInitialFetch = isInitialFetchRef.current;
       if (isInitialFetch) {
@@ -123,15 +121,25 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
             // First verify user has access to this project
             await verifyProjectOwnership(supabase, currentProjectId);
             
-            // If verified, fetch the name
-            const { data, error } = await supabase
-              .from('projects')
-              .select('name')
-              .eq('id', currentProjectId)
-              .single();
+            // Use cache to fetch project name and avoid duplicate requests
+            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+            const cacheKey = `project:name:${currentProjectId}`;
+            
+            const data = await globalRequestCache.fetch(cacheKey, async () => {
+              const { data, error } = await supabase
+                .from('projects')
+                .select('name')
+                .eq('id', currentProjectId)
+                .single();
+              
+              if (error || !data) {
+                return null;
+              }
+              return data;
+            });
             
             if (mounted) {
-              if (error || !data) {
+              if (!data) {
                 setProjectName(null);
                 // Only redirect if this is not the initial fetch
                 if (!isInitialFetch) {
@@ -171,15 +179,25 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
             // First verify user has access to this library
             await verifyLibraryAccess(supabase, currentLibraryId);
             
-            // If verified, fetch the name and folder_id
-            const { data, error } = await supabase
-              .from('libraries')
-              .select('name, folder_id')
-              .eq('id', currentLibraryId)
-              .single();
+            // Use cache to fetch library info and avoid duplicate requests
+            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+            const cacheKey = `library:info:${currentLibraryId}`;
+            
+            const data = await globalRequestCache.fetch(cacheKey, async () => {
+              const { data, error } = await supabase
+                .from('libraries')
+                .select('name, folder_id')
+                .eq('id', currentLibraryId)
+                .single();
+              
+              if (error || !data) {
+                return null;
+              }
+              return data;
+            });
             
             if (mounted) {
-              if (error || !data) {
+              if (!data) {
                 setLibraryName(null);
                 setLibraryFolderId(null);
                 // Only redirect if this is not the initial fetch

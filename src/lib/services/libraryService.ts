@@ -116,6 +116,15 @@ export async function createLibrary(
     throw error;
   }
 
+  // Invalidate caches
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`libraries:list:${projectId}:all`);
+  if (folderId) {
+    globalRequestCache.invalidate(`libraries:list:${projectId}:${folderId}`);
+  } else {
+    globalRequestCache.invalidate(`libraries:list:${projectId}:root`);
+  }
+
   return data.id;
 }
 
@@ -129,70 +138,77 @@ export async function listLibraries(
   // verify project ownership
   await verifyProjectOwnership(supabase, resolvedProjectId);
 
-  let query = supabase
-    .from('libraries')
-    .select('*')
-    .eq('project_id', resolvedProjectId);
-
-  // If folderId is provided, filter by folder_id
-  // If folderId is undefined, return ALL libraries (both root and nested)
-  // Only filter by null if folderId is explicitly null (not undefined)
-  if (folderId !== undefined) {
-    if (folderId === null) {
-      // Explicitly request root libraries only
-      query = query.is('folder_id', null);
-    } else {
-      if (!isUuid(folderId)) {
-        throw new Error('Invalid folder ID format');
-      }
-      query = query.eq('folder_id', folderId);
-    }
-  }
-  // If folderId is undefined, don't filter - return all libraries
-
-  const { data, error } = await query.order('created_at', { ascending: true });
+  // Use request cache to prevent duplicate requests
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const folderKey = folderId === undefined ? 'all' : folderId === null ? 'root' : folderId;
+  const cacheKey = `libraries:list:${resolvedProjectId}:${folderKey}`;
   
-  if (error) {
-    console.error('Error listing libraries:', error);
-    console.error('Query params:', { projectId: resolvedProjectId, folderId });
-  }
+  return globalRequestCache.fetch(cacheKey, async () => {
+    let query = supabase
+      .from('libraries')
+      .select('*')
+      .eq('project_id', resolvedProjectId);
 
-  if (error) {
-    throw error;
-  }
+    // If folderId is provided, filter by folder_id
+    // If folderId is undefined, return ALL libraries (both root and nested)
+    // Only filter by null if folderId is explicitly null (not undefined)
+    if (folderId !== undefined) {
+      if (folderId === null) {
+        // Explicitly request root libraries only
+        query = query.is('folder_id', null);
+      } else {
+        if (!isUuid(folderId)) {
+          throw new Error('Invalid folder ID format');
+        }
+        query = query.eq('folder_id', folderId);
+      }
+    }
+    // If folderId is undefined, don't filter - return all libraries
 
-  const libraries = data || [];
+    const { data, error } = await query.order('created_at', { ascending: true });
+    
+    if (error) {
+      console.error('Error listing libraries:', error);
+      console.error('Query params:', { projectId: resolvedProjectId, folderId });
+    }
 
-  // If no libraries, return empty array
-  if (libraries.length === 0) {
-    return libraries.map(lib => ({ ...lib, asset_count: 0 }));
-  }
+    if (error) {
+      throw error;
+    }
 
-  // Get asset counts for all libraries in one query
-  const libraryIds = libraries.map(lib => lib.id);
-  const { data: assetCounts, error: countError } = await supabase
-    .from('library_assets')
-    .select('library_id')
-    .in('library_id', libraryIds);
+    const libraries = data || [];
 
-  if (countError) {
-    console.error('Error fetching asset counts:', countError);
-    // If count query fails, return libraries with 0 counts
-    return libraries.map(lib => ({ ...lib, asset_count: 0 }));
-  }
+    // If no libraries, return empty array
+    if (libraries.length === 0) {
+      return libraries.map(lib => ({ ...lib, asset_count: 0 }));
+    }
 
-  // Count assets per library
-  const countMap = new Map<string, number>();
-  (assetCounts || []).forEach(asset => {
-    const currentCount = countMap.get(asset.library_id) || 0;
-    countMap.set(asset.library_id, currentCount + 1);
+    // Get asset counts for all libraries in one query
+    const libraryIds = libraries.map(lib => lib.id);
+    const { data: assetCounts, error: countError } = await supabase
+      .from('library_assets')
+      .select('library_id')
+      .in('library_id', libraryIds);
+
+    if (countError) {
+      console.error('Error fetching asset counts:', countError);
+      // If count query fails, return libraries with 0 counts
+      return libraries.map(lib => ({ ...lib, asset_count: 0 }));
+    }
+
+    // Count assets per library
+    const countMap = new Map<string, number>();
+    (assetCounts || []).forEach(asset => {
+      const currentCount = countMap.get(asset.library_id) || 0;
+      countMap.set(asset.library_id, currentCount + 1);
+    });
+
+    // Merge asset counts into libraries
+    return libraries.map(lib => ({
+      ...lib,
+      asset_count: countMap.get(lib.id) || 0,
+    }));
   });
-
-  // Merge asset counts into libraries
-  return libraries.map(lib => ({
-    ...lib,
-    asset_count: countMap.get(lib.id) || 0,
-  }));
 }
 
 export async function getLibrary(
@@ -211,34 +227,55 @@ export async function getLibrary(
     await verifyProjectOwnership(supabase, resolvedProjectId);
   }
   
-  let query = supabase.from('libraries').select('*');
+  // Use request cache to prevent duplicate requests
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = isUuid(libraryId) ? `library:${libraryId}` : `library:${projectId}:${libraryId}`;
+  
+  return globalRequestCache.fetch(cacheKey, async () => {
+    let query = supabase.from('libraries').select('*');
 
-  if (isUuid(libraryId)) {
-    query = query.eq('id', libraryId);
-  } else {
-    const resolvedProjectId = await resolveProjectId(supabase, projectId!);
-    query = query.eq('project_id', resolvedProjectId).eq('name', libraryId);
-  }
+    if (isUuid(libraryId)) {
+      query = query.eq('id', libraryId);
+    } else {
+      const resolvedProjectId = await resolveProjectId(supabase, projectId!);
+      query = query.eq('project_id', resolvedProjectId).eq('name', libraryId);
+    }
 
-  const { data, error } = await query.single();
+    const { data, error } = await query.single();
 
-  if (error) {
-    throw error;
-  }
+    if (error) {
+      throw error;
+    }
 
-  return data ?? null;
+    return data ?? null;
+  });
 }
 
 export async function deleteLibrary(
   supabase: SupabaseClient,
   libraryId: string
 ): Promise<void> {
+  // Get library info before deleting to invalidate proper caches
+  const library = await getLibrary(supabase, libraryId);
+  
   // verify library access
   await verifyLibraryAccess(supabase, libraryId);
   
   const { error } = await supabase.from('libraries').delete().eq('id', libraryId);
   if (error) {
     throw error;
+  }
+  
+  // Invalidate caches
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`library:${libraryId}`);
+  if (library) {
+    globalRequestCache.invalidate(`libraries:list:${library.project_id}:all`);
+    if (library.folder_id) {
+      globalRequestCache.invalidate(`libraries:list:${library.project_id}:${library.folder_id}`);
+    } else {
+      globalRequestCache.invalidate(`libraries:list:${library.project_id}:root`);
+    }
   }
 }
 
