@@ -541,9 +541,33 @@
   display: inline-block;
 }
 
+.referenceSelectedAssetLeft {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #5E00FF14;
+  border-radius: 5px;
+  padding: 4px;
+}
+
+.referenceSelectedAssetLeft .referenceDiamondIcon {
+  flex-shrink: 0;
+}
+
+.referenceExpandIcon {
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.referenceExpandIcon:hover {
+  opacity: 0.8;
+}
+
 .referenceAvatarWrapper {
   position: relative;
   display: inline-flex;
+  align-items: center;
   cursor: pointer;
 }
 

@@ -333,7 +333,7 @@ export function AssetReferenceModal({
                   </Select.Option>
                 ))}
               </Select>
-              <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} />
+              <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} className={styles.selectArrowIcon} />
             </div>
           </div>
 
