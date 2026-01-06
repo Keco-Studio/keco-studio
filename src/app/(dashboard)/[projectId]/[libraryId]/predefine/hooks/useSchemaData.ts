@@ -11,7 +11,7 @@ interface UseSchemaDataProps {
 
 export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
   const [sections, setSections] = useState<SectionConfig[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start with true to prevent flash
   const [error, setError] = useState<string | null>(null);
 
   const loadSections = useCallback(async () => {

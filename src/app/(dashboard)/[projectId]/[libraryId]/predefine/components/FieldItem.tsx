@@ -45,6 +45,12 @@ export function FieldItem({
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [loadingLibraries, setLoadingLibraries] = useState(false);
   
+  // Track IME composition state to handle Chinese/Japanese/Korean input properly
+  const [isComposing, setIsComposing] = useState(false);
+  const [localLabel, setLocalLabel] = useState(field.label);
+  const [composingOptionIndex, setComposingOptionIndex] = useState<number | null>(null);
+  const [localOptions, setLocalOptions] = useState(field.enumOptions ?? []);
+  
   const dataTypeInputRef = useRef<any>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
   const configMenuRef = useRef<HTMLDivElement>(null);
@@ -69,6 +75,20 @@ export function FieldItem({
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Sync external field.label changes to local state
+  useEffect(() => {
+    if (!isComposing) {
+      setLocalLabel(field.label);
+    }
+  }, [field.label, isComposing]);
+
+  // Sync external field.enumOptions changes to local state
+  useEffect(() => {
+    if (composingOptionIndex === null) {
+      setLocalOptions(field.enumOptions ?? []);
+    }
+  }, [field.enumOptions, composingOptionIndex]);
+
   const getDataTypeLabel = (value: FieldType) => {
     const option = FIELD_TYPE_OPTIONS.find((opt) => opt.value === value);
     return option?.label ?? '';
@@ -79,11 +99,34 @@ export function FieldItem({
     if (isMandatoryNameField) {
       return;
     }
-    const { id, ...rest } = field;
-    onChangeField(field.id, {
-      ...rest,
-      label: e.target.value,
-    });
+    
+    const newValue = e.target.value;
+    setLocalLabel(newValue);
+    
+    // Only update parent if not composing (to avoid interrupting IME input)
+    if (!isComposing) {
+      const { id, ...rest } = field;
+      onChangeField(field.id, {
+        ...rest,
+        label: newValue,
+      });
+    }
+  };
+
+  const handleCompositionStart = () => {
+    setIsComposing(true);
+  };
+
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
+    setIsComposing(false);
+    // Update parent with the final composed value
+    if (!isMandatoryNameField) {
+      const { id, ...rest } = field;
+      onChangeField(field.id, {
+        ...rest,
+        label: (e.target as HTMLInputElement).value,
+      });
+    }
   };
 
   const handleSlashMenuSelect = (dataType: FieldType) => {
@@ -127,8 +170,29 @@ export function FieldItem({
   };
 
   const handleOptionChange = (index: number, value: string) => {
+    const newOptions = [...localOptions];
+    newOptions[index] = value;
+    setLocalOptions(newOptions);
+    
+    // Only update parent if not composing (to avoid interrupting IME input)
+    if (composingOptionIndex !== index) {
+      const { id, ...rest } = field;
+      onChangeField(field.id, {
+        ...rest,
+        enumOptions: newOptions,
+      });
+    }
+  };
+
+  const handleOptionCompositionStart = (index: number) => {
+    setComposingOptionIndex(index);
+  };
+
+  const handleOptionCompositionEnd = (index: number, value: string) => {
+    setComposingOptionIndex(null);
+    // Update parent with the final composed value
     const { id, ...rest } = field;
-    const newOptions = [...(rest.enumOptions ?? [])];
+    const newOptions = [...localOptions];
     newOptions[index] = value;
     onChangeField(field.id, {
       ...rest,
@@ -254,9 +318,11 @@ export function FieldItem({
       <div className={styles.fieldInfo}>
         <div className={styles.inputWrapper}>
           <Input
-            value={field.label}
+            value={localLabel}
             className={styles.labelInput}
             onChange={handleLabelChange}
+            onCompositionStart={handleCompositionStart}
+            onCompositionEnd={handleCompositionEnd}
             disabled={disabled || isMandatoryNameField}
           />
         </div>
@@ -349,11 +415,13 @@ export function FieldItem({
                     </button>
                   </div>
                   <div className={styles.optionsListItemsContainer}>  
-                    {(field.enumOptions ?? []).map((option, index) => (
+                    {localOptions.map((option, index) => (
                       <div key={index} className={styles.optionItem}>
                         <Input
                           value={option}
                           onChange={(e) => handleOptionChange(index, e.target.value)}
+                          onCompositionStart={() => handleOptionCompositionStart(index)}
+                          onCompositionEnd={(e) => handleOptionCompositionEnd(index, (e.target as HTMLInputElement).value)}
                           placeholder="enter new option here"
                           className={styles.optionInput}
                         />
@@ -367,7 +435,7 @@ export function FieldItem({
                       </div>
                     ))}
                   </div>
-                  {(field.enumOptions ?? []).length === 0 && (
+                  {localOptions.length === 0 && (
                     <div className={styles.emptyOptionsMessage}>
                       Click + to add options
                     </div>
@@ -386,7 +454,7 @@ export function FieldItem({
                     mode="multiple"
                     style={{ width: '100%' }}
                     placeholder="Select libraries to reference"
-                    value={field.referenceLibraries ?? []}
+                    value={loadingLibraries ? [] : (field.referenceLibraries ?? [])}
                     onChange={handleReferenceLibrariesChange}
                     loading={loadingLibraries}
                     options={libraries.map((lib) => ({
@@ -395,7 +463,7 @@ export function FieldItem({
                     }))}
                     maxTagCount="responsive"
                   />
-                  {(field.referenceLibraries ?? []).length === 0 && (
+                  {(field.referenceLibraries ?? []).length === 0 && !loadingLibraries && (
                     <div className={styles.emptyOptionsMessage}>
                       Select libraries that this field can reference
                     </div>

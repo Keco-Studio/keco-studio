@@ -56,6 +56,7 @@ export async function saveSchemaIncremental(
       });
     });
   });
+  console.log('newMap:', newMap);
 
   // Find fields to update, insert, and delete
   const toUpdate: FieldDefinitionRow[] = [];

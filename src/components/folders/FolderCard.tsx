@@ -8,6 +8,35 @@ import projectPreviewFolderMoreIcon from "@/app/assets/images/projectPreviewFold
 import libraryIconImage from "@/app/assets/images/LibraryBookIcon.svg";
 import styles from './FolderCard.module.css';
 
+// Helper function to calculate character display width (Chinese = 2, English/Number = 1)
+const getCharWidth = (char: string): number => {
+  // Check if character is Chinese, Japanese, Korean, or other wide characters
+  const code = char.charCodeAt(0);
+  return (code >= 0x4E00 && code <= 0x9FFF) || // CJK Unified Ideographs
+         (code >= 0x3400 && code <= 0x4DBF) || // CJK Extension A
+         (code >= 0x20000 && code <= 0x2A6DF) || // CJK Extension B
+         (code >= 0x3040 && code <= 0x309F) || // Hiragana
+         (code >= 0x30A0 && code <= 0x30FF) || // Katakana
+         (code >= 0xAC00 && code <= 0xD7AF) ? 2 : 1; // Hangul
+};
+
+// Helper function to truncate text with ellipsis based on display width
+const truncateText = (text: string, maxWidth: number): string => {
+  let width = 0;
+  let result = '';
+  
+  for (const char of text) {
+    const charWidth = getCharWidth(char);
+    if (width + charWidth > maxWidth) {
+      return result + '...';
+    }
+    result += char;
+    width += charWidth;
+  }
+  
+  return result;
+};
+
 type FolderCardProps = {
   folder: Folder;
   projectId: string;
@@ -55,7 +84,7 @@ export function FolderCard({
                 height={16}
                 className={styles.libraryTagIcon}
               />
-              <span className={styles.libraryTagName}>{library.name}</span>
+              <span className={styles.libraryTagName} title={library.name}>{truncateText(library.name, 20)}</span>
             </div>
           ))}
           {showMoreIndicator && (
