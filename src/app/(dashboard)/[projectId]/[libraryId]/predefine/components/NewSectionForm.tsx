@@ -53,6 +53,7 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
       dataType: parsed.data.dataType,
       required: parsed.data.required,
       ...(parsed.data.enumOptions && { enumOptions: parsed.data.enumOptions }),
+      ...(parsed.data.referenceLibraries && { referenceLibraries: parsed.data.referenceLibraries }),
     };
     setFields((prev) => [...prev, field]);
     setErrors([]);
@@ -116,6 +117,7 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
           dataType: parsed.data.dataType,
           required: parsed.data.required,
           ...(parsed.data.enumOptions && { enumOptions: parsed.data.enumOptions }),
+          ...(parsed.data.referenceLibraries && { referenceLibraries: parsed.data.referenceLibraries }),
         };
         finalFields = [...fields, newField];
       }

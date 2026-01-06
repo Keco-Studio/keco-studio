@@ -1556,8 +1556,10 @@ export function LibraryAssetsTable({
                           </button>
                         </div>
                       ) : (
-                        // Other fields: show text only
-                        display ? display : <span className={styles.placeholderValue}>—</span>
+                        // Other fields: show text with ellipsis for long content
+                        <span className={styles.cellText}>
+                          {display ? display : <span className={styles.placeholderValue}>—</span>}
+                        </span>
                       )}
                     </td>
                   );

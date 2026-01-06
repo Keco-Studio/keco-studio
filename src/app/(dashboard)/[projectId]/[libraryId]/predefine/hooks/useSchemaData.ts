@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { SectionConfig, FieldType } from '../types';
 import { uid } from '../types';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -11,23 +11,43 @@ interface UseSchemaDataProps {
 
 export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
   const [sections, setSections] = useState<SectionConfig[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start with true to prevent flash
   const [error, setError] = useState<string | null>(null);
+  
+  // Use ref to track ongoing requests and prevent duplicates
+  const loadingRef = React.useRef(false);
 
   const loadSections = useCallback(async () => {
     if (!libraryId) return;
+    
+    // Prevent duplicate concurrent requests
+    if (loadingRef.current) {
+      return;
+    }
 
+    loadingRef.current = true;
     setLoading(true);
     setError(null);
     try {
-      const { data, error: fetchError } = await supabase
-        .from('library_field_definitions')
-        .select('*')
-        .eq('library_id', libraryId)
-        .order('section', { ascending: true })
-        .order('order_index', { ascending: true });
+      // Use cache to prevent duplicate requests
+      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+      const cacheKey = `field-definitions:${libraryId}`;
+      
+      const data = await globalRequestCache.fetch(cacheKey, async () => {
+        const { data, error: fetchError } = await supabase
+          .from('library_field_definitions')
+          .select('*')
+          .eq('library_id', libraryId)
+          .order('section', { ascending: true })
+          .order('order_index', { ascending: true });
 
-      if (fetchError) throw fetchError;
+        if (fetchError) throw fetchError;
+        return data || [];
+      });
+
+      if (!data) {
+        throw new Error('Failed to load field definitions');
+      }
 
       const rows = (data || []) as {
         id: string;
@@ -92,6 +112,7 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
       throw e;
     } finally {
       setLoading(false);
+      loadingRef.current = false;
     }
   }, [libraryId, supabase]);
 

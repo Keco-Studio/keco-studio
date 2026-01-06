@@ -51,10 +51,38 @@ type SidebarProps = {
 
 type AssetRow = { id: string; name: string; library_id: string };
 
-// Helper function to truncate text with ellipsis
-const truncateText = (text: string, maxLength: number): string => {
-  if (text.length <= maxLength) return text;
-  return text.slice(0, maxLength) + '...';
+// Helper function to calculate character display width (Chinese = 2, English/Number = 1)
+const getCharWidth = (char: string): number => {
+  // Check if character is Chinese, Japanese, Korean, or other wide characters
+  const code = char.charCodeAt(0);
+  return (code >= 0x4E00 && code <= 0x9FFF) || // CJK Unified Ideographs
+         (code >= 0x3400 && code <= 0x4DBF) || // CJK Extension A
+         (code >= 0x20000 && code <= 0x2A6DF) || // CJK Extension B
+         (code >= 0x3040 && code <= 0x309F) || // Hiragana
+         (code >= 0x30A0 && code <= 0x30FF) || // Katakana
+         (code >= 0xAC00 && code <= 0xD7AF) ? 2 : 1; // Hangul
+};
+
+// Helper function to calculate total display width of a string
+const getStringWidth = (text: string): number => {
+  return text.split('').reduce((width, char) => width + getCharWidth(char), 0);
+};
+
+// Helper function to truncate text with ellipsis based on display width
+const truncateText = (text: string, maxWidth: number): string => {
+  let width = 0;
+  let result = '';
+  
+  for (const char of text) {
+    const charWidth = getCharWidth(char);
+    if (width + charWidth > maxWidth) {
+      return result + '...';
+    }
+    result += char;
+    width += charWidth;
+  }
+  
+  return result;
 };
 
 export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
@@ -352,18 +380,37 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     };
   }, [currentIds.projectId, queryClient]);
 
+  const fetchingAssetsRef = useRef<Set<string>>(new Set());
+
   const fetchAssets = useCallback(async (libraryId?: string | null) => {
     if (!libraryId) return;
+    
+    // Prevent duplicate concurrent requests for the same library
+    if (fetchingAssetsRef.current.has(libraryId)) {
+      return;
+    }
+    
+    fetchingAssetsRef.current.add(libraryId);
     try {
-      const { data, error } = await supabase
-        .from('library_assets')
-        .select('id,name,library_id')
-        .eq('library_id', libraryId)
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      setAssets((prev) => ({ ...prev, [libraryId]: (data as AssetRow[]) || [] }));
+      // Use cache to prevent duplicate requests
+      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+      const cacheKey = `assets:list:${libraryId}`;
+      
+      const data = await globalRequestCache.fetch(cacheKey, async () => {
+        const { data, error } = await supabase
+          .from('library_assets')
+          .select('id,name,library_id')
+          .eq('library_id', libraryId)
+          .order('created_at', { ascending: true });
+        if (error) throw error;
+        return (data as AssetRow[]) || [];
+      });
+      
+      setAssets((prev) => ({ ...prev, [libraryId]: data }));
     } catch (err) {
       console.error('Failed to load assets', err);
+    } finally {
+      fetchingAssetsRef.current.delete(libraryId);
     }
   }, [supabase]);
 
@@ -514,12 +561,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     
     // Debug: log libraries grouping
     if (process.env.NODE_ENV === 'development') {
-      console.log('Libraries grouped by folder_id:', {
-        totalLibraries: projectLibraries.length,
-        librariesByFolderKeys: Array.from(librariesByFolder.keys()),
-        librariesByFolder: Object.fromEntries(librariesByFolder),
-        folders: projectFolders.map(f => ({ id: f.id, name: f.name }))
-      });
+      // console.log('Libraries grouped by folder_id:', {
+      //   totalLibraries: projectLibraries.length,
+      //   librariesByFolderKeys: Array.from(librariesByFolder.keys()),
+      //   librariesByFolder: Object.fromEntries(librariesByFolder),
+      //   folders: projectFolders.map(f => ({ id: f.id, name: f.name }))
+      // });
     }
     
     // Build folder node (simplified: no nested folders, all folders are root level)
@@ -530,10 +577,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       
       // Debug: log folder node building
       if (process.env.NODE_ENV === 'development') {
-        console.log(`Building folder node: ${folder.name} (id: ${folder.id})`, {
-          folderLibraries: folderLibraries.length,
-          folderLibrariesNames: folderLibraries.map(l => l.name)
-        });
+        // console.log(`Building folder node: ${folder.name} (id: ${folder.id})`, {
+        //   folderLibraries: folderLibraries.length,
+        //   folderLibrariesNames: folderLibraries.map(l => l.name)
+        // });
       }
       
       // Create button node for "Create new library" - always first child
@@ -619,7 +666,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       height={24}
                     />
                   </div>
-                  <span className={styles.itemText}>{lib.name}</span>
+                  <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
                 </div>
                 <div className={styles.itemActions}>
                   <Tooltip
@@ -694,7 +741,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
                     >
                       <div className={styles.itemMain}>
-                        <span className={styles.itemText}>{asset.name}</span>
+                        <span className={styles.itemText} title={asset.name}>{truncateText(asset.name, 15)}</span>
                       </div>
                       <div className={styles.itemActions}>
                       </div>
@@ -723,7 +770,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 height={18}
                 className={styles.itemIcon}
               />
-              <span className={styles.itemText} style={{ fontWeight: 500 }}>{folder.name}</span>
+              <span className={styles.itemText} style={{ fontWeight: 500 }} title={folder.name}>{truncateText(folder.name, 20)}</span>
             </div>
             <div className={styles.itemActions}>
             </div>
@@ -784,7 +831,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   height={24}
                 />
               </div>
-              <span className={styles.itemText}>{lib.name}</span>
+              <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
             </div>
             <div className={styles.itemActions}>
               <Tooltip
@@ -859,7 +906,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
                 >
                   <div className={styles.itemMain}>
-                    <span className={styles.itemText}>{asset.name}</span>
+                    <span className={styles.itemText} title={asset.name}>{truncateText(asset.name, 15)}</span>
                   </div>
                   <div className={styles.itemActions}>
                   </div>
@@ -990,7 +1037,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (!contextMenu) return;
     
     // TODO: Implement actions
-    console.log(`Action: ${action} on ${contextMenu.type} with id: ${contextMenu.id}`);
+    // console.log(`Action: ${action} on ${contextMenu.type} with id: ${contextMenu.id}`);
     
     // For now, only handle delete action
     if (action === 'delete') {
@@ -1095,7 +1142,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   };
   const handleProjectCreated = async (projectId: string, defaultFolderId: string) => {
-    console.log('Project created:', { projectId, defaultFolderId });
+    // console.log('Project created:', { projectId, defaultFolderId });
     setShowProjectModal(false);
     
     // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
@@ -1327,7 +1374,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                             width={24}
                             height={24}
                           />
-                          <span className={styles.itemText} style={{ fontWeight: 500 }}>
+                          <span className={styles.itemText} style={{ fontWeight: 500 }} title={libraryName}>
                             Predefine {libraryName} Library
                           </span>
                         </div>
@@ -1370,7 +1417,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                                 height={24}
                               />
                             </div>
-                            <span className={styles.itemText}>{libraryName}</span>
+                            <span className={styles.itemText} title={libraryName}>{truncateText(libraryName, 15)}</span>
                           </div>
                           <div className={styles.itemActions}>
                             <Tooltip
@@ -1437,7 +1484,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                                 onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
                               >
                                 <div className={styles.itemMain}>
-                                  <span className={styles.itemText}>{asset.name}</span>
+                                  <span className={styles.itemText} title={asset.name}>{truncateText(asset.name, 20)}</span>
                                 </div>
                                 <div className={styles.itemActions}>
                                 </div>

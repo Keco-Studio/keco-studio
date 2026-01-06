@@ -19,13 +19,19 @@ export class AuthorizationError extends Error {
  * @throws {AuthorizationError} if user is not logged in
  */
 export async function getCurrentUserId(supabase: SupabaseClient): Promise<string> {
-  const { data: { user }, error } = await supabase.auth.getUser();
+  // Use cache to prevent duplicate auth requests
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = 'auth:current-user-id';
   
-  if (error || !user) {
-    throw new AuthorizationError('User not logged in');
-  }
-  
-  return user.id;
+  return globalRequestCache.fetch(cacheKey, async () => {
+    const { data: { user }, error } = await supabase.auth.getUser();
+    
+    if (error || !user) {
+      throw new AuthorizationError('User not logged in');
+    }
+    
+    return user.id;
+  });
 }
 
 /**
@@ -38,19 +44,27 @@ export async function verifyProjectOwnership(
 ): Promise<void> {
   const currentUserId = userId || await getCurrentUserId(supabase);
   
-  const { data: project, error } = await supabase
-    .from('projects')
-    .select('owner_id')
-    .eq('id', projectId)
-    .single();
+  // Use cache to prevent duplicate ownership verification requests
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = `auth:project-ownership:${projectId}:${currentUserId}`;
   
-  if (error || !project) {
-    throw new AuthorizationError('Project not found');
-  }
-  
-  if (project.owner_id !== currentUserId) {
-    throw new AuthorizationError('Unauthorized access to this project');
-  }
+  await globalRequestCache.fetch(cacheKey, async () => {
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+    
+    if (error || !project) {
+      throw new AuthorizationError('Project not found');
+    }
+    
+    if (project.owner_id !== currentUserId) {
+      throw new AuthorizationError('Unauthorized access to this project');
+    }
+    
+    return true; // Return a value for caching
+  });
 }
 
 /**
@@ -63,19 +77,27 @@ export async function verifyLibraryAccess(
 ): Promise<void> {
   const currentUserId = userId || await getCurrentUserId(supabase);
   
-  // Get the project that owns the library
-  const { data: library, error: libraryError } = await supabase
-    .from('libraries')
-    .select('project_id')
-    .eq('id', libraryId)
-    .single();
+  // Use cache to prevent duplicate library access verification
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = `auth:library-access:${libraryId}:${currentUserId}`;
   
-  if (libraryError || !library) {
-    throw new AuthorizationError('Library not found');
-  }
-  
-  // Verify project ownership
-  await verifyProjectOwnership(supabase, library.project_id, currentUserId);
+  await globalRequestCache.fetch(cacheKey, async () => {
+    // Get the project that owns the library
+    const { data: library, error: libraryError } = await supabase
+      .from('libraries')
+      .select('project_id')
+      .eq('id', libraryId)
+      .single();
+    
+    if (libraryError || !library) {
+      throw new AuthorizationError('Library not found');
+    }
+    
+    // Verify project ownership
+    await verifyProjectOwnership(supabase, library.project_id, currentUserId);
+    
+    return true; // Return a value for caching
+  });
 }
 
 /**
@@ -88,19 +110,27 @@ export async function verifyFolderAccess(
 ): Promise<void> {
   const currentUserId = userId || await getCurrentUserId(supabase);
   
-  // Get the project that owns the folder
-  const { data: folder, error: folderError } = await supabase
-    .from('folders')
-    .select('project_id')
-    .eq('id', folderId)
-    .single();
+  // Use cache to prevent duplicate folder access verification
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = `auth:folder-access:${folderId}:${currentUserId}`;
   
-  if (folderError || !folder) {
-    throw new AuthorizationError('Folder not found');
-  }
-  
-  // Verify project ownership
-  await verifyProjectOwnership(supabase, folder.project_id, currentUserId);
+  await globalRequestCache.fetch(cacheKey, async () => {
+    // Get the project that owns the folder
+    const { data: folder, error: folderError } = await supabase
+      .from('folders')
+      .select('project_id')
+      .eq('id', folderId)
+      .single();
+    
+    if (folderError || !folder) {
+      throw new AuthorizationError('Folder not found');
+    }
+    
+    // Verify project ownership
+    await verifyProjectOwnership(supabase, folder.project_id, currentUserId);
+    
+    return true; // Return a value for caching
+  });
 }
 
 /**
@@ -113,19 +143,27 @@ export async function verifyAssetAccess(
 ): Promise<void> {
   const currentUserId = userId || await getCurrentUserId(supabase);
   
-  // Get the library that owns the asset
-  const { data: asset, error: assetError } = await supabase
-    .from('library_assets')
-    .select('library_id')
-    .eq('id', assetId)
-    .single();
+  // Use cache to prevent duplicate asset access verification
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = `auth:asset-access:${assetId}:${currentUserId}`;
   
-  if (assetError || !asset) {
-    throw new AuthorizationError('Asset not found');
-  }
-  
-  // Verify library access permission
-  await verifyLibraryAccess(supabase, asset.library_id, currentUserId);
+  await globalRequestCache.fetch(cacheKey, async () => {
+    // Get the library that owns the asset
+    const { data: asset, error: assetError } = await supabase
+      .from('library_assets')
+      .select('library_id')
+      .eq('id', assetId)
+      .single();
+    
+    if (assetError || !asset) {
+      throw new AuthorizationError('Asset not found');
+    }
+    
+    // Verify library access permission
+    await verifyLibraryAccess(supabase, asset.library_id, currentUserId);
+    
+    return true; // Return a value for caching
+  });
 }
 
 /**

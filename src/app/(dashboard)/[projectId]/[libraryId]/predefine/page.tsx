@@ -36,9 +36,9 @@ function PredefinePageContent() {
     libraryId,
     supabase,
   });
-
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [library, setLibrary] = useState<Library | null>(null);
+  const [loadingLibrary, setLoadingLibrary] = useState(true);
   const [isCreatingNewSection, setIsCreatingNewSection] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
@@ -51,6 +51,8 @@ function PredefinePageContent() {
   const [tempSectionNames, setTempSectionNames] = useState<Map<string, string>>(new Map());
   // Track if we've already checked for auto-enter new section mode (to avoid re-triggering)
   const autoEnterChecked = useRef(false);
+  // Track if we auto-entered creation mode due to empty sections (to handle slow loading)
+  const autoEnteredCreationMode = useRef(false);
 
   const activeSection = useMemo(
     () => sections.find((s) => s.id === activeSectionId) || null,
@@ -59,15 +61,21 @@ function PredefinePageContent() {
 
   // Load current library info (name, description) for page title display
   useEffect(() => {
-    if (!libraryId) return;
+    if (!libraryId) {
+      setLoadingLibrary(false);
+      return;
+    }
 
     const fetchLibrary = async () => {
+      setLoadingLibrary(true);
       try {
         const lib = await getLibrary(supabase, libraryId);
         setLibrary(lib);
       } catch (e) {
         // Only used for title display, ignore on failure
         console.error('Failed to load library info', e);
+      } finally {
+        setLoadingLibrary(false);
       }
     };
 
@@ -86,16 +94,23 @@ function PredefinePageContent() {
       if (sections.length === 0) {
         // No sections exist, auto-enter creation mode
         setIsCreatingNewSection(true);
+        autoEnteredCreationMode.current = true;
       } else {
         // Sections exist, set first as active if needed
+        setIsCreatingNewSection(false);
         if (!activeSectionId || !sections.find((s) => s.id === activeSectionId)) {
           setActiveSectionId(sections[0].id);
         }
       }
     } else {
-      // After initialization, only update active section if invalid
-      // Do NOT automatically exit creation mode - let user explicitly switch tabs
+      // After initialization, handle slow-loading sections data
       if (sections.length > 0) {
+        // If we auto-entered creation mode due to empty initial state,
+        // but now sections exist (slow loading), exit creation mode
+        if (autoEnteredCreationMode.current && isCreatingNewSection) {
+          setIsCreatingNewSection(false);
+          autoEnteredCreationMode.current = false;
+        }
         if (!activeSectionId || !sections.find((s) => s.id === activeSectionId)) {
           setActiveSectionId(sections[0].id);
         }
@@ -103,7 +118,7 @@ function PredefinePageContent() {
         setActiveSectionId(null);
       }
     }
-  }, [sections, sectionsLoading, activeSectionId]);
+  }, [sections, sectionsLoading, activeSectionId, isCreatingNewSection]);
 
   const startCreatingNewSection = useCallback(() => {
     setIsCreatingNewSection(true);
@@ -184,6 +199,7 @@ function PredefinePageContent() {
         dataType: f.dataType,
         required: f.required,
         enumOptions: f.enumOptions,
+        referenceLibraries: f.referenceLibraries,
       })),
     });
 
@@ -193,8 +209,9 @@ function PredefinePageContent() {
     }
 
     // Combine with existing sections
-    const allSections = [...sections, { id: uid(), ...newSection }];
 
+    const allSections = [...sections, { id: uid(), ...newSection }];
+    console.log('allSections:', allSections);
     await saveSchema(allSections);
   };
 
@@ -212,6 +229,7 @@ function PredefinePageContent() {
       const tempName = tempSectionNames.get(section.id);
       
       let updatedSection = { ...section };
+      console.log('updatedSection:', updatedSection);
       
       // Apply temp section name if exists
       if (tempName !== undefined) {
@@ -249,6 +267,7 @@ function PredefinePageContent() {
           dataType: f.dataType,
           required: f.required,
           enumOptions: f.enumOptions,
+          referenceLibraries: f.referenceLibraries,
         })),
       }))
     );
@@ -262,6 +281,7 @@ function PredefinePageContent() {
     setErrors([]);
     try {
       // Use incremental update to preserve field IDs and asset data
+      console.log('finalSections:', finalSections);
       await saveSchemaIncremental(supabase, libraryId, finalSections);
 
       message.success('Saved successfully, loading...');
@@ -510,11 +530,19 @@ function PredefinePageContent() {
         <div className={styles.contentWrapper}>
           <div className={styles.header}>
             <div>
-              <h1 className={styles.title}>
-                {`Predefine ${library?.name ?? ''} Library`}
-              </h1>
-              {library?.description && (
-                <p className={styles.subtitle}>{library.description}</p>
+              {loadingLibrary ? (
+                <h1 className={styles.title}>
+                  Loading...
+                </h1>
+              ) : (
+                <>
+                  <h1 className={styles.title}>
+                    {`Predefine ${library?.name ?? ''} Library`}
+                  </h1>
+                  {library?.description && (
+                    <p className={styles.subtitle}>{library.description}</p>
+                  )}
+                </>
               )}
             </div>
           </div>

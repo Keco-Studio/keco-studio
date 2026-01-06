@@ -47,8 +47,6 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
   const slashMenuRef = useRef<HTMLDivElement>(null);
   const configMenuRef = useRef<HTMLDivElement>(null);
   const configButtonRef = useRef<HTMLButtonElement>(null);
-  // Flag to skip useEffect update when we manually call onFieldChange
-  const skipNextEffectRef = useRef(false);
   // Store onFieldChange callback in ref to ensure we always use the latest version
   const onFieldChangeRef = useRef(onFieldChange);
   
@@ -59,19 +57,15 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
 
   // Notify parent of field changes
   useEffect(() => {
-    // Skip if we manually called onFieldChange (e.g., in handleReferenceLibrariesChange)
-    if (skipNextEffectRef.current) {
-      skipNextEffectRef.current = false;
-      return;
-    }
-    
-    if (onFieldChange) {
+    if (onFieldChangeRef.current) {
       // Only pass field if it has content (label is not empty)
       if (field.label.trim()) {
-        onFieldChange(field);
+        onFieldChangeRef.current(field);
       } else {
-        onFieldChange(null);
+        onFieldChangeRef.current(null);
       }
+    } else {
+      console.warn('[FieldForm] onFieldChangeRef.current is undefined! Cannot notify parent.');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [field]);
@@ -260,19 +254,21 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
   };
 
   const handleReferenceLibrariesChange = (selectedLibraryIds: string[]) => {
-    const newField = {
-      ...field,
-      referenceLibraries: selectedLibraryIds,
-    };
-    // Immediately notify parent using ref to ensure we use latest callback
-    // Call BEFORE setField to ensure data is saved before any useEffect runs
-    // This is safe because we're in an event handler, not during render
-    if (onFieldChangeRef.current && newField.label.trim()) {
-      onFieldChangeRef.current(newField);
-    }
-    // Set flag to skip next useEffect AFTER calling onFieldChange
-    skipNextEffectRef.current = true;
-    setField(newField);
+    setField((prevField) => {
+      const newField = {
+        ...prevField,
+        referenceLibraries: selectedLibraryIds,
+      };
+      
+      // Immediately notify parent with updated field to ensure data is saved
+      // This is critical for reference fields where user might select libraries
+      // and then immediately click save without triggering other field changes
+      if (onFieldChangeRef.current && newField.label.trim()) {
+        onFieldChangeRef.current(newField);
+      }
+      
+      return newField;
+    });
   };
 
   const isEditing = !!initialField;
@@ -410,7 +406,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
                     mode="multiple"
                     style={{ width: '100%' }}
                     placeholder="Select libraries to reference"
-                    value={field.referenceLibraries ?? []}
+                    value={loadingLibraries ? [] : (field.referenceLibraries ?? [])}
                     onChange={handleReferenceLibrariesChange}
                     loading={loadingLibraries}
                     options={libraries.map((lib) => ({
@@ -419,7 +415,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
                     }))}
                     maxTagCount="responsive"
                   />
-                  {(field.referenceLibraries ?? []).length === 0 && (
+                  {(field.referenceLibraries ?? []).length === 0 && !loadingLibraries && (
                     <div className={styles.emptyOptionsMessage}>
                       Select libraries that this field can reference
                     </div>

@@ -129,17 +129,23 @@ export async function listProjects(supabase: SupabaseClient): Promise<Project[]>
   // 
   const userId = await getCurrentUserId(supabase);
   
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('owner_id', userId)
-    .order('created_at', { ascending: true });
+  // Use request cache to prevent duplicate requests
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = `projects:list:${userId}`;
+  
+  return globalRequestCache.fetch(cacheKey, async () => {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('owner_id', userId)
+      .order('created_at', { ascending: true });
 
-  if (error) {
-    throw error;
-  }
+    if (error) {
+      throw error;
+    }
 
-  return data || [];
+    return data || [];
+  });
 }
 
 export async function getProject(
@@ -149,21 +155,27 @@ export async function getProject(
  
   await verifyProjectOwnership(supabase, projectId);
   
-  const { data, error } = await supabase
-    .from('projects')
-    .select('*')
-    .eq('id', projectId)
-    .single();
+  // Use request cache to prevent duplicate requests
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = `project:${projectId}`;
+  
+  return globalRequestCache.fetch(cacheKey, async () => {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('*')
+      .eq('id', projectId)
+      .single();
 
-  if (error) {
-    if (error.code === 'PGRST116') {
-      // Not found
-      return null;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        // Not found
+        return null;
+      }
+      throw error;
     }
-    throw error;
-  }
 
-  return data;
+    return data;
+  });
 }
 
 export async function deleteProject(
@@ -177,6 +189,12 @@ export async function deleteProject(
   if (error) {
     throw error;
   }
+  
+  // Invalidate cache
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const userId = await getCurrentUserId(supabase);
+  globalRequestCache.invalidate(`projects:list:${userId}`);
+  globalRequestCache.invalidate(`project:${projectId}`);
 }
 
 export async function checkProjectNameExists(
