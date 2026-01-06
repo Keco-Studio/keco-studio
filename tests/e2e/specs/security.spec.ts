@@ -114,13 +114,13 @@ test.describe('Resource Creation Authorization', () => {
             failOnStatusCode: false
         });
 
-        // 🔍 打印详细信息
+        // 🔍 print detailed information
         const status = response.status();
         const body = await response.text();
-        console.log('=== API Response Debug ===');
-        console.log('Status:', status);
-        console.log('Body:', body);
-        console.log('========================');
+        // console.log('=== API Response Debug ===');
+        // console.log('Status:', status);
+        // console.log('Body:', body);
+        // console.log('========================');
 
         // API should return 401 Unauthorized
         expect(status).toBe(401);

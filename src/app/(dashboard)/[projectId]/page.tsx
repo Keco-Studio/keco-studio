@@ -96,7 +96,7 @@ export default function ProjectPage() {
       setError(e?.message || 'Failed to load project');
       setLoading(false);
     }
-  }, [projectId, supabase, router]);
+  }, [projectId, supabase]);
 
   useEffect(() => {
     fetchData();

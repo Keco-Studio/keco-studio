@@ -326,7 +326,7 @@ test.describe('File Upload Security', () => {
         if (isVisible) {
           errorFound = true;
           const errorText = await errorLocator.textContent().catch(() => '');
-          console.log(`✅ Error message found: ${errorText}`);
+          // console.log(`✅ Error message found: ${errorText}`);
           break;
         }
       }
@@ -358,7 +358,7 @@ test.describe('File Upload Security', () => {
         if (isVisible) {
           errorFound = true;
           const errorText = await errorLocator.textContent().catch(() => '');
-          console.log(`✅ Error message found: ${errorText}`);
+          // console.log(`✅ Error message found: ${errorText}`);
           break;
         }
       }
@@ -390,7 +390,7 @@ test.describe('File Upload Security', () => {
         if (isVisible) {
           errorFound = true;
           const errorText = await errorLocator.textContent().catch(() => '');
-          console.log(`✅ Error message found: ${errorText}`);
+          // console.log(`✅ Error message found: ${errorText}`);
           break;
         }
       }
@@ -422,7 +422,7 @@ test.describe('File Upload Security', () => {
         if (isVisible) {
           errorFound = true;
           const errorText = await errorLocator.textContent().catch(() => '');
-          console.log(`✅ Error message found: ${errorText}`);
+          // console.log(`✅ Error message found: ${errorText}`);
           break;
         }
       }
@@ -462,7 +462,7 @@ test.describe('File Upload Security', () => {
         throw new Error(`Valid PNG file was rejected with error: ${errorText}`);
       }
       
-      console.log('✅ Valid PNG file was accepted');
+      // console.log('✅ Valid PNG file was accepted');
     });
   });
 
@@ -511,7 +511,7 @@ test.describe('File Upload Security', () => {
         if (isVisible) {
           errorFound = true;
           const errorText = await errorLocator.textContent().catch(() => '');
-          console.log(`✅ File size error found: ${errorText}`);
+          // console.log(`✅ File size error found: ${errorText}`);
           break;
         }
       }
@@ -540,7 +540,7 @@ test.describe('File Upload Security', () => {
         throw new Error(`File under 5MB was rejected with error: ${errorText}`);
       }
       
-      console.log('✅ File under 5MB was accepted');
+      // console.log('✅ File under 5MB was accepted');
     });
   });
 });

@@ -156,6 +156,7 @@ export async function getLibrarySchema(
       valueType: mapDataTypeToValueType(row.data_type),
       dataType: row.data_type,
       referenceLibraries: row.reference_libraries || undefined,
+      enumOptions: row.enum_options || undefined,
       orderIndex: row.order_index,
     });
   }

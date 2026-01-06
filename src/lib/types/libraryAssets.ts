@@ -20,6 +20,7 @@ export type PropertyConfig = {
   valueType: 'string' | 'number' | 'boolean' | 'enum' | 'tag' | 'other';
   dataType?: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference';
   referenceLibraries?: string[]; // For reference type: which libraries can be referenced
+  enumOptions?: string[]; // For enum type: available option values
   orderIndex: number;
 };
 
