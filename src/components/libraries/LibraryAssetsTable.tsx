@@ -167,6 +167,7 @@ export function LibraryAssetsTable({
   const [hoveredAssetDetails, setHoveredAssetDetails] = useState<{
     name: string;
     libraryName: string;
+    libraryId: string;
   } | null>(null);
   const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
   const [hoveredAvatarPosition, setHoveredAvatarPosition] = useState<{ x: number; y: number } | null>(null);
@@ -234,6 +235,7 @@ export function LibraryAssetsTable({
           setHoveredAssetDetails({
             name: data.name,
             libraryName: (data.libraries as any)?.name || 'Unknown Library',
+            libraryId: data.library_id,
           });
         }
       } catch (error) {
@@ -1752,7 +1754,16 @@ export function LibraryAssetsTable({
                         </div>
                         <div className={styles.assetCardDetailItem}>
                           <span className={styles.assetCardDetailLabel}>From Library</span>
-                          <div className={styles.assetCardLibraryLink}>
+                          <div 
+                            className={styles.assetCardLibraryLink}
+                            onClick={() => {
+                              const projectId = params.projectId;
+                              if (projectId && hoveredAssetDetails?.libraryId) {
+                                router.push(`/${projectId}/${hoveredAssetDetails.libraryId}`);
+                              }
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          >
                             <Image
                               src={libraryAssetTable5Icon}
                               alt=""
