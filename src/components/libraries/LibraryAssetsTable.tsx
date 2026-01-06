@@ -167,6 +167,7 @@ export function LibraryAssetsTable({
   const [hoveredAssetDetails, setHoveredAssetDetails] = useState<{
     name: string;
     libraryName: string;
+    libraryId: string;
   } | null>(null);
   const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
   const [hoveredAvatarPosition, setHoveredAvatarPosition] = useState<{ x: number; y: number } | null>(null);
@@ -234,6 +235,7 @@ export function LibraryAssetsTable({
           setHoveredAssetDetails({
             name: data.name,
             libraryName: (data.libraries as any)?.name || 'Unknown Library',
+            libraryId: data.library_id,
           });
         }
       } catch (error) {
@@ -458,59 +460,107 @@ export function LibraryAssetsTable({
     return (
       <div
         className={styles.referenceFieldWrapper}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
+        onMouseEnter={() => {
+          setIsHovered(true);
+        }}
+        onMouseLeave={(e) => {
+          // Only set hovered to false if mouse is not moving to avatar wrapper or arrow icon
+          const relatedTarget = e.relatedTarget as HTMLElement;
+          if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
+            setIsHovered(false);
+          }
+        }}
       >
-        <Image
-          src={libraryAssetTableIcon}
-          alt=""
-          width={16}
-          height={16}
-          className={styles.referenceDiamondIcon}
-        />
-        {hasValue && assetId && (
-          <div
-            ref={setAvatarRef}
-            onMouseEnter={(e) => {
-              e.stopPropagation();
-              if (assetId && avatarRef.current) {
-                onAvatarMouseEnter(assetId, avatarRef.current);
-              }
-            }}
-            onMouseLeave={(e) => {
-              e.stopPropagation();
-              onAvatarMouseLeave();
-            }}
-            className={styles.referenceAvatarWrapper}
-          >
-            <Avatar
-              size={16}
-              style={{ 
-                backgroundColor: getAvatarColor(assetId, assetName),
-                borderRadius: '2.4px'
+        {hasValue && assetId ? (
+          <div className={styles.referenceSelectedAssetLeft}>
+            <Image
+              src={libraryAssetTableIcon}
+              alt=""
+              width={16}
+              height={16}
+              className={styles.referenceDiamondIcon}
+            />
+            <div
+              ref={setAvatarRef}
+              onMouseEnter={(e) => {
+                e.stopPropagation();
+                setIsHovered(true); // Keep hovered state when over avatar
+                if (assetId && avatarRef.current) {
+                  onAvatarMouseEnter(assetId, avatarRef.current);
+                }
               }}
-              className={styles.referenceAvatar}
+              onMouseLeave={(e) => {
+                e.stopPropagation();
+                // Only hide if mouse is not moving to another part of the wrapper
+                const relatedTarget = e.relatedTarget as HTMLElement;
+                if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
+                  setIsHovered(false);
+                  onAvatarMouseLeave();
+                }
+              }}
+              className={styles.referenceAvatarWrapper}
             >
-              {getAvatarText(assetName)}
-            </Avatar>
+              <Avatar
+                size={16}
+                style={{ 
+                  backgroundColor: getAvatarColor(assetId, assetName),
+                  borderRadius: '2.4px'
+                }}
+                className={styles.referenceAvatar}
+              >
+                {getAvatarText(assetName)}
+              </Avatar>
+            </div>
+            <Image
+              src={isHovered ? libraryAssetTable3Icon : libraryAssetTable2Icon}
+              alt=""
+              width={16}
+              height={16}
+              className={styles.referenceExpandIcon}
+              onMouseEnter={() => {
+                setIsHovered(true);
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onOpenReferenceModal(property, assetId, rowId);
+              }}
+              onDoubleClick={(e) => {
+                // Prevent double click from bubbling to cell
+                e.stopPropagation();
+              }}
+            />
           </div>
+        ) : (
+          <>
+            <Image
+              src={libraryAssetTableIcon}
+              alt=""
+              width={16}
+              height={16}
+              className={styles.referenceDiamondIcon}
+            />
+            <Image
+              src={isHovered ? libraryAssetTable3Icon : libraryAssetTable2Icon}
+              alt=""
+              width={16}
+              height={16}
+              className={styles.referenceArrowIcon}
+              onMouseEnter={() => {
+                setIsHovered(true);
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                onOpenReferenceModal(property, assetId, rowId);
+              }}
+              onDoubleClick={(e) => {
+                // Prevent double click from bubbling to cell
+                e.stopPropagation();
+              }}
+            />
+          </>
         )}
-        <Image
-          src={isHovered ? libraryAssetTable3Icon : libraryAssetTable2Icon}
-          alt=""
-          width={16}
-          height={16}
-          className={styles.referenceArrowIcon}
-          onClick={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            onOpenReferenceModal(property, assetId, rowId);
-          }}
-          onDoubleClick={(e) => {
-            // Prevent double click from bubbling to cell
-            e.stopPropagation();
-          }}
-        />
       </div>
     );
   }, (prevProps, nextProps) => {
@@ -1506,8 +1556,10 @@ export function LibraryAssetsTable({
                           </button>
                         </div>
                       ) : (
-                        // Other fields: show text only
-                        display ? display : <span className={styles.placeholderValue}>—</span>
+                        // Other fields: show text with ellipsis for long content
+                        <span className={styles.cellText}>
+                          {display ? display : <span className={styles.placeholderValue}>—</span>}
+                        </span>
                       )}
                     </td>
                   );
@@ -1752,7 +1804,16 @@ export function LibraryAssetsTable({
                         </div>
                         <div className={styles.assetCardDetailItem}>
                           <span className={styles.assetCardDetailLabel}>From Library</span>
-                          <div className={styles.assetCardLibraryLink}>
+                          <div 
+                            className={styles.assetCardLibraryLink}
+                            onClick={() => {
+                              const projectId = params.projectId;
+                              if (projectId && hoveredAssetDetails?.libraryId) {
+                                router.push(`/${projectId}/${hoveredAssetDetails.libraryId}`);
+                              }
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          >
                             <Image
                               src={libraryAssetTable5Icon}
                               alt=""

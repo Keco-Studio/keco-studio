@@ -94,13 +94,12 @@
   font-size: 13px;
   line-height: 1.5;
   color: #111827;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  overflow: visible;
+  overflow: hidden;
   cursor: pointer;
   transition: background-color 0.15s ease;
   border-right: 1px solid #e2e8f0;
   position: relative;
+  max-width: 0; /* Required for text-overflow to work with table-layout: fixed */
 }
 
 .cell:hover {
@@ -117,11 +116,19 @@
 }
 
 .cellText {
-  flex: 1;
+  display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
+}
+
+/* When inside flex container (cellContent), use flex properties */
+.cellContent .cellText {
+  flex: 1;
+  display: block;
 }
 
 /* View detail button (only in name field) */
@@ -541,9 +548,33 @@
   display: inline-block;
 }
 
+.referenceSelectedAssetLeft {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #5E00FF14;
+  border-radius: 5px;
+  padding: 4px;
+}
+
+.referenceSelectedAssetLeft .referenceDiamondIcon {
+  flex-shrink: 0;
+}
+
+.referenceExpandIcon {
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.referenceExpandIcon:hover {
+  opacity: 0.8;
+}
+
 .referenceAvatarWrapper {
   position: relative;
   display: inline-flex;
+  align-items: center;
   cursor: pointer;
 }
 

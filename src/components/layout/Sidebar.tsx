@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Tree, Tooltip } from "antd";
 import { DataNode, EventDataNode } from "antd/es/tree";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSupabase } from "@/lib/SupabaseContext";
 import { NewProjectModal } from "@/components/projects/NewProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
@@ -88,6 +89,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   // Resolve display name: prefer username, then full_name, then email
   const displayName = userProfile?.username || userProfile?.full_name || userProfile?.email || "Guest";
   const isGuest = !userProfile;
@@ -143,15 +145,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     await supabase.auth.signOut();
   };
 
-  // data state
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [libraries, setLibraries] = useState<Library[]>([]);
+  // data state - managed by React Query, no need for manual state
   const [assets, setAssets] = useState<Record<string, AssetRow[]>>({});
 
-  const [loadingProjects, setLoadingProjects] = useState(false);
-  const [loadingFolders, setLoadingFolders] = useState(false);
-  const [loadingLibraries, setLoadingLibraries] = useState(false);
   const [showProjectModal, setShowProjectModal] = useState(false);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
@@ -160,9 +156,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
-  // Loading states for after creation
-  const [loadingAfterCreate, setLoadingAfterCreate] = useState(false);
-  const [createMessage, setCreateMessage] = useState<string>('');
   
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -202,71 +195,75 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     return { projectId, libraryId, folderId, isPredefinePage, assetId, isLibraryPage };
   }, [pathname]);
 
-  // Track if a fetch is already in progress to prevent duplicate requests
-  const fetchingProjectsRef = useRef(false);
-  const fetchingFoldersLibrariesRef = useRef<string | null>(null);
+  // Use React Query to fetch projects list
+  // queryKey: ['projects'] is the unique cache identifier
+  // queryFn: data fetching function, React Query will automatically cache the result
+  const {
+    data: projects = [],
+    isLoading: loadingProjects,
+    error: projectsError,
+  } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => listProjects(supabase),
+    // Data is considered fresh for 2 minutes, won't refetch (reduces duplicate requests)
+    staleTime: 2 * 60 * 1000,
+    // Don't refetch if data is in cache and not expired
+    refetchOnMount: false,
+    // Don't auto-refresh when switching tabs
+    refetchOnWindowFocus: false,
+    // Enable request deduplication: requests with the same queryKey will be automatically deduplicated
+    queryKeyHashFn: undefined, // Use default hash function
+  });
 
-  const fetchProjects = useCallback(async () => {
-    // Prevent duplicate concurrent requests
-    if (fetchingProjectsRef.current) {
-      return;
-    }
-    
-    fetchingProjectsRef.current = true;
-    setLoadingProjects(true);
-    setError(null);
-    try {
-      const data = await listProjects(supabase);
-      setProjects(data);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load projects");
-    } finally {
-      setLoadingProjects(false);
-      fetchingProjectsRef.current = false;
-    }
-  }, [supabase]);
-
-  const fetchFoldersAndLibraries = useCallback(async (projectId?: string | null) => {
-    if (!projectId) {
-      setFolders([]);
-      setLibraries([]);
-      setAssets({});
-      return;
-    }
-    
-    // Prevent duplicate concurrent requests for the same project
-    if (fetchingFoldersLibrariesRef.current === projectId) {
-      return;
-    }
-    
-    fetchingFoldersLibrariesRef.current = projectId;
-    setLoadingFolders(true);
-    setLoadingLibraries(true);
-    setError(null);
-    try {
+  // Use React Query to fetch folders and libraries
+  // Only execute query when projectId exists
+  const {
+    data: foldersAndLibraries,
+    isLoading: loadingFoldersAndLibraries,
+  } = useQuery({
+    queryKey: ['folders-libraries', currentIds.projectId],
+    queryFn: async () => {
+      if (!currentIds.projectId) {
+        return { folders: [], libraries: [] };
+      }
       const [foldersData, librariesData] = await Promise.all([
-        listFolders(supabase, projectId),
-        listLibraries(supabase, projectId),
+        listFolders(supabase, currentIds.projectId!),
+        listLibraries(supabase, currentIds.projectId!),
       ]);
-      setFolders(foldersData);
-      setLibraries(librariesData);
-    } catch (e: any) {
-      setError(e?.message || "Failed to load folders and libraries");
-    } finally {
-      setLoadingFolders(false);
-      setLoadingLibraries(false);
-      fetchingFoldersLibrariesRef.current = null;
-    }
-  }, [supabase]);
+      return { folders: foldersData, libraries: librariesData };
+    },
+    enabled: !!currentIds.projectId, // Only query when projectId exists
+    staleTime: 2 * 60 * 1000, // Data is considered fresh for 2 minutes, reduces duplicate requests
+    // Don't refetch if data is in cache and not expired
+    refetchOnMount: false, // Use cache to avoid duplicate requests
+    // Don't auto-refresh when switching tabs
+    refetchOnWindowFocus: false,
+    // Use placeholder data to avoid flickering
+    placeholderData: (previousData) => previousData,
+    // Enable request deduplication: requests with the same queryKey will be automatically deduplicated
+    queryKeyHashFn: undefined, // Use default hash function
+  });
 
+  // For compatibility with existing code, set loading states separately
+  const loadingFolders = loadingFoldersAndLibraries;
+  const loadingLibraries = loadingFoldersAndLibraries;
+
+  // Extract data from React Query result
+  const folders = foldersAndLibraries?.folders || [];
+  const libraries = foldersAndLibraries?.libraries || [];
+
+  // Handle errors
   useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+    if (projectsError) {
+      setError((projectsError as any)?.message || "Failed to load projects");
+    }
+  }, [projectsError]);
 
   // Listen to projectCreated event to refresh Sidebar data when project is created from other pages
+  // Use React Query's invalidateQueries to refresh cache, React Query will automatically refetch data
   useEffect(() => {
     const handleProjectCreated = () => {
-      fetchProjects();
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     };
 
     window.addEventListener('projectCreated' as any, handleProjectCreated as EventListener);
@@ -274,22 +271,23 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     return () => {
       window.removeEventListener('projectCreated' as any, handleProjectCreated as EventListener);
     };
-  }, [fetchProjects]);
+  }, [queryClient]);
 
   // Track current project ID to detect project switching
   const prevProjectIdRef = useRef<string | null>(null);
   // Track whether expanded state has been initialized (to avoid re-expanding after user manually collapses)
   const hasInitializedExpandedKeys = useRef(false);
 
+  // React Query will automatically refetch data when currentIds.projectId changes
+  // No need to manually call fetchFoldersAndLibraries
   useEffect(() => {
-    fetchFoldersAndLibraries(currentIds.projectId);
     // Reset expanded state and initialization flag when switching projects
     if (prevProjectIdRef.current !== currentIds.projectId) {
       setExpandedKeys([]);
       hasInitializedExpandedKeys.current = false;
       prevProjectIdRef.current = currentIds.projectId;
     }
-  }, [currentIds.projectId, fetchFoldersAndLibraries]);
+  }, [currentIds.projectId]);
 
   // Sync selectedFolderId from URL
   useEffect(() => {
@@ -314,34 +312,54 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   }, [folders]);
 
   // Listen to library/folder created/deleted events to refresh Sidebar data when changed from other pages
+  // Use React Query's invalidateQueries to refresh cache
+  // Add debounce mechanism to avoid frequent invalidateQueries causing duplicate requests
+  const invalidateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
   useEffect(() => {
+    const invalidateFoldersAndLibraries = (projectId: string | null) => {
+      if (!projectId) return;
+      
+      // Clear previous timer to implement debounce
+      if (invalidateTimeoutRef.current) {
+        clearTimeout(invalidateTimeoutRef.current);
+      }
+      
+      // Delay 100ms execution to avoid triggering multiple requests when quickly switching projects
+      invalidateTimeoutRef.current = setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['folders-libraries', projectId] });
+      }, 100);
+    };
+
     const handleLibraryCreated = (event: CustomEvent) => {
-      // Refresh folders and libraries data for current project
-      if (currentIds.projectId) {
-        fetchFoldersAndLibraries(currentIds.projectId);
+      // Get projectId from event detail, refresh cache if current project matches
+      const eventProjectId = event.detail?.projectId || currentIds.projectId;
+      if (eventProjectId === currentIds.projectId) {
+        invalidateFoldersAndLibraries(currentIds.projectId);
       }
     };
 
-    const handleFolderCreated = () => {
-      // Refresh folders and libraries data for current project
-      if (currentIds.projectId) {
-        fetchFoldersAndLibraries(currentIds.projectId);
+    const handleFolderCreated = (event: CustomEvent) => {
+      // Get projectId from event detail, refresh cache if current project matches
+      const eventProjectId = event.detail?.projectId || currentIds.projectId;
+      if (eventProjectId === currentIds.projectId) {
+        invalidateFoldersAndLibraries(currentIds.projectId);
       }
     };
 
     const handleLibraryDeleted = (event: CustomEvent) => {
-      // Refresh folders and libraries data for current project
+      // Refresh cache for the project where the library was deleted
       const deletedProjectId = event.detail?.projectId;
       if (currentIds.projectId && deletedProjectId === currentIds.projectId) {
-        fetchFoldersAndLibraries(currentIds.projectId);
+        invalidateFoldersAndLibraries(currentIds.projectId);
       }
     };
 
     const handleFolderDeleted = (event: CustomEvent) => {
-      // Refresh folders and libraries data for current project
+      // Refresh cache for the project where the folder was deleted
       const deletedProjectId = event.detail?.projectId;
       if (currentIds.projectId && deletedProjectId === currentIds.projectId) {
-        fetchFoldersAndLibraries(currentIds.projectId);
+        invalidateFoldersAndLibraries(currentIds.projectId);
       }
     };
 
@@ -351,12 +369,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     window.addEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
     
     return () => {
+      // Clear timer
+      if (invalidateTimeoutRef.current) {
+        clearTimeout(invalidateTimeoutRef.current);
+      }
       window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
       window.removeEventListener('folderCreated' as any, handleFolderCreated as EventListener);
       window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
       window.removeEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
     };
-  }, [currentIds.projectId, fetchFoldersAndLibraries]);
+  }, [currentIds.projectId, queryClient]);
 
   const fetchingAssetsRef = useRef<Set<string>>(new Set());
 
@@ -473,7 +495,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const deletedFolderId = libraryToDelete?.folder_id || null;
       
       await deleteLibrary(supabase, libraryId);
-      fetchFoldersAndLibraries(currentIds.projectId);
+      // Use React Query to refresh cache
+      if (currentIds.projectId) {
+        queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+      }
       
       // Dispatch event to notify ProjectPage and FolderPage to refresh
       window.dispatchEvent(new CustomEvent('libraryDeleted', {
@@ -487,7 +512,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } catch (err: any) {
       setError(err?.message || 'Failed to delete library');
     }
-  }, [supabase, currentIds.projectId, currentIds.libraryId, libraries, fetchFoldersAndLibraries, router]);
+  }, [supabase, currentIds.projectId, currentIds.libraryId, libraries, queryClient, router]);
 
   const handleFolderDelete = useCallback(async (folderId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -498,7 +523,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const isViewingLibraryInFolder = librariesInFolder.some(lib => lib.id === currentIds.libraryId);
       
       await deleteFolder(supabase, folderId);
-      fetchFoldersAndLibraries(currentIds.projectId);
+      // Use React Query to refresh cache
+      if (currentIds.projectId) {
+        queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+      }
       
       // If currently viewing the folder page or a library in this folder, navigate to project page
       if (currentIds.folderId === folderId || isViewingLibraryInFolder) {
@@ -509,7 +537,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } catch (err: any) {
       setError(err?.message || 'Failed to delete folder');
     }
-  }, [supabase, currentIds.projectId, currentIds.folderId, currentIds.libraryId, libraries, fetchFoldersAndLibraries, router]);
+  }, [supabase, currentIds.projectId, currentIds.folderId, currentIds.libraryId, libraries, queryClient, router]);
 
   const treeData: DataNode[] = useMemo(() => {
     if (!currentIds.projectId) return [];
@@ -1016,7 +1044,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       if (contextMenu.type === 'project') {
         if (window.confirm('Delete this project? All libraries under it will be removed.')) {
           deleteProject(supabase, contextMenu.id).then(() => {
-            fetchProjects();
+            // Use React Query to refresh cache
+            queryClient.invalidateQueries({ queryKey: ['projects'] });
             // If currently viewing the deleted project, navigate to home
             if (currentIds.projectId === contextMenu.id) {
               router.push('/');
@@ -1030,7 +1059,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           const libraryToDelete = libraries.find(lib => lib.id === contextMenu.id);
           const deletedFolderId = libraryToDelete?.folder_id || null;
           deleteLibrary(supabase, contextMenu.id).then(() => {
-            fetchFoldersAndLibraries(currentIds.projectId!);
+            // Use React Query to refresh cache
+            if (currentIds.projectId) {
+              queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+            }
             window.dispatchEvent(new CustomEvent('libraryDeleted', {
               detail: { folderId: deletedFolderId, libraryId: contextMenu.id, projectId: currentIds.projectId }
             }));
@@ -1049,7 +1081,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           const isViewingLibraryInFolder = librariesInFolder.some(lib => lib.id === currentIds.libraryId);
           
           deleteFolder(supabase, contextMenu.id).then(() => {
-            fetchFoldersAndLibraries(currentIds.projectId!);
+            // Use React Query to refresh cache
+            if (currentIds.projectId) {
+              queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+            }
             window.dispatchEvent(new CustomEvent('folderDeleted', {
               detail: { folderId: contextMenu.id, projectId: currentIds.projectId }
             }));
@@ -1097,11 +1132,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (!window.confirm('Delete this project? All libraries under it will be removed.')) return;
     try {
       await deleteProject(supabase, projectId);
+      // Use React Query to refresh cache
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       if (currentIds.projectId === projectId) {
         router.push('/');
       }
-      fetchProjects();
-      setLibraries([]);
     } catch (err: any) {
       setError(err?.message || 'Failed to delete project');
     }
@@ -1109,24 +1144,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const handleProjectCreated = async (projectId: string, defaultFolderId: string) => {
     // console.log('Project created:', { projectId, defaultFolderId });
     setShowProjectModal(false);
-    setLoadingAfterCreate(true);
-    setCreateMessage('Project created, loading...');
-    await fetchProjects();
-    // Dispatch event to notify other components (like ProjectsPage) to refresh
+    
+    // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
+    // All components (Sidebar, ProjectsPage) will listen to this event and refresh their respective caches
     window.dispatchEvent(new CustomEvent('projectCreated'));
-    // Navigate to the new project and refresh folders/libraries
+    
     if (projectId) {
       router.push(`/${projectId}`);
-      // Refresh folders and libraries after navigation
-      // Use setTimeout to ensure navigation completes first
-      setTimeout(async () => {
-        await fetchFoldersAndLibraries(projectId);
-        setLoadingAfterCreate(false);
-        setCreateMessage('');
-      }, 100);
-    } else {
-      setLoadingAfterCreate(false);
-      setCreateMessage('');
+      // React Query will automatically fetch folders and libraries when currentIds.projectId changes
+      // No need to manually call fetchFoldersAndLibraries
     }
   };
 
@@ -1134,27 +1160,23 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setShowLibraryModal(false);
     const createdFolderId = selectedFolderId;
     setSelectedFolderId(null); // Clear selection after creation
-    setLoadingAfterCreate(true);
-    setCreateMessage('Library created, loading...');
-    await fetchFoldersAndLibraries(currentIds.projectId);
-    setLoadingAfterCreate(false);
-    setCreateMessage('');
-    // Dispatch event to notify FolderPage to refresh
+    
+    // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
+    // All components (Sidebar, ProjectPage, FolderPage) will listen to this event and refresh their respective caches
     window.dispatchEvent(new CustomEvent('libraryCreated', {
-      detail: { folderId: createdFolderId, libraryId }
+      detail: { folderId: createdFolderId, libraryId, projectId: currentIds.projectId }
     }));
   };
 
   const handleFolderCreated = async () => {
     setShowFolderModal(false);
     setSelectedFolderId(null); // Clear selection after creation
-    setLoadingAfterCreate(true);
-    setCreateMessage('Folder created, loading...');
-    await fetchFoldersAndLibraries(currentIds.projectId);
-    setLoadingAfterCreate(false);
-    setCreateMessage('');
-    // Dispatch event to notify ProjectPage to refresh
-    window.dispatchEvent(new CustomEvent('folderCreated'));
+    
+    // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
+    // All components (Sidebar, ProjectPage) will listen to this event and refresh their respective caches
+    window.dispatchEvent(new CustomEvent('folderCreated', {
+      detail: { projectId: currentIds.projectId }
+    }));
   };
 
   const handleAddButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
@@ -1233,8 +1255,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 />
               </button>
             </div>
-            {loadingProjects && <div className={styles.hint}>Loading projects...</div>}
-            {loadingAfterCreate && <div className={styles.loadingAfterCreate}>{createMessage}</div>}
             <div className={styles.sectionList}>
               {projects.map((project) => {
                 const isActive = currentIds.projectId === project.id;
@@ -1321,9 +1341,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     />
                   </button>
                 </div>
-              )}
-              {(loadingFolders || loadingLibraries) && !currentIds.isPredefinePage && (
-                <div className={styles.hint}>Loading libraries...</div>
               )}
               <div className={styles.sectionList}>
                 {currentIds.isPredefinePage && currentIds.libraryId ? (

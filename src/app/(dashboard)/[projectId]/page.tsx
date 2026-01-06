@@ -104,8 +104,12 @@ export default function ProjectPage() {
 
   // Listen for folder and library creation/deletion events to refresh the list
   useEffect(() => {
-    const handleFolderCreated = () => {
-      fetchData();
+    const handleFolderCreated = (event: CustomEvent) => {
+      // 只刷新当前项目的数据，避免重复请求
+      const eventProjectId = event.detail?.projectId;
+      if (!eventProjectId || eventProjectId === projectId) {
+        fetchData();
+      }
     };
 
     const handleFolderDeleted = (event: CustomEvent) => {
@@ -117,9 +121,11 @@ export default function ProjectPage() {
     };
 
     const handleLibraryCreated = (event: CustomEvent) => {
-      // Refresh data whenever a library is created in the current project
-      // This includes both root level libraries and libraries in folders
-      fetchData();
+      // 只刷新当前项目的数据，避免重复请求
+      const eventProjectId = event.detail?.projectId;
+      if (!eventProjectId || eventProjectId === projectId) {
+        fetchData();
+      }
     };
 
     const handleLibraryDeleted = (event: CustomEvent) => {
@@ -224,17 +230,19 @@ export default function ProjectPage() {
 
   const handleFolderCreated = () => {
     setShowFolderModal(false);
-    fetchData();
-    // Dispatch event to notify Sidebar
-    window.dispatchEvent(new CustomEvent('folderCreated'));
+    // 只发送事件，让所有监听器统一刷新，避免重复请求
+    // 事件监听器会检查 projectId 并刷新当前页面的数据
+    window.dispatchEvent(new CustomEvent('folderCreated', {
+      detail: { projectId }
+    }));
   };
 
   const handleLibraryCreated = (libraryId: string) => {
     setShowLibraryModal(false);
-    fetchData();
-    // Dispatch event to notify Sidebar
+    // 只发送事件，让所有监听器统一刷新，避免重复请求
+    // 事件监听器会检查 projectId 并刷新当前页面的数据
     window.dispatchEvent(new CustomEvent('libraryCreated', {
-      detail: { folderId: null, libraryId }
+      detail: { folderId: null, libraryId, projectId }
     }));
   };
 

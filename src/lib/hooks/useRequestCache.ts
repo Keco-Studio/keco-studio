@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Request Caching and Deduplication Hook
  * Prevents duplicate requests and caches results

@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { listProjects, Project } from '@/lib/services/projectService';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NewProjectModal } from '@/components/projects/NewProjectModal';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import projectEmptyIcon from '@/app/assets/images/projectEmptyIcon.svg';
@@ -15,33 +16,28 @@ import styles from './page.module.css';
 export default function ProjectsPage() {
   const supabase = useSupabase();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { setShowCreateProjectBreadcrumb } = useNavigation();
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  const fetchProjects = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const data = await listProjects(supabase);
-      setProjects(data);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load projects');
-    } finally {
-      setLoading(false);
-    }
-  }, [supabase]);
+  // Use React Query to fetch projects list, sharing the same cache with Sidebar
+  // This ensures data synchronization between both components after project deletion
+  const {
+    data: projects = [],
+    isLoading: loading,
+    error: projectsError,
+  } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => listProjects(supabase),
+    staleTime: 2 * 60 * 1000, // Keep consistent with Sidebar
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
 
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
-
-  // Listen to projectCreated event to refresh when project is created from Sidebar
+  // Listen to projectCreated event to refresh cache
   useEffect(() => {
     const handleProjectCreated = () => {
-      fetchProjects();
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     };
 
     window.addEventListener('projectCreated' as any, handleProjectCreated as EventListener);
@@ -49,7 +45,7 @@ export default function ProjectsPage() {
     return () => {
       window.removeEventListener('projectCreated' as any, handleProjectCreated as EventListener);
     };
-  }, [fetchProjects]);
+  }, [queryClient]);
 
   useEffect(() => {
     // Show create project breadcrumb when there are no projects
@@ -60,7 +56,8 @@ export default function ProjectsPage() {
   }, [loading, projects.length, setShowCreateProjectBreadcrumb]);
 
   const handleCreated = (projectId: string) => {
-    fetchProjects();
+    // Refresh cache
+    queryClient.invalidateQueries({ queryKey: ['projects'] });
     // Dispatch event to notify Sidebar to refresh
     window.dispatchEvent(new CustomEvent('projectCreated'));
     router.push(`/${projectId}`);
@@ -85,7 +82,7 @@ export default function ProjectsPage() {
       </div>
 
       {loading && <div>Loading projects...</div>}
-      {error && <div className={styles.error}>{error}</div>}
+      {projectsError && <div className={styles.error}>{(projectsError as any)?.message || 'Failed to load projects'}</div>}
 
       {!loading && projects.length === 0 ? (
         <div className={styles.emptyStateWrapper}>

@@ -3,7 +3,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Input, Select, Avatar, Spin } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import Image from 'next/image';
+import { useRouter, useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import libraryAssetTable4Icon from '@/app/assets/images/LibraryAssetTable4.svg';
 import libraryAssetTable5Icon from '@/app/assets/images/LibraryAssetTable5.svg';
@@ -13,6 +15,10 @@ import applyReference2Icon from '@/app/assets/images/ApplyReference2.svg';
 import applyReference3Icon from '@/app/assets/images/ApplyReference3.svg';
 import applyReference4Icon from '@/app/assets/images/ApplyReference4.svg';
 import projectIcon from '@/app/assets/images/projectIcon.svg';
+import assetRefMenuLibIcon from '@/app/assets/images/assetRefMenuLibIcon.svg';
+import assetRefMenuGridIcon from '@/app/assets/images/assetRefMenuGridIcon.svg';
+import assetRefDetailLibIcon from '@/app/assets/images/assetRefDetailLibIcon.svg';
+import assetRefDetailLibExpandIcon from '@/app/assets/images/assetRefDetailLibExpandIcon.svg';
 import styles from './AssetReferenceModal.module.css';
 
 type Asset = {
@@ -43,6 +49,8 @@ export function AssetReferenceModal({
   onApply,
 }: AssetReferenceModalProps) {
   const supabase = useSupabase();
+  const router = useRouter();
+  const params = useParams();
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [filteredAssets, setFilteredAssets] = useState<Asset[]>([]);
@@ -54,6 +62,7 @@ export function AssetReferenceModal({
   const [hoveredAssetDetails, setHoveredAssetDetails] = useState<{
     name: string;
     libraryName: string;
+    libraryId: string;
   } | null>(null);
   const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -222,6 +231,7 @@ export function AssetReferenceModal({
           setHoveredAssetDetails({
             name: data.name,
             libraryName: (data.libraries as any)?.name || 'Unknown Library',
+            libraryId: data.library_id,
           });
         }
       } catch (error) {
@@ -300,65 +310,36 @@ export function AssetReferenceModal({
         </div>
 
         <div className={styles.content}>
-          <div className={styles.searchContainer}>
-            <div className={styles.searchInputWrapper}>
-              <Image
-                src={applyReferenceIcon}
-                alt="Search"
-                width={20}
-                height={20}
-                className={styles.searchIcon}
-              />
-              <Input
-                placeholder="Search"
-                value={searchText}
-                onChange={(e) => setSearchText(e.target.value)}
-                className={styles.searchInput}
-                variant="borderless"
-              />
-            </div>
-          </div>
-
-          <div className={styles.libraryContainer}>
-            <div className={styles.librarySelectWrapper}>
-              <Image
-                src={projectIcon}
-                alt="Library"
-                width={20}
-                height={20}
-                className={styles.libraryIcon}
-              />
-              <div className={styles.selectWithArrow}>
-                <Select
-                  value={selectedLibraryId}
-                  onChange={setSelectedLibraryId}
-                  className={styles.librarySelect}
-                  variant="borderless"
-                  suffixIcon={null}
-                  popupMatchSelectWidth={false}
-                >
-                  {libraries.map((lib) => (
-                    <Select.Option key={lib.id} value={lib.id}>
-                      {lib.name}
-                    </Select.Option>
-                  ))}
-                </Select>
-                <Image
-                  src={applyReference3Icon}
-                  alt=""
-                  width={16}
-                  height={16}
-                  className={styles.selectArrowIcon}
-                />
-              </div>
-            </div>
-            <Image
-              src={applyReference2Icon}
-              alt="View toggle"
-              width={20}
-              height={20}
-              className={styles.viewToggleIcon}
+          <div className={styles.dropdownContentHeader}>
+            <Input
+              prefix={<SearchOutlined />}
+              placeholder="Search"
+              value={searchText}
+              onChange={(e) => setSearchText(e.target.value)}
+              className={styles.searchInput}
             />
+            <div className={styles.librarySelectContainer}>
+              <Select
+                value={selectedLibraryId}
+                onChange={setSelectedLibraryId}
+                className={styles.librarySelect}
+                getPopupContainer={(triggerNode) => {
+                  // Render dropdown inside modal container to ensure proper z-index
+                  return modalRef.current || document.body;
+                }}
+                popupMatchSelectWidth={true}
+              >
+                {libraries.map((lib) => (
+                  <Select.Option key={lib.id} value={lib.id}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <Image src={assetRefMenuLibIcon} alt="" width={16} height={16} />
+                      <span>{lib.name}</span>
+                    </div>
+                  </Select.Option>
+                ))}
+              </Select>
+              <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} />
+            </div>
           </div>
 
           <div className={styles.assetsGrid}>
@@ -459,21 +440,28 @@ export function AssetReferenceModal({
                         </div>
                         <div className={styles.assetCardDetailItem}>
                           <span className={styles.assetCardDetailLabel}>From Library</span>
-                          <div className={styles.assetCardLibraryLink}>
+                          <div 
+                            className={styles.assetCardLibraryLink}
+                            onClick={() => {
+                              const projectId = params.projectId;
+                              if (projectId && hoveredAssetDetails?.libraryId) {
+                                router.push(`/${projectId}/${hoveredAssetDetails.libraryId}`);
+                              }
+                            }}
+                            style={{ cursor: 'pointer' }}
+                          >
                             <Image
-                              src={libraryAssetTable5Icon}
+                              src={assetRefDetailLibIcon}
                               alt=""
-                              width={16}
-                              height={16}
-                              className={styles.assetCardLibraryIcon}
+                              width={20}
+                              height={20}
                             />
                             <span className={styles.assetCardLibraryName}>{hoveredAssetDetails.libraryName}</span>
                             <Image
-                              src={libraryAssetTable6Icon}
+                              src={assetRefDetailLibExpandIcon}
                               alt=""
-                              width={16}
-                              height={16}
-                              className={styles.assetCardLibraryArrow}
+                              width={20}
+                              height={20}
                             />
                           </div>
                         </div>

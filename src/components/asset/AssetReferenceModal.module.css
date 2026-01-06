@@ -72,128 +72,70 @@
   gap: 16px;
 }
 
-.searchContainer {
-  width: 100%;
-}
-
-.searchInputWrapper {
+.dropdownContentHeader {
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 27px;
-  background: #ffffff;
-  transition: border-color 0.2s;
-}
-
-.searchInputWrapper:focus-within {
-  border-color: #8726ee;
-  outline: none;
-}
-
-.searchIcon {
-  flex-shrink: 0;
-  opacity: 0.6;
+  justify-content: space-between;
+  gap: 15px;
 }
 
 .searchInput {
-  flex: 1;
-  border: none;
-  padding: 0;
-  font-size: 14px;
-}
-
-.searchInput:focus {
-  outline: none;
-  box-shadow: none;
-}
-
-.libraryContainer {
-  display: flex;
-  align-items: center;
-  gap: 12px;
   width: 100%;
-  position: relative;
+  border-radius: 20px;
+  height: 38px;
+  font-size: 16px;
 }
 
-.librarySelectWrapper {
+.librarySelectContainer {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  background: #ffffff;
-  transition: border-color 0.2s;
-  flex-shrink: 0;
-}
-
-.libraryIcon {
-  flex-shrink: 0;
-}
-
-.selectWithArrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+  justify-content: space-between;
   position: relative;
 }
 
-.librarySelect {
-  border: none;
-  padding: 0;
+.librarySelectContainer > :global(.ant-select) {
   width: auto;
-  min-width: 60px;
-}
-
-.librarySelect :global(.ant-select-selector) {
-  border: none !important;
-  padding: 0 !important;
-  box-shadow: none !important;
-  width: auto !important;
-  min-width: 0 !important;
-}
-
-.librarySelect :global(.ant-select-selection-item) {
-  padding: 0 !important;
-  font-size: 14px;
-  overflow: visible !important;
-  white-space: nowrap;
-}
-
-.librarySelect :global(.ant-select-selection-search) {
-  width: 0 !important;
-  margin: 0 !important;
-}
-
-.librarySelect :global(.ant-select-selection-placeholder) {
-  padding: 0 !important;
-}
-
-.librarySelect :global(.ant-select-arrow) {
-  display: none !important;
-}
-
-.selectArrowIcon {
+  min-width: 0;
   flex-shrink: 0;
-  opacity: 0.6;
+}
+
+.librarySelectContainer > img {
+  flex-shrink: 0;
+  margin-left: 8px;
   pointer-events: none;
 }
 
-.viewToggleIcon {
-  position: absolute;
-  right: 24px;
-  top: 50%;
-  transform: translateY(-50%);
-  flex-shrink: 0;
-  cursor: pointer;
-  opacity: 0.6;
-  transition: opacity 0.2s;
+/* Style the Select to match AssetReferenceSelector */
+:global(.ant-select-outlined:not(.ant-select-customize-input) .ant-select-selector){
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: #0000000F;
 }
 
-.viewToggleIcon:hover {
-  opacity: 1;
+:global(.ant-select-outlined:not(.ant-select-customize-input) .ant-select-selector:focus){
+  border-color: #000;
+}
+
+/* Ensure Select dropdown appears above modal */
+:global(.ant-select-dropdown) {
+  z-index: 2001 !important;
+}
+
+/* Limit dropdown width to match Select width - ensure it matches the Select component width */
+.librarySelectContainer :global(.ant-select-dropdown) {
+  min-width: auto !important;
+  max-width: fit-content !important;
+}
+
+/* Ensure Select component width is based on content, not full width */
+.librarySelectContainer :global(.ant-select) {
+  width: auto !important;
+}
+
+.librarySelectContainer :global(.ant-select-selector) {
+  width: auto !important;
 }
 
 .assetsGrid {

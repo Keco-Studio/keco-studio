@@ -140,10 +140,17 @@ export default function AuthForm() {
     setGoogleLoading(true);
 
     try {
+      // Ensure we use the current origin (localhost:3000 for dev, vercel.app for prod)
+      const currentOrigin = window.location.origin;
+      const redirectTo = `${currentOrigin}/auth/callback`;
+      
+      console.log('Google OAuth redirectTo:', redirectTo);
+      console.log('Current origin:', currentOrigin);
+      
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
+          redirectTo: redirectTo,
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -347,7 +354,7 @@ export default function AuthForm() {
                   type="button" 
                   className={styles.forgotPassword}
                   onClick={() => {
-                    // TODO: Implement forgot password functionality
+                    window.location.href = '/forgot-password';
                   }}
                 >
                   Forget you password?
