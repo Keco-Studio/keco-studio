@@ -69,9 +69,20 @@ export default function ProjectsPage() {
     };
   }, [loading, projects.length, setShowCreateProjectBreadcrumb]);
 
-  const handleCreated = (projectId: string) => {
-    // Refresh cache
+  const handleCreated = async (projectId: string) => {
+    // Refresh React Query cache
     queryClient.invalidateQueries({ queryKey: ['projects'] });
+    
+    // Also invalidate globalRequestCache for projects list
+    const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+    const { getCurrentUserId } = await import('@/lib/services/authorizationService');
+    try {
+      const userId = await getCurrentUserId(supabase);
+      globalRequestCache.invalidate(`projects:list:${userId}`);
+    } catch (err) {
+      console.warn('Failed to get userId for cache invalidation, clearing all project cache', err);
+    }
+    
     // Dispatch event to notify Sidebar to refresh
     window.dispatchEvent(new CustomEvent('projectCreated'));
     router.push(`/${projectId}`);

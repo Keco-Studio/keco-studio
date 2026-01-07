@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
+import { Tooltip } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject, Project } from '@/lib/services/projectService';
 import { getLibrary, Library } from '@/lib/services/libraryService';
@@ -132,6 +133,32 @@ export default function LibraryPage() {
     fetchData();
   }, [projectId, libraryId, supabase, fetchDefinitions]);
 
+  // Listen for asset changes (created/updated/deleted) from Sidebar or other sources
+  useEffect(() => {
+    const handleAssetChange = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ libraryId: string }>;
+      // Only refresh if the event is for this library
+      if (customEvent.detail?.libraryId === libraryId) {
+        try {
+          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+          setAssetRows(rows);
+        } catch (e: any) {
+          console.error('Failed to refresh assets:', e);
+        }
+      }
+    };
+
+    window.addEventListener('assetCreated', handleAssetChange);
+    window.addEventListener('assetUpdated', handleAssetChange);
+    window.addEventListener('assetDeleted', handleAssetChange);
+
+    return () => {
+      window.removeEventListener('assetCreated', handleAssetChange);
+      window.removeEventListener('assetUpdated', handleAssetChange);
+      window.removeEventListener('assetDeleted', handleAssetChange);
+    };
+  }, [libraryId, supabase]);
+
   const handleValueChange = (fieldId: string, value: any) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
   };
@@ -251,7 +278,15 @@ export default function LibraryPage() {
       <div className={styles.header}>
         <div>
           <h1 className={styles.title}>{library.name}</h1>
-          <div className={styles.subtitle}>{library.description}</div>
+          {library.description && (
+            <Tooltip title={library.description.length > 50 ? library.description : undefined}>
+              <div className={styles.subtitle}>
+                {library.description.length > 50
+                  ? `${library.description.slice(0, 50)}...`
+                  : library.description}
+              </div>
+            </Tooltip>
+          )}
         </div>
       </div>
 
