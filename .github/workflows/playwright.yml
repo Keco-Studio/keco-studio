@@ -9,6 +9,7 @@ jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
+    if: github.repository == 'Caerulean-ai/keco-studio'
     strategy:
       fail-fast: false
       matrix:
