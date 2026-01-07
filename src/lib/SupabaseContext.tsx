@@ -9,7 +9,7 @@
 
 import { createContext, useContext, useMemo, ReactNode } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { createTabIsolatedStorageAdapter } from './tabIsolatedStorageAdapter';
+import { createHybridStorageAdapter } from './hybridStorageAdapter';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -34,8 +34,8 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        // Use tab-isolated storage adapter to ensure each tab has independent sessions
-        storage: createTabIsolatedStorageAdapter(),
+        // Use hybrid storage adapter: cookies for persistence + sessionStorage for tab isolation
+        storage: createHybridStorageAdapter(),
       },
     });
   }, []); // Empty deps - create once per component mount (which is per tab)

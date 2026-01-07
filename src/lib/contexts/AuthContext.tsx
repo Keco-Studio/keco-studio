@@ -60,7 +60,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .single();
 
       if (error) {
-        console.error('Failed to fetch profile:', error);
+        // If profile doesn't exist (e.g., new user), that's okay
+        // Don't log as error, just set profile to null
+        if (error.code !== 'PGRST116') { // PGRST116 = no rows returned
+          console.error('Failed to fetch profile:', error);
+        }
         setUserProfile(null);
       } else if (profile) {
         setUserProfile(profile);
@@ -91,14 +95,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
-    let isInitialMount = true;
+    let initializationComplete = false;
 
     setIsLoading(true);
     setIsAuthenticated(false);
     setUserProfile(null);
 
+    // On initial mount, try to restore session from cookies
+    const initializeAuth = async () => {
+      if (!mounted) return;
+      
+      try {
+        // Try to get existing session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        if (mounted) {
+          if (session?.user && !error) {
+            // Session exists, set authenticated state immediately
+            setIsAuthenticated(true);
+            currentUserId.current = session.user.id;
+            await fetchUserProfile(session.user.id);
+          } else {
+            // No session, ensure we're in unauthenticated state
+            setIsAuthenticated(false);
+            setUserProfile(null);
+            currentUserId.current = null;
+          }
+        }
+      } catch (err) {
+        console.error('Failed to initialize auth session:', err);
+        if (mounted) {
+          setIsAuthenticated(false);
+          setUserProfile(null);
+          currentUserId.current = null;
+        }
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+          initializationComplete = true;
+        }
+      }
+    };
+
+    // Initialize auth state immediately
+    initializeAuth();
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+
+      // If initialization is not complete yet, let initializeAuth handle it
+      if (!initializationComplete && event === 'INITIAL_SESSION') {
+        return;
+      }
 
       try {
         const prevUserId = currentUserId.current;
@@ -112,9 +160,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await clearAllCaches();
           }
           
-          if (currentUserId.current !== newUserId) {
-            currentUserId.current = null;
-          }
+          currentUserId.current = newUserId;
           await fetchUserProfile(newUserId);
         } else {
           // User signed out or no session
@@ -133,9 +179,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUserProfile(null);
         currentUserId.current = null;
       } finally {
-        if (mounted && isInitialMount) {
+        // Ensure loading is false after any auth state change
+        if (mounted) {
           setIsLoading(false);
-          isInitialMount = false;
         }
       }
     });
