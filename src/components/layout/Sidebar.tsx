@@ -126,12 +126,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       if (onAuthRequest) {
         onAuthRequest();
       }
+      // Navigate to /projects after logout
+      router.push('/projects');
     } catch (error) {
       console.error('Logout failed', error);
       // Even if sign-out fails, still notify parent to keep state consistent
       if (onAuthRequest) {
         onAuthRequest();
       }
+      // Navigate to /projects even if logout fails
+      router.push('/projects');
     }
   };
 
