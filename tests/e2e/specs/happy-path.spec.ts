@@ -157,6 +157,9 @@ test.describe('Happy Path - Complete User Journey', () => {
       await libraryPage.navigateBackToLibraryFromPredefine();
       await libraryPage.waitForPageLoad();
       
+      // Wait for template to be fully saved to database (critical in parallel execution)
+      await libraryPage.page.waitForTimeout(2000);
+      
       // Create breed asset
       await assetPage.createAsset(predefinedTemplates.breed.name, assets.breed);
       await assetPage.expectAssetCreated();

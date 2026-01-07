@@ -55,7 +55,7 @@ test.describe('Destructive Tests - Delete Operations', () => {
     // This account has the same data structure as what happy-path.spec.ts creates
     const loginPage = new LoginPage(page);
     await loginPage.goto();
-    await loginPage.login(users.seedHappyPathRemote);
+    await loginPage.login(users.seedHappyPath);
     // await loginPage.login(users.seedHappyPath);
     await loginPage.expectLoginSuccess();
 

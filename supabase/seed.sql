@@ -279,5 +279,63 @@ happy_path_direct_library as (
 -- All data created successfully
 select 1 from happy_path_direct_library;
 
+-- ==========================================
+-- File Upload Security Test User
+-- This account has a project with a library that has image/file fields
+-- Used by file-upload-security.spec.ts and file-upload-security-manual.spec.ts
+-- ==========================================
+
+with fileupload_user as (
+  insert into auth.users (
+    id, instance_id, email, encrypted_password,
+    raw_app_meta_data, raw_user_meta_data,
+    created_at, updated_at, aud, role,
+    email_confirmed_at, confirmation_sent_at, last_sign_in_at,
+    confirmation_token, recovery_token, email_change_token_new,
+    email_change_token_current, email_change, reauthentication_token
+  )
+  select
+    gen_random_uuid(),
+    '00000000-0000-0000-0000-000000000000',
+    'seed-fileupload@mailinator.com',
+    crypt('Password123!', gen_salt('bf')),
+    jsonb_build_object('provider', 'email', 'providers', array['email']),
+    jsonb_build_object('username', 'seed-fileupload'),
+    now(), now(),
+    'authenticated', 'authenticated',
+    now(), now(), now(),
+    '', '', '', '', '', ''
+  returning id
+),
+fileupload_project as (
+  insert into public.projects (owner_id, name, description)
+  select id, 'File Upload Test Project', 'Project for testing file upload security'
+  from fileupload_user
+  returning id, owner_id
+),
+fileupload_library as (
+  insert into public.libraries (project_id, name, description)
+  select id, 'Media Assets Library', 'Library with image and file fields for upload testing'
+  from fileupload_project
+  returning id, project_id
+),
+fileupload_field_definitions as (
+  -- Add field definitions with image and file types
+  -- Section: "Media"
+  -- Fields: name (auto, string), thumbnail (image), document (file), description (string)
+  insert into public.library_field_definitions (library_id, label, data_type, section, order_index, required)
+  select 
+    l.id,
+    unnest(array['name', 'thumbnail', 'document', 'description']),
+    unnest(array['string', 'image', 'file', 'string']),
+    'Media',
+    unnest(array[0, 1, 2, 3]),
+    unnest(array[true, false, false, false])
+  from fileupload_library l
+  returning id, library_id, label, data_type
+)
+-- All data created successfully
+select 1 from fileupload_field_definitions;
+
 commit;
 

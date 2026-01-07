@@ -119,7 +119,7 @@ export class AssetPage {
       .or(this.page.locator('input[placeholder*="name" i]').first());
     
     // Fill in asset name (always required)
-    await expect(nameInput).toBeVisible({ timeout: 10000 });
+    await expect(nameInput).toBeVisible({ timeout: 30000 });
     await nameInput.fill(asset.name);
 
     // Fill in additional fields based on template
@@ -290,7 +290,9 @@ export class AssetPage {
    * @param assetName - Name of the asset to verify
    */
   async expectAssetExists(assetName: string): Promise<void> {
-    const assetItem = this.page.getByText(assetName, { exact: true });
+    // Use title attribute to handle truncated names in sidebar
+    const sidebar = this.page.getByRole('tree');
+    const assetItem = sidebar.locator(`[title="${assetName}"]`);
     await expect(assetItem).toBeVisible({ timeout: 15000 });
   }
 
@@ -351,12 +353,12 @@ export class AssetPage {
   async deleteAsset(assetName: string, libraryName: string): Promise<void> {
     const sidebar = this.page.getByRole('tree');
     
-    // Step 1: Find the library in sidebar
-    const libraryItem = sidebar.getByText(libraryName, { exact: true });
+    // Step 1: Find the library in sidebar using title attribute (handles truncated names)
+    const libraryItem = sidebar.locator(`[title="${libraryName}"]`);
     await expect(libraryItem).toBeVisible({ timeout: 15000 });
     
     // Check if asset is already visible (library might be expanded)
-    const assetItem = sidebar.getByText(assetName, { exact: true });
+    const assetItem = sidebar.locator(`[title="${assetName}"]`);
     const isAssetVisible = await assetItem.isVisible({ timeout: 1000 }).catch(() => false);
     
     if (!isAssetVisible) {
@@ -364,7 +366,8 @@ export class AssetPage {
       // Strategy: Use Ant Design Tree's switcher element to expand the node
       
       // Find the library's treeitem (Ant Design Tree uses role="treeitem")
-      const libraryTreeItem = sidebar.locator(`[role="treeitem"]`).filter({ hasText: libraryName });
+      // Navigate up from libraryItem to find its parent treeitem
+      const libraryTreeItem = libraryItem.locator('xpath=ancestor::*[@role="treeitem"]').first();
       await expect(libraryTreeItem).toBeVisible({ timeout: 15000 });
       
       // Check if library is already expanded using aria-expanded attribute
@@ -460,7 +463,8 @@ export class AssetPage {
    */
   async expectAssetDeleted(assetName: string): Promise<void> {
     const sidebar = this.page.getByRole('tree');
-    const assetItem = sidebar.getByText(assetName, { exact: true });
+    // Use title attribute to handle truncated names
+    const assetItem = sidebar.locator(`[title="${assetName}"]`);
     await expect(assetItem).not.toBeVisible({ timeout: 15000 });
   }
 

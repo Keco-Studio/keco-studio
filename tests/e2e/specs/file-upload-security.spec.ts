@@ -33,8 +33,8 @@ const isRealSupabase =
 
 // Test user with existing library and template containing image/file fields
 const testUser = {
-  email: '2932796029@qq.com',
-  password: 'azsx1111',
+  email: 'seed-fileupload@mailinator.com',
+  password: 'Password123!',
 };
 
 /**

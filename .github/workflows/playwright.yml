@@ -15,12 +15,10 @@ jobs:
         shardIndex: [1, 2, 3, 4]
         shardTotal: [4]
     env:
-      # Use GitHub Secrets for Supabase credentials
-      # If secrets are not set, tests that require real Supabase will be skipped
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      # Service Role Key for seeding test users via Admin API (more reliable than direct DB connection)
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # Local Supabase configuration - will be set after Supabase starts
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: '' # Will be set after supabase start
+      SUPABASE_SERVICE_ROLE_KEY: '' # Will be set after supabase start
     
     steps:
     - uses: actions/checkout@v4
@@ -34,6 +32,38 @@ jobs:
     # Install dependencies with caching
     - name: Install dependencies
       run: npm ci
+    
+    # Install Supabase CLI using official method
+    - name: Setup Supabase CLI
+      uses: supabase/setup-cli@v1
+      with:
+        version: latest
+    
+    # Start local Supabase instance
+    - name: Start Supabase
+      run: |
+        supabase start
+        echo "✅ Supabase started successfully"
+    
+    # Reset database to ensure clean state with fresh seed data
+    # This is important for test consistency across runs
+    - name: Reset database with seed data
+      run: |
+        supabase db reset
+        echo "✅ Database reset completed with fresh seed data"
+    
+    # Set Supabase environment variables from local instance
+    - name: Set Supabase environment variables
+      run: |
+        echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(supabase status --output json | jq -r '.anon_key')" >> $GITHUB_ENV
+        echo "SUPABASE_SERVICE_ROLE_KEY=$(supabase status --output json | jq -r '.service_role_key')" >> $GITHUB_ENV
+        echo "📝 Environment variables set"
+    
+    # Verify Supabase is ready
+    - name: Verify Supabase status
+      run: |
+        supabase status
+        echo "✅ Supabase is ready"
     
     # Cache Playwright browsers - significantly speeds up workflow
     - name: Get Playwright version
@@ -57,22 +87,20 @@ jobs:
       if: steps.playwright-cache.outputs.cache-hit == 'true'
       run: npx playwright install-deps chromium
     
-    # Clean test data before seeding
-    - name: Clean test data before seeding
-      if: env.SUPABASE_SERVICE_ROLE_KEY != ''
-      run: npm run clean:test-data
-      continue-on-error: true
-    
-    # Seed test users
-    - name: Seed test users via Supabase Admin API
-      if: env.SUPABASE_SERVICE_ROLE_KEY != ''
-      run: npm run seed:api
-      continue-on-error: true
+    # Note: Test users are automatically seeded via supabase/seed.sql when supabase starts
+    # No need to run seed:api script for local Supabase
     
     # Run tests with sharding for parallel execution
     - name: Run Playwright tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
       run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
       continue-on-error: false
+    
+    # Stop Supabase after tests
+    - name: Stop Supabase
+      if: always()
+      run: |
+        supabase stop
+        echo "✅ Supabase stopped"
     
     # Upload test results for each shard
     - uses: actions/upload-artifact@v4

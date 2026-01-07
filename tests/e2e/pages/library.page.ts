@@ -266,9 +266,9 @@ export class LibraryPage {
    * @param libraryName - Name of the library
    */
   async clickPredefineButton(libraryName: string): Promise<void> {
-    // Find the library item in the sidebar tree
+    // Find the library item in the sidebar tree using title attribute (handles truncated names)
     const sidebar = this.page.getByRole('tree');
-    const libraryItem = sidebar.getByText(libraryName, { exact: true });
+    const libraryItem = sidebar.locator(`[title="${libraryName}"]`);
     
     // The predefine button is in the same row as the library name
     // Find the button with aria-label="Library sections" that is near the library name
@@ -324,7 +324,7 @@ export class LibraryPage {
     // In CI environments or after navigation, sidebar may need extra time to load libraries
     await this.page.waitForTimeout(3000);
     
-    console.log('[DEBUG] Navigated back to project, sidebar should be loaded');
+    // console.log('[DEBUG] Navigated back to project, sidebar should be loaded');
   }
 
   /**
@@ -352,7 +352,9 @@ export class LibraryPage {
    * @param libraryName - Name of the library to verify
    */
   async expectLibraryExists(libraryName: string): Promise<void> {
-    const libraryItem = this.page.getByText(libraryName, { exact: true });
+    // Use title attribute to handle truncated names in sidebar
+    const sidebar = this.page.getByRole('tree');
+    const libraryItem = sidebar.locator(`[title="${libraryName}"]`);
     await expect(libraryItem).toBeVisible();
   }
 
@@ -362,8 +364,9 @@ export class LibraryPage {
    */
   async expectFolderExists(folderName: string): Promise<void> {
     // Locate folder in sidebar (tree) to avoid strict mode violation
+    // Use title attribute to handle truncated names
     const sidebar = this.page.getByRole('tree');
-    const folderItem = sidebar.getByText(folderName, { exact: true });
+    const folderItem = sidebar.locator(`[title="${folderName}"]`);
     await expect(folderItem).toBeVisible();
   }
 
@@ -403,14 +406,14 @@ export class LibraryPage {
     
     // Debug: Log all text content in sidebar to help diagnose issues
     const sidebarText = await sidebar.textContent();
-    console.log(`[DEBUG] Sidebar content: ${sidebarText?.substring(0, 500)}...`);
+    // console.log(`[DEBUG] Sidebar content: ${sidebarText?.substring(0, 500)}...`);
     
-    // Find the library in the sidebar tree
-    const libraryItem = sidebar.getByText(libraryName, { exact: true });
+    // Find the library in the sidebar tree using title attribute (handles truncated names)
+    const libraryItem = sidebar.locator(`[title="${libraryName}"]`);
     
     // Check if library exists before trying to make it visible
     const libraryCount = await libraryItem.count();
-    console.log(`[DEBUG] Found ${libraryCount} instances of "${libraryName}" in sidebar`);
+    // console.log(`[DEBUG] Found ${libraryCount} instances of "${libraryName}" in sidebar`);
     
     // Wait for library to be visible
     await expect(libraryItem).toBeVisible({ timeout: 15000 });
@@ -443,7 +446,8 @@ export class LibraryPage {
    */
   async expectLibraryDeleted(libraryName: string): Promise<void> {
     const sidebar = this.page.getByRole('tree');
-    const libraryItem = sidebar.getByText(libraryName, { exact: true });
+    // Use title attribute to handle truncated names
+    const libraryItem = sidebar.locator(`[title="${libraryName}"]`);
     await expect(libraryItem).not.toBeVisible({ timeout: 30000 });
   }
 
@@ -459,8 +463,8 @@ export class LibraryPage {
     // Additional wait for tree content to fully render
     await this.page.waitForTimeout(1000);
     
-    // Find the folder in the sidebar tree
-    const folderItem = sidebar.getByText(folderName, { exact: true });
+    // Find the folder in the sidebar tree using title attribute (handles truncated names)
+    const folderItem = sidebar.locator(`[title="${folderName}"]`);
     
     // Wait for folder to be visible
     await expect(folderItem).toBeVisible({ timeout: 15000 });
@@ -493,7 +497,8 @@ export class LibraryPage {
    */
   async expectFolderDeleted(folderName: string): Promise<void> {
     const sidebar = this.page.getByRole('tree');
-    const folderItem = sidebar.getByText(folderName, { exact: true });
+    // Use title attribute to handle truncated names
+    const folderItem = sidebar.locator(`[title="${folderName}"]`);
     await expect(folderItem).not.toBeVisible({ timeout: 15000 });
   }
 
