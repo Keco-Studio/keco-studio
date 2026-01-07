@@ -323,11 +323,20 @@ export function AssetReferenceModal({
                 value={selectedLibraryId}
                 onChange={setSelectedLibraryId}
                 className={styles.librarySelect}
+                placeholder={libraries.length === 0 ? "No libraries available" : "Select library"}
+                disabled={libraries.length === 0}
                 getPopupContainer={(triggerNode) => {
                   // Render dropdown inside modal container to ensure proper z-index
                   return modalRef.current || document.body;
                 }}
-                popupMatchSelectWidth={true}
+                popupMatchSelectWidth={false}
+                styles={{
+                  popup: {
+                    root: {
+                      minWidth: '200px'
+                    }
+                  }
+                }}
               >
                 {libraries.map((lib) => (
                   <Select.Option key={lib.id} value={lib.id}>
