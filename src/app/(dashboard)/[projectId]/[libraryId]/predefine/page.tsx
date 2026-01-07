@@ -4,7 +4,7 @@ import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { z } from 'zod';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useParams } from 'next/navigation';
-import { Tabs, Button, App, ConfigProvider, Input } from 'antd';
+import { Tabs, Button, App, ConfigProvider, Input, Tooltip } from 'antd';
 import type { TabsProps } from 'antd/es/tabs';
 import Image from 'next/image';
 import predefineLabelAddIcon from '@/app/assets/images/predefineLabelAddIcon.svg';
@@ -148,6 +148,15 @@ function PredefinePageContent() {
     );
     setActiveSectionId(sectionId);
     setErrors([]);
+    
+    // Clear pending field for this section after adding it to the list
+    // This prevents duplicate additions when saving
+    setPendingFields((prev) => {
+      const newMap = new Map(prev);
+      newMap.delete(sectionId);
+      return newMap;
+    });
+    pendingFieldsRef.current.delete(sectionId);
   };
 
   const handleChangeField = (
@@ -165,6 +174,7 @@ function PredefinePageContent() {
           : s
       )
     );
+    console.log('handleChangeField:', sections);
     setErrors([]);
   };
 
@@ -544,7 +554,13 @@ function PredefinePageContent() {
                     {`Predefine ${library?.name ?? ''} Library`}
                   </h1>
                   {library?.description && (
-                    <p className={styles.subtitle}>{library.description}</p>
+                    <Tooltip title={library.description.length > 50 ? library.description : undefined}>
+                      <p className={styles.subtitle}>
+                        {library.description.length > 50
+                          ? `${library.description.slice(0, 50)}...`
+                          : library.description}
+                      </p>
+                    </Tooltip>
                   )}
                 </>
               )}
