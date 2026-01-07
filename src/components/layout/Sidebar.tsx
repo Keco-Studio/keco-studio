@@ -273,6 +273,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     };
   }, [queryClient]);
 
+  // Listen to authStateChanged event to clear React Query cache when user signs out or switches
+  useEffect(() => {
+    const handleAuthStateChanged = () => {
+      // Clear all React Query cache when auth state changes (sign out or user switch)
+      queryClient.clear();
+    };
+
+    window.addEventListener('authStateChanged' as any, handleAuthStateChanged as EventListener);
+    
+    return () => {
+      window.removeEventListener('authStateChanged' as any, handleAuthStateChanged as EventListener);
+    };
+  }, [queryClient]);
+
   // Track current project ID to detect project switching
   const prevProjectIdRef = useRef<string | null>(null);
   // Track whether expanded state has been initialized (to avoid re-expanding after user manually collapses)
@@ -1145,8 +1159,21 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // console.log('Project created:', { projectId, defaultFolderId });
     setShowProjectModal(false);
     
-    // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
-    // All components (Sidebar, ProjectsPage) will listen to this event and refresh their respective caches
+    // Immediately invalidate React Query cache to refresh the sidebar
+    queryClient.invalidateQueries({ queryKey: ['projects'] });
+    
+    // Also invalidate globalRequestCache for projects list
+    const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+    const { getCurrentUserId } = await import('@/lib/services/authorizationService');
+    try {
+      const userId = await getCurrentUserId(supabase);
+      globalRequestCache.invalidate(`projects:list:${userId}`);
+    } catch (err) {
+      // If getting userId fails, invalidate all project-related cache
+      console.warn('Failed to get userId for cache invalidation, clearing all project cache', err);
+    }
+    
+    // Dispatch event to notify other components (ProjectsPage) to refresh their caches
     window.dispatchEvent(new CustomEvent('projectCreated'));
     
     if (projectId) {

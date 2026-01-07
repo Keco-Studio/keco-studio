@@ -47,6 +47,20 @@ export default function ProjectsPage() {
     };
   }, [queryClient]);
 
+  // Listen to authStateChanged event to clear React Query cache when user signs out or switches
+  useEffect(() => {
+    const handleAuthStateChanged = () => {
+      // Clear all React Query cache when auth state changes (sign out or user switch)
+      queryClient.clear();
+    };
+
+    window.addEventListener('authStateChanged' as any, handleAuthStateChanged as EventListener);
+    
+    return () => {
+      window.removeEventListener('authStateChanged' as any, handleAuthStateChanged as EventListener);
+    };
+  }, [queryClient]);
+
   useEffect(() => {
     // Show create project breadcrumb when there are no projects
     setShowCreateProjectBreadcrumb(!loading && projects.length === 0);

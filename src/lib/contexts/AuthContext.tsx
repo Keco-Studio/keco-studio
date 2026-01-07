@@ -3,6 +3,19 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
 
+// Helper function to clear all caches
+async function clearAllCaches() {
+  // Clear globalRequestCache
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate();
+  
+  // Dispatch event to notify components to clear React Query cache
+  // Components using useQueryClient will listen to this event
+  window.dispatchEvent(new CustomEvent('authStateChanged', { 
+    detail: { type: 'signOut' } 
+  }));
+}
+
 type UserProfile = {
   id: string;
   email: string;
@@ -68,6 +81,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(false);
       setUserProfile(null);
       currentUserId.current = null;
+      
+      // Clear all caches when user signs out
+      await clearAllCaches();
     } catch (e) {
       console.error('Logout failed', e);
     }
@@ -85,13 +101,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!mounted) return;
 
       try {
+        const prevUserId = currentUserId.current;
+        
         if (session?.user) {
           setIsAuthenticated(true);
-          if (currentUserId.current !== session.user.id) {
+          const newUserId = session.user.id;
+          
+          // If user changed (not just initial load), clear caches
+          if (currentUserId.current !== null && currentUserId.current !== newUserId) {
+            await clearAllCaches();
+          }
+          
+          if (currentUserId.current !== newUserId) {
             currentUserId.current = null;
           }
-          await fetchUserProfile(session.user.id);
+          await fetchUserProfile(newUserId);
         } else {
+          // User signed out or no session
+          // Clear caches if there was a previous user
+          if (prevUserId !== null) {
+            await clearAllCaches();
+          }
+          
           setIsAuthenticated(false);
           setUserProfile(null);
           currentUserId.current = null;
