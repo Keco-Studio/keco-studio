@@ -436,9 +436,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   // Listen for asset creation/update events to refresh the sidebar
   useEffect(() => {
-    const handleAssetChange = (event: Event) => {
+    const handleAssetChange = async (event: Event) => {
       const customEvent = event as CustomEvent<{ libraryId: string }>;
       if (customEvent.detail?.libraryId) {
+        // Clear cache before fetching to ensure fresh data
+        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+        const cacheKey = `assets:list:${customEvent.detail.libraryId}`;
+        globalRequestCache.invalidate(cacheKey);
         fetchAssets(customEvent.detail.libraryId);
       }
     };
@@ -484,6 +488,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     try {
           
       await deleteAsset(supabase, assetId);
+      
+      // Clear cache before fetching to ensure fresh data
+      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+      const cacheKey = `assets:list:${libraryId}`;
+      globalRequestCache.invalidate(cacheKey);
+      
       // Notify that asset was deleted
       window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
       await fetchAssets(libraryId);
@@ -1124,6 +1134,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 if (result.error) {
                   console.error('Failed to delete asset', result.error);
                 } else {
+                  // Clear cache before fetching to ensure fresh data
+                  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+                  const cacheKey = `assets:list:${libraryId}`;
+                  globalRequestCache.invalidate(cacheKey);
+                  
                   await fetchAssets(libraryId);
                   window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
                   // Check if currently viewing this asset, if so navigate to library page

@@ -383,6 +383,10 @@ function PredefinePageContent() {
 
       message.success(`Section "${sectionToDelete.name}" deleted successfully`);
 
+      // Invalidate cache before reloading to ensure fresh data
+      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+      globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+
       // Reload to sync with database
       const loadedSections = await reloadSections();
       
