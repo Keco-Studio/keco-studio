@@ -44,7 +44,7 @@ export default function LibraryPage() {
   const [library, setLibrary] = useState<Library | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { userProfile } = useAuth();
+  const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
   const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([]);
   const [assetName, setAssetName] = useState('');
   const [values, setValues] = useState<Record<string, any>>({});
@@ -291,7 +291,7 @@ export default function LibraryPage() {
         </div>
       )}
 
-      {!userProfile && <div className={styles.authWarning}>Please sign in to edit.</div>}
+      {!authLoading && !isAuthenticated && <div className={styles.authWarning}>Please sign in to edit.</div>}
 
       {/* {userProfile && (
         <div className={styles.formContainer}>
