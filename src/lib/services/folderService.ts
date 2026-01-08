@@ -156,6 +156,9 @@ export async function updateFolder(
 
   // Get folder info before update to invalidate proper caches
   const folder = await getFolder(supabase, folderId);
+  if (!folder) {
+    throw new Error('Folder not found');
+  }
 
   // verify folder access
   await verifyFolderAccess(supabase, folderId);
@@ -168,6 +171,24 @@ export async function updateFolder(
     if (!name) {
       throw new Error('Folder name cannot be empty');
     }
+    // Check if the new name conflicts with another folder in the same project (excluding current folder)
+    const { data: conflictingFolders, error: checkError } = await supabase
+      .from('folders')
+      .select('id')
+      .eq('project_id', folder.project_id)
+      .eq('name', name)
+      .neq('id', folderId)
+      .limit(1);
+
+    if (checkError) {
+      console.error('Error checking folder name:', checkError);
+      throw new Error('Failed to verify folder name');
+    }
+
+    if (conflictingFolders && conflictingFolders.length > 0) {
+      throw new Error(`Folder name ${name} already exists in this project`);
+    }
+
     updateData.name = name;
   }
   if (description !== undefined) {
@@ -177,6 +198,8 @@ export async function updateFolder(
   if (Object.keys(updateData).length === 0) {
     return; // Nothing to update
   }
+
+  updateData.updated_at = new Date().toISOString();
 
   const { error } = await supabase
     .from('folders')

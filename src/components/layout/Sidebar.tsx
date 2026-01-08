@@ -29,6 +29,7 @@ import { EditProjectModal } from "@/components/projects/EditProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
 import { EditLibraryModal } from "@/components/libraries/EditLibraryModal";
 import { NewFolderModal } from "@/components/folders/NewFolderModal";
+import { EditFolderModal } from "@/components/folders/EditFolderModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { listProjects, Project, deleteProject } from "@/lib/services/projectService";
 import { listLibraries, Library, deleteLibrary } from "@/lib/services/libraryService";
@@ -161,6 +162,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [showEditLibraryModal, setShowEditLibraryModal] = useState(false);
   const [editingLibraryId, setEditingLibraryId] = useState<string | null>(null);
   const [showFolderModal, setShowFolderModal] = useState(false);
+  const [showEditFolderModal, setShowEditFolderModal] = useState(false);
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -405,11 +408,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       }
     };
 
+    const handleFolderUpdated = (event: CustomEvent) => {
+      // Refresh cache for the current project if we have one
+      // The folder update will invalidate its own cache, but we need to refresh the list
+      if (currentIds.projectId) {
+        invalidateFoldersAndLibraries(currentIds.projectId);
+      }
+    };
+
     window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
     window.addEventListener('folderCreated' as any, handleFolderCreated as EventListener);
     window.addEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
     window.addEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
     window.addEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
+    window.addEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
     
     return () => {
       // Clear timer
@@ -421,6 +433,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
       window.removeEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
       window.removeEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
+      window.removeEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
     };
   }, [currentIds.projectId, queryClient]);
 
@@ -1090,7 +1103,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const handleContextMenuAction = (action: ContextMenuAction) => {
     if (!contextMenu) return;
     
-    // Handle rename action (Project info / Library info)
+    // Handle rename action (Project info / Library info / Folder rename)
     if (action === 'rename') {
       if (contextMenu.type === 'project') {
         setEditingProjectId(contextMenu.id);
@@ -1100,6 +1113,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       } else if (contextMenu.type === 'library') {
         setEditingLibraryId(contextMenu.id);
         setShowEditLibraryModal(true);
+        setContextMenu(null);
+        return;
+      } else if (contextMenu.type === 'folder') {
+        setEditingFolderId(contextMenu.id);
+        setShowEditFolderModal(true);
         setContextMenu(null);
         return;
       }
@@ -1667,6 +1685,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         projectId={currentIds.projectId || ''}
         onCreated={handleFolderCreated}
       />
+
+      {editingFolderId && (
+        <EditFolderModal
+          open={showEditFolderModal}
+          folderId={editingFolderId}
+          onClose={() => {
+            setShowEditFolderModal(false);
+            setEditingFolderId(null);
+          }}
+          onUpdated={() => {
+            // Cache will be invalidated by the folderUpdated event listener
+          }}
+        />
+      )}
 
       <AddLibraryMenu
         open={showAddMenu}
