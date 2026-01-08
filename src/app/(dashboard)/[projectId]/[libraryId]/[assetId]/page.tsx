@@ -287,7 +287,7 @@ export default function AssetPage() {
           } else if (f.data_type === 'date') {
             v = raw || null;
           } else if (f.data_type === 'enum') {
-            v = raw || null;
+            v = (raw === '' || raw === undefined || raw === null) ? null : raw;
           } else if (f.data_type === 'image' || f.data_type === 'file' || f.data_type === 'reference') {
             v = raw || null;
           } else {
@@ -339,7 +339,7 @@ export default function AssetPage() {
           } else if (f.data_type === 'date') {
             v = raw || null;
           } else if (f.data_type === 'enum') {
-            v = raw || null;
+            v = (raw === '' || raw === undefined || raw === null) ? null : raw;
           } else if (f.data_type === 'image' || f.data_type === 'file' || f.data_type === 'reference') {
             v = raw || null;
           } else {
@@ -447,7 +447,6 @@ export default function AssetPage() {
               )}
             </div>
           </div>
-
           {!authLoading && !isAuthenticated && isNewAsset && (
             <div className={styles.authWarning}>Please sign in to add assets.</div>
           )}
@@ -566,14 +565,14 @@ export default function AssetPage() {
                                       </div>                                    
                                       <div className={styles.fieldControl}>
                           <select
-                            value={value || ''}
+                            value={value ?? ''}
                                           disabled={mode === 'view'}
                                           onChange={
                                             mode !== 'view'
                                               ? (e) =>
                                                   handleValueChange(
                                                     f.id,
-                                                    e.target.value || null
+                                                    e.target.value === '' ? null : e.target.value
                                                   )
                                               : undefined
                                           }
@@ -581,6 +580,7 @@ export default function AssetPage() {
                                             mode === 'view' ? styles.disabledInput : ''
                                           }`}
                           >
+                            <option value="">Select an option</option>
                             {(f.enum_options || []).map((opt) => (
                               <option key={opt} value={opt}>
                                 {opt}
