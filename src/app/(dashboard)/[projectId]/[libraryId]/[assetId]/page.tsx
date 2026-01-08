@@ -58,7 +58,7 @@ export default function AssetPage() {
   const params = useParams();
   const supabase = useSupabase();
   const router = useRouter();
-  const { userProfile } = useAuth();
+  const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
   const projectId = params.projectId as string;
   const libraryId = params.libraryId as string;
   const assetId = params.assetId as string;
@@ -448,7 +448,7 @@ export default function AssetPage() {
             </div>
           </div>
 
-          {!userProfile && isNewAsset && (
+          {!authLoading && !isAuthenticated && isNewAsset && (
             <div className={styles.authWarning}>Please sign in to add assets.</div>
           )}
 

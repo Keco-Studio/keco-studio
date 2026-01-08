@@ -4,6 +4,7 @@ import { useState, useRef } from 'react';
 import Image from 'next/image';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { getCurrentUserId } from '@/lib/services/authorizationService';
 import {
   uploadMediaFile,
   deleteMediaFile,
@@ -26,7 +27,7 @@ interface MediaFileUploadProps {
 
 export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image' }: MediaFileUploadProps) {
   const supabase = useSupabase();
-  const { userProfile } = useAuth();
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +47,13 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
       return;
     }
 
-    if (!userProfile?.id) {
+    // Check authentication status
+    if (authLoading) {
+      setError('Please wait while we verify your authentication...');
+      return;
+    }
+
+    if (!isAuthenticated) {
       setError('Please sign in to upload files');
       return;
     }
@@ -55,7 +62,9 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
     setUploadProgress('Uploading file...');
 
     try {
-      const metadata = await uploadMediaFile(supabase, file, userProfile.id);
+      // Get user ID from auth, not from userProfile
+      const userId = await getCurrentUserId(supabase);
+      const metadata = await uploadMediaFile(supabase, file, userId);
       onChange(metadata);
       setUploadProgress('Upload complete!');
       setTimeout(() => {
