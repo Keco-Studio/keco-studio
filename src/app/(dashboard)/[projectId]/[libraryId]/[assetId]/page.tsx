@@ -88,27 +88,38 @@ export default function AssetPage() {
     return map;
   }, [fieldDefs]);
 
-  // Find the name field from the first section (for new assets)
+  // Find the name field (for both new and existing assets)
   const nameField = useMemo(() => {
-    if (!isNewAsset || fieldDefs.length === 0) return null;
-    const firstSectionKey = Object.keys(sections)[0];
-    const firstSection = sections[firstSectionKey];
-    if (!firstSection || firstSection.length === 0) return null;
-    const firstField = firstSection[0];
-    if (firstField.label === 'name' && firstField.data_type === 'string') {
-      return firstField;
+    if (fieldDefs.length === 0) return null;
+    // First try to find a field with label 'name' and type 'string'
+    const nameFieldDef = fieldDefs.find(f => f.label === 'name' && f.data_type === 'string');
+    if (nameFieldDef) return nameFieldDef;
+    
+    // Fallback: for new assets, use the first field of the first section
+    if (isNewAsset) {
+      const firstSectionKey = Object.keys(sections)[0];
+      const firstSection = sections[firstSectionKey];
+      if (!firstSection || firstSection.length === 0) return null;
+      const firstField = firstSection[0];
+      if (firstField.label === 'name' && firstField.data_type === 'string') {
+        return firstField;
+      }
     }
     return null;
   }, [isNewAsset, fieldDefs, sections]);
 
-  // Get asset name (from name field for new assets, or from asset data for existing)
+  // Get asset name (prioritize edited value, then asset name)
   const assetName = useMemo(() => {
-    if (isNewAsset) {
-      if (!nameField) return '';
-      return values[nameField.id] || '';
+    // If we have a name field and its value is being edited, use that
+    if (nameField && values[nameField.id] !== undefined && values[nameField.id] !== null) {
+      const editedValue = String(values[nameField.id]).trim();
+      if (editedValue !== '') {
+        return editedValue;
+      }
     }
+    // Otherwise, use the asset's name (for existing assets)
     return asset?.name || '';
-  }, [isNewAsset, nameField, values, asset]);
+  }, [nameField, values, asset]);
 
   useEffect(() => {
     const load = async () => {
@@ -327,6 +338,29 @@ export default function AssetPage() {
       
       setSaving(true);
       try {
+        // Find the name field and update asset name if changed
+        const nameFieldDef = fieldDefs.find(f => f.label === 'name' && f.data_type === 'string');
+        let newAssetName = asset.name;
+        
+        if (nameFieldDef) {
+          const nameValue = values[nameFieldDef.id];
+          if (nameValue !== undefined && nameValue !== null && String(nameValue).trim() !== '') {
+            newAssetName = String(nameValue).trim();
+          }
+        }
+        
+        // Update asset name if it changed
+        if (newAssetName !== asset.name) {
+          const { error: assetUpdateErr } = await supabase
+            .from('library_assets')
+            .update({ name: newAssetName })
+            .eq('id', asset.id);
+          if (assetUpdateErr) throw assetUpdateErr;
+          
+          // Update local asset state
+          setAsset({ ...asset, name: newAssetName });
+        }
+        
         const payload = fieldDefs.map((f) => {
           const raw = values[f.id];
           let v: any = raw;
@@ -354,6 +388,11 @@ export default function AssetPage() {
             .upsert(payload, { onConflict: 'asset_id,field_id' });
           if (valErr) throw valErr;
         }
+
+        // Dispatch event to notify Sidebar to refresh assets
+        window.dispatchEvent(new CustomEvent('assetUpdated', {
+          detail: { libraryId, assetId: asset.id }
+        }));
 
         setSaveSuccess('Saved');
       } catch (e: any) {
@@ -437,13 +476,13 @@ export default function AssetPage() {
               {saveError && <div className={styles.saveError}>{saveError}</div>}
               {saveSuccess && <div className={styles.saveSuccess}>{saveSuccess}</div>}
               {!isNewAsset && userProfile && mode === 'edit' && (
-            <button
-              onClick={handleSave}
-              disabled={saving}
+                <button
+                  onClick={handleSave}
+                  disabled={saving}
                   className={styles.primaryButton}
-            >
+                >
                   {saving ? 'Saving...' : 'Save changes'}
-            </button>
+                </button>
               )}
             </div>
           </div>
