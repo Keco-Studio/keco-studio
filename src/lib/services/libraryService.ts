@@ -381,3 +381,80 @@ export async function getLibrariesAssetCounts(
 
   return counts;
 }
+
+type UpdateLibraryInput = {
+  name: string;
+  description?: string;
+};
+
+export async function updateLibrary(
+  supabase: SupabaseClient,
+  libraryId: string,
+  input: UpdateLibraryInput
+): Promise<void> {
+  // Get library info first to verify access and get project_id/folder_id
+  const library = await getLibrary(supabase, libraryId);
+  if (!library) {
+    throw new Error('Library not found');
+  }
+
+  // verify library access
+  await verifyLibraryAccess(supabase, libraryId);
+
+  const name = input.name.trim();
+  const description = trimOrNull(input.description ?? null);
+
+  if (!name) {
+    throw new Error('Library name is required.');
+  }
+
+  // Check if the new name conflicts with another library in the same project/folder (excluding current library)
+  let nameCheckQuery = supabase
+    .from('libraries')
+    .select('id')
+    .eq('project_id', library.project_id)
+    .eq('name', name)
+    .neq('id', libraryId)
+    .limit(1);
+
+  // Apply folder filter: libraries in the same folder (or both root) should have unique names
+  if (library.folder_id) {
+    nameCheckQuery = nameCheckQuery.eq('folder_id', library.folder_id);
+  } else {
+    nameCheckQuery = nameCheckQuery.is('folder_id', null);
+  }
+
+  const { data: conflictingLibraries, error: nameCheckError } = await nameCheckQuery;
+
+  if (nameCheckError) {
+    console.error('Error checking library name:', nameCheckError);
+    throw new Error('Failed to verify library name');
+  }
+
+  if (conflictingLibraries && conflictingLibraries.length > 0) {
+    throw new Error(`Library name ${name} already exists in this ${library.folder_id ? 'folder' : 'project'}`);
+  }
+
+  const { error } = await supabase
+    .from('libraries')
+    .update({
+      name,
+      description,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', libraryId);
+
+  if (error) {
+    throw error;
+  }
+
+  // Invalidate caches
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`library:${libraryId}`);
+  globalRequestCache.invalidate(`libraries:list:${library.project_id}:all`);
+  if (library.folder_id) {
+    globalRequestCache.invalidate(`libraries:list:${library.project_id}:${library.folder_id}`);
+  } else {
+    globalRequestCache.invalidate(`libraries:list:${library.project_id}:root`);
+  }
+}
