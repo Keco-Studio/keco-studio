@@ -99,16 +99,44 @@ export function LibraryAssetsTable({
         
         for (const [tempId, optimisticAsset] of newMap.entries()) {
           // Check if there's a real row with matching name and similar property values
-          const matchingRow = rows.find(row => {
-            if (row.name !== optimisticAsset.name) return false;
+          const matchingRow = rows.find((row) => {
+            const assetRow = row as AssetRow;
+            if (assetRow.name !== optimisticAsset.name) return false;
             // Check if property values match (allowing for some differences due to data transformation)
             const optimisticKeys = Object.keys(optimisticAsset.propertyValues);
-            const rowKeys = Object.keys(row.propertyValues);
+            const rowKeys = Object.keys(assetRow.propertyValues);
             if (optimisticKeys.length !== rowKeys.length) return false;
+            
+            // Compare property values, handling objects (like MediaFileMetadata) specially
+            const matchingKeys = optimisticKeys.filter(key => {
+              const optimisticValue = optimisticAsset.propertyValues[key];
+              const rowValue = assetRow.propertyValues[key];
+              
+              // If both are null/undefined, they match
+              if (!optimisticValue && !rowValue) return true;
+              if (!optimisticValue || !rowValue) return false;
+              
+              // If both are objects, compare key fields (for MediaFileMetadata: url, path, fileName)
+              if (typeof optimisticValue === 'object' && optimisticValue !== null && 
+                  typeof rowValue === 'object' && rowValue !== null) {
+                // Check if it looks like MediaFileMetadata (has url, path, fileName)
+                const optimisticObj = optimisticValue as Record<string, any>;
+                const rowObj = rowValue as Record<string, any>;
+                if (optimisticObj.url && rowObj.url) {
+                  return optimisticObj.url === rowObj.url || 
+                         optimisticObj.path === rowObj.path ||
+                         optimisticObj.fileName === rowObj.fileName;
+                }
+                // For other objects, do deep comparison of key fields
+                const objKeys = Object.keys(optimisticObj);
+                return objKeys.every(k => optimisticObj[k] === rowObj[k]);
+              }
+              
+              // For primitive values, use strict equality
+              return optimisticValue === rowValue;
+            });
+            
             // If most keys match, consider it a match
-            const matchingKeys = optimisticKeys.filter(key => 
-              optimisticAsset.propertyValues[key] === row.propertyValues[key]
-            );
             return matchingKeys.length >= optimisticKeys.length * 0.8; // 80% match threshold
           });
           
@@ -128,8 +156,9 @@ export function LibraryAssetsTable({
         const newMap = new Map(prev);
         
         for (const [rowId, optimisticUpdate] of newMap.entries()) {
-          const realRow = rows.find(row => row.id === rowId);
-          if (realRow) {
+          const foundRow = rows.find((row) => (row as AssetRow).id === rowId);
+          if (foundRow) {
+            const realRow = foundRow as AssetRow;
             // Check if the real row matches the optimistic update (indicating parent has refreshed)
             // Compare name and property values to see if they match
             const nameMatches = realRow.name === optimisticUpdate.name;
@@ -171,7 +200,7 @@ export function LibraryAssetsTable({
   } | null>(null);
   const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
   const [hoveredAvatarPosition, setHoveredAvatarPosition] = useState<{ x: number; y: number } | null>(null);
-  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarRefs = useRef<Map<string, HTMLDivElement>>(new Map());
 
   // Router for navigation
@@ -768,14 +797,20 @@ export function LibraryAssetsTable({
             setIsSaving(true);
             try {
               await onSaveAsset(assetName, savedNewRowData);
-              // Remove optimistic asset after a short delay to allow parent to refresh
+              // Don't remove optimistic asset immediately - let the cleanup useEffect handle it
+              // when parent refreshes and adds the real asset to rows
+              // The improved matching logic will detect the real asset and remove the optimistic one
+              // Set a timeout as fallback in case parent doesn't refresh
               setTimeout(() => {
                 setOptimisticNewAssets(prev => {
-                  const newMap = new Map(prev);
-                  newMap.delete(tempId);
-                  return newMap;
+                  if (prev.has(tempId)) {
+                    const newMap = new Map(prev);
+                    newMap.delete(tempId);
+                    return newMap;
+                  }
+                  return prev;
                 });
-              }, 500);
+              }, 2000); // Increased timeout to give parent more time to refresh
             } catch (error) {
               console.error('Failed to save asset:', error);
               // On error, revert optimistic update
@@ -1161,22 +1196,24 @@ export function LibraryAssetsTable({
         <tbody className={styles.body}>
           {(() => {
             // Combine real rows with optimistic new assets and apply optimistic edit updates
-            const allRows = rows
-              .filter(row => !deletedAssetIds.has(row.id))
-              .map(row => {
-                const optimisticUpdate = optimisticEditUpdates.get(row.id);
+            const allRows: AssetRow[] = rows
+              .filter((row): row is AssetRow => !deletedAssetIds.has(row.id))
+              .map((row): AssetRow => {
+                const assetRow = row as AssetRow;
+                const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
                 if (optimisticUpdate) {
                   return {
-                    ...row,
+                    ...assetRow,
                     name: optimisticUpdate.name,
-                    propertyValues: { ...row.propertyValues, ...optimisticUpdate.propertyValues }
+                    propertyValues: { ...assetRow.propertyValues, ...optimisticUpdate.propertyValues }
                   };
                 }
-                return row;
+                return assetRow;
               });
             
             // Add optimistic new assets
-            allRows.push(...Array.from(optimisticNewAssets.values()));
+            const optimisticAssets: AssetRow[] = Array.from(optimisticNewAssets.values());
+            allRows.push(...optimisticAssets);
             
             return allRows;
           })()
