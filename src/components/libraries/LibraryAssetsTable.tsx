@@ -338,13 +338,76 @@ export function LibraryAssetsTable({
       avatarRefs.current.set(assetId, element);
     }
     
-    // Get position immediately using requestAnimationFrame to avoid layout thrashing
+    // Get position with proper checks to avoid positioning at (0,0) or invalid positions
+    const updatePosition = () => {
+      // Get the current element, try stored ref if passed element is not connected
+      let currentElement = element;
+      if (!currentElement || !currentElement.isConnected) {
+        // Element is not in DOM, try to find it again
+        const storedElement = avatarRefs.current.get(assetId);
+        if (!storedElement || !storedElement.isConnected) {
+          return; // Can't find valid element, don't show panel
+        }
+        currentElement = storedElement;
+      }
+      
+      const rect = currentElement.getBoundingClientRect();
+      
+      // Validate position - ensure it's not at origin or invalid
+      if (rect.width === 0 && rect.height === 0) {
+        // Element has no dimensions, wait a bit and try again
+        requestAnimationFrame(updatePosition);
+        return;
+      }
+      
+      // Calculate position with boundary checks
+      const panelWidth = 320; // From CSS: width: 320px
+      const panelHeight = 200; // Estimated panel height
+      const spacing = 8;
+      const viewportWidth = window.innerWidth;
+      const viewportHeight = window.innerHeight;
+      
+      let x = rect.right + spacing;
+      let y = rect.top;
+      
+      // If panel would go off right edge, position it to the left of avatar
+      if (x + panelWidth > viewportWidth) {
+        x = rect.left - panelWidth - spacing;
+        // If still off screen, position at left edge
+        if (x < 0) {
+          x = spacing;
+        }
+      }
+      
+      // If panel would go off bottom edge, adjust vertically
+      if (y + panelHeight > viewportHeight) {
+        y = viewportHeight - panelHeight - spacing;
+        // If still off screen, position at top
+        if (y < 0) {
+          y = spacing;
+        }
+      }
+      
+      // Ensure position is valid (not at origin unless avatar is at origin)
+      const isValidPosition = (x > 0 || rect.left > 0) && (y > 0 || rect.top > 0);
+      
+      if (isValidPosition) {
+        setHoveredAvatarPosition({ x, y });
+      } else {
+        // Fallback: position near avatar center, but only if avatar position is valid
+        if (rect.left > 0 || rect.top > 0) {
+          setHoveredAvatarPosition({
+            x: Math.max(spacing, rect.left + rect.width / 2 - panelWidth / 2),
+            y: Math.max(spacing, rect.bottom + spacing),
+          });
+        }
+        // If avatar is at origin, don't show panel (likely not ready yet)
+      }
+    };
+    
+    // Use double requestAnimationFrame to ensure layout is complete
     requestAnimationFrame(() => {
-      const rect = element.getBoundingClientRect();
-      setHoveredAvatarPosition({
-        x: rect.right + 8, // Position to the right of avatar
-        y: rect.top,
-      });
+      requestAnimationFrame(updatePosition);
     });
     
     setHoveredAssetId(assetId);
