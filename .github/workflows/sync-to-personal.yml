@@ -25,7 +25,10 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
+          # Disable all credential helpers to force using token from URL
+          git config --global --unset-all credential.helper || true
+          git config --global credential.helper ""
+          
       - name: Push main to personal repo
         env:
           PERSONAL_GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
@@ -35,12 +38,28 @@ jobs:
             exit 1
           fi
 
-          PERSONAL_REPO_URL="https://x-access-token:${PERSONAL_GITHUB_TOKEN}@github.com/xzy1124/keco-studio.git"
-
           echo "🚀 Syncing main to personal repo..."
           echo "📍 Commit: $(git rev-parse HEAD)"
           echo "📍 Message: $(git log -1 --pretty=%B)"
 
+          # Ensure we're on main branch
+          git checkout main 2>/dev/null || echo "Already on main"
+
+          # For fine-grained tokens, use the token as password with username
+          # Format: https://USERNAME:TOKEN@github.com/OWNER/REPO.git
+          # Use 'x-access-token' as username (works for both classic and fine-grained tokens)
+          PERSONAL_REPO_URL="https://x-access-token:${PERSONAL_GITHUB_TOKEN}@github.com/xzy1124/keco-studio.git"
+
+          # Disable credential prompts and helpers completely
+          export GIT_TERMINAL_PROMPT=0
+          export GIT_ASKPASS=""
+          export GIT_CREDENTIAL_HELPER=""
+          
+          # Clear any cached credentials for github.com
+          echo -e "protocol=https\nhost=github.com\n" | git credential reject || true
+
+          # Push directly using URL with token embedded
+          # Use --force to ensure sync
           git push "${PERSONAL_REPO_URL}" main:refs/heads/main --force
 
           echo "✅ Synced to personal repository (main)"
