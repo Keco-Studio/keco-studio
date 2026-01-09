@@ -179,9 +179,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     let assetId: string | null = null;
     let isLibraryPage = false; // True when on /[projectId]/[libraryId] (not predefine, not asset)
     
+    // Special route segments that are not libraryIds
+    const specialRoutes = ['folder', 'collaborators', 'settings', 'members'];
+    
     if (parts.length >= 2 && parts[1] === 'folder' && parts[2]) {
       // URL format: /[projectId]/folder/[folderId]
       folderId = parts[2];
+    } else if (parts.length >= 2 && specialRoutes.includes(parts[1])) {
+      // URL format: /[projectId]/collaborators or other special routes
+      // Don't treat these as libraryId
+      libraryId = null;
     } else if (parts.length >= 3 && parts[2] === 'predefine') {
       // URL format: /[projectId]/[libraryId]/predefine
       libraryId = parts[1];
@@ -1064,10 +1071,17 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const handleContextMenuAction = (action: ContextMenuAction) => {
     if (!contextMenu) return;
     
-    // TODO: Implement actions
+    // Handle collaborators action for projects
+    if (action === 'collaborators' && contextMenu.type === 'project') {
+      setContextMenu(null);
+      router.push(`/${contextMenu.id}/collaborators`);
+      return;
+    }
+    
+    // TODO: Implement other actions
     // console.log(`Action: ${action} on ${contextMenu.type} with id: ${contextMenu.id}`);
     
-    // For now, only handle delete action
+    // Handle delete action
     if (action === 'delete') {
       if (contextMenu.type === 'project') {
         if (window.confirm('Delete this project? All libraries under it will be removed.')) {
@@ -1614,6 +1628,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         <ContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
+          type={contextMenu.type}
           onClose={() => setContextMenu(null)}
           onAction={handleContextMenuAction}
         />

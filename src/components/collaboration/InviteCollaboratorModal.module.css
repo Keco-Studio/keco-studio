@@ -1,0 +1,60 @@
+/**
+ * Invite Collaborator Modal Styles
+ * 
+ * Clean, modern styles for the invitation modal.
+ * Follows design system conventions with proper spacing and typography.
+ */
+
+.modal {
+  /* Override Ant Design modal styles if needed */
+}
+
+.content {
+  padding: 8px 0;
+}
+
+.form {
+  /* Form container */
+}
+
+.roleOption {
+  padding: 4px 0;
+}
+
+.roleLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a1a;
+  line-height: 1.5;
+}
+
+.roleDescription {
+  font-size: 12px;
+  color: #737373;
+  line-height: 1.4;
+  margin-top: 2px;
+}
+
+.infoBox {
+  background: #f6f9fc;
+  border: 1px solid #e6e8eb;
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-top: 8px;
+}
+
+.infoText {
+  font-size: 13px;
+  color: #525252;
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .modal :global(.ant-modal) {
+    width: 90% !important;
+    max-width: 480px;
+  }
+}
+

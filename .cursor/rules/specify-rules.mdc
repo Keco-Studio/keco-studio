@@ -11,6 +11,8 @@ Auto-generated from all feature plans. Last updated: 2025-12-11
 - Supabase Postgres (existing library, sections, fields, and assets tables), accessed via existing `useSupabase` context and service hooks (001-library-asset-table)
 - TypeScript 5.9.3 / JavaScript ES2022 + React 18.3.1, Next.js 14.2.18 (App Router), Ant Design 5.22.2, Supabase 2.87.1, Zod 3.22.4 (001-fix-predefine-dnd)
 - Supabase PostgreSQL with RLS policies (table: library_field_definitions) (001-fix-predefine-dnd)
+- TypeScript 5.9.3 with React 18.3.1 and Next.js 16.0.0 (001-realtime-collaboration)
+- PostgreSQL (via Supabase) with tables: `projects`, `libraries`, `library_assets`, `library_asset_values`, plus new tables for `project_collaborators`, `collaboration_invitations`, `presence_sessions` (001-realtime-collaboration)
 
 - TypeScript 5.9.3 (strict mode) + Next.js 16.0.7 (App Router), React 19.2.1, @tiptap/react 2.7.4, @supabase/supabase-js 2.86.2 (001-tiptap-collaboration)
 
@@ -30,9 +32,9 @@ npm test && npm run lint
 TypeScript 5.9.3 (strict mode): Follow standard conventions
 
 ## Recent Changes
+- 001-realtime-collaboration: Added TypeScript 5.9.3 with React 18.3.1 and Next.js 16.0.0
 - 001-fix-predefine-dnd: Added TypeScript 5.9.3 / JavaScript ES2022 + React 18.3.1, Next.js 14.2.18 (App Router), Ant Design 5.22.2, Supabase 2.87.1, Zod 3.22.4
 - 001-library-asset-table: Added TypeScript (strict), Next.js 14 App Router, React 18 + Next.js/React, Supabase JS client (existing), Ant Design (already used in predefine UI), CSS modules (.module.css), F2C MCP tooling for Figma-assisted design (dev-time only)
-- 001-playwright-auth-tests: Added TypeScript 5.9, Next.js 16 (App Router), React 19 + `@playwright/test` 1.57, `@supabase/auth-helpers-nextjs`, `@supabase/supabase-js`, Ant Design, CSS modules
 
 
 <!-- MANUAL ADDITIONS START -->

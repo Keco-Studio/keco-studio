@@ -10,16 +10,18 @@ export type ContextMenuAction =
   | 'rename'
   | 'duplicate'
   | 'move-to'
+  | 'collaborators'
   | 'delete';
 
 type ContextMenuProps = {
   x: number;
   y: number;
+  type?: 'project' | 'library' | 'folder' | 'asset';
   onClose: () => void;
   onAction?: (action: ContextMenuAction) => void;
 };
 
-export function ContextMenu({ x, y, onClose, onAction }: ContextMenuProps) {
+export function ContextMenu({ x, y, type, onClose, onAction }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,6 +66,19 @@ export function ContextMenu({ x, y, onClose, onAction }: ContextMenuProps) {
         top: `${y}px`,
       }}
     >
+      {/* Project-specific option */}
+      {type === 'project' && (
+        <>
+          <button
+            className={styles.menuItem}
+            onClick={() => handleAction('collaborators')}
+          >
+            Collaborators
+          </button>
+          <div className={styles.separator} />
+        </>
+      )}
+      
       <button
         className={styles.menuItem}
         onClick={() => handleAction('export')}
