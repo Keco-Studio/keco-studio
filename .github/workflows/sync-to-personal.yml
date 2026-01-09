@@ -1,112 +1,39 @@
 name: Sync to Personal Repository
 
-# Trigger conditions: push to main/release/** or PR merge
 on:
-  push:
-    branches:
-      - main
-      - release/**
   pull_request:
-    branches:
-      - main
-      - release/**
-    types: [closed]  # Only trigger on PR merge (closed)
+    branches: [main, release/**]
+    types: [closed]
 
 jobs:
-  sync-to-personal:
+  sync:
     runs-on: ubuntu-latest
-    # Only run in team repository
-    if: github.repository == 'Caerulean-ai/keco-studio' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
-    
-    # Need write permission to push code
-    permissions:
-      contents: write
-    
+    if: |
+      github.repository == 'Caerulean-ai/keco-studio' &&
+      github.event.pull_request.merged == true
+
     steps:
-      - name: Checkout code
+      - name: Checkout merged code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Full history to ensure push won't fail
-          # Use merge commit for PR merge, current commit for push
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
-          # Don't specify token here - use default GITHUB_TOKEN to checkout team repository
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
-      - name: Set up Git
+      - name: Configure git
         run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Determine target branch
-        id: branch
-        run: |
-          if [ "${{ github.event_name }}" == "push" ]; then
-            # Push event: use current branch name
-            echo "branch=${{ github.ref_name }}" >> $GITHUB_OUTPUT
-            echo "✅ Detected push event, target branch: ${{ github.ref_name }}"
-          else
-            # PR merge event: use base branch (branch being merged into)
-            echo "branch=${{ github.event.pull_request.base.ref }}" >> $GITHUB_OUTPUT
-            echo "✅ Detected PR merge event, target branch: ${{ github.event.pull_request.base.ref }}"
-          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Push to personal repo
         env:
-          PERSONAL_GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         run: |
-          # Verify token is set
-          if [ -z "${PERSONAL_GITHUB_TOKEN}" ]; then
-            echo "❌ Error: PERSONAL_GITHUB_TOKEN is not set"
-            exit 1
-          fi
-          
-          # Get target branch name
-          CURRENT_BRANCH="${{ steps.branch.outputs.branch }}"
-          
-          echo "🔄 Preparing to sync branch: ${CURRENT_BRANCH} to personal repository xzy1124/keco-studio..."
-          echo "📍 Current commit: $(git rev-parse HEAD)"
-          echo "📍 Current commit message: $(git log -1 --pretty=%B)"
-          
-          # Get current HEAD commit SHA (ensure pushing correct commit)
-          CURRENT_SHA=$(git rev-parse HEAD)
-          
-          # Disable default credential helper to avoid conflicts
-          git config --global --unset credential.helper || true
-          
-          # Build personal repository URL with token embedded
-          PERSONAL_REPO_URL="https://x-access-token:${PERSONAL_GITHUB_TOKEN}@github.com/xzy1124/keco-studio.git"
-          
-          # Ensure we're on the correct branch (for PR merge, might be in detached HEAD state)
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "🔄 PR merge event, currently in detached HEAD state..."
-            echo "📍 Using merge commit: ${CURRENT_SHA}"
-            # Directly push current commit to target branch using full URL with token
-            git push "${PERSONAL_REPO_URL}" ${CURRENT_SHA}:refs/heads/${CURRENT_BRANCH} --force
-          else
-            # Push event, ensure we're on the correct branch
-            echo "🔄 Push event, ensuring we're on the correct branch..."
-            git checkout ${CURRENT_BRANCH} 2>/dev/null || echo "ℹ️ Already on branch ${CURRENT_BRANCH}"
-            
-            echo "📍 Current branch: $(git branch --show-current)"
-            echo "📍 Current commit: $(git rev-parse HEAD)"
-            
-            # Check if remote branch exists (using full URL with token)
-            if git ls-remote --heads "${PERSONAL_REPO_URL}" ${CURRENT_BRANCH} | grep -q "${CURRENT_BRANCH}"; then
-              echo "✅ Remote branch ${CURRENT_BRANCH} exists, performing force push..."
-              # Branch exists, use force push to ensure sync with latest code
-              git push "${PERSONAL_REPO_URL}" ${CURRENT_BRANCH}:refs/heads/${CURRENT_BRANCH} --force
-            else
-              echo "✅ Remote branch ${CURRENT_BRANCH} does not exist, creating and pushing..."
-              # Branch doesn't exist, create new branch
-              git push "${PERSONAL_REPO_URL}" ${CURRENT_SHA}:refs/heads/${CURRENT_BRANCH}
-            fi
-          fi
-          
-          echo "✅ Successfully synced to personal repository xzy1124/keco-studio (branch: ${CURRENT_BRANCH})"
-          echo "🚀 This will trigger the deploy-vercel.yml workflow in personal repository, automatically deploying to Vercel"
-          
-          # If it's main branch, also push tags (if any)
-          if [ "${CURRENT_BRANCH}" == "main" ]; then
-            echo "🔄 Syncing tags to personal repository..."
-            git push "${PERSONAL_REPO_URL}" --tags || echo "ℹ️ No tags to sync"
-          fi
+          set -e
 
+          TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
+          PERSONAL_REPO="https://x-access-token:${TOKEN}@github.com/xzy1124/keco-studio.git"
+
+          echo "🔄 Syncing ${TARGET_BRANCH} to personal repo"
+          echo "📍 Commit: $(git rev-parse HEAD)"
+
+          git push "${PERSONAL_REPO}" HEAD:refs/heads/${TARGET_BRANCH}
