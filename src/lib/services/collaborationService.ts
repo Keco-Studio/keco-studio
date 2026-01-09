@@ -71,7 +71,7 @@ export async function sendInvitation(
       .from('profiles')
       .select('id')
       .eq('email', recipientEmail.toLowerCase())
-      .single();
+      .maybeSingle();
     
     if (recipientProfile) {
       // User exists, check if already a collaborator
@@ -80,8 +80,8 @@ export async function sendInvitation(
         .select('id')
         .eq('project_id', projectId)
         .eq('user_id', recipientProfile.id)
-        .is_not('accepted_at', null)
-        .single();
+        .not('accepted_at', 'is', null)
+        .maybeSingle();
       
       if (existingCollaborator) {
         return { success: false, error: 'This user is already a collaborator on this project' };
@@ -97,7 +97,7 @@ export async function sendInvitation(
       .is('accepted_at', null)
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
     
     if (existingInvitation) {
       return { 
@@ -106,14 +106,32 @@ export async function sendInvitation(
       };
     }
     
-    // 3. Create invitation record (RLS will check inviter permissions)
+    // 3. Generate JWT token BEFORE creating invitation
+    // Create a temporary ID for token generation
+    const tempInvitationId = crypto.randomUUID();
+    let token: string;
+    try {
+      token = await generateInvitationToken({
+        invitationId: tempInvitationId,
+        projectId,
+        email: recipientEmail.toLowerCase(),
+        role,
+      });
+    } catch (tokenError) {
+      console.error('Error generating token:', tokenError);
+      return { success: false, error: 'Failed to generate invitation token' };
+    }
+    
+    // 4. Create invitation record with token (RLS will check inviter permissions)
     const { data: invitation, error: insertError } = await supabase
       .from('collaboration_invitations')
       .insert({
+        id: tempInvitationId,
         project_id: projectId,
         recipient_email: recipientEmail.toLowerCase(),
         role,
         invited_by: inviterId,
+        invitation_token: token,
       })
       .select('id')
       .single();
@@ -126,38 +144,7 @@ export async function sendInvitation(
       };
     }
     
-    // 4. Generate JWT token
-    let token: string;
-    try {
-      token = await generateInvitationToken({
-        invitationId: invitation.id,
-        projectId,
-        email: recipientEmail.toLowerCase(),
-        role,
-      });
-    } catch (tokenError) {
-      console.error('Error generating token:', tokenError);
-      // Clean up invitation record
-      await supabase
-        .from('collaboration_invitations')
-        .delete()
-        .eq('id', invitation.id);
-      
-      return { success: false, error: 'Failed to generate invitation token' };
-    }
-    
-    // 5. Update invitation with token
-    const { error: updateError } = await supabase
-      .from('collaboration_invitations')
-      .update({ invitation_token: token })
-      .eq('id', invitation.id);
-    
-    if (updateError) {
-      console.error('Error updating invitation token:', updateError);
-      return { success: false, error: 'Failed to update invitation token' };
-    }
-    
-    // 6. Send email
+    // 5. Send email
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const acceptLink = `${appUrl}/accept-invitation?token=${token}`;
     
@@ -214,7 +201,7 @@ export async function getProjectCollaborators(
       .select('role')
       .eq('project_id', projectId)
       .eq('user_id', userId)
-      .is_not('accepted_at', null)
+      .not('accepted_at', 'is', null)
       .single();
     
     if (!userRole) {
@@ -241,7 +228,7 @@ export async function getProjectCollaborators(
         )
       `)
       .eq('project_id', projectId)
-      .is_not('accepted_at', null)
+      .not('accepted_at', 'is', null)
       .order('role', { ascending: true }) // Admin first
       .order('created_at', { ascending: true });
     
@@ -449,7 +436,7 @@ export async function getUserProjectRole(
       .select('role')
       .eq('project_id', projectId)
       .eq('user_id', userId)
-      .is_not('accepted_at', null)
+      .not('accepted_at', 'is', null)
       .single();
     
     return {

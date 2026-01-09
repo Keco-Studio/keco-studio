@@ -13,8 +13,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { validateInvitationToken, isTokenExpired } from '@/lib/utils/invitationToken';
-import { acceptInvitation } from '@/lib/services/collaborationService';
+import { isTokenExpired } from '@/lib/utils/invitationToken';
 import { AcceptInvitationContent } from './AcceptInvitationContent';
 
 export default function AcceptInvitationPage() {
@@ -56,39 +55,28 @@ export default function AcceptInvitationPage() {
         return;
       }
       
-      // 4. Validate token signature and decode payload
-      let tokenPayload;
-      try {
-        tokenPayload = await validateInvitationToken(token);
-      } catch (error) {
-        console.error('Token validation error:', error);
+      // 4. Get user session for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
         setStatus('error');
-        setMessage('Invalid invitation');
-        setDescription(
-          error instanceof Error 
-            ? error.message 
-            : 'This invitation link is invalid or has been tampered with.'
-        );
+        setMessage('Session expired');
+        setDescription('Your session has expired. Please log in again.');
         return;
       }
       
-      // 5. Verify user email matches invitation email (optional check)
-      const userEmail = user.email?.toLowerCase();
-      const invitationEmail = tokenPayload.email.toLowerCase();
+      // 5. Call API route to accept invitation
+      const response = await fetch('/api/invitations/accept', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          invitationToken: token,
+        }),
+      });
       
-      if (userEmail !== invitationEmail) {
-        setStatus('error');
-        setMessage('Email mismatch');
-        setDescription(`This invitation was sent to ${invitationEmail}, but you are logged in as ${userEmail}. Please log in with the correct account.`);
-        return;
-      }
-      
-      // 6. Accept the invitation
-      const result = await acceptInvitation(
-        tokenPayload.invitationId,
-        user.id,
-        userEmail
-      );
+      const result = await response.json();
       
       if (!result.success) {
         setStatus('error');
@@ -97,8 +85,8 @@ export default function AcceptInvitationPage() {
         return;
       }
       
-      // 7. Success! Set success state
-      const resultProjectId = result.projectId || tokenPayload.projectId;
+      // 6. Success! Set success state
+      const resultProjectId = result.projectId;
       const resultProjectName = result.projectName || 'the project';
       
       setStatus('success');

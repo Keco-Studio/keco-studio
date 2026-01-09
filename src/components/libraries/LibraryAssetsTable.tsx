@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Input, Select, Button, Avatar, Spin, Tooltip, Checkbox, Dropdown, Modal, Switch } from 'antd';
+import { Input, Select, Button, Avatar, Spin, Tooltip, Checkbox, Dropdown, Modal, Switch, message } from 'antd';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { useRouter, useParams } from 'next/navigation';
@@ -16,6 +16,11 @@ import {
   isImageFile,
   getFileIcon 
 } from '@/lib/services/mediaFileUploadService';
+import { useRealtimeSubscription } from '@/lib/hooks/useRealtimeSubscription';
+import { getUserAvatarColor } from '@/lib/utils/avatarColors';
+import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent } from '@/lib/types/collaboration';
+import { ConnectionStatusIndicator } from '@/components/collaboration/ConnectionStatusIndicator';
+import { StackedAvatars, getFirstUserColor } from '@/components/collaboration/StackedAvatars';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
 import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
 import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
@@ -40,6 +45,27 @@ export type LibraryAssetsTableProps = {
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
+  // Real-time collaboration props
+  currentUser?: {
+    id: string;
+    name: string;
+    email: string;
+    avatarColor?: string;
+  } | null;
+  enableRealtime?: boolean;
+  presenceTracking?: {
+    updateActiveCell: (assetId: string | null, propertyKey: string | null) => void;
+    getUsersEditingCell: (assetId: string, propertyKey: string) => Array<{
+      userId: string;
+      userName: string;
+      userEmail: string;
+      avatarColor: string;
+      activeCell: { assetId: string; propertyKey: string } | null;
+      cursorPosition: { row: number; col: number } | null;
+      lastActivity: string;
+      connectionStatus: 'online' | 'away';
+    }>;
+  };
 };
 
 export function LibraryAssetsTable({
@@ -50,6 +76,9 @@ export function LibraryAssetsTable({
   onSaveAsset,
   onUpdateAsset,
   onDeleteAsset,
+  currentUser = null,
+  enableRealtime = false,
+  presenceTracking,
 }: LibraryAssetsTableProps) {
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [newRowData, setNewRowData] = useState<Record<string, any>>({});
@@ -58,6 +87,13 @@ export function LibraryAssetsTable({
   // Edit mode state: track which row is being edited and its data
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingRowData, setEditingRowData] = useState<Record<string, any>>({});
+  
+  // Realtime collaboration state: track remote edits from other users
+  const [realtimeEditedCells, setRealtimeEditedCells] = useState<Map<string, { value: any; timestamp: number }>>(new Map());
+  
+  // Conflict resolution state: track cells with conflicts
+  // Format: { cellKey: { remoteValue, localValue, userName, timestamp } }
+  const [conflictedCells, setConflictedCells] = useState<Map<string, { remoteValue: any; localValue: any; userName: string; timestamp: number }>>(new Map());
   
   // Optimistic update state for boolean fields: track pending boolean updates
   // Format: { rowId-propertyKey: booleanValue }
@@ -86,6 +122,164 @@ export function LibraryAssetsTable({
   // Optimistic update: track edited assets to show updates immediately
   // Format: { rowId: { name, propertyValues } }
   const [optimisticEditUpdates, setOptimisticEditUpdates] = useState<Map<string, { name: string; propertyValues: Record<string, any> }>>(new Map());
+
+  // Realtime collaboration: event handlers
+  const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
+    const cellKey = `${event.assetId}-${event.propertyKey}`;
+    
+    // Update the cell with remote data
+    setRealtimeEditedCells(prev => {
+      const next = new Map(prev);
+      next.set(cellKey, { value: event.newValue, timestamp: event.timestamp });
+      return next;
+    });
+
+    // Clear the realtime edited state after a short delay
+    setTimeout(() => {
+      setRealtimeEditedCells(prev => {
+        const next = new Map(prev);
+        next.delete(cellKey);
+        return next;
+      });
+    }, 300);
+  }, []);
+
+  const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
+    // Show a notification that a new asset was created
+    message.info(`${event.userName} added "${event.assetName}"`);
+    
+    // The parent will refresh and show the new asset automatically
+    // due to database subscription or polling
+  }, []);
+
+  const handleAssetDeleteEvent = useCallback((event: AssetDeleteEvent) => {
+    // Show a notification that an asset was deleted
+    message.warning(`${event.userName} deleted "${event.assetName}"`);
+    
+    // Optimistically hide the deleted asset
+    setDeletedAssetIds(prev => {
+      const next = new Set(prev);
+      next.add(event.assetId);
+      return next;
+    });
+  }, []);
+
+  const handleConflictEvent = useCallback((event: CellUpdateEvent, localValue: any) => {
+    const cellKey = `${event.assetId}-${event.propertyKey}`;
+    
+    // Track the conflict
+    setConflictedCells(prev => {
+      const next = new Map(prev);
+      next.set(cellKey, {
+        remoteValue: event.newValue,
+        localValue,
+        userName: event.userName,
+        timestamp: event.timestamp,
+      });
+      return next;
+    });
+    
+    // Show conflict notification
+    message.warning(
+      `Cell updated by ${event.userName}. Choose to keep your changes or accept theirs.`,
+      5
+    );
+  }, []);
+
+  // Initialize realtime subscription if enabled
+  const realtimeConfig = enableRealtime && currentUser && library ? {
+    libraryId: library.id,
+    currentUserId: currentUser.id,
+    currentUserName: currentUser.name,
+    currentUserEmail: currentUser.email,
+    avatarColor: currentUser.avatarColor || getUserAvatarColor(currentUser.id),
+    onCellUpdate: handleCellUpdateEvent,
+    onAssetCreate: handleAssetCreateEvent,
+    onAssetDelete: handleAssetDeleteEvent,
+    onConflict: handleConflictEvent,
+  } : null;
+
+  const realtimeSubscription = useRealtimeSubscription(
+    realtimeConfig || {
+      libraryId: '',
+      currentUserId: '',
+      currentUserName: '',
+      currentUserEmail: '',
+      avatarColor: '',
+      onCellUpdate: () => {},
+      onAssetCreate: () => {},
+      onAssetDelete: () => {},
+      onConflict: () => {},
+    }
+  );
+
+  const {
+    connectionStatus,
+    broadcastCellUpdate,
+    broadcastAssetCreate,
+    broadcastAssetDelete,
+  } = enableRealtime && currentUser ? realtimeSubscription : {
+    connectionStatus: 'disconnected' as const,
+    broadcastCellUpdate: async () => {},
+    broadcastAssetCreate: async () => {},
+    broadcastAssetDelete: async () => {},
+  };
+
+  // Presence tracking helpers
+  const handleCellFocus = useCallback((assetId: string, propertyKey: string) => {
+    if (presenceTracking) {
+      presenceTracking.updateActiveCell(assetId, propertyKey);
+    }
+  }, [presenceTracking]);
+
+  const handleCellBlur = useCallback(() => {
+    if (presenceTracking) {
+      presenceTracking.updateActiveCell(null, null);
+    }
+  }, [presenceTracking]);
+
+  const getUsersEditingCell = useCallback((assetId: string, propertyKey: string) => {
+    if (!presenceTracking) return [];
+    return presenceTracking.getUsersEditingCell(assetId, propertyKey);
+  }, [presenceTracking]);
+
+  // Conflict resolution handlers
+  const handleKeepLocalChanges = useCallback((assetId: string, propertyKey: string) => {
+    const cellKey = `${assetId}-${propertyKey}`;
+    
+    // Remove conflict state (keep local value)
+    setConflictedCells(prev => {
+      const next = new Map(prev);
+      next.delete(cellKey);
+      return next;
+    });
+    
+    message.success('Kept your changes', 2);
+  }, []);
+
+  const handleAcceptRemoteChanges = useCallback((assetId: string, propertyKey: string) => {
+    const cellKey = `${assetId}-${propertyKey}`;
+    const conflict = conflictedCells.get(cellKey);
+    
+    if (!conflict) return;
+    
+    // Apply remote value to editing data
+    if (editingRowId === assetId) {
+      setEditingRowData(prev => ({
+        ...prev,
+        [propertyKey]: conflict.remoteValue,
+      }));
+    }
+    
+    // Remove conflict state
+    setConflictedCells(prev => {
+      const next = new Map(prev);
+      next.delete(cellKey);
+      return next;
+    });
+    
+    message.info(`Accepted changes from ${conflict.userName}`, 2);
+  }, [conflictedCells, editingRowId]);
 
   // Clean up optimistic assets when rows are updated (parent refresh)
   // This ensures that when a real asset is added/updated from the parent, we remove the optimistic one
@@ -668,6 +862,22 @@ export function LibraryAssetsTable({
   // Set display name for debugging
   ReferenceField.displayName = 'ReferenceField';
 
+  // Helper function to broadcast cell updates
+  const broadcastCellUpdateIfEnabled = useCallback(async (
+    assetId: string,
+    propertyKey: string,
+    newValue: any,
+    oldValue?: any
+  ) => {
+    if (enableRealtime && currentUser) {
+      try {
+        await broadcastCellUpdate(assetId, propertyKey, newValue, oldValue);
+      } catch (error) {
+        console.error('Failed to broadcast cell update:', error);
+      }
+    }
+  }, [enableRealtime, currentUser, broadcastCellUpdate]);
+
   // Handle save new asset
   const handleSaveNewAsset = async () => {
     if (!onSaveAsset || !library) return;
@@ -699,6 +909,12 @@ export function LibraryAssetsTable({
     setIsSaving(true);
     try {
       await onSaveAsset(assetName, savedNewRowData);
+      
+      // Broadcast asset creation if realtime is enabled
+      if (enableRealtime && currentUser) {
+        await broadcastAssetCreate(tempId, assetName, savedNewRowData);
+      }
+      
       // Remove optimistic asset after a short delay to allow parent to refresh
       // The parent refresh will replace it with the real asset
       setTimeout(() => {
@@ -1030,6 +1246,10 @@ export function LibraryAssetsTable({
     
     const assetIdToDelete = deletingAssetId;
     
+    // Find the asset name for broadcasting
+    const asset = rows.find(r => r.id === assetIdToDelete);
+    const assetName = asset?.name || 'Untitled';
+    
     // Optimistic update: immediately hide the row
     setDeletedAssetIds(prev => new Set(prev).add(assetIdToDelete));
     
@@ -1042,6 +1262,12 @@ export function LibraryAssetsTable({
     // Delete in background
     try {
       await onDeleteAsset(assetIdToDelete);
+      
+      // Broadcast asset deletion if realtime is enabled
+      if (enableRealtime && currentUser) {
+        await broadcastAssetDelete(assetIdToDelete, assetName);
+      }
+      
       // Success: row is already hidden, parent will refresh data
       // Remove from deleted set after a short delay to ensure parent refresh
       setTimeout(() => {
@@ -1151,6 +1377,20 @@ export function LibraryAssetsTable({
 
   return (
     <>
+      {enableRealtime && currentUser && (
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'flex-end', 
+          padding: '8px 16px',
+          backgroundColor: '#fafafa',
+          borderBottom: '1px solid #f0f0f0'
+        }}>
+          <ConnectionStatusIndicator 
+            status={connectionStatus} 
+            queuedUpdatesCount={realtimeSubscription?.queuedUpdatesCount || 0}
+          />
+        </div>
+      )}
       <div className={styles.tableContainer} ref={tableContainerRef}>
         <table className={styles.table}>
         <thead>
@@ -1343,15 +1583,56 @@ export function LibraryAssetsTable({
                       );
                     }
                     
+                    // Get users editing this cell
+                    const editingUsers = getUsersEditingCell(row.id, property.key);
+                    const borderColor = getFirstUserColor(editingUsers);
+                    const cellKey = `${row.id}-${property.key}`;
+                    const conflict = conflictedCells.get(cellKey);
+                    
                     return (
-                      <td key={property.id} className={styles.editCell}>
-                        <Input
-                          value={editingRowData[property.key] || ''}
-                          onChange={(e) => handleEditInputChange(property.key, e.target.value)}
-                          placeholder={`Enter ${property.name.toLowerCase()}`}
-                          className={styles.editInput}
-                          disabled={isSaving}
-                        />
+                      <td 
+                        key={property.id} 
+                        className={`${styles.editCell} ${conflict ? styles.conflictedCell : ''}`}
+                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                      >
+                        <div style={{ position: 'relative' }}>
+                          <Input
+                            value={editingRowData[property.key] || ''}
+                            onChange={(e) => handleEditInputChange(property.key, e.target.value)}
+                            placeholder={`Enter ${property.name.toLowerCase()}`}
+                            className={`${styles.editInput} ${conflict ? styles.conflictInput : ''}`}
+                            disabled={isSaving}
+                            onFocus={() => handleCellFocus(row.id, property.key)}
+                            onBlur={handleCellBlur}
+                          />
+                          {editingUsers.length > 0 && (
+                            <div style={{ position: 'absolute', top: 2, right: 2, zIndex: 10 }}>
+                              <StackedAvatars users={editingUsers} size="small" maxVisible={3} />
+                            </div>
+                          )}
+                          {conflict && (
+                            <div className={styles.conflictActions}>
+                              <span className={styles.conflictLabel}>
+                                Updated by {conflict.userName}
+                              </span>
+                              <Button
+                                size="small"
+                                type="primary"
+                                onClick={() => handleKeepLocalChanges(row.id, property.key)}
+                                className={styles.conflictButton}
+                              >
+                                Keep Mine
+                              </Button>
+                              <Button
+                                size="small"
+                                onClick={() => handleAcceptRemoteChanges(row.id, property.key)}
+                                className={styles.conflictButton}
+                              >
+                                Accept Theirs
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       </td>
                     );
                   })}
@@ -1490,11 +1771,15 @@ export function LibraryAssetsTable({
                               // Update the row data in background
                               if (onUpdateAsset) {
                                 try {
+                                  const oldValue = row.propertyValues[property.key];
                                   const updatedPropertyValues = {
                                     ...row.propertyValues,
                                     [property.key]: newValue
                                   };
                                   await onUpdateAsset(row.id, row.name, updatedPropertyValues);
+                                  
+                                  // Broadcast cell update if realtime is enabled
+                                  await broadcastCellUpdateIfEnabled(row.id, property.key, newValue, oldValue);
                                   
                                   // Remove optimistic value after successful update
                                   // The component will re-render with new props from parent

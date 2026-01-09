@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { Button, Table, Tag, Space, Popconfirm, Select, message, Empty } from 'antd';
 import { UserAddOutlined, MailOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
-import { updateCollaboratorRole, removeCollaborator } from '@/lib/actions/collaboration';
+import { useSupabase } from '@/lib/SupabaseContext';
 import type { Collaborator, PendingInvitation, CollaboratorRole } from '@/lib/types/collaboration';
 import { canUserManageCollaborators } from '@/lib/types/collaboration';
 
@@ -35,6 +35,7 @@ export function CollaboratorsContent({
   initialCollaborators,
   initialPendingInvitations,
 }: CollaboratorsContentProps) {
+  const supabase = useSupabase();
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [collaborators, setCollaborators] = useState(initialCollaborators);
   const [pendingInvitations, setPendingInvitations] = useState(initialPendingInvitations);
@@ -48,9 +49,27 @@ export function CollaboratorsContent({
     setLoadingRoleChange(collaboratorId);
     
     try {
-      const result = await updateCollaboratorRole({ collaboratorId, newRole });
+      // Get session for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        message.error('You must be logged in');
+        setLoadingRoleChange(null);
+        return;
+      }
       
-      if (result.success) {
+      // Call API route with authorization header
+      const response = await fetch(`/api/collaborators/${collaboratorId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ newRole }),
+      });
+
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
         message.success('Role updated successfully');
         // Update local state
         setCollaborators(prev =>
@@ -72,9 +91,25 @@ export function CollaboratorsContent({
     setLoadingRemove(collaboratorId);
     
     try {
-      const result = await removeCollaborator({ collaboratorId });
+      // Get session for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        message.error('You must be logged in');
+        setLoadingRemove(null);
+        return;
+      }
       
-      if (result.success) {
+      // Call API route with authorization header
+      const response = await fetch(`/api/collaborators/${collaboratorId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      const result = await response.json();
+      
+      if (response.ok && result.success) {
         message.success('Collaborator removed');
         // Update local state
         setCollaborators(prev => prev.filter(c => c.id !== collaboratorId));

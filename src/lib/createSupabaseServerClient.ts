@@ -18,11 +18,13 @@ export function createSupabaseServerClient(request: Request): SupabaseClient {
   // Extract the authorization header from the request
   const authHeader = request.headers.get('authorization');
   
+  console.log('[createSupabaseServerClient] Auth header:', authHeader ? `exists (${authHeader.substring(0, 30)}...)` : 'MISSING');
+  
   // Create a client with the auth token if present
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     global: {
       headers: authHeader ? {
-        authorization: authHeader,
+        Authorization: authHeader, // Capital 'A' is important!
       } : {},
     },
     auth: {

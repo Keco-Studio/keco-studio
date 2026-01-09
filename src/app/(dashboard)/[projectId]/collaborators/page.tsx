@@ -16,10 +16,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { 
-  getUserProjectRoleAction, 
-  getProjectCollaboratorsAction 
-} from '@/lib/actions/collaboration';
 import CollaboratorsList from '@/components/collaboration/CollaboratorsList';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
 import type { Collaborator, PendingInvitation } from '@/lib/types/collaboration';
@@ -79,7 +75,8 @@ export default function CollaboratorsPage() {
       
       // 3. Get user role
       try {
-        const roleResult = await getUserProjectRoleAction({ projectId });
+        const roleResponse = await fetch(`/api/projects/${projectId}/role`);
+        const roleResult = await roleResponse.json();
         console.log('[CollaboratorsPage] User role result:', roleResult);
         if (roleResult.role) {
           setUserRole(roleResult.role);
@@ -388,6 +385,7 @@ export default function CollaboratorsPage() {
       {userRole && (
         <InviteCollaboratorModal
           projectId={projectId}
+          projectName={projectName}
           userRole={userRole}
           open={inviteModalOpen}
           onClose={() => setInviteModalOpen(false)}

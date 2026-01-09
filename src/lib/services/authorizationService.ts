@@ -68,6 +68,108 @@ export async function verifyProjectOwnership(
 }
 
 /**
+ * Verify that the user has access to the project (owner OR collaborator)
+ * This is the main function to use for project access checks with collaboration support
+ */
+export async function verifyProjectAccess(
+  supabase: SupabaseClient,
+  projectId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Use cache to prevent duplicate access verification requests
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = `auth:project-access:${projectId}:${currentUserId}`;
+  
+  await globalRequestCache.fetch(cacheKey, async () => {
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+    
+    if (error || !project) {
+      throw new AuthorizationError('Project not found');
+    }
+    
+    // Check if user is the owner
+    if (project.owner_id === currentUserId) {
+      return true;
+    }
+    
+    // Check if user is a collaborator with accepted invitation
+    const { data: collaborator, error: collabError } = await supabase
+      .from('project_collaborators')
+      .select('id, role, accepted_at')
+      .eq('project_id', projectId)
+      .eq('user_id', currentUserId)
+      .maybeSingle();
+    
+    if (collabError) {
+      throw new AuthorizationError('Error checking collaborator status');
+    }
+    
+    // User must be a collaborator with accepted invitation
+    if (!collaborator || !collaborator.accepted_at) {
+      throw new AuthorizationError('Unauthorized access to this project');
+    }
+    
+    return true; // Return a value for caching
+  });
+}
+
+/**
+ * Get user's role in a project (owner returns 'admin', collaborators return their role)
+ */
+export async function getUserProjectRole(
+  supabase: SupabaseClient,
+  projectId: string,
+  userId?: string
+): Promise<'admin' | 'editor' | 'viewer'> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Use cache
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  const cacheKey = `auth:project-role:${projectId}:${currentUserId}`;
+  
+  return await globalRequestCache.fetch(cacheKey, async () => {
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('owner_id')
+      .eq('id', projectId)
+      .single();
+    
+    if (error || !project) {
+      throw new AuthorizationError('Project not found');
+    }
+    
+    // Owner has admin role
+    if (project.owner_id === currentUserId) {
+      return 'admin';
+    }
+    
+    // Check collaborator role
+    const { data: collaborator, error: collabError } = await supabase
+      .from('project_collaborators')
+      .select('role, accepted_at')
+      .eq('project_id', projectId)
+      .eq('user_id', currentUserId)
+      .maybeSingle();
+    
+    if (collabError) {
+      throw new AuthorizationError('Error checking collaborator status');
+    }
+    
+    if (!collaborator || !collaborator.accepted_at) {
+      throw new AuthorizationError('User is not a collaborator of this project');
+    }
+    
+    return collaborator.role as 'admin' | 'editor' | 'viewer';
+  });
+}
+
+/**
  * Verify that the user has permission to access a library (via the library's project)
  */
 export async function verifyLibraryAccess(
@@ -93,8 +195,8 @@ export async function verifyLibraryAccess(
       throw new AuthorizationError('Library not found');
     }
     
-    // Verify project ownership
-    await verifyProjectOwnership(supabase, library.project_id, currentUserId);
+    // Verify project access (owner or collaborator)
+    await verifyProjectAccess(supabase, library.project_id, currentUserId);
     
     return true; // Return a value for caching
   });
@@ -126,8 +228,8 @@ export async function verifyFolderAccess(
       throw new AuthorizationError('Folder not found');
     }
     
-    // Verify project ownership
-    await verifyProjectOwnership(supabase, folder.project_id, currentUserId);
+    // Verify project access (owner or collaborator)
+    await verifyProjectAccess(supabase, folder.project_id, currentUserId);
     
     return true; // Return a value for caching
   });

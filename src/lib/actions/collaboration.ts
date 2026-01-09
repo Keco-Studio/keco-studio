@@ -350,7 +350,7 @@ export async function removeCollaborator(
         .select('id')
         .eq('project_id', collaborator.project_id)
         .eq('role', 'admin')
-        .is_not('accepted_at', null);
+        .not('accepted_at', 'is', null);
       
       if (adminError || !admins || admins.length <= 1) {
         return { 

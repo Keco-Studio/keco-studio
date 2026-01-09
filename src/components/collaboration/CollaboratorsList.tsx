@@ -15,10 +15,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
-import {
-  updateCollaboratorRole,
-  removeCollaborator,
-} from '@/lib/actions/collaboration';
 import type { Collaborator } from '@/lib/types/collaboration';
 import styles from './CollaboratorsList.module.css';
 
@@ -119,12 +115,30 @@ export default function CollaboratorsList({
     try {
       console.log(`[CollaboratorsList] Updating role: ${currentRole} → ${newRole}`);
       
-      const result = await updateCollaboratorRole({
-        collaboratorId,
-        newRole,
-      });
+      // Get session for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('[CollaboratorsList] Session:', session ? 'exists' : 'null');
+      console.log('[CollaboratorsList] Access token:', session?.access_token ? `exists (length: ${session.access_token.length})` : 'null');
       
-      if (!result.success) {
+      if (!session) {
+        throw new Error('You must be logged in');
+      }
+      
+      // Call API route with authorization header
+      console.log('[CollaboratorsList] Sending PATCH with auth header');
+      const response = await fetch(`/api/collaborators/${collaboratorId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ newRole }),
+      });
+      console.log('[CollaboratorsList] Response status:', response.status);
+
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
         // Rollback optimistic update on error
         console.error('[CollaboratorsList] Role update failed:', result.error);
         setOptimisticUpdates(prev => {
@@ -186,9 +200,23 @@ export default function CollaboratorsList({
     try {
       console.log(`[CollaboratorsList] Removing collaborator: ${userName}`);
       
-      const result = await removeCollaborator({ collaboratorId });
+      // Get session for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error('You must be logged in');
+      }
       
-      if (!result.success) {
+      // Call API route with authorization header
+      const response = await fetch(`/api/collaborators/${collaboratorId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
         // Rollback optimistic update on error
         console.error('[CollaboratorsList] Remove failed:', result.error);
         setOptimisticUpdates(prev => {

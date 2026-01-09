@@ -113,20 +113,20 @@
 
 ### Implementation for User Story 3
 
-- [ ] T041 [P] [US3] Create realtime subscription hook in src/lib/hooks/useRealtimeSubscription.ts
-- [ ] T042 [P] [US3] Create cell update broadcast utilities in src/lib/services/realtimeService.ts
-- [ ] T043 [US3] Integrate useRealtimeSubscription hook into LibraryAssetsTable (src/components/libraries/LibraryAssetsTable.tsx)
-- [ ] T044 [US3] Implement broadcast channel subscription for library:{libraryId}:edits
-- [ ] T045 [US3] Add cell:update event handler with optimistic UI updates
-- [ ] T046 [US3] Add asset:create event handler to add rows in real-time
-- [ ] T047 [US3] Add asset:delete event handler to remove rows in real-time
-- [ ] T048 [US3] Implement cell edit broadcasting on save (send cell:update event)
-- [ ] T049 [US3] Add colored cell borders using editing user's avatarColor
-- [ ] T050 [US3] Implement conflict detection logic (compare local timestamp vs broadcast timestamp)
-- [ ] T051 [US3] Add conflict notification toast when remote update overwrites local change
-- [ ] T052 [US3] Implement optimistic update map for pending edits
-- [ ] T053 [US3] Add connection status indicator in library page header
-- [ ] T054 [US3] Implement reconnection logic with queued updates on connection restore
+- [x] T041 [P] [US3] Create realtime subscription hook in src/lib/hooks/useRealtimeSubscription.ts
+- [x] T042 [P] [US3] Create cell update broadcast utilities in src/lib/services/realtimeService.ts
+- [x] T043 [US3] Integrate useRealtimeSubscription hook into LibraryAssetsTable (src/components/libraries/LibraryAssetsTable.tsx)
+- [x] T044 [US3] Implement broadcast channel subscription for library:{libraryId}:edits
+- [x] T045 [US3] Add cell:update event handler with optimistic UI updates
+- [x] T046 [US3] Add asset:create event handler to add rows in real-time
+- [x] T047 [US3] Add asset:delete event handler to remove rows in real-time
+- [x] T048 [US3] Implement cell edit broadcasting on save (send cell:update event)
+- [x] T049 [US3] Add colored cell borders using editing user's avatarColor
+- [x] T050 [US3] Implement conflict detection logic (compare local timestamp vs broadcast timestamp)
+- [x] T051 [US3] Add conflict notification toast when remote update overwrites local change
+- [x] T052 [US3] Implement optimistic update map for pending edits
+- [x] T053 [US3] Add connection status indicator in library page header
+- [x] T054 [US3] Implement reconnection logic with queued updates on connection restore
 
 **Checkpoint**: Multiple users can edit simultaneously, see real-time updates, and resolve conflicts automatically
 
@@ -140,19 +140,19 @@
 
 ### Implementation for User Story 4
 
-- [ ] T055 [P] [US4] Create presence tracking hook in src/lib/hooks/usePresenceTracking.ts
-- [ ] T056 [P] [US4] Create PresenceIndicators component in src/components/collaboration/PresenceIndicators.tsx
-- [ ] T057 [P] [US4] Create PresenceIndicators styles in src/components/collaboration/PresenceIndicators.module.css
-- [ ] T058 [US4] Implement Supabase Presence channel subscription for library:{libraryId}:presence
-- [ ] T059 [US4] Add presence tracking on library page mount with initial state
-- [ ] T060 [US4] Implement 30-second heartbeat to update lastActivity timestamp
-- [ ] T061 [US4] Add presence cleanup on page unmount (untrack)
-- [ ] T062 [US4] Integrate PresenceIndicators into library page header showing active user avatars
-- [ ] T063 [US4] Update presence state when user focuses on cell (track activeCell)
-- [ ] T064 [US4] Display user avatars on cells they are editing using activeCell data
-- [ ] T065 [US4] Add presence:join event handler with toast notification
-- [ ] T066 [US4] Add presence:leave event handler to remove indicators within 10s
-- [ ] T067 [US4] Implement avatar collapse for 10+ users (show "X others")
+- [x] T055 [P] [US4] Create presence tracking hook in src/lib/hooks/usePresenceTracking.ts
+- [x] T056 [P] [US4] Create PresenceIndicators component in src/components/collaboration/PresenceIndicators.tsx
+- [x] T057 [P] [US4] Create PresenceIndicators styles in src/components/collaboration/PresenceIndicators.module.css
+- [x] T058 [US4] Implement Supabase Presence channel subscription for library:{libraryId}:presence
+- [x] T059 [US4] Add presence tracking on library page mount with initial state
+- [x] T060 [US4] Implement 30-second heartbeat to update lastActivity timestamp
+- [x] T061 [US4] Add presence cleanup on page unmount (untrack)
+- [x] T062 [US4] Integrate PresenceIndicators into library page header showing active user avatars
+- [x] T063 [US4] Update presence state when user focuses on cell (track activeCell)
+- [x] T064 [US4] Display user avatars on cells they are editing using activeCell data
+- [x] T065 [US4] Add presence:join event handler with toast notification
+- [x] T066 [US4] Add presence:leave event handler to remove indicators within 10s
+- [x] T067 [US4] Implement avatar collapse for 10+ users (show "X others")
 
 **Checkpoint**: Users see real-time presence of collaborators, know who's editing where, and receive join/leave notifications
 
@@ -166,15 +166,15 @@
 
 ### Implementation for User Story 5
 
-- [ ] T068 [P] [US5] Create StackedAvatars component in src/components/collaboration/StackedAvatars.tsx
-- [ ] T069 [P] [US5] Create StackedAvatars styles in src/components/collaboration/StackedAvatars.module.css
-- [ ] T070 [US5] Integrate StackedAvatars into LibraryAssetsTable cells
-- [ ] T071 [US5] Implement first-user-priority border color logic (rightmost avatar = first)
-- [ ] T072 [US5] Add stacked avatar ordering (first user rightmost, subsequent left)
-- [ ] T073 [US5] Implement unsaved changes highlighting when conflict detected
-- [ ] T074 [US5] Add "Keep" / "Discard" buttons for conflicted cell content
-- [ ] T075 [US5] Display "Cell updated by [username]" notification on conflict
-- [ ] T076 [US5] Implement rollback logic when user chooses "Discard"
+- [x] T068 [P] [US5] Create StackedAvatars component in src/components/collaboration/StackedAvatars.tsx
+- [x] T069 [P] [US5] Create StackedAvatars styles in src/components/collaboration/StackedAvatars.module.css
+- [x] T070 [US5] Integrate StackedAvatars into LibraryAssetsTable cells
+- [x] T071 [US5] Implement first-user-priority border color logic (rightmost avatar = first)
+- [x] T072 [US5] Add stacked avatar ordering (first user rightmost, subsequent left)
+- [x] T073 [US5] Implement unsaved changes highlighting when conflict detected
+- [x] T074 [US5] Add "Keep" / "Discard" buttons for conflicted cell content
+- [x] T075 [US5] Display "Cell updated by [username]" notification on conflict
+- [x] T076 [US5] Implement rollback logic when user chooses "Discard"
 
 **Checkpoint**: Same-cell editing gracefully handled with visual feedback and conflict resolution UI
 
@@ -194,19 +194,19 @@
 
 ### Error Handling & Edge Cases
 
-- [ ] T082 [P] Add offline state detection and queue pending changes locally
-- [ ] T083 [P] Implement sync on reconnection for queued changes
-- [ ] T084 [P] Add validation error for duplicate invitations to same email
+- [x] T082 [P] Add offline state detection and queue pending changes locally
+- [x] T083 [P] Implement sync on reconnection for queued changes
+- [x] T084 [P] Add validation error for duplicate invitations to same email
 - [ ] T085 [P] Add graceful disconnect for removed collaborator mid-session
-- [ ] T086 [P] Implement timezone-aware timestamp display using user's local timezone
+- [x] T086 [P] Implement timezone-aware timestamp display using user's local timezone
 - [ ] T087 Add rate limiting for invitation sending (10/hour per project)
-- [ ] T088 Add connection status indicator with reconnection attempts
+- [x] T088 Add connection status indicator with reconnection attempts
 
 ### Performance Optimization
 
-- [ ] T089 [P] Throttle presence cursor updates to 10/second maximum
-- [ ] T090 [P] Debounce cell edit broadcasts to 500ms pause
-- [ ] T091 Optimize RLS policy performance with proper indexes
+- [x] T089 [P] Throttle presence cursor updates to 10/second maximum
+- [x] T090 [P] Debounce cell edit broadcasts to 500ms pause
+- [x] T091 Optimize RLS policy performance with proper indexes
 - [ ] T092 Add React Query caching for collaborator list (1 minute stale time)
 
 ### Documentation & Testing

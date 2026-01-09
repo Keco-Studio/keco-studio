@@ -3,6 +3,7 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
   verifyProjectOwnership,
+  verifyProjectAccess,
   verifyLibraryAccess,
 } from './authorizationService';
 
@@ -135,8 +136,8 @@ export async function listLibraries(
 ): Promise<Library[]> {
   const resolvedProjectId = await resolveProjectId(supabase, projectId);
   
-  // verify project ownership
-  await verifyProjectOwnership(supabase, resolvedProjectId);
+  // verify project access (owner or collaborator)
+  await verifyProjectAccess(supabase, resolvedProjectId);
 
   // Use request cache to prevent duplicate requests
   const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');

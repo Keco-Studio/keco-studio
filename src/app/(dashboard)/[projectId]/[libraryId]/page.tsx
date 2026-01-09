@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
-import { Tooltip } from 'antd';
+import { Tooltip, message } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject, Project } from '@/lib/services/projectService';
 import { getLibrary, Library } from '@/lib/services/libraryService';
@@ -22,6 +22,10 @@ import {
   deleteAsset,
 } from '@/lib/services/libraryAssetsService';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
+import { PresenceIndicators } from '@/components/collaboration/PresenceIndicators';
+import { getUserAvatarColor } from '@/lib/utils/avatarColors';
+import type { PresenceState } from '@/lib/types/collaboration';
 import styles from './page.module.css';
 
 type FieldDef = {
@@ -58,6 +62,39 @@ export default function LibraryPage() {
   const [tableSections, setTableSections] = useState<SectionConfig[]>([]);
   const [tableProperties, setTableProperties] = useState<PropertyConfig[]>([]);
   const [assetRows, setAssetRows] = useState<AssetRow[]>([]);
+
+  // Presence tracking for real-time collaboration
+  const userAvatarColor = useMemo(() => {
+    return userProfile?.id ? getUserAvatarColor(userProfile.id) : '#999999';
+  }, [userProfile?.id]);
+
+  // Presence join/leave event handlers
+  const handlePresenceJoin = useCallback((user: PresenceState) => {
+    message.success(`${user.userName} joined the library`, 2);
+  }, []);
+
+  const handlePresenceLeave = useCallback((userId: string, userName: string) => {
+    message.info(`${userName} left the library`, 2);
+  }, []);
+
+  // Initialize presence tracking
+  const {
+    isTracking,
+    presenceUsers,
+    activeUserCount,
+    updateActiveCell,
+    updateCursorPosition,
+    getUsersEditingCell,
+    getActiveUsers,
+  } = usePresenceTracking({
+    libraryId: libraryId,
+    userId: userProfile?.id || '',
+    userName: userProfile?.full_name || userProfile?.username || 'Anonymous',
+    userEmail: userProfile?.email || '',
+    avatarColor: userAvatarColor,
+    onPresenceJoin: handlePresenceJoin,
+    onPresenceLeave: handlePresenceLeave,
+  });
 
   const sections = useMemo(() => {
     const map: Record<string, FieldDef[]> = {};
@@ -287,6 +324,15 @@ export default function LibraryPage() {
               </div>
             </Tooltip>
           )}
+          
+          {/* Real-time presence indicators */}
+          {isAuthenticated && isTracking && presenceUsers.length > 0 && (
+            <PresenceIndicators
+              presenceUsers={presenceUsers}
+              maxVisible={10}
+              size="default"
+            />
+          )}
         </div>
       </div>
 
@@ -313,6 +359,21 @@ export default function LibraryPage() {
         onSaveAsset={handleSaveAssetFromTable}
         onUpdateAsset={handleUpdateAssetFromTable}
         onDeleteAsset={handleDeleteAssetFromTable}
+        currentUser={
+          userProfile
+            ? {
+                id: userProfile.id,
+                name: userProfile.full_name || userProfile.username || 'Anonymous',
+                email: userProfile.email,
+                avatarColor: userAvatarColor,
+              }
+            : null
+        }
+        enableRealtime={isAuthenticated}
+        presenceTracking={{
+          updateActiveCell,
+          getUsersEditingCell,
+        }}
       />
 
       {saveError && (

@@ -1,0 +1,126 @@
+/* PresenceIndicators Styles */
+
+.presenceIndicators {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary, #666);
+  white-space: nowrap;
+}
+
+.avatarGroup {
+  display: flex;
+  align-items: center;
+  gap: -8px; /* Overlap avatars slightly */
+}
+
+.avatar {
+  border: 2px solid var(--bg-primary, #ffffff);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.avatar:hover {
+  transform: scale(1.1);
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.avatarOverflow {
+  background-color: var(--bg-tertiary, #f0f0f0) !important;
+  color: var(--text-secondary, #666);
+  font-size: 12px;
+  border-color: var(--border-light, #e0e0e0);
+}
+
+/* Tooltip Content */
+
+.tooltipContent {
+  padding: 4px 0;
+}
+
+.tooltipName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary, #000);
+  margin-bottom: 4px;
+}
+
+.tooltipActivity {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.tooltipEditing {
+  font-size: 12px;
+  color: var(--color-success, #52c41a);
+  margin-top: 4px;
+  font-style: italic;
+}
+
+/* Custom Tooltip Overlay */
+
+:global(.ant-tooltip.presenceTooltip) .ant-tooltip-inner {
+  padding: 8px 12px;
+  min-width: 150px;
+}
+
+/* Responsive */
+
+@media (max-width: 768px) {
+  .presenceIndicators {
+    gap: 8px;
+  }
+
+  .label {
+    font-size: 12px;
+  }
+
+  .avatar {
+    font-size: 12px;
+  }
+}
+
+/* Animation for joining users */
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.avatar {
+  animation: fadeIn 0.3s ease;
+}
+
+/* Online status indicator (optional enhancement) */
+
+.avatar::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 10px;
+  background-color: var(--color-success, #52c41a);
+  border: 2px solid var(--bg-primary, #ffffff);
+  border-radius: 50%;
+}
+
+.avatar.away::after {
+  background-color: var(--color-warning, #faad14);
+}
+

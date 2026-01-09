@@ -4,6 +4,7 @@ import { SupabaseClient } from '@supabase/supabase-js';
 import {
   verifyProjectCreation,
   verifyProjectOwnership,
+  verifyProjectAccess,
   getCurrentUserId,
 } from './authorizationService';
 
@@ -153,7 +154,7 @@ export async function getProject(
   projectId: string
 ): Promise<Project | null> {
  
-  await verifyProjectOwnership(supabase, projectId);
+  await verifyProjectAccess(supabase, projectId);
   
   // Use request cache to prevent duplicate requests
   const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');

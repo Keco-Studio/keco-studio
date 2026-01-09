@@ -819,3 +819,67 @@
   flex-shrink: 0;
 }
 
+
+
+/* Realtime collaboration styles */
+.realtimeEditedCell {
+  animation: realtimePulse 0.3s ease-in-out;
+  border: 2px solid #52c41a !important;
+}
+
+@keyframes realtimePulse {
+  0%, 100% {
+    background-color: inherit;
+  }
+  50% {
+    background-color: rgba(82, 196, 26, 0.15);
+  }
+}
+
+/* Conflict resolution styles */
+.conflictedCell {
+  position: relative;
+  background-color: rgba(250, 173, 20, 0.1) !important;
+}
+
+.conflictInput {
+  border: 2px solid #faad14 !important;
+  background-color: rgba(250, 173, 20, 0.05);
+}
+
+.conflictActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background-color: #fff9e6;
+  border: 1px solid #ffd666;
+  border-radius: 4px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.conflictLabel {
+  flex: 1;
+  color: #d46b08;
+  font-weight: 500;
+}
+
+.conflictButton {
+  font-size: 12px;
+  height: 24px;
+  padding: 0 8px;
+}
+
+@keyframes conflictHighlight {
+  0%, 100% {
+    background-color: rgba(250, 173, 20, 0.1);
+  }
+  50% {
+    background-color: rgba(250, 173, 20, 0.25);
+  }
+}
+
+.conflictedCell {
+  animation: conflictHighlight 1s ease-in-out infinite;
+}

@@ -13,13 +13,14 @@
 
 import { useState, useEffect } from 'react';
 import { Modal, Form, Input, Select, Button, Alert, message } from 'antd';
-import { sendCollaborationInvitation } from '@/lib/actions/collaboration';
+import { useSupabase } from '@/lib/SupabaseContext';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
 import { canUserInviteWithRole } from '@/lib/types/collaboration';
 import styles from './InviteCollaboratorModal.module.css';
 
 interface InviteCollaboratorModalProps {
   projectId: string;
+  projectName?: string;
   userRole: CollaboratorRole;
   open: boolean;
   onClose: () => void;
@@ -28,11 +29,13 @@ interface InviteCollaboratorModalProps {
 
 export function InviteCollaboratorModal({
   projectId,
+  projectName = 'this project',
   userRole,
   open,
   onClose,
   onSuccess,
 }: InviteCollaboratorModalProps) {
+  const supabase = useSupabase();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,17 +51,17 @@ export function InviteCollaboratorModal({
   // Get available roles based on user's role
   const availableRoles: { value: CollaboratorRole; label: string; description: string }[] = [
     {
-      value: 'admin',
+      value: 'admin' as CollaboratorRole,
       label: 'Admin',
       description: 'Can manage collaborators, edit content, and change settings',
     },
     {
-      value: 'editor',
+      value: 'editor' as CollaboratorRole,
       label: 'Editor',
       description: 'Can edit libraries and assets, invite collaborators',
     },
     {
-      value: 'viewer',
+      value: 'viewer' as CollaboratorRole,
       label: 'Viewer',
       description: 'Can view project content, no edit permissions',
     },
@@ -68,20 +71,51 @@ export function InviteCollaboratorModal({
     try {
       setError(null);
       setLoading(true);
-
+      
       // Validate form
       const values = await form.validateFields();
       const { email, role } = values;
 
-      // Send invitation
-      const result = await sendCollaborationInvitation({
+      console.log('[InviteCollaboratorModal] Sending invitation:', {
         projectId,
         recipientEmail: email.trim().toLowerCase(),
-        role: role as CollaboratorRole,
+        role,
       });
 
+      // Get current session for authorization header
+      const { data: { session } } = await supabase.auth.getSession();
+      console.log('[InviteCollaboratorModal] Session:', session ? 'exists' : 'null');
+      console.log('[InviteCollaboratorModal] Access token:', session?.access_token ? 'exists (length: ' + session.access_token.length + ')' : 'null');
+      
+      if (!session) {
+        setError('You must be logged in to send invitations');
+        setLoading(false);
+        return;
+      }
+
+      // Call API route with authorization header
+      const response = await fetch('/api/invitations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          projectId,
+          recipientEmail: email.trim().toLowerCase(),
+          role: role as CollaboratorRole,
+        }),
+      });
+
+      const result = await response.json();
+
       if (result.success) {
-        message.success('Invitation sent successfully!');
+        // Show different message based on whether user was auto-accepted
+        if (result.autoAccepted) {
+          message.success(result.message || 'Collaborator added successfully!');
+        } else {
+          message.success('Invitation sent successfully!');
+        }
         form.resetFields();
         onClose();
         onSuccess?.();
@@ -90,7 +124,7 @@ export function InviteCollaboratorModal({
       }
     } catch (validationError) {
       // Form validation failed - Ant Design will show field errors
-      console.error('Validation error:', validationError);
+      console.error('[InviteCollaboratorModal] Validation error:', validationError);
     } finally {
       setLoading(false);
     }
@@ -118,7 +152,7 @@ export function InviteCollaboratorModal({
         </Button>,
       ]}
       width={480}
-      destroyOnClose
+      destroyOnHidden
       className={styles.modal}
     >
       <div className={styles.content}>
