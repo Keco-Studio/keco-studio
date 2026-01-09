@@ -148,12 +148,21 @@ export default function ProjectPage() {
       fetchData();
     };
 
+    const handleProjectUpdated = (event: CustomEvent) => {
+      // Refresh data when the project is updated to reflect the new project name in LibraryToolbar
+      const updatedProjectId = event.detail?.projectId;
+      if (updatedProjectId === projectId) {
+        fetchData();
+      }
+    };
+
     window.addEventListener('folderCreated' as any, handleFolderCreated as EventListener);
     window.addEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
     window.addEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
     window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
     window.addEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
     window.addEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
+    window.addEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
     
     return () => {
       window.removeEventListener('folderCreated' as any, handleFolderCreated as EventListener);
@@ -162,6 +171,7 @@ export default function ProjectPage() {
       window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
       window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
       window.removeEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
+      window.removeEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
     };
   }, [fetchData, projectId]);
 

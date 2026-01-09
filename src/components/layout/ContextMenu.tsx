@@ -8,6 +8,7 @@ export type ContextMenuAction =
   | 'version-history'
   | 'star'
   | 'rename'
+  | 'collaborators'
   | 'duplicate'
   | 'move-to'
   | 'delete';
@@ -56,6 +57,182 @@ export function ContextMenu({ x, y, onClose, onAction, type }: ContextMenuProps)
     onClose();
   };
 
+  // Render menu items based on type
+  const renderMenuItems = () => {
+    if (type === 'project') {
+      // Project: Project info, Collaborators, Duplicate, separator, Delete
+      return (
+        <>
+          <button
+            className={styles.menuItem}
+            onClick={() => handleAction('rename')}
+          >
+            Project info
+          </button>
+          <button
+            className={styles.menuItem}
+            onClick={() => {
+              // Not implemented yet, just close menu
+              onClose();
+            }}
+          >
+            Collaborators
+          </button>
+          <button
+            className={styles.menuItem}
+            onClick={() => {
+              // Not implemented yet, just close menu
+              onClose();
+            }}
+          >
+            Duplicate
+          </button>
+          <div className={styles.separator} />
+          <button
+            className={`${styles.menuItem} ${styles.deleteItem}`}
+            onClick={() => handleAction('delete')}
+          >
+            Delete
+          </button>
+        </>
+      );
+    } else if (type === 'library') {
+      // Library: Export, Version history, separator, Library info, Duplicate, Move to..., separator, Delete
+      return (
+        <>
+          <button
+            className={styles.menuItem}
+            onClick={() => {
+              // Not implemented yet, just close menu
+              onClose();
+            }}
+          >
+            Export
+          </button>
+          <button
+            className={styles.menuItem}
+            onClick={() => {
+              // Not implemented yet, just close menu
+              onClose();
+            }}
+          >
+            Version history
+          </button>
+          <div className={styles.separator} />
+          <button
+            className={styles.menuItem}
+            onClick={() => handleAction('rename')}
+          >
+            Library info
+          </button>
+          <button
+            className={styles.menuItem}
+            onClick={() => {
+              // Not implemented yet, just close menu
+              onClose();
+            }}
+          >
+            Duplicate
+          </button>
+          <button
+            className={styles.menuItem}
+            onClick={() => {
+              // Not implemented yet, just close menu
+              onClose();
+            }}
+          >
+            Move to...
+          </button>
+          <div className={styles.separator} />
+          <button
+            className={`${styles.menuItem} ${styles.deleteItem}`}
+            onClick={() => handleAction('delete')}
+          >
+            Delete
+          </button>
+        </>
+      );
+    } else if (type === 'folder' || type === 'asset') {
+      // Folder and Asset: Rename, Duplicate, separator, Delete
+      return (
+        <>
+          <button
+            className={styles.menuItem}
+            onClick={() => handleAction('rename')}
+          >
+            Rename
+          </button>
+          <button
+            className={styles.menuItem}
+            onClick={() => {
+              // Not implemented yet, just close menu
+              onClose();
+            }}
+          >
+            Duplicate
+          </button>
+          <div className={styles.separator} />
+          <button
+            className={`${styles.menuItem} ${styles.deleteItem}`}
+            onClick={() => handleAction('delete')}
+          >
+            Delete
+          </button>
+        </>
+      );
+    }
+    
+    // Default: Show all items (fallback)
+    return (
+      <>
+        <button
+          className={styles.menuItem}
+          onClick={() => handleAction('export')}
+        >
+          Export
+        </button>
+        <button
+          className={styles.menuItem}
+          onClick={() => handleAction('version-history')}
+        >
+          Version history
+        </button>
+        <button
+          className={styles.menuItem}
+          onClick={() => handleAction('star')}
+        >
+          Star
+        </button>
+        <div className={styles.separator} />
+        <button
+          className={styles.menuItem}
+          onClick={() => handleAction('rename')}
+        >
+          {type === 'project' ? 'Project info' : type === 'library' ? 'Library info' : 'Rename'}
+        </button>
+        <button
+          className={styles.menuItem}
+          onClick={() => handleAction('duplicate')}
+        >
+          Duplicate
+        </button>
+        <button
+          className={styles.menuItem}
+          onClick={() => handleAction('move-to')}
+        >
+          Move to...
+        </button>
+        <div className={styles.separator} />
+        <button
+          className={`${styles.menuItem} ${styles.deleteItem}`}
+          onClick={() => handleAction('delete')}
+        >
+          Delete
+        </button>
+      </>
+    );
+  };
+
   return (
     <div
       ref={menuRef}
@@ -65,50 +242,7 @@ export function ContextMenu({ x, y, onClose, onAction, type }: ContextMenuProps)
         top: `${y}px`,
       }}
     >
-      <button
-        className={styles.menuItem}
-        onClick={() => handleAction('export')}
-      >
-        Export
-      </button>
-      <button
-        className={styles.menuItem}
-        onClick={() => handleAction('version-history')}
-      >
-        Version history
-      </button>
-      <button
-        className={styles.menuItem}
-        onClick={() => handleAction('star')}
-      >
-        Star
-      </button>
-      <div className={styles.separator} />
-      <button
-        className={styles.menuItem}
-        onClick={() => handleAction('rename')}
-      >
-        {type === 'project' ? 'Project info' : type === 'library' ? 'Library info' : 'Rename'}
-      </button>
-      <button
-        className={styles.menuItem}
-        onClick={() => handleAction('duplicate')}
-      >
-        Duplicate
-      </button>
-      <button
-        className={styles.menuItem}
-        onClick={() => handleAction('move-to')}
-      >
-        Move to...
-      </button>
-      <div className={styles.separator} />
-      <button
-        className={`${styles.menuItem} ${styles.deleteItem}`}
-        onClick={() => handleAction('delete')}
-      >
-        Delete
-      </button>
+      {renderMenuItems()}
     </div>
   );
 }

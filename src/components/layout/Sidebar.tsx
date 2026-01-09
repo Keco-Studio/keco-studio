@@ -30,6 +30,7 @@ import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
 import { EditLibraryModal } from "@/components/libraries/EditLibraryModal";
 import { NewFolderModal } from "@/components/folders/NewFolderModal";
 import { EditFolderModal } from "@/components/folders/EditFolderModal";
+import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { listProjects, Project, deleteProject } from "@/lib/services/projectService";
 import { listLibraries, Library, deleteLibrary } from "@/lib/services/libraryService";
@@ -164,6 +165,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [showEditFolderModal, setShowEditFolderModal] = useState(false);
   const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [showEditAssetModal, setShowEditAssetModal] = useState(false);
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -1120,6 +1123,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         setShowEditFolderModal(true);
         setContextMenu(null);
         return;
+      } else if (contextMenu.type === 'asset') {
+        setEditingAssetId(contextMenu.id);
+        setShowEditAssetModal(true);
+        setContextMenu(null);
+        return;
       }
     }
     
@@ -1696,6 +1704,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           }}
           onUpdated={() => {
             // Cache will be invalidated by the folderUpdated event listener
+          }}
+        />
+      )}
+
+      {editingAssetId && (
+        <EditAssetModal
+          open={showEditAssetModal}
+          assetId={editingAssetId}
+          onClose={() => {
+            setShowEditAssetModal(false);
+            setEditingAssetId(null);
+          }}
+          onUpdated={() => {
+            // Cache will be invalidated by the assetUpdated event listener
           }}
         />
       )}

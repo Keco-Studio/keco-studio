@@ -211,6 +211,56 @@ export default function AssetPage() {
     }
   }, [mode, isNewAsset]);
 
+  // Listen for asset updates to refresh asset name
+  useEffect(() => {
+    if (isNewAsset) return; // New assets don't need to listen for updates
+    
+    const handleAssetUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ assetId: string; libraryId?: string }>;
+      console.log('Asset page received assetUpdated event:', customEvent.detail, 'current assetId:', assetId);
+      // Only refresh if the event is for this asset
+      if (customEvent.detail?.assetId === assetId) {
+        console.log('Refreshing asset data for assetId:', assetId);
+        try {
+          // Use a small delay to ensure database transaction is committed
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Refresh asset data - query directly from database
+          const { data: assetRow, error: assetErr } = await supabase
+            .from('library_assets')
+            .select('id, name, library_id')
+            .eq('id', assetId)
+            .single();
+          
+          console.log('Refreshed asset data:', assetRow, 'error:', assetErr);
+          
+          if (!assetErr && assetRow) {
+            console.log('Updating asset state with new name:', assetRow.name);
+            setAsset(assetRow as AssetRow);
+            // If there's a name field, update its value too
+            const nameFieldDef = fieldDefs.find(f => f.label === 'name' && f.data_type === 'string');
+            if (nameFieldDef) {
+              setValues(prev => ({ ...prev, [nameFieldDef.id]: assetRow.name }));
+              console.log('Updated name field value:', assetRow.name);
+            }
+          } else if (assetErr) {
+            console.error('Error refreshing asset:', assetErr);
+          }
+        } catch (e: any) {
+          console.error('Failed to refresh asset:', e);
+        }
+      } else {
+        console.log('Event assetId does not match current assetId:', customEvent.detail?.assetId, 'vs', assetId);
+      }
+    };
+
+    window.addEventListener('assetUpdated', handleAssetUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener('assetUpdated', handleAssetUpdated as EventListener);
+    };
+  }, [assetId, isNewAsset, supabase, fieldDefs]);
+
   // Listen to top bar Viewing / Editing toggle (only for existing assets)
   useEffect(() => {
     if (isNewAsset) return; // New assets don't need mode toggle from TopBar

@@ -87,9 +87,48 @@ export function LibraryAssetsTable({
   // Format: { rowId: { name, propertyValues } }
   const [optimisticEditUpdates, setOptimisticEditUpdates] = useState<Map<string, { name: string; propertyValues: Record<string, any> }>>(new Map());
 
+  // Create a string representation of rows for dependency tracking
+  // This ensures we detect changes even if the array reference doesn't change
+  const rowsSignature = useMemo(() => {
+    return rows.map(r => `${r.id}:${r.name}`).join('|');
+  }, [rows]);
+
   // Clean up optimistic assets when rows are updated (parent refresh)
   // This ensures that when a real asset is added/updated from the parent, we remove the optimistic one
   useEffect(() => {
+    // Clear all optimistic edit updates when rows prop changes
+    // This ensures external updates (e.g., from sidebar) always override optimistic updates
+    // The parent component will provide the updated data, so we should use it
+    setOptimisticEditUpdates(prev => {
+      if (prev.size === 0) return prev;
+      
+      // Clear optimistic updates for all assets that exist in the new rows
+      const newMap = new Map(prev);
+      let hasChanges = false;
+      const clearedIds: string[] = [];
+      
+      for (const row of rows) {
+        if (newMap.has(row.id)) {
+          newMap.delete(row.id);
+          clearedIds.push(row.id);
+          hasChanges = true;
+        }
+      }
+      
+      if (hasChanges) {
+        console.log('LibraryAssetsTable: Cleared optimistic updates for assets:', clearedIds, 'rows count:', rows.length);
+        console.log('LibraryAssetsTable: Current rows after clear:', rows.map(r => ({ id: r.id, name: r.name })));
+      }
+      
+      return hasChanges ? newMap : prev;
+    });
+    
+    // Also log current rows to help debug
+    if (rows.length > 0) {
+      console.log('LibraryAssetsTable: rows prop updated, signature:', rowsSignature);
+      console.log('LibraryAssetsTable: current rows:', rows.map(r => ({ id: r.id, name: r.name })));
+    }
+    
     let hasChanges = false;
     
     // Clean up optimistic new assets
@@ -150,34 +189,35 @@ export function LibraryAssetsTable({
       });
     }
     
-    // Clean up optimistic edit updates
-    if (optimisticEditUpdates.size > 0) {
-      setOptimisticEditUpdates(prev => {
-        const newMap = new Map(prev);
-        
-        for (const [rowId, optimisticUpdate] of newMap.entries()) {
-          const foundRow = rows.find((row) => (row as AssetRow).id === rowId);
-          if (foundRow) {
-            const realRow = foundRow as AssetRow;
-            // Check if the real row matches the optimistic update (indicating parent has refreshed)
-            // Compare name and property values to see if they match
-            const nameMatches = realRow.name === optimisticUpdate.name;
-            const valuesMatch = Object.keys(optimisticUpdate.propertyValues).every(key => {
-              return realRow.propertyValues[key] === optimisticUpdate.propertyValues[key];
-            });
-            
-            // If they match, remove the optimistic update as parent has refreshed
-            if (nameMatches && valuesMatch) {
-              newMap.delete(rowId);
-              hasChanges = true;
-            }
-          }
+    // Also clear optimistic updates where the name doesn't match the row name
+    // This handles the case where external updates happened but the effect didn't catch it
+    setOptimisticEditUpdates(prev => {
+      if (prev.size === 0) return prev;
+      
+      const newMap = new Map(prev);
+      let hasChanges = false;
+      const staleIds: string[] = [];
+      
+      for (const [assetId, optimisticUpdate] of newMap.entries()) {
+        const row = rows.find(r => r.id === assetId);
+        if (row && row.name !== optimisticUpdate.name) {
+          // Name doesn't match, so this optimistic update is stale
+          newMap.delete(assetId);
+          staleIds.push(assetId);
+          hasChanges = true;
         }
-        
-        return hasChanges ? newMap : prev;
-      });
-    }
-  }, [rows, optimisticNewAssets.size, optimisticEditUpdates.size]);
+      }
+      
+      if (hasChanges) {
+        console.log('LibraryAssetsTable: Cleared stale optimistic updates (name mismatch):', staleIds);
+      }
+      
+      return hasChanges ? newMap : prev;
+    });
+    
+    // Note: optimistic edit updates are already cleared at the beginning of this effect
+    // when rows prop changes, so we don't need to clear them again here
+  }, [rows, rowsSignature, optimisticNewAssets.size]);
 
   // Ref for table container to detect clicks outside
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -353,6 +393,46 @@ export function LibraryAssetsTable({
     
     loadAssetNames();
   }, [rows, editingRowData, newRowData, properties, editingRowId, isAddingRow, supabase]);
+
+  // Listen for asset updates to refresh asset names cache and clear optimistic updates
+  useEffect(() => {
+    const handleAssetUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ assetId: string; libraryId?: string }>;
+      if (customEvent.detail?.assetId) {
+        try {
+          // Refresh the specific asset name in cache
+          const { data, error } = await supabase
+            .from('library_assets')
+            .select('id, name')
+            .eq('id', customEvent.detail.assetId)
+            .single();
+          
+          if (!error && data) {
+            setAssetNamesCache(prev => ({ ...prev, [data.id]: data.name }));
+            // Clear optimistic update for this asset since we have the real data now
+            // The parent component will refresh rows prop with updated data
+            setOptimisticEditUpdates(prev => {
+              const newMap = new Map(prev);
+              if (newMap.has(customEvent.detail.assetId)) {
+                console.log('LibraryAssetsTable: Clearing optimistic update for asset from event:', customEvent.detail.assetId, 'new name:', data.name);
+                newMap.delete(customEvent.detail.assetId);
+                return newMap;
+              }
+              return prev;
+            });
+          }
+        } catch (error) {
+          console.error('Failed to refresh asset name:', error);
+        }
+      }
+    };
+
+    window.addEventListener('assetUpdated', handleAssetUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener('assetUpdated', handleAssetUpdated as EventListener);
+    };
+  }, [supabase]);
 
   // Handle mouse enter on avatar - use useCallback to prevent recreating on each render
   const handleAvatarMouseEnter = useCallback((assetId: string, element: HTMLDivElement) => {
@@ -1196,17 +1276,27 @@ export function LibraryAssetsTable({
         <tbody className={styles.body}>
           {(() => {
             // Combine real rows with optimistic new assets and apply optimistic edit updates
+            // Only use optimistic updates if the name matches the row name
+            // If names don't match, it means the row was updated externally, so ignore the optimistic update
             const allRows: AssetRow[] = rows
               .filter((row): row is AssetRow => !deletedAssetIds.has(row.id))
               .map((row): AssetRow => {
                 const assetRow = row as AssetRow;
                 const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
-                if (optimisticUpdate) {
+                // Only use optimistic update if the row name matches the optimistic name
+                // This means the optimistic update was made in this table, not externally
+                // If names don't match, it means the row was updated externally, so use the row data
+                if (optimisticUpdate && optimisticUpdate.name === assetRow.name) {
+                  // Optimistic update matches current row, so it's safe to use
                   return {
                     ...assetRow,
                     name: optimisticUpdate.name,
                     propertyValues: { ...assetRow.propertyValues, ...optimisticUpdate.propertyValues }
                   };
+                } else if (optimisticUpdate && optimisticUpdate.name !== assetRow.name) {
+                  // Optimistic update doesn't match row - this means external update happened
+                  // Don't use the optimistic update, use the row data instead
+                  console.log('LibraryAssetsTable: Ignoring stale optimistic update for asset:', assetRow.id, 'optimistic name:', optimisticUpdate.name, 'real name:', assetRow.name);
                 }
                 return assetRow;
               });
@@ -1624,7 +1714,11 @@ export function LibraryAssetsTable({
                   }
                   
                   // Other fields: show text only
-                  const value = row.propertyValues[property.key];
+                  // For name field, fallback to row.name if propertyValues doesn't have it
+                  let value = row.propertyValues[property.key];
+                  if (isNameField && (value === null || value === undefined || value === '')) {
+                    value = row.name;
+                  }
                   let display: string | null = null;
                   
                   if (value !== null && value !== undefined && value !== '') {

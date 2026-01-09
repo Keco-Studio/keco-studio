@@ -133,18 +133,65 @@ export default function LibraryPage() {
     fetchData();
   }, [projectId, libraryId, supabase, fetchDefinitions]);
 
-  // Listen for asset changes (created/updated/deleted) from Sidebar or other sources
+  // Listen for library updates to refresh library name
   useEffect(() => {
-    const handleAssetChange = async (event: Event) => {
+    const handleLibraryUpdated = async (event: Event) => {
       const customEvent = event as CustomEvent<{ libraryId: string }>;
       // Only refresh if the event is for this library
       if (customEvent.detail?.libraryId === libraryId) {
         try {
+          // Refresh library data
+          const libraryData = await getLibrary(supabase, libraryId, projectId);
+          if (libraryData) {
+            setLibrary(libraryData);
+          }
+          // Also refresh library summary for the table
+          const summary = await getLibrarySummary(supabase, libraryId);
+          if (summary) {
+            setLibrarySummary(summary);
+          }
+        } catch (e: any) {
+          console.error('Failed to refresh library:', e);
+        }
+      }
+    };
+
+    window.addEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
+    };
+  }, [libraryId, projectId, supabase]);
+
+  // Listen for asset changes (created/updated/deleted) from Sidebar or other sources
+  useEffect(() => {
+    const handleAssetChange = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ libraryId: string; assetId?: string }>;
+      console.log('Library page received assetUpdated event:', customEvent.detail);
+      // Only refresh if the event is for this library
+      if (customEvent.detail?.libraryId === libraryId) {
+        console.log('Refreshing asset rows for library:', libraryId);
+        try {
+          // Force refresh by directly querying the database
+          // Use a small delay to ensure database transaction is committed
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Query directly from database to bypass any caching
           const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+          console.log('Refreshed asset rows:', rows.length, 'rows');
+          
+          // Log the specific asset if it was updated
+          if (customEvent.detail?.assetId) {
+            const updatedRow = rows.find(r => r.id === customEvent.detail.assetId);
+            console.log('Updated asset in rows:', updatedRow);
+          }
+          
           setAssetRows(rows);
         } catch (e: any) {
           console.error('Failed to refresh assets:', e);
         }
+      } else {
+        console.log('Event libraryId does not match current libraryId:', customEvent.detail?.libraryId, 'vs', libraryId);
       }
     };
 
@@ -237,6 +284,8 @@ export default function LibraryPage() {
     // Refresh asset rows
     const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
     setAssetRows(rows);
+    // Notify Sidebar to refresh assets for this library
+    window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { assetId, libraryId } }));
   };
 
   // Callback for deleting asset from table
