@@ -102,7 +102,6 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
       if (fieldDefs && fieldDefs.length > 0) {
         const nameFieldId = fieldDefs[0].id;
         propertyValues[nameFieldId] = trimmed;
-        console.log('Updating name field in propertyValues:', { nameFieldId, value: trimmed });
       }
       
       // Update the asset (both name and propertyValues)
@@ -124,14 +123,6 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
         throw new Error('Asset not found after update');
       }
       
-      console.log('Asset updated successfully:', { 
-        assetId, 
-        oldName: name, 
-        newName: trimmed,
-        libraryId: verifiedLibraryId,
-        updatedPropertyValues: propertyValues
-      });
-      
       // Dispatch event to notify other components to refresh cache
       // Include libraryId so Sidebar can refresh the correct library's assets
       if (verifiedLibraryId) {
@@ -144,14 +135,11 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
         
         // Dispatch on window
         window.dispatchEvent(event);
-        console.log('Dispatched assetUpdated event:', eventDetail);
         
         // Also dispatch on document to ensure it reaches all listeners
         if (typeof document !== 'undefined') {
           document.dispatchEvent(event);
         }
-      } else {
-        console.warn('Cannot dispatch assetUpdated event: libraryId is missing', { assetId, updatedAsset });
       }
       
       if (onUpdated) {

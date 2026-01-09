@@ -115,19 +115,8 @@ export function LibraryAssetsTable({
         }
       }
       
-      if (hasChanges) {
-        console.log('LibraryAssetsTable: Cleared optimistic updates for assets:', clearedIds, 'rows count:', rows.length);
-        console.log('LibraryAssetsTable: Current rows after clear:', rows.map(r => ({ id: r.id, name: r.name })));
-      }
-      
       return hasChanges ? newMap : prev;
     });
-    
-    // Also log current rows to help debug
-    if (rows.length > 0) {
-      console.log('LibraryAssetsTable: rows prop updated, signature:', rowsSignature);
-      console.log('LibraryAssetsTable: current rows:', rows.map(r => ({ id: r.id, name: r.name })));
-    }
     
     let hasChanges = false;
     
@@ -206,10 +195,6 @@ export function LibraryAssetsTable({
           staleIds.push(assetId);
           hasChanges = true;
         }
-      }
-      
-      if (hasChanges) {
-        console.log('LibraryAssetsTable: Cleared stale optimistic updates (name mismatch):', staleIds);
       }
       
       return hasChanges ? newMap : prev;
@@ -414,7 +399,6 @@ export function LibraryAssetsTable({
             setOptimisticEditUpdates(prev => {
               const newMap = new Map(prev);
               if (newMap.has(customEvent.detail.assetId)) {
-                console.log('LibraryAssetsTable: Clearing optimistic update for asset from event:', customEvent.detail.assetId, 'new name:', data.name);
                 newMap.delete(customEvent.detail.assetId);
                 return newMap;
               }
@@ -1296,7 +1280,6 @@ export function LibraryAssetsTable({
                 } else if (optimisticUpdate && optimisticUpdate.name !== assetRow.name) {
                   // Optimistic update doesn't match row - this means external update happened
                   // Don't use the optimistic update, use the row data instead
-                  console.log('LibraryAssetsTable: Ignoring stale optimistic update for asset:', assetRow.id, 'optimistic name:', optimisticUpdate.name, 'real name:', assetRow.name);
                 }
                 return assetRow;
               });
