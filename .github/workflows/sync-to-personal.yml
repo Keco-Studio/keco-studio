@@ -1,39 +1,46 @@
 name: Sync to Personal Repository
 
 on:
-  pull_request:
-    branches: [main, release/**]
-    types: [closed]
+  push:
+    branches:
+      - main
 
 jobs:
-  sync:
+  sync-to-personal:
     runs-on: ubuntu-latest
-    if: |
-      github.repository == 'Caerulean-ai/keco-studio' &&
-      github.event.pull_request.merged == true
+
+    # 只允许在团队仓库运行
+    if: github.repository == 'Caerulean-ai/keco-studio'
+
+    permissions:
+      contents: write
 
     steps:
-      - name: Checkout merged code
+      - name: Checkout main
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
 
-      - name: Configure git
+      - name: Set up Git
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Push to personal repo
+      - name: Push main to personal repo
         env:
-          TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+          PERSONAL_GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         run: |
-          set -e
+          if [ -z "${PERSONAL_GITHUB_TOKEN}" ]; then
+            echo "❌ PERSONAL_GITHUB_TOKEN not set"
+            exit 1
+          fi
 
-          TARGET_BRANCH="${{ github.event.pull_request.base.ref }}"
-          PERSONAL_REPO="https://x-access-token:${TOKEN}@github.com/xzy1124/keco-studio.git"
+          PERSONAL_REPO_URL="https://x-access-token:${PERSONAL_GITHUB_TOKEN}@github.com/xzy1124/keco-studio.git"
 
-          echo "🔄 Syncing ${TARGET_BRANCH} to personal repo"
+          echo "🚀 Syncing main to personal repo..."
           echo "📍 Commit: $(git rev-parse HEAD)"
+          echo "📍 Message: $(git log -1 --pretty=%B)"
 
-          git push "${PERSONAL_REPO}" HEAD:refs/heads/${TARGET_BRANCH}
+          git push "${PERSONAL_REPO_URL}" main:refs/heads/main --force
+
+          echo "✅ Synced to personal repository (main)"
