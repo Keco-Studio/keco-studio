@@ -1,65 +1,40 @@
 name: Sync to Personal Repository
 
+# Trigger conditions: push to main or PR merge to main
 on:
   push:
     branches:
       - main
+  pull_request:
+    branches:
+      - main
+    types: [closed]  # Only trigger on PR merge (closed)
 
 jobs:
   sync-to-personal:
     runs-on: ubuntu-latest
-
-    # 只允许在团队仓库运行
-    if: github.repository == 'Caerulean-ai/keco-studio'
+    
+    # Only run in team repository and when PR is merged
+    if: github.repository == 'Caerulean-ai/keco-studio' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
 
     permissions:
-      contents: write
+      contents: read
 
     steps:
-      - name: Checkout main
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Full history
 
-      - name: Set up Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          # Disable all credential helpers to force using token from URL
-          git config --global --unset-all credential.helper || true
-          git config --global credential.helper ""
-          
-      - name: Push main to personal repo
+      - name: Push to personal repository
+        uses: cpina/github-action-push-to-another-repository@main
         env:
-          PERSONAL_GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
-        run: |
-          if [ -z "${PERSONAL_GITHUB_TOKEN}" ]; then
-            echo "❌ PERSONAL_GITHUB_TOKEN not set"
-            exit 1
-          fi
-
-          echo "🚀 Syncing main to personal repo..."
-          echo "📍 Commit: $(git rev-parse HEAD)"
-          echo "📍 Message: $(git log -1 --pretty=%B)"
-
-          # Ensure we're on main branch
-          git checkout main 2>/dev/null || echo "Already on main"
-
-          # For fine-grained tokens, use the token as password with username
-          # Format: https://USERNAME:TOKEN@github.com/OWNER/REPO.git
-          # Use 'x-access-token' as username (works for both classic and fine-grained tokens)
-          PERSONAL_REPO_URL="https://x-access-token:${PERSONAL_GITHUB_TOKEN}@github.com/xzy1124/keco-studio.git"
-
-          # Disable credential prompts and helpers completely
-          export GIT_TERMINAL_PROMPT=0
-          export GIT_ASKPASS=""
-          export GIT_CREDENTIAL_HELPER=""
-          
-          # Clear any cached credentials for github.com
-          echo -e "protocol=https\nhost=github.com\n" | git credential reject || true
-
-          # Push directly using URL with token embedded
-          # Use --force to ensure sync
-          git push "${PERSONAL_REPO_URL}" main:refs/heads/main --force
-
-          echo "✅ Synced to personal repository (main)"
+          API_TOKEN_GITHUB: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+        with:
+          source-directory: '.'
+          destination-github-username: 'xzy1124'
+          destination-repository-name: 'keco-studio'
+          user-email: 'github-actions[bot]@users.noreply.github.com'
+          user-name: 'github-actions[bot]'
+          target-branch: main
+          commit-message: 'Sync from team repository'
