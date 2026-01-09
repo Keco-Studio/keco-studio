@@ -59,9 +59,6 @@ jobs:
             exit 1
           fi
           
-          # Configure git to use token for personal repository
-          PERSONAL_REPO_URL="https://x-access-token:${PERSONAL_GITHUB_TOKEN}@github.com/xzy1124/keco-studio.git"
-          
           # Get target branch name
           CURRENT_BRANCH="${{ steps.branch.outputs.branch }}"
           
@@ -72,12 +69,18 @@ jobs:
           # Get current HEAD commit SHA (ensure pushing correct commit)
           CURRENT_SHA=$(git rev-parse HEAD)
           
+          # Disable default credential helper to avoid conflicts
+          git config --global --unset credential.helper || true
+          
+          # Build personal repository URL with token embedded
+          PERSONAL_REPO_URL="https://x-access-token:${PERSONAL_GITHUB_TOKEN}@github.com/xzy1124/keco-studio.git"
+          
           # Ensure we're on the correct branch (for PR merge, might be in detached HEAD state)
           if [ "${{ github.event_name }}" == "pull_request" ]; then
             echo "🔄 PR merge event, currently in detached HEAD state..."
             echo "📍 Using merge commit: ${CURRENT_SHA}"
-            # Directly push current commit to target branch using token in URL
-            git push ${PERSONAL_REPO_URL} ${CURRENT_SHA}:refs/heads/${CURRENT_BRANCH} --force
+            # Directly push current commit to target branch using full URL with token
+            git push "${PERSONAL_REPO_URL}" ${CURRENT_SHA}:refs/heads/${CURRENT_BRANCH} --force
           else
             # Push event, ensure we're on the correct branch
             echo "🔄 Push event, ensuring we're on the correct branch..."
@@ -86,15 +89,15 @@ jobs:
             echo "📍 Current branch: $(git branch --show-current)"
             echo "📍 Current commit: $(git rev-parse HEAD)"
             
-            # Check if remote branch exists (using token for authentication)
-            if git ls-remote --heads ${PERSONAL_REPO_URL} ${CURRENT_BRANCH} | grep -q "${CURRENT_BRANCH}"; then
+            # Check if remote branch exists (using full URL with token)
+            if git ls-remote --heads "${PERSONAL_REPO_URL}" ${CURRENT_BRANCH} | grep -q "${CURRENT_BRANCH}"; then
               echo "✅ Remote branch ${CURRENT_BRANCH} exists, performing force push..."
               # Branch exists, use force push to ensure sync with latest code
-              git push ${PERSONAL_REPO_URL} ${CURRENT_BRANCH}:refs/heads/${CURRENT_BRANCH} --force
+              git push "${PERSONAL_REPO_URL}" ${CURRENT_BRANCH}:refs/heads/${CURRENT_BRANCH} --force
             else
               echo "✅ Remote branch ${CURRENT_BRANCH} does not exist, creating and pushing..."
               # Branch doesn't exist, create new branch
-              git push ${PERSONAL_REPO_URL} ${CURRENT_SHA}:refs/heads/${CURRENT_BRANCH}
+              git push "${PERSONAL_REPO_URL}" ${CURRENT_SHA}:refs/heads/${CURRENT_BRANCH}
             fi
           fi
           
@@ -104,6 +107,6 @@ jobs:
           # If it's main branch, also push tags (if any)
           if [ "${CURRENT_BRANCH}" == "main" ]; then
             echo "🔄 Syncing tags to personal repository..."
-            git push ${PERSONAL_REPO_URL} --tags || echo "ℹ️ No tags to sync"
+            git push "${PERSONAL_REPO_URL}" --tags || echo "ℹ️ No tags to sync"
           fi
 
