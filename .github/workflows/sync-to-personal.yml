@@ -29,7 +29,7 @@ jobs:
           fetch-depth: 0  # Full history to ensure push won't fail
           # Use merge commit for PR merge, current commit for push
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.merge_commit_sha || github.sha }}
-          token: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+          # Don't specify token here - use default GITHUB_TOKEN to checkout team repository
 
       - name: Set up Git
         run: |
