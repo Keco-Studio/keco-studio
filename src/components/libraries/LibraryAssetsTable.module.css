@@ -122,6 +122,65 @@
   border-left: 1px solid rgba(94, 0, 255, 0.3) !important;
 }
 
+/* Cut cells: dashed border - only show outer border */
+.cell.cellCut,
+td.cellCut {
+  background-color: rgba(94, 0, 255, 0.08) !important;
+  position: relative;
+  z-index: 2;
+  /* Remove default cell borders - only show border where cutBorder classes are applied */
+  border-top: none !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.cell.cellCut:hover,
+td.cellCut:hover {
+  background-color: rgba(94, 0, 255, 0.12) !important;
+}
+
+/* Outer border styles - only show on boundary cells */
+.cellCut.cutBorderTop,
+td.cellCut.cutBorderTop {
+  border-top: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCut.cutBorderBottom,
+td.cellCut.cutBorderBottom {
+  border-bottom: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCut.cutBorderLeft,
+td.cellCut.cutBorderLeft {
+  border-left: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCut.cutBorderRight,
+td.cellCut.cutBorderRight {
+  border-right: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCut.cutBorderTop:hover,
+td.cellCut.cutBorderTop:hover {
+  border-top-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCut.cutBorderBottom:hover,
+td.cellCut.cutBorderBottom:hover {
+  border-bottom-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCut.cutBorderLeft:hover,
+td.cellCut.cutBorderLeft:hover {
+  border-left-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCut.cutBorderRight:hover,
+td.cellCut.cutBorderRight:hover {
+  border-right-color: rgba(94, 0, 255, 0.8) !important;
+}
+
 /* Expand icon for cell selection */
 .cellExpandIcon {
   position: absolute;
@@ -998,5 +1057,22 @@
   height: 1px;
   background-color: #e5e7eb;
   margin: 4px 0;
+}
+
+/* Toast Message */
+.toastMessage {
+  animation: fadeIn 0.2s ease-in;
+}
+
+/* Toast animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
