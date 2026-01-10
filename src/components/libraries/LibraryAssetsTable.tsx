@@ -74,6 +74,10 @@ export function LibraryAssetsTable({
   // Context menu state for right-click delete
   const [contextMenuRowId, setContextMenuRowId] = useState<string | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  
+  // Batch edit context menu state
+  const [batchEditMenuVisible, setBatchEditMenuVisible] = useState(false);
+  const [batchEditMenuPosition, setBatchEditMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   
@@ -1348,14 +1352,65 @@ export function LibraryAssetsTable({
     };
   }, []);
 
+  // Close batch edit menu when clicking outside
+  useEffect(() => {
+    if (!batchEditMenuVisible) return;
+    
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.batchEditMenu')) {
+        setBatchEditMenuVisible(false);
+        setBatchEditMenuPosition(null);
+      }
+    };
+    
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setBatchEditMenuVisible(false);
+        setBatchEditMenuPosition(null);
+      }
+    };
+    
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [batchEditMenuVisible]);
+
   // Handle right-click context menu
   const handleRowContextMenu = (e: React.MouseEvent, row: AssetRow) => {
     e.preventDefault();
     e.stopPropagation();
     
-    // Always show context menu, even if onDeleteAsset is not provided
+    // If there are selected cells, show batch edit menu instead of row delete menu
+    if (selectedCells.size > 0) {
+      setBatchEditMenuVisible(true);
+      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+      return;
+    }
+    
+    // Otherwise show normal row context menu
     setContextMenuRowId(row.id);
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  // Handle cell right-click for batch edit
+  const handleCellContextMenu = (e: React.MouseEvent, rowId: string, propertyKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // If this cell is not selected, select it first
+    const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
+    if (!selectedCells.has(cellKey)) {
+      setSelectedCells(new Set([cellKey]));
+    }
+    
+    // Show batch edit menu
+    setBatchEditMenuVisible(true);
+    setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
   };
 
   // Handle delete asset with optimistic update
@@ -1675,7 +1730,17 @@ export function LibraryAssetsTable({
                 key={row.id}
                 data-row-id={row.id}
                 className={`${styles.row} ${isRowSelected ? styles.rowSelected : ''}`}
-                onContextMenu={(e) => handleRowContextMenu(e, row)}
+                onContextMenu={(e) => {
+                  // If there are selected cells, show batch edit menu
+                  if (selectedCells.size > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setBatchEditMenuVisible(true);
+                    setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+                  } else {
+                    handleRowContextMenu(e, row);
+                  }
+                }}
                 onMouseEnter={() => setHoveredRowId(row.id)}
                 onMouseLeave={() => setHoveredRowId(null)}
               >
@@ -1717,6 +1782,7 @@ export function LibraryAssetsTable({
                           className={`${styles.cell} ${isCellSelected ? styles.cellSelected : ''}`}
                           onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                           onClick={(e) => handleCellClick(row.id, property.key, e)}
+                          onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         >
                           <ReferenceField
                             property={property}
@@ -1776,6 +1842,7 @@ export function LibraryAssetsTable({
                         className={`${styles.cell} ${isCellSelected ? styles.cellSelected : ''}`}
                         onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
+                        onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                       >
                         {mediaValue ? (
                           <div className={styles.mediaCellContent}>
@@ -1854,6 +1921,7 @@ export function LibraryAssetsTable({
                         className={`${styles.cell} ${isCellSelected ? styles.cellSelected : ''}`}
                         onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
+                        onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                       >
                         <div className={styles.booleanToggle}>
                           <Switch
@@ -1940,6 +2008,7 @@ export function LibraryAssetsTable({
                         className={`${styles.cell} ${isCellSelected ? styles.cellSelected : ''}`}
                         onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
+                        onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                       >
                         <div className={styles.enumSelectWrapper}>
                           <Select
@@ -2061,6 +2130,7 @@ export function LibraryAssetsTable({
                       className={`${styles.cell} ${isCellSelected ? styles.cellSelected : ''}`}
                       onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                       onClick={(e) => handleCellClick(row.id, property.key, e)}
+                      onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                     >
                       {isNameField ? (
                         // Name field: show text + view detail button
@@ -2445,6 +2515,169 @@ export function LibraryAssetsTable({
           }}
         >
           Delete
+        </div>
+      </div>,
+      document.body
+    )}
+
+    {/* Batch Edit Context Menu */}
+    {batchEditMenuVisible && batchEditMenuPosition && (typeof document !== 'undefined') && createPortal(
+      <div
+        className="batchEditMenu"
+        style={{
+          position: 'fixed',
+          left: `${batchEditMenuPosition.x}px`,
+          top: `${batchEditMenuPosition.y}px`,
+          zIndex: 1000,
+          backgroundColor: '#ffffff',
+          border: '1px solid #e2e8f0',
+          borderRadius: '8px',
+          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
+          padding: '8px 0',
+          minWidth: '180px',
+          overflow: 'hidden',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Title: ACTIONS */}
+        <div className={styles.batchEditMenuTitle}>ACTIONS</div>
+        
+        {/* Cut */}
+        <div
+          className={styles.batchEditMenuItem}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#fff1f0';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          onClick={() => {
+            // TODO: Implement cut functionality
+            console.log('Cut selected cells');
+            setBatchEditMenuVisible(false);
+            setBatchEditMenuPosition(null);
+          }}
+        >
+          <span className={styles.batchEditMenuText}>Cut</span>
+        </div>
+        
+        {/* Copy */}
+        <div
+          className={styles.batchEditMenuItem}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#fff1f0';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          onClick={() => {
+            // TODO: Implement copy functionality
+            console.log('Copy selected cells');
+            setBatchEditMenuVisible(false);
+            setBatchEditMenuPosition(null);
+          }}
+        >
+          <span className={styles.batchEditMenuText}>Copy</span>
+        </div>
+        
+        {/* Paste */}
+        <div
+          className={styles.batchEditMenuItem}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#fff1f0';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          onClick={() => {
+            // TODO: Implement paste functionality
+            console.log('Paste to selected cells');
+            setBatchEditMenuVisible(false);
+            setBatchEditMenuPosition(null);
+          }}
+        >
+          <span className={styles.batchEditMenuText}>Paste</span>
+        </div>
+        
+        <div className={styles.batchEditMenuDivider}></div>
+        
+        {/* Insert row above */}
+        <div
+          className={styles.batchEditMenuItem}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          onClick={() => {
+            // TODO: Implement insert row above functionality
+            console.log('Insert row above');
+            setBatchEditMenuVisible(false);
+            setBatchEditMenuPosition(null);
+          }}
+        >
+          <span className={styles.batchEditMenuText}>Insert row above</span>
+        </div>
+        
+        {/* Insert row below */}
+        <div
+          className={styles.batchEditMenuItem}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          onClick={() => {
+            // TODO: Implement insert row below functionality
+            console.log('Insert row below');
+            setBatchEditMenuVisible(false);
+            setBatchEditMenuPosition(null);
+          }}
+        >
+          <span className={styles.batchEditMenuText}>Insert row below</span>
+        </div>
+        
+        {/* Clear contents */}
+        <div
+          className={styles.batchEditMenuItem}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f3f4f6';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          onClick={() => {
+            // TODO: Implement clear contents functionality
+            console.log('Clear contents');
+            setBatchEditMenuVisible(false);
+            setBatchEditMenuPosition(null);
+          }}
+        >
+          <span className={styles.batchEditMenuText}>Clear contents</span>
+        </div>
+        
+        <div className={styles.batchEditMenuDivider}></div>
+        
+        {/* Delete row */}
+        <div
+          className={styles.batchEditMenuItem}
+          style={{ color: '#ff4d4f' }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#fff1f0';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          onClick={() => {
+            // TODO: Implement delete row functionality
+            console.log('Delete row');
+            setBatchEditMenuVisible(false);
+            setBatchEditMenuPosition(null);
+          }}
+        >
+          <span className={styles.batchEditMenuText} style={{ color: '#ff4d4f' }}>Delete row</span>
         </div>
       </div>,
       document.body
