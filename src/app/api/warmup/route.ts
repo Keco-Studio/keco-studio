@@ -18,12 +18,10 @@ export async function GET(request: Request) {
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-    // 增强的预热策略：预热多个关键表，模拟实际用户操作
-    const warmupResults = [];
-
-    // 1. 预热 projects 表（最常访问）
-    const projectsResponse = await fetch(
-      `${supabaseUrl}/rest/v1/projects?select=id,name,created_at&limit=5`,
+    // 策略1: 直接 HTTP 请求到 Supabase REST API（最可靠）
+    // 这个请求会唤醒数据库连接，无论表是否有数据
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/projects?select=id&limit=1`,
       {
         method: 'GET',
         headers: {
@@ -32,56 +30,22 @@ export async function GET(request: Request) {
         },
       }
     );
-    warmupResults.push({ table: 'projects', status: projectsResponse.status });
 
-    // 2. 预热 libraries 表
-    const librariesResponse = await fetch(
-      `${supabaseUrl}/rest/v1/libraries?select=id,name&limit=5`,
-      {
-        method: 'GET',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-        },
-      }
-    );
-    warmupResults.push({ table: 'libraries', status: librariesResponse.status });
+    // 只要收到响应（即使是错误），就说明 Supabase 已被唤醒
+    const responseData = await response.text();
+    const isSuccess = response.ok || response.status === 404 || response.status === 400;
 
-    // 3. 预热 folders 表
-    const foldersResponse = await fetch(
-      `${supabaseUrl}/rest/v1/folders?select=id&limit=5`,
-      {
-        method: 'GET',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-        },
-      }
-    );
-    warmupResults.push({ table: 'folders', status: foldersResponse.status });
-
-    // 4. 预热 assets 表
-    const assetsResponse = await fetch(
-      `${supabaseUrl}/rest/v1/assets?select=id&limit=5`,
-      {
-        method: 'GET',
-        headers: {
-          'apikey': supabaseKey,
-          'Authorization': `Bearer ${supabaseKey}`,
-        },
-      }
-    );
-    warmupResults.push({ table: 'assets', status: assetsResponse.status });
-
-    const successCount = warmupResults.filter(r => r.status === 200 || r.status === 404).length;
+    if (!isSuccess) {
+      console.warn('Warmup response status:', response.status, responseData);
+    }
 
     return NextResponse.json({ 
       status: 'warmed',
       timestamp: new Date().toISOString(),
-      message: `Supabase warmed: ${successCount}/${warmupResults.length} tables queried`,
+      message: 'Supabase connection warmed up successfully',
       debug: {
-        tables: warmupResults,
-        allSuccess: successCount === warmupResults.length
+        httpStatus: response.status,
+        responseReceived: true
       }
     });
   } catch (error) {
