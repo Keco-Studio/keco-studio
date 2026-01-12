@@ -40,30 +40,16 @@ export async function middleware(request: NextRequest) {
 
   // If session exists and is valid, sync to cookies
   if (session?.user) {
-    // Check if token is about to expire (within 5 minutes)
-    const expiresAt = session.expires_at ? session.expires_at * 1000 : 0;
-    const now = Date.now();
-    const isExpiringSoon = expiresAt > 0 && (expiresAt - now) < 5 * 60 * 1000;
-    
-    // If token is expiring soon, try to refresh it
-    let activeSession = session;
-    if (isExpiringSoon) {
-      const { data: { session: refreshedSession }, error } = await supabase.auth.refreshSession();
-      if (!error && refreshedSession) {
-        activeSession = refreshedSession;
-      }
-    }
-    
     // Store full session as JSON in cookie (for hybrid adapter)
     const sessionJson = JSON.stringify({
-      access_token: activeSession.access_token,
-      refresh_token: activeSession.refresh_token,
-      expires_in: activeSession.expires_in,
-      expires_at: activeSession.expires_at,
-      token_type: activeSession.token_type,
+      access_token: session.access_token,
+      refresh_token: session.refresh_token,
+      expires_in: session.expires_in,
+      expires_at: session.expires_at,
+      token_type: session.token_type,
       user: {
-        id: activeSession.user.id,
-        email: activeSession.user.email,
+        id: session.user.id,
+        email: session.user.email,
       },
     });
     
@@ -76,7 +62,7 @@ export async function middleware(request: NextRequest) {
     });
     
     // Also set individual tokens for backward compatibility
-    response.cookies.set('sb-access-token', activeSession.access_token, {
+    response.cookies.set('sb-access-token', session.access_token, {
       httpOnly: false,
       secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',

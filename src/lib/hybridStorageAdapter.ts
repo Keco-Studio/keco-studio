@@ -127,55 +127,28 @@ export function createHybridStorageAdapter(): SupportedStorage {
   // On initialization, try to restore session from cookie to sessionStorage
   // This ensures session persists across page refreshes
   if (typeof window !== 'undefined') {
-    // Use a small delay to ensure cookies are fully loaded in the browser
-    // This helps prevent race conditions on initial page load
-    const initializeStorage = () => {
-      try {
-        const cookieSession = getCookie(SESSION_COOKIE);
-        const existingSession = sessionStorage.getItem(storageKey);
-        
-        if (cookieSession) {
-          // Validate that the cookie contains valid JSON
-          try {
-            const parsed = JSON.parse(cookieSession);
-            if (parsed && parsed.access_token) {
-              // Only restore if sessionStorage is empty or different
-              if (!existingSession || existingSession !== cookieSession) {
-                sessionStorage.setItem(storageKey, cookieSession);
-                if (process.env.NODE_ENV === 'development') {
-                  console.log('[HybridStorage] Restored session from cookie on init');
-                }
-              }
-            } else {
-              if (process.env.NODE_ENV === 'development') {
-                console.warn('[HybridStorage] Cookie exists but missing access_token');
-              }
-            }
-          } catch (parseError) {
+    try {
+      const cookieSession = getCookie(SESSION_COOKIE);
+      if (cookieSession) {
+        // Always restore from cookie to ensure we have the latest session
+        // This handles the case where sessionStorage was cleared but cookie still exists
+        try {
+          const existingSession = sessionStorage.getItem(storageKey);
+          // Only restore if sessionStorage doesn't have a session or cookie is different
+          if (!existingSession || existingSession !== cookieSession) {
+            sessionStorage.setItem(storageKey, cookieSession);
             if (process.env.NODE_ENV === 'development') {
-              console.warn('[HybridStorage] Failed to parse cookie session:', parseError);
+              console.log('[HybridStorage] Restored session from cookie on init');
             }
           }
-        } else if (!existingSession) {
-          // No cookie and no sessionStorage - user is not logged in
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[HybridStorage] No session found in cookie or sessionStorage');
-          }
-        }
-      } catch (e) {
-        // Ignore errors during initialization
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('[HybridStorage] Initialization error:', e);
+        } catch (e) {
+          // If sessionStorage is full or unavailable, that's okay
+          // The cookie will still be used as fallback in getItem
         }
       }
-    };
-    
-    // Initialize immediately
-    initializeStorage();
-    
-    // Also retry after a short delay to catch cookies that weren't ready immediately
-    // This helps with race conditions in production
-    setTimeout(initializeStorage, 100);
+    } catch (e) {
+      // Ignore errors during initialization
+    }
   }
 
   return {
@@ -209,32 +182,14 @@ export function createHybridStorageAdapter(): SupportedStorage {
         if (actualKey === storageKey) {
           const cookieValue = getCookie(SESSION_COOKIE);
           if (cookieValue) {
-            // Validate cookie value before using it
+            // Restore to sessionStorage for future access
             try {
-              const parsed = JSON.parse(cookieValue);
-              if (parsed && parsed.access_token) {
-                // Valid session in cookie, restore to sessionStorage for future access
-                try {
-                  sessionStorage.setItem(actualKey, cookieValue);
-                } catch (e) {
-                  // If sessionStorage fails, still return cookie value
-                  // This ensures session works even if sessionStorage is unavailable
-                }
-                return cookieValue;
-              } else {
-                // Invalid session format in cookie
-                if (process.env.NODE_ENV === 'development') {
-                  console.warn('[HybridStorage] Invalid session format in cookie');
-                }
-                return null;
-              }
-            } catch (parseError) {
-              // Cookie value is not valid JSON
-              if (process.env.NODE_ENV === 'development') {
-                console.warn('[HybridStorage] Failed to parse cookie value:', parseError);
-              }
-              return null;
+              sessionStorage.setItem(actualKey, cookieValue);
+            } catch (e) {
+              // If sessionStorage fails, still return cookie value
+              // This ensures session works even if sessionStorage is unavailable
             }
+            return cookieValue;
           }
         }
 

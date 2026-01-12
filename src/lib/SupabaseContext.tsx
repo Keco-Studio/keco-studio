@@ -25,7 +25,7 @@ const SupabaseContext = createContext<SupabaseClient | null>(null);
 
 export function SupabaseProvider({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => {
-    const client = createClient(supabaseUrl, supabaseAnonKey, {
+    return createClient(supabaseUrl, supabaseAnonKey, {
       realtime: {
         params: {
           eventsPerSecond: 10,
@@ -40,12 +40,8 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
         // Increase token refresh time to prevent premature expiration
         // Refresh when token has less than 60 seconds left (default is 10)
         flowType: 'pkce',
-        // Add debug option in development
-        debug: process.env.NODE_ENV === 'development',
       },
     });
-    
-    return client;
   }, []); // Empty deps - create once per component mount (which is per tab)
 
   return (

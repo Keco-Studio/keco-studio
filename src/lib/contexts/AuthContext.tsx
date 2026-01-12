@@ -151,53 +151,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUserProfile(null);
 
     // On initial mount, try to restore session from cookies
-    const initializeAuth = async (retryCount = 0) => {
+    const initializeAuth = async () => {
       if (!mounted) return;
       
       try {
-        // First, try to get existing session
-        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        // Try to get existing session
+        const { data: { session }, error } = await supabase.auth.getSession();
         
-        if (!mounted) return;
-        
-        if (session?.user && !sessionError) {
-          // Session found in storage, but verify it's actually valid with the server
-          // This prevents issues where cookie exists but token is expired
-          const { data: { user }, error: userError } = await supabase.auth.getUser();
-          
-          if (!mounted) return;
-          
-          if (user && !userError) {
-            // Token is valid, user is authenticated
+        if (mounted) {
+          if (session?.user && !error) {
+            // Session exists, set authenticated state immediately
             setIsAuthenticated(true);
-            currentUserId.current = user.id;
-            await fetchUserProfile(user.id);
+            currentUserId.current = session.user.id;
+            await fetchUserProfile(session.user.id);
           } else {
-            // Token is invalid or expired, clear state
-            if (userError) {
-              console.warn('Session exists but token validation failed:', userError.message);
-            }
+            // No session, ensure we're in unauthenticated state
             setIsAuthenticated(false);
             setUserProfile(null);
             currentUserId.current = null;
           }
-        } else {
-          // No session found
-          // In production, retry once after a short delay to handle cookie timing issues
-          if (retryCount === 0 && typeof window !== 'undefined') {
-            // Wait a bit for cookies to be fully available
-            setTimeout(() => {
-              if (mounted) {
-                initializeAuth(1);
-              }
-            }, 150);
-            return; // Don't set loading to false yet
-          }
-          
-          // No session after retry, ensure we're in unauthenticated state
-          setIsAuthenticated(false);
-          setUserProfile(null);
-          currentUserId.current = null;
         }
       } catch (err) {
         console.error('Failed to initialize auth session:', err);
