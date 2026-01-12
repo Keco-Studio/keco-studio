@@ -323,7 +323,7 @@ export default function CollaboratorsList({
                   <div className={styles.userName}>
                     {displayName}
                     {isSelf && (
-                      <span className={styles.youBadge}>You</span>
+                      <span className={styles.youBadge}>(YOU)</span>
                     )}
                     {collab.is_owner && (
                       <span className={styles.ownerBadge}>Owner</span>

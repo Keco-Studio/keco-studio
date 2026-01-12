@@ -135,17 +135,64 @@ export async function listProjects(supabase: SupabaseClient): Promise<Project[]>
   const cacheKey = `projects:list:${userId}`;
   
   return globalRequestCache.fetch(cacheKey, async () => {
-    const { data, error } = await supabase
+    // Fetch projects where user is owner OR collaborator
+    // Method 1: Get owned projects
+    const { data: ownedProjects, error: ownedError } = await supabase
       .from('projects')
       .select('*')
       .eq('owner_id', userId)
       .order('created_at', { ascending: true });
 
-    if (error) {
-      throw error;
+    if (ownedError) {
+      throw ownedError;
     }
 
-    return data || [];
+    // Method 2: Get projects where user is a collaborator
+    const { data: collaboratorProjects, error: collaboratorError } = await supabase
+      .from('project_collaborators')
+      .select(`
+        project:project_id (
+          id,
+          owner_id,
+          name,
+          description,
+          created_at,
+          updated_at
+        )
+      `)
+      .eq('user_id', userId)
+      .not('accepted_at', 'is', null);
+
+    if (collaboratorError) {
+      console.error('Error fetching collaborator projects:', collaboratorError);
+      // Continue with just owned projects if collaborator query fails
+    }
+
+    // Combine and deduplicate projects
+    const projectsMap = new Map<string, Project>();
+    
+    // Add owned projects
+    (ownedProjects || []).forEach((project) => {
+      projectsMap.set(project.id, project);
+    });
+    
+    // Add collaborator projects (if any)
+    if (collaboratorProjects) {
+      collaboratorProjects.forEach((item: any) => {
+        const project = item.project;
+        if (project && !projectsMap.has(project.id)) {
+          projectsMap.set(project.id, project);
+        }
+      });
+    }
+    
+    // Convert to array and sort by created_at
+    const allProjects = Array.from(projectsMap.values());
+    allProjects.sort((a, b) => {
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+
+    return allProjects;
   });
 }
 

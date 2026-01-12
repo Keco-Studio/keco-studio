@@ -75,19 +75,42 @@ export default function CollaboratorsPage() {
       
       // 3. Get user role
       try {
-        const roleResponse = await fetch(`/api/projects/${projectId}/role`);
+        // Get session for authorization
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          console.warn('[CollaboratorsPage] No session found');
+          setError('Please log in to view this page');
+          setLoading(false);
+          return;
+        }
+        
+        const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
         const roleResult = await roleResponse.json();
         console.log('[CollaboratorsPage] User role result:', roleResult);
+        
         if (roleResult.role) {
           setUserRole(roleResult.role);
           setIsOwner(roleResult.isOwner);
+        } else if (roleResult.isOwner) {
+          // User is owner but not in collaborators table (shouldn't happen with auto-add)
+          setUserRole('admin');
+          setIsOwner(true);
+          console.warn('[CollaboratorsPage] Owner not in collaborators table, defaulting to admin');
         } else {
-          console.warn('[CollaboratorsPage] No role returned');
-          setUserRole('admin'); // Fallback for development
+          console.warn('[CollaboratorsPage] No role returned and user is not owner');
+          setError('You do not have access to this project');
+          setLoading(false);
+          return;
         }
       } catch (err) {
-        console.warn('[CollaboratorsPage] Could not get user role:', err);
-        setUserRole('admin'); // Fallback for development
+        console.error('[CollaboratorsPage] Error getting user role:', err);
+        setError('Failed to verify your access to this project');
+        setLoading(false);
+        return;
       }
       
       // 4. Get collaborators and invitations
@@ -145,6 +168,15 @@ export default function CollaboratorsPage() {
           profiles: collab.profile,
           user_profiles: collab.profile,
         } as any));
+        
+        // Sort collaborators: current user first, then others
+        transformedCollaborators.sort((a, b) => {
+          // Current user always comes first
+          if (a.userId === user.id) return -1;
+          if (b.userId === user.id) return 1;
+          // Others sorted by created_at (earliest first)
+          return new Date(a.invitedAt).getTime() - new Date(b.invitedAt).getTime();
+        });
         
         setCollaborators(transformedCollaborators);
         console.log('[CollaboratorsPage] Collaborators loaded:', transformedCollaborators.length);
