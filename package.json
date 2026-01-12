@@ -49,8 +49,6 @@
     "test:happy": "playwright test tests/e2e/specs/happy-path.spec.ts",
     "test:destructive": "playwright test tests/e2e/specs/destructive.spec.ts",
     "clean:test-data": "tsx scripts/clean-remote-test-data.ts",
-    "seed:api": "tsx scripts/seed-via-api.ts",
-    "test:warmup:local": "tsx scripts/test-warmup-local.ts",
-    "test:warmup:deployed": "tsx scripts/test-warmup-deployed.ts"
+    "seed:api": "tsx scripts/seed-via-api.ts"
   }
 }
