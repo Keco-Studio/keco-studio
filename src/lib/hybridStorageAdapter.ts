@@ -79,7 +79,7 @@ function getCookie(name: string): string | null {
   return null;
 }
 
-function setCookie(name: string, value: string, days: number = 7): void {
+function setCookie(name: string, value: string, days: number = 365): void {
   if (typeof document === 'undefined') return;
   const expires = new Date();
   expires.setTime(expires.getTime() + days * 24 * 60 * 60 * 1000);
@@ -133,7 +133,14 @@ export function createHybridStorageAdapter(): SupportedStorage {
         // Always restore from cookie to ensure we have the latest session
         // This handles the case where sessionStorage was cleared but cookie still exists
         try {
-          sessionStorage.setItem(storageKey, cookieSession);
+          const existingSession = sessionStorage.getItem(storageKey);
+          // Only restore if sessionStorage doesn't have a session or cookie is different
+          if (!existingSession || existingSession !== cookieSession) {
+            sessionStorage.setItem(storageKey, cookieSession);
+            if (process.env.NODE_ENV === 'development') {
+              console.log('[HybridStorage] Restored session from cookie on init');
+            }
+          }
         } catch (e) {
           // If sessionStorage is full or unavailable, that's okay
           // The cookie will still be used as fallback in getItem
@@ -160,10 +167,10 @@ export function createHybridStorageAdapter(): SupportedStorage {
         let value = sessionStorage.getItem(actualKey);
         
         if (value) {
-          // Sync to cookie for persistence
+          // Sync to cookie for persistence (longer expiry)
           if (actualKey === storageKey) {
             try {
-              setCookie(SESSION_COOKIE, value, 7);
+              setCookie(SESSION_COOKIE, value, 365);
             } catch (e) {
               // Ignore cookie errors
             }
@@ -209,7 +216,7 @@ export function createHybridStorageAdapter(): SupportedStorage {
 
         // Also store in cookie for persistence (only for auth tokens)
         if (actualKey === storageKey) {
-          setCookie(SESSION_COOKIE, value, 7);
+          setCookie(SESSION_COOKIE, value, 365);
           // Debug log (can be removed later)
           if (process.env.NODE_ENV === 'development') {
             console.log('[HybridStorage] Saved session to cookie');

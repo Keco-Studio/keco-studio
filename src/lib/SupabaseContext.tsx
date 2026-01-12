@@ -34,8 +34,12 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
+        detectSessionInUrl: true,
         // Use hybrid storage adapter: cookies for persistence + sessionStorage for tab isolation
         storage: createHybridStorageAdapter(),
+        // Increase token refresh time to prevent premature expiration
+        // Refresh when token has less than 60 seconds left (default is 10)
+        flowType: 'pkce',
       },
     });
   }, []); // Empty deps - create once per component mount (which is per tab)

@@ -117,6 +117,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Clear all caches when user signs out
       await clearAllCaches();
+      
+      // Explicitly clear all auth-related cookies
+      if (typeof document !== 'undefined') {
+        const cookiesToClear = ['sb-session', 'sb-access-token', 'sb-refresh-token'];
+        cookiesToClear.forEach(cookieName => {
+          document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+        });
+      }
+      
+      // Clear sessionStorage for this tab
+      if (typeof window !== 'undefined') {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < sessionStorage.length; i++) {
+          const key = sessionStorage.key(i);
+          if (key && (key.includes('sb-') || key.includes('supabase'))) {
+            keysToRemove.push(key);
+          }
+        }
+        keysToRemove.forEach(key => sessionStorage.removeItem(key));
+      }
     } catch (e) {
       console.error('Logout failed', e);
     }

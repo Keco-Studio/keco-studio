@@ -28,7 +28,7 @@ function getCookie(name: string): string | null {
 }
 
 // Helper to set cookie
-function setCookie(name: string, value: string, days: number = 7): void {
+function setCookie(name: string, value: string, days: number = 365): void {
   if (typeof document === 'undefined') return;
   
   const expires = new Date();
@@ -88,9 +88,9 @@ export function createCookieStorageAdapter(): SupportedStorage {
           // Fallback to sessionStorage (for backward compatibility)
           const sessionStorageValue = sessionStorage.getItem(key);
           if (sessionStorageValue) {
-            // Also sync to cookie for persistence
+            // Also sync to cookie for persistence (longer expiry)
             try {
-              setCookie(SESSION_COOKIE, sessionStorageValue, 7);
+              setCookie(SESSION_COOKIE, sessionStorageValue, 365);
             } catch (e) {
               // Ignore cookie errors
             }
@@ -116,8 +116,8 @@ export function createCookieStorageAdapter(): SupportedStorage {
       try {
         // If it's the Supabase auth token key, store in both cookie and sessionStorage
         if (key === baseKey || (key.startsWith('sb-') && key.includes('auth-token'))) {
-          // Store in cookie for persistence across refreshes
-          setCookie(SESSION_COOKIE, value, 7);
+          // Store in cookie for persistence across refreshes (longer expiry)
+          setCookie(SESSION_COOKIE, value, 365);
           
           // Also store in sessionStorage for immediate access
           sessionStorage.setItem(key, value);
@@ -126,7 +126,7 @@ export function createCookieStorageAdapter(): SupportedStorage {
           try {
             const session = JSON.parse(value);
             if (session?.access_token) {
-              setCookie(ACCESS_TOKEN_COOKIE, session.access_token, 7);
+              setCookie(ACCESS_TOKEN_COOKIE, session.access_token, 365);
             }
             if (session?.refresh_token) {
               // Refresh token should be httpOnly, but we can't set that from client
