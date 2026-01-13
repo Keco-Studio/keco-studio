@@ -2634,8 +2634,10 @@ export function LibraryAssetsTable({
             // Check if this is the name field (first property, index 0)
             const isNameField = propertyIndex === 0;
             if (isNameField) {
-              // Clear the name field by setting assetName to empty string
+              // Clear the name field by setting both assetName and propertyValues
+              // Table displays name from propertyValues first, then falls back to row.name
               rowData.assetName = '';
+              rowData.propertyValues[propertyKey] = null;
             } else {
               // Set property value to null to clear it
               rowData.propertyValues[propertyKey] = null;
