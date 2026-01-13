@@ -2745,18 +2745,8 @@ export function LibraryAssetsTable({
       // Clear selected cells and rows after clearing contents
       setSelectedCells(new Set());
       setSelectedRowIds(new Set());
-      
-      // Show success toast
-      setToastMessage('Contents cleared');
-      setTimeout(() => {
-        setToastMessage(null);
-      }, 2000);
     } catch (error) {
       console.error('Failed to clear contents:', error);
-      setToastMessage('Failed to clear contents');
-      setTimeout(() => {
-        setToastMessage(null);
-      }, 2000);
     } finally {
       setIsSaving(false);
     }
@@ -2819,13 +2809,6 @@ export function LibraryAssetsTable({
       // Clear selected cells after deletion
       setSelectedCells(new Set());
       
-      // Show success toast
-      const rowCount = selectedRowIds.size;
-      setToastMessage(rowCount === 1 ? 'Row deleted' : `${rowCount} rows deleted`);
-      setTimeout(() => {
-        setToastMessage(null);
-      }, 2000);
-      
       // Remove from deleted set after a short delay to ensure parent refresh
       setTimeout(() => {
         selectedRowIds.forEach(rowId => {
@@ -2847,11 +2830,6 @@ export function LibraryAssetsTable({
           return next;
         });
       });
-      
-      setToastMessage('Failed to delete rows');
-      setTimeout(() => {
-        setToastMessage(null);
-      }, 2000);
     }
   }, [selectedCells, getAllRowsForCellSelection, orderedProperties, onDeleteAsset]);
 
