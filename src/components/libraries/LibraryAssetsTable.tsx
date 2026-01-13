@@ -99,6 +99,9 @@ export function LibraryAssetsTable({
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   
+  // Clear contents confirmation modal state
+  const [clearContentsConfirmVisible, setClearContentsConfirmVisible] = useState(false);
+  
   // Optimistic update: track deleted asset IDs to hide them immediately
   const [deletedAssetIds, setDeletedAssetIds] = useState<Set<string>>(new Set());
   
@@ -2552,6 +2555,90 @@ export function LibraryAssetsTable({
     setBatchEditMenuPosition(null);
   }, [selectedCells, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase]);
 
+  // Handle Clear Contents operation
+  const handleClearContents = useCallback(async () => {
+    console.log('handleClearContents called, selectedCells:', selectedCells);
+    
+    if (selectedCells.size === 0) {
+      console.log('No cells selected');
+      setClearContentsConfirmVisible(false);
+      return;
+    }
+
+    if (!onUpdateAsset) {
+      console.log('onUpdateAsset not available');
+      setClearContentsConfirmVisible(false);
+      return;
+    }
+
+    const allRowsForSelection = getAllRowsForCellSelection();
+    
+    // Group selected cells by rowId for efficient updates
+    const cellsByRow = new Map<string, Record<string, any>>();
+    
+    selectedCells.forEach((cellKey) => {
+      // Parse cellKey to extract rowId and propertyKey
+      let rowId = '';
+      let propertyKey = '';
+      
+      for (const property of orderedProperties) {
+        const propertyKeyWithDash = '-' + property.key;
+        if (cellKey.endsWith(propertyKeyWithDash)) {
+          rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
+          propertyKey = property.key;
+          break;
+        }
+      }
+      
+      if (rowId && propertyKey) {
+        const row = allRowsForSelection.find(r => r.id === rowId);
+        if (row) {
+          // Initialize row updates if not exists
+          if (!cellsByRow.has(rowId)) {
+            cellsByRow.set(rowId, { ...row.propertyValues });
+          }
+          const rowUpdates = cellsByRow.get(rowId);
+          if (rowUpdates) {
+            // Set property value to null to clear it
+            rowUpdates[propertyKey] = null;
+          }
+        }
+      }
+    });
+    
+    console.log('Clearing contents for', cellsByRow.size, 'rows');
+    
+    // Apply updates to clear cell contents
+    setIsSaving(true);
+    try {
+      for (const [rowId, propertyValues] of cellsByRow.entries()) {
+        const row = allRowsForSelection.find(r => r.id === rowId);
+        if (row) {
+          const assetName = row.name || 'Untitled';
+          await onUpdateAsset(rowId, assetName, propertyValues);
+        }
+      }
+      
+      // Clear selected cells after clearing contents
+      setSelectedCells(new Set());
+      
+      // Show success toast
+      setToastMessage('Contents cleared');
+      setTimeout(() => {
+        setToastMessage(null);
+      }, 2000);
+    } catch (error) {
+      console.error('Failed to clear contents:', error);
+      setToastMessage('Failed to clear contents');
+      setTimeout(() => {
+        setToastMessage(null);
+      }, 2000);
+    } finally {
+      setIsSaving(false);
+      setClearContentsConfirmVisible(false);
+    }
+  }, [selectedCells, getAllRowsForCellSelection, orderedProperties, onUpdateAsset]);
+
   // Handle delete asset with optimistic update
   const handleDeleteAsset = async () => {
     if (!deletingAssetId || !onDeleteAsset) return;
@@ -3884,10 +3971,10 @@ export function LibraryAssetsTable({
             e.currentTarget.style.backgroundColor = 'transparent';
           }}
           onClick={() => {
-            // TODO: Implement clear contents functionality
-            console.log('Clear contents');
+            // Show confirmation modal
             setBatchEditMenuVisible(false);
             setBatchEditMenuPosition(null);
+            setClearContentsConfirmVisible(true);
           }}
         >
           <span className={styles.batchEditMenuText}>Clear contents</span>
@@ -3958,6 +4045,22 @@ export function LibraryAssetsTable({
       okButtonProps={{ danger: true }}
     >
       <p>Are you sure you want to delete this asset? This action cannot be undone.</p>
+    </Modal>
+
+    {/* Clear Contents Confirmation Modal */}
+    <Modal
+      open={clearContentsConfirmVisible}
+      title="Clear content"
+      onOk={handleClearContents}
+      onCancel={() => {
+        setClearContentsConfirmVisible(false);
+      }}
+      okText="Delete"
+      cancelText="Cancel"
+      okButtonProps={{ danger: true }}
+      width={400}
+    >
+      <p>Are you sure you want to clear these content?</p>
     </Modal>
     </>
   );
