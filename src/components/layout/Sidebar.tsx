@@ -213,6 +213,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     data: projects = [],
     isLoading: loadingProjects,
     error: projectsError,
+    refetch: refetchProjects,
   } = useQuery({
     queryKey: ['projects'],
     queryFn: () => listProjects(supabase),
@@ -227,7 +228,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   });
 
   // Use React Query to fetch folders and libraries
-  // Only execute query when projectId exists
+  // Only execute query when projectId exists and is a valid UUID
   const {
     data: foldersAndLibraries,
     isLoading: loadingFoldersAndLibraries,
@@ -243,7 +244,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       ]);
       return { folders: foldersData, libraries: librariesData };
     },
-    enabled: !!currentIds.projectId, // Only query when projectId exists
+    // Only query when projectId exists AND is a valid UUID (not "projects" string)
+    enabled: !!currentIds.projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentIds.projectId || ''),
     staleTime: 2 * 60 * 1000, // Data is considered fresh for 2 minutes, reduces duplicate requests
     // Don't refetch if data is in cache and not expired
     refetchOnMount: false, // Use cache to avoid duplicate requests
@@ -313,6 +315,51 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       prevProjectIdRef.current = currentIds.projectId;
     }
   }, [currentIds.projectId]);
+
+  // Smart cache refresh: If user is viewing a project that's not in the sidebar,
+  // it might mean they were just added as a collaborator. Refresh the projects list.
+  useEffect(() => {
+    if (currentIds.projectId && projects.length > 0 && !loadingProjects) {
+      const currentProjectExists = projects.some(p => p.id === currentIds.projectId);
+      if (!currentProjectExists) {
+        console.log('[Sidebar] Current project not in list, refreshing projects...');
+        console.log('[Sidebar] Current project ID:', currentIds.projectId);
+        console.log('[Sidebar] Projects in list:', projects.map(p => p.id));
+        
+        // Clear globalRequestCache and refetch
+        (async () => {
+          try {
+            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              // Clear projects list cache
+              const projectsCacheKey = `projects:list:${user.id}`;
+              globalRequestCache.invalidate(projectsCacheKey);
+              console.log('[Sidebar] Cleared globalRequestCache for key:', projectsCacheKey);
+              
+              // Clear all caches for this project (important!)
+              // This ensures fresh data and permissions
+              const cacheKeys = [
+                `auth:project-access:${currentIds.projectId}:${user.id}`,
+                `auth:project-ownership:${currentIds.projectId}:${user.id}`,
+                `auth:project-role:${currentIds.projectId}:${user.id}`,
+                `project:${currentIds.projectId}`,
+              ];
+              cacheKeys.forEach(key => {
+                globalRequestCache.invalidate(key);
+                console.log('[Sidebar] Cleared cache for key:', key);
+              });
+            }
+            // Refetch projects list
+            await refetchProjects();
+            console.log('[Sidebar] Projects list refreshed');
+          } catch (error) {
+            console.error('[Sidebar] Error refreshing projects:', error);
+          }
+        })();
+      }
+    }
+  }, [currentIds.projectId, projects, loadingProjects, refetchProjects, supabase]);
 
   // Sync selectedFolderId from URL
   useEffect(() => {
@@ -471,11 +518,48 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
 
   // actions
-  const handleProjectClick = (projectId: string) => {
+  const handleProjectClick = async (projectId: string) => {
+    // Clear all related caches before navigation to ensure fresh data
+    // This is important for collaborators who might have stale cache
+    try {
+      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const cacheKeys = [
+          // Authorization caches
+          `auth:project-access:${projectId}:${user.id}`,
+          `auth:project-ownership:${projectId}:${user.id}`,
+          `auth:project-role:${projectId}:${user.id}`,
+          // Project data cache
+          `project:${projectId}`,
+        ];
+        cacheKeys.forEach(key => {
+          globalRequestCache.invalidate(key);
+        });
+      }
+    } catch (error) {
+      console.error('[Sidebar] Error clearing caches:', error);
+    }
     router.push(`/${projectId}`);
   };
 
-  const handleLibraryClick = (projectId: string, libraryId: string) => {
+  const handleLibraryClick = async (projectId: string, libraryId: string) => {
+    // Clear authorization caches before navigation
+    try {
+      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const authCacheKeys = [
+          `auth:project-access:${projectId}:${user.id}`,
+          `auth:library-access:${libraryId}:${user.id}`,
+        ];
+        authCacheKeys.forEach(key => {
+          globalRequestCache.invalidate(key);
+        });
+      }
+    } catch (error) {
+      console.error('[Sidebar] Error clearing auth caches:', error);
+    }
     router.push(`/${projectId}/${libraryId}`);
     fetchAssets(libraryId);
   };
@@ -485,7 +569,24 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     router.push(`/${projectId}/${libraryId}/predefine`);
   }, [router]);
 
-  const handleAssetClick = (projectId: string, libraryId: string, assetId: string) => {
+  const handleAssetClick = async (projectId: string, libraryId: string, assetId: string) => {
+    // Clear authorization caches before navigation
+    try {
+      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const authCacheKeys = [
+          `auth:project-access:${projectId}:${user.id}`,
+          `auth:library-access:${libraryId}:${user.id}`,
+          `auth:asset-access:${assetId}:${user.id}`,
+        ];
+        authCacheKeys.forEach(key => {
+          globalRequestCache.invalidate(key);
+        });
+      }
+    } catch (error) {
+      console.error('[Sidebar] Error clearing auth caches:', error);
+    }
     router.push(`/${projectId}/${libraryId}/${assetId}`);
   };
 
@@ -982,7 +1083,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     return keys;
   }, [pathname, currentIds.folderId, currentIds.libraryId, currentIds.assetId, currentIds.isLibraryPage]);
 
-  const onSelect = (_keys: React.Key[], info: any) => {
+  const onSelect = async (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
     if (key.startsWith('folder-create-')) {
       // Handle create button click - button's onClick will handle this
@@ -1001,13 +1102,29 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const id = key.replace('folder-', '');
       // Navigate to folder page
       if (currentIds.projectId) {
+        // Clear authorization caches before navigation
+        try {
+          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const authCacheKeys = [
+              `auth:project-access:${currentIds.projectId}:${user.id}`,
+              `auth:folder-access:${id}:${user.id}`,
+            ];
+            authCacheKeys.forEach(key => {
+              globalRequestCache.invalidate(key);
+            });
+          }
+        } catch (error) {
+          console.error('[Sidebar] Error clearing auth caches:', error);
+        }
         router.push(`/${currentIds.projectId}/folder/${id}`);
       }
     } else if (key.startsWith('library-')) {
       const id = key.replace('library-', '');
       setSelectedFolderId(null); // Clear folder selection when library is selected
       const projId = libraries.find((l) => l.id === id)?.project_id || currentIds.projectId || '';
-      handleLibraryClick(projId, id);
+      await handleLibraryClick(projId, id);
     } else if (key.startsWith('asset-')) {
       const assetId = key.replace('asset-', '');
       setSelectedFolderId(null); // Clear folder selection when asset is selected
@@ -1024,7 +1141,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         return false;
       });
       if (libId && projId) {
-        handleAssetClick(projId, libId, assetId);
+        await handleAssetClick(projId, libId, assetId);
       }
     }
   };

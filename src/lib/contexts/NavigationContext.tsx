@@ -5,7 +5,7 @@ import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from './AuthContext';
 import {
-  verifyProjectOwnership,
+  verifyProjectAccess,
   verifyLibraryAccess,
   verifyFolderAccess,
   verifyAssetAccess,
@@ -64,6 +64,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   // Detect user switch and redirect if needed
   useEffect(() => {
+    console.log('[NavigationContext] User check:', {
+      isAuthenticated,
+      hasUserProfile: !!userProfile,
+      userProfileId: userProfile?.id,
+      previousUserId: currentUserIdRef.current,
+      currentProjectId,
+    });
+    
     if (!isAuthenticated || !userProfile) {
       currentUserIdRef.current = null;
       return;
@@ -74,6 +82,13 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
     // If user switched and we're on a resource page, redirect to projects
     if (previousUserId !== null && previousUserId !== newUserId) {
+      console.log('[NavigationContext] User switch detected!', {
+        previousUserId,
+        newUserId,
+        currentProjectId,
+        willRedirect: !!(currentProjectId || currentLibraryId || currentAssetId),
+      });
+      
       // User has switched - clear all names and reset initial fetch flag
       setProjectName(null);
       setLibraryName(null);
@@ -118,8 +133,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
         // Resolve current project name with permission check
         if (currentProjectId) {
           try {
-            // First verify user has access to this project
-            await verifyProjectOwnership(supabase, currentProjectId);
+            // First verify user has access to this project (owner or collaborator)
+            await verifyProjectAccess(supabase, currentProjectId);
             
             // Use cache to fetch project name and avoid duplicate requests
             const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');

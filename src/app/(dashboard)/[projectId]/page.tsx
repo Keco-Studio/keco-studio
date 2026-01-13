@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, usePathname } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject, Project } from '@/lib/services/projectService';
 import { listFolders, Folder } from '@/lib/services/folderService';
@@ -24,9 +24,10 @@ import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
 export default function ProjectPage() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = useSupabase();
   const projectId = params.projectId as string;
-  
+    
   const [project, setProject] = useState<Project | null>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
@@ -55,11 +56,10 @@ export default function ProjectPage() {
       
       if (!projectData) {
         // Project not found - redirect immediately without showing error
-        // Use window.location for immediate redirect to prevent any flash of content
         window.location.replace('/projects');
         return;
       }
-      
+            
       // Fetch libraries for each folder
       const folderLibrariesMap: Record<string, Library[]> = {};
       await Promise.all(
