@@ -184,9 +184,27 @@ export default function AssetPage() {
           }));
           setFieldDefs(migratedDefs);
           setAsset(assetRow as AssetRow);
+          
+          // Create a map of field IDs to field definitions for easier lookup
+          const fieldDefMap = new Map(migratedDefs.map(f => [f.id, f]));
+          
           const valueMap: Record<string, any> = {};
           (vals as ValueRow[] | null)?.forEach((v) => {
-            valueMap[v.field_id] = v.value_json;
+            let parsedValue = v.value_json;
+            const fieldDef = fieldDefMap.get(v.field_id);
+            
+            // Parse JSON strings for image/file/reference fields
+            if (fieldDef && (fieldDef.data_type === 'image' || fieldDef.data_type === 'file' || fieldDef.data_type === 'reference')) {
+              if (typeof parsedValue === 'string' && parsedValue.trim() !== '') {
+                try {
+                  parsedValue = JSON.parse(parsedValue);
+                } catch {
+                  // If parsing fails, keep the original value (might be legacy format)
+                }
+              }
+            }
+            
+            valueMap[v.field_id] = parsedValue;
           });
           setValues(valueMap);
         }
