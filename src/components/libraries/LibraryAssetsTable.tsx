@@ -1933,12 +1933,16 @@ export function LibraryAssetsTable({
   // Handle Paste operation
   const handlePaste = useCallback(async () => {
     console.log('handlePaste called');
+    console.log('clipboardData:', clipboardData);
+    console.log('selectedCells:', selectedCells);
     
     // Check if there is clipboard data
     if (!clipboardData || clipboardData.length === 0 || clipboardData[0].length === 0) {
-      console.log('No clipboard data to paste');
+      console.log('No clipboard data to paste, clipboardData:', clipboardData);
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
+      setToastMessage('No content to paste. Please copy or cut cells first.');
+      setTimeout(() => setToastMessage(null), 2000);
       return;
     }
     
@@ -2073,7 +2077,7 @@ export function LibraryAssetsTable({
         const createdTempIds: string[] = [];
         for (let i = 0; i < rowsToCreate.length; i++) {
           const rowData = rowsToCreate[i];
-          const assetName = rowData.name || 'Untitled';
+          const assetName = rowData.name || '';
           
           // Create optimistic asset row with temporary ID
           const tempId = `temp-paste-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
@@ -2118,8 +2122,9 @@ export function LibraryAssetsTable({
         setToastMessage('Failed to paste: could not create new rows');
         setTimeout(() => setToastMessage(null), 2000);
         return;
+      } finally {
+        setIsSaving(false);
       }
-      setIsSaving(false);
     }
     
     // Apply updates to existing rows
@@ -2163,8 +2168,9 @@ export function LibraryAssetsTable({
         setToastMessage('Failed to paste: could not update cells');
         setTimeout(() => setToastMessage(null), 2000);
         return;
+      } finally {
+        setIsSaving(false);
       }
-      setIsSaving(false);
     }
     
     // If this was a cut operation, clear the cut cells
@@ -2242,6 +2248,8 @@ export function LibraryAssetsTable({
     // Close menu
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
+    
+    console.log('handlePaste completed successfully');
   }, [clipboardData, selectedCells, getAllRowsForCellSelection, orderedProperties, isCutOperation, cutCells, onSaveAsset, onUpdateAsset, library]);
 
   // Handle Insert Row Above operation
