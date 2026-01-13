@@ -227,13 +227,6 @@ export function InviteCollaboratorModal({
               }))}
             />
           </Form.Item>
-
-          <div className={styles.infoBox}>
-            <p className={styles.infoText}>
-              An invitation email will be sent with a link to accept the invitation. 
-              The invitation expires in 7 days.
-            </p>
-          </div>
         </Form>
       </div>
     </Modal>

@@ -4,7 +4,9 @@ import { useRouter, usePathname } from 'next/navigation';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import Image from 'next/image';
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, useMemo } from 'react';
+import { Avatar } from 'antd';
+import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import styles from './TopBar.module.css';
 import homeMorehorizontalIcon from '@/app/assets/images/homeMorehorizontalIcon.svg';
 import homeQuestionIcon from '@/app/assets/images/homeQuestionIcon.svg';
@@ -41,6 +43,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const displayName =
     userProfile?.username || userProfile?.full_name || userProfile?.email || 'Guest';
   const avatarInitial = displayName.charAt(0).toUpperCase();
+
+  // Get user avatar color (consistent color based on user ID)
+  const userAvatarColor = useMemo(() => {
+    return userProfile?.id ? getUserAvatarColor(userProfile.id) : '#999999';
+  }, [userProfile?.id]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -317,8 +324,23 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             data-testid="user-menu"
             type="button"
           >
-            {/* Fallback avatar icon */}
-            <Image src={homeDefaultUserIcon} alt="User" width={20} height={20} />
+            {userProfile ? (
+              <Avatar
+                size={36}
+                style={{
+                  backgroundColor: userAvatarColor,
+                  borderRadius: '16px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                }}
+              >
+                {avatarInitial}
+              </Avatar>
+            ) : (
+              /* Fallback avatar icon for guests */
+              <Image src={homeDefaultUserIcon} alt="User" width={20} height={20} />
+            )}
           </button>
           {showUserMenu && (
             <div className={styles.userMenu}>

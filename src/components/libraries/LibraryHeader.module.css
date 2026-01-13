@@ -1,0 +1,291 @@
+/* Library Header Styles */
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 32px;
+  background: white;
+  border-bottom: 1px solid #e2e8f0;
+  min-height: 80px;
+}
+
+.leftSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0;
+  line-height: 1.3;
+}
+
+.description {
+  font-size: 14px;
+  color: #64748b;
+  line-height: 1.5;
+  max-width: 500px;
+}
+
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Icon Buttons */
+.iconButton {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.iconButton:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+/* Share Section */
+.shareSection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid #e2e8f0;
+}
+
+.shareButton {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid #5e00ff;
+  background: #5e00ff;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.shareButton:hover {
+  background: #4a00cc;
+  border-color: #4a00cc;
+}
+
+.roleLabel {
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 500;
+  text-transform: lowercase;
+}
+
+/* Members Section */
+.membersSection {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid #e2e8f0;
+}
+
+.membersAvatars {
+  display: flex;
+  align-items: center;
+  padding: 4px;
+  border-radius: 8px;
+}
+
+.expandCollaboratorsButton {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: white;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  padding: 0;
+}
+
+.expandCollaboratorsButton:hover {
+  background: #f8fafc;
+  transform: scale(1.05);
+}
+
+.memberAvatar {
+  border: 2px solid white;
+  font-weight: 600;
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: transform 0.2s;
+}
+
+.memberAvatar:hover {
+  transform: scale(1.1);
+  z-index: 100 !important;
+}
+
+.remainingCount {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* Members Panel */
+.membersPanel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 320px;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.membersPanelHeader {
+  padding: 16px 20px;
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  text-transform: uppercase;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.membersList {
+  max-height: 400px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.memberItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+  position: relative;
+}
+
+.memberItem:hover {
+  background: #f8fafc;
+}
+
+.memberItemHighlight {
+  background: rgba(94, 0, 255, 0.05);
+  border: 1px solid rgba(94, 0, 255, 0.2);
+}
+
+.memberItemHighlight:hover {
+  background: rgba(94, 0, 255, 0.08);
+}
+
+.memberInfo {
+  flex: 1;
+  min-width: 0;
+}
+
+.memberName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #0f172a;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.youLabel {
+  font-size: 12px;
+  font-weight: 400;
+  color: #5e00ff;
+}
+
+.memberEmail {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.memberStatus {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.emptyState {
+  padding: 40px 20px;
+  text-align: center;
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+/* Scrollbar styling */
+.membersList::-webkit-scrollbar {
+  width: 6px;
+}
+
+.membersList::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+
+.membersList::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+.membersList::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 16px 20px;
+  }
+
+  .rightSection {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .shareSection {
+    padding-left: 0;
+    border-left: none;
+  }
+
+  .membersSection {
+    padding-left: 0;
+    border-left: none;
+  }
+
+  .membersPanel {
+    right: auto;
+    left: 0;
+  }
+}
+

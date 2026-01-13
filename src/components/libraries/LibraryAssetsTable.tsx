@@ -88,6 +88,9 @@ export function LibraryAssetsTable({
   const [editingRowId, setEditingRowId] = useState<string | null>(null);
   const [editingRowData, setEditingRowData] = useState<Record<string, any>>({});
   
+  // Track current user's focused cell (for collaboration presence)
+  const [currentFocusedCell, setCurrentFocusedCell] = useState<{ assetId: string; propertyKey: string } | null>(null);
+  
   // Realtime collaboration state: track remote edits from other users
   const [realtimeEditedCells, setRealtimeEditedCells] = useState<Map<string, { value: any; timestamp: number }>>(new Map());
   
@@ -227,12 +230,20 @@ export function LibraryAssetsTable({
 
   // Presence tracking helpers
   const handleCellFocus = useCallback((assetId: string, propertyKey: string) => {
+    // Update local state for current user's focused cell
+    setCurrentFocusedCell({ assetId, propertyKey });
+    
+    // Update presence tracking
     if (presenceTracking) {
       presenceTracking.updateActiveCell(assetId, propertyKey);
     }
   }, [presenceTracking]);
 
   const handleCellBlur = useCallback(() => {
+    // Clear local state for current user's focused cell
+    setCurrentFocusedCell(null);
+    
+    // Update presence tracking
     if (presenceTracking) {
       presenceTracking.updateActiveCell(null, null);
     }
@@ -240,8 +251,31 @@ export function LibraryAssetsTable({
 
   const getUsersEditingCell = useCallback((assetId: string, propertyKey: string) => {
     if (!presenceTracking) return [];
-    return presenceTracking.getUsersEditingCell(assetId, propertyKey);
-  }, [presenceTracking]);
+    const users = presenceTracking.getUsersEditingCell(assetId, propertyKey);
+    
+    // If current user is focused on this specific cell, make sure they're included
+    if (currentUser && currentFocusedCell && 
+        currentFocusedCell.assetId === assetId && 
+        currentFocusedCell.propertyKey === propertyKey) {
+      // Check if current user is already in the list
+      const hasCurrentUser = users.some(u => u.userId === currentUser.id);
+      if (!hasCurrentUser) {
+        // Add current user to the list
+        users.unshift({
+          userId: currentUser.id,
+          userName: currentUser.name,
+          userEmail: currentUser.email,
+          avatarColor: currentUser.avatarColor || getUserAvatarColor(currentUser.id),
+          activeCell: { assetId, propertyKey },
+          cursorPosition: null,
+          lastActivity: new Date().toISOString(),
+          connectionStatus: 'online' as const,
+        });
+      }
+    }
+    
+    return users;
+  }, [presenceTracking, currentUser, currentFocusedCell]);
 
   // Conflict resolution handlers
   const handleKeepLocalChanges = useCallback((assetId: string, propertyKey: string) => {
@@ -862,6 +896,56 @@ export function LibraryAssetsTable({
   // Set display name for debugging
   ReferenceField.displayName = 'ReferenceField';
 
+  // Cell Presence Avatars Component - displays small avatars in cell corner
+  const CellPresenceAvatars = React.memo<{
+    users: Array<{
+      userId: string;
+      userName: string;
+      userEmail: string;
+      avatarColor: string;
+    }>;
+  }>(({ users }) => {
+    if (users.length === 0) return null;
+
+    // Reverse order: first user (rightmost) has priority
+    const orderedUsers = [...users].reverse();
+    const visibleUsers = orderedUsers.slice(0, 3); // Show max 3 avatars
+    const hiddenCount = Math.max(0, orderedUsers.length - 3);
+
+    const getUserInitials = (name: string): string => {
+      const parts = name.trim().split(/\s+/);
+      if (parts.length === 0) return '?';
+      return parts[0].charAt(0).toUpperCase();
+    };
+
+    return (
+      <div className={styles.cellPresenceAvatars}>
+        {visibleUsers.map((user) => (
+          <Tooltip key={user.userId} title={user.userName} placement="top">
+            <div
+              className={styles.cellPresenceAvatar}
+              style={{ backgroundColor: user.avatarColor }}
+            >
+              {getUserInitials(user.userName)}
+            </div>
+          </Tooltip>
+        ))}
+        {hiddenCount > 0 && (
+          <Tooltip title={`${hiddenCount} more`} placement="top">
+            <div
+              className={styles.cellPresenceAvatar}
+              style={{ backgroundColor: '#999' }}
+            >
+              +{hiddenCount}
+            </div>
+          </Tooltip>
+        )}
+      </div>
+    );
+  });
+
+  CellPresenceAvatars.displayName = 'CellPresenceAvatars';
+
   // Helper function to broadcast cell updates
   const broadcastCellUpdateIfEnabled = useCallback(async (
     assetId: string,
@@ -1069,6 +1153,12 @@ export function LibraryAssetsTable({
             setEditingRowId(null);
             const savedEditingRowData = { ...editingRowData };
             setEditingRowData({});
+            setCurrentFocusedCell(null); // Clear focused cell when auto-saving
+            
+            // Also update presence tracking
+            if (presenceTracking) {
+              presenceTracking.updateActiveCell(null, null);
+            }
             
             setIsSaving(true);
             try {
@@ -1174,6 +1264,12 @@ export function LibraryAssetsTable({
     setEditingRowId(null);
     const savedEditingRowData = { ...editingRowData };
     setEditingRowData({});
+    setCurrentFocusedCell(null); // Clear focused cell when saving
+    
+    // Also update presence tracking
+    if (presenceTracking) {
+      presenceTracking.updateActiveCell(null, null);
+    }
 
     setIsSaving(true);
     try {
@@ -1207,6 +1303,12 @@ export function LibraryAssetsTable({
   const handleCancelEditing = () => {
     setEditingRowId(null);
     setEditingRowData({});
+    setCurrentFocusedCell(null); // Clear focused cell when canceling editing
+    
+    // Also update presence tracking
+    if (presenceTracking) {
+      presenceTracking.updateActiveCell(null, null);
+    }
   };
 
   // Handle view asset detail - navigate to asset detail page
@@ -1657,10 +1759,15 @@ export function LibraryAssetsTable({
                     const value = row.propertyValues[property.key];
                     const assetId = value ? String(value) : null;
                     
+                    // Get users editing this cell
+                    const editingUsers = getUsersEditingCell(row.id, property.key);
+                    const borderColor = getFirstUserColor(editingUsers);
+                    
                       return (
                         <td
                           key={property.id}
-                          className={styles.cell}
+                          className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''}`}
+                          style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                           onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                         >
                           <ReferenceField
@@ -1672,6 +1779,10 @@ export function LibraryAssetsTable({
                             onAvatarMouseLeave={handleAvatarMouseLeave}
                             onOpenReferenceModal={handleOpenReferenceModal}
                           />
+                          {/* Show collaboration avatars in cell corner */}
+                          {editingUsers.length > 0 && (
+                            <CellPresenceAvatars users={editingUsers} />
+                          )}
                         </td>
                       );
                   }
@@ -1695,10 +1806,15 @@ export function LibraryAssetsTable({
                       }
                     }
                     
+                    // Get users editing this cell
+                    const editingUsers = getUsersEditingCell(row.id, property.key);
+                    const borderColor = getFirstUserColor(editingUsers);
+                    
                     return (
                       <td
                         key={property.id}
-                        className={styles.cell}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''}`}
+                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                       >
                         {mediaValue ? (
@@ -1736,6 +1852,10 @@ export function LibraryAssetsTable({
                         ) : (
                           <span className={styles.placeholderValue}>—</span>
                         )}
+                        {/* Show collaboration avatars in cell corner */}
+                        {editingUsers.length > 0 && (
+                          <CellPresenceAvatars users={editingUsers} />
+                        )}
                       </td>
                     );
                   }
@@ -1752,10 +1872,15 @@ export function LibraryAssetsTable({
                     
                     const checked = value === true || value === 'true' || String(value).toLowerCase() === 'true';
                     
+                    // Get users editing this cell
+                    const editingUsers = getUsersEditingCell(row.id, property.key);
+                    const borderColor = getFirstUserColor(editingUsers);
+                    
                     return (
                       <td
                         key={property.id}
-                        className={styles.cell}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''}`}
+                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                       >
                         <div className={styles.booleanToggle}>
@@ -1804,6 +1929,10 @@ export function LibraryAssetsTable({
                             {checked ? 'True' : 'False'}
                           </span>
                         </div>
+                        {/* Show collaboration avatars in cell corner */}
+                        {editingUsers.length > 0 && (
+                          <CellPresenceAvatars users={editingUsers} />
+                        )}
                       </td>
                     );
                   }
@@ -1821,10 +1950,15 @@ export function LibraryAssetsTable({
                     const display = value !== null && value !== undefined && value !== '' ? String(value) : null;
                     const isOpen = openEnumSelects[enumSelectKey] || false;
                     
+                    // Get users editing this cell
+                    const editingUsers = getUsersEditingCell(row.id, property.key);
+                    const borderColor = getFirstUserColor(editingUsers);
+                    
                     return (
                       <td
                         key={property.id}
-                        className={styles.cell}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''}`}
+                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                       >
                         <div className={styles.enumSelectWrapper}>
@@ -1849,11 +1983,15 @@ export function LibraryAssetsTable({
                               // Update the value in background
                               if (onUpdateAsset) {
                                 try {
+                                  const oldValue = row.propertyValues[property.key];
                                   const updatedPropertyValues = {
                                     ...row.propertyValues,
                                     [property.key]: stringValue
                                   };
                                   await onUpdateAsset(row.id, row.name, updatedPropertyValues);
+                                  
+                                  // Broadcast cell update if realtime is enabled
+                                  await broadcastCellUpdateIfEnabled(row.id, property.key, stringValue, oldValue);
                                   
                                   // Remove optimistic value after successful update
                                   // The component will re-render with new props from parent
@@ -1904,6 +2042,10 @@ export function LibraryAssetsTable({
                             }}
                           />
                         </div>
+                        {/* Show collaboration avatars in cell corner */}
+                        {editingUsers.length > 0 && (
+                          <CellPresenceAvatars users={editingUsers} />
+                        )}
                       </td>
                     );
                   }
@@ -1916,10 +2058,15 @@ export function LibraryAssetsTable({
                     display = String(value);
                   }
 
+                  // Get users editing this cell
+                  const editingUsers = getUsersEditingCell(row.id, property.key);
+                  const borderColor = getFirstUserColor(editingUsers);
+
                   return (
                     <td
                       key={property.id}
-                      className={styles.cell}
+                      className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''}`}
+                      style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                       onDoubleClick={(e) => handleCellDoubleClick(row, e)}
                     >
                       {isNameField ? (
@@ -1953,6 +2100,10 @@ export function LibraryAssetsTable({
                         <span className={styles.cellText}>
                           {display ? display : <span className={styles.placeholderValue}>—</span>}
                         </span>
+                      )}
+                      {/* Show collaboration avatars in cell corner */}
+                      {editingUsers.length > 0 && (
+                        <CellPresenceAvatars users={editingUsers} />
                       )}
                     </td>
                   );
