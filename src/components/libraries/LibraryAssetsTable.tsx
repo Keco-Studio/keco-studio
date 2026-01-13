@@ -2992,6 +2992,7 @@ export function LibraryAssetsTable({
                           <div className={styles.enumSelectWrapper}>
                             <Select
                               value={display || undefined}
+                              placeholder="Select"
                               open={isOpen}
                               onOpenChange={(open) => {
                                 setOpenEnumSelects(prev => ({
@@ -3422,6 +3423,7 @@ export function LibraryAssetsTable({
                         <div className={styles.enumSelectWrapper}>
                           <Select
                             value={display || undefined}
+                            placeholder="Select"
                             open={isOpen}
                             onOpenChange={(open) => {
                               setOpenEnumSelects(prev => ({
