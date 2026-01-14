@@ -2298,18 +2298,22 @@ export function LibraryAssetsTable({
       setIsCutOperation(false);
       
       // Group cut cells by rowId
-      const cutCellsByRow = new Map<string, { propertyValues: Record<string, any>; name: string }>();
+      // Format: { rowId: { propertyValues: {...}, assetName: string | null } }
+      const cutCellsByRow = new Map<string, { propertyValues: Record<string, any>; assetName: string | null }>();
       
       cutCellsToClear.forEach((cellKey) => {
         // Parse cellKey to get rowId and propertyKey
         let rowId = '';
         let propertyKey = '';
+        let propertyIndex = -1;
         
-        for (const property of orderedProperties) {
+        for (let i = 0; i < orderedProperties.length; i++) {
+          const property = orderedProperties[i];
           const propertyKeyWithDash = '-' + property.key;
           if (cellKey.endsWith(propertyKeyWithDash)) {
             rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
             propertyKey = property.key;
+            propertyIndex = i;
             break;
           }
         }
@@ -2319,17 +2323,21 @@ export function LibraryAssetsTable({
           if (row) {
             if (!cutCellsByRow.has(rowId)) {
               // Copy all existing property values (may include boolean and other types)
-              cutCellsByRow.set(rowId, { propertyValues: { ...row.propertyValues }, name: row.name || 'Untitled' });
+              cutCellsByRow.set(rowId, { 
+                propertyValues: { ...row.propertyValues }, 
+                assetName: row.name || null 
+              });
             }
             const rowUpdates = cutCellsByRow.get(rowId);
             if (rowUpdates) {
               // Check if this is the name field (first property)
-              const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
               const isNameField = propertyIndex === 0;
               
               if (isNameField) {
-                // Clear the name field
-                rowUpdates.name = 'Untitled';
+                // Clear the name field by setting both assetName and propertyValues
+                // Table displays name from propertyValues first, then falls back to row.name
+                rowUpdates.assetName = '';
+                rowUpdates.propertyValues[propertyKey] = null;
               } else {
                 // Clear the property value
                 rowUpdates.propertyValues[propertyKey] = null;
@@ -2345,7 +2353,9 @@ export function LibraryAssetsTable({
         for (const [rowId, rowData] of cutCellsByRow.entries()) {
           const row = allRowsForSelection.find(r => r.id === rowId);
           if (row) {
-            await onUpdateAsset(rowId, rowData.name, rowData.propertyValues);
+            // Use the updated assetName if name field was cleared, otherwise use original name
+            const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
+            await onUpdateAsset(rowId, assetName, rowData.propertyValues);
           }
         }
       } catch (error) {
