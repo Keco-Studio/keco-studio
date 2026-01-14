@@ -437,6 +437,49 @@ export function LibraryAssetsTable({
   const supabase = useSupabase();
 
   const hasSections = sections.length > 0;
+  
+  // User role state (for permission control)
+  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
+  
+  // Fetch user role
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      const projectId = params.projectId as string;
+      if (!projectId) {
+        setUserRole(null);
+        return;
+      }
+      
+      try {
+        // Get session for authorization
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setUserRole(null);
+          return;
+        }
+        
+        // Call API to get user role
+        const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+        
+        if (roleResponse.ok) {
+          const roleResult = await roleResponse.json();
+          setUserRole(roleResult.role || null);
+        } else {
+          setUserRole(null);
+        }
+      } catch (error) {
+        console.error('[LibraryAssetsTable] Error fetching user role:', error);
+        setUserRole(null);
+      }
+    };
+    
+    fetchUserRole();
+  }, [params.projectId, supabase]);
+  
   const hasProperties = properties.length > 0;
   const hasRows = rows.length > 0;
 
@@ -1220,6 +1263,10 @@ export function LibraryAssetsTable({
 
   // Handle double click on cell to start editing
   const handleCellDoubleClick = (row: AssetRow, e: React.MouseEvent) => {
+    // Only admin and editor can edit assets (viewer cannot)
+    if (userRole === 'viewer') {
+      return;
+    }
     // Prevent editing if adding a new row
     if (isAddingRow) {
       return;
@@ -1313,6 +1360,11 @@ export function LibraryAssetsTable({
 
   // Handle view asset detail - navigate to asset detail page
   const handleViewAssetDetail = (row: AssetRow, e: React.MouseEvent) => {
+    // Only admin can view asset detail card (editor and viewer cannot)
+    if (userRole !== 'admin') {
+      return;
+    }
+    
     const projectId = params.projectId as string;
     const libraryId = params.libraryId as string;
     
@@ -1334,6 +1386,11 @@ export function LibraryAssetsTable({
 
   // Handle right-click context menu
   const handleRowContextMenu = (e: React.MouseEvent, row: AssetRow) => {
+    // Only admin and editor can delete assets (viewer cannot)
+    if (userRole === 'viewer') {
+      return;
+    }
+    
     e.preventDefault();
     e.stopPropagation();
     
@@ -1420,16 +1477,18 @@ export function LibraryAssetsTable({
           <p className={styles.emptyStateText}>
             There is no any asset here. You need to create an asset firstly.
           </p>
-          <button className={styles.predefineButton} onClick={handlePredefineClick}>
-            <Image
-              src={noassetIcon2}
-              alt=""
-              width={24}
-              height={24}
-              className={styles.predefineButtonIcon}
-            />
-            <span>Predefine</span>
-          </button>
+          {userRole === 'admin' && (
+            <button className={styles.predefineButton} onClick={handlePredefineClick}>
+              <Image
+                src={noassetIcon2}
+                alt=""
+                width={24}
+                height={24}
+                className={styles.predefineButtonIcon}
+              />
+              <span>Predefine</span>
+            </button>
+          )}
         </div>
       </div>
     );
@@ -2085,7 +2144,9 @@ export function LibraryAssetsTable({
                               // Prevent double click from bubbling to cell
                               e.stopPropagation();
                             }}
-                            title="View asset details (Ctrl/Cmd+Click for new tab)"
+                            title={userRole === 'admin' ? "View asset details (Ctrl/Cmd+Click for new tab)" : "Only admin can view asset details"}
+                            disabled={userRole !== 'admin'}
+                            style={userRole !== 'admin' ? { cursor: 'not-allowed', opacity: 0.5 } : undefined}
                           >
                             <Image
                               src={assetTableIcon}
@@ -2244,7 +2305,7 @@ export function LibraryAssetsTable({
                 );
                 })}
             </tr>
-          ) : (
+          ) : (userRole === 'admin' || userRole === 'editor') ? (
             <tr className={styles.addRow}>
               <td className={styles.numberCell}>
                 <button
@@ -2271,7 +2332,7 @@ export function LibraryAssetsTable({
                 <td key={property.id} className={styles.cell}></td>
               ))}
             </tr>
-          )}
+          ) : null}
         </tbody>
       </table>
     </div>

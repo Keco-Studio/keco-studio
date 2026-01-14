@@ -109,99 +109,56 @@ export async function POST(request: NextRequest) {
       .eq('email', recipientEmail.toLowerCase())
       .maybeSingle();
 
-    if (recipientProfile) {
-      // User exists - check if already a collaborator
-      const { data: existingCollaborator } = await supabase
-        .from('project_collaborators')
-        .select('id')
-        .eq('project_id', projectId)
-        .eq('user_id', recipientProfile.id)
-        .not('accepted_at', 'is', null)
-        .maybeSingle();
-
-      if (existingCollaborator) {
-        return NextResponse.json({
-          success: false,
-          error: 'This user is already a collaborator on this project',
-        });
-      }
-
-      // ✨ User exists but not a collaborator - add them directly!
-      console.log('[API /invitations] User exists, adding directly as collaborator');
-      
-      const { error: addCollaboratorError } = await supabase
-        .from('project_collaborators')
-        .insert({
-          user_id: recipientProfile.id,
-          project_id: projectId,
-          role: role as CollaboratorRole,
-          invited_by: user.id,
-          invited_at: new Date().toISOString(),
-          accepted_at: new Date().toISOString(), // Auto-accept for existing users
-        });
-
-      if (addCollaboratorError) {
-        console.error('[API /invitations] Error adding collaborator:', addCollaboratorError);
-        return NextResponse.json({
-          success: false,
-          error: 'Failed to add collaborator: ' + addCollaboratorError.message,
-        });
-      }
-
-      // Create invitation record for tracking (already accepted)
-      const invitationId = crypto.randomUUID();
-      await supabase
-        .from('collaboration_invitations')
-        .insert({
-          id: invitationId,
-          project_id: projectId,
-          recipient_email: recipientEmail.toLowerCase(),
-          role,
-          invited_by: user.id,
-          invitation_token: 'auto-accepted-' + invitationId, // Placeholder token
-          accepted_at: new Date().toISOString(),
-          accepted_by: recipientProfile.id,
-        });
-
-      console.log('[API /invitations] User added successfully as', role);
-      
-      return NextResponse.json({
-        success: true,
-        invitationId: invitationId,
-        autoAccepted: true,
-        message: `${recipientProfile.username || recipientProfile.full_name || recipientEmail} has been added as ${role}`,
-      });
-    }
-
-    // 7. Check for pending invitation
-    const { data: existingInvitation } = await supabase
-      .from('collaboration_invitations')
-      .select('id, accepted_at')
-      .eq('project_id', projectId)
-      .eq('recipient_email', recipientEmail.toLowerCase())
-      .is('accepted_at', null)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (existingInvitation) {
+    // ❌ User does not exist - cannot invite unregistered users
+    if (!recipientProfile) {
+      console.log('[API /invitations] Recipient email not found in system');
       return NextResponse.json({
         success: false,
-        error: 'An invitation has already been sent to this email address',
+        error: `The email address "${recipientEmail}" is not registered. Please ask them to sign up first.`,
       });
     }
 
-    // 8. Generate invitation ID and token
-    const invitationId = crypto.randomUUID();
-    const token = await generateInvitationToken({
-      invitationId,
-      projectId,
-      email: recipientEmail.toLowerCase(),
-      role: role as CollaboratorRole,
-    });
+    // ✅ User exists - check if already a collaborator
+    const { data: existingCollaborator } = await supabase
+      .from('project_collaborators')
+      .select('id')
+      .eq('project_id', projectId)
+      .eq('user_id', recipientProfile.id)
+      .not('accepted_at', 'is', null)
+      .maybeSingle();
 
-    // 9. Create invitation record
-    const { data: invitation, error: insertError } = await supabase
+    if (existingCollaborator) {
+      return NextResponse.json({
+        success: false,
+        error: 'This user is already a collaborator on this project',
+      });
+    }
+
+    // ✨ User exists but not a collaborator - add them directly!
+    console.log('[API /invitations] User exists, adding directly as collaborator');
+    
+    const { error: addCollaboratorError } = await supabase
+      .from('project_collaborators')
+      .insert({
+        user_id: recipientProfile.id,
+        project_id: projectId,
+        role: role as CollaboratorRole,
+        invited_by: user.id,
+        invited_at: new Date().toISOString(),
+        accepted_at: new Date().toISOString(), // Auto-accept for existing users
+      });
+
+    if (addCollaboratorError) {
+      console.error('[API /invitations] Error adding collaborator:', addCollaboratorError);
+      return NextResponse.json({
+        success: false,
+        error: 'Failed to add collaborator: ' + addCollaboratorError.message,
+      });
+    }
+
+    // Create invitation record for tracking (already accepted)
+    const invitationId = crypto.randomUUID();
+    await supabase
       .from('collaboration_invitations')
       .insert({
         id: invitationId,
@@ -209,32 +166,18 @@ export async function POST(request: NextRequest) {
         recipient_email: recipientEmail.toLowerCase(),
         role,
         invited_by: user.id,
-        invitation_token: token,
-      })
-      .select('id')
-      .single();
-
-    if (insertError || !invitation) {
-      console.error('Error creating invitation:', insertError);
-      return NextResponse.json({
-        success: false,
-        error: insertError?.message || 'Failed to create invitation',
+        invitation_token: 'auto-accepted-' + invitationId, // Placeholder token
+        accepted_at: new Date().toISOString(),
+        accepted_by: recipientProfile.id,
       });
-    }
 
-    // 10. Generate accept link
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    const acceptLink = `${appUrl}/accept-invitation?token=${token}`;
-
-    console.log('[API /invitations] Invitation created successfully');
-    console.log('[API /invitations] Accept link:', acceptLink);
-
-    // TODO: Send email when email service is configured
-    // await sendInvitationEmail({ ... });
-
+    console.log('[API /invitations] User added successfully as', role);
+    
     return NextResponse.json({
       success: true,
-      invitationId: invitation.id,
+      invitationId: invitationId,
+      autoAccepted: true,
+      message: `${recipientProfile.username || recipientProfile.full_name || recipientEmail} has been added as ${role}`,
     });
   } catch (error) {
     console.error('Error in POST /api/invitations:', error);

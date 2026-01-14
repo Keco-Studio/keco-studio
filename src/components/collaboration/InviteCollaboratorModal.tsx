@@ -40,14 +40,6 @@ export function InviteCollaboratorModal({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset form when modal opens/closes
-  useEffect(() => {
-    if (open) {
-      form.resetFields();
-      setError(null);
-    }
-  }, [open, form]);
-
   // Get available roles based on user's role
   const availableRoles: { value: CollaboratorRole; label: string; description: string }[] = [
     {
@@ -66,6 +58,18 @@ export function InviteCollaboratorModal({
       description: 'Can view project content, no edit permissions',
     },
   ].filter((roleOption) => canUserInviteWithRole(userRole, roleOption.value));
+
+  // Get default role: the highest role the user can invite (first in available roles)
+  const defaultRole = availableRoles[0]?.value || 'editor';
+
+  // Reset form when modal opens/closes
+  useEffect(() => {
+    if (open) {
+      form.resetFields();
+      form.setFieldsValue({ role: defaultRole });
+      setError(null);
+    }
+  }, [open, form, defaultRole]);
 
   const handleSubmit = async () => {
     try {
@@ -188,7 +192,7 @@ export function InviteCollaboratorModal({
         <Form
           form={form}
           layout="vertical"
-          initialValues={{ role: 'editor' }}
+          initialValues={{ role: defaultRole }}
           className={styles.form}
         >
           <Form.Item

@@ -94,6 +94,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const displayName = userProfile?.username || userProfile?.full_name || userProfile?.email || "Guest";
   const isGuest = !userProfile;
   
+  // User role in current project
+  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
+  const [isProjectOwner, setIsProjectOwner] = useState(false);
+  
   // Resolve avatar: use avatar_url if valid, otherwise fallback to initial
   const hasValidAvatar = userProfile?.avatar_url && userProfile.avatar_url.trim() !== "";
   const avatarInitial = displayName.charAt(0).toUpperCase();
@@ -315,6 +319,50 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       prevProjectIdRef.current = currentIds.projectId;
     }
   }, [currentIds.projectId]);
+
+  // Fetch user role in current project
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!currentIds.projectId || !userProfile) {
+        setUserRole(null);
+        setIsProjectOwner(false);
+        return;
+      }
+      
+      try {
+        // Get session for authorization
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setUserRole(null);
+          setIsProjectOwner(false);
+          return;
+        }
+        
+        // Call API to get user role
+        const roleResponse = await fetch(`/api/projects/${currentIds.projectId}/role`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+        
+        if (roleResponse.ok) {
+          const roleResult = await roleResponse.json();
+          setUserRole(roleResult.role || null);
+          setIsProjectOwner(roleResult.isOwner || false);
+          console.log('[Sidebar] User role:', roleResult.role, 'isOwner:', roleResult.isOwner);
+        } else {
+          setUserRole(null);
+          setIsProjectOwner(false);
+        }
+      } catch (error) {
+        console.error('[Sidebar] Error fetching user role:', error);
+        setUserRole(null);
+        setIsProjectOwner(false);
+      }
+    };
+    
+    fetchUserRole();
+  }, [currentIds.projectId, userProfile, supabase]);
 
   // Smart cache refresh: If user is viewing a project that's not in the sidebar,
   // it might mean they were just added as a collaborator. Refresh the projects list.
@@ -719,8 +767,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         // });
       }
       
-      // Create button node for "Create new library" - always first child
-      const createButtonNode: DataNode = {
+      // Create button node for "Create new library" - only for admin
+      const createButtonNode: DataNode | null = userRole === 'admin' ? {
         title: (
           <button
             className={styles.createButton}
@@ -758,10 +806,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         ),
         key: `folder-create-${folder.id}`,
         isLeaf: true,
-      };
+      } : null;
       
       const children: DataNode[] = [
-        createButtonNode, // Always first
+        ...(createButtonNode ? [createButtonNode] : []), // Only add if admin
         ...folderLibraries.map((lib) => {
           const libProjectId = lib.project_id;
           // Show selected state when on library page OR when viewing an asset in this library
@@ -805,32 +853,34 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
                 </div>
                 <div className={styles.itemActions}>
-                  <Tooltip
-                    title="Predefine asset here"
-                    placement="top"
-                    color="#8B5CF6"
-                  >
-                    <button
-                      className={styles.iconButton}
-                      aria-label="Library sections"
-                      onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
+                  {userRole === 'admin' && (
+                    <Tooltip
+                      title="Predefine asset here"
+                      placement="top"
+                      color="#8B5CF6"
                     >
-                      <Image
-                        src={showAssetPageIcons ? sidebarFolderIcon4 : predefineSettingIcon}
-                        alt="Predefine"
-                        width={22}
-                        height={22}
-                      />
-                    </button>
-                  </Tooltip>
+                      <button
+                        className={styles.iconButton}
+                        aria-label="Library sections"
+                        onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
+                      >
+                        <Image
+                          src={showAssetPageIcons ? sidebarFolderIcon4 : predefineSettingIcon}
+                          alt="Predefine"
+                          width={22}
+                          height={22}
+                        />
+                      </button>
+                    </Tooltip>
+                  )}
                 </div>
               </div>
             ),
             key: `library-${lib.id}`,
             isLeaf: false, // Allow expand to show assets and create button
             children: [
-              // Create new asset button - always first
-              {
+              // Create new asset button - only for admin
+              ...(userRole === 'admin' ? [{
                 title: (
                   <button
                     className={styles.createButton}
@@ -866,15 +916,18 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 ),
                 key: `add-asset-${lib.id}`,
                 isLeaf: true,
-              },
+              }] : []),
               // Existing assets
               ...(assets[lib.id] || []).map<DataNode>((asset) => {
                 const isCurrentAsset = currentIds.assetId === asset.id;
+                // Only admin can click assets to view/edit
+                const canClickAsset = userRole === 'admin';
                 return {
                   title: (
                     <div 
-                      className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
+                      className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''} ${!canClickAsset ? styles.itemDisabled : ''}`}
                       onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
+                      style={!canClickAsset ? { cursor: 'default', opacity: 0.6 } : undefined}
                     >
                       <div className={styles.itemMain}>
                         <span className={styles.itemText} title={asset.name}>{truncateText(asset.name, 15)}</span>
@@ -885,6 +938,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   ),
                   key: `asset-${asset.id}`,
                   isLeaf: true,
+                  // Disable selection for non-admin users
+                  disabled: !canClickAsset,
                 };
               }),
             ],
@@ -970,32 +1025,34 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
             </div>
             <div className={styles.itemActions}>
-              <Tooltip
-                title="Predefine asset here"
-                placement="top"
-                color="#8B5CF6"
-              >
-                <button
-                  className={styles.iconButton}
-                  aria-label="Library sections"
-                  onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
+              {userRole === 'admin' && (
+                <Tooltip
+                  title="Predefine asset here"
+                  placement="top"
+                  color="#8B5CF6"
                 >
-                  <Image
-                    src={showAssetPageIcons ? sidebarFolderIcon4 : predefineSettingIcon}
-                    alt="Predefine"
-                    width={22}
-                    height={22}
-                  />
-                </button>
-              </Tooltip>
+                  <button
+                    className={styles.iconButton}
+                    aria-label="Library sections"
+                    onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
+                  >
+                    <Image
+                      src={showAssetPageIcons ? sidebarFolderIcon4 : predefineSettingIcon}
+                      alt="Predefine"
+                      width={22}
+                      height={22}
+                    />
+                  </button>
+                </Tooltip>
+              )}
             </div>
           </div>
         ),
         key: `library-${lib.id}`,
         isLeaf: false, // Allow expand to show assets and create button
         children: [
-          // Create new asset button - always first
-          {
+          // Create new asset button - only for admin
+          ...(userRole === 'admin' ? [{
             title: (
               <button
                 className={styles.createButton}
@@ -1031,15 +1088,18 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             ),
             key: `add-asset-${lib.id}`,
             isLeaf: true,
-          },
+          }] : []),
           // Existing assets
           ...(assets[lib.id] || []).map<DataNode>((asset) => {
             const isCurrentAsset = currentIds.assetId === asset.id;
+            // Only admin can click assets to view/edit
+            const canClickAsset = userRole === 'admin';
             return {
               title: (
                 <div 
-                  className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
+                  className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''} ${!canClickAsset ? styles.itemDisabled : ''}`}
                   onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
+                  style={!canClickAsset ? { cursor: 'default', opacity: 0.6 } : undefined}
                 >
                   <div className={styles.itemMain}>
                     <span className={styles.itemText} title={asset.name}>{truncateText(asset.name, 15)}</span>
@@ -1050,6 +1110,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               ),
               key: `asset-${asset.id}`,
               isLeaf: true,
+              // Disable selection for non-admin users
+              disabled: !canClickAsset,
             };
           }),
         ],
@@ -1057,7 +1119,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     });
     
     return result;
-  }, [folders, libraries, assets, currentIds.projectId, currentIds.libraryId, currentIds.isLibraryPage, currentIds.assetId, handleLibraryPredefineClick, router]);
+  }, [folders, libraries, assets, currentIds.projectId, currentIds.libraryId, currentIds.isLibraryPage, currentIds.assetId, handleLibraryPredefineClick, router, userRole]);
 
   const selectedKey = useMemo(() => {
     const keys: string[] = [];
@@ -1504,19 +1566,21 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               {!currentIds.isPredefinePage && !currentIds.assetId && (
                 <div className={styles.sectionTitle}>
                   <span>Libraries</span>
-                  <button
-                    ref={setAddButtonRef}
-                    className={styles.addButton}
-                    onClick={handleAddButtonClick}
-                    title="Add new folder or library"
-                  >
-                    <Image
-                      src={addProjectIcon}
-                      alt="Add library"
-                      width={24}
-                      height={24}
-                    />
-                  </button>
+                  {userRole === 'admin' && (
+                    <button
+                      ref={setAddButtonRef}
+                      className={styles.addButton}
+                      onClick={handleAddButtonClick}
+                      title="Add new folder or library"
+                    >
+                      <Image
+                        src={addProjectIcon}
+                        alt="Add library"
+                        width={24}
+                        height={24}
+                      />
+                    </button>
+                  )}
                 </div>
               )}
               <div className={styles.sectionList}>
@@ -1597,68 +1661,76 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                             <span className={styles.itemText} title={libraryName}>{truncateText(libraryName, 15)}</span>
                           </div>
                           <div className={styles.itemActions}>
-                            <Tooltip
-                              title="Predefine asset here"
-                              placement="top"
-                              color="#8B5CF6"
-                            >
-                              <button
-                                className={styles.iconButton}
-                                aria-label="Library sections"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  if (currentIds.projectId && currentIds.libraryId) {
-                                    handleLibraryPredefineClick(currentIds.projectId, currentIds.libraryId, e);
-                                  }
-                                }}
+                            {userRole === 'admin' && (
+                              <Tooltip
+                                title="Predefine asset here"
+                                placement="top"
+                                color="#8B5CF6"
                               >
-                                <Image
-                                  src={sidebarFolderIcon4}
-                                  alt="Predefine"
-                                  width={22}
-                                  height={22}
-                                />
-                              </button>
-                            </Tooltip>
+                                <button
+                                  className={styles.iconButton}
+                                  aria-label="Library sections"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (currentIds.projectId && currentIds.libraryId) {
+                                      handleLibraryPredefineClick(currentIds.projectId, currentIds.libraryId, e);
+                                    }
+                                  }}
+                                >
+                                  <Image
+                                    src={sidebarFolderIcon4}
+                                    alt="Predefine"
+                                    width={22}
+                                    height={22}
+                                  />
+                                </button>
+                              </Tooltip>
+                            )}
                           </div>
                         </div>
-                        {/* Add new asset button */}
-                        <button
-                          className={`${styles.createButton} ${styles.createButtonAligned}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (currentIds.projectId && currentIds.libraryId) {
-                              // Navigate to new asset page
-                              // If library has no properties, the page will show predefine prompt (NoassetIcon1.svg)
-                              // If library has properties, the page will show the form to create new asset
-                              router.push(`/${currentIds.projectId}/${currentIds.libraryId}/new`);
-                            }
-                          }}
-                        >
-                          <span className={styles.createButtonText}>
-                            <Image
-                              src={sidebarFolderIcon5}
-                              alt="Add"
-                              width={24}
-                              height={24}
-                            />
-                            Add new asset
-                          </span>
-                        </button>
+                        {/* Add new asset button - only for admin */}
+                        {userRole === 'admin' && (
+                          <button
+                            className={`${styles.createButton} ${styles.createButtonAligned}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (currentIds.projectId && currentIds.libraryId) {
+                                // Navigate to new asset page
+                                // If library has no properties, the page will show predefine prompt (NoassetIcon1.svg)
+                                // If library has properties, the page will show the form to create new asset
+                                router.push(`/${currentIds.projectId}/${currentIds.libraryId}/new`);
+                              }
+                            }}
+                          >
+                            <span className={styles.createButtonText}>
+                              <Image
+                                src={sidebarFolderIcon5}
+                                alt="Add"
+                                width={24}
+                                height={24}
+                              />
+                              Add new asset
+                            </span>
+                          </button>
+                        )}
                         {/* Assets list */}
                         <div className={styles.assetList}>
                           {libraryAssets.map((asset) => {
                             const isCurrentAsset = currentIds.assetId === asset.id;
+                            // Only admin can click assets to view/edit
+                            const canClickAsset = userRole === 'admin';
                             return (
                               <div
                                 key={asset.id}
                                 className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
                                 onClick={() => {
-                                  if (currentIds.projectId && currentIds.libraryId) {
+                                  // Only admin can navigate to asset detail
+                                  if (canClickAsset && currentIds.projectId && currentIds.libraryId) {
                                     handleAssetClick(currentIds.projectId, currentIds.libraryId, asset.id);
                                   }
                                 }}
                                 onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
+                                style={!canClickAsset ? { cursor: 'default', opacity: 0.6 } : undefined}
                               >
                                 <div className={styles.itemMain}>
                                   <span className={styles.itemText} title={asset.name}>{truncateText(asset.name, 20)}</span>

@@ -77,6 +77,9 @@ export default function AssetPage() {
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [mode, setMode] = useState<AssetMode>(isNewAsset ? 'create' : 'edit');
   const [navigating, setNavigating] = useState(false);
+  
+  // User role state (for permission control)
+  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
 
   const sections = useMemo(() => {
     const map: Record<string, FieldDef[]> = {};
@@ -120,6 +123,44 @@ export default function AssetPage() {
     // Otherwise, use the asset's name (for existing assets)
     return asset?.name || '';
   }, [nameField, values, asset]);
+
+  // Fetch user role
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!projectId) {
+        setUserRole(null);
+        return;
+      }
+      
+      try {
+        // Get session for authorization
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setUserRole(null);
+          return;
+        }
+        
+        // Call API to get user role
+        const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+        
+        if (roleResponse.ok) {
+          const roleResult = await roleResponse.json();
+          setUserRole(roleResult.role || null);
+        } else {
+          setUserRole(null);
+        }
+      } catch (error) {
+        console.error('[AssetPage] Error fetching user role:', error);
+        setUserRole(null);
+      }
+    };
+    
+    fetchUserRole();
+  }, [projectId, supabase]);
 
   useEffect(() => {
     const load = async () => {
@@ -504,16 +545,18 @@ export default function AssetPage() {
                   <p className={styles.emptyStateText}>
                     There is no any asset here. You need to create an asset firstly.
                   </p>
-                  <button className={styles.predefineButton} onClick={handlePredefineClick}>
-                    <Image
-                      src={noassetIcon2}
-                      alt=""
-                      width={24}
-                      height={24}
-                      className={styles.predefineButtonIcon}
-                    />
-                    <span>Predefine</span>
-                  </button>
+                  {userRole === 'admin' && (
+                    <button className={styles.predefineButton} onClick={handlePredefineClick}>
+                      <Image
+                        src={noassetIcon2}
+                        alt=""
+                        width={24}
+                        height={24}
+                        className={styles.predefineButtonIcon}
+                      />
+                      <span>Predefine</span>
+                    </button>
+                  )}
                 </div>
               )}
 
