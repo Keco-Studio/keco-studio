@@ -254,6 +254,7 @@ export function LibraryAssetsTable({
   type CellKey = `${string}-${string}`; // Format: "rowId-propertyKey"
   const [selectedCells, setSelectedCells] = useState<Set<CellKey>>(new Set());
   const selectedCellsRef = useRef<Set<CellKey>>(new Set());
+  const contextMenuRowIdRef = useRef<string | null>(null);
   const [dragStartCell, setDragStartCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
   const [dragCurrentCell, setDragCurrentCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
   const isDraggingCellsRef = useRef(false);
@@ -1487,6 +1488,7 @@ export function LibraryAssetsTable({
     
     // Priority 3: Otherwise show normal row context menu
     setContextMenuRowId(row.id);
+    contextMenuRowIdRef.current = row.id;
     setContextMenuPosition({ x: e.clientX, y: e.clientY });
   };
 
@@ -2389,46 +2391,60 @@ export function LibraryAssetsTable({
   // Handle Insert Row Above operation
   const handleInsertRowAbove = useCallback(async () => {
     console.log('handleInsertRowAbove called, selectedCells:', selectedCells);
+    console.log('selectedRowIds:', selectedRowIds);
     
-    if (selectedCells.size === 0) {
-      console.log('No cells selected');
-      setBatchEditMenuVisible(false);
-      setBatchEditMenuPosition(null);
-      return;
-    }
-
     if (!onSaveAsset || !library) {
       console.log('onSaveAsset or library not available');
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
+      setContextMenuRowId(null);
+      setContextMenuPosition(null);
       return;
     }
 
-    // Extract unique row IDs from selected cells
     const allRowsForSelection = getAllRowsForCellSelection();
-    const selectedRowIds = new Set<string>();
+    let rowsToUse: Set<string>;
     
-    selectedCells.forEach((cellKey) => {
-      // Parse cellKey to extract rowId
-      for (const property of orderedProperties) {
-        const propertyKeyWithDash = '-' + property.key;
-        if (cellKey.endsWith(propertyKeyWithDash)) {
-          const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-          selectedRowIds.add(rowId);
-          break;
+    // Priority: use selectedRowIds if available, otherwise extract from selectedCells
+    if (selectedRowIds.size > 0) {
+      rowsToUse = new Set(selectedRowIds);
+    } else if (selectedCells.size > 0) {
+      // Extract unique row IDs from selected cells
+      rowsToUse = new Set<string>();
+      selectedCells.forEach((cellKey) => {
+        // Parse cellKey to extract rowId
+        for (const property of orderedProperties) {
+          const propertyKeyWithDash = '-' + property.key;
+          if (cellKey.endsWith(propertyKeyWithDash)) {
+            const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
+            rowsToUse.add(rowId);
+            break;
+          }
         }
-      }
-    });
-
-    if (selectedRowIds.size === 0) {
-      console.log('No valid rows found in selected cells');
+      });
+    } else if (contextMenuRowIdRef.current) {
+      // Use contextMenuRowId if available (from right-click menu)
+      rowsToUse = new Set([contextMenuRowIdRef.current]);
+    } else {
+      console.log('No cells or rows selected');
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
+      setContextMenuRowId(null);
+      setContextMenuPosition(null);
+      return;
+    }
+
+    if (rowsToUse.size === 0) {
+      console.log('No valid rows found');
+      setBatchEditMenuVisible(false);
+      setBatchEditMenuPosition(null);
+      setContextMenuRowId(null);
+      setContextMenuPosition(null);
       return;
     }
 
     // Sort row IDs by their index in allRowsForSelection (from top to bottom)
-    const sortedRowIds = Array.from(selectedRowIds).sort((a, b) => {
+    const sortedRowIds = Array.from(rowsToUse).sort((a, b) => {
       const indexA = allRowsForSelection.findIndex(r => r.id === a);
       const indexB = allRowsForSelection.findIndex(r => r.id === b);
       return indexA - indexB;
@@ -2447,6 +2463,8 @@ export function LibraryAssetsTable({
       console.log('First selected row not found');
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
+      setContextMenuRowId(null);
+      setContextMenuPosition(null);
       return;
     }
 
@@ -2548,55 +2566,72 @@ export function LibraryAssetsTable({
     // Close menu
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
+    setContextMenuRowId(null);
+    setContextMenuPosition(null);
+    contextMenuRowIdRef.current = null;
     
     // Clear selected cells and rows after insert operation
     setSelectedCells(new Set());
     setSelectedRowIds(new Set());
-  }, [selectedCells, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase]);
+  }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase]);
 
   // Handle Insert Row Below operation
   const handleInsertRowBelow = useCallback(async () => {
     console.log('handleInsertRowBelow called, selectedCells:', selectedCells);
+    console.log('selectedRowIds:', selectedRowIds);
     
-    if (selectedCells.size === 0) {
-      console.log('No cells selected');
-      setBatchEditMenuVisible(false);
-      setBatchEditMenuPosition(null);
-      return;
-    }
-
     if (!onSaveAsset || !library) {
       console.log('onSaveAsset or library not available');
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
+      setContextMenuRowId(null);
+      setContextMenuPosition(null);
       return;
     }
 
-    // Extract unique row IDs from selected cells
     const allRowsForSelection = getAllRowsForCellSelection();
-    const selectedRowIds = new Set<string>();
+    let rowsToUse: Set<string>;
     
-    selectedCells.forEach((cellKey) => {
-      // Parse cellKey to extract rowId
-      for (const property of orderedProperties) {
-        const propertyKeyWithDash = '-' + property.key;
-        if (cellKey.endsWith(propertyKeyWithDash)) {
-          const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-          selectedRowIds.add(rowId);
-          break;
+    // Priority: use selectedRowIds if available, otherwise extract from selectedCells
+    if (selectedRowIds.size > 0) {
+      rowsToUse = new Set(selectedRowIds);
+    } else if (selectedCells.size > 0) {
+      // Extract unique row IDs from selected cells
+      rowsToUse = new Set<string>();
+      selectedCells.forEach((cellKey) => {
+        // Parse cellKey to extract rowId
+        for (const property of orderedProperties) {
+          const propertyKeyWithDash = '-' + property.key;
+          if (cellKey.endsWith(propertyKeyWithDash)) {
+            const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
+            rowsToUse.add(rowId);
+            break;
+          }
         }
-      }
-    });
-
-    if (selectedRowIds.size === 0) {
-      console.log('No valid rows found in selected cells');
+      });
+    } else if (contextMenuRowIdRef.current) {
+      // Use contextMenuRowId if available (from right-click menu)
+      rowsToUse = new Set([contextMenuRowIdRef.current]);
+    } else {
+      console.log('No cells or rows selected');
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
+      setContextMenuRowId(null);
+      setContextMenuPosition(null);
+      return;
+    }
+
+    if (rowsToUse.size === 0) {
+      console.log('No valid rows found');
+      setBatchEditMenuVisible(false);
+      setBatchEditMenuPosition(null);
+      setContextMenuRowId(null);
+      setContextMenuPosition(null);
       return;
     }
 
     // Sort row IDs by their index in allRowsForSelection (from top to bottom)
-    const sortedRowIds = Array.from(selectedRowIds).sort((a, b) => {
+    const sortedRowIds = Array.from(rowsToUse).sort((a, b) => {
       const indexA = allRowsForSelection.findIndex(r => r.id === a);
       const indexB = allRowsForSelection.findIndex(r => r.id === b);
       return indexA - indexB;
@@ -2615,6 +2650,8 @@ export function LibraryAssetsTable({
       console.log('Last selected row not found');
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
+      setContextMenuRowId(null);
+      setContextMenuPosition(null);
       return;
     }
 
@@ -2716,11 +2753,14 @@ export function LibraryAssetsTable({
     // Close menu
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
+    setContextMenuRowId(null);
+    setContextMenuPosition(null);
+    contextMenuRowIdRef.current = null;
     
     // Clear selected cells and rows after insert operation
     setSelectedCells(new Set());
     setSelectedRowIds(new Set());
-  }, [selectedCells, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase]);
+  }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase]);
 
   // Handle Clear Contents operation
   const handleClearContents = useCallback(async () => {
@@ -2815,6 +2855,25 @@ export function LibraryAssetsTable({
     // Close modal immediately before starting clearing (better UX)
     setClearContentsConfirmVisible(false);
     
+    // Apply optimistic updates immediately for better UX
+    setOptimisticEditUpdates(prev => {
+      const newMap = new Map(prev);
+      for (const [rowId, rowData] of cellsByRow.entries()) {
+        const row = allRowsForSelection.find(r => r.id === rowId);
+        if (row) {
+          // Use the original row.name for matching condition (optimisticUpdate.name === assetRow.name)
+          // This ensures the optimistic update will be applied even when name is cleared
+          // The actual name to save is determined by assetName, but for matching we use original name
+          const originalName = row.name || 'Untitled';
+          newMap.set(rowId, {
+            name: originalName,
+            propertyValues: { ...rowData.propertyValues }
+          });
+        }
+      }
+      return newMap;
+    });
+    
     // Apply updates to clear cell contents
     setIsSaving(true);
     try {
@@ -2827,11 +2886,30 @@ export function LibraryAssetsTable({
         }
       }
       
+      // Remove optimistic updates after a short delay to allow parent to refresh
+      setTimeout(() => {
+        setOptimisticEditUpdates(prev => {
+          const newMap = new Map(prev);
+          for (const rowId of cellsByRow.keys()) {
+            newMap.delete(rowId);
+          }
+          return newMap;
+        });
+      }, 500);
+      
       // Clear selected cells and rows after clearing contents
       setSelectedCells(new Set());
       setSelectedRowIds(new Set());
     } catch (error) {
       console.error('Failed to clear contents:', error);
+      // On error, revert optimistic updates
+      setOptimisticEditUpdates(prev => {
+        const newMap = new Map(prev);
+        for (const rowId of cellsByRow.keys()) {
+          newMap.delete(rowId);
+        }
+        return newMap;
+      });
     } finally {
       setIsSaving(false);
     }
@@ -4116,7 +4194,7 @@ export function LibraryAssetsTable({
       document.body
     )}
 
-    {/* Context Menu for right-click delete */}
+    {/* Context Menu for right-click operations */}
     {contextMenuRowId && contextMenuPosition && (typeof document !== 'undefined') && createPortal(
       <div
         style={{
@@ -4129,11 +4207,74 @@ export function LibraryAssetsTable({
           borderRadius: '6px',
           boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
           padding: 0,
-          minWidth: '120px',
+          minWidth: '160px',
           overflow: 'hidden',
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        {/* Insert row above */}
+        <div
+          style={{
+            padding: '8px 16px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            color: '#333333',
+            transition: 'background-color 0.2s',
+            width: '100%',
+            boxSizing: 'border-box',
+            margin: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f5f5f5';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          onClick={() => {
+            handleInsertRowAbove();
+            setContextMenuRowId(null);
+            setContextMenuPosition(null);
+            contextMenuRowIdRef.current = null;
+          }}
+        >
+          Insert row above
+        </div>
+        {/* Insert row below */}
+        <div
+          style={{
+            padding: '8px 16px',
+            cursor: 'pointer',
+            fontSize: '14px',
+            color: '#333333',
+            transition: 'background-color 0.2s',
+            width: '100%',
+            boxSizing: 'border-box',
+            margin: 0,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#f5f5f5';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = 'transparent';
+          }}
+          onClick={() => {
+            handleInsertRowBelow();
+            setContextMenuRowId(null);
+            setContextMenuPosition(null);
+            contextMenuRowIdRef.current = null;
+          }}
+        >
+          Insert row below
+        </div>
+        {/* Separator */}
+        <div
+          style={{
+            height: '1px',
+            backgroundColor: '#e2e8f0',
+            margin: '4px 0',
+          }}
+        />
+        {/* Delete */}
         <div
           style={{
             padding: '8px 16px',
