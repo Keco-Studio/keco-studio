@@ -1643,8 +1643,20 @@ export function LibraryAssetsTable({
         return;
       }
       
+      // Get the property index to check if this is the name field
+      const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
+      const isNameField = propertyIndex === 0;
+      
       // Get the cell value
       let rawValue = row.propertyValues[propertyKey];
+      
+      // For name field, if propertyValues doesn't have it, use row.name as fallback
+      if (isNameField && (rawValue === null || rawValue === undefined || rawValue === '')) {
+        if (row.name && row.name !== 'Untitled') {
+          rawValue = row.name;
+        }
+      }
+      
       let value: string | number | null = null;
       
       // Convert to appropriate type based on property data type
@@ -1797,8 +1809,23 @@ export function LibraryAssetsTable({
   // Handle Copy operation
   const handleCopy = useCallback(() => {
     console.log('handleCopy called, selectedCells:', selectedCells);
+    console.log('selectedRowIds:', selectedRowIds);
     
-    if (selectedCells.size === 0) {
+    // If rows are selected but cells are not, convert rows to cells
+    let cellsToCopy = selectedCells;
+    if (selectedCells.size === 0 && selectedRowIds.size > 0) {
+      console.log('Converting selected rows to cells for copy operation');
+      const allRowCellKeys: CellKey[] = [];
+      selectedRowIds.forEach(selectedRowId => {
+        orderedProperties.forEach(property => {
+          allRowCellKeys.push(`${selectedRowId}-${property.key}` as CellKey);
+        });
+      });
+      cellsToCopy = new Set(allRowCellKeys);
+      setSelectedCells(cellsToCopy);
+    }
+    
+    if (cellsToCopy.size === 0) {
       console.log('No cells selected');
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
@@ -1815,7 +1842,7 @@ export function LibraryAssetsTable({
     const validCells: CellKey[] = [];
 
     // Check each selected cell and validate data type
-    selectedCells.forEach((cellKey) => {
+    cellsToCopy.forEach((cellKey) => {
       // cellKey format: "${row.id}-${property.key}"
       // Both row.id and property.key can be UUIDs containing multiple '-'
       // Strategy: try matching each property.key from the end of cellKey
@@ -1864,8 +1891,20 @@ export function LibraryAssetsTable({
         return;
       }
       
+      // Get the property index to check if this is the name field
+      const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
+      const isNameField = propertyIndex === 0;
+      
       // Get the cell value
       let rawValue = row.propertyValues[propertyKey];
+      
+      // For name field, if propertyValues doesn't have it, use row.name as fallback
+      if (isNameField && (rawValue === null || rawValue === undefined || rawValue === '')) {
+        if (row.name && row.name !== 'Untitled') {
+          rawValue = row.name;
+        }
+      }
+      
       let value: string | number | null = null;
       
       // Convert to appropriate type based on property data type
@@ -1974,12 +2013,16 @@ export function LibraryAssetsTable({
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
     
+    // Clear selected cells and rows after copy operation
+    setSelectedCells(new Set());
+    setSelectedRowIds(new Set());
+    
     // Auto-hide toast after 2 seconds
     setTimeout(() => {
       console.log('Clearing toast message');
       setToastMessage(null);
     }, 2000);
-  }, [selectedCells, getAllRowsForCellSelection, orderedProperties]);
+  }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties]);
 
   // Handle Paste operation
   const handlePaste = useCallback(async () => {
@@ -2116,7 +2159,12 @@ export function LibraryAssetsTable({
           // Need to create new row - add value to the row data
           const newRowData = rowsToCreateByIndex.get(targetRowIndex);
           if (newRowData) {
-            newRowData.propertyValues[targetProperty.key] = convertedValue;
+            // For name field (propertyIndex === 0), set it as the name field, not in propertyValues
+            if (targetPropertyIndex === 0) {
+              newRowData.name = convertedValue !== null ? String(convertedValue) : 'Untitled';
+            } else {
+              newRowData.propertyValues[targetProperty.key] = convertedValue;
+            }
           }
         } else {
           // Target row exists, prepare update
@@ -2481,6 +2529,10 @@ export function LibraryAssetsTable({
     // Close menu
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
+    
+    // Clear selected cells and rows after insert operation
+    setSelectedCells(new Set());
+    setSelectedRowIds(new Set());
   }, [selectedCells, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase]);
 
   // Handle Insert Row Below operation
@@ -2645,6 +2697,10 @@ export function LibraryAssetsTable({
     // Close menu
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
+    
+    // Clear selected cells and rows after insert operation
+    setSelectedCells(new Set());
+    setSelectedRowIds(new Set());
   }, [selectedCells, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase]);
 
   // Handle Clear Contents operation
@@ -2773,9 +2829,31 @@ export function LibraryAssetsTable({
     const currentSelectedCells = selectedCellsRef.current;
     
     console.log('handleDeleteRow called, selectedCells:', currentSelectedCells);
+    console.log('selectedRowIds:', selectedRowIds);
     
-    if (!currentSelectedCells || currentSelectedCells.size === 0) {
-      console.log('No cells selected');
+    // If rows are selected via checkbox but cells are not, use selectedRowIds directly
+    let rowsToDelete: Set<string>;
+    if (currentSelectedCells && currentSelectedCells.size > 0) {
+      // Extract unique row IDs from selected cells
+      const allRowsForSelection = getAllRowsForCellSelection();
+      rowsToDelete = new Set<string>();
+      
+      currentSelectedCells.forEach((cellKey) => {
+        // Parse cellKey to extract rowId
+        for (const property of orderedProperties) {
+          const propertyKeyWithDash = '-' + property.key;
+          if (cellKey.endsWith(propertyKeyWithDash)) {
+            const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
+            rowsToDelete.add(rowId);
+            break;
+          }
+        }
+      });
+    } else if (selectedRowIds.size > 0) {
+      // Use selectedRowIds directly (from checkbox selection)
+      rowsToDelete = new Set(selectedRowIds);
+    } else {
+      console.log('No cells or rows selected');
       setDeleteRowConfirmVisible(false);
       return;
     }
@@ -2786,30 +2864,13 @@ export function LibraryAssetsTable({
       return;
     }
 
-    const allRowsForSelection = getAllRowsForCellSelection();
-    
-    // Extract unique row IDs from selected cells
-    const selectedRowIds = new Set<string>();
-    
-    currentSelectedCells.forEach((cellKey) => {
-      // Parse cellKey to extract rowId
-      for (const property of orderedProperties) {
-        const propertyKeyWithDash = '-' + property.key;
-        if (cellKey.endsWith(propertyKeyWithDash)) {
-          const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-          selectedRowIds.add(rowId);
-          break;
-        }
-      }
-    });
-
-    if (selectedRowIds.size === 0) {
-      console.log('No valid rows found in selected cells');
+    if (rowsToDelete.size === 0) {
+      console.log('No valid rows to delete');
       setDeleteRowConfirmVisible(false);
       return;
     }
 
-    console.log('Deleting', selectedRowIds.size, 'rows:', Array.from(selectedRowIds));
+    console.log('Deleting', rowsToDelete.size, 'rows:', Array.from(rowsToDelete));
 
     // Close modal immediately before starting deletion (better UX)
     setDeleteRowConfirmVisible(false);
@@ -2817,7 +2878,7 @@ export function LibraryAssetsTable({
     // Delete rows sequentially
     const failedRowIds: string[] = [];
     try {
-      for (const rowId of selectedRowIds) {
+      for (const rowId of rowsToDelete) {
         // Optimistic update: immediately hide the row
         setDeletedAssetIds(prev => new Set(prev).add(rowId));
         
@@ -2844,14 +2905,15 @@ export function LibraryAssetsTable({
         }
       }
       
-      // Clear selected cells after deletion (only if all deletions succeeded or were already deleted)
+      // Clear selected cells and rows after deletion (only if all deletions succeeded or were already deleted)
       if (failedRowIds.length === 0) {
         setSelectedCells(new Set());
+        setSelectedRowIds(new Set());
       }
       
       // Remove from deleted set after a short delay to ensure parent refresh
       setTimeout(() => {
-        selectedRowIds.forEach(rowId => {
+        rowsToDelete.forEach(rowId => {
           // Don't remove failed rows from deleted set
           if (!failedRowIds.includes(rowId)) {
             setDeletedAssetIds(prev => {
@@ -2873,7 +2935,7 @@ export function LibraryAssetsTable({
       console.error('Failed to delete rows:', error);
       
       // Revert optimistic update on error for all remaining rows
-      selectedRowIds.forEach(rowId => {
+      rowsToDelete.forEach(rowId => {
         if (!failedRowIds.includes(rowId)) {
           setDeletedAssetIds(prev => {
             const next = new Set(prev);
@@ -2883,7 +2945,7 @@ export function LibraryAssetsTable({
         }
       });
     }
-  }, [getAllRowsForCellSelection, orderedProperties, onDeleteAsset]);
+  }, [selectedRowIds, getAllRowsForCellSelection, orderedProperties, onDeleteAsset]);
 
   // Handle delete asset with optimistic update
   const handleDeleteAsset = async () => {
