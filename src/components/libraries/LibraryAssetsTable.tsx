@@ -3489,7 +3489,6 @@ export function LibraryAssetsTable({
                       const cellKey: CellKey = `${row.id}-${property.key}`;
                       const isCellSelected = selectedCells.has(cellKey);
                       const isCellCut = cutCells.has(cellKey);
-                      const showExpandIcon = selectedCells.size === 1 && isCellSelected;
                       const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                       const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                       
@@ -3531,21 +3530,18 @@ export function LibraryAssetsTable({
                             onAvatarMouseLeave={handleAvatarMouseLeave}
                             onOpenReferenceModal={handleOpenReferenceModal}
                           />
-                          {showExpandIcon && (
-                            <div
-                              className={styles.cellExpandIcon}
-                              onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                              title="拖拽扩展选择"
-                            >
-                              <Image
-                                src={batchEditAddIcon}
-                                alt="扩展选择"
-                                width={18}
-                                height={18}
-                                style={{ pointerEvents: 'none' }}
-                              />
-                            </div>
-                          )}
+                          <div
+                            className={styles.cellExpandIcon}
+                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                          >
+                            <Image
+                              src={batchEditAddIcon}
+                              alt="Expand selection"
+                              width={18}
+                              height={18}
+                              style={{ pointerEvents: 'none' }}
+                            />
+                          </div>
                         </td>
                       );
                   }
@@ -3641,21 +3637,18 @@ export function LibraryAssetsTable({
                           // Show blank instead of dash for empty media fields
                           <span></span>
                         )}
-                        {showExpandIcon && (
-                          <div
-                            className={styles.cellExpandIcon}
-                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                            title="拖拽扩展选择"
-                          >
-                            <Image
-                              src={batchEditAddIcon}
-                              alt="扩展选择"
-                              width={18}
-                              height={18}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </div>
-                        )}
+                        <div
+                          className={styles.cellExpandIcon}
+                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                        >
+                          <Image
+                            src={batchEditAddIcon}
+                            alt="Expand selection"
+                            width={18}
+                            height={18}
+                            style={{ pointerEvents: 'none' }}
+                          />
+                        </div>
                       </td>
                     );
                   }
@@ -3750,21 +3743,18 @@ export function LibraryAssetsTable({
                             {checked ? 'True' : 'False'}
                           </span>
                         </div>
-                        {showExpandIcon && (
-                          <div
-                            className={styles.cellExpandIcon}
-                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                            title="拖拽扩展选择"
-                          >
-                            <Image
-                              src={batchEditAddIcon}
-                              alt="扩展选择"
-                              width={18}
-                              height={18}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </div>
-                        )}
+                        <div
+                          className={styles.cellExpandIcon}
+                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                        >
+                          <Image
+                            src={batchEditAddIcon}
+                            alt="Expand selection"
+                            width={18}
+                            height={18}
+                            style={{ pointerEvents: 'none' }}
+                          />
+                        </div>
                       </td>
                     );
                   }
@@ -3896,21 +3886,18 @@ export function LibraryAssetsTable({
                             }}
                           />
                         </div>
-                        {showExpandIcon && (
-                          <div
-                            className={styles.cellExpandIcon}
-                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                            title="拖拽扩展选择"
-                          >
-                            <Image
-                              src={batchEditAddIcon}
-                              alt="扩展选择"
-                              width={18}
-                              height={18}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </div>
-                        )}
+                        <div
+                          className={styles.cellExpandIcon}
+                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                        >
+                          <Image
+                            src={batchEditAddIcon}
+                            alt="Expand selection"
+                            width={18}
+                            height={18}
+                            style={{ pointerEvents: 'none' }}
+                          />
+                        </div>
                       </td>
                     );
                   }
@@ -3937,8 +3924,6 @@ export function LibraryAssetsTable({
                   const cellKey: CellKey = `${row.id}-${property.key}`;
                   const isCellSelected = selectedCells.has(cellKey);
                   const isCellCut = cutCells.has(cellKey);
-                  // Only show expand icon when exactly one cell is selected and this cell is selected
-                  const showExpandIcon = selectedCells.size === 1 && isCellSelected;
                   const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                   const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                   
@@ -4003,22 +3988,19 @@ export function LibraryAssetsTable({
                         <span className={styles.cellText} title={display || ''}>
                           {display || ''}
                         </span>
-                      )}
-                      {showExpandIcon && (
-                        <div
-                          className={styles.cellExpandIcon}
-                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                          title="拖拽扩展选择"
-                        >
-                          <Image
-                            src={batchEditAddIcon}
-                            alt="扩展选择"
-                            width={18}
-                            height={18}
-                            style={{ pointerEvents: 'none' }}
-                          />
-                        </div>
-                      )}
+                        )}
+                      <div
+                        className={styles.cellExpandIcon}
+                        onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                      >
+                        <Image
+                          src={batchEditAddIcon}
+                          alt="Expand selection"
+                          width={18}
+                          height={18}
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      </div>
                     </td>
                   );
                 })}

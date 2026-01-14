@@ -246,7 +246,7 @@ td.cellCut.cutBorderRight:hover {
   border-right-color: rgba(94, 0, 255, 0.8) !important;
 }
 
-/* Expand icon for cell selection */
+/* Expand icon for cell selection - only show on hover */
 .cellExpandIcon {
   position: absolute;
   bottom: 0;
@@ -261,8 +261,13 @@ td.cellCut.cutBorderRight:hover {
   background-color: rgba(94, 0, 255, 0.1);
   border: 1px solid rgba(94, 0, 255, 0.3);
   border-radius: 2px 0 0 0;
-  transition: background-color 0.15s ease;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
   pointer-events: auto;
+  opacity: 0;
+}
+
+.cell:hover .cellExpandIcon {
+  opacity: 1;
 }
 
 .cellExpandIcon:hover {
