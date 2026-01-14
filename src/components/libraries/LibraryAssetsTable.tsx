@@ -253,6 +253,7 @@ export function LibraryAssetsTable({
   // Cell selection state (for drag selection)
   type CellKey = `${string}-${string}`; // Format: "rowId-propertyKey"
   const [selectedCells, setSelectedCells] = useState<Set<CellKey>>(new Set());
+  const selectedCellsRef = useRef<Set<CellKey>>(new Set());
   const [dragStartCell, setDragStartCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
   const [dragCurrentCell, setDragCurrentCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
   const isDraggingCellsRef = useRef(false);
@@ -1501,7 +1502,15 @@ export function LibraryAssetsTable({
     e.preventDefault();
     e.stopPropagation();
     
-    // If there are selected rows (via checkbox), select all cells in all selected rows and show batch edit menu
+    // Priority 1: If there are already selected cells (from drag selection), use them
+    // This takes priority over checkbox selection to preserve user's drag selection
+    if (selectedCells.size > 0) {
+      setBatchEditMenuVisible(true);
+      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+      return;
+    }
+    
+    // Priority 2: If there are selected rows (via checkbox), select all cells in all selected rows and show batch edit menu
     if (selectedRowIds.size > 0) {
       // Select all cells in all selected rows
       const allRowCellKeys: CellKey[] = [];
@@ -1518,14 +1527,7 @@ export function LibraryAssetsTable({
       return;
     }
     
-    // If there are already selected cells, show batch edit menu
-    if (selectedCells.size > 0) {
-      setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
-      return;
-    }
-    
-    // Otherwise, if this cell is not selected, select it first
+    // Priority 3: Otherwise, if this cell is not selected, select it first
     const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
     if (!selectedCells.has(cellKey)) {
       setSelectedCells(new Set([cellKey]));
@@ -2709,6 +2711,8 @@ export function LibraryAssetsTable({
           }
           const rowData = cellsByRow.get(rowId);
           if (rowData) {
+            // Get the property to check its data type
+            const property = orderedProperties[propertyIndex];
             // Check if this is the name field (first property, index 0)
             const isNameField = propertyIndex === 0;
             if (isNameField) {
@@ -2717,8 +2721,12 @@ export function LibraryAssetsTable({
               rowData.assetName = '';
               rowData.propertyValues[propertyKey] = null;
             } else {
-              // Set property value to null to clear it
-              rowData.propertyValues[propertyKey] = null;
+              // For boolean type, set to false; for other types, set to null
+              if (property && property.dataType === 'boolean') {
+                rowData.propertyValues[propertyKey] = false;
+              } else {
+                rowData.propertyValues[propertyKey] = null;
+              }
             }
           }
         }
@@ -2752,11 +2760,19 @@ export function LibraryAssetsTable({
     }
   }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onUpdateAsset]);
 
+  // Sync selectedCells to ref for use in callbacks
+  useEffect(() => {
+    selectedCellsRef.current = selectedCells;
+  }, [selectedCells]);
+
   // Handle Delete Row operation
   const handleDeleteRow = useCallback(async () => {
-    console.log('handleDeleteRow called, selectedCells:', selectedCells);
+    // Use ref to get the latest selectedCells value
+    const currentSelectedCells = selectedCellsRef.current;
     
-    if (selectedCells.size === 0) {
+    console.log('handleDeleteRow called, selectedCells:', currentSelectedCells);
+    
+    if (!currentSelectedCells || currentSelectedCells.size === 0) {
       console.log('No cells selected');
       setDeleteRowConfirmVisible(false);
       return;
@@ -2773,7 +2789,7 @@ export function LibraryAssetsTable({
     // Extract unique row IDs from selected cells
     const selectedRowIds = new Set<string>();
     
-    selectedCells.forEach((cellKey) => {
+    currentSelectedCells.forEach((cellKey) => {
       // Parse cellKey to extract rowId
       for (const property of orderedProperties) {
         const propertyKeyWithDash = '-' + property.key;
@@ -2797,41 +2813,75 @@ export function LibraryAssetsTable({
     setDeleteRowConfirmVisible(false);
 
     // Delete rows sequentially
+    const failedRowIds: string[] = [];
     try {
       for (const rowId of selectedRowIds) {
         // Optimistic update: immediately hide the row
         setDeletedAssetIds(prev => new Set(prev).add(rowId));
         
-        // Delete the asset
-        await onDeleteAsset(rowId);
-      }
-      
-      // Clear selected cells after deletion
-      setSelectedCells(new Set());
-      
-      // Remove from deleted set after a short delay to ensure parent refresh
-      setTimeout(() => {
-        selectedRowIds.forEach(rowId => {
+        try {
+          // Delete the asset
+          await onDeleteAsset(rowId);
+        } catch (error: any) {
+          // If asset is not found, consider it as successfully deleted (already deleted)
+          // This can happen due to concurrent deletions or database sync delays
+          if (error?.name === 'AuthorizationError' && error?.message === 'Asset not found') {
+            console.log(`Asset ${rowId} not found, considering as already deleted`);
+            // Continue with next asset, don't revert optimistic update
+            continue;
+          }
+          
+          // For other errors, mark as failed and revert optimistic update
+          console.error(`Failed to delete asset ${rowId}:`, error);
+          failedRowIds.push(rowId);
           setDeletedAssetIds(prev => {
             const next = new Set(prev);
             next.delete(rowId);
             return next;
           });
+        }
+      }
+      
+      // Clear selected cells after deletion (only if all deletions succeeded or were already deleted)
+      if (failedRowIds.length === 0) {
+        setSelectedCells(new Set());
+      }
+      
+      // Remove from deleted set after a short delay to ensure parent refresh
+      setTimeout(() => {
+        selectedRowIds.forEach(rowId => {
+          // Don't remove failed rows from deleted set
+          if (!failedRowIds.includes(rowId)) {
+            setDeletedAssetIds(prev => {
+              const next = new Set(prev);
+              next.delete(rowId);
+              return next;
+            });
+          }
         });
       }, 100);
+      
+      // If there were failures, show error message
+      if (failedRowIds.length > 0) {
+        console.error(`Failed to delete ${failedRowIds.length} row(s):`, failedRowIds);
+        // Optionally show user-friendly error message
+        alert(`Failed to delete ${failedRowIds.length} row(s). Please try again.`);
+      }
     } catch (error) {
       console.error('Failed to delete rows:', error);
       
-      // Revert optimistic update on error
+      // Revert optimistic update on error for all remaining rows
       selectedRowIds.forEach(rowId => {
-        setDeletedAssetIds(prev => {
-          const next = new Set(prev);
-          next.delete(rowId);
-          return next;
-        });
+        if (!failedRowIds.includes(rowId)) {
+          setDeletedAssetIds(prev => {
+            const next = new Set(prev);
+            next.delete(rowId);
+            return next;
+          });
+        }
       });
     }
-  }, [selectedCells, getAllRowsForCellSelection, orderedProperties, onDeleteAsset]);
+  }, [getAllRowsForCellSelection, orderedProperties, onDeleteAsset]);
 
   // Handle delete asset with optimistic update
   const handleDeleteAsset = async () => {
