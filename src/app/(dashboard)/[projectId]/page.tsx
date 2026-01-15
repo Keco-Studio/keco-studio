@@ -120,6 +120,12 @@ export default function ProjectPage() {
       }
     };
 
+    const handleFolderUpdated = (event: CustomEvent) => {
+      // Refresh data when any folder is updated in the current project
+      // We refresh all folders to ensure the updated folder name is reflected
+      fetchData();
+    };
+
     const handleLibraryCreated = (event: CustomEvent) => {
       // 只刷新当前项目的数据，避免重复请求
       const eventProjectId = event.detail?.projectId;
@@ -136,16 +142,36 @@ export default function ProjectPage() {
       }
     };
 
+    const handleLibraryUpdated = (event: CustomEvent) => {
+      // Refresh data when any library is updated in the current project
+      // We refresh all libraries to ensure the updated library name is reflected in FolderCard
+      fetchData();
+    };
+
+    const handleProjectUpdated = (event: CustomEvent) => {
+      // Refresh data when the project is updated to reflect the new project name in LibraryToolbar
+      const updatedProjectId = event.detail?.projectId;
+      if (updatedProjectId === projectId) {
+        fetchData();
+      }
+    };
+
     window.addEventListener('folderCreated' as any, handleFolderCreated as EventListener);
     window.addEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
+    window.addEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
     window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
     window.addEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
+    window.addEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
+    window.addEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
     
     return () => {
       window.removeEventListener('folderCreated' as any, handleFolderCreated as EventListener);
       window.removeEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
+      window.removeEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
       window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
       window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
+      window.removeEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
+      window.removeEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
     };
   }, [fetchData, projectId]);
 

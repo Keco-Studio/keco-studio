@@ -27,6 +27,7 @@ import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
 import { PresenceIndicators } from '@/components/collaboration/PresenceIndicators';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
+import { YjsProvider } from '@/contexts/YjsContext';
 import styles from './page.module.css';
 
 type FieldDef = {
@@ -212,13 +213,48 @@ export default function LibraryPage() {
     fetchData();
   }, [projectId, libraryId, supabase, fetchDefinitions]);
 
-  // Listen for asset changes (created/updated/deleted) from Sidebar or other sources
+  // Listen for library updates to refresh library name
   useEffect(() => {
-    const handleAssetChange = async (event: Event) => {
+    const handleLibraryUpdated = async (event: Event) => {
       const customEvent = event as CustomEvent<{ libraryId: string }>;
       // Only refresh if the event is for this library
       if (customEvent.detail?.libraryId === libraryId) {
         try {
+          // Refresh library data
+          const libraryData = await getLibrary(supabase, libraryId, projectId);
+          if (libraryData) {
+            setLibrary(libraryData);
+          }
+          // Also refresh library summary for the table
+          const summary = await getLibrarySummary(supabase, libraryId);
+          if (summary) {
+            setLibrarySummary(summary);
+          }
+        } catch (e: any) {
+          console.error('Failed to refresh library:', e);
+        }
+      }
+    };
+
+    window.addEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
+    };
+  }, [libraryId, projectId, supabase]);
+
+  // Listen for asset changes (created/updated/deleted) from Sidebar or other sources
+  useEffect(() => {
+    const handleAssetChange = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ libraryId: string; assetId?: string }>;
+      // Only refresh if the event is for this library
+      if (customEvent.detail?.libraryId === libraryId) {
+        try {
+          // Force refresh by directly querying the database
+          // Use a small delay to ensure database transaction is committed
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Query directly from database to bypass any caching
           const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
           setAssetRows(rows);
         } catch (e: any) {
@@ -365,8 +401,8 @@ export default function LibraryPage() {
   };
 
   // Callback for saving new asset from table
-  const handleSaveAssetFromTable = async (assetName: string, propertyValues: Record<string, any>) => {
-    await createAsset(supabase, libraryId, assetName, propertyValues);
+  const handleSaveAssetFromTable = async (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => {
+    await createAsset(supabase, libraryId, assetName, propertyValues, options);
     // Refresh asset rows
     const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
     setAssetRows(rows);
@@ -381,7 +417,7 @@ export default function LibraryPage() {
     const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
     setAssetRows(rows);
     // Notify other components (including other browser tabs/users) to refresh
-    window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { libraryId, assetId } }));
+    window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { assetId, libraryId } }));
   };
 
   // Callback for deleting asset from table
@@ -439,42 +475,44 @@ export default function LibraryPage() {
       {/* Phase 2: Library assets table preview (placeholder data).
           Later phases will replace placeholder service logic with real Supabase-backed data
           and upgrade the table to a two-level header that mirrors predefine + Figma. */}
-      <LibraryAssetsTable
-        library={
-          librarySummary
-            ? {
-                id: librarySummary.id,
-                name: librarySummary.name,
-                description: librarySummary.description,
-              }
-            : {
-                id: library.id,
-                name: library.name,
-                description: library.description,
-              }
-        }
-        sections={tableSections}
-        properties={tableProperties}
-        rows={assetRows}
-        onSaveAsset={handleSaveAssetFromTable}
-        onUpdateAsset={handleUpdateAssetFromTable}
-        onDeleteAsset={handleDeleteAssetFromTable}
-        currentUser={
-          userProfile
-            ? {
-                id: userProfile.id,
-                name: userProfile.full_name || userProfile.username || 'Anonymous',
-                email: userProfile.email,
-                avatarColor: userAvatarColor,
-              }
-            : null
-        }
-        enableRealtime={isAuthenticated}
-        presenceTracking={{
-          updateActiveCell,
-          getUsersEditingCell,
-        }}
-      />
+      <YjsProvider libraryId={libraryId}>
+        <LibraryAssetsTable
+          library={
+            librarySummary
+              ? {
+                  id: librarySummary.id,
+                  name: librarySummary.name,
+                  description: librarySummary.description,
+                }
+              : {
+                  id: library.id,
+                  name: library.name,
+                  description: library.description,
+                }
+          }
+          sections={tableSections}
+          properties={tableProperties}
+          rows={assetRows}
+          onSaveAsset={handleSaveAssetFromTable}
+          onUpdateAsset={handleUpdateAssetFromTable}
+          onDeleteAsset={handleDeleteAssetFromTable}
+          currentUser={
+            userProfile
+              ? {
+                  id: userProfile.id,
+                  name: userProfile.full_name || userProfile.username || 'Anonymous',
+                  email: userProfile.email,
+                  avatarColor: userAvatarColor,
+                }
+              : null
+          }
+          enableRealtime={isAuthenticated}
+          presenceTracking={{
+            updateActiveCell,
+            getUsersEditingCell,
+          }}
+        />
+      </YjsProvider>
 
       {saveError && (
         <div className={styles.saveError}>

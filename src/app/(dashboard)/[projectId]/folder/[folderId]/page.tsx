@@ -72,7 +72,7 @@ export default function FolderPage() {
     fetchAssetCounts();
   }, [libraries, supabase]);
 
-  // Listen for library creation/deletion events to refresh the list
+  // Listen for library creation/deletion events and folder updates to refresh the list
   useEffect(() => {
     const handleLibraryCreated = (event: CustomEvent) => {
       const createdFolderId = event.detail?.folderId;
@@ -90,12 +90,32 @@ export default function FolderPage() {
       }
     };
 
+    const handleLibraryUpdated = (event: CustomEvent) => {
+      // Refresh data when any library is updated
+      // We need to check if the updated library belongs to the current folder
+      // Since we don't have folderId in the event detail, we'll refresh all libraries
+      // The fetchData will only fetch libraries for the current folder
+      fetchData();
+    };
+
+    const handleFolderUpdated = (event: CustomEvent) => {
+      const updatedFolderId = event.detail?.folderId;
+      // Refresh if the current folder was updated
+      if (updatedFolderId === folderId) {
+        fetchData();
+      }
+    };
+
     window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
     window.addEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
+    window.addEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
+    window.addEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
     
     return () => {
       window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
       window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
+      window.removeEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
+      window.removeEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
     };
   }, [folderId, fetchData]);
 

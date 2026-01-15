@@ -244,18 +244,32 @@ export async function createAsset(
   supabase: SupabaseClient,
   libraryId: string,
   assetName: string,
-  propertyValues: Record<string, any>
+  propertyValues: Record<string, any>,
+  options?: {
+    createdAt?: Date; // Optional: set created_at to control insertion position
+  }
 ): Promise<string> {
   // verify library access
   await verifyLibraryAccess(supabase, libraryId);
   
   // Step 1: Insert the asset
+  const insertData: {
+    library_id: string;
+    name: string;
+    created_at?: string;
+  } = {
+    library_id: libraryId,
+    name: assetName,
+  };
+  
+  // If createdAt is provided, use it to control insertion position
+  if (options?.createdAt) {
+    insertData.created_at = options.createdAt.toISOString();
+  }
+  
   const { data: assetData, error: assetError } = await supabase
     .from('library_assets')
-    .insert({
-      library_id: libraryId,
-      name: assetName,
-    })
+    .insert(insertData)
     .select('id')
     .single();
 

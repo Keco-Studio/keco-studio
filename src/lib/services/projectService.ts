@@ -281,3 +281,60 @@ export async function checkProjectNameExists(
   return (data && data.length > 0) || false;
 }
 
+type UpdateProjectInput = {
+  name: string;
+  description?: string;
+};
+
+export async function updateProject(
+  supabase: SupabaseClient,
+  projectId: string,
+  input: UpdateProjectInput
+): Promise<void> {
+  await verifyProjectOwnership(supabase, projectId);
+
+  const name = input.name.trim();
+  const description = trimOrNull(input.description ?? null);
+
+  if (!name) {
+    throw new Error('Project name is required.');
+  }
+
+  // Check if the new name conflicts with another project (excluding current project)
+  const userId = await getCurrentUserId(supabase);
+  const { data: existingProjects, error: checkError } = await supabase
+    .from('projects')
+    .select('id')
+    .eq('name', name)
+    .eq('owner_id', userId)
+    .neq('id', projectId)
+    .limit(1);
+
+  if (checkError) {
+    console.error('Error checking project name:', checkError);
+    throw new Error('Failed to verify project name');
+  }
+
+  if (existingProjects && existingProjects.length > 0) {
+    throw new Error(`Project name ${name} already exists`);
+  }
+
+  const { error } = await supabase
+    .from('projects')
+    .update({
+      name,
+      description,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', projectId);
+
+  if (error) {
+    throw error;
+  }
+
+  // Invalidate cache
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`projects:list:${userId}`);
+  globalRequestCache.invalidate(`project:${projectId}`);
+}
+

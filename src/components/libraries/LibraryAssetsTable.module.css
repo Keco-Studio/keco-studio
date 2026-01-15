@@ -94,7 +94,7 @@
   font-size: 13px;
   line-height: 1.5;
   color: #111827;
-  overflow: hidden;
+  overflow: hidden; /* Keep hidden for text overflow, but allow absolute positioned icon */
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.2s ease;
   border-right: 1px solid #e2e8f0;
@@ -104,7 +104,180 @@
 }
 
 .cell:hover {
-  background-color: #f9fafb;
+  background-color: transparent;
+}
+
+/* When row is hovered, cells should inherit row background */
+.row:hover .cell {
+  background-color: rgba(151, 71, 255, 0.09) !important;
+}
+
+.row:hover .cell:hover {
+  background-color: rgba(151, 71, 255, 0.09) !important;
+}
+
+/* Selected cells should not have background color even when row is hovered */
+.row:hover .cellSelected {
+  background-color: transparent !important;
+}
+
+.row:hover .cellSelected:hover {
+  background-color: transparent !important;
+}
+
+/* Single cell selected: only border, no background */
+.cellSelected {
+  background-color: transparent !important;
+  border: 2px solid rgba(135, 38, 238, 1) !important;
+  position: relative;
+  z-index: 1;
+}
+
+.cellSelected:hover {
+  background-color: transparent !important;
+}
+
+/* Ensure selected cells have proper border during drag */
+.cellSelected:not(:first-child) {
+  border-left: 2px solid rgba(135, 38, 238, 1) !important;
+}
+
+/* Multiple cells selected: border + background color - only show outer border */
+.cellMultipleSelected {
+  background-color: rgba(135, 38, 238, 0.1) !important;
+  position: relative;
+  z-index: 1;
+  /* Remove default cell borders - only show border where selectionBorder classes are applied */
+  border-top: none !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.cellMultipleSelected:hover {
+  background-color: rgba(135, 38, 238, 0.12) !important;
+}
+
+/* Outer border styles - only show on boundary cells (solid line, similar to cut but solid) */
+.cellMultipleSelected.selectionBorderTop,
+td.cellMultipleSelected.selectionBorderTop {
+  border-top: 2px solid rgba(135, 38, 238, 1) !important;
+}
+
+.cellMultipleSelected.selectionBorderBottom,
+td.cellMultipleSelected.selectionBorderBottom {
+  border-bottom: 2px solid rgba(135, 38, 238, 1) !important;
+}
+
+.cellMultipleSelected.selectionBorderLeft,
+td.cellMultipleSelected.selectionBorderLeft {
+  border-left: 2px solid rgba(135, 38, 238, 1) !important;
+}
+
+.cellMultipleSelected.selectionBorderRight,
+td.cellMultipleSelected.selectionBorderRight {
+  border-right: 2px solid rgba(135, 38, 238, 1) !important;
+}
+
+/* Multiple selected cells should have background even when row is hovered */
+.row:hover .cellMultipleSelected {
+  background-color: rgba(135, 38, 238, 0.1) !important;
+}
+
+.row:hover .cellMultipleSelected:hover {
+  background-color: rgba(135, 38, 238, 0.12) !important;
+}
+
+/* Cut cells: dashed border - only show outer border */
+.cell.cellCut,
+td.cellCut {
+  background-color: rgba(94, 0, 255, 0.08) !important;
+  position: relative;
+  z-index: 2;
+  /* Remove default cell borders - only show border where cutBorder classes are applied */
+  border-top: none !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.cell.cellCut:hover,
+td.cellCut:hover {
+  background-color: rgba(94, 0, 255, 0.12) !important;
+}
+
+/* Outer border styles - only show on boundary cells */
+.cellCut.cutBorderTop,
+td.cellCut.cutBorderTop {
+  border-top: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCut.cutBorderBottom,
+td.cellCut.cutBorderBottom {
+  border-bottom: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCut.cutBorderLeft,
+td.cellCut.cutBorderLeft {
+  border-left: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCut.cutBorderRight,
+td.cellCut.cutBorderRight {
+  border-right: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCut.cutBorderTop:hover,
+td.cellCut.cutBorderTop:hover {
+  border-top-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCut.cutBorderBottom:hover,
+td.cellCut.cutBorderBottom:hover {
+  border-bottom-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCut.cutBorderLeft:hover,
+td.cellCut.cutBorderLeft:hover {
+  border-left-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCut.cutBorderRight:hover,
+td.cellCut.cutBorderRight:hover {
+  border-right-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+/* Expand icon for cell selection - only show on hover */
+.cellExpandIcon {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 18px;
+  height: 18px;
+  cursor: crosshair;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: rgba(94, 0, 255, 0.1);
+  border: 1px solid rgba(94, 0, 255, 0.3);
+  border-radius: 2px 0 0 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+  pointer-events: auto;
+  opacity: 0;
+}
+
+.cell:hover .cellExpandIcon {
+  opacity: 1;
+}
+
+.cellExpandIcon:hover {
+  background-color: rgba(94, 0, 255, 0.15);
+  border-color: rgba(94, 0, 255, 0.5);
+}
+
+.cellExpandIcon:active {
+  background-color: rgba(94, 0, 255, 0.2);
 }
 
 /* Cell content with view button */
@@ -232,7 +405,7 @@
 }
 
 .row:hover {
-  background: #f9fafb;
+  background-color: rgba(151, 71, 255, 0.09) !important;
 }
 
 /* Number column styles */
@@ -264,6 +437,94 @@
   font-weight: 500;
   background: rgba(245, 246, 249, 1);
   border-right: 1px solid #e2e8f0;
+  position: relative;
+  transition: background-color 0.15s ease;
+  vertical-align: middle;
+  box-sizing: border-box;
+  line-height: 1.5;
+}
+
+/* Number cell hover state when row is hovered */
+.row:hover .numberCell {
+  background: rgba(151, 71, 255, 0.09);
+}
+
+/* Row selected state */
+.rowSelected {
+  background-color: rgba(151, 71, 255, 0.09) !important;
+}
+
+.rowSelected .numberCell {
+  background: rgba(151, 71, 255, 0.09);
+}
+
+.rowSelected:hover {
+  background: rgba(151, 71, 255, 0.09) !important;
+}
+
+.checkboxContainer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: auto;
+  line-height: 1.5;
+  vertical-align: middle;
+  height: auto;
+  margin: 0;
+  padding: 0;
+}
+
+.checkboxContainer :global(.ant-checkbox) {
+  font-size: 16px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 0;
+  top: 0;
+  vertical-align: middle;
+}
+
+.checkboxContainer :global(.ant-checkbox-wrapper) {
+  line-height: 1.5;
+  vertical-align: middle;
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+  padding: 0;
+  height: auto;
+}
+
+.checkboxContainer :global(.ant-checkbox-inner) {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border-color: #d1d5db;
+  transition: all 0.2s ease;
+  margin: 0;
+  display: block;
+}
+
+.checkboxContainer :global(.ant-checkbox-inner::after) {
+  width: 5px;
+  height: 8px;
+}
+
+.checkboxContainer :global(.ant-checkbox-checked .ant-checkbox-inner) {
+  background-color: #8726EE;
+  border-color: #8726EE;
+}
+
+.checkboxContainer :global(.ant-checkbox:hover .ant-checkbox-inner) {
+  border-color: #8726EE;
+}
+
+.checkboxContainer :global(.ant-checkbox-checked:hover .ant-checkbox-inner) {
+  background-color: #6a1fc2;
+  border-color: #6a1fc2;
+}
+
+.checkboxContainer :global(.ant-checkbox-input:focus + .ant-checkbox-inner) {
+  border-color: #8726EE;
+  box-shadow: 0 0 0 2px rgba(135, 38, 238, 0.2);
 }
 
 /* Actions column styles */
@@ -354,13 +615,45 @@
 }
 
 .editCell {
-  padding: 8px 12px;
+  padding: 0;
   vertical-align: middle;
 }
 
 .editInput {
   width: 100%;
   font-size: 13px;
+  border: none;
+  box-shadow: none;
+  padding: 10px 16px;
+  background: transparent;
+}
+
+.editInput:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+/* ContentEditable cell editing styles */
+.cell [contenteditable="true"] {
+  outline: none;
+  min-height: 1em;
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #111827;
+}
+
+.cell [contenteditable="true"]:focus {
+  outline: none;
+  background: transparent;
+}
+
+.cell [contenteditable="true"]:empty:before {
+  content: attr(data-placeholder);
+  color: #cbd5e1;
 }
 
 /* Enum/Select field styles */
@@ -407,8 +700,14 @@
 }
 
 .enumSelectDisplay :global(.ant-select-selection-placeholder) {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 110%;
+  letter-spacing: 0%;
+  color: rgba(26, 26, 26, 1) !important;
+  opacity: 1 !important;
   padding: 0 !important;
-  line-height: inherit !important;
 }
 
 .enumSelectDisplay :global(.ant-select-arrow) {
@@ -820,8 +1119,6 @@
   flex-shrink: 0;
 }
 
-
-
 /* Realtime collaboration styles */
 .realtimeEditedCell {
   animation: realtimePulse 0.3s ease-in-out;
@@ -929,4 +1226,198 @@
 /* Edit cell presence styles */
 .editCellWithPresence {
   border-left: 3px solid transparent;
+}
+
+/* Batch Edit Context Menu Styles */
+.batchEditMenuTitle {
+  padding: 8px 16px 6px 16px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+}
+
+.batchEditMenuItem {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px;
+  cursor: pointer;
+  font-size: 14px;
+  color: #111827;
+  transition: background-color 0.15s ease;
+  font-weight: 400;
+  user-select: none;
+  line-height: 1.5;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+}
+
+.batchEditMenuItem:hover {
+  background-color: #fff1f0;
+}
+
+.batchEditMenuItem:active {
+  background-color: #ffe7e5;
+}
+
+.batchEditMenuText {
+  flex: 1;
+  font-weight: 400;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.batchEditMenuDivider {
+  height: 1px;
+  background-color: #e5e7eb;
+  margin: 4px 0;
+}
+
+/* Toast Message */
+.toastMessage {
+  animation: fadeIn 0.2s ease-in;
+}
+
+/* Toast animation */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+/* Confirm Modal Styles - Centered with two-line border */
+.confirmModalWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirmModalWrap :global(.ant-modal) {
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  margin: 0 !important;
+  padding: 0;
+  position: fixed !important;
+}
+
+.confirmModalWrap :global(.ant-modal-content) {
+  border: 1px solid rgba(0, 0, 0, 0.17);
+  border-radius: 22px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  width: 616px;
+}
+
+.confirmModalWrap :global(.ant-modal-header) {
+  border-bottom: 1px solid rgba(222, 226, 230, 1);
+  padding: 16px;
+  height: 59px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  position: relative;
+}
+
+.confirmModalWrap :global(.ant-modal-title) {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 150%;
+  letter-spacing: 0%;
+  color: rgba(26, 26, 26, 1);
+  width: 542px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+}
+
+.confirmModalWrap :global(.ant-modal-body) {
+  padding: 24px;
+}
+
+.confirmModalWrap :global(.ant-modal-body p) {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 150%;
+  letter-spacing: 0%;
+  color: rgba(26, 26, 26, 1);
+  margin: 0;
+}
+
+.confirmModalWrap :global(.ant-modal-footer) {
+  border-top: 1px solid rgba(222, 226, 230, 1);
+  padding: 12px 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  align-items: center;
+}
+
+.confirmModalWrap :global(.ant-modal-footer .ant-btn) {
+  min-width: 80px;
+  height: 36px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.confirmModalWrap :global(.ant-modal-footer .ant-btn-default) {
+  border: 1px solid #d1d5db;
+  color: #374151;
+  background-color: #ffffff;
+}
+
+.confirmModalWrap :global(.ant-modal-footer .ant-btn-default:hover) {
+  border-color: #9ca3af;
+  color: #111827;
+}
+
+.confirmModalWrap :global(.ant-modal-footer .ant-btn-dangerous) {
+  background-color: rgba(170, 5, 44, 1) !important;
+  border-color: rgba(170, 5, 44, 1) !important;
+  color: #ffffff !important;
+  border-radius: 12px !important;
+}
+
+.confirmModalWrap :global(.ant-modal-footer .ant-btn-dangerous:hover) {
+  background-color: rgba(140, 4, 36, 1) !important;
+  border-color: rgba(140, 4, 36, 1) !important;
+}
+
+.confirmModalWrap :global(.ant-modal-close) {
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: absolute;
+}
+
+.confirmModalWrap :global(.ant-modal-close:hover) {
+  background-color: #f3f4f6;
+  border-radius: 4px;
+}
+
+.confirmModalWrap :global(.ant-modal-header) {
+  border-bottom: 1px solid rgba(222, 226, 230, 1);
+  padding: 16px;
+  height: 59px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  position: relative;
 }

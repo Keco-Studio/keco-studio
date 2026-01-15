@@ -25,8 +25,12 @@ import { DataNode, EventDataNode } from "antd/es/tree";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSupabase } from "@/lib/SupabaseContext";
 import { NewProjectModal } from "@/components/projects/NewProjectModal";
+import { EditProjectModal } from "@/components/projects/EditProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
+import { EditLibraryModal } from "@/components/libraries/EditLibraryModal";
 import { NewFolderModal } from "@/components/folders/NewFolderModal";
+import { EditFolderModal } from "@/components/folders/EditFolderModal";
+import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { listProjects, Project, deleteProject } from "@/lib/services/projectService";
 import { listLibraries, Library, deleteLibrary } from "@/lib/services/libraryService";
@@ -157,8 +161,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [assets, setAssets] = useState<Record<string, AssetRow[]>>({});
 
   const [showProjectModal, setShowProjectModal] = useState(false);
+  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
   const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [showEditLibraryModal, setShowEditLibraryModal] = useState(false);
+  const [editingLibraryId, setEditingLibraryId] = useState<string | null>(null);
   const [showFolderModal, setShowFolderModal] = useState(false);
+  const [showEditFolderModal, setShowEditFolderModal] = useState(false);
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [showEditAssetModal, setShowEditAssetModal] = useState(false);
+  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -283,10 +295,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
     };
 
+    const handleProjectUpdated = (event: CustomEvent) => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      // Also invalidate the specific project cache if projectId is provided
+      if (event.detail?.projectId) {
+        queryClient.invalidateQueries({ queryKey: ['project', event.detail.projectId] });
+      }
+    };
+
     window.addEventListener('projectCreated' as any, handleProjectCreated as EventListener);
+    window.addEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
     
     return () => {
       window.removeEventListener('projectCreated' as any, handleProjectCreated as EventListener);
+      window.removeEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
     };
   }, [queryClient]);
 
@@ -475,6 +497,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       }
     };
 
+    const handleLibraryUpdated = (event: CustomEvent) => {
+      // Refresh cache for the current project if we have one
+      // The library update will invalidate its own cache, but we need to refresh the list
+      if (currentIds.projectId) {
+        invalidateFoldersAndLibraries(currentIds.projectId);
+      }
+    };
+
     const handleFolderDeleted = (event: CustomEvent) => {
       // Refresh cache for the project where the folder was deleted
       const deletedProjectId = event.detail?.projectId;
@@ -483,10 +513,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       }
     };
 
+    const handleFolderUpdated = (event: CustomEvent) => {
+      // Refresh cache for the current project if we have one
+      // The folder update will invalidate its own cache, but we need to refresh the list
+      if (currentIds.projectId) {
+        invalidateFoldersAndLibraries(currentIds.projectId);
+      }
+    };
+
     window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
     window.addEventListener('folderCreated' as any, handleFolderCreated as EventListener);
     window.addEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
+    window.addEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
     window.addEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
+    window.addEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
     
     return () => {
       // Clear timer
@@ -496,7 +536,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
       window.removeEventListener('folderCreated' as any, handleFolderCreated as EventListener);
       window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
+      window.removeEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
       window.removeEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
+      window.removeEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
     };
   }, [currentIds.projectId, queryClient]);
 
@@ -930,7 +972,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       style={!canClickAsset ? { cursor: 'default', opacity: 0.6 } : undefined}
                     >
                       <div className={styles.itemMain}>
-                        <span className={styles.itemText} title={asset.name}>{truncateText(asset.name, 15)}</span>
+                        <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
+                          {truncateText(asset.name && asset.name !== 'Untitled' ? asset.name : '', 15)}
+                        </span>
                       </div>
                       <div className={styles.itemActions}>
                       </div>
@@ -1102,7 +1146,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   style={!canClickAsset ? { cursor: 'default', opacity: 0.6 } : undefined}
                 >
                   <div className={styles.itemMain}>
-                    <span className={styles.itemText} title={asset.name}>{truncateText(asset.name, 15)}</span>
+                    <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
+                      {truncateText(asset.name && asset.name !== 'Untitled' ? asset.name : '', 15)}
+                    </span>
                   </div>
                   <div className={styles.itemActions}>
                   </div>
@@ -1257,8 +1303,30 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       return;
     }
     
-    // TODO: Implement other actions
-    // console.log(`Action: ${action} on ${contextMenu.type} with id: ${contextMenu.id}`);
+    // Handle rename action (Project info / Library info / Folder rename)
+    if (action === 'rename') {
+      if (contextMenu.type === 'project') {
+        setEditingProjectId(contextMenu.id);
+        setShowEditProjectModal(true);
+        setContextMenu(null);
+        return;
+      } else if (contextMenu.type === 'library') {
+        setEditingLibraryId(contextMenu.id);
+        setShowEditLibraryModal(true);
+        setContextMenu(null);
+        return;
+      } else if (contextMenu.type === 'folder') {
+        setEditingFolderId(contextMenu.id);
+        setShowEditFolderModal(true);
+        setContextMenu(null);
+        return;
+      } else if (contextMenu.type === 'asset') {
+        setEditingAssetId(contextMenu.id);
+        setShowEditAssetModal(true);
+        setContextMenu(null);
+        return;
+      }
+    }
     
     // Handle delete action
     if (action === 'delete') {
@@ -1637,11 +1705,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                               className={styles.libraryBackButton}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (currentIds.projectId) {
-                                  router.push(`/${currentIds.projectId}`);
+                                if (currentIds.projectId && currentIds.libraryId) {
+                                  router.push(`/${currentIds.projectId}/${currentIds.libraryId}`);
                                 }
                               }}
-                              title="Back to tree view"
+                              title="Back to library"
                             >
                               <Image
                                 src={sidebarFolderIcon3}
@@ -1733,7 +1801,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                                 style={!canClickAsset ? { cursor: 'default', opacity: 0.6 } : undefined}
                               >
                                 <div className={styles.itemMain}>
-                                  <span className={styles.itemText} title={asset.name}>{truncateText(asset.name, 20)}</span>
+                                  <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
+                                    {truncateText(asset.name && asset.name !== 'Untitled' ? asset.name : '', 20)}
+                                  </span>
                                 </div>
                                 <div className={styles.itemActions}>
                                 </div>
@@ -1790,6 +1860,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onCreated={handleProjectCreated}
       />
 
+      {editingProjectId && (
+        <EditProjectModal
+          open={showEditProjectModal}
+          projectId={editingProjectId}
+          onClose={() => {
+            setShowEditProjectModal(false);
+            setEditingProjectId(null);
+          }}
+          onUpdated={() => {
+            // Cache will be invalidated by the projectUpdated event listener
+          }}
+        />
+      )}
+
       <NewLibraryModal
         open={showLibraryModal}
         onClose={() => setShowLibraryModal(false)}
@@ -1798,12 +1882,54 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onCreated={handleLibraryCreated}
       />
 
+      {editingLibraryId && (
+        <EditLibraryModal
+          open={showEditLibraryModal}
+          libraryId={editingLibraryId}
+          onClose={() => {
+            setShowEditLibraryModal(false);
+            setEditingLibraryId(null);
+          }}
+          onUpdated={() => {
+            // Cache will be invalidated by the libraryUpdated event listener
+          }}
+        />
+      )}
+
       <NewFolderModal
         open={showFolderModal}
         onClose={() => setShowFolderModal(false)}
         projectId={currentIds.projectId || ''}
         onCreated={handleFolderCreated}
       />
+
+      {editingFolderId && (
+        <EditFolderModal
+          open={showEditFolderModal}
+          folderId={editingFolderId}
+          onClose={() => {
+            setShowEditFolderModal(false);
+            setEditingFolderId(null);
+          }}
+          onUpdated={() => {
+            // Cache will be invalidated by the folderUpdated event listener
+          }}
+        />
+      )}
+
+      {editingAssetId && (
+        <EditAssetModal
+          open={showEditAssetModal}
+          assetId={editingAssetId}
+          onClose={() => {
+            setShowEditAssetModal(false);
+            setEditingAssetId(null);
+          }}
+          onUpdated={() => {
+            // Cache will be invalidated by the assetUpdated event listener
+          }}
+        />
+      )}
 
       <AddLibraryMenu
         open={showAddMenu}
@@ -1820,6 +1946,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           type={contextMenu.type}
           onClose={() => setContextMenu(null)}
           onAction={handleContextMenuAction}
+          type={contextMenu.type}
         />
       )}
     </aside>

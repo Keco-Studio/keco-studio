@@ -225,9 +225,27 @@ export default function AssetPage() {
           }));
           setFieldDefs(migratedDefs);
           setAsset(assetRow as AssetRow);
+          
+          // Create a map of field IDs to field definitions for easier lookup
+          const fieldDefMap = new Map(migratedDefs.map(f => [f.id, f]));
+          
           const valueMap: Record<string, any> = {};
           (vals as ValueRow[] | null)?.forEach((v) => {
-            valueMap[v.field_id] = v.value_json;
+            let parsedValue = v.value_json;
+            const fieldDef = fieldDefMap.get(v.field_id);
+            
+            // Parse JSON strings for image/file/reference fields
+            if (fieldDef && (fieldDef.data_type === 'image' || fieldDef.data_type === 'file' || fieldDef.data_type === 'reference')) {
+              if (typeof parsedValue === 'string' && parsedValue.trim() !== '') {
+                try {
+                  parsedValue = JSON.parse(parsedValue);
+                } catch {
+                  // If parsing fails, keep the original value (might be legacy format)
+                }
+              }
+            }
+            
+            valueMap[v.field_id] = parsedValue;
           });
           setValues(valueMap);
         }
@@ -251,6 +269,48 @@ export default function AssetPage() {
       );
     }
   }, [mode, isNewAsset]);
+
+  // Listen for asset updates to refresh asset name
+  useEffect(() => {
+    if (isNewAsset) return; // New assets don't need to listen for updates
+    
+    const handleAssetUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ assetId: string; libraryId?: string }>;
+      // Only refresh if the event is for this asset
+      if (customEvent.detail?.assetId === assetId) {
+        try {
+          // Use a small delay to ensure database transaction is committed
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+          // Refresh asset data - query directly from database
+          const { data: assetRow, error: assetErr } = await supabase
+            .from('library_assets')
+            .select('id, name, library_id')
+            .eq('id', assetId)
+            .single();
+          
+          if (!assetErr && assetRow) {
+            setAsset(assetRow as AssetRow);
+            // If there's a name field, update its value too
+            const nameFieldDef = fieldDefs.find(f => f.label === 'name' && f.data_type === 'string');
+            if (nameFieldDef) {
+              setValues(prev => ({ ...prev, [nameFieldDef.id]: assetRow.name }));
+            }
+          } else if (assetErr) {
+            console.error('Error refreshing asset:', assetErr);
+          }
+        } catch (e: any) {
+          console.error('Failed to refresh asset:', e);
+        }
+      }
+    };
+
+    window.addEventListener('assetUpdated', handleAssetUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener('assetUpdated', handleAssetUpdated as EventListener);
+    };
+  }, [assetId, isNewAsset, supabase, fieldDefs]);
 
   // Listen to top bar Viewing / Editing toggle (only for existing assets)
   useEffect(() => {

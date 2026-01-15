@@ -1,0 +1,40 @@
+name: Sync to Personal Repository
+
+# Trigger conditions: push to main or PR merge to main
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+    types: [closed]  # Only trigger on PR merge (closed)
+
+jobs:
+  sync-to-personal:
+    runs-on: ubuntu-latest
+    
+    # Only run in team repository and when PR is merged
+    if: github.repository == 'Caerulean-ai/keco-studio' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history
+
+      - name: Push to personal repository
+        uses: cpina/github-action-push-to-another-repository@main
+        env:
+          API_TOKEN_GITHUB: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+        with:
+          source-directory: '.'
+          destination-github-username: 'xzy1124'
+          destination-repository-name: 'keco-studio'
+          user-email: 'github-actions[bot]@users.noreply.github.com'
+          user-name: 'github-actions[bot]'
+          target-branch: main
+          commit-message: 'Sync from team repository'

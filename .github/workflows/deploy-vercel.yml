@@ -5,16 +5,14 @@ on:
     branches:
       - main      
       - master
+      - release
       - 'release/**'
-      - 'preview/**'   # 
-    tags:
-      - 'v*'  # 支持 v1.0.0, v0.1.0 等格式的 tag
   pull_request:
     branches:
       - main
       - master
+      - release
       - 'release/**'
-      - 'preview/**'   # 
     types: [opened, synchronize, reopened]  
 
 jobs:
@@ -66,19 +64,67 @@ jobs:
       - name: Install Supabase CLI
         run: npm install -g supabase@latest
 
+      # 根据分支选择 Supabase 项目和对应的 Access Token
+      # main 分支 → Production, release 分支 → Preview
+      - name: Select Supabase Project and Token
+        id: select-project
+        env:
+          PROD_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_PROD }}
+          PREVIEW_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN_PREVIEW }}
+          GENERAL_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
+            # main 分支使用 Production 环境
+            echo "project-ref=${{ secrets.SUPABASE_PROJECT_REF_PROD }}" >> $GITHUB_OUTPUT
+            echo "environment=production" >> $GITHUB_OUTPUT
+            # 如果配置了单独的 Production Token，使用它；否则使用通用的 Token
+            if [ -n "$PROD_TOKEN" ] && [ "$PROD_TOKEN" != "" ]; then
+              echo "access-token=$PROD_TOKEN" >> $GITHUB_OUTPUT
+              echo "✅ 使用 Production Supabase 项目 (单独 Token)"
+            else
+              echo "access-token=$GENERAL_TOKEN" >> $GITHUB_OUTPUT
+              echo "✅ 使用 Production Supabase 项目 (通用 Token)"
+            fi
+          elif [[ "${{ github.ref }}" =~ ^refs/heads/release ]]; then
+            # release 分支（包括 release/**）使用 Preview 环境
+            echo "project-ref=${{ secrets.SUPABASE_PROJECT_REF_PREVIEW }}" >> $GITHUB_OUTPUT
+            echo "environment=preview" >> $GITHUB_OUTPUT
+            # 如果配置了单独的 Preview Token，使用它；否则使用通用的 Token
+            if [ -n "$PREVIEW_TOKEN" ] && [ "$PREVIEW_TOKEN" != "" ]; then
+              echo "access-token=$PREVIEW_TOKEN" >> $GITHUB_OUTPUT
+              echo "✅ 使用 Preview Supabase 项目 (release 分支, 单独 Token)"
+            else
+              echo "access-token=$GENERAL_TOKEN" >> $GITHUB_OUTPUT
+              echo "✅ 使用 Preview Supabase 项目 (release 分支, 通用 Token)"
+            fi
+          else
+            # 其他情况（PR 等）使用 Preview 环境
+            echo "project-ref=${{ secrets.SUPABASE_PROJECT_REF_PREVIEW }}" >> $GITHUB_OUTPUT
+            echo "environment=preview" >> $GITHUB_OUTPUT
+            if [ -n "$PREVIEW_TOKEN" ] && [ "$PREVIEW_TOKEN" != "" ]; then
+              echo "access-token=$PREVIEW_TOKEN" >> $GITHUB_OUTPUT
+              echo "✅ 使用 Preview Supabase 项目 (单独 Token)"
+            else
+              echo "access-token=$GENERAL_TOKEN" >> $GITHUB_OUTPUT
+              echo "✅ 使用 Preview Supabase 项目 (通用 Token)"
+            fi
+          fi
+
       - name: Link to Supabase project
         run: |
-          supabase link --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+          echo "🔗 链接到 Supabase 项目: ${{ steps.select-project.outputs.environment }}"
+          echo "📋 Project Ref: ${{ steps.select-project.outputs.project-ref }}"
+          supabase link --project-ref ${{ steps.select-project.outputs.project-ref }}
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ steps.select-project.outputs.access-token }}
 
       - name: Push database migrations
         run: |
-          echo "🚀 开始推送数据库迁移..."
+          echo "🚀 开始推送数据库迁移到 ${{ steps.select-project.outputs.environment }} 环境..."
           supabase db push
           echo "✅ 迁移完成"
         env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_ACCESS_TOKEN: ${{ steps.select-project.outputs.access-token }}
         continue-on-error: false  
 
 
@@ -105,33 +151,36 @@ jobs:
         run: npm run lint
         continue-on-error: true  
 
-      - name: Build project
-        run: npm run build
-        env:
-          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
       # Determine deployment environment based on branch
+      # main 分支 → Production, release 分支 → Preview
       - name: Determine deployment environment
         id: env
         run: |
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]] || [[ "${{ github.ref }}" =~ ^refs/tags/v ]]; then
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
             echo "environment=production" >> $GITHUB_OUTPUT
             echo "is_prod=true" >> $GITHUB_OUTPUT
-            echo "✅ 部署到 Production 环境"
-          elif [[ "${{ github.ref }}" =~ ^refs/heads/release/ ]]; then
+            echo "deployment_target=production" >> $GITHUB_OUTPUT
+            echo "✅ 部署到 Production 环境 (main 分支)"
+          elif [[ "${{ github.ref }}" =~ ^refs/heads/release ]]; then
+            # release 分支（包括 release/**）部署到 Preview 环境
             echo "environment=preview" >> $GITHUB_OUTPUT
             echo "is_prod=false" >> $GITHUB_OUTPUT
-            echo "✅ 部署到 Preview 环境 (Release 分支)"
+            echo "deployment_target=preview" >> $GITHUB_OUTPUT
+            echo "✅ 部署到 Preview 环境 (release 分支)"
           else
+            # PR 等其他情况部署到 Preview
             echo "environment=preview" >> $GITHUB_OUTPUT
             echo "is_prod=false" >> $GITHUB_OUTPUT
+            echo "deployment_target=preview" >> $GITHUB_OUTPUT
             echo "✅ 部署到 Preview 环境"
           fi
 
+      # Pull Vercel environment variables based on deployment environment
+      # This will automatically use the correct Supabase config (Production or Preview)
+      # from Vercel Dashboard based on the environment determined above
       - name: Pull Vercel Environment Information
         run: vercel pull --yes --environment=${{ steps.env.outputs.environment }} --token=${{ secrets.VERCEL_TOKEN }}
         env:
@@ -152,10 +201,24 @@ jobs:
       - name: Deploy Project Artifacts to Vercel
         run: |
           if [[ "${{ steps.env.outputs.is_prod }}" == "true" ]]; then
+            # Production 部署（main 分支）
+            echo "🚀 部署到 Production 环境..."
             vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+          elif [[ "${{ steps.env.outputs.deployment_target }}" == "preview" ]] && [[ "${{ github.ref }}" =~ ^refs/tags/v ]]; then
+            # Preview 部署（Tag 推送）- 部署到 Preview 环境并使用固定域名
+            TAG_NAME=${GITHUB_REF#refs/tags/}
+            echo "🚀 部署到 Preview 环境 (Tag: $TAG_NAME)..."
+            # 部署到 Preview 环境，并使用固定的 Preview 域名作为 alias
+            # 注意：keco-release.vercel.app 需要在 Vercel Dashboard 中配置为项目域名
+            vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} --env=${{ steps.env.outputs.environment }} --alias=keco-release.vercel.app
+            echo "✅ Preview 部署完成，Tag: $TAG_NAME"
+            echo "🌐 Preview URL: https://keco-release.vercel.app"
           else
+            # Preview 部署（release 分支和 PR 等）
+            echo "🚀 部署到 Preview 环境..."
             vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
           fi
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+          
