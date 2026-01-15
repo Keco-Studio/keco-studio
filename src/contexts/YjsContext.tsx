@@ -1,9 +1,9 @@
 /**
  * Yjs Context Provider
  * 
- * 提供 Yjs 文档和共享数组给所有子组件
- * 主要用于解决单用户场景下的行混乱问题（统一数据源、基于ID操作）
- * 后续可以扩展支持多人协作
+ * Provides Yjs document and shared array to all child components
+ * Mainly used to solve row ordering issues in single-user scenarios (unified data source, ID-based operations)
+ * Can be extended to support multi-user collaboration in the future
  */
 
 'use client';
@@ -27,13 +27,13 @@ interface YjsProviderProps {
 }
 
 export function YjsProvider({ children, libraryId }: YjsProviderProps) {
-  // 为每个 library 创建独立的文档
+  // Create an independent document for each library
   const ydoc = useMemo(() => new Y.Doc(), [libraryId]);
   const yRows = useMemo(() => ydoc.getArray<AssetRow>('rows'), [ydoc]);
   
   const [isConnected, setIsConnected] = useState(false);
 
-  // 本地持久化（IndexedDB）- 支持离线编辑和状态恢复
+  // Local persistence (IndexedDB) - supports offline editing and state recovery
   useEffect(() => {
     const persistence = new IndexeddbPersistence(`asset-table-${libraryId}`, ydoc);
     

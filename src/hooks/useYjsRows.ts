@@ -1,7 +1,7 @@
 /**
  * React Hook for Yjs Rows
  * 
- * 订阅 Y.Array 的变化，自动更新 React 状态
+ * Subscribes to Y.Array changes and automatically updates React state
  */
 
 import { useEffect, useState } from 'react';
@@ -9,27 +9,27 @@ import * as Y from 'yjs';
 import { AssetRow } from '@/lib/types/libraryAssets';
 
 /**
- * 订阅 Y.Array 的变化，返回当前数组的快照
+ * Subscribes to Y.Array changes and returns a snapshot of the current array
  * 
- * @param yRows Yjs Array 实例
- * @returns 当前数组的快照（会自动更新）
+ * @param yRows Yjs Array instance
+ * @returns A snapshot of the current array (automatically updates)
  */
 export function useYjsRows(yRows: Y.Array<AssetRow>): AssetRow[] {
   const [rows, setRows] = useState<AssetRow[]>([]);
 
   useEffect(() => {
-    // 初始读取
+    // Initial read
     setRows(yRows.toArray());
 
-    // 监听变化
+    // Listen for changes
     const updateRows = () => {
       setRows(yRows.toArray());
     };
 
-    // 订阅变化
+    // Subscribe to changes
     yRows.observe(updateRows);
 
-    // 清理
+    // Cleanup
     return () => {
       yRows.unobserve(updateRows);
     };
