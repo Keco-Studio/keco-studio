@@ -11,6 +11,8 @@ import {
 import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { useYjs } from '@/contexts/YjsContext';
+import { useYjsRows } from '@/hooks/useYjsRows';
 import { 
   type MediaFileMetadata,
   isImageFile,
@@ -53,6 +55,83 @@ export function LibraryAssetsTable({
   onUpdateAsset,
   onDeleteAsset,
 }: LibraryAssetsTableProps) {
+  // Yjs integration - 统一数据源，解决行混乱问题
+  const { yRows } = useYjs();
+  const yjsRows = useYjsRows(yRows);
+  
+  // 初始化：将 props.rows 同步到 Yjs（仅第一次，且 Yjs 为空时）
+  useEffect(() => {
+    if (yRows.length === 0 && rows.length > 0) {
+      // 只在 Yjs 为空且 props 有数据时初始化
+      yRows.insert(0, rows);
+    } else if (yRows.length > 0 && rows.length > 0) {
+      // 如果 Yjs 已有数据，但 props 更新了（比如从数据库刷新），需要同步
+      // 更新已存在的行，添加新行，删除不存在的行（但保留临时行和正在编辑的行）
+      const yjsRowsArray = yRows.toArray();
+      const existingIds = new Set(yjsRowsArray.map(r => r.id));
+      const propsIds = new Set(rows.map(r => r.id));
+      
+      // 找出需要更新的行、新增的行、需要删除的行（但不删除临时行和正在编辑的行）
+      const rowsToUpdate: Array<{ index: number; row: AssetRow }> = [];
+      const rowsToAdd: AssetRow[] = [];
+      const indicesToDelete: number[] = [];
+      
+      // 检查 Yjs 中的每一行
+      yjsRowsArray.forEach((yjsRow, index) => {
+        // 如果是临时行（以 temp- 开头），保留它
+        if (yjsRow.id.startsWith('temp-')) {
+          return;
+        }
+        
+        // 如果正在编辑这一行，不更新它（避免覆盖用户的编辑）
+        if (editingRowId === yjsRow.id) {
+          return;
+        }
+        
+        // 如果在 props 中存在，更新它
+        const propsRow = rows.find(r => r.id === yjsRow.id);
+        if (propsRow) {
+          // 只有当 props 中的行与 Yjs 中的行不同时才更新（避免不必要的更新）
+          const yjsRowStr = JSON.stringify({ ...yjsRow, propertyValues: yjsRow.propertyValues });
+          const propsRowStr = JSON.stringify({ ...propsRow, propertyValues: propsRow.propertyValues });
+          if (yjsRowStr !== propsRowStr) {
+            rowsToUpdate.push({ index, row: propsRow });
+          }
+        } else {
+          // 如果不在 props 中，标记为删除（但保留临时行和正在编辑的行）
+          indicesToDelete.push(index);
+        }
+      });
+      
+      // 找出需要新增的行
+      rows.forEach(propsRow => {
+        if (!existingIds.has(propsRow.id)) {
+          rowsToAdd.push(propsRow);
+        }
+      });
+      
+      // 倒序删除（避免索引变化）
+      indicesToDelete.sort((a, b) => b - a).forEach(index => {
+        yRows.delete(index, 1);
+      });
+      
+      // 倒序更新（避免索引变化）
+      rowsToUpdate.sort((a, b) => b.index - a.index).forEach(({ index, row }) => {
+        yRows.delete(index, 1);
+        yRows.insert(index, [row]);
+      });
+      
+      // 添加新行
+      if (rowsToAdd.length > 0) {
+        yRows.insert(yRows.length, rowsToAdd);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rows, yRows]); // editingRowId 在下面定义，这里不包含它，避免循环依赖
+  
+  // 使用 Yjs 的 rows 作为主要数据源，如果 Yjs 为空则使用 props.rows（兼容性）
+  const allRowsSource = yjsRows.length > 0 ? yjsRows : rows;
+  
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [newRowData, setNewRowData] = useState<Record<string, any>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -605,13 +684,31 @@ export function LibraryAssetsTable({
       handleEditInputChange(referenceModalProperty.key, assetId);
     } else {
       // For existing row not in edit mode, update the asset directly
-      const row = rows.find(r => r.id === referenceModalRowId);
+      // 使用 allRowsSource (Yjs 数据源) 而不是 rows
+      const row = allRowsSource.find(r => r.id === referenceModalRowId);
       
       if (row && onUpdateAsset) {
-        // Update the asset with the new reference value
+        // 立即更新 Yjs (乐观更新)
+        const allRows = yRows.toArray();
+        const rowIndex = allRows.findIndex(r => r.id === referenceModalRowId);
+        
+        if (rowIndex >= 0) {
+          const updatedPropertyValues = { ...row.propertyValues };
+          updatedPropertyValues[referenceModalProperty.key] = assetId;
+          
+          const updatedRow = {
+            ...row,
+            propertyValues: updatedPropertyValues
+          };
+          
+          // 更新 Yjs
+          yRows.delete(rowIndex, 1);
+          yRows.insert(rowIndex, [updatedRow]);
+        }
+        
+        // 异步更新数据库
         const updatedPropertyValues = { ...row.propertyValues };
         updatedPropertyValues[referenceModalProperty.key] = assetId;
-        
         await onUpdateAsset(row.id, row.name, updatedPropertyValues);
       }
     }
@@ -800,7 +897,10 @@ export function LibraryAssetsTable({
       propertyValues: { ...newRowData },
     };
 
-    // Optimistically add the asset to the display immediately
+    // Optimistically add the asset to Yjs immediately (解决行混乱问题)
+    yRows.insert(yRows.length, [optimisticAsset]);
+    
+    // Also add to optimisticNewAssets for compatibility
     setOptimisticNewAssets(prev => {
       const newMap = new Map(prev);
       newMap.set(tempId, optimisticAsset);
@@ -818,6 +918,11 @@ export function LibraryAssetsTable({
       // Remove optimistic asset after a short delay to allow parent to refresh
       // The parent refresh will replace it with the real asset
       setTimeout(() => {
+        // 从 Yjs 中移除临时行（如果还在）
+        const index = yRows.toArray().findIndex(r => r.id === tempId);
+        if (index >= 0) {
+          yRows.delete(index, 1);
+        }
         setOptimisticNewAssets(prev => {
           const newMap = new Map(prev);
           newMap.delete(tempId);
@@ -826,7 +931,11 @@ export function LibraryAssetsTable({
       }, 500);
     } catch (error) {
       console.error('Failed to save asset:', error);
-      // On error, revert optimistic update - remove the optimistic asset
+      // On error, revert optimistic update - remove from Yjs
+      const index = yRows.toArray().findIndex(r => r.id === tempId);
+      if (index >= 0) {
+        yRows.delete(index, 1);
+      }
       setOptimisticNewAssets(prev => {
         const newMap = new Map(prev);
         newMap.delete(tempId);
@@ -1117,7 +1226,24 @@ export function LibraryAssetsTable({
   const handleSaveEditedRow = async (assetId: string, assetName: string) => {
     if (!onUpdateAsset) return;
 
-    // Apply optimistic update immediately
+    // 立即更新 Yjs (乐观更新，解决保存问题)
+    const allRows = yRows.toArray();
+    const rowIndex = allRows.findIndex(r => r.id === assetId);
+    
+    if (rowIndex >= 0) {
+      const existingRow = allRows[rowIndex];
+      const updatedRow = {
+        ...existingRow,
+        name: String(assetName),
+        propertyValues: { ...editingRowData }
+      };
+      
+      // 更新 Yjs
+      yRows.delete(rowIndex, 1);
+      yRows.insert(rowIndex, [updatedRow]);
+    }
+
+    // Apply optimistic update for compatibility
     setOptimisticEditUpdates(prev => {
       const newMap = new Map(prev);
       newMap.set(assetId, {
@@ -1242,8 +1368,9 @@ export function LibraryAssetsTable({
   };
 
   // Get all rows for cell selection (helper function)
+  // 使用 Yjs 作为数据源，保证所有操作都基于同一个数组
   const getAllRowsForCellSelection = useCallback(() => {
-    const allRowsForSelection = rows
+    const allRowsForSelection = allRowsSource
       .filter((row): row is AssetRow => !deletedAssetIds.has(row.id))
       .map((row): AssetRow => {
         const assetRow = row as AssetRow;
@@ -1258,11 +1385,12 @@ export function LibraryAssetsTable({
         return assetRow;
       });
     
-    const optimisticAssets: AssetRow[] = Array.from(optimisticNewAssets.values());
+    const optimisticAssets: AssetRow[] = Array.from(optimisticNewAssets.values())
+      .sort((a, b) => a.id.localeCompare(b.id));
     allRowsForSelection.push(...optimisticAssets);
     
     return allRowsForSelection;
-  }, [rows, deletedAssetIds, optimisticEditUpdates, optimisticNewAssets]);
+  }, [allRowsSource, deletedAssetIds, optimisticEditUpdates, optimisticNewAssets]);
 
   // Handle cell click (select single cell)
   const handleCellClick = (rowId: string, propertyKey: string, e: React.MouseEvent) => {
@@ -2293,7 +2421,10 @@ export function LibraryAssetsTable({
             propertyValues: { ...rowData.propertyValues },
           };
 
-          // Optimistically add the asset to the display immediately
+          // Optimistically add the asset to Yjs immediately (解决行混乱问题)
+          yRows.insert(yRows.length, [optimisticAsset]);
+          
+          // Also add to optimisticNewAssets for compatibility
           setOptimisticNewAssets(prev => {
             const newMap = new Map(prev);
             newMap.set(tempId, optimisticAsset);
@@ -2355,7 +2486,39 @@ export function LibraryAssetsTable({
           }
         });
         
-        // Apply updates
+        // Apply updates - 先更新 Yjs，再更新数据库
+        // 获取当前 Yjs 数组的快照（在更新前）
+        const allRows = yRows.toArray();
+        const rowIndexMap = new Map<string, number>();
+        allRows.forEach((r, idx) => rowIndexMap.set(r.id, idx));
+        
+        // 先批量更新 Yjs（倒序更新，避免索引变化）
+        const rowsToUpdate: Array<{ rowId: string; index: number; row: AssetRow }> = [];
+        for (const [rowId, propertyValues] of updatesByRow.entries()) {
+          const row = allRowsForSelection.find(r => r.id === rowId);
+          if (row) {
+            const rowIndex = rowIndexMap.get(rowId);
+            if (rowIndex !== undefined) {
+              rowsToUpdate.push({
+                rowId,
+                index: rowIndex,
+                row: {
+                  ...row,
+                  propertyValues: propertyValues
+                }
+              });
+            }
+          }
+        }
+        
+        // 倒序更新 Yjs（从后往前，避免索引变化影响）
+        rowsToUpdate.sort((a, b) => b.index - a.index);
+        rowsToUpdate.forEach(({ index, row }) => {
+          yRows.delete(index, 1);
+          yRows.insert(index, [row]);
+        });
+        
+        // 然后异步更新数据库
         for (const [rowId, propertyValues] of updatesByRow.entries()) {
           const row = allRowsForSelection.find(r => r.id === rowId);
           if (row) {
@@ -2436,14 +2599,31 @@ export function LibraryAssetsTable({
         }
       });
       
-      // Apply clearing updates (async, but cut state is already cleared)
+      // Apply clearing updates - 先更新 Yjs，再更新数据库
       setIsSaving(true);
       try {
+        const allRows = yRows.toArray();
         for (const [rowId, rowData] of cutCellsByRow.entries()) {
           const row = allRowsForSelection.find(r => r.id === rowId);
           if (row) {
             // Use the updated assetName if name field was cleared, otherwise use original name
             const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
+            
+            // 立即更新 Yjs (乐观更新)
+            const rowIndex = allRows.findIndex(r => r.id === rowId);
+            if (rowIndex >= 0) {
+              const updatedRow = {
+                ...row,
+                name: assetName,
+                propertyValues: rowData.propertyValues
+              };
+              
+              // 更新 Yjs
+              yRows.delete(rowIndex, 1);
+              yRows.insert(rowIndex, [updatedRow]);
+            }
+            
+            // 异步更新数据库
             await onUpdateAsset(rowId, assetName, rowData.propertyValues);
           }
         }
@@ -3265,33 +3445,62 @@ export function LibraryAssetsTable({
         <tbody className={styles.body}>
           {(() => {
             // Combine real rows with optimistic new assets and apply optimistic edit updates
-            // Only use optimistic updates if the name matches the row name
-            // If names don't match, it means the row was updated externally, so ignore the optimistic update
-            const allRows: AssetRow[] = rows
+            // 使用 Yjs 数据源 (allRowsSource)，保证所有操作都基于同一个数组
+            // 关键：使用 Map 去重，确保每个 row.id 只出现一次（解决 key 重复问题）
+            
+            const allRowsMap = new Map<string, AssetRow>();
+            
+            // 从 allRowsSource 添加行（去重）
+            allRowsSource
               .filter((row): row is AssetRow => !deletedAssetIds.has(row.id))
-              .map((row): AssetRow => {
+              .forEach((row) => {
                 const assetRow = row as AssetRow;
                 const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
+                
                 // Only use optimistic update if the row name matches the optimistic name
-                // This means the optimistic update was made in this table, not externally
-                // If names don't match, it means the row was updated externally, so use the row data
                 if (optimisticUpdate && optimisticUpdate.name === assetRow.name) {
-                  // Optimistic update matches current row, so it's safe to use
-                  return {
+                  allRowsMap.set(assetRow.id, {
                     ...assetRow,
                     name: optimisticUpdate.name,
                     propertyValues: { ...assetRow.propertyValues, ...optimisticUpdate.propertyValues }
-                  };
-                } else if (optimisticUpdate && optimisticUpdate.name !== assetRow.name) {
-                  // Optimistic update doesn't match row - this means external update happened
-                  // Don't use the optimistic update, use the row data instead
+                  });
+                } else {
+                  // 如果已存在，保留第一个（避免重复）
+                  if (!allRowsMap.has(assetRow.id)) {
+                    allRowsMap.set(assetRow.id, assetRow);
+                  }
                 }
-                return assetRow;
               });
             
-            // Add optimistic new assets
-            const optimisticAssets: AssetRow[] = Array.from(optimisticNewAssets.values());
-            allRows.push(...optimisticAssets);
+            // 添加 optimistic new assets（去重）
+            optimisticNewAssets.forEach((asset, id) => {
+              if (!allRowsMap.has(id)) {
+                allRowsMap.set(id, asset);
+              }
+            });
+            
+            // 转换为数组，保持顺序（基于 allRowsSource 的顺序）
+            const allRows: AssetRow[] = [];
+            const processedIds = new Set<string>();
+            
+            // 先按 allRowsSource 的顺序添加
+            allRowsSource.forEach(row => {
+              if (!deletedAssetIds.has(row.id) && !processedIds.has(row.id)) {
+                const rowToAdd = allRowsMap.get(row.id);
+                if (rowToAdd) {
+                  allRows.push(rowToAdd);
+                  processedIds.add(row.id);
+                }
+              }
+            });
+            
+            // 再添加 optimistic new assets（不在 allRowsSource 中的）
+            optimisticNewAssets.forEach((asset, id) => {
+              if (!processedIds.has(id)) {
+                allRows.push(asset);
+                processedIds.add(id);
+              }
+            });
             
             return allRows;
           })()

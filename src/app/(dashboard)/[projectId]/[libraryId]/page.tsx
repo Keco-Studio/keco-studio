@@ -22,6 +22,7 @@ import {
   deleteAsset,
 } from '@/lib/services/libraryAssetsService';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { YjsProvider } from '@/contexts/YjsContext';
 import styles from './page.module.css';
 
 type FieldDef = {
@@ -330,27 +331,29 @@ export default function LibraryPage() {
       {/* Phase 2: Library assets table preview (placeholder data).
           Later phases will replace placeholder service logic with real Supabase-backed data
           and upgrade the table to a two-level header that mirrors predefine + Figma. */}
-      <LibraryAssetsTable
-        library={
-          librarySummary
-            ? {
-                id: librarySummary.id,
-                name: librarySummary.name,
-                description: librarySummary.description,
-              }
-            : {
-                id: library.id,
-                name: library.name,
-                description: library.description,
-              }
-        }
-        sections={tableSections}
-        properties={tableProperties}
-        rows={assetRows}
-        onSaveAsset={handleSaveAssetFromTable}
-        onUpdateAsset={handleUpdateAssetFromTable}
-        onDeleteAsset={handleDeleteAssetFromTable}
-      />
+      <YjsProvider libraryId={libraryId}>
+        <LibraryAssetsTable
+          library={
+            librarySummary
+              ? {
+                  id: librarySummary.id,
+                  name: librarySummary.name,
+                  description: librarySummary.description,
+                }
+              : {
+                  id: library.id,
+                  name: library.name,
+                  description: library.description,
+                }
+          }
+          sections={tableSections}
+          properties={tableProperties}
+          rows={assetRows}
+          onSaveAsset={handleSaveAssetFromTable}
+          onUpdateAsset={handleUpdateAssetFromTable}
+          onDeleteAsset={handleDeleteAssetFromTable}
+        />
+      </YjsProvider>
 
       {saveError && (
         <div className={styles.saveError}>
