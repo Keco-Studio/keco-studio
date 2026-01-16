@@ -10,13 +10,13 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { isTokenExpired } from '@/lib/utils/invitationToken';
 import { AcceptInvitationContent } from './AcceptInvitationContent';
 
-export default function AcceptInvitationPage() {
+function AcceptInvitationContentWrapper() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useSupabase();
@@ -115,6 +115,18 @@ export default function AcceptInvitationPage() {
       projectId={projectId}
       projectName={projectName}
     />
+  );
+}
+
+export default function AcceptInvitationPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ padding: '24px', textAlign: 'center' }}>
+        <div>Loading...</div>
+      </div>
+    }>
+      <AcceptInvitationContentWrapper />
+    </Suspense>
   );
 }
 
