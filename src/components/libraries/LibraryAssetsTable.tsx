@@ -2773,6 +2773,93 @@ export function LibraryAssetsTable({
       });
     }
     
+    // Immediately clear cell contents after cut (don't wait for paste)
+    if (onUpdateAsset) {
+      // Group cut cells by rowId
+      const cutCellsByRow = new Map<string, { propertyValues: Record<string, any>; assetName: string | null }>();
+      
+      validCells.forEach((cellKey) => {
+        // Parse cellKey to get rowId and propertyKey
+        let rowId = '';
+        let propertyKey = '';
+        let propertyIndex = -1;
+        
+        for (let i = 0; i < orderedProperties.length; i++) {
+          const property = orderedProperties[i];
+          const propertyKeyWithDash = '-' + property.key;
+          if (cellKey.endsWith(propertyKeyWithDash)) {
+            rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
+            propertyKey = property.key;
+            propertyIndex = i;
+            break;
+          }
+        }
+        
+        if (rowId && propertyKey) {
+          const row = allRowsForSelection.find(r => r.id === rowId);
+          if (row) {
+            if (!cutCellsByRow.has(rowId)) {
+              // Copy all existing property values (may include boolean and other types)
+              cutCellsByRow.set(rowId, { 
+                propertyValues: { ...row.propertyValues }, 
+                assetName: row.name || null 
+              });
+            }
+            const rowUpdates = cutCellsByRow.get(rowId);
+            if (rowUpdates) {
+              // Check if this is the name field (first property)
+              const isNameField = propertyIndex === 0;
+              
+              if (isNameField) {
+                // Clear the name field by setting both assetName and propertyValues
+                rowUpdates.assetName = '';
+                rowUpdates.propertyValues[propertyKey] = null;
+              } else {
+                // Clear the property value
+                rowUpdates.propertyValues[propertyKey] = null;
+              }
+            }
+          }
+        }
+      });
+      
+      // Apply clearing updates - update Yjs first, then update database
+      setIsSaving(true);
+      (async () => {
+        try {
+          const allRows = yRows.toArray();
+          for (const [rowId, rowData] of cutCellsByRow.entries()) {
+            const row = allRows.find(r => r.id === rowId);
+            if (row) {
+              // Use the updated assetName if name field was cleared, otherwise use original name
+              const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
+              
+              // Immediately update Yjs (optimistic update)
+              const rowIndex = allRows.findIndex(r => r.id === rowId);
+              if (rowIndex >= 0) {
+                const updatedRow = {
+                  ...row,
+                  name: assetName,
+                  propertyValues: rowData.propertyValues
+                };
+                
+                // Update Yjs
+                yRows.delete(rowIndex, 1);
+                yRows.insert(rowIndex, [updatedRow]);
+              }
+              
+              // Asynchronously update database
+              await onUpdateAsset(rowId, assetName, rowData.propertyValues);
+            }
+          }
+        } catch (error) {
+          console.error('Failed to clear cut cells:', error);
+        } finally {
+          setIsSaving(false);
+        }
+      })();
+    }
+    
     // Show toast message immediately
     setToastMessage('Content cut');
     
@@ -2785,13 +2872,12 @@ export function LibraryAssetsTable({
     setSelectedRowIds(new Set());
     setSelectedCells(new Set());
     // Note: cutCells and cutSelectionBounds are still set to show the dashed border
-    // The cells will be cleared after paste operation
     
     // Auto-hide toast after 2 seconds
     setTimeout(() => {
       setToastMessage(null);
     }, 2000);
-  }, [selectedCells, getAllRowsForCellSelection, orderedProperties]);
+  }, [selectedCells, getAllRowsForCellSelection, orderedProperties, onUpdateAsset, yRows]);
 
   // Handle Copy operation
   const handleCopy = useCallback(() => {
@@ -3272,97 +3358,14 @@ export function LibraryAssetsTable({
       }
     }
     
-    // If this was a cut operation, clear the cut cells
-    if (isCutOperation && cutCells.size > 0 && onUpdateAsset) {
-      // Clear cut state immediately (before clearing cell contents) to remove visual feedback
-      const cutCellsToClear = new Set(cutCells);
+    // If this was a cut operation, clear the cut state (cells were already cleared during cut)
+    if (isCutOperation && cutCells.size > 0) {
+      // Clear cut state to remove visual feedback (dashed border)
+      // Note: cell contents were already cleared during cut operation
       setCutCells(new Set());
       setCutSelectionBounds(null);
       setIsCutOperation(false);
-      
-      // Group cut cells by rowId
-      // Format: { rowId: { propertyValues: {...}, assetName: string | null } }
-      const cutCellsByRow = new Map<string, { propertyValues: Record<string, any>; assetName: string | null }>();
-      
-      cutCellsToClear.forEach((cellKey) => {
-        // Parse cellKey to get rowId and propertyKey
-        let rowId = '';
-        let propertyKey = '';
-        let propertyIndex = -1;
-        
-        for (let i = 0; i < orderedProperties.length; i++) {
-          const property = orderedProperties[i];
-          const propertyKeyWithDash = '-' + property.key;
-          if (cellKey.endsWith(propertyKeyWithDash)) {
-            rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-            propertyKey = property.key;
-            propertyIndex = i;
-            break;
-          }
-        }
-        
-        if (rowId && propertyKey) {
-          const row = allRowsForSelection.find(r => r.id === rowId);
-          if (row) {
-            if (!cutCellsByRow.has(rowId)) {
-              // Copy all existing property values (may include boolean and other types)
-              cutCellsByRow.set(rowId, { 
-                propertyValues: { ...row.propertyValues }, 
-                assetName: row.name || null 
-              });
-            }
-            const rowUpdates = cutCellsByRow.get(rowId);
-            if (rowUpdates) {
-              // Check if this is the name field (first property)
-              const isNameField = propertyIndex === 0;
-              
-              if (isNameField) {
-                // Clear the name field by setting both assetName and propertyValues
-                // Table displays name from propertyValues first, then falls back to row.name
-                rowUpdates.assetName = '';
-                rowUpdates.propertyValues[propertyKey] = null;
-              } else {
-                // Clear the property value
-                rowUpdates.propertyValues[propertyKey] = null;
-              }
-            }
-          }
-        }
-      });
-      
-      // Apply clearing updates - update Yjs first, then update database
-      setIsSaving(true);
-      try {
-        const allRows = yRows.toArray();
-        for (const [rowId, rowData] of cutCellsByRow.entries()) {
-          const row = allRowsForSelection.find(r => r.id === rowId);
-          if (row) {
-            // Use the updated assetName if name field was cleared, otherwise use original name
-            const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
-            
-            // Immediately update Yjs (optimistic update)
-            const rowIndex = allRows.findIndex(r => r.id === rowId);
-            if (rowIndex >= 0) {
-              const updatedRow = {
-                ...row,
-                name: assetName,
-                propertyValues: rowData.propertyValues
-              };
-              
-              // Update Yjs
-              yRows.delete(rowIndex, 1);
-              yRows.insert(rowIndex, [updatedRow]);
-            }
-            
-            // Asynchronously update database
-            await onUpdateAsset(rowId, assetName, rowData.propertyValues);
-          }
-        }
-      } catch (error) {
-        console.error('Failed to clear cut cells after paste:', error);
-      } finally {
-        setIsSaving(false);
-      }
+      setClipboardData(null);
     } else {
       // If not a cut operation, still clear clipboard data
       setClipboardData(null);
