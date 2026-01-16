@@ -247,6 +247,65 @@ td.cellCut.cutBorderRight:hover {
   border-right-color: rgba(94, 0, 255, 0.8) !important;
 }
 
+/* Copy cells: dashed border - only show outer border */
+.cell.cellCopy,
+td.cellCopy {
+  background-color: rgba(94, 0, 255, 0.08) !important;
+  position: relative;
+  z-index: 2;
+  /* Remove default cell borders - only show border where copyBorder classes are applied */
+  border-top: none !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.cell.cellCopy:hover,
+td.cellCopy:hover {
+  background-color: rgba(94, 0, 255, 0.12) !important;
+}
+
+/* Outer border styles - only show on boundary cells */
+.cellCopy.copyBorderTop,
+td.cellCopy.copyBorderTop {
+  border-top: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCopy.copyBorderBottom,
+td.cellCopy.copyBorderBottom {
+  border-bottom: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCopy.copyBorderLeft,
+td.cellCopy.copyBorderLeft {
+  border-left: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCopy.copyBorderRight,
+td.cellCopy.copyBorderRight {
+  border-right: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCopy.copyBorderTop:hover,
+td.cellCopy.copyBorderTop:hover {
+  border-top-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCopy.copyBorderBottom:hover,
+td.cellCopy.copyBorderBottom:hover {
+  border-bottom-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCopy.copyBorderLeft:hover,
+td.cellCopy.copyBorderLeft:hover {
+  border-left-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCopy.copyBorderRight:hover,
+td.cellCopy.copyBorderRight:hover {
+  border-right-color: rgba(94, 0, 255, 0.8) !important;
+}
+
 /* Expand icon for cell selection - only show on hover */
 .cellExpandIcon {
   position: absolute;

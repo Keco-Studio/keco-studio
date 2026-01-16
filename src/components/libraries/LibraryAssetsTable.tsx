@@ -229,11 +229,22 @@ export function LibraryAssetsTable({
   
   // Cut/Copy/Paste state
   const [cutCells, setCutCells] = useState<Set<CellKey>>(new Set()); // Cells that have been cut (for dashed border)
+  const [copyCells, setCopyCells] = useState<Set<CellKey>>(new Set()); // Cells that have been copied (for dashed border)
   const [clipboardData, setClipboardData] = useState<Array<Array<string | number | null>> | null>(null); // Clipboard data for paste
   const [isCutOperation, setIsCutOperation] = useState(false); // Whether clipboard contains cut data (vs copy)
   
   // Store cut selection bounds for border rendering
   const [cutSelectionBounds, setCutSelectionBounds] = useState<{
+    minRowIndex: number;
+    maxRowIndex: number;
+    minPropertyIndex: number;
+    maxPropertyIndex: number;
+    rowIds: string[];
+    propertyKeys: string[];
+  } | null>(null);
+  
+  // Store copy selection bounds for border rendering
+  const [copySelectionBounds, setCopySelectionBounds] = useState<{
     minRowIndex: number;
     maxRowIndex: number;
     minPropertyIndex: number;
@@ -2489,6 +2500,32 @@ export function LibraryAssetsTable({
     return classes.join(' ');
   }, [cutSelectionBounds, cutCells, orderedProperties, getAllRowsForCellSelection]);
 
+  // Helper function to check if a cell is on the border of copy selection
+  const getCopyBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
+    if (!copySelectionBounds || !copyCells.has(`${rowId}-${orderedProperties[propertyIndex].key}` as CellKey)) {
+      return '';
+    }
+    
+    const allRowsForSelection = getAllRowsForCellSelection();
+    const rowIndex = allRowsForSelection.findIndex(r => r.id === rowId);
+    
+    if (rowIndex === -1) return '';
+    
+    const { minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex } = copySelectionBounds;
+    const isTop = rowIndex === minRowIndex;
+    const isBottom = rowIndex === maxRowIndex;
+    const isLeft = propertyIndex === minPropertyIndex;
+    const isRight = propertyIndex === maxPropertyIndex;
+    
+    const classes: string[] = [];
+    if (isTop) classes.push(styles.copyBorderTop);
+    if (isBottom) classes.push(styles.copyBorderBottom);
+    if (isLeft) classes.push(styles.copyBorderLeft);
+    if (isRight) classes.push(styles.copyBorderRight);
+    
+    return classes.join(' ');
+  }, [copySelectionBounds, copyCells, orderedProperties, getAllRowsForCellSelection]);
+
   // Helper function to check if a cell is on the border of selection
   const getSelectionBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
     if (!selectionBounds || selectedCells.size <= 1) {
@@ -3055,8 +3092,34 @@ export function LibraryAssetsTable({
     setClipboardData(clipboardArray);
     setIsCutOperation(false); // Important: mark as copy, not cut
     
-    // Do NOT set cutCells or cutSelectionBounds for copy operation
-    // Copy operation should not show visual feedback (no dashed border)
+    // Calculate selection bounds for border rendering (only show outer border)
+    const rowIndices = rowIds.map(rowId => {
+      return allRowsForSelection.findIndex(r => r.id === rowId);
+    }).filter(idx => idx !== -1);
+    
+    const propertyIndices = sortedPropertyKeys.map(propKey => {
+      return orderedProperties.findIndex(p => p.key === propKey);
+    }).filter(idx => idx !== -1);
+    
+    const minRowIndex = Math.min(...rowIndices);
+    const maxRowIndex = Math.max(...rowIndices);
+    const minPropertyIndex = Math.min(...propertyIndices);
+    const maxPropertyIndex = Math.max(...propertyIndices);
+    
+    // Mark cells as copied (for dashed border visual feedback)
+    setCopyCells(new Set(validCells));
+    
+    // Store selection bounds for border rendering (only show outer border)
+    if (rowIndices.length > 0 && propertyIndices.length > 0) {
+      setCopySelectionBounds({
+        minRowIndex,
+        maxRowIndex,
+        minPropertyIndex,
+        maxPropertyIndex,
+        rowIds,
+        propertyKeys: sortedPropertyKeys,
+      });
+    }
     
     // Show toast message immediately
     setToastMessage('Content copied');
@@ -3367,7 +3430,12 @@ export function LibraryAssetsTable({
       setIsCutOperation(false);
       setClipboardData(null);
     } else {
-      // If not a cut operation, still clear clipboard data
+      // If not a cut operation, clear copy state to remove visual feedback (dashed border)
+      if (copyCells.size > 0) {
+        setCopyCells(new Set());
+        setCopySelectionBounds(null);
+      }
+      // Clear clipboard data
       setClipboardData(null);
       setIsCutOperation(false);
     }
@@ -4426,6 +4494,7 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
+                    const isCellCopy = copyCells.has(cellKey);
                     const showExpandIcon = selectedCells.size === 1 && isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
@@ -4447,6 +4516,9 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
@@ -4458,7 +4530,7 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
@@ -4551,6 +4623,7 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
+                    const isCellCopy = copyCells.has(cellKey);
                     const showExpandIcon = selectedCells.size === 1 && isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
@@ -4572,6 +4645,9 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
@@ -4583,7 +4659,7 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
@@ -4704,6 +4780,7 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
+                    const isCellCopy = copyCells.has(cellKey);
                     const showExpandIcon = selectedCells.size === 1 && isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
@@ -4725,6 +4802,9 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
@@ -4736,7 +4816,7 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
@@ -4896,6 +4976,7 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
+                    const isCellCopy = copyCells.has(cellKey);
                     const showExpandIcon = selectedCells.size === 1 && isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
@@ -4917,6 +4998,9 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
@@ -4928,7 +5012,7 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
@@ -5098,6 +5182,7 @@ export function LibraryAssetsTable({
                   const cellKey: CellKey = `${row.id}-${property.key}`;
                   const isCellSelected = selectedCells.has(cellKey);
                   const isCellCut = cutCells.has(cellKey);
+                  const isCellCopy = copyCells.has(cellKey);
                   const showExpandIcon = selectedCells.size === 1 && isCellSelected;
                   const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                   const isSingleSelected = selectedCells.size === 1 && isCellSelected;
@@ -5119,6 +5204,9 @@ export function LibraryAssetsTable({
                     cutBorderClass = borderClasses.join(' ');
                   }
                   
+                  // Check if cell is on border of copy selection (only show outer border)
+                  const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                  
                   // Check if cell is on border of selection (only show outer border)
                   const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                   
@@ -5130,7 +5218,7 @@ export function LibraryAssetsTable({
                     <td
                       key={property.id}
                       data-property-key={property.key}
-                      className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                      className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
                       style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                       onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                       onClick={(e) => handleCellClick(row.id, property.key, e)}
