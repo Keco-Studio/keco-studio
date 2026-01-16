@@ -297,9 +297,49 @@ export function LibraryAssetsTable({
     // Show a notification that a new asset was created
     message.info(`${event.userName} added "${event.assetName}"`);
     
+    // If position information is provided, insert the asset at the correct position in Yjs
+    if (event.insertAfterRowId || event.insertBeforeRowId) {
+      const allRows = yRows.toArray();
+      let insertIndex = -1;
+      
+      if (event.insertAfterRowId) {
+        // Insert below the target row
+        const targetIndex = allRows.findIndex(r => r.id === event.insertAfterRowId);
+        if (targetIndex >= 0) {
+          insertIndex = targetIndex + 1;
+        }
+      } else if (event.insertBeforeRowId) {
+        // Insert above the target row
+        const targetIndex = allRows.findIndex(r => r.id === event.insertBeforeRowId);
+        if (targetIndex >= 0) {
+          insertIndex = targetIndex;
+        }
+      }
+      
+      // If we found a valid position, create an optimistic asset and insert it
+      if (insertIndex >= 0 && library) {
+        const optimisticAsset: AssetRow = {
+          id: event.assetId,
+          libraryId: library.id,
+          name: event.assetName,
+          propertyValues: event.propertyValues,
+        };
+        
+        // Insert into Yjs at the correct position
+        yRows.insert(insertIndex, [optimisticAsset]);
+        
+        // Also add to optimisticNewAssets for display
+        setOptimisticNewAssets(prev => {
+          const newMap = new Map(prev);
+          newMap.set(event.assetId, optimisticAsset);
+          return newMap;
+        });
+      }
+    }
+    
     // The parent will refresh and show the new asset automatically
     // due to database subscription or polling
-  }, []);
+  }, [yRows, library, setOptimisticNewAssets]);
 
   const handleAssetDeleteEvent = useCallback((event: AssetDeleteEvent) => {
     // Show a notification that an asset was deleted
@@ -1766,7 +1806,15 @@ export function LibraryAssetsTable({
     e.stopPropagation();
     
     // Start editing this cell
-    const currentValue = row.propertyValues[property.key];
+    // For name field, fallback to row.name if propertyValues doesn't have it
+    const isNameField = property && properties[0]?.key === property.key;
+    let currentValue = row.propertyValues[property.key];
+    if (isNameField && (currentValue === null || currentValue === undefined || currentValue === '')) {
+      // Only use row.name as fallback if it's not 'Untitled' (for blank rows)
+      if (row.name && row.name !== 'Untitled') {
+        currentValue = row.name;
+      }
+    }
     const stringValue = currentValue !== null && currentValue !== undefined ? String(currentValue) : '';
     setEditingCell({ rowId: row.id, propertyKey: property.key });
     setEditingCellValue(stringValue);
@@ -3485,12 +3533,71 @@ export function LibraryAssetsTable({
           const offsetMs = (numRowsToInsert - i) * 1000;
           const newCreatedAt = new Date(targetCreatedAt.getTime() - offsetMs);
           await onSaveAsset('Untitled', {}, { createdAt: newCreatedAt });
+          
+          // Broadcast asset creation if realtime is enabled
+          if (enableRealtime && currentUser && i < optimisticAssets.length) {
+            const tempId = createdTempIds[i];
+            const asset = optimisticAssets[i];
+            try {
+              await broadcastAssetCreate(tempId, asset.name, asset.propertyValues, {
+                insertBeforeRowId: firstRowId, // Insert above the first selected row
+              });
+            } catch (error) {
+              console.error('Failed to broadcast asset creation:', error);
+            }
+          }
         }
       } else {
         // Fallback if supabase is not available
+        // Create optimistic assets and insert them directly into Yjs at the correct position
+        const createdTempIds: string[] = [];
+        const optimisticAssets: AssetRow[] = [];
+        
+        for (let i = 0; i < numRowsToInsert; i++) {
+          const assetName = 'Untitled';
+          const tempId = `temp-insert-above-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
+          createdTempIds.push(tempId);
+          
+          const optimisticAsset: AssetRow = {
+            id: tempId,
+            libraryId: library.id,
+            name: assetName,
+            propertyValues: {},
+          };
+          
+          optimisticAssets.push(optimisticAsset);
+        }
+        
+        // Insert directly into Yjs at the target index (in reverse order to maintain correct position)
+        for (let i = optimisticAssets.length - 1; i >= 0; i--) {
+          yRows.insert(targetRowIndex, [optimisticAssets[i]]);
+        }
+        
+        // Add to optimisticNewAssets for display
+        optimisticAssets.forEach(asset => {
+          setOptimisticNewAssets(prev => {
+            const newMap = new Map(prev);
+            newMap.set(asset.id, asset);
+            return newMap;
+          });
+        });
+        
         const assetName = 'Untitled';
         for (let i = 0; i < numRowsToInsert; i++) {
           await onSaveAsset(assetName, {});
+          
+          // Broadcast asset creation if realtime is enabled
+          if (enableRealtime && currentUser && i < optimisticAssets.length) {
+            const tempId = createdTempIds[i];
+            const asset = optimisticAssets[i];
+            try {
+              await broadcastAssetCreate(tempId, asset.name, asset.propertyValues, {
+                insertBeforeRowId: firstRowId, // Insert above the first selected row
+              });
+            } catch (error) {
+              console.error('Failed to broadcast asset creation:', error);
+            }
+          }
         }
       }
       
@@ -3521,7 +3628,7 @@ export function LibraryAssetsTable({
     // Clear selected cells and rows after insert operation
     setSelectedCells(new Set());
     setSelectedRowIds(new Set());
-  }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase]);
+  }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase, enableRealtime, currentUser, broadcastAssetCreate, yRows, setOptimisticNewAssets]);
 
   // Handle Insert Row Below operation
   const handleInsertRowBelow = useCallback(async () => {
@@ -3675,12 +3782,72 @@ export function LibraryAssetsTable({
           const offsetMs = (i + 1) * 1000;
           const newCreatedAt = new Date(targetCreatedAt.getTime() + offsetMs);
           await onSaveAsset('Untitled', {}, { createdAt: newCreatedAt });
+          
+          // Broadcast asset creation if realtime is enabled
+          if (enableRealtime && currentUser && i < optimisticAssets.length) {
+            const tempId = createdTempIds[i];
+            const asset = optimisticAssets[i];
+            try {
+              await broadcastAssetCreate(tempId, asset.name, asset.propertyValues, {
+                insertAfterRowId: lastRowId, // Insert below the last selected row
+              });
+            } catch (error) {
+              console.error('Failed to broadcast asset creation:', error);
+            }
+          }
         }
       } else {
         // Fallback if supabase is not available
+        // Create optimistic assets and insert them directly into Yjs at the correct position
+        const createdTempIds: string[] = [];
+        const optimisticAssets: AssetRow[] = [];
+        
+        for (let i = 0; i < numRowsToInsert; i++) {
+          const assetName = 'Untitled';
+          const tempId = `temp-insert-below-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
+          createdTempIds.push(tempId);
+          
+          const optimisticAsset: AssetRow = {
+            id: tempId,
+            libraryId: library.id,
+            name: assetName,
+            propertyValues: {},
+          };
+          
+          optimisticAssets.push(optimisticAsset);
+        }
+        
+        // Insert directly into Yjs at the target index + 1 (below the target row)
+        const insertIndex = targetRowIndex + 1;
+        for (let i = optimisticAssets.length - 1; i >= 0; i--) {
+          yRows.insert(insertIndex, [optimisticAssets[i]]);
+        }
+        
+        // Add to optimisticNewAssets for display
+        optimisticAssets.forEach(asset => {
+          setOptimisticNewAssets(prev => {
+            const newMap = new Map(prev);
+            newMap.set(asset.id, asset);
+            return newMap;
+          });
+        });
+        
         const assetName = 'Untitled';
         for (let i = 0; i < numRowsToInsert; i++) {
           await onSaveAsset(assetName, {});
+          
+          // Broadcast asset creation if realtime is enabled
+          if (enableRealtime && currentUser && i < optimisticAssets.length) {
+            const tempId = createdTempIds[i];
+            const asset = optimisticAssets[i];
+            try {
+              await broadcastAssetCreate(tempId, asset.name, asset.propertyValues, {
+                insertAfterRowId: lastRowId, // Insert below the last selected row
+              });
+            } catch (error) {
+              console.error('Failed to broadcast asset creation:', error);
+            }
+          }
         }
       }
       
@@ -3711,7 +3878,7 @@ export function LibraryAssetsTable({
     // Clear selected cells and rows after insert operation
     setSelectedCells(new Set());
     setSelectedRowIds(new Set());
-  }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase]);
+  }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase, enableRealtime, currentUser, broadcastAssetCreate, yRows, setOptimisticNewAssets]);
 
   // Handle Clear Contents operation
   const handleClearContents = useCallback(async () => {
@@ -4994,7 +5161,13 @@ export function LibraryAssetsTable({
                       {isNameField ? (
                         // Name field: show text + view detail button
                         <div className={styles.cellContent}>
-                          <span className={styles.cellText}>
+                          <span 
+                            className={styles.cellText}
+                            onDoubleClick={(e) => {
+                              // Ensure double click on name field text triggers editing
+                              handleCellDoubleClick(row, property, e);
+                            }}
+                          >
                             {display ? display : <span className={styles.placeholderValue}>—</span>}
                           </span>
                           <button

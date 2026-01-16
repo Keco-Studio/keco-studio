@@ -233,7 +233,12 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   const broadcastAssetCreate = useCallback(async (
     assetId: string,
     assetName: string,
-    propertyValues: Record<string, any>
+    propertyValues: Record<string, any>,
+    options?: {
+      insertAfterRowId?: string;
+      insertBeforeRowId?: string;
+      targetCreatedAt?: string;
+    }
   ): Promise<void> => {
     if (!channelRef.current) {
       console.warn('Cannot broadcast: channel not initialized');
@@ -248,6 +253,9 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       assetName,
       propertyValues,
       timestamp: Date.now(),
+      insertAfterRowId: options?.insertAfterRowId,
+      insertBeforeRowId: options?.insertBeforeRowId,
+      targetCreatedAt: options?.targetCreatedAt,
     };
 
     try {

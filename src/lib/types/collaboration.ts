@@ -122,6 +122,10 @@ export type AssetCreateEvent = {
   assetName: string;
   propertyValues: Record<string, any>;
   timestamp: number;
+  // Optional: position information for inserting rows
+  insertAfterRowId?: string; // Insert after this row ID (for "insert below")
+  insertBeforeRowId?: string; // Insert before this row ID (for "insert above")
+  targetCreatedAt?: string; // Target created_at timestamp for positioning
 };
 
 export type AssetDeleteEvent = {
