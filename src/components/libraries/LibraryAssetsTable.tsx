@@ -1929,6 +1929,14 @@ export function LibraryAssetsTable({
     
     e.stopPropagation();
     
+    // Clear presence tracking if clicking on a different cell
+    // This handles the case where boolean/option types set presence tracking
+    // but don't use editingCell state, so handleClickOutside doesn't clear it
+    if (currentFocusedCell && 
+        (currentFocusedCell.assetId !== rowId || currentFocusedCell.propertyKey !== propertyKey)) {
+      handleCellBlur();
+    }
+    
     // Select single cell
     const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
     setSelectedCells(new Set<CellKey>([cellKey]));
