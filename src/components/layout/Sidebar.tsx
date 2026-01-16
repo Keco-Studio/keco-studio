@@ -1946,7 +1946,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           type={contextMenu.type}
           onClose={() => setContextMenu(null)}
           onAction={handleContextMenuAction}
-          type={contextMenu.type}
         />
       )}
     </aside>
