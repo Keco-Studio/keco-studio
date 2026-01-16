@@ -1772,6 +1772,9 @@ export function LibraryAssetsTable({
     setEditingCellValue(stringValue);
     isComposingRef.current = false;
     
+    // Update presence tracking when starting to edit
+    handleCellFocus(row.id, property.key);
+    
     // Initialize the contentEditable element after state update
     setTimeout(() => {
       if (editingCellRef.current) {
@@ -4590,6 +4593,9 @@ export function LibraryAssetsTable({
                           <Switch
                             checked={checked}
                             onChange={async (newValue) => {
+                              // Update presence tracking when user starts editing
+                              handleCellFocus(row.id, property.key);
+                              
                               // Optimistic update: immediately update UI
                               setOptimisticBooleanValues(prev => ({
                                 ...prev,
@@ -4785,6 +4791,10 @@ export function LibraryAssetsTable({
                                 ...prev,
                                 [enumSelectKey]: open
                               }));
+                              // Update presence tracking when dropdown opens
+                              if (open) {
+                                handleCellFocus(row.id, property.key);
+                              }
                             }}
                             onChange={async (newValue) => {
                               const stringValue = newValue || '';
@@ -5007,6 +5017,12 @@ export function LibraryAssetsTable({
                           ref={editingCellRef}
                           contentEditable
                           suppressContentEditableWarning
+                          onFocus={() => {
+                            // Update presence tracking when input gains focus
+                            if (editingCell) {
+                              handleCellFocus(editingCell.rowId, editingCell.propertyKey);
+                            }
+                          }}
                           onBlur={(e) => {
                             if (!isComposingRef.current) {
                               const newValue = e.currentTarget.textContent || '';
