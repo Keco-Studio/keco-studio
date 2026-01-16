@@ -4495,7 +4495,8 @@ export function LibraryAssetsTable({
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
                     const isCellCopy = copyCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4524,7 +4525,7 @@ export function LibraryAssetsTable({
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
@@ -4574,21 +4575,11 @@ export function LibraryAssetsTable({
                           {editingUsers.length > 0 && (
                             <CellPresenceAvatars users={editingUsers} />
                           )}
-                          {/* Show expand icon for cell selection */}
-                          {shouldShowExpandIcon && (
-                            <div
-                              className={styles.cellExpandIcon}
-                              onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                            >
-                              <Image
-                                src={batchEditAddIcon}
-                                alt="Expand selection"
-                                width={18}
-                                height={18}
-                                style={{ pointerEvents: 'none' }}
-                              />
-                            </div>
-                          )}
+                          {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                          <div
+                            className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                          />
                         </td>
                       );
                     }
@@ -4624,7 +4615,8 @@ export function LibraryAssetsTable({
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
                     const isCellCopy = copyCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4653,7 +4645,7 @@ export function LibraryAssetsTable({
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
@@ -4736,20 +4728,11 @@ export function LibraryAssetsTable({
                               // Show blank instead of dash for empty media fields
                               <span></span>
                             )}
-                            {shouldShowExpandIcon && (
-                              <div
-                                className={styles.cellExpandIcon}
-                                onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                              >
-                                <Image
-                                  src={batchEditAddIcon}
-                                  alt="Expand selection"
-                                  width={18}
-                                  height={18}
-                                  style={{ pointerEvents: 'none' }}
-                                />
-                              </div>
-                            )}
+                            {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                            <div
+                              className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                              onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                            />
                           </>
                         )}
                         {/* Show collaboration avatars in cell corner */}
@@ -4781,7 +4764,8 @@ export function LibraryAssetsTable({
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
                     const isCellCopy = copyCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4810,7 +4794,7 @@ export function LibraryAssetsTable({
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
@@ -4936,21 +4920,11 @@ export function LibraryAssetsTable({
                         {editingUsers.length > 0 && (
                           <CellPresenceAvatars users={editingUsers} />
                         )}
-                        {/* Show expand icon for cell selection */}
-                        {shouldShowExpandIcon && (
-                          <div
-                            className={styles.cellExpandIcon}
-                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                          >
-                            <Image
-                              src={batchEditAddIcon}
-                              alt="Expand selection"
-                              width={18}
-                              height={18}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </div>
-                        )}
+                        {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                        <div
+                          className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                        />
                       </td>
                     );
                   }
@@ -4977,7 +4951,8 @@ export function LibraryAssetsTable({
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
                     const isCellCopy = copyCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -5006,7 +4981,7 @@ export function LibraryAssetsTable({
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
@@ -5133,21 +5108,11 @@ export function LibraryAssetsTable({
                         {editingUsers.length > 0 && (
                           <CellPresenceAvatars users={editingUsers} />
                         )}
-                        {/* Show expand icon for cell selection */}
-                        {shouldShowExpandIcon && (
-                          <div
-                            className={styles.cellExpandIcon}
-                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                          >
-                            <Image
-                              src={batchEditAddIcon}
-                              alt="Expand selection"
-                              width={18}
-                              height={18}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </div>
-                        )}
+                        {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                        <div
+                          className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                        />
                       </td>
                     );
                   }
@@ -5183,7 +5148,8 @@ export function LibraryAssetsTable({
                   const isCellSelected = selectedCells.has(cellKey);
                   const isCellCut = cutCells.has(cellKey);
                   const isCellCopy = copyCells.has(cellKey);
-                  const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                  // Show expand icon when cell is selected (single or multiple selection)
+                  const showExpandIcon = isCellSelected;
                   const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                   const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                   
@@ -5212,7 +5178,8 @@ export function LibraryAssetsTable({
                   
                   const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                     hoveredCellForExpand?.propertyKey === property.key;
-                  const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                  // Show expand icon when cell is selected (always visible, not dependent on hover)
+                  const shouldShowExpandIcon = showExpandIcon;
                   
                   return (
                     <td
@@ -5349,21 +5316,11 @@ export function LibraryAssetsTable({
                       {editingUsers.length > 0 && (
                         <CellPresenceAvatars users={editingUsers} />
                       )}
-                      {/* Show expand icon for cell selection */}
-                      {shouldShowExpandIcon && (
-                        <div
-                          className={styles.cellExpandIcon}
-                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                        >
-                          <Image
-                            src={batchEditAddIcon}
-                            alt="Expand selection"
-                            width={18}
-                            height={18}
-                            style={{ pointerEvents: 'none' }}
-                          />
-                        </div>
-                      )}
+                      {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                      <div
+                        className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                        onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                      />
                     </td>
                   );
                 })}

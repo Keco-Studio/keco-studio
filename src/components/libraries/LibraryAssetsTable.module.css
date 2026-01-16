@@ -306,33 +306,42 @@ td.cellCopy.copyBorderRight:hover {
   border-right-color: rgba(94, 0, 255, 0.8) !important;
 }
 
-/* Expand icon for cell selection - only show on hover */
+/* Expand icon for cell selection - always visible */
 .cellExpandIcon {
   position: absolute;
   bottom: 0;
   right: 0;
-  width: 18px;
-  height: 18px;
-  cursor: crosshair;
-  z-index: 10;
+  width: 6px;
+  height: 6px;
+  cursor: default;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(94, 0, 255, 0.1);
+  background-color: rgba(135, 38, 238, 1);
   border: 1px solid rgba(94, 0, 255, 0.3);
   border-radius: 2px 0 0 0;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
   pointer-events: auto;
-  opacity: 0;
+  opacity: 1 !important;
 }
 
-.cell:hover .cellExpandIcon {
-  opacity: 1;
+/* Ensure expand icon is always visible in selected cells */
+.cellSelected .cellExpandIcon,
+.cellMultipleSelected .cellExpandIcon {
+  z-index: 100;
+  opacity: 1 !important;
 }
 
 .cellExpandIcon:hover {
-  background-color: rgba(94, 0, 255, 0.15);
+  background-color: rgba(135, 38, 238, 1);
   border-color: rgba(94, 0, 255, 0.5);
+  cursor: crosshair;
+}
+
+/* Hide expand icon when cell is not selected */
+.cellExpandIconHidden {
+  display: none !important;
 }
 
 .cellExpandIcon:active {
