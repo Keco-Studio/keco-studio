@@ -35,6 +35,7 @@ import libraryAssetTableAddIcon from '@/app/assets/images/LibraryAssetTableAddIc
 import libraryAssetTableSelectIcon from '@/app/assets/images/LibraryAssetTableSelectIcon.svg';
 import batchEditAddIcon from '@/app/assets/images/BatchEditAddIcon.svg';
 import batchEditingCloseIcon from '@/app/assets/images/BatchEditingCloseIcon.svg';
+import tableAssetDetailIcon from '@/app/assets/images/TableAssetDetailIcon.svg';
 import styles from './LibraryAssetsTable.module.css';
 
 export type LibraryAssetsTableProps = {
@@ -1067,6 +1068,7 @@ export function LibraryAssetsTable({
     assetId: string | null;
     rowId: string;
     assetNamesCache: Record<string, string>;
+    isCellSelected: boolean;
     onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
     onAvatarMouseLeave: () => void;
     onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
@@ -1075,6 +1077,7 @@ export function LibraryAssetsTable({
     assetId,
     rowId,
     assetNamesCache,
+    isCellSelected,
     onAvatarMouseEnter,
     onAvatarMouseLeave,
     onOpenReferenceModal,
@@ -1083,6 +1086,7 @@ export function LibraryAssetsTable({
     assetId: string | null;
     rowId: string;
     assetNamesCache: Record<string, string>;
+    isCellSelected: boolean;
     onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
     onAvatarMouseLeave: () => void;
     onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
@@ -1119,7 +1123,31 @@ export function LibraryAssetsTable({
         }}
       >
         {hasValue && assetId ? (
-          <div className={styles.referenceSelectedAssetLeft}>
+          <div 
+            className={styles.referenceSelectedAssetLeft}
+            data-reference-background="true"
+            onClick={(e) => {
+              // Only trigger if cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+                e.preventDefault();
+                // Call the modal handler immediately
+                onOpenReferenceModal(property, assetId, rowId);
+                return;
+              }
+              // If not selected, let the event bubble to cell to select it
+            }}
+            onMouseDown={(e) => {
+              // Prevent mouse down from interfering with click when cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+              }
+            }}
+            onDoubleClick={(e) => {
+              // Prevent double click from bubbling to cell
+              e.stopPropagation();
+            }}
+          >
             <Image
               src={libraryAssetTableIcon}
               alt=""
@@ -1132,9 +1160,6 @@ export function LibraryAssetsTable({
               onMouseEnter={(e) => {
                 e.stopPropagation();
                 setIsHovered(true); // Keep hovered state when over avatar
-                if (assetId && avatarRef.current) {
-                  onAvatarMouseEnter(assetId, avatarRef.current);
-                }
               }}
               onMouseLeave={(e) => {
                 e.stopPropagation();
@@ -1142,7 +1167,6 @@ export function LibraryAssetsTable({
                 const relatedTarget = e.relatedTarget as HTMLElement;
                 if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
                   setIsHovered(false);
-                  onAvatarMouseLeave();
                 }
               }}
               className={styles.referenceAvatarWrapper}
@@ -1167,19 +1191,34 @@ export function LibraryAssetsTable({
               onMouseEnter={() => {
                 setIsHovered(true);
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onOpenReferenceModal(property, assetId, rowId);
-              }}
-              onDoubleClick={(e) => {
-                // Prevent double click from bubbling to cell
-                e.stopPropagation();
-              }}
             />
           </div>
         ) : (
-          <div className={styles.referenceSelectedAssetLeft}>
+          <div 
+            className={styles.referenceSelectedAssetLeft}
+            data-reference-background="true"
+            onClick={(e) => {
+              // Only trigger if cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+                e.preventDefault();
+                // Call the modal handler immediately
+                onOpenReferenceModal(property, assetId, rowId);
+                return;
+              }
+              // If not selected, let the event bubble to cell to select it
+            }}
+            onMouseDown={(e) => {
+              // Prevent mouse down from interfering with click when cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+              }
+            }}
+            onDoubleClick={(e) => {
+              // Prevent double click from bubbling to cell
+              e.stopPropagation();
+            }}
+          >
             <Image
               src={libraryAssetTableIcon}
               alt=""
@@ -1196,15 +1235,6 @@ export function LibraryAssetsTable({
               onMouseEnter={() => {
                 setIsHovered(true);
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onOpenReferenceModal(property, assetId, rowId);
-              }}
-              onDoubleClick={(e) => {
-                // Prevent double click from bubbling to cell
-                e.stopPropagation();
-              }}
             />
           </div>
         )}
@@ -1216,6 +1246,7 @@ export function LibraryAssetsTable({
       prevProps.assetId === nextProps.assetId &&
       prevProps.rowId === nextProps.rowId &&
       prevProps.property.id === nextProps.property.id &&
+      prevProps.isCellSelected === nextProps.isCellSelected &&
       prevProps.assetNamesCache[prevProps.assetId || ''] === nextProps.assetNamesCache[nextProps.assetId || '']
     );
   });
@@ -1986,6 +2017,15 @@ export function LibraryAssetsTable({
       return;
     }
     
+    // If cell is already selected and clicking on reference background area, let the child handle it
+    const currentCellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
+    const referenceBackground = target.closest('[data-reference-background="true"]');
+    if (selectedCells.has(currentCellKey) && referenceBackground) {
+      // Don't stop propagation here, let the reference background area handle the click
+      // The reference background onClick will call stopPropagation itself
+      return; // Let the reference background area handle the click
+    }
+    
     e.stopPropagation();
     
     // Clear presence tracking if clicking on a different cell
@@ -2017,8 +2057,13 @@ export function LibraryAssetsTable({
       return;
     }
 
-    // Only allow drag when single cell is selected
+    // Don't start drag if clicking on reference background area when cell is selected
     const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
+    if (selectedCells.has(cellKey) && target.closest('[data-reference-background="true"]')) {
+      return; // Let the reference background area handle the click
+    }
+
+    // Only allow drag when single cell is selected
     if (!selectedCells.has(cellKey) || selectedCells.size !== 1) {
       return;
     }
@@ -4639,6 +4684,22 @@ export function LibraryAssetsTable({
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
+                        onMouseEnter={(e) => {
+                          // Show ASSET CARD when hovering over cell with assetId, but only if cell is not selected
+                          if (assetId && !isCellSelected) {
+                            handleAvatarMouseEnter(assetId, e.currentTarget);
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          // Hide ASSET CARD when leaving cell, but only if cell is not selected
+                          if (assetId && !isCellSelected) {
+                            handleAvatarMouseLeave();
+                          }
+                          // Handle expand icon hover
+                          if (hoveredCellForExpand?.rowId === row.id && hoveredCellForExpand?.propertyKey === property.key) {
+                            setHoveredCellForExpand(null);
+                          }
+                        }}
                         onMouseMove={(e) => {
                           if (showExpandIcon) {
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -4658,21 +4719,41 @@ export function LibraryAssetsTable({
                             }
                           }
                         }}
-                        onMouseLeave={() => {
-                          if (hoveredCellForExpand?.rowId === row.id && hoveredCellForExpand?.propertyKey === property.key) {
-                            setHoveredCellForExpand(null);
-                          }
-                        }}
                       >
                           <ReferenceField
                             property={property}
                             assetId={assetId}
                             rowId={row.id}
                             assetNamesCache={assetNamesCache}
+                            isCellSelected={isCellSelected}
                             onAvatarMouseEnter={handleAvatarMouseEnter}
                             onAvatarMouseLeave={handleAvatarMouseLeave}
                             onOpenReferenceModal={handleOpenReferenceModal}
                           />
+                          {/* Show detail icon when cell is selected - positioned on the right */}
+                          {isCellSelected && (
+                            <Image
+                              src={tableAssetDetailIcon}
+                              alt=""
+                              width={16}
+                              height={16}
+                              className={styles.referenceDetailIcon}
+                              onMouseEnter={(e) => {
+                                // Show ASSET CARD when hovering over detail icon in selected cell
+                                if (assetId) {
+                                  e.stopPropagation();
+                                  handleAvatarMouseEnter(assetId, e.currentTarget);
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                // Hide ASSET CARD when leaving detail icon
+                                if (assetId) {
+                                  e.stopPropagation();
+                                  handleAvatarMouseLeave();
+                                }
+                              }}
+                            />
+                          )}
                           {/* Show collaboration avatars in cell corner */}
                           {editingUsers.length > 0 && (
                             <CellPresenceAvatars users={editingUsers} />
@@ -5439,13 +5520,29 @@ export function LibraryAssetsTable({
                   const assetId = newRowData[property.key] ? String(newRowData[property.key]) : null;
                   
                   return (
-                    <td key={property.id} className={styles.editCell}>
+                    <td 
+                      key={property.id} 
+                      className={styles.editCell}
+                      onMouseEnter={(e) => {
+                        // Show ASSET CARD when hovering over cell with assetId
+                        if (assetId) {
+                          handleAvatarMouseEnter(assetId, e.currentTarget);
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        // Hide ASSET CARD when leaving cell
+                        if (assetId) {
+                          handleAvatarMouseLeave();
+                        }
+                      }}
+                    >
                       <div className={styles.referenceInputContainer}>
                         <ReferenceField
                           property={property}
                           assetId={assetId}
                           rowId="new"
                           assetNamesCache={assetNamesCache}
+                          isCellSelected={false}
                           onAvatarMouseEnter={handleAvatarMouseEnter}
                           onAvatarMouseLeave={handleAvatarMouseLeave}
                           onOpenReferenceModal={handleOpenReferenceModal}

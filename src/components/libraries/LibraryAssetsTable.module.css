@@ -935,6 +935,7 @@ td.cellCopy.copyBorderRight:hover {
   background: #5E00FF14;
   border-radius: 5px;
   padding: 4px;
+  cursor: pointer;
 }
 
 .referenceSelectedAssetLeft .referenceDiamondIcon {
@@ -977,6 +978,16 @@ td.cellCopy.copyBorderRight:hover {
 
 .referenceArrowIcon:hover {
   opacity: 0.8;
+}
+
+.referenceDetailIcon {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-shrink: 0;
+  display: inline-block;
+  z-index: 1;
 }
 
 /* Media field display styles */
