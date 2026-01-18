@@ -921,8 +921,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             key: `library-${lib.id}`,
             isLeaf: false, // Allow expand to show assets and create button
             children: [
-              // Create new asset button - only for admin
-              ...(userRole === 'admin' ? [{
+              // Create new asset button - for admin and editor
+              ...((userRole === 'admin' || userRole === 'editor') ? [{
                 title: (
                   <button
                     className={styles.createButton}
@@ -962,8 +962,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               // Existing assets
               ...(assets[lib.id] || []).map<DataNode>((asset) => {
                 const isCurrentAsset = currentIds.assetId === asset.id;
-                // Only admin can click assets to view/edit
-                const canClickAsset = userRole === 'admin';
+                // Admin and editor can click assets to view/edit
+                const canClickAsset = userRole === 'admin' || userRole === 'editor';
                 return {
                   title: (
                     <div 
@@ -1095,8 +1095,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         key: `library-${lib.id}`,
         isLeaf: false, // Allow expand to show assets and create button
         children: [
-          // Create new asset button - only for admin
-          ...(userRole === 'admin' ? [{
+          // Create new asset button - for admin and editor
+          ...((userRole === 'admin' || userRole === 'editor') ? [{
             title: (
               <button
                 className={styles.createButton}
@@ -1136,8 +1136,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           // Existing assets
           ...(assets[lib.id] || []).map<DataNode>((asset) => {
             const isCurrentAsset = currentIds.assetId === asset.id;
-            // Only admin can click assets to view/edit
-            const canClickAsset = userRole === 'admin';
+            // Admin and editor can click assets to view/edit
+            const canClickAsset = userRole === 'admin' || userRole === 'editor';
             return {
               title: (
                 <div 
@@ -1756,8 +1756,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                             )}
                           </div>
                         </div>
-                        {/* Add new asset button - only for admin */}
-                        {userRole === 'admin' && (
+                        {/* Add new asset button - for admin and editor */}
+                        {(userRole === 'admin' || userRole === 'editor') && (
                           <button
                             className={`${styles.createButton} ${styles.createButtonAligned}`}
                             onClick={(e) => {
@@ -1785,8 +1785,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                         <div className={styles.assetList}>
                           {libraryAssets.map((asset) => {
                             const isCurrentAsset = currentIds.assetId === asset.id;
-                            // Only admin can click assets to view/edit
-                            const canClickAsset = userRole === 'admin';
+                            // Admin and editor can click assets to view/edit
+                            const canClickAsset = userRole === 'admin' || userRole === 'editor';
                             return (
                               <div
                                 key={asset.id}
@@ -1946,7 +1946,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           type={contextMenu.type}
           onClose={() => setContextMenu(null)}
           onAction={handleContextMenuAction}
-          type={contextMenu.type}
         />
       )}
     </aside>

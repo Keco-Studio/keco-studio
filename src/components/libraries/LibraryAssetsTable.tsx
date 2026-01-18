@@ -1853,8 +1853,8 @@ export function LibraryAssetsTable({
 
   // Handle view asset detail - navigate to asset detail page
   const handleViewAssetDetail = (row: AssetRow, e: React.MouseEvent) => {
-    // Only admin can view asset detail card (editor and viewer cannot)
-    if (userRole !== 'admin') {
+    // Only admin and editor can view asset detail card (viewer cannot)
+    if (userRole === 'viewer') {
       return;
     }
     
@@ -5233,13 +5233,13 @@ export function LibraryAssetsTable({
                                   e.stopPropagation();
                                   handleViewAssetDetail(row, e);
                                 }}
-                                onDoubleClick={(e) => {
-                                  // Prevent double click from bubbling to cell
-                                  e.stopPropagation();
-                                }}
-                                title={userRole === 'admin' ? "View asset details (Ctrl/Cmd+Click for new tab)" : "Only admin can view asset details"}
-                                disabled={userRole !== 'admin'}
-                                style={userRole !== 'admin' ? { cursor: 'not-allowed', opacity: 0.5 } : undefined}
+                            onDoubleClick={(e) => {
+                              // Prevent double click from bubbling to cell
+                              e.stopPropagation();
+                            }}
+                            title={userRole !== 'viewer' ? "View asset details (Ctrl/Cmd+Click for new tab)" : "Only admin and editor can view asset details"}
+                            disabled={userRole === 'viewer'}
+                            style={userRole === 'viewer' ? { cursor: 'not-allowed', opacity: 0.5 } : undefined}
                               >
                                 <Image
                                   src={assetTableIcon}

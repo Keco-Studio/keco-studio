@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 9. Get invitation details
+    console.log('[API /invitations/accept] Looking for invitation:', tokenPayload.invitationId);
     const { data: invitation, error: invitationError } = await supabase
       .from('collaboration_invitations')
       .select('*, projects:project_id(name)')
@@ -122,11 +123,15 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (invitationError || !invitation) {
+      console.error('[API /invitations/accept] Invitation not found. Error:', invitationError);
+      console.error('[API /invitations/accept] Token payload:', JSON.stringify(tokenPayload, null, 2));
       return NextResponse.json(
         { success: false, error: 'Invitation not found' },
         { status: 404 }
       );
     }
+    
+    console.log('[API /invitations/accept] Found invitation:', invitation.id);
 
     // 10. Validate invitation status
     if (invitation.accepted_at) {

@@ -8,8 +8,13 @@
 import { Resend } from 'resend';
 import { InvitationEmail } from '@/emails/invitation-email';
 
-// Initialize Resend client
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Initialize Resend client with increased timeout for WSL/network issues
+const resend = new Resend(process.env.RESEND_API_KEY, {
+  fetchOptions: {
+    // Increase timeout to 30 seconds for slow networks (WSL, VPN, etc.)
+    signal: AbortSignal.timeout(30000),
+  },
+});
 
 /**
  * Email sender configuration

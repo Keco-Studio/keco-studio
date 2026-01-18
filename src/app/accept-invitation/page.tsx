@@ -30,8 +30,21 @@ export default function AcceptInvitationPage() {
   
   useEffect(() => {
     const processInvitation = async () => {
+      // Check if we're processing a token from URL or from sessionStorage
+      let tokenToProcess = token;
+      
+      // If no token in URL, check sessionStorage
+      if (!tokenToProcess && typeof window !== 'undefined') {
+        const pendingToken = sessionStorage.getItem('pendingInvitationToken');
+        if (pendingToken) {
+          tokenToProcess = pendingToken;
+          // Clear the pending token
+          sessionStorage.removeItem('pendingInvitationToken');
+        }
+      }
+      
       // 1. Validate token parameter exists
-      if (!token) {
+      if (!tokenToProcess) {
         setStatus('error');
         setMessage('Missing invitation token');
         setDescription('The invitation link appears to be incomplete. Please use the full link from your email.');
@@ -42,13 +55,18 @@ export default function AcceptInvitationPage() {
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
-        // Store token in session and redirect to login
-        router.push(`/login?redirect=/accept-invitation?token=${encodeURIComponent(token)}`);
+        // Store token in sessionStorage and redirect to projects with a redirect parameter
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('pendingInvitationToken', tokenToProcess);
+        }
+        // Redirect to projects with the current page as the redirect target
+        const redirectUrl = `/projects?redirect=${encodeURIComponent(`/accept-invitation?token=${tokenToProcess}`)}`;
+        router.push(redirectUrl);
         return;
       }
       
       // 3. Quick expiration check (without full validation)
-      if (isTokenExpired(token)) {
+      if (isTokenExpired(tokenToProcess)) {
         setStatus('expired');
         setMessage('Invitation expired');
         setDescription('This invitation link has expired. Please ask the project admin to send a new invitation.');
@@ -72,7 +90,7 @@ export default function AcceptInvitationPage() {
           'Authorization': `Bearer ${session.access_token}`,
         },
         body: JSON.stringify({
-          invitationToken: token,
+          invitationToken: tokenToProcess,
         }),
       });
       

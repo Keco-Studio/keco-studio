@@ -61,6 +61,17 @@ export default function ProjectsPage() {
     };
   }, [queryClient]);
 
+  // Check for pending invitation token after user logs in
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const pendingToken = sessionStorage.getItem('pendingInvitationToken');
+      if (pendingToken) {
+        // Redirect to accept-invitation page to process the token
+        router.push('/accept-invitation');
+      }
+    }
+  }, [router]);
+
   useEffect(() => {
     // Show create project breadcrumb when there are no projects
     setShowCreateProjectBreadcrumb(!loading && projects.length === 0);

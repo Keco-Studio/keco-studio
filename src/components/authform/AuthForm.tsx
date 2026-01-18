@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useEffect } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import loginImg from "@/app/assets/images/loginImg.png";
 import { useSupabase } from "@/lib/SupabaseContext";
@@ -27,6 +28,8 @@ type LoginState = {
 
 export default function AuthForm() {
   const supabase = useSupabase();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [mode, setMode] = useState<Mode>("login");
   const [regForm, setRegForm] = useState<RegisterState>({
     email: "",
@@ -121,6 +124,15 @@ export default function AuthForm() {
       if (error) throw error;
       setMessage("Signed in successfully");
       setPasswordError(false);
+      
+      // Handle redirect after successful login
+      const redirectPath = searchParams.get('redirect');
+      if (redirectPath) {
+        console.log('[AuthForm] Redirecting to:', redirectPath);
+        router.push(redirectPath);
+      } else {
+        router.push('/projects');
+      }
     } catch (err: any) {
       if(err?.message.includes("Invalid login credentials")) {
         setErrorMsg("Incorrect password, please try again.");
@@ -142,7 +154,10 @@ export default function AuthForm() {
     try {
       // Ensure we use the current origin (localhost:3000 for dev, vercel.app for prod)
       const currentOrigin = window.location.origin;
-      const redirectTo = `${currentOrigin}/auth/callback`;
+      const redirectPath = searchParams.get('redirect');
+      const redirectTo = redirectPath 
+        ? `${currentOrigin}/auth/callback?redirect=${encodeURIComponent(redirectPath)}`
+        : `${currentOrigin}/auth/callback`;
       
       console.log('Google OAuth redirectTo:', redirectTo);
       console.log('Current origin:', currentOrigin);
