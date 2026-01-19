@@ -89,19 +89,86 @@ export function LibraryAssetsTable({
   const { yRows } = useYjs();
   const yjsRows = useYjsRows(yRows);
   
+  // Track previous rows to detect major changes (version switches)
+  const prevRowsRef = useRef<AssetRow[]>([]);
+  
+  // Edit mode state: track which cell is being edited (rowId and propertyKey)
+  // Declare before useEffect so it can be used in dependencies
+  const [editingCell, setEditingCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
+  const [editingCellValue, setEditingCellValue] = useState<string>('');
+  const editingCellRef = useRef<HTMLSpanElement | null>(null);
+  const isComposingRef = useRef(false);
+  
   // Initialize: sync props.rows to Yjs (only on first time, when Yjs is empty)
   useEffect(() => {
     if (yRows.length === 0 && rows.length > 0) {
       // Only initialize when Yjs is empty and props has data
       yRows.insert(0, rows);
+      prevRowsRef.current = rows;
     } else if (yRows.length > 0 && rows.length > 0) {
       // If Yjs already has data but props updated (e.g., from database refresh), need to sync
       // Update existing rows, add new rows, delete non-existent rows (but keep temp rows and rows being edited)
       const yjsRowsArray = yRows.toArray();
       const existingIds = new Set(yjsRowsArray.map(r => r.id));
       const propsIds = new Set(rows.map(r => r.id));
+      const prevIds = new Set(prevRowsRef.current.map(r => r.id));
       
-      // Find rows to update, add, and delete (but don't delete temp rows and rows being edited)
+      // Check if this is a major data change (version switch scenario)
+      // If less than 30% of IDs overlap with existing Yjs data, treat it as a complete replacement
+      const overlapCount = Array.from(existingIds).filter(id => propsIds.has(id)).length;
+      const overlapRatio = existingIds.size > 0 ? overlapCount / existingIds.size : 0;
+      const isMajorChange = overlapRatio < 0.3 && propsIds.size > 0;
+      
+      if (isMajorChange) {
+        // Complete replacement: clear all non-temp rows and reinitialize
+        // This happens when switching versions - the data is completely different
+        const tempRowsToKeep: AssetRow[] = [];
+        const indicesToKeep: number[] = [];
+        
+        // Find temp rows that are being edited (preserve user's current edits)
+        yjsRowsArray.forEach((yjsRow, index) => {
+          if (yjsRow.id.startsWith('temp-')) {
+            // Keep temp rows that are being edited
+            tempRowsToKeep.push(yjsRow);
+            indicesToKeep.push(index);
+          }
+        });
+        
+        // Delete all rows except temp rows being edited, in reverse order
+        const indicesToDelete: number[] = [];
+        for (let i = yjsRowsArray.length - 1; i >= 0; i--) {
+          if (!indicesToKeep.includes(i)) {
+            indicesToDelete.push(i);
+          }
+        }
+        
+        // Delete in reverse order to avoid index shifting issues
+        indicesToDelete.forEach(index => {
+          try {
+            if (index >= 0 && index < yRows.length) {
+              yRows.delete(index, 1);
+            }
+          } catch (e) {
+            // Ignore errors if index is out of bounds (already deleted)
+            console.warn('Failed to delete row at index:', index, e);
+          }
+        });
+        
+        // Insert new rows at the beginning
+        if (rows.length > 0) {
+          yRows.insert(0, rows);
+        }
+        
+        // Re-insert temp rows that were being edited at the end
+        if (tempRowsToKeep.length > 0) {
+          yRows.insert(yRows.length, tempRowsToKeep);
+        }
+        
+        prevRowsRef.current = rows;
+        return;
+      }
+      
+      // Incremental update: normal sync logic
       const rowsToUpdate: Array<{ index: number; row: AssetRow }> = [];
       const rowsToAdd: AssetRow[] = [];
       const indicesToDelete: number[] = [];
@@ -142,14 +209,37 @@ export function LibraryAssetsTable({
       
       // Delete in reverse order (avoid index changes)
       indicesToDelete.sort((a, b) => b - a).forEach(index => {
-        yRows.delete(index, 1);
+        try {
+          yRows.delete(index, 1);
+        } catch (e) {
+          // Ignore errors if index is out of bounds (already deleted)
+          console.warn('Failed to delete row at index:', index, e);
+        }
       });
       
       // Update in reverse order (avoid index changes)
+      // First, get current array snapshot to avoid index issues
+      const currentYjsArray = yRows.toArray();
       rowsToUpdate.sort((a, b) => b.index - a.index).forEach(({ index, row }) => {
-        yRows.delete(index, 1);
-        yRows.insert(index, [row]);
+        try {
+          // Find the current index of this row (index may have changed after deletions)
+          const currentIndex = currentYjsArray.findIndex(r => r.id === row.id);
+          if (currentIndex >= 0 && currentIndex < yRows.length) {
+            yRows.delete(currentIndex, 1);
+            yRows.insert(currentIndex, [row]);
+            // Update the array snapshot
+            currentYjsArray.splice(currentIndex, 1);
+            currentYjsArray.splice(currentIndex, 0, row);
+          } else {
+            console.warn('Row not found for update:', row.id);
+          }
+        } catch (e) {
+          console.warn('Failed to update row:', row.id, e);
+        }
       });
+      
+      // Update prevRowsRef after all updates
+      prevRowsRef.current = rows;
       
       // Add new rows
       // If there are temp rows created by insert, prioritize replacing them (maintain position)
@@ -182,9 +272,11 @@ export function LibraryAssetsTable({
           yRows.insert(yRows.length, remainingRows);
         }
       }
+      
+      // Update prevRowsRef after all updates
+      prevRowsRef.current = rows;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, yRows]); // editingRowId is defined below, not included here to avoid circular dependency
+  }, [rows, yRows, editingCell]);
   
   // Use Yjs rows as primary data source, fallback to props.rows if Yjs is empty (compatibility)
   const allRowsSource = yjsRows.length > 0 ? yjsRows : rows;
@@ -192,12 +284,6 @@ export function LibraryAssetsTable({
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [newRowData, setNewRowData] = useState<Record<string, any>>({});
   const [isSaving, setIsSaving] = useState(false);
-  
-  // Edit mode state: track which cell is being edited (rowId and propertyKey)
-  const [editingCell, setEditingCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
-  const [editingCellValue, setEditingCellValue] = useState<string>('');
-  const editingCellRef = useRef<HTMLSpanElement | null>(null);
-  const isComposingRef = useRef(false);
   
   // Track current user's focused cell (for collaboration presence)
   const [currentFocusedCell, setCurrentFocusedCell] = useState<{ assetId: string; propertyKey: string } | null>(null);

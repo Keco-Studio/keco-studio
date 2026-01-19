@@ -29,6 +29,8 @@ import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
 import { YjsProvider } from '@/contexts/YjsContext';
 import { VersionControlSidebar } from '@/components/version-control/VersionControlSidebar';
+import { getVersionsByLibrary } from '@/lib/services/versionService';
+import type { LibraryVersion } from '@/lib/types/version';
 import { createPortal } from 'react-dom';
 import styles from './page.module.css';
 
@@ -64,6 +66,7 @@ export default function LibraryPage() {
   const [isVersionControlOpen, setIsVersionControlOpen] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [restoreToastMessage, setRestoreToastMessage] = useState<string | null>(null);
+  const [versions, setVersions] = useState<LibraryVersion[]>([]);
 
   // Phase 2: state for Library assets table view (placeholder data, wired via service layer)
   const [librarySummary, setLibrarySummary] = useState<LibrarySummary | null>(null);
@@ -279,9 +282,117 @@ export default function LibraryPage() {
     };
   }, [libraryId, supabase]);
 
+  // Load versions when version control is opened
+  useEffect(() => {
+    if (!isVersionControlOpen || !libraryId) return;
+
+    const loadVersions = async () => {
+      try {
+        const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
+        setVersions(loadedVersions);
+      } catch (e: any) {
+        console.error('Failed to load versions:', e);
+      }
+    };
+
+    loadVersions();
+  }, [isVersionControlOpen, libraryId, supabase]);
+
+  // Handle version selection - load data from snapshot or current database
+  useEffect(() => {
+    if (!libraryId) return;
+
+    const loadVersionData = async () => {
+      try {
+        // If no version selected or current version selected, load latest data from database
+        if (!selectedVersionId || selectedVersionId === '__current__') {
+          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+          setAssetRows(rows);
+          return;
+        }
+
+        // If versions haven't been loaded yet, wait for them
+        if (versions.length === 0) {
+          // Try to load versions first
+          try {
+            const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
+            setVersions(loadedVersions);
+            // Continue with the loaded versions
+            const selectedVersion = loadedVersions.find(v => v.id === selectedVersionId);
+            if (!selectedVersion || !selectedVersion.snapshotData) {
+              console.warn('Selected version not found or has no snapshot data');
+              // Fallback to current data
+              const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+              setAssetRows(rows);
+              return;
+            }
+
+            // Extract assets from snapshot data
+            const snapshotAssets = selectedVersion.snapshotData?.assets;
+            if (snapshotAssets && Array.isArray(snapshotAssets)) {
+              // Convert snapshot assets to AssetRow format
+              // The snapshot assets should already be in AssetRow format from createLibrarySnapshot
+              setAssetRows(snapshotAssets);
+            } else {
+              console.warn('Snapshot data does not contain valid assets array');
+              // Fallback to current data
+              const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+              setAssetRows(rows);
+            }
+          } catch (loadError) {
+            console.error('Failed to load versions:', loadError);
+            // Fallback to current data
+            const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+            setAssetRows(rows);
+          }
+          return;
+        }
+
+        // Find the selected version
+        const selectedVersion = versions.find(v => v.id === selectedVersionId);
+        if (!selectedVersion || !selectedVersion.snapshotData) {
+          console.warn('Selected version not found or has no snapshot data');
+          // Fallback to current data
+          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+          setAssetRows(rows);
+          return;
+        }
+
+        // Extract assets from snapshot data
+        const snapshotAssets = selectedVersion.snapshotData?.assets;
+        if (snapshotAssets && Array.isArray(snapshotAssets)) {
+          // Convert snapshot assets to AssetRow format
+          // The snapshot assets should already be in AssetRow format from createLibrarySnapshot
+          setAssetRows(snapshotAssets);
+        } else {
+          console.warn('Snapshot data does not contain valid assets array');
+          // Fallback to current data
+          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+          setAssetRows(rows);
+        }
+      } catch (e: any) {
+        console.error('Failed to load version data:', e);
+        // On error, fallback to current data
+        try {
+          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+          setAssetRows(rows);
+        } catch (fallbackError) {
+          console.error('Failed to load fallback data:', fallbackError);
+        }
+      }
+    };
+
+    loadVersionData();
+  }, [selectedVersionId, versions, libraryId, supabase]);
+
   // Listen to database changes for real-time sync across users
   useEffect(() => {
     if (!libraryId || !isAuthenticated) return;
+
+    // Skip real-time updates if viewing a historical version
+    if (selectedVersionId && selectedVersionId !== '__current__') {
+      return;
+    }
 
     console.log(`[Library Page] Setting up database subscription for library: ${libraryId}`);
 
@@ -341,7 +452,7 @@ export default function LibraryPage() {
       supabase.removeChannel(assetsChannel);
       supabase.removeChannel(valuesChannel);
     };
-  }, [libraryId, supabase, isAuthenticated]);
+  }, [libraryId, supabase, isAuthenticated, selectedVersionId]);
 
   const handleValueChange = (fieldId: string, value: any) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -533,16 +644,48 @@ export default function LibraryPage() {
             onClose={() => {
               setIsVersionControlOpen(false);
               setSelectedVersionId(null); // Clear selection when closing sidebar
+              // Reload latest data when closing sidebar
+              const reloadLatestData = async () => {
+                try {
+                  const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+                  setAssetRows(rows);
+                } catch (e: any) {
+                  console.error('Failed to reload latest data:', e);
+                }
+              };
+              reloadLatestData();
             }}
             selectedVersionId={selectedVersionId}
-            onVersionSelect={(versionId) => {
+            onVersionSelect={async (versionId) => {
               setSelectedVersionId(versionId);
+              // Reload versions to ensure we have the latest snapshot data
+              if (versionId && versionId !== '__current__') {
+                try {
+                  const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
+                  setVersions(loadedVersions);
+                } catch (e: any) {
+                  console.error('Failed to reload versions:', e);
+                }
+              }
             }}
-            onRestoreSuccess={() => {
+            onRestoreSuccess={async () => {
               setRestoreToastMessage('Library restored');
               setTimeout(() => {
                 setRestoreToastMessage(null);
               }, 2000);
+              // Reload versions and latest data after restore
+              try {
+                const [loadedVersions, rows] = await Promise.all([
+                  getVersionsByLibrary(supabase, libraryId),
+                  getLibraryAssetsWithProperties(supabase, libraryId),
+                ]);
+                setVersions(loadedVersions);
+                setAssetRows(rows);
+                // Reset to current version view
+                setSelectedVersionId(null);
+              } catch (e: any) {
+                console.error('Failed to reload data after restore:', e);
+              }
             }}
           />
         )}

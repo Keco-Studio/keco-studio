@@ -126,13 +126,19 @@ async function restoreLibraryFromSnapshot(
 
 /**
  * Generate restore version name
- * Format: {original_version_name} ({YYYY.MM.DD})
+ * Format: {original_version_name} ({Month} {Day}, {Hour}:{Minute} {AM/PM})
+ * Example: "Version 1 (Jan19, 7:32 PM)"
  */
 function generateRestoreVersionName(originalVersionName: string, originalCreatedAt: Date): string {
-  const year = originalCreatedAt.getFullYear();
-  const month = String(originalCreatedAt.getMonth() + 1).padStart(2, '0');
-  const day = String(originalCreatedAt.getDate()).padStart(2, '0');
-  return `${originalVersionName} (${year}.${month}.${day})`;
+  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const month = months[originalCreatedAt.getMonth()];
+  const day = originalCreatedAt.getDate();
+  const hours = originalCreatedAt.getHours();
+  const minutes = originalCreatedAt.getMinutes();
+  const ampm = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  const displayMinutes = minutes.toString().padStart(2, '0');
+  return `${originalVersionName} (${month}${day}, ${displayHours}:${displayMinutes} ${ampm})`;
 }
 
 /**
@@ -278,42 +284,49 @@ export async function restoreVersion(
   const userId = await getCurrentUserId(supabase);
 
   // Get current version for backup
+  // Always create backup if backupCurrent is true, regardless of whether there's a current version record
+  // This is because the user may have made changes but not yet created a version
   let backupVersion: LibraryVersion | undefined;
   if (backupCurrent) {
-    const { data: currentVersion } = await supabase
+    // Create backup version from current library state
+    const backupSnapshot = await createLibrarySnapshot(supabase, libraryId);
+    
+    // Try to find the most recent version to use as parent (optional)
+    const { data: latestVersion } = await supabase
       .from('library_versions')
-      .select('*')
+      .select('id')
       .eq('library_id', libraryId)
-      .eq('is_current', true)
+      .order('created_at', { ascending: false })
+      .limit(1)
       .maybeSingle();
+    
+    const { data: backupVersionData, error: backupError } = await supabase
+      .from('library_versions')
+      .insert({
+        library_id: libraryId,
+        version_name: backupVersionName!.trim(),
+        version_type: 'backup',
+        created_by: userId,
+        snapshot_data: backupSnapshot,
+        parent_version_id: latestVersion?.id || null,
+        is_current: false,
+      })
+      .select()
+      .single();
 
-    if (currentVersion) {
-      // Create backup version from current
-      const backupSnapshot = await createLibrarySnapshot(supabase, libraryId);
-      
-      const { data: backupVersionData, error: backupError } = await supabase
-        .from('library_versions')
-        .insert({
-          library_id: libraryId,
-          version_name: backupVersionName!.trim(),
-          version_type: 'backup',
-          created_by: userId,
-          snapshot_data: backupSnapshot,
-          parent_version_id: currentVersion.id,
-          is_current: false,
-        })
-        .select()
+    if (backupError) {
+      console.error('Failed to create backup version:', backupError);
+      throw new Error(`Failed to create backup version: ${backupError.message}`);
+    }
+
+    if (backupVersionData) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('id, full_name, username, email, avatar_color')
+        .eq('id', userId)
         .single();
-
-      if (!backupError && backupVersionData) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('id, full_name, username, email, avatar_color')
-          .eq('id', userId)
-          .single();
-        
-        backupVersion = dbVersionToAppVersion(backupVersionData as LibraryVersionDb, profile || null);
-      }
+      
+      backupVersion = dbVersionToAppVersion(backupVersionData as LibraryVersionDb, profile || null);
     }
   }
 
