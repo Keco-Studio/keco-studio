@@ -20,29 +20,46 @@ interface VersionListProps {
 }
 
 export function VersionList({ versions, libraryId, selectedVersionId, onVersionSelect, onRestoreSuccess }: VersionListProps) {
-  // Sort versions by created_at DESC (newest first)
-  const sortedVersions = useMemo(() => {
-    return [...versions].sort((a, b) => 
+  // Always show virtual current version at the top
+  // Current version represents the current editing state, not a saved version
+  // All versions from database are history versions
+  const { currentVersion, historyVersions } = useMemo(() => {
+    // Filter out any versions marked as current (shouldn't happen after fix, but just in case)
+    const history = versions.filter(v => !v.isCurrent).sort((a, b) => 
       b.createdAt.getTime() - a.createdAt.getTime()
     );
-  }, [versions]);
+    
+    // Always create a virtual current version
+    const virtualCurrent: LibraryVersion = {
+      id: '__current__',
+      libraryId: libraryId,
+      versionName: 'Current Version',
+      versionType: 'manual',
+      createdBy: {
+        id: '',
+        name: 'System',
+      },
+      createdAt: new Date(),
+      snapshotData: null,
+      isCurrent: true,
+    };
+    
+    return { currentVersion: virtualCurrent, historyVersions: history };
+  }, [versions, libraryId]);
 
-  if (sortedVersions.length === 0) {
-    return (
-      <div className={styles.emptyState}>
-        No versions yet. Click the + button to create your first version.
-      </div>
-    );
-  }
+  // Combine: current version first, then history versions
+  const allVersions = useMemo(() => {
+    return [currentVersion, ...historyVersions];
+  }, [currentVersion, historyVersions]);
 
   return (
     <div className={styles.versionList}>
-      {sortedVersions.map((version, index) => (
+      {allVersions.map((version, index) => (
         <VersionItem
           key={version.id}
           version={version}
           libraryId={libraryId}
-          isLast={index === sortedVersions.length - 1}
+          isLast={index === allVersions.length - 1}
           isFirst={index === 0}
           isSelected={selectedVersionId === version.id}
           onSelect={onVersionSelect}

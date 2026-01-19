@@ -211,15 +211,8 @@ export async function createVersion(
   // Create snapshot
   const snapshotData = await createLibrarySnapshot(supabase, libraryId);
 
-  // Get current version to unset is_current
-  const { data: currentVersion } = await supabase
-    .from('library_versions')
-    .select('id')
-    .eq('library_id', libraryId)
-    .eq('is_current', true)
-    .maybeSingle();
-
-  // Insert new version
+  // Insert new version as history version (not current)
+  // Current version is always virtual and represents the current editing state
   const { data: newVersion, error } = await supabase
     .from('library_versions')
     .insert({
@@ -228,7 +221,7 @@ export async function createVersion(
       version_type: 'manual',
       created_by: userId,
       snapshot_data: snapshotData,
-      is_current: true, // New manual version becomes current
+      is_current: false, // New version is a history version, not current
     })
     .select()
     .single();
@@ -324,14 +317,9 @@ export async function restoreVersion(
     }
   }
 
-  // Set previous current version to not current
-  await supabase
-    .from('library_versions')
-    .update({ is_current: false })
-    .eq('library_id', libraryId)
-    .eq('is_current', true);
-
   // Create restore version record
+  // Restore version is a history version, not current
+  // Current version is always virtual and represents the current editing state
   // Format: {original_version_name} ({YYYY.MM.DD})
   // Use the original version's created_at (not the restore time)
   const originalCreatedAt = new Date(versionToRestore.created_at);
@@ -369,7 +357,7 @@ export async function restoreVersion(
       restore_from_version_id: versionId,
       restored_by: userId,
       restored_at: new Date().toISOString(),
-      is_current: true, // Restored version becomes current
+      is_current: false, // Restore version is a history version, not current
     })
     .select()
     .single();

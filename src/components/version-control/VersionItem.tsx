@@ -72,7 +72,8 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
     if (target.closest(`.${styles.actions}`) || target.closest('button')) {
       return;
     }
-    if (!isCurrent && onSelect) {
+    // Don't select current version (including virtual one)
+    if (!isCurrent && onSelect && version.id !== '__current__') {
       onSelect(version.id);
     }
   };
