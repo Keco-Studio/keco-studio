@@ -68,8 +68,6 @@ export function CreateVersionModal({
           </button>
         </div>
 
-        <div className={styles.divider}></div>
-
         <div className={styles.nameContainer}>
           <div className={styles.nameInputContainer}>
             <label htmlFor="version-name" className={styles.nameLabel}>Version Name</label>
