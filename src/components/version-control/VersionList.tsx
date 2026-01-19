@@ -40,6 +40,7 @@ export function VersionList({ versions, libraryId }: VersionListProps) {
           version={version}
           libraryId={libraryId}
           isLast={index === sortedVersions.length - 1}
+          isFirst={index === 0}
         />
       ))}
     </div>

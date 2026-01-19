@@ -22,9 +22,10 @@ interface VersionItemProps {
   version: LibraryVersion;
   libraryId: string;
   isLast: boolean;
+  isFirst?: boolean;
 }
 
-export function VersionItem({ version, libraryId, isLast }: VersionItemProps) {
+export function VersionItem({ version, libraryId, isLast, isFirst = false }: VersionItemProps) {
   const [isHighlighting, setIsHighlighting] = useState(false);
 
   // Format date: "Dec 28, 7:40 AM"
@@ -86,8 +87,14 @@ export function VersionItem({ version, libraryId, isLast }: VersionItemProps) {
             className={styles.iconImage}
           />
         </div>
-        {/* Connection Line */}
-        {!isLast && (
+        {/* First Connection Line - from top to icon center */}
+        {isFirst && (
+          <div className={styles.firstConnectionLine} />
+        )}
+        {/* Connection Line - from icon center to next item or bottom */}
+        {isLast ? (
+          <div className={styles.lastConnectionLine} />
+        ) : (
           <div className={styles.connectionLine} />
         )}
       </div>
