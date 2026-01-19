@@ -58,12 +58,12 @@ export function DeleteConfirmModal({
       okText="Delete"
       cancelText="Cancel"
       okButtonProps={{ danger: true }}
+      width={616}
+      centered
+      className={styles.confirmModal}
+      wrapClassName={styles.confirmModalWrap}
     >
-      <div className={styles.content}>
-        <p className={styles.message}>
-          Are you sure you want to delete this version?
-        </p>
-      </div>
+      <p>Are you sure you want to delete this version?</p>
     </Modal>
   );
 }
