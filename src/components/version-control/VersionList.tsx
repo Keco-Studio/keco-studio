@@ -1,0 +1,48 @@
+/**
+ * Version List Component
+ * 
+ * Displays list of versions sorted by creation time (newest first)
+ */
+
+'use client';
+
+import { useMemo } from 'react';
+import type { LibraryVersion } from '@/lib/types/version';
+import { VersionItem } from './VersionItem';
+import styles from './VersionList.module.css';
+
+interface VersionListProps {
+  versions: LibraryVersion[];
+  libraryId: string;
+}
+
+export function VersionList({ versions, libraryId }: VersionListProps) {
+  // Sort versions by created_at DESC (newest first)
+  const sortedVersions = useMemo(() => {
+    return [...versions].sort((a, b) => 
+      b.createdAt.getTime() - a.createdAt.getTime()
+    );
+  }, [versions]);
+
+  if (sortedVersions.length === 0) {
+    return (
+      <div className={styles.emptyState}>
+        No versions yet. Click the + button to create your first version.
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.versionList}>
+      {sortedVersions.map((version, index) => (
+        <VersionItem
+          key={version.id}
+          version={version}
+          libraryId={libraryId}
+          isLast={index === sortedVersions.length - 1}
+        />
+      ))}
+    </div>
+  );
+}
+

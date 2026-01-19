@@ -1,0 +1,42 @@
+/* Restore Confirm Modal Styles */
+
+.content {
+  margin-top: 16px;
+}
+
+.message {
+  margin-bottom: 16px;
+  font-size: 14px;
+  color: #0f172a;
+  line-height: 1.5;
+}
+
+.switchContainer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.switchLabel {
+  font-size: 14px;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.inputContainer {
+  margin-top: 16px;
+}
+
+.label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.label input {
+  margin-top: 8px;
+}
+

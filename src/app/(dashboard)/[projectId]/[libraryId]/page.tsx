@@ -28,6 +28,7 @@ import { PresenceIndicators } from '@/components/collaboration/PresenceIndicator
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
 import { YjsProvider } from '@/contexts/YjsContext';
+import { VersionControlSidebar } from '@/components/version-control/VersionControlSidebar';
 import styles from './page.module.css';
 
 type FieldDef = {
@@ -59,6 +60,7 @@ export default function LibraryPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<CollaboratorRole>('viewer');
+  const [isVersionControlOpen, setIsVersionControlOpen] = useState(false);
 
   // Phase 2: state for Library assets table view (placeholder data, wired via service layer)
   const [librarySummary, setLibrarySummary] = useState<LibrarySummary | null>(null);
@@ -469,50 +471,66 @@ export default function LibraryPage() {
           currentUserAvatarColor={userAvatarColor}
           userRole={userRole}
           presenceUsers={presenceUsers}
+          isVersionControlOpen={isVersionControlOpen}
+          onVersionControlToggle={() => setIsVersionControlOpen(!isVersionControlOpen)}
         />
       )}
 
-      {/* Phase 2: Library assets table preview (placeholder data).
-          Later phases will replace placeholder service logic with real Supabase-backed data
-          and upgrade the table to a two-level header that mirrors predefine + Figma. */}
-      <YjsProvider libraryId={libraryId}>
-        <LibraryAssetsTable
-          library={
-            librarySummary
-              ? {
-                  id: librarySummary.id,
-                  name: librarySummary.name,
-                  description: librarySummary.description,
-                }
-              : {
-                  id: library.id,
-                  name: library.name,
-                  description: library.description,
-                }
-          }
-          sections={tableSections}
-          properties={tableProperties}
-          rows={assetRows}
-          onSaveAsset={handleSaveAssetFromTable}
-          onUpdateAsset={handleUpdateAssetFromTable}
-          onDeleteAsset={handleDeleteAssetFromTable}
-          currentUser={
-            userProfile
-              ? {
-                  id: userProfile.id,
-                  name: userProfile.full_name || userProfile.username || 'Anonymous',
-                  email: userProfile.email,
-                  avatarColor: userAvatarColor,
-                }
-              : null
-          }
-          enableRealtime={isAuthenticated}
-          presenceTracking={{
-            updateActiveCell,
-            getUsersEditingCell,
-          }}
-        />
-      </YjsProvider>
+      {/* Main content area: Table and Version Control Sidebar side by side */}
+      <div className={styles.mainContent}>
+        {/* Phase 2: Library assets table preview (placeholder data).
+            Later phases will replace placeholder service logic with real Supabase-backed data
+            and upgrade the table to a two-level header that mirrors predefine + Figma. */}
+        <div className={styles.tableContainer}>
+          <YjsProvider libraryId={libraryId}>
+            <LibraryAssetsTable
+              library={
+                librarySummary
+                  ? {
+                      id: librarySummary.id,
+                      name: librarySummary.name,
+                      description: librarySummary.description,
+                    }
+                  : {
+                      id: library.id,
+                      name: library.name,
+                      description: library.description,
+                    }
+              }
+              sections={tableSections}
+              properties={tableProperties}
+              rows={assetRows}
+              onSaveAsset={handleSaveAssetFromTable}
+              onUpdateAsset={handleUpdateAssetFromTable}
+              onDeleteAsset={handleDeleteAssetFromTable}
+              currentUser={
+                userProfile
+                  ? {
+                      id: userProfile.id,
+                      name: userProfile.full_name || userProfile.username || 'Anonymous',
+                      email: userProfile.email,
+                      avatarColor: userAvatarColor,
+                    }
+                  : null
+              }
+              enableRealtime={isAuthenticated}
+              presenceTracking={{
+                updateActiveCell,
+                getUsersEditingCell,
+              }}
+            />
+          </YjsProvider>
+        </div>
+
+        {/* Version Control Sidebar */}
+        {isVersionControlOpen && (
+          <VersionControlSidebar
+            libraryId={libraryId}
+            isOpen={isVersionControlOpen}
+            onClose={() => setIsVersionControlOpen(false)}
+          />
+        )}
+      </div>
 
       {saveError && (
         <div className={styles.saveError}>

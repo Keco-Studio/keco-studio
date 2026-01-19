@@ -32,6 +32,8 @@ interface LibraryHeaderProps {
   currentUserAvatarColor?: string;
   userRole: CollaboratorRole;
   presenceUsers: PresenceState[];
+  isVersionControlOpen?: boolean;
+  onVersionControlToggle?: () => void;
 }
 
 export function LibraryHeader({
@@ -45,6 +47,8 @@ export function LibraryHeader({
   currentUserAvatarColor = '#999999',
   userRole,
   presenceUsers,
+  isVersionControlOpen = false,
+  onVersionControlToggle,
 }: LibraryHeaderProps) {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
@@ -298,7 +302,10 @@ export function LibraryHeader({
         </Tooltip>
         {/* Version Control Icon */}
         <Tooltip title="Version Control">
-          <button className={styles.iconButton}>
+          <button 
+            className={styles.iconButton}
+            onClick={onVersionControlToggle}
+          >
             <Image
               src={libraryHeadVersionControlIcon}
               alt="Version Control"
