@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Avatar, Tooltip } from 'antd';
 import Image from 'next/image';
 import type { LibraryVersion } from '@/lib/types/version';
@@ -26,10 +26,10 @@ interface VersionItemProps {
   isFirst?: boolean;
   isSelected?: boolean;
   onSelect?: (versionId: string) => void;
+  onRestoreSuccess?: () => void;
 }
 
-export function VersionItem({ version, libraryId, isLast, isFirst = false, isSelected = false, onSelect }: VersionItemProps) {
-  const [isHighlighting, setIsHighlighting] = useState(false);
+export function VersionItem({ version, libraryId, isLast, isFirst = false, isSelected = false, onSelect, onRestoreSuccess }: VersionItemProps) {
 
   // Format date: "Dec 28, 7:40 AM"
   const formatDate = (date: Date): string => {
@@ -55,18 +55,6 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
   // Get avatar color
   const avatarColor = version.createdBy.avatarColor || getUserAvatarColor(version.createdBy.id);
 
-  // Highlight animation for restored versions
-  useEffect(() => {
-    // Check if this version was just restored (you can pass this as a prop or use a state management solution)
-    // For now, we'll use a simple approach: check if version was created recently (within last 2 seconds)
-    const timeSinceCreation = Date.now() - version.createdAt.getTime();
-    if (timeSinceCreation < 2000 && version.versionType === 'restore') {
-      setIsHighlighting(true);
-      const timer = setTimeout(() => setIsHighlighting(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [version]);
-
   const isCurrent = version.isCurrent;
   const displayName = version.versionName;
   const creatorName = version.createdBy.name;
@@ -90,7 +78,7 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
 
   return (
     <div 
-      className={`${styles.versionItem} ${isCurrent ? styles.currentVersion : styles.historyVersion} ${isHighlighting ? styles.highlighting : ''} ${isSelected ? styles.selected : ''}`}
+      className={`${styles.versionItem} ${isCurrent ? styles.currentVersion : styles.historyVersion} ${isSelected ? styles.selected : ''}`}
       onClick={handleClick}
     >
       {/* Left Icon */}
@@ -100,17 +88,17 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
         >
           <Image
             src={
-              isCurrent 
-                ? visionItemIcon2 
-                : version.versionType === 'restore'
-                  ? versionRestoreIcon
+              version.versionType === 'restore'
+                ? versionRestoreIcon
+                : isCurrent 
+                  ? visionItemIcon2 
                   : visionItemIcon1
             }
             alt={
-              isCurrent 
-                ? "Current version" 
-                : version.versionType === 'restore'
-                  ? "Restored version"
+              version.versionType === 'restore'
+                ? "Restored version"
+                : isCurrent 
+                  ? "Current version" 
                   : "History version"
             }
             width={48}
@@ -159,7 +147,7 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
       {/* Actions (only for history versions) */}
       {!isCurrent && (
         <div className={styles.actions}>
-          <RestoreButton version={version} libraryId={libraryId} />
+          <RestoreButton version={version} libraryId={libraryId} onRestoreSuccess={onRestoreSuccess} />
           <VersionItemMenu version={version} libraryId={libraryId} />
         </div>
       )}

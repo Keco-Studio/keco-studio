@@ -29,6 +29,7 @@ import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
 import { YjsProvider } from '@/contexts/YjsContext';
 import { VersionControlSidebar } from '@/components/version-control/VersionControlSidebar';
+import { createPortal } from 'react-dom';
 import styles from './page.module.css';
 
 type FieldDef = {
@@ -62,6 +63,7 @@ export default function LibraryPage() {
   const [userRole, setUserRole] = useState<CollaboratorRole>('viewer');
   const [isVersionControlOpen, setIsVersionControlOpen] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [restoreToastMessage, setRestoreToastMessage] = useState<string | null>(null);
 
   // Phase 2: state for Library assets table view (placeholder data, wired via service layer)
   const [librarySummary, setLibrarySummary] = useState<LibrarySummary | null>(null);
@@ -536,6 +538,12 @@ export default function LibraryPage() {
             onVersionSelect={(versionId) => {
               setSelectedVersionId(versionId);
             }}
+            onRestoreSuccess={() => {
+              setRestoreToastMessage('Library restored');
+              setTimeout(() => {
+                setRestoreToastMessage(null);
+              }, 2000);
+            }}
           />
         )}
       </div>
@@ -552,6 +560,31 @@ export default function LibraryPage() {
       )}
 
       {!authLoading && !isAuthenticated && <div className={styles.authWarning}>Please sign in to edit.</div>}
+
+      {/* Restore Toast Message */}
+      {restoreToastMessage && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10000,
+            backgroundColor: '#111827',
+            color: '#ffffff',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+            fontSize: '14px',
+            fontWeight: 500,
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+          }}
+        >
+          {restoreToastMessage}
+        </div>,
+        document.body
+      )}
 
       {/* {userProfile && (
         <div className={styles.formContainer}>

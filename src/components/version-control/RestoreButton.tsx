@@ -18,9 +18,10 @@ import type { LibraryVersion } from '@/lib/types/version';
 interface RestoreButtonProps {
   version: LibraryVersion;
   libraryId: string;
+  onRestoreSuccess?: () => void;
 }
 
-export function RestoreButton({ version, libraryId }: RestoreButtonProps) {
+export function RestoreButton({ version, libraryId, onRestoreSuccess }: RestoreButtonProps) {
   const [showRestoreModal, setShowRestoreModal] = useState(false);
 
   return (
@@ -57,6 +58,7 @@ export function RestoreButton({ version, libraryId }: RestoreButtonProps) {
         onClose={() => setShowRestoreModal(false)}
         onSuccess={() => {
           setShowRestoreModal(false);
+          onRestoreSuccess?.();
         }}
       />
     </>

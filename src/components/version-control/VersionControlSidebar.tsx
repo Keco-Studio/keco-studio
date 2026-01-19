@@ -25,6 +25,7 @@ interface VersionControlSidebarProps {
   onClose: () => void;
   selectedVersionId?: string | null;
   onVersionSelect?: (versionId: string | null) => void;
+  onRestoreSuccess?: () => void;
 }
 
 export function VersionControlSidebar({
@@ -33,6 +34,7 @@ export function VersionControlSidebar({
   onClose,
   selectedVersionId,
   onVersionSelect,
+  onRestoreSuccess,
 }: VersionControlSidebarProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
@@ -63,7 +65,7 @@ export function VersionControlSidebar({
   useEffect(() => {
     if (!isOpen || !libraryId) return;
 
-    console.log(`[VersionControlSidebar] Setting up realtime subscription for library: ${libraryId}`);
+    // console.log(`[VersionControlSidebar] Setting up realtime subscription for library: ${libraryId}`);
 
     // Subscribe to changes in library_versions table
     const versionsChannel = supabase
@@ -77,7 +79,7 @@ export function VersionControlSidebar({
           filter: `library_id=eq.${libraryId}`,
         },
         async (payload) => {
-          console.log('[VersionControlSidebar] Version change detected:', payload);
+          // console.log('[VersionControlSidebar] Version change detected:', payload);
           
           // Invalidate and refetch versions to get the latest data
           queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
@@ -140,6 +142,7 @@ export function VersionControlSidebar({
               libraryId={libraryId}
               selectedVersionId={selectedVersionId}
               onVersionSelect={onVersionSelect}
+              onRestoreSuccess={onRestoreSuccess}
             />
           )}
         </div>

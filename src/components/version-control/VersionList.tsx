@@ -16,9 +16,10 @@ interface VersionListProps {
   libraryId: string;
   selectedVersionId?: string | null;
   onVersionSelect?: (versionId: string | null) => void;
+  onRestoreSuccess?: () => void;
 }
 
-export function VersionList({ versions, libraryId, selectedVersionId, onVersionSelect }: VersionListProps) {
+export function VersionList({ versions, libraryId, selectedVersionId, onVersionSelect, onRestoreSuccess }: VersionListProps) {
   // Sort versions by created_at DESC (newest first)
   const sortedVersions = useMemo(() => {
     return [...versions].sort((a, b) => 
@@ -45,6 +46,7 @@ export function VersionList({ versions, libraryId, selectedVersionId, onVersionS
           isFirst={index === 0}
           isSelected={selectedVersionId === version.id}
           onSelect={onVersionSelect}
+          onRestoreSuccess={onRestoreSuccess}
         />
       ))}
     </div>

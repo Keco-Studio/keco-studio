@@ -324,10 +324,39 @@ export async function restoreVersion(
     }
   }
 
+  // Set previous current version to not current
+  await supabase
+    .from('library_versions')
+    .update({ is_current: false })
+    .eq('library_id', libraryId)
+    .eq('is_current', true);
+
   // Create restore version record
   // Format: {original_version_name} ({YYYY.MM.DD})
+  // Use the original version's created_at (not the restore time)
   const originalCreatedAt = new Date(versionToRestore.created_at);
-  const restoreVersionName = generateRestoreVersionName(versionToRestore.version_name, originalCreatedAt);
+  
+  // Validate version_name exists
+  if (!versionToRestore.version_name || !versionToRestore.version_name.trim()) {
+    console.error('Version to restore has no version_name:', versionToRestore);
+    throw new Error('Version to restore has no version name');
+  }
+  
+  // Validate created_at is valid
+  if (isNaN(originalCreatedAt.getTime())) {
+    console.error('Invalid created_at for version to restore:', versionToRestore.created_at);
+    throw new Error('Version to restore has invalid created_at date');
+  }
+  
+  // Generate restore version name using original version name and original created_at
+  const restoreVersionName = generateRestoreVersionName(versionToRestore.version_name.trim(), originalCreatedAt);
+  
+  console.log('Restore version name generated:', {
+    originalName: versionToRestore.version_name,
+    originalCreatedAt: versionToRestore.created_at,
+    parsedDate: originalCreatedAt.toISOString(),
+    restoreVersionName,
+  });
 
   const { data: restoredVersionData, error: restoreError } = await supabase
     .from('library_versions')
@@ -346,7 +375,17 @@ export async function restoreVersion(
     .single();
 
   if (restoreError) {
+    console.error('Failed to restore version:', restoreError);
     throw new Error(`Failed to restore version: ${restoreError.message}`);
+  }
+
+  // Debug: Verify the inserted data
+  if (restoredVersionData) {
+    console.log('Restored version data inserted:', {
+      id: restoredVersionData.id,
+      version_name: restoredVersionData.version_name,
+      version_type: restoredVersionData.version_type,
+    });
   }
 
   // Fetch creator profile

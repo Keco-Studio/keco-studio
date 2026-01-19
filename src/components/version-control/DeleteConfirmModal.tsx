@@ -6,7 +6,7 @@
 
 'use client';
 
-import { Modal, message } from 'antd';
+import { Modal, App } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { deleteVersion } from '@/lib/services/versionService';
@@ -22,7 +22,7 @@ interface DeleteConfirmModalProps {
   onSuccess: () => void;
 }
 
-export function DeleteConfirmModal({
+function DeleteConfirmModalContent({
   open,
   version,
   libraryId,
@@ -31,6 +31,7 @@ export function DeleteConfirmModal({
 }: DeleteConfirmModalProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
+  const { message } = App.useApp();
 
   const deleteVersionMutation = useMutation({
     mutationFn: () => deleteVersion(supabase, version.id),
@@ -65,6 +66,14 @@ export function DeleteConfirmModal({
     >
       <p>Are you sure you want to delete this version?</p>
     </Modal>
+  );
+}
+
+export function DeleteConfirmModal(props: DeleteConfirmModalProps) {
+  return (
+    <App>
+      <DeleteConfirmModalContent {...props} />
+    </App>
   );
 }
 
