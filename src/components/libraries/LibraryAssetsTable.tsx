@@ -1976,24 +1976,55 @@ export function LibraryAssetsTable({
   // Get all rows for cell selection (helper function)
   // Use Yjs as data source to ensure all operations are based on the same array
   const getAllRowsForCellSelection = useCallback(() => {
-    const allRowsForSelection = allRowsSource
-      .filter((row): row is AssetRow => !deletedAssetIds.has(row.id))
-      .map((row): AssetRow => {
+    // Build rows map with optimistic updates (same logic as allRows in render)
+    const allRowsMap = new Map<string, AssetRow>();
+    
+    // Add all rows from allRowsSource with optimistic updates
+    allRowsSource.forEach(row => {
+      if (!deletedAssetIds.has(row.id)) {
         const assetRow = row as AssetRow;
         const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
         if (optimisticUpdate && optimisticUpdate.name === assetRow.name) {
-          return {
+          allRowsMap.set(assetRow.id, {
             ...assetRow,
             name: optimisticUpdate.name,
             propertyValues: { ...assetRow.propertyValues, ...optimisticUpdate.propertyValues }
-          };
+          });
+        } else {
+          allRowsMap.set(assetRow.id, assetRow);
         }
-        return assetRow;
-      });
+      }
+    });
     
-    const optimisticAssets: AssetRow[] = Array.from(optimisticNewAssets.values())
-      .sort((a, b) => a.id.localeCompare(b.id));
-    allRowsForSelection.push(...optimisticAssets);
+    // Add optimistic new assets (deduplicate)
+    optimisticNewAssets.forEach((asset, id) => {
+      if (!allRowsMap.has(id)) {
+        allRowsMap.set(id, asset);
+      }
+    });
+    
+    // Convert to array, maintain order (based on allRowsSource order)
+    const allRowsForSelection: AssetRow[] = [];
+    const processedIds = new Set<string>();
+    
+    // First add in allRowsSource order
+    allRowsSource.forEach(row => {
+      if (!deletedAssetIds.has(row.id) && !processedIds.has(row.id)) {
+        const rowToAdd = allRowsMap.get(row.id);
+        if (rowToAdd) {
+          allRowsForSelection.push(rowToAdd);
+          processedIds.add(row.id);
+        }
+      }
+    });
+    
+    // Then add optimistic new assets (not in allRowsSource) - maintain insertion order
+    optimisticNewAssets.forEach((asset, id) => {
+      if (!processedIds.has(id)) {
+        allRowsForSelection.push(asset);
+        processedIds.add(id);
+      }
+    });
     
     return allRowsForSelection;
   }, [allRowsSource, deletedAssetIds, optimisticEditUpdates, optimisticNewAssets]);
@@ -2012,7 +2043,8 @@ export function LibraryAssetsTable({
       return;
     }
     
-    // Don't select if we just completed a fill drag
+    // Don't select if we're currently filling cells
+    // Use a small delay to allow fill drag to complete
     if (isFillingCellsRef.current) {
       return;
     }
@@ -2255,14 +2287,24 @@ export function LibraryAssetsTable({
         const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
         const currentRowIndex = allRowsForSelection.findIndex(r => r.id === currentRowId);
         
+        // Validate indices are valid (not -1)
+        if (startRowIndex === -1 || currentRowIndex === -1) {
+          return;
+        }
+        
         // Only select cells if dragging downward
         if (currentRowIndex > startRowIndex) {
           const cellsToSelect = new Set<CellKey>();
           for (let r = startRowIndex; r <= currentRowIndex; r++) {
             const row = allRowsForSelection[r];
-            cellsToSelect.add(`${row.id}-${startPropertyKey}`);
+            if (row) {
+              cellsToSelect.add(`${row.id}-${startPropertyKey}`);
+            }
           }
           setSelectedCells(cellsToSelect);
+        } else if (currentRowIndex < startRowIndex) {
+          // If dragged above start, just select the start cell
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         } else if (currentRowIndex === startRowIndex) {
           // If back to start, just select the start cell
           setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
@@ -2274,12 +2316,14 @@ export function LibraryAssetsTable({
       document.removeEventListener('mousemove', fillDragMoveHandler);
       document.removeEventListener('mouseup', fillDragEndHandler);
       
-      // If it was just a click, don't do anything
+      // If it was just a click, reset to single cell selection
       if (isClick || !hasMoved) {
         if (isFillingCellsRef.current) {
           isFillingCellsRef.current = false;
           document.body.style.userSelect = '';
           setFillDragStartCell(null);
+          // Reset to single cell selection
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         }
         return;
       }
@@ -2288,9 +2332,6 @@ export function LibraryAssetsTable({
         return;
       }
       
-      isFillingCellsRef.current = false;
-      document.body.style.userSelect = '';
-      
       // Check if we dragged downward
       const allRowsForSelection = getAllRowsForCellSelection();
       const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
@@ -2298,13 +2339,21 @@ export function LibraryAssetsTable({
       // Find the cell under the cursor at end
       const elementBelow = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
       if (!elementBelow) {
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
         setFillDragStartCell(null);
+        // Reset to single cell selection if drag ended outside
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         return;
       }
       
       const cellElement = elementBelow.closest('td');
       if (!cellElement) {
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
         setFillDragStartCell(null);
+        // Reset to single cell selection if drag ended outside
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         return;
       }
       
@@ -2314,7 +2363,11 @@ export function LibraryAssetsTable({
           rowElement.classList.contains('headerRowBottom') || 
           rowElement.classList.contains('editRow') ||
           rowElement.classList.contains('addRow')) {
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
         setFillDragStartCell(null);
+        // Reset to single cell selection if drag ended on invalid row
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         return;
       }
       
@@ -2322,11 +2375,25 @@ export function LibraryAssetsTable({
       const endPropertyKey = cellElement.getAttribute('data-property-key');
       
       if (!endRowId || !endPropertyKey || endPropertyKey !== startPropertyKey) {
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
         setFillDragStartCell(null);
+        // Reset to single cell selection if drag ended on different property
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         return;
       }
       
       const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
+      
+      // Validate indices are valid (not -1)
+      if (startRowIndex === -1 || endRowIndex === -1) {
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
+        setFillDragStartCell(null);
+        // Reset to single cell selection if indices are invalid
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+        return;
+      }
       
       // Only fill if dragged downward and at least one row down
       if (endRowIndex > startRowIndex) {
@@ -2366,8 +2433,13 @@ export function LibraryAssetsTable({
         
         // Wait for all updates to complete
         await Promise.all(updates);
+      } else {
+        // If not dragged downward (dragged up or back to start), reset to single cell selection
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
       }
       
+      isFillingCellsRef.current = false;
+      document.body.style.userSelect = '';
       setFillDragStartCell(null);
     };
     
