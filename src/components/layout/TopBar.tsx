@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useSupabase } from '@/lib/SupabaseContext';
 import Image from 'next/image';
 import { useRef, useState, useEffect, useMemo } from 'react';
 import { Avatar } from 'antd';
@@ -32,12 +33,14 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const { breadcrumbs, currentAssetId, showCreateProjectBreadcrumb: contextShowCreateProjectBreadcrumb } = useNavigation();
   const showCreateProjectBreadcrumb = propShowCreateProjectBreadcrumb ?? contextShowCreateProjectBreadcrumb;
   const { userProfile, signOut } = useAuth();
+  const supabase = useSupabase();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [assetMode, setAssetMode] = useState<AssetMode>('edit');
   const [isCreatingNewAsset, setIsCreatingNewAsset] = useState(false);
   const [isPredefineCreatingNewSection, setIsPredefineCreatingNewSection] = useState(false);
   const [predefineActiveSectionId, setPredefineActiveSectionId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
 
   // Resolve display name: prefer username, then full_name, then email
   const displayName =
@@ -71,6 +74,52 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     setAssetMode('edit');
     setIsCreatingNewAsset(false);
   }, [currentAssetId]);
+
+  // Fetch user role for current project
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      // Extract projectId from pathname
+      const parts = pathname.split('/').filter(Boolean);
+      const projectId = parts[0] || null;
+      
+      // Check if projectId is a valid UUID (not "projects" or other route segments)
+      const isValidUUID = projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+      
+      if (!isValidUUID || !userProfile) {
+        setUserRole(null);
+        return;
+      }
+      
+      try {
+        // Get session for authorization
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setUserRole(null);
+          return;
+        }
+        
+        // Call API to get user role
+        const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+        
+        if (roleResponse.ok) {
+          const roleResult = await roleResponse.json();
+          setUserRole(roleResult.role || null);
+          console.log('User role:', roleResult.role);
+        } else {
+          setUserRole(null);
+        }
+      } catch (error) {
+        console.error('[TopBar] Error fetching user role:', error);
+        setUserRole(null);
+      }
+    };
+    
+    fetchUserRole();
+  }, [pathname, userProfile, supabase]);
 
   // Listen to asset page mode updates (for create/view/edit detection)
   useEffect(() => {
@@ -232,6 +281,29 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         );
       } else {
         // View/Edit mode - show mode toggle and share
+        // Viewer only sees viewing button
+        if (userRole === 'viewer') {
+          return (
+            <>
+              <div className={styles.assetModeGroup}>
+                <button
+                  className={`${styles.assetModeButton} ${styles.assetModeButtonActive}`}
+                >
+                  <Image src={assetViewIcon} alt="Viewing" width={16} height={16} />
+                  <span>Viewing</span>
+                </button>
+              </div>
+              <button
+                className={styles.shareButton}
+                onClick={handleShareClick}
+              >
+                <Image src={assetShareIcon} alt="Share" width={16} height={16} />
+                <span>Share</span>  
+              </button>
+          </>
+          );
+        }
+        
         return (
           <>
             <div className={styles.assetModeGroup}>

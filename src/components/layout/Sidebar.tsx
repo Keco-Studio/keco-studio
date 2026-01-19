@@ -345,7 +345,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   // Fetch user role in current project
   useEffect(() => {
     const fetchUserRole = async () => {
-      if (!currentIds.projectId || !userProfile) {
+      // Check if projectId is a valid UUID (not "projects" or other route segments)
+      const isValidUUID = currentIds.projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentIds.projectId);
+      
+      if (!isValidUUID || !userProfile) {
         setUserRole(null);
         setIsProjectOwner(false);
         return;
@@ -962,14 +965,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               // Existing assets
               ...(assets[lib.id] || []).map<DataNode>((asset) => {
                 const isCurrentAsset = currentIds.assetId === asset.id;
-                // Admin and editor can click assets to view/edit
-                const canClickAsset = userRole === 'admin' || userRole === 'editor';
                 return {
                   title: (
                     <div 
-                      className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''} ${!canClickAsset ? styles.itemDisabled : ''}`}
+                      className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
                       onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
-                      style={!canClickAsset ? { cursor: 'default', opacity: 0.6 } : undefined}
                     >
                       <div className={styles.itemMain}>
                         <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
@@ -982,8 +982,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   ),
                   key: `asset-${asset.id}`,
                   isLeaf: true,
-                  // Disable selection for non-admin users
-                  disabled: !canClickAsset,
                 };
               }),
             ],
@@ -1136,14 +1134,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           // Existing assets
           ...(assets[lib.id] || []).map<DataNode>((asset) => {
             const isCurrentAsset = currentIds.assetId === asset.id;
-            // Admin and editor can click assets to view/edit
-            const canClickAsset = userRole === 'admin' || userRole === 'editor';
             return {
               title: (
                 <div 
-                  className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''} ${!canClickAsset ? styles.itemDisabled : ''}`}
+                  className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
                   onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
-                  style={!canClickAsset ? { cursor: 'default', opacity: 0.6 } : undefined}
                 >
                   <div className={styles.itemMain}>
                     <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
@@ -1156,8 +1151,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               ),
               key: `asset-${asset.id}`,
               isLeaf: true,
-              // Disable selection for non-admin users
-              disabled: !canClickAsset,
             };
           }),
         ],
@@ -1785,20 +1778,17 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                         <div className={styles.assetList}>
                           {libraryAssets.map((asset) => {
                             const isCurrentAsset = currentIds.assetId === asset.id;
-                            // Admin and editor can click assets to view/edit
-                            const canClickAsset = userRole === 'admin' || userRole === 'editor';
                             return (
                               <div
                                 key={asset.id}
                                 className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
                                 onClick={() => {
-                                  // Only admin can navigate to asset detail
-                                  if (canClickAsset && currentIds.projectId && currentIds.libraryId) {
+                                  // All users can navigate to asset detail (viewer will see it in view mode)
+                                  if (currentIds.projectId && currentIds.libraryId) {
                                     handleAssetClick(currentIds.projectId, currentIds.libraryId, asset.id);
                                   }
                                 }}
                                 onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
-                                style={!canClickAsset ? { cursor: 'default', opacity: 0.6 } : undefined}
                               >
                                 <div className={styles.itemMain}>
                                   <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>

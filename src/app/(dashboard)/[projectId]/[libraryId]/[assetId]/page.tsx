@@ -312,6 +312,13 @@ export default function AssetPage() {
     };
   }, [assetId, isNewAsset, supabase, fieldDefs]);
 
+  // Set mode to 'view' for viewers
+  useEffect(() => {
+    if (!isNewAsset && userRole === 'viewer') {
+      setMode('view');
+    }
+  }, [userRole, isNewAsset]);
+
   // Listen to top bar Viewing / Editing toggle (only for existing assets)
   useEffect(() => {
     if (isNewAsset) return; // New assets don't need mode toggle from TopBar
@@ -319,6 +326,10 @@ export default function AssetPage() {
     const handler = (event: Event) => {
       const custom = event as CustomEvent<{ mode?: AssetMode }>;
       const nextMode = custom.detail?.mode;
+      // Viewer cannot switch to edit mode
+      if (userRole === 'viewer' && nextMode === 'edit') {
+        return;
+      }
       if (nextMode === 'view' || nextMode === 'edit') {
         setMode(nextMode);
         // Clear status messages when switching mode
@@ -336,7 +347,7 @@ export default function AssetPage() {
         window.removeEventListener('asset-mode-change', handler as EventListener);
       }
     };
-  }, [isNewAsset]);
+  }, [isNewAsset, userRole]);
 
   // Handle navigate to predefine page
   const handlePredefineClick = () => {

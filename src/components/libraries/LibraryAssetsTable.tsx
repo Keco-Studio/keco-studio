@@ -1280,6 +1280,11 @@ export function LibraryAssetsTable({
 
   // Handle save new asset
   const handleSaveNewAsset = async () => {
+    // Prevent adding if user is a viewer
+    if (userRole === 'viewer') {
+      return;
+    }
+    
     if (!onSaveAsset || !library) return;
 
     // Get asset name from first property (assuming first property is name)
@@ -1619,6 +1624,11 @@ export function LibraryAssetsTable({
 
   // Handle media file change for editing cell (with immediate save)
   const handleEditMediaFileChange = (propertyKey: string, value: MediaFileMetadata | null) => {
+    // Prevent editing if user is a viewer
+    if (userRole === 'viewer') {
+      return;
+    }
+    
     // For media files, we need to save immediately when changed
     if (!editingCell || !onUpdateAsset) return;
     
@@ -1694,6 +1704,11 @@ export function LibraryAssetsTable({
 
   // Handle save edited cell
   const handleSaveEditedCell = useCallback(async () => {
+    // Prevent editing if user is a viewer
+    if (userRole === 'viewer') {
+      return;
+    }
+    
     if (!editingCell || !onUpdateAsset) return;
     
     const { rowId, propertyKey } = editingCell;
@@ -1779,10 +1794,15 @@ export function LibraryAssetsTable({
     } finally {
       setIsSaving(false);
     }
-  }, [editingCell, editingCellValue, onUpdateAsset, properties, rows, yRows, setOptimisticEditUpdates]);
+  }, [editingCell, editingCellValue, onUpdateAsset, properties, rows, yRows, setOptimisticEditUpdates, userRole]);
 
   // Handle double click on cell to start editing (only for editable cell types)
   const handleCellDoubleClick = (row: AssetRow, property: PropertyConfig, e: React.MouseEvent) => {
+    // Prevent editing if user is a viewer (only admin and editor can edit)
+    if (userRole === 'viewer') {
+      return;
+    }
+    
     // Prevent editing if adding a new row
     if (isAddingRow) {
       return;
@@ -1853,11 +1873,6 @@ export function LibraryAssetsTable({
 
   // Handle view asset detail - navigate to asset detail page
   const handleViewAssetDetail = (row: AssetRow, e: React.MouseEvent) => {
-    // Only admin and editor can view asset detail card (viewer cannot)
-    if (userRole === 'viewer') {
-      return;
-    }
-    
     const projectId = params.projectId as string;
     const libraryId = params.libraryId as string;
     
@@ -4421,6 +4436,7 @@ export function LibraryAssetsTable({
                     // Get users editing this cell (collaboration feature)
                     const editingUsers = getUsersEditingCell(row.id, property.key);
                     const borderColor = getFirstUserColor(editingUsers);
+                    const isBeingEdited = editingUsers.length > 0;
                     
                     // Cell selection and cut/paste features
                     const cellKey: CellKey = `${row.id}-${property.key}`;
@@ -4458,8 +4474,8 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
-                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                        className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
@@ -4546,6 +4562,7 @@ export function LibraryAssetsTable({
                     // Get users editing this cell (collaboration feature)
                     const editingUsers = getUsersEditingCell(row.id, property.key);
                     const borderColor = getFirstUserColor(editingUsers);
+                    const isBeingEdited = editingUsers.length > 0;
                     
                     // Cell selection and cut/paste features
                     const cellKey: CellKey = `${row.id}-${property.key}`;
@@ -4583,8 +4600,8 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
-                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                        className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
@@ -4699,6 +4716,7 @@ export function LibraryAssetsTable({
                     // Get users editing this cell (collaboration feature)
                     const editingUsers = getUsersEditingCell(row.id, property.key);
                     const borderColor = getFirstUserColor(editingUsers);
+                    const isBeingEdited = editingUsers.length > 0;
                     
                     // Cell selection and cut/paste features
                     const cellKey: CellKey = `${row.id}-${property.key}`;
@@ -4736,8 +4754,8 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
-                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                        className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
@@ -4770,7 +4788,13 @@ export function LibraryAssetsTable({
                         <div className={styles.booleanToggle}>
                           <Switch
                             checked={checked}
+                            disabled={userRole === 'viewer'}
                             onChange={async (newValue) => {
+                              // Prevent editing if user is a viewer
+                              if (userRole === 'viewer') {
+                                return;
+                              }
+                              
                               // Update presence tracking when user starts editing
                               handleCellFocus(row.id, property.key);
                               
@@ -4891,6 +4915,7 @@ export function LibraryAssetsTable({
                     // Get users editing this cell (collaboration feature)
                     const editingUsers = getUsersEditingCell(row.id, property.key);
                     const borderColor = getFirstUserColor(editingUsers);
+                    const isBeingEdited = editingUsers.length > 0;
                     
                     // Cell selection and cut/paste features
                     const cellKey: CellKey = `${row.id}-${property.key}`;
@@ -4928,8 +4953,8 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
-                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                        className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
@@ -4964,7 +4989,13 @@ export function LibraryAssetsTable({
                             value={display || undefined}
                             placeholder="Select"
                             open={isOpen}
+                            disabled={userRole === 'viewer'}
                             onOpenChange={(open) => {
+                              // Prevent opening if user is a viewer
+                              if (userRole === 'viewer') {
+                                return;
+                              }
+                              
                               setOpenEnumSelects(prev => ({
                                 ...prev,
                                 [enumSelectKey]: open
@@ -4975,6 +5006,11 @@ export function LibraryAssetsTable({
                               }
                             }}
                             onChange={async (newValue) => {
+                              // Prevent editing if user is a viewer
+                              if (userRole === 'viewer') {
+                                return;
+                              }
+                              
                               const stringValue = newValue || '';
                               
                               // Optimistic update: immediately update UI
@@ -5093,6 +5129,7 @@ export function LibraryAssetsTable({
                   // Get users editing this cell (collaboration feature)
                   const editingUsers = getUsersEditingCell(row.id, property.key);
                   const borderColor = getFirstUserColor(editingUsers);
+                  const isBeingEdited = editingUsers.length > 0;
                   
                   // Cell selection and cut/paste features
                   const cellKey: CellKey = `${row.id}-${property.key}`;
@@ -5130,8 +5167,8 @@ export function LibraryAssetsTable({
                     <td
                       key={property.id}
                       data-property-key={property.key}
-                      className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
-                      style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                      className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                      style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
                       onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                       onClick={(e) => handleCellClick(row.id, property.key, e)}
                       onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
@@ -5237,9 +5274,7 @@ export function LibraryAssetsTable({
                               // Prevent double click from bubbling to cell
                               e.stopPropagation();
                             }}
-                            title={userRole !== 'viewer' ? "View asset details (Ctrl/Cmd+Click for new tab)" : "Only admin and editor can view asset details"}
-                            disabled={userRole === 'viewer'}
-                            style={userRole === 'viewer' ? { cursor: 'not-allowed', opacity: 0.5 } : undefined}
+                            title={"View asset details (Ctrl/Cmd+Click for new tab)"}
                               >
                                 <Image
                                   src={assetTableIcon}

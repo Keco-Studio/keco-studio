@@ -38,6 +38,15 @@ export default function CollaboratorsPage() {
   
   // Fetch data function (can be called to refresh)
   const fetchData = useCallback(async () => {
+    // Validate projectId is a valid UUID
+    if (!projectId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) {
+      console.error('[CollaboratorsPage] Invalid project ID:', projectId);
+      setError('Invalid project ID');
+      setLoading(false);
+      router.push('/projects');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     
@@ -229,7 +238,7 @@ export default function CollaboratorsPage() {
       setError(err.message || 'Failed to load page');
       setLoading(false);
     }
-  }, [projectId, supabase]);
+  }, [projectId, supabase, router]);
   
   // Initial data fetch
   useEffect(() => {
