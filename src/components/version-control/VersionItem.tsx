@@ -30,6 +30,7 @@ interface VersionItemProps {
 }
 
 export function VersionItem({ version, libraryId, isLast, isFirst = false, isSelected = false, onSelect, onRestoreSuccess }: VersionItemProps) {
+  const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Format date: "Dec 28, 7:40 AM"
   const formatDate = (date: Date): string => {
@@ -76,10 +77,25 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
     }
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    // Only show context menu for history versions (not current)
+    if (isCurrent) {
+      return;
+    }
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenuPosition({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleCloseContextMenu = () => {
+    setContextMenuPosition(null);
+  };
+
   return (
     <div 
       className={`${styles.versionItem} ${isCurrent ? styles.currentVersion : styles.historyVersion} ${isSelected ? styles.selected : ''}`}
       onClick={handleClick}
+      onContextMenu={handleContextMenu}
     >
       {/* Left Icon */}
       <div className={styles.iconContainer}>
@@ -148,7 +164,12 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
       {!isCurrent && (
         <div className={styles.actions}>
           <RestoreButton version={version} libraryId={libraryId} onRestoreSuccess={onRestoreSuccess} />
-          <VersionItemMenu version={version} libraryId={libraryId} />
+          <VersionItemMenu 
+            version={version} 
+            libraryId={libraryId}
+            externalMenuPosition={contextMenuPosition}
+            onExternalMenuClose={handleCloseContextMenu}
+          />
         </div>
       )}
     </div>

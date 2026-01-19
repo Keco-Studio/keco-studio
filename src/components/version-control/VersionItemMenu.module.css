@@ -37,6 +37,11 @@
   overflow: hidden;
 }
 
+/* When used as fixed position (context menu) */
+.menuDropdown[style*="position: fixed"] {
+  position: fixed !important;
+}
+
 .menuItem {
   width: 100%;
   padding: 12px 16px;
