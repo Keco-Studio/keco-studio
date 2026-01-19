@@ -23,12 +23,16 @@ interface VersionControlSidebarProps {
   libraryId: string;
   isOpen: boolean;
   onClose: () => void;
+  selectedVersionId?: string | null;
+  onVersionSelect?: (versionId: string | null) => void;
 }
 
 export function VersionControlSidebar({
   libraryId,
   isOpen,
   onClose,
+  selectedVersionId,
+  onVersionSelect,
 }: VersionControlSidebarProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
@@ -134,6 +138,8 @@ export function VersionControlSidebar({
             <VersionList
               versions={versions}
               libraryId={libraryId}
+              selectedVersionId={selectedVersionId}
+              onVersionSelect={onVersionSelect}
             />
           )}
         </div>

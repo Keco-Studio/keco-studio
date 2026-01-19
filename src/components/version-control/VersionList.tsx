@@ -14,9 +14,11 @@ import styles from './VersionList.module.css';
 interface VersionListProps {
   versions: LibraryVersion[];
   libraryId: string;
+  selectedVersionId?: string | null;
+  onVersionSelect?: (versionId: string | null) => void;
 }
 
-export function VersionList({ versions, libraryId }: VersionListProps) {
+export function VersionList({ versions, libraryId, selectedVersionId, onVersionSelect }: VersionListProps) {
   // Sort versions by created_at DESC (newest first)
   const sortedVersions = useMemo(() => {
     return [...versions].sort((a, b) => 
@@ -41,6 +43,8 @@ export function VersionList({ versions, libraryId }: VersionListProps) {
           libraryId={libraryId}
           isLast={index === sortedVersions.length - 1}
           isFirst={index === 0}
+          isSelected={selectedVersionId === version.id}
+          onSelect={onVersionSelect}
         />
       ))}
     </div>

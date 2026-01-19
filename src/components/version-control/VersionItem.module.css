@@ -8,6 +8,26 @@
   position: relative;
   padding: 0;
   min-height: 48px;
+  cursor: pointer;
+  border-radius: 7px;
+  transition: background-color 0.2s;
+}
+
+.versionItem.selected {
+  background: rgba(94, 0, 255, 0.08);
+  border-radius: 7px;
+}
+
+.versionItem.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(94, 0, 255, 0.08);
+  border-radius: 7px;
+  z-index: -1;
 }
 
 .iconContainer {

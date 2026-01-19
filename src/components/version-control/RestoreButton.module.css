@@ -1,5 +1,10 @@
 /* Restore Button Styles */
 
+.restoreButtonContainer {
+  position: relative;
+  display: inline-block;
+}
+
 .restoreButton {
   width: 24px;
   height: 24px;
@@ -18,6 +23,20 @@
 .restoreButton:hover {
   background: #f8fafc;
   color: #21272A;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.restoreButtonContainer:hover .tooltip {
+  display: block;
 }
 
 

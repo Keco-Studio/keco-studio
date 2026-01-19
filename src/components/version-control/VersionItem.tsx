@@ -16,6 +16,7 @@ import { RestoreButton } from './RestoreButton';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import visionItemIcon1 from '@/app/assets/images/VisionItemIcon1.svg';
 import visionItemIcon2 from '@/app/assets/images/ViisionItemIcon2.svg';
+import versionRestoreIcon from '@/app/assets/images/VersionRestoreIcon.svg';
 import styles from './VersionItem.module.css';
 
 interface VersionItemProps {
@@ -23,9 +24,11 @@ interface VersionItemProps {
   libraryId: string;
   isLast: boolean;
   isFirst?: boolean;
+  isSelected?: boolean;
+  onSelect?: (versionId: string) => void;
 }
 
-export function VersionItem({ version, libraryId, isLast, isFirst = false }: VersionItemProps) {
+export function VersionItem({ version, libraryId, isLast, isFirst = false, isSelected = false, onSelect }: VersionItemProps) {
   const [isHighlighting, setIsHighlighting] = useState(false);
 
   // Format date: "Dec 28, 7:40 AM"
@@ -68,20 +71,48 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false }: Ver
   const displayName = version.versionName;
   const creatorName = version.createdBy.name;
   const createdDate = formatDate(version.createdAt);
+  // For restore versions, show restore time; otherwise show creation time
+  const displayDate = version.restoredAt ? formatDate(version.restoredAt) : createdDate;
   const creatorText = version.restoredBy 
     ? `restore by ${version.restoredBy.name}` 
     : `added by ${creatorName}`;
 
+  const handleClick = (e: React.MouseEvent) => {
+    // Don't select if clicking on action buttons
+    const target = e.target as HTMLElement;
+    if (target.closest(`.${styles.actions}`) || target.closest('button')) {
+      return;
+    }
+    if (!isCurrent && onSelect) {
+      onSelect(version.id);
+    }
+  };
+
   return (
-    <div className={`${styles.versionItem} ${isCurrent ? styles.currentVersion : styles.historyVersion} ${isHighlighting ? styles.highlighting : ''}`}>
+    <div 
+      className={`${styles.versionItem} ${isCurrent ? styles.currentVersion : styles.historyVersion} ${isHighlighting ? styles.highlighting : ''} ${isSelected ? styles.selected : ''}`}
+      onClick={handleClick}
+    >
       {/* Left Icon */}
       <div className={styles.iconContainer}>
         <div 
           className={`${styles.versionIcon} ${isCurrent ? styles.currentIcon : styles.historyIcon}`}
         >
           <Image
-            src={isCurrent ? visionItemIcon2 : visionItemIcon1}
-            alt={isCurrent ? "Current version" : "History version"}
+            src={
+              isCurrent 
+                ? visionItemIcon2 
+                : version.versionType === 'restore'
+                  ? versionRestoreIcon
+                  : visionItemIcon1
+            }
+            alt={
+              isCurrent 
+                ? "Current version" 
+                : version.versionType === 'restore'
+                  ? "Restored version"
+                  : "History version"
+            }
             width={48}
             height={48}
             className={styles.iconImage}
@@ -120,7 +151,7 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false }: Ver
               </Avatar>
               <span className={styles.creatorText}>{creatorText}</span>
             </div>
-            <div className={styles.dateText}>{createdDate}</div>
+            <div className={styles.dateText}>{displayDate}</div>
           </>
         )}
       </div>

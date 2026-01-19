@@ -7,8 +7,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Tooltip } from 'antd';
+import Image from 'next/image';
 import { RestoreConfirmModal } from './RestoreConfirmModal';
+import versionItemRestoreIcon from '@/app/assets/images/VersionItemRestoreIcon.svg';
+import versionItemAlert from '@/app/assets/images/VersionItemAlert.svg';
 import styles from './RestoreButton.module.css';
 
 import type { LibraryVersion } from '@/lib/types/version';
@@ -23,7 +25,7 @@ export function RestoreButton({ version, libraryId }: RestoreButtonProps) {
 
   return (
     <>
-      <Tooltip title="Restore" placement="top">
+      <div className={styles.restoreButtonContainer}>
         <button
           className={styles.restoreButton}
           onClick={(e) => {
@@ -31,23 +33,22 @@ export function RestoreButton({ version, libraryId }: RestoreButtonProps) {
             setShowRestoreModal(true);
           }}
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 16 16"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-          >
-            <path
-              d="M8 2L3 7H6V12H10V7H13L8 2Z"
-              stroke="currentColor"
-              strokeWidth="1.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
+          <Image
+            src={versionItemRestoreIcon}
+            alt="Restore"
+            width={24}
+            height={24}
+          />
         </button>
-      </Tooltip>
+        <div className={styles.tooltip}>
+          <Image
+            src={versionItemAlert}
+            alt="Restore"
+            width={87}
+            height={54}
+          />
+        </div>
+      </div>
 
       <RestoreConfirmModal
         open={showRestoreModal}

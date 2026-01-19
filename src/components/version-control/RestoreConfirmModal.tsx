@@ -3,15 +3,19 @@
  * 
  * Modal for confirming version restore with backup option
  * Based on Figma design with toggle for "backup the current version"
+ * Format matches CreateVersionModal (centered, custom styled)
  */
 
 'use client';
 
-import { useState } from 'react';
-import { Modal, Input, Switch, message } from 'antd';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { Switch } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { restoreVersion } from '@/lib/services/versionService';
+import Image from 'next/image';
+import closeIcon from '@/app/assets/images/closeIcon32.svg';
 import styles from './RestoreConfirmModal.module.css';
 
 import type { LibraryVersion } from '@/lib/types/version';
@@ -35,6 +39,10 @@ export function RestoreConfirmModal({
   const queryClient = useQueryClient();
   const [backupEnabled, setBackupEnabled] = useState(false);
   const [backupVersionName, setBackupVersionName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
 
   const restoreMutation = useMutation({
     mutationFn: (data: { backupCurrent: boolean; backupVersionName?: string }) =>
@@ -46,21 +54,22 @@ export function RestoreConfirmModal({
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
       queryClient.invalidateQueries({ queryKey: ['library', libraryId] });
-      message.success('Library restored');
       setBackupEnabled(false);
       setBackupVersionName('');
+      setError(null);
       onSuccess();
     },
     onError: (error: any) => {
-      message.error(error?.message || 'Failed to restore version');
+      setError(error?.message || 'Failed to restore version');
     },
   });
 
   const handleRestore = () => {
     if (backupEnabled && !backupVersionName.trim()) {
-      message.error('Version name is required when backup is enabled');
+      setError('Version name is required when backup is enabled');
       return;
     }
+    setError(null);
     restoreMutation.mutate({
       backupCurrent: backupEnabled,
       backupVersionName: backupEnabled ? backupVersionName.trim() : undefined,
@@ -70,50 +79,93 @@ export function RestoreConfirmModal({
   const handleCancel = () => {
     setBackupEnabled(false);
     setBackupVersionName('');
+    setError(null);
     onClose();
   };
 
-  return (
-    <Modal
-      title="Alert"
-      open={open}
-      onOk={handleRestore}
-      onCancel={handleCancel}
-      confirmLoading={restoreMutation.isPending}
-      okText="Restore"
-      cancelText="Cancel"
-      okButtonProps={{ style: { backgroundColor: '#FF6CAA', borderColor: '#FF6CAA' } }}
-    >
-      <div className={styles.content}>
-        <p className={styles.message}>
-          Are you sure you want to restore this version? the current version will be override.
-        </p>
-        
-        <div className={styles.switchContainer}>
-          <Switch
-            checked={backupEnabled}
-            onChange={setBackupEnabled}
-            className={styles.switch}
-          />
-          <label className={styles.switchLabel}>backup the current version</label>
+  if (!open) return null;
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className={styles.backdrop}>
+      <div className={styles.modal}>
+        <div className={styles.header}>
+          <div className={styles.title}>Alert</div>
+          <button className={styles.close} onClick={handleCancel} aria-label="Close">
+            <Image src={closeIcon} alt="Close" width={32} height={32} />
+          </button>
         </div>
 
-        {backupEnabled && (
-          <div className={styles.inputContainer}>
-            <label className={styles.label}>
-              Version Name
-              <Input
-                value={backupVersionName}
-                onChange={(e) => setBackupVersionName(e.target.value)}
-                placeholder="Enter version name"
-                onPressEnter={handleRestore}
-                autoFocus
-              />
+        <div className={styles.content}>
+          <p className={styles.message}>
+            Are you sure you want to restore this version? The current version will be overridden.
+          </p>
+          
+          <div className={styles.switchContainer}>
+            <Switch
+              checked={backupEnabled}
+              onChange={(checked) => {
+                setBackupEnabled(checked);
+                setError(null);
+              }}
+              className={styles.switch}
+              style={{
+                backgroundColor: backupEnabled ? 'rgba(135, 38, 238, 1)' : undefined,
+              }}
+            />
+            <label className={styles.switchLabel} onClick={() => {
+              setBackupEnabled(!backupEnabled);
+              setError(null);
+            }}>
+              backup the current version
             </label>
           </div>
-        )}
+
+          {backupEnabled && (
+            <div className={styles.inputContainer}>
+              <label htmlFor="backup-version-name" className={styles.label}>
+                Version Name
+              </label>
+              <input
+                id="backup-version-name"
+                className={styles.nameInput}
+                value={backupVersionName}
+                onChange={(e) => {
+                  setBackupVersionName(e.target.value);
+                  setError(null);
+                }}
+                placeholder="Enter version name"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleRestore();
+                  }
+                }}
+                autoFocus
+              />
+            </div>
+          )}
+        </div>
+
+        <div className={styles.footer}>
+          {error && <div className={styles.error}>{error}</div>}
+          <button
+            className={`${styles.button} ${styles.cancel}`}
+            onClick={handleCancel}
+            disabled={restoreMutation.isPending}
+          >
+            Cancel
+          </button>
+          <button
+            className={`${styles.button} ${styles.primary}`}
+            onClick={handleRestore}
+            disabled={restoreMutation.isPending}
+          >
+            {restoreMutation.isPending ? 'Restoring...' : 'Restore'}
+          </button>
+        </div>
       </div>
-    </Modal>
+    </div>,
+    document.body
   );
 }
 

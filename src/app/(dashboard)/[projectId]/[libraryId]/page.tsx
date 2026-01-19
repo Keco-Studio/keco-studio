@@ -61,6 +61,7 @@ export default function LibraryPage() {
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<CollaboratorRole>('viewer');
   const [isVersionControlOpen, setIsVersionControlOpen] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
 
   // Phase 2: state for Library assets table view (placeholder data, wired via service layer)
   const [librarySummary, setLibrarySummary] = useState<LibrarySummary | null>(null);
@@ -527,7 +528,14 @@ export default function LibraryPage() {
           <VersionControlSidebar
             libraryId={libraryId}
             isOpen={isVersionControlOpen}
-            onClose={() => setIsVersionControlOpen(false)}
+            onClose={() => {
+              setIsVersionControlOpen(false);
+              setSelectedVersionId(null); // Clear selection when closing sidebar
+            }}
+            selectedVersionId={selectedVersionId}
+            onVersionSelect={(versionId) => {
+              setSelectedVersionId(versionId);
+            }}
           />
         )}
       </div>
