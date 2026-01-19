@@ -261,14 +261,12 @@ export default function CollaboratorsList({
   
   // Get display name for collaborator
   const getDisplayName = (collab: Collaborator): string => {
-    const profile = collab.profile || collab.user_profiles || collab.profiles;
-    return profile?.username || profile?.full_name || profile?.name || profile?.email || 'User';
+    return collab.userName || collab.userEmail || 'User';
   };
   
   // Get email for collaborator
   const getEmail = (collab: Collaborator): string => {
-    const profile = collab.profile || collab.user_profiles || collab.profiles;
-    return profile?.email || '';
+    return collab.userEmail || '';
   };
   
   return (
@@ -293,7 +291,7 @@ export default function CollaboratorsList({
           const effectiveRole = getEffectiveRole(collab.id, collab.role);
           const isRemoving = isBeingRemoved(collab.id);
           const isLoading = loadingActions.has(collab.id);
-          const isSelf = isCurrentUser(collab.user_id);
+          const isSelf = isCurrentUser(collab.userId);
           const isConfirmingDelete = confirmingDelete === collab.id;
           const displayName = getDisplayName(collab);
           const email = getEmail(collab);
@@ -312,7 +310,7 @@ export default function CollaboratorsList({
                 <div 
                   className={styles.avatar}
                   style={{ 
-                    backgroundColor: collab.avatar_color || '#94a3b8' 
+                    backgroundColor: collab.avatarColor || '#94a3b8' 
                   }}
                 >
                   {displayName.charAt(0).toUpperCase()}
@@ -324,9 +322,6 @@ export default function CollaboratorsList({
                     {displayName}
                     {isSelf && (
                       <span className={styles.youBadge}>(YOU)</span>
-                    )}
-                    {collab.is_owner && (
-                      <span className={styles.ownerBadge}>Owner</span>
                     )}
                   </div>
                   {email && (

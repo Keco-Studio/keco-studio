@@ -35,6 +35,7 @@ import libraryAssetTableAddIcon from '@/app/assets/images/LibraryAssetTableAddIc
 import libraryAssetTableSelectIcon from '@/app/assets/images/LibraryAssetTableSelectIcon.svg';
 import batchEditAddIcon from '@/app/assets/images/BatchEditAddIcon.svg';
 import batchEditingCloseIcon from '@/app/assets/images/BatchEditingCloseIcon.svg';
+import tableAssetDetailIcon from '@/app/assets/images/TableAssetDetailIcon.svg';
 import styles from './LibraryAssetsTable.module.css';
 
 export type LibraryAssetsTableProps = {
@@ -229,11 +230,22 @@ export function LibraryAssetsTable({
   
   // Cut/Copy/Paste state
   const [cutCells, setCutCells] = useState<Set<CellKey>>(new Set()); // Cells that have been cut (for dashed border)
+  const [copyCells, setCopyCells] = useState<Set<CellKey>>(new Set()); // Cells that have been copied (for dashed border)
   const [clipboardData, setClipboardData] = useState<Array<Array<string | number | null>> | null>(null); // Clipboard data for paste
   const [isCutOperation, setIsCutOperation] = useState(false); // Whether clipboard contains cut data (vs copy)
   
   // Store cut selection bounds for border rendering
   const [cutSelectionBounds, setCutSelectionBounds] = useState<{
+    minRowIndex: number;
+    maxRowIndex: number;
+    minPropertyIndex: number;
+    maxPropertyIndex: number;
+    rowIds: string[];
+    propertyKeys: string[];
+  } | null>(null);
+  
+  // Store copy selection bounds for border rendering
+  const [copySelectionBounds, setCopySelectionBounds] = useState<{
     minRowIndex: number;
     maxRowIndex: number;
     minPropertyIndex: number;
@@ -1056,6 +1068,7 @@ export function LibraryAssetsTable({
     assetId: string | null;
     rowId: string;
     assetNamesCache: Record<string, string>;
+    isCellSelected: boolean;
     onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
     onAvatarMouseLeave: () => void;
     onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
@@ -1064,6 +1077,7 @@ export function LibraryAssetsTable({
     assetId,
     rowId,
     assetNamesCache,
+    isCellSelected,
     onAvatarMouseEnter,
     onAvatarMouseLeave,
     onOpenReferenceModal,
@@ -1072,6 +1086,7 @@ export function LibraryAssetsTable({
     assetId: string | null;
     rowId: string;
     assetNamesCache: Record<string, string>;
+    isCellSelected: boolean;
     onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
     onAvatarMouseLeave: () => void;
     onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
@@ -1108,7 +1123,31 @@ export function LibraryAssetsTable({
         }}
       >
         {hasValue && assetId ? (
-          <div className={styles.referenceSelectedAssetLeft}>
+          <div 
+            className={styles.referenceSelectedAssetLeft}
+            data-reference-background="true"
+            onClick={(e) => {
+              // Only trigger if cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+                e.preventDefault();
+                // Call the modal handler immediately
+                onOpenReferenceModal(property, assetId, rowId);
+                return;
+              }
+              // If not selected, let the event bubble to cell to select it
+            }}
+            onMouseDown={(e) => {
+              // Prevent mouse down from interfering with click when cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+              }
+            }}
+            onDoubleClick={(e) => {
+              // Prevent double click from bubbling to cell
+              e.stopPropagation();
+            }}
+          >
             <Image
               src={libraryAssetTableIcon}
               alt=""
@@ -1121,9 +1160,6 @@ export function LibraryAssetsTable({
               onMouseEnter={(e) => {
                 e.stopPropagation();
                 setIsHovered(true); // Keep hovered state when over avatar
-                if (assetId && avatarRef.current) {
-                  onAvatarMouseEnter(assetId, avatarRef.current);
-                }
               }}
               onMouseLeave={(e) => {
                 e.stopPropagation();
@@ -1131,7 +1167,6 @@ export function LibraryAssetsTable({
                 const relatedTarget = e.relatedTarget as HTMLElement;
                 if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
                   setIsHovered(false);
-                  onAvatarMouseLeave();
                 }
               }}
               className={styles.referenceAvatarWrapper}
@@ -1156,19 +1191,34 @@ export function LibraryAssetsTable({
               onMouseEnter={() => {
                 setIsHovered(true);
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onOpenReferenceModal(property, assetId, rowId);
-              }}
-              onDoubleClick={(e) => {
-                // Prevent double click from bubbling to cell
-                e.stopPropagation();
-              }}
             />
           </div>
         ) : (
-          <>
+          <div 
+            className={styles.referenceSelectedAssetLeft}
+            data-reference-background="true"
+            onClick={(e) => {
+              // Only trigger if cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+                e.preventDefault();
+                // Call the modal handler immediately
+                onOpenReferenceModal(property, assetId, rowId);
+                return;
+              }
+              // If not selected, let the event bubble to cell to select it
+            }}
+            onMouseDown={(e) => {
+              // Prevent mouse down from interfering with click when cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+              }
+            }}
+            onDoubleClick={(e) => {
+              // Prevent double click from bubbling to cell
+              e.stopPropagation();
+            }}
+          >
             <Image
               src={libraryAssetTableIcon}
               alt=""
@@ -1185,17 +1235,8 @@ export function LibraryAssetsTable({
               onMouseEnter={() => {
                 setIsHovered(true);
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onOpenReferenceModal(property, assetId, rowId);
-              }}
-              onDoubleClick={(e) => {
-                // Prevent double click from bubbling to cell
-                e.stopPropagation();
-              }}
             />
-          </>
+          </div>
         )}
       </div>
     );
@@ -1205,6 +1246,7 @@ export function LibraryAssetsTable({
       prevProps.assetId === nextProps.assetId &&
       prevProps.rowId === nextProps.rowId &&
       prevProps.property.id === nextProps.property.id &&
+      prevProps.isCellSelected === nextProps.isCellSelected &&
       prevProps.assetNamesCache[prevProps.assetId || ''] === nextProps.assetNamesCache[nextProps.assetId || '']
     );
   });
@@ -1975,6 +2017,15 @@ export function LibraryAssetsTable({
       return;
     }
     
+    // If cell is already selected and clicking on reference background area, let the child handle it
+    const currentCellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
+    const referenceBackground = target.closest('[data-reference-background="true"]');
+    if (selectedCells.has(currentCellKey) && referenceBackground) {
+      // Don't stop propagation here, let the reference background area handle the click
+      // The reference background onClick will call stopPropagation itself
+      return; // Let the reference background area handle the click
+    }
+    
     e.stopPropagation();
     
     // Clear presence tracking if clicking on a different cell
@@ -2006,8 +2057,13 @@ export function LibraryAssetsTable({
       return;
     }
 
-    // Only allow drag when single cell is selected
+    // Don't start drag if clicking on reference background area when cell is selected
     const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
+    if (selectedCells.has(cellKey) && target.closest('[data-reference-background="true"]')) {
+      return; // Let the reference background area handle the click
+    }
+
+    // Only allow drag when single cell is selected
     if (!selectedCells.has(cellKey) || selectedCells.size !== 1) {
       return;
     }
@@ -2413,14 +2469,14 @@ export function LibraryAssetsTable({
       setSelectedCells(new Set());
       // Show batch edit menu (operations will use selectedRowIds)
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
       return;
     }
     
     // Priority 2: If there are selected cells (from drag selection), show batch edit menu
     if (selectedCells.size > 0) {
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
       return;
     }
     
@@ -2441,14 +2497,14 @@ export function LibraryAssetsTable({
       setSelectedCells(new Set());
       // Show batch edit menu (operations will use selectedRowIds)
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
       return;
     }
     
     // Priority 2: If there are already selected cells (from drag selection), use them
     if (selectedCells.size > 0) {
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
       return;
     }
     
@@ -2460,8 +2516,30 @@ export function LibraryAssetsTable({
     
     // Show batch edit menu
     setBatchEditMenuVisible(true);
-    setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+    setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
   };
+
+  // Helper function to adjust context menu position to ensure it's fully visible
+  const adjustMenuPosition = useCallback((x: number, y: number, menuHeight: number = 400): { x: number; y: number } => {
+    const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 0;
+    const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+    
+    // Adjust Y position if menu would be cut off at bottom
+    let adjustedY = y;
+    if (y + menuHeight > windowHeight) {
+      // Position menu above the cursor if it would be cut off
+      adjustedY = Math.max(10, y - menuHeight);
+    }
+    
+    // Adjust X position if menu would be cut off at right
+    let adjustedX = x;
+    const menuWidth = 180; // minWidth from batchEditMenu style
+    if (x + menuWidth > windowWidth) {
+      adjustedX = Math.max(10, windowWidth - menuWidth - 10);
+    }
+    
+    return { x: adjustedX, y: adjustedY };
+  }, []);
 
   // Helper function to check if a cell is on the border of cut selection
   const getCutBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
@@ -2488,6 +2566,32 @@ export function LibraryAssetsTable({
     
     return classes.join(' ');
   }, [cutSelectionBounds, cutCells, orderedProperties, getAllRowsForCellSelection]);
+
+  // Helper function to check if a cell is on the border of copy selection
+  const getCopyBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
+    if (!copySelectionBounds || !copyCells.has(`${rowId}-${orderedProperties[propertyIndex].key}` as CellKey)) {
+      return '';
+    }
+    
+    const allRowsForSelection = getAllRowsForCellSelection();
+    const rowIndex = allRowsForSelection.findIndex(r => r.id === rowId);
+    
+    if (rowIndex === -1) return '';
+    
+    const { minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex } = copySelectionBounds;
+    const isTop = rowIndex === minRowIndex;
+    const isBottom = rowIndex === maxRowIndex;
+    const isLeft = propertyIndex === minPropertyIndex;
+    const isRight = propertyIndex === maxPropertyIndex;
+    
+    const classes: string[] = [];
+    if (isTop) classes.push(styles.copyBorderTop);
+    if (isBottom) classes.push(styles.copyBorderBottom);
+    if (isLeft) classes.push(styles.copyBorderLeft);
+    if (isRight) classes.push(styles.copyBorderRight);
+    
+    return classes.join(' ');
+  }, [copySelectionBounds, copyCells, orderedProperties, getAllRowsForCellSelection]);
 
   // Helper function to check if a cell is on the border of selection
   const getSelectionBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
@@ -3055,8 +3159,34 @@ export function LibraryAssetsTable({
     setClipboardData(clipboardArray);
     setIsCutOperation(false); // Important: mark as copy, not cut
     
-    // Do NOT set cutCells or cutSelectionBounds for copy operation
-    // Copy operation should not show visual feedback (no dashed border)
+    // Calculate selection bounds for border rendering (only show outer border)
+    const rowIndices = rowIds.map(rowId => {
+      return allRowsForSelection.findIndex(r => r.id === rowId);
+    }).filter(idx => idx !== -1);
+    
+    const propertyIndices = sortedPropertyKeys.map(propKey => {
+      return orderedProperties.findIndex(p => p.key === propKey);
+    }).filter(idx => idx !== -1);
+    
+    const minRowIndex = Math.min(...rowIndices);
+    const maxRowIndex = Math.max(...rowIndices);
+    const minPropertyIndex = Math.min(...propertyIndices);
+    const maxPropertyIndex = Math.max(...propertyIndices);
+    
+    // Mark cells as copied (for dashed border visual feedback)
+    setCopyCells(new Set(validCells));
+    
+    // Store selection bounds for border rendering (only show outer border)
+    if (rowIndices.length > 0 && propertyIndices.length > 0) {
+      setCopySelectionBounds({
+        minRowIndex,
+        maxRowIndex,
+        minPropertyIndex,
+        maxPropertyIndex,
+        rowIds,
+        propertyKeys: sortedPropertyKeys,
+      });
+    }
     
     // Show toast message immediately
     setToastMessage('Content copied');
@@ -3367,7 +3497,12 @@ export function LibraryAssetsTable({
       setIsCutOperation(false);
       setClipboardData(null);
     } else {
-      // If not a cut operation, still clear clipboard data
+      // If not a cut operation, clear copy state to remove visual feedback (dashed border)
+      if (copyCells.size > 0) {
+        setCopyCells(new Set());
+        setCopySelectionBounds(null);
+      }
+      // Clear clipboard data
       setClipboardData(null);
       setIsCutOperation(false);
     }
@@ -3386,6 +3521,86 @@ export function LibraryAssetsTable({
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
   }, [clipboardData, selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, isCutOperation, cutCells, onSaveAsset, onUpdateAsset, library]);
+
+  // Keyboard shortcuts for Cut, Copy, Paste
+  useEffect(() => {
+    // Detect OS to use correct modifier key (Ctrl for Windows/Linux, Cmd for macOS)
+    // Use modern API if available, fallback to userAgent
+    const isMac = typeof navigator !== 'undefined' && (
+      // Modern API (Chrome 92+, Edge 92+) - check if available
+      (('userAgentData' in navigator) && 
+       (navigator as any).userAgentData?.platform?.toLowerCase().includes('mac')) ||
+      // Fallback to userAgent
+      navigator.userAgent.toUpperCase().includes('MAC')
+    );
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts if:
+      // 1. User is editing a cell (contentEditable)
+      // 2. User is typing in an input, textarea, or select element
+      // 3. User is in a modal or dropdown
+      const target = e.target as HTMLElement;
+      const isEditing = editingCell !== null;
+      const isInputElement = target.tagName === 'INPUT' || 
+                            target.tagName === 'TEXTAREA' || 
+                            target.tagName === 'SELECT' ||
+                            target.isContentEditable ||
+                            target.closest('input') !== null ||
+                            target.closest('textarea') !== null ||
+                            target.closest('[contenteditable="true"]') !== null ||
+                            target.closest('.ant-select') !== null ||
+                            target.closest('.ant-input') !== null ||
+                            target.closest('.ant-modal') !== null;
+      
+      if (isEditing || isInputElement) {
+        return; // Let browser handle default behavior
+      }
+
+      // Check modifier key
+      const hasModifier = isMac ? e.metaKey : e.ctrlKey;
+      if (!hasModifier) {
+        return;
+      }
+
+      // Handle Cut (Ctrl/Cmd + X)
+      if (e.key === 'x' || e.key === 'X') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (selectedCells.size > 0 || selectedRowIds.size > 0) {
+          handleCut();
+        }
+        return;
+      }
+
+      // Handle Copy (Ctrl/Cmd + C)
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (selectedCells.size > 0 || selectedRowIds.size > 0) {
+          handleCopy();
+        }
+        return;
+      }
+
+      // Handle Paste (Ctrl/Cmd + V)
+      if (e.key === 'v' || e.key === 'V') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (clipboardData && clipboardData.length > 0 && clipboardData[0].length > 0) {
+          handlePaste();
+        }
+        return;
+      }
+    };
+
+    // Add event listener
+    window.addEventListener('keydown', handleKeyDown);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [editingCell, selectedCells, selectedRowIds, clipboardData, handleCut, handleCopy, handlePaste]);
 
   // Handle Insert Row Above operation
   const handleInsertRowAbove = useCallback(async () => {
@@ -4426,7 +4641,9 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    const isCellCopy = copyCells.has(cellKey);
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4447,23 +4664,42 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
+                        onMouseEnter={(e) => {
+                          // Show ASSET CARD when hovering over cell with assetId, but only if cell is not selected
+                          if (assetId && !isCellSelected) {
+                            handleAvatarMouseEnter(assetId, e.currentTarget);
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          // Hide ASSET CARD when leaving cell, but only if cell is not selected
+                          if (assetId && !isCellSelected) {
+                            handleAvatarMouseLeave();
+                          }
+                          // Handle expand icon hover
+                          if (hoveredCellForExpand?.rowId === row.id && hoveredCellForExpand?.propertyKey === property.key) {
+                            setHoveredCellForExpand(null);
+                          }
+                        }}
                         onMouseMove={(e) => {
                           if (showExpandIcon) {
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -4483,40 +4719,50 @@ export function LibraryAssetsTable({
                             }
                           }
                         }}
-                        onMouseLeave={() => {
-                          if (hoveredCellForExpand?.rowId === row.id && hoveredCellForExpand?.propertyKey === property.key) {
-                            setHoveredCellForExpand(null);
-                          }
-                        }}
                       >
                           <ReferenceField
                             property={property}
                             assetId={assetId}
                             rowId={row.id}
                             assetNamesCache={assetNamesCache}
+                            isCellSelected={isCellSelected}
                             onAvatarMouseEnter={handleAvatarMouseEnter}
                             onAvatarMouseLeave={handleAvatarMouseLeave}
                             onOpenReferenceModal={handleOpenReferenceModal}
                           />
+                          {/* Show detail icon when cell is selected - positioned on the right */}
+                          {isCellSelected && (
+                            <Image
+                              src={tableAssetDetailIcon}
+                              alt=""
+                              width={16}
+                              height={16}
+                              className={styles.referenceDetailIcon}
+                              onMouseEnter={(e) => {
+                                // Show ASSET CARD when hovering over detail icon in selected cell
+                                if (assetId) {
+                                  e.stopPropagation();
+                                  handleAvatarMouseEnter(assetId, e.currentTarget);
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                // Hide ASSET CARD when leaving detail icon
+                                if (assetId) {
+                                  e.stopPropagation();
+                                  handleAvatarMouseLeave();
+                                }
+                              }}
+                            />
+                          )}
                           {/* Show collaboration avatars in cell corner */}
                           {editingUsers.length > 0 && (
                             <CellPresenceAvatars users={editingUsers} />
                           )}
-                          {/* Show expand icon for cell selection */}
-                          {shouldShowExpandIcon && (
-                            <div
-                              className={styles.cellExpandIcon}
-                              onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                            >
-                              <Image
-                                src={batchEditAddIcon}
-                                alt="Expand selection"
-                                width={18}
-                                height={18}
-                                style={{ pointerEvents: 'none' }}
-                              />
-                            </div>
-                          )}
+                          {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                          <div
+                            className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                          />
                         </td>
                       );
                     }
@@ -4551,7 +4797,9 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    const isCellCopy = copyCells.has(cellKey);
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4572,18 +4820,21 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
@@ -4660,20 +4911,11 @@ export function LibraryAssetsTable({
                               // Show blank instead of dash for empty media fields
                               <span></span>
                             )}
-                            {shouldShowExpandIcon && (
-                              <div
-                                className={styles.cellExpandIcon}
-                                onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                              >
-                                <Image
-                                  src={batchEditAddIcon}
-                                  alt="Expand selection"
-                                  width={18}
-                                  height={18}
-                                  style={{ pointerEvents: 'none' }}
-                                />
-                              </div>
-                            )}
+                            {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                            <div
+                              className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                              onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                            />
                           </>
                         )}
                         {/* Show collaboration avatars in cell corner */}
@@ -4704,7 +4946,9 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    const isCellCopy = copyCells.has(cellKey);
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4725,18 +4969,21 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
@@ -4856,21 +5103,11 @@ export function LibraryAssetsTable({
                         {editingUsers.length > 0 && (
                           <CellPresenceAvatars users={editingUsers} />
                         )}
-                        {/* Show expand icon for cell selection */}
-                        {shouldShowExpandIcon && (
-                          <div
-                            className={styles.cellExpandIcon}
-                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                          >
-                            <Image
-                              src={batchEditAddIcon}
-                              alt="Expand selection"
-                              width={18}
-                              height={18}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </div>
-                        )}
+                        {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                        <div
+                          className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                        />
                       </td>
                     );
                   }
@@ -4896,7 +5133,9 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    const isCellCopy = copyCells.has(cellKey);
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4917,18 +5156,21 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                         onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
@@ -5049,21 +5291,11 @@ export function LibraryAssetsTable({
                         {editingUsers.length > 0 && (
                           <CellPresenceAvatars users={editingUsers} />
                         )}
-                        {/* Show expand icon for cell selection */}
-                        {shouldShowExpandIcon && (
-                          <div
-                            className={styles.cellExpandIcon}
-                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                          >
-                            <Image
-                              src={batchEditAddIcon}
-                              alt="Expand selection"
-                              width={18}
-                              height={18}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </div>
-                        )}
+                        {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                        <div
+                          className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                        />
                       </td>
                     );
                   }
@@ -5098,7 +5330,9 @@ export function LibraryAssetsTable({
                   const cellKey: CellKey = `${row.id}-${property.key}`;
                   const isCellSelected = selectedCells.has(cellKey);
                   const isCellCut = cutCells.has(cellKey);
-                  const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                  const isCellCopy = copyCells.has(cellKey);
+                  // Show expand icon when cell is selected (single or multiple selection)
+                  const showExpandIcon = isCellSelected;
                   const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                   const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                   
@@ -5119,18 +5353,22 @@ export function LibraryAssetsTable({
                     cutBorderClass = borderClasses.join(' ');
                   }
                   
+                  // Check if cell is on border of copy selection (only show outer border)
+                  const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                  
                   // Check if cell is on border of selection (only show outer border)
                   const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                   
                   const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                     hoveredCellForExpand?.propertyKey === property.key;
-                  const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                  // Show expand icon when cell is selected (always visible, not dependent on hover)
+                  const shouldShowExpandIcon = showExpandIcon;
                   
                   return (
                     <td
                       key={property.id}
                       data-property-key={property.key}
-                      className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+                      className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
                       style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
                       onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                       onClick={(e) => handleCellClick(row.id, property.key, e)}
@@ -5261,21 +5499,11 @@ export function LibraryAssetsTable({
                       {editingUsers.length > 0 && (
                         <CellPresenceAvatars users={editingUsers} />
                       )}
-                      {/* Show expand icon for cell selection */}
-                      {shouldShowExpandIcon && (
-                        <div
-                          className={styles.cellExpandIcon}
-                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                        >
-                          <Image
-                            src={batchEditAddIcon}
-                            alt="Expand selection"
-                            width={18}
-                            height={18}
-                            style={{ pointerEvents: 'none' }}
-                          />
-                        </div>
-                      )}
+                      {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                      <div
+                        className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                        onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                      />
                     </td>
                   );
                 })}
@@ -5292,13 +5520,29 @@ export function LibraryAssetsTable({
                   const assetId = newRowData[property.key] ? String(newRowData[property.key]) : null;
                   
                   return (
-                    <td key={property.id} className={styles.editCell}>
+                    <td 
+                      key={property.id} 
+                      className={styles.editCell}
+                      onMouseEnter={(e) => {
+                        // Show ASSET CARD when hovering over cell with assetId
+                        if (assetId) {
+                          handleAvatarMouseEnter(assetId, e.currentTarget);
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        // Hide ASSET CARD when leaving cell
+                        if (assetId) {
+                          handleAvatarMouseLeave();
+                        }
+                      }}
+                    >
                       <div className={styles.referenceInputContainer}>
                         <ReferenceField
                           property={property}
                           assetId={assetId}
                           rowId="new"
                           assetNamesCache={assetNamesCache}
+                          isCellSelected={false}
                           onAvatarMouseEnter={handleAvatarMouseEnter}
                           onAvatarMouseLeave={handleAvatarMouseLeave}
                           onOpenReferenceModal={handleOpenReferenceModal}
@@ -5406,7 +5650,7 @@ export function LibraryAssetsTable({
                     <Input
                       value={newRowData[property.key] || ''}
                       onChange={(e) => handleInputChange(property.key, e.target.value)}
-                      placeholder={`Enter ${property.name.toLowerCase()}`}
+                      placeholder=""
                       className={styles.editInput}
                       disabled={isSaving}
                     />

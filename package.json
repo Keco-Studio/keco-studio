@@ -17,6 +17,7 @@
     "next": "^16.0.0",
     "react": "18.3.1",
     "react-dom": "18.3.1",
+    "resend": "^6.7.0",
     "y-indexeddb": "^9.0.12",
     "yjs": "^13.6.29",
     "zod": "^3.22.4"
@@ -40,6 +41,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "validate": "npm run lint && npm run build",
     "test:e2e": "playwright test",
     "test:e2e:parallel": "playwright test --workers=50%",
     "test:e2e:clean": "tsx scripts/clean-remote-test-data.ts && playwright test",

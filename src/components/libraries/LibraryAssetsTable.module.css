@@ -1,5 +1,6 @@
 .tableContainer {
   margin-top: 24px;
+  margin-bottom: 200px; /* Add bottom margin to ensure context menu has space */
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   overflow: hidden;
@@ -247,33 +248,101 @@ td.cellCut.cutBorderRight:hover {
   border-right-color: rgba(94, 0, 255, 0.8) !important;
 }
 
-/* Expand icon for cell selection - only show on hover */
+/* Copy cells: dashed border - only show outer border */
+.cell.cellCopy,
+td.cellCopy {
+  background-color: rgba(94, 0, 255, 0.08) !important;
+  position: relative;
+  z-index: 2;
+  /* Remove default cell borders - only show border where copyBorder classes are applied */
+  border-top: none !important;
+  border-bottom: none !important;
+  border-left: none !important;
+  border-right: none !important;
+}
+
+.cell.cellCopy:hover,
+td.cellCopy:hover {
+  background-color: rgba(94, 0, 255, 0.12) !important;
+}
+
+/* Outer border styles - only show on boundary cells */
+.cellCopy.copyBorderTop,
+td.cellCopy.copyBorderTop {
+  border-top: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCopy.copyBorderBottom,
+td.cellCopy.copyBorderBottom {
+  border-bottom: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCopy.copyBorderLeft,
+td.cellCopy.copyBorderLeft {
+  border-left: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCopy.copyBorderRight,
+td.cellCopy.copyBorderRight {
+  border-right: 2px dashed rgba(94, 0, 255, 0.6) !important;
+}
+
+.cellCopy.copyBorderTop:hover,
+td.cellCopy.copyBorderTop:hover {
+  border-top-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCopy.copyBorderBottom:hover,
+td.cellCopy.copyBorderBottom:hover {
+  border-bottom-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCopy.copyBorderLeft:hover,
+td.cellCopy.copyBorderLeft:hover {
+  border-left-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+.cellCopy.copyBorderRight:hover,
+td.cellCopy.copyBorderRight:hover {
+  border-right-color: rgba(94, 0, 255, 0.8) !important;
+}
+
+/* Expand icon for cell selection - always visible */
 .cellExpandIcon {
   position: absolute;
   bottom: 0;
   right: 0;
-  width: 18px;
-  height: 18px;
-  cursor: crosshair;
-  z-index: 10;
+  width: 6px;
+  height: 6px;
+  cursor: default;
+  z-index: 100;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(94, 0, 255, 0.1);
+  background-color: rgba(135, 38, 238, 1);
   border: 1px solid rgba(94, 0, 255, 0.3);
   border-radius: 2px 0 0 0;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
   pointer-events: auto;
-  opacity: 0;
+  opacity: 1 !important;
 }
 
-.cell:hover .cellExpandIcon {
-  opacity: 1;
+/* Ensure expand icon is always visible in selected cells */
+.cellSelected .cellExpandIcon,
+.cellMultipleSelected .cellExpandIcon {
+  z-index: 100;
+  opacity: 1 !important;
 }
 
 .cellExpandIcon:hover {
-  background-color: rgba(94, 0, 255, 0.15);
+  background-color: rgba(135, 38, 238, 1);
   border-color: rgba(94, 0, 255, 0.5);
+  cursor: crosshair;
+}
+
+/* Hide expand icon when cell is not selected */
+.cellExpandIconHidden {
+  display: none !important;
 }
 
 .cellExpandIcon:active {
@@ -851,7 +920,6 @@ td.cellCut.cutBorderRight:hover {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
   min-height: 24px;
 }
 
@@ -867,6 +935,7 @@ td.cellCut.cutBorderRight:hover {
   background: #5E00FF14;
   border-radius: 5px;
   padding: 4px;
+  cursor: pointer;
 }
 
 .referenceSelectedAssetLeft .referenceDiamondIcon {
@@ -909,6 +978,16 @@ td.cellCut.cutBorderRight:hover {
 
 .referenceArrowIcon:hover {
   opacity: 0.8;
+}
+
+.referenceDetailIcon {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  flex-shrink: 0;
+  display: inline-block;
+  z-index: 1;
 }
 
 /* Media field display styles */
