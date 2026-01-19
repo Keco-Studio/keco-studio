@@ -101,27 +101,122 @@ async function createLibrarySnapshot(
 
 /**
  * Restore library data from a snapshot
+ * This actually applies the snapshot data to the database
  */
 async function restoreLibraryFromSnapshot(
   supabase: SupabaseClient,
   libraryId: string,
   snapshotData: any
 ): Promise<void> {
-  // This is a complex operation that should be handled carefully
-  // For now, we'll just store the snapshot for reference
-  // The actual restore logic might need to:
-  // 1. Clear existing assets
-  // 2. Restore field definitions
-  // 3. Restore assets and their values
-  // This could be implemented as a database function for atomicity
+  if (!snapshotData || !snapshotData.assets) {
+    throw new Error('Invalid snapshot data');
+  }
 
-  // Note: Full restore implementation would require:
-  // - Deleting existing library_assets and library_asset_values
-  // - Restoring library_field_definitions
-  // - Recreating assets and values from snapshot
+  // Step 1: Delete all existing assets and their values
+  // First, get all asset IDs for this library
+  const { data: existingAssets, error: assetsError } = await supabase
+    .from('library_assets')
+    .select('id')
+    .eq('library_id', libraryId);
+
+  if (assetsError) {
+    throw new Error(`Failed to fetch existing assets: ${assetsError.message}`);
+  }
+
+  if (existingAssets && existingAssets.length > 0) {
+    const assetIds = existingAssets.map(a => a.id);
+
+    // Delete asset values first (due to foreign key constraints)
+    const { error: valuesError } = await supabase
+      .from('library_asset_values')
+      .delete()
+      .in('asset_id', assetIds);
+
+    if (valuesError) {
+      throw new Error(`Failed to delete asset values: ${valuesError.message}`);
+    }
+
+    // Delete assets
+    const { error: deleteError } = await supabase
+      .from('library_assets')
+      .delete()
+      .eq('library_id', libraryId);
+
+    if (deleteError) {
+      throw new Error(`Failed to delete existing assets: ${deleteError.message}`);
+    }
+  }
+
+  // Step 2: Restore assets from snapshot
+  const snapshotAssets: any[] = snapshotData.assets;
+  if (snapshotAssets.length === 0) {
+    return; // No assets to restore
+  }
+
+  // Insert assets
+  const assetsToInsert = snapshotAssets.map(asset => ({
+    library_id: libraryId,
+    name: asset.name,
+    created_at: asset.createdAt || new Date().toISOString(),
+  }));
+
+  const { data: insertedAssets, error: insertError } = await supabase
+    .from('library_assets')
+    .insert(assetsToInsert)
+    .select('id, name');
+
+  if (insertError) {
+    throw new Error(`Failed to insert restored assets: ${insertError.message}`);
+  }
+
+  if (!insertedAssets) {
+    throw new Error('Failed to insert restored assets: no data returned');
+  }
+
+  // Step 3: Restore asset values
+  // Create a map from asset name to new asset ID
+  const nameToIdMap = new Map<string, string>();
+  insertedAssets.forEach((newAsset, index) => {
+    const originalAsset = snapshotAssets[index];
+    if (originalAsset && originalAsset.name === newAsset.name) {
+      nameToIdMap.set(originalAsset.id, newAsset.id);
+    }
+  });
+
+  // Collect all values to insert
+  const valuesToInsert: Array<{ asset_id: string; field_id: string; value_json: any }> = [];
   
-  // For MVP, we'll keep the snapshot and let the frontend handle display
-  // A full restore would require a database function with transactions
+  snapshotAssets.forEach(originalAsset => {
+    const newAssetId = nameToIdMap.get(originalAsset.id);
+    if (!newAssetId || !originalAsset.propertyValues) {
+      return;
+    }
+
+    Object.entries(originalAsset.propertyValues).forEach(([fieldId, value]) => {
+      if (value !== null && value !== undefined && value !== '') {
+        valuesToInsert.push({
+          asset_id: newAssetId,
+          field_id: fieldId,
+          value_json: value,
+        });
+      }
+    });
+  });
+
+  // Insert values in batches to avoid query size limits
+  if (valuesToInsert.length > 0) {
+    const batchSize = 100;
+    for (let i = 0; i < valuesToInsert.length; i += batchSize) {
+      const batch = valuesToInsert.slice(i, i + batchSize);
+      const { error: valuesInsertError } = await supabase
+        .from('library_asset_values')
+        .insert(batch);
+
+      if (valuesInsertError) {
+        throw new Error(`Failed to insert asset values: ${valuesInsertError.message}`);
+      }
+    }
+  }
 }
 
 /**
@@ -359,6 +454,11 @@ export async function restoreVersion(
     restoreVersionName,
   });
 
+  // Actually restore the snapshot data to the database
+  // This makes the restored version the actual current state
+  await restoreLibraryFromSnapshot(supabase, libraryId, versionToRestore.snapshot_data);
+
+  // Create restore version record
   const { data: restoredVersionData, error: restoreError } = await supabase
     .from('library_versions')
     .insert({

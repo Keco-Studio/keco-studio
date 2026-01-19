@@ -25,7 +25,8 @@ interface VersionControlSidebarProps {
   onClose: () => void;
   selectedVersionId?: string | null;
   onVersionSelect?: (versionId: string | null) => void;
-  onRestoreSuccess?: () => void;
+  onRestoreSuccess?: (restoredVersionId: string) => void;
+  highlightedVersionId?: string | null;
 }
 
 export function VersionControlSidebar({
@@ -35,6 +36,7 @@ export function VersionControlSidebar({
   selectedVersionId,
   onVersionSelect,
   onRestoreSuccess,
+  highlightedVersionId,
 }: VersionControlSidebarProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
@@ -143,6 +145,7 @@ export function VersionControlSidebar({
               selectedVersionId={selectedVersionId}
               onVersionSelect={onVersionSelect}
               onRestoreSuccess={onRestoreSuccess}
+              highlightedVersionId={highlightedVersionId}
             />
           )}
         </div>

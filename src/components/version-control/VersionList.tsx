@@ -16,10 +16,11 @@ interface VersionListProps {
   libraryId: string;
   selectedVersionId?: string | null;
   onVersionSelect?: (versionId: string | null) => void;
-  onRestoreSuccess?: () => void;
+  onRestoreSuccess?: (restoredVersionId: string) => void;
+  highlightedVersionId?: string | null;
 }
 
-export function VersionList({ versions, libraryId, selectedVersionId, onVersionSelect, onRestoreSuccess }: VersionListProps) {
+export function VersionList({ versions, libraryId, selectedVersionId, onVersionSelect, onRestoreSuccess, highlightedVersionId }: VersionListProps) {
   // Always show virtual current version at the top
   // Current version represents the current editing state, not a saved version
   // All versions from database are history versions
@@ -64,6 +65,7 @@ export function VersionList({ versions, libraryId, selectedVersionId, onVersionS
           isSelected={selectedVersionId === version.id}
           onSelect={onVersionSelect}
           onRestoreSuccess={onRestoreSuccess}
+          isHighlighted={highlightedVersionId === version.id}
         />
       ))}
     </div>

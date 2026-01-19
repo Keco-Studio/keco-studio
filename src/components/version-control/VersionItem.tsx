@@ -26,10 +26,11 @@ interface VersionItemProps {
   isFirst?: boolean;
   isSelected?: boolean;
   onSelect?: (versionId: string) => void;
-  onRestoreSuccess?: () => void;
+  onRestoreSuccess?: (restoredVersionId: string) => void;
+  isHighlighted?: boolean;
 }
 
-export function VersionItem({ version, libraryId, isLast, isFirst = false, isSelected = false, onSelect, onRestoreSuccess }: VersionItemProps) {
+export function VersionItem({ version, libraryId, isLast, isFirst = false, isSelected = false, onSelect, onRestoreSuccess, isHighlighted = false }: VersionItemProps) {
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
 
   // Format date: "Dec 28, 7:40 AM"
@@ -94,7 +95,7 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
 
   return (
     <div 
-      className={`${styles.versionItem} ${isCurrent ? styles.currentVersion : styles.historyVersion} ${isSelected ? styles.selected : ''}`}
+      className={`${styles.versionItem} ${isCurrent ? styles.currentVersion : styles.historyVersion} ${isSelected ? styles.selected : ''} ${isHighlighted ? styles.highlighting : ''}`}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
     >

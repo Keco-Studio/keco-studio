@@ -25,7 +25,7 @@ interface RestoreConfirmModalProps {
   version: LibraryVersion;
   libraryId: string;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (restoredVersionId: string) => void;
 }
 
 export function RestoreConfirmModal({
@@ -51,13 +51,14 @@ export function RestoreConfirmModal({
         backupCurrent: data.backupCurrent,
         backupVersionName: data.backupVersionName,
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
       queryClient.invalidateQueries({ queryKey: ['library', libraryId] });
       setBackupEnabled(false);
       setBackupVersionName('');
       setError(null);
-      onSuccess();
+      // Pass the restored version ID to onSuccess callback
+      onSuccess(data.restoredVersion.id);
     },
     onError: (error: any) => {
       setError(error?.message || 'Failed to restore version');

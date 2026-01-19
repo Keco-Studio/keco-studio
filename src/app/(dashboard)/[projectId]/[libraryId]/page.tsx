@@ -67,6 +67,7 @@ export default function LibraryPage() {
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
   const [restoreToastMessage, setRestoreToastMessage] = useState<string | null>(null);
   const [versions, setVersions] = useState<LibraryVersion[]>([]);
+  const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
 
   // Phase 2: state for Library assets table view (placeholder data, wired via service layer)
   const [librarySummary, setLibrarySummary] = useState<LibrarySummary | null>(null);
@@ -254,6 +255,11 @@ export default function LibraryPage() {
   // Listen for asset changes (created/updated/deleted) from Sidebar or other sources
   useEffect(() => {
     const handleAssetChange = async (event: Event) => {
+      // Don't refresh if viewing a historical version
+      if (selectedVersionId && selectedVersionId !== '__current__') {
+        return;
+      }
+      
       const customEvent = event as CustomEvent<{ libraryId: string; assetId?: string }>;
       // Only refresh if the event is for this library
       if (customEvent.detail?.libraryId === libraryId) {
@@ -280,7 +286,7 @@ export default function LibraryPage() {
       window.removeEventListener('assetUpdated', handleAssetChange);
       window.removeEventListener('assetDeleted', handleAssetChange);
     };
-  }, [libraryId, supabase]);
+  }, [libraryId, supabase, selectedVersionId]);
 
   // Load versions when version control is opened
   useEffect(() => {
@@ -643,8 +649,8 @@ export default function LibraryPage() {
             isOpen={isVersionControlOpen}
             onClose={() => {
               setIsVersionControlOpen(false);
-              setSelectedVersionId(null); // Clear selection when closing sidebar
-              // Reload latest data when closing sidebar
+              // Clear selection and reload latest data from database
+              setSelectedVersionId(null);
               const reloadLatestData = async () => {
                 try {
                   const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
@@ -656,6 +662,7 @@ export default function LibraryPage() {
               reloadLatestData();
             }}
             selectedVersionId={selectedVersionId}
+            highlightedVersionId={highlightedVersionId}
             onVersionSelect={async (versionId) => {
               setSelectedVersionId(versionId);
               // Reload versions to ensure we have the latest snapshot data
@@ -668,21 +675,32 @@ export default function LibraryPage() {
                 }
               }
             }}
-            onRestoreSuccess={async () => {
+            onRestoreSuccess={async (restoredVersionId: string) => {
               setRestoreToastMessage('Library restored');
               setTimeout(() => {
                 setRestoreToastMessage(null);
               }, 2000);
+              
               // Reload versions and latest data after restore
+              // The restore has already applied the data to the database, so we just need to reload
               try {
                 const [loadedVersions, rows] = await Promise.all([
                   getVersionsByLibrary(supabase, libraryId),
                   getLibraryAssetsWithProperties(supabase, libraryId),
                 ]);
                 setVersions(loadedVersions);
-                setAssetRows(rows);
-                // Reset to current version view
-                setSelectedVersionId(null);
+                
+                // Highlight the restored version for 1.5 seconds
+                setHighlightedVersionId(restoredVersionId);
+                
+                // After highlight animation, load the current data (which is now the restored version)
+                setTimeout(async () => {
+                  setHighlightedVersionId(null);
+                  
+                  // The database now contains the restored data, so load it as current version
+                  setAssetRows(rows);
+                  setSelectedVersionId(null); // Clear selection to show current version
+                }, 1500); // 1.5 seconds for highlight animation
               } catch (e: any) {
                 console.error('Failed to reload data after restore:', e);
               }
