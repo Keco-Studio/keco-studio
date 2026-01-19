@@ -26,7 +26,6 @@ export async function PATCH(
 
     // Debug: Check authorization header
     const authHeader = request.headers.get('authorization');
-    console.log('[PATCH /api/collaborators] Authorization header:', authHeader ? `exists (${authHeader.substring(0, 30)}...)` : 'MISSING');
 
     // Validate input
     if (!newRole || !['admin', 'editor', 'viewer'].includes(newRole)) {
@@ -41,7 +40,6 @@ export async function PATCH(
 
     // Get current user
     const { data: { user }, error: authError } = await supabase.auth.getUser();
-    console.log('[PATCH /api/collaborators] User auth result:', { hasUser: !!user, error: authError?.message });
     
     if (authError || !user) {
       return NextResponse.json(

@@ -51,7 +51,6 @@ export default function CollaboratorsPage() {
     setError(null);
     
     try {
-      console.log('[CollaboratorsPage] Loading collaborators page for project:', projectId);
       
       // 1. Get current user
       const { data: { user } } = await supabase.auth.getUser();
@@ -74,7 +73,6 @@ export default function CollaboratorsPage() {
         setError('Failed to load project: ' + projectError.message);
       } else if (project) {
         setProjectName(project.name);
-        console.log('[CollaboratorsPage] Project loaded:', project.name);
         
         // Check if current user is owner
         if (user && project.owner_id === user.id) {
@@ -99,7 +97,6 @@ export default function CollaboratorsPage() {
           },
         });
         const roleResult = await roleResponse.json();
-        console.log('[CollaboratorsPage] User role result:', roleResult);
         
         if (roleResult.role) {
           setUserRole(roleResult.role);
@@ -125,7 +122,6 @@ export default function CollaboratorsPage() {
       // 4. Get collaborators and invitations
       // Use direct client query as fallback since sessionStorage auth doesn't work with server actions
       try {
-        console.log('[CollaboratorsPage] Fetching collaborators directly from client');
         
         // Query collaborators with profile data
         const { data: collabData, error: collabError } = await supabase
@@ -188,7 +184,6 @@ export default function CollaboratorsPage() {
         });
         
         setCollaborators(transformedCollaborators);
-        console.log('[CollaboratorsPage] Collaborators loaded:', transformedCollaborators.length);
         
         // Query pending invitations (only if admin)
         if (userRole === 'admin') {
@@ -224,7 +219,6 @@ export default function CollaboratorsPage() {
             }));
             
             setPendingInvitations(transformedInvites);
-            console.log('[CollaboratorsPage] Pending invitations:', transformedInvites.length);
           }
         }
       } catch (err: any) {

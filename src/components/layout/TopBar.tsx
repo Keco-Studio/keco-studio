@@ -108,7 +108,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         if (roleResponse.ok) {
           const roleResult = await roleResponse.json();
           setUserRole(roleResult.role || null);
-          console.log('User role:', roleResult.role);
         } else {
           setUserRole(null);
         }

@@ -80,16 +80,8 @@ export function InviteCollaboratorModal({
       const values = await form.validateFields();
       const { email, role } = values;
 
-      console.log('[InviteCollaboratorModal] Sending invitation:', {
-        projectId,
-        recipientEmail: email.trim().toLowerCase(),
-        role,
-      });
-
       // Get current session for authorization header
       const { data: { session } } = await supabase.auth.getSession();
-      console.log('[InviteCollaboratorModal] Session:', session ? 'exists' : 'null');
-      console.log('[InviteCollaboratorModal] Access token:', session?.access_token ? 'exists (length: ' + session.access_token.length + ')' : 'null');
       
       if (!session) {
         setError('You must be logged in to send invitations');
@@ -114,7 +106,29 @@ export function InviteCollaboratorModal({
       const result = await response.json();
 
       if (result.success) {
-        message.success(result.message || 'Invitation sent successfully!');
+        // Show different message based on whether user was auto-accepted
+        if (result.autoAccepted) {
+          message.success(result.message || 'Collaborator added successfully!');
+          
+          // Clear caches when user is auto-accepted as collaborator          
+          // 1. Clear globalRequestCache for projects list
+          try {
+            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+              // Clear cache for the INVITED user (not the inviter)
+              // Note: This won't help the invited user's browser, but we need to handle this differently
+            }
+          } catch (error) {
+            console.error('[InviteCollaboratorModal] Error clearing cache:', error);
+          }
+          
+          // 2. Dispatch event to trigger React Query cache refresh
+          // This will refresh the inviter's Sidebar, but won't affect the invited user's browser
+          window.dispatchEvent(new CustomEvent('projectCreated'));
+        } else {
+          message.success('Invitation sent successfully!');
+        }
         form.resetFields();
         onClose();
         onSuccess?.();

@@ -295,6 +295,19 @@
   border: 1px solid #e5e7eb;
   width: 100%;
   font-size: 14px;
+  transition: border-color 0.2s ease;
+}
+
+.fieldInput:focus,
+.fieldSelect:focus {
+  outline: none;
+  border-color: #8726EE6B;
+}
+
+/* Input being edited by collaborators */
+.fieldInputEditing {
+  border-width: 2px;
+  padding: 9px; /* Compensate for thicker border */
 }
 
 .fieldSelect {
@@ -361,12 +374,41 @@
   display: flex;
   align-items: center;
   width: 372px;
+  position: relative;
 }
 
 .booleanToggle {
   display: flex;
   align-items: center;
   gap: 12px;
+}
+
+.booleanToggleWrapper {
+  display: flex;
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px;
+  transition: border-color 0.2s ease;
+}
+
+.booleanToggleWrapperEditing {
+  border-width: 2px;
+  padding: 9px;
+}
+
+/* Wrapper for custom components (MediaFileUpload, AssetReferenceSelector) */
+.customComponentWrapper {
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 4px;
+  transition: border-color 0.2s ease;
+  width: 100%;
+}
+
+.customComponentWrapperEditing {
+  border-width: 2px;
+  padding: 3px;
 }
 
 .booleanLabel {

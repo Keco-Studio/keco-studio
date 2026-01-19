@@ -1565,10 +1565,12 @@ export function LibraryAssetsTable({
             setEditingCellValue('');
             setCurrentFocusedCell(null); // Clear focused cell when auto-saving
             
-            // Also update presence tracking
-            if (presenceTracking) {
-              presenceTracking.updateActiveCell(null, null);
-            }
+            // Delay clearing presence to give other users time to see the highlight
+            setTimeout(() => {
+              if (presenceTracking) {
+                presenceTracking.updateActiveCell(null, null);
+              }
+            }, 1000); // 1 second delay
             
             setIsSaving(true);
             onUpdateAsset(rowId, assetName, updatedPropertyValues)
@@ -1757,16 +1759,21 @@ export function LibraryAssetsTable({
 
     // Reset editing state immediately for better UX
     const savedValue = editingCellValue;
+    const savedRowId = editingCell.rowId;
+    const savedPropertyKey = editingCell.propertyKey;
     setEditingCell(null);
     setEditingCellValue('');
     editingCellRef.current = null;
     isComposingRef.current = false;
     setCurrentFocusedCell(null); // Clear focused cell when saving
     
-    // Also update presence tracking
-    if (presenceTracking) {
-      presenceTracking.updateActiveCell(null, null);
-    }
+    // Delay clearing presence to give other users time to see the highlight
+    // This ensures collaborative editing visibility is maintained
+    setTimeout(() => {
+      if (presenceTracking) {
+        presenceTracking.updateActiveCell(null, null);
+      }
+    }, 1000); // 1 second delay
 
     setIsSaving(true);
     try {
@@ -4798,6 +4805,13 @@ export function LibraryAssetsTable({
                               // Update presence tracking when user starts editing
                               handleCellFocus(row.id, property.key);
                               
+                              // Clear presence after a short delay to ensure other users see the highlight
+                              setTimeout(() => {
+                                if (presenceTracking) {
+                                  presenceTracking.updateActiveCell(null, null);
+                                }
+                              }, 1000); // 1 second delay
+                              
                               // Optimistic update: immediately update UI
                               setOptimisticBooleanValues(prev => ({
                                 ...prev,
@@ -5012,6 +5026,13 @@ export function LibraryAssetsTable({
                               }
                               
                               const stringValue = newValue || '';
+                              
+                              // Clear presence after a short delay to ensure other users see the highlight
+                              setTimeout(() => {
+                                if (presenceTracking) {
+                                  presenceTracking.updateActiveCell(null, null);
+                                }
+                              }, 1000); // 1 second delay
                               
                               // Optimistic update: immediately update UI
                               setOptimisticEnumValues(prev => ({

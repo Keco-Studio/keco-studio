@@ -7,6 +7,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getLibrary, Library } from '@/lib/services/libraryService';
 import { getFieldTypeIcon } from '../predefine/utils';
+import { usePresence } from '@/lib/contexts/PresenceContext';
 import styles from './page.module.css';
 import Image from 'next/image';
 import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
@@ -16,6 +17,7 @@ import noassetIcon2 from '@/app/assets/images/NoassetIcon2.svg';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { AssetReferenceSelector } from '@/components/asset/AssetReferenceSelector';
+import { FieldPresenceAvatars } from '@/components/collaboration/FieldPresenceAvatars';
 
 type FieldDef = {
   id: string;
@@ -80,6 +82,59 @@ export default function AssetPage() {
   
   // User role state (for permission control)
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
+
+  // Presence tracking state
+  const [currentFocusedField, setCurrentFocusedField] = useState<string | null>(null);
+
+  // Get presence from global context (shared with Sidebar)
+  const {
+    updateActiveCell,
+    getUsersEditingCell,
+    isTracking,
+  } = usePresence();
+
+  // Set presence to indicate user is viewing this asset (when not editing any field)
+  useEffect(() => {
+    console.log('[AssetPage] 🔍 Presence update check:', {
+      isNewAsset,
+      hasAsset: !!asset,
+      assetId: asset?.id?.slice(0, 8),
+      hasUpdateFn: !!updateActiveCell,
+      isTracking,
+      currentFocusedField,
+    });
+    
+    if (!isNewAsset && asset && updateActiveCell) {
+      // Always try to set viewing state when conditions are met
+      // Even if isTracking is temporarily false, it will retry when isTracking becomes true
+      if (isTracking) {
+        if (!currentFocusedField) {
+          console.log(`[AssetPage] 👁️ Setting viewing state for asset: ${asset.id.slice(0, 8)}`);
+          // Use a special propertyKey to indicate "viewing" (not editing)
+          updateActiveCell(asset.id, '__viewing__');
+        } else {
+          console.log(`[AssetPage] ⚠️ Field focused, not setting viewing state`);
+        }
+      } else {
+        console.log(`[AssetPage] ⏳ Waiting for tracking to start (isTracking: ${isTracking})`);
+      }
+    } else {
+      console.log(`[AssetPage] ⚠️ Missing conditions:`, {
+        isNewAsset,
+        hasAsset: !!asset,
+        hasUpdateFn: !!updateActiveCell,
+      });
+    }
+  }, [asset, isNewAsset, updateActiveCell, currentFocusedField, isTracking]);
+
+  // Cleanup: clear presence when component unmounts or asset changes
+  useEffect(() => {
+    return () => {
+      if (updateActiveCell) {
+        updateActiveCell(null, null);
+      }
+    };
+  }, [updateActiveCell]);
 
   const sections = useMemo(() => {
     const map: Record<string, FieldDef[]> = {};
@@ -357,6 +412,37 @@ export default function AssetPage() {
   const handleValueChange = (fieldId: string, value: any) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
   };
+
+  // Handle field focus for presence tracking
+  const handleFieldFocus = useCallback((fieldId: string) => {
+    setCurrentFocusedField(fieldId);
+    if (updateActiveCell && asset) {
+      updateActiveCell(asset.id, fieldId);
+    }
+  }, [updateActiveCell, asset]);
+
+  // Handle field blur for presence tracking
+  const handleFieldBlur = useCallback(() => {
+    setCurrentFocusedField(null);
+    if (updateActiveCell && asset && !isNewAsset) {
+      // When blurring, set back to viewing state (not editing any field)
+      updateActiveCell(asset.id, '__viewing__');
+    } else if (updateActiveCell) {
+      updateActiveCell(null, null);
+    }
+  }, [updateActiveCell, asset, isNewAsset]);
+
+  // Get users editing a specific field
+  const getFieldEditingUsers = useCallback((fieldId: string) => {
+    if (!getUsersEditingCell || !asset) return [];
+    return getUsersEditingCell(asset.id, fieldId);
+  }, [getUsersEditingCell, asset]);
+
+  // Get the first user's color for border styling
+  const getFirstUserColor = useCallback((users: any[]) => {
+    if (users.length === 0) return null;
+    return users[0].avatarColor;
+  }, []);
 
   const handleSave = useCallback(async () => {
     setSaveError(null);
@@ -649,6 +735,11 @@ export default function AssetPage() {
                                 const label = f.label;
 
                     if (f.data_type === 'boolean') {
+                      // Get users editing this field
+                      const editingUsers = getFieldEditingUsers(f.id);
+                      const borderColor = getFirstUserColor(editingUsers);
+                      const isBeingEdited = editingUsers.length > 0;
+
                       return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
@@ -673,26 +764,40 @@ export default function AssetPage() {
                                         </div>
                                       </div>                                   
                                       <div className={styles.fieldControl}>
-                                        <div className={styles.booleanToggle}>
-                                          <Switch
-                                            checked={!!value}
-                                            disabled={mode === 'view'}
-                                            onChange={
-                                              mode !== 'view'
-                                                ? (checked) => handleValueChange(f.id, checked)
-                                                : undefined
-                                            }
-                                          />
-                                          <span className={styles.booleanLabel}>
-                                            {value ? 'True' : 'False'}
-                                          </span>
+                                        <div 
+                                          className={`${styles.booleanToggleWrapper} ${isBeingEdited ? styles.booleanToggleWrapperEditing : ''}`}
+                                          style={borderColor ? { borderColor } : undefined}
+                                          onFocus={() => handleFieldFocus(f.id)}
+                                          onBlur={handleFieldBlur}
+                                          tabIndex={0}
+                                        >
+                                          <div className={styles.booleanToggle}>
+                                            <Switch
+                                              checked={!!value}
+                                              disabled={mode === 'view'}
+                                              onChange={
+                                                mode !== 'view'
+                                                  ? (checked) => handleValueChange(f.id, checked)
+                                                  : undefined
+                                              }
+                                            />
+                                            <span className={styles.booleanLabel}>
+                                              {value ? 'True' : 'False'}
+                                            </span>
+                                          </div>
                                         </div>
+                                        <FieldPresenceAvatars users={editingUsers} />
                                       </div>
                                     </div>
                       );
                     }
 
                     if (f.data_type === 'enum') {
+                      // Get users editing this field
+                      const editingUsers = getFieldEditingUsers(f.id);
+                      const borderColor = getFirstUserColor(editingUsers);
+                      const isBeingEdited = editingUsers.length > 0;
+
                       return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
@@ -729,9 +834,12 @@ export default function AssetPage() {
                                                   )
                                               : undefined
                                           }
-                                          className={`${styles.fieldSelect} ${
+                                          onFocus={() => handleFieldFocus(f.id)}
+                                          onBlur={handleFieldBlur}
+                                          className={`${styles.fieldSelect} ${isBeingEdited ? styles.fieldInputEditing : ''} ${
                                             mode === 'view' ? styles.disabledInput : ''
                                           }`}
+                                          style={borderColor ? { borderColor } : undefined}
                           >
                             <option value="">Select an option</option>
                             {(f.enum_options || []).map((opt) => (
@@ -740,12 +848,18 @@ export default function AssetPage() {
                               </option>
                             ))}
                           </select>
+                                        <FieldPresenceAvatars users={editingUsers} />
                                       </div>
                                     </div>
                       );
                     }
 
                                 if (f.data_type === 'image' || f.data_type === 'file') {
+                                  // Get users editing this field
+                                  const editingUsers = getFieldEditingUsers(f.id);
+                                  const borderColor = getFirstUserColor(editingUsers);
+                                  const isBeingEdited = editingUsers.length > 0;
+
                                   return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
@@ -770,18 +884,32 @@ export default function AssetPage() {
                                         </div>
                                       </div>                                     
                                       <div className={styles.fieldControl}>
-                                        <MediaFileUpload
-                                          value={value as MediaFileMetadata | null}
-                                          onChange={(newValue) => handleValueChange(f.id, newValue)}
-                                          disabled={mode === 'view'}
-                                          fieldType={f.data_type}
-                                        />
+                                        <div
+                                          className={`${styles.customComponentWrapper} ${isBeingEdited ? styles.customComponentWrapperEditing : ''}`}
+                                          style={borderColor ? { borderColor } : undefined}
+                                          onFocus={() => handleFieldFocus(f.id)}
+                                          onBlur={handleFieldBlur}
+                                          tabIndex={0}
+                                        >
+                                          <MediaFileUpload
+                                            value={value as MediaFileMetadata | null}
+                                            onChange={(newValue) => handleValueChange(f.id, newValue)}
+                                            disabled={mode === 'view'}
+                                            fieldType={f.data_type}
+                                          />
+                                        </div>
+                                        <FieldPresenceAvatars users={editingUsers} />
                                       </div>
                                     </div>
                                   );
                                 }
 
                                 if (f.data_type === 'reference') {
+                                  // Get users editing this field
+                                  const editingUsers = getFieldEditingUsers(f.id);
+                                  const borderColor = getFirstUserColor(editingUsers);
+                                  const isBeingEdited = editingUsers.length > 0;
+
                                   return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
@@ -806,12 +934,21 @@ export default function AssetPage() {
                                         </div>
                                       </div>                                     
                                       <div className={styles.fieldControl}>
-                                        <AssetReferenceSelector
-                                          value={value}
-                                          onChange={(newValue) => handleValueChange(f.id, newValue)}
-                                          referenceLibraries={f.reference_libraries ?? []}
-                                          disabled={mode === 'view'}
-                                        />
+                                        <div
+                                          className={`${styles.customComponentWrapper} ${isBeingEdited ? styles.customComponentWrapperEditing : ''}`}
+                                          style={borderColor ? { borderColor } : undefined}
+                                          onFocus={() => handleFieldFocus(f.id)}
+                                          onBlur={handleFieldBlur}
+                                          tabIndex={0}
+                                        >
+                                          <AssetReferenceSelector
+                                            value={value}
+                                            onChange={(newValue) => handleValueChange(f.id, newValue)}
+                                            referenceLibraries={f.reference_libraries ?? []}
+                                            disabled={mode === 'view'}
+                                          />
+                                        </div>
+                                        <FieldPresenceAvatars users={editingUsers} />
                                       </div>
                                     </div>
                                   );
@@ -828,6 +965,11 @@ export default function AssetPage() {
                     const inputClassName = f.data_type === 'int' 
                       ? `${styles.fieldInput} ${styles.noSpinner} ${mode === 'view' ? styles.disabledInput : ''}`
                       : `${styles.fieldInput} ${mode === 'view' ? styles.disabledInput : ''}`;
+
+                    // Get users editing this field
+                    const editingUsers = getFieldEditingUsers(f.id);
+                    const borderColor = getFirstUserColor(editingUsers);
+                    const isBeingEdited = editingUsers.length > 0;
 
                     return (
                                   <div key={f.id} className={styles.fieldRow}>
@@ -863,9 +1005,13 @@ export default function AssetPage() {
                                                 handleValueChange(f.id, e.target.value)
                                             : undefined
                                         }
-                                        className={inputClassName}
+                                        onFocus={() => handleFieldFocus(f.id)}
+                                        onBlur={handleFieldBlur}
+                                        className={`${inputClassName} ${isBeingEdited ? styles.fieldInputEditing : ''}`}
+                                        style={borderColor ? { borderColor } : undefined}
                           placeholder={f.label}
                         />
+                                      <FieldPresenceAvatars users={editingUsers} />
                                     </div>
                                     {/* Only Reference and Option (enum) show configure icon */}
                                   </div>

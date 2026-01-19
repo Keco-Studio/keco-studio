@@ -1,0 +1,35 @@
+.fieldPresenceAvatars {
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  z-index: 5;
+  display: flex;
+  flex-direction: row-reverse; /* Right to left: first user on right */
+  align-items: center;
+  gap: 2px;
+  pointer-events: none; /* Allow clicks to pass through */
+}
+
+.fieldPresenceAvatar {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  font-weight: 700;
+  color: white;
+  border: 1px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  pointer-events: auto; /* But avatars themselves can be hovered */
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+
+.fieldPresenceAvatar:hover {
+  transform: scale(1.2);
+  z-index: 10;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+

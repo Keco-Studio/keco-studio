@@ -309,7 +309,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       return;
     }
 
-    console.log(`Processing ${queuedUpdates.length} queued updates...`);
+    // console.log(`Processing ${queuedUpdates.length} queued updates...`);
 
     for (const event of queuedUpdates) {
       try {
@@ -334,7 +334,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       return;
     }
 
-    console.log(`[Realtime] Initializing subscription for library: ${libraryId}`);
+    // console.log(`[Realtime] Initializing subscription for library: ${libraryId}`);
     setConnectionStatus('connecting');
 
     // Create the edit broadcast channel
@@ -354,7 +354,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     // Handle system events for connection status
     channel.on('system', {}, (payload) => {
-      console.log('[Realtime] System event:', payload);
+      // console.log('[Realtime] System event:', payload);
 
       if (payload.status === 'SUBSCRIBED') {
         setConnectionStatus('connected');
@@ -367,7 +367,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           clearTimeout(reconnectTimeoutRef.current);
         }
         reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('[Realtime] Attempting reconnection...');
+          // console.log('[Realtime] Attempting reconnection...');
           setConnectionStatus('reconnecting');
           channel.subscribe();
         }, 2000);
@@ -376,7 +376,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     // Subscribe to the channel
     channel.subscribe((status) => {
-      console.log('[Realtime] Subscription status:', status);
+      // console.log('[Realtime] Subscription status:', status);
       
       if (status === 'SUBSCRIBED') {
         setConnectionStatus('connected');
@@ -387,7 +387,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     // Cleanup on unmount
     return () => {
-      console.log(`[Realtime] Cleaning up subscription for library: ${libraryId}`);
+      // console.log(`[Realtime] Cleaning up subscription for library: ${libraryId}`);
       
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
