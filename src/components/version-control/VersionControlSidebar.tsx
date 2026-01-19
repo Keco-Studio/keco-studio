@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getVersionsByLibrary } from '@/lib/services/versionService';
@@ -54,6 +54,39 @@ export function VersionControlSidebar({
     queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
     setShowCreateModal(false);
   };
+
+  // Set up realtime subscription for version changes
+  useEffect(() => {
+    if (!isOpen || !libraryId) return;
+
+    console.log(`[VersionControlSidebar] Setting up realtime subscription for library: ${libraryId}`);
+
+    // Subscribe to changes in library_versions table
+    const versionsChannel = supabase
+      .channel(`library-versions:${libraryId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to INSERT, UPDATE, DELETE
+          schema: 'public',
+          table: 'library_versions',
+          filter: `library_id=eq.${libraryId}`,
+        },
+        async (payload) => {
+          console.log('[VersionControlSidebar] Version change detected:', payload);
+          
+          // Invalidate and refetch versions to get the latest data
+          queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
+        }
+      )
+      .subscribe();
+
+    // Cleanup on unmount or when libraryId/isOpen changes
+    return () => {
+      console.log(`[VersionControlSidebar] Cleaning up realtime subscription for library: ${libraryId}`);
+      supabase.removeChannel(versionsChannel);
+    };
+  }, [libraryId, isOpen, supabase, queryClient]);
 
   if (!isOpen) return null;
 
