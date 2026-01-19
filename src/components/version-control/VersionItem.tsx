@@ -101,27 +101,28 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false }: Ver
 
       {/* Right Details */}
       <div className={styles.details}>
-        <div className={`${styles.versionName} ${isCurrent ? styles.currentName : styles.historyName}`}>
-          {displayName}
-        </div>
-        {!isCurrent && (
-          <div className={styles.creatorInfo}>
-            <Avatar
-              size={18}
-              style={{ backgroundColor: avatarColor }}
-              className={styles.creatorAvatar}
-            >
-              {getUserInitials(creatorName)}
-            </Avatar>
-            <span className={styles.creatorText}>{creatorText}</span>
+        {isCurrent ? (
+          <div className={`${styles.versionName} ${styles.currentName}`}>
+            Current Version
           </div>
+        ) : (
+          <>
+            <div className={`${styles.versionName} ${styles.historyName}`}>
+              {displayName}
+            </div>
+            <div className={styles.creatorInfo}>
+              <Avatar
+                size={18}
+                style={{ backgroundColor: avatarColor }}
+                className={styles.creatorAvatar}
+              >
+                {getUserInitials(creatorName)}
+              </Avatar>
+              <span className={styles.creatorText}>{creatorText}</span>
+            </div>
+            <div className={styles.dateText}>{createdDate}</div>
+          </>
         )}
-        {isCurrent && (
-          <div className={styles.currentVersionInfo}>
-            Modified by {creatorName}
-          </div>
-        )}
-        <div className={styles.dateText}>{createdDate}</div>
       </div>
 
       {/* Actions (only for history versions) */}
