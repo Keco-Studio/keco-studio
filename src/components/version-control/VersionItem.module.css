@@ -54,7 +54,7 @@
   transform: translateX(-50%);
   width: 0;
   height: 88px;
-  border-left: 1px dashed #E0E1E3;
+  border-left: 1px solid #E0E1E3;
   z-index: 0;
 }
 
