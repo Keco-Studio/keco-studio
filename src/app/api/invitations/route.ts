@@ -22,7 +22,6 @@ export async function POST(request: NextRequest) {
   try {
     // 1. Get authorization header
     const authHeader = request.headers.get('authorization');
-    console.log('[API /invitations] Auth header:', authHeader ? `exists (${authHeader.substring(0, 20)}...)` : 'missing');
     
     if (!authHeader) {
       return NextResponse.json(
@@ -49,8 +48,6 @@ export async function POST(request: NextRequest) {
 
     // 4. Verify JWT token and get user
     const { data: { user }, error: authError } = await supabase.auth.getUser(jwtToken);
-    console.log('[API /invitations] User:', user ? `${user.id} (${user.email})` : 'null');
-    console.log('[API /invitations] Auth error:', authError?.message || 'none');
     
     if (authError || !user) {
       console.error('[API /invitations] Authentication failed');
@@ -111,7 +108,6 @@ export async function POST(request: NextRequest) {
 
     // ❌ User does not exist - cannot invite unregistered users
     if (!recipientProfile) {
-      console.log('[API /invitations] Recipient email not found in system');
       return NextResponse.json({
         success: false,
         error: `The email address "${recipientEmail}" is not registered. Please ask them to sign up first.`,
@@ -139,7 +135,6 @@ export async function POST(request: NextRequest) {
     const skipEmail = process.env.SKIP_INVITATION_EMAIL === 'true';
     
     if (isDevelopment && skipEmail) {
-      console.log('[API /invitations] DEV MODE: Skipping email, adding user directly as collaborator');
       
       // Add user directly as collaborator
       const { error: addError } = await supabase
@@ -161,7 +156,6 @@ export async function POST(request: NextRequest) {
         }, { status: 500 });
       }
       
-      console.log('[API /invitations] User added successfully as', role);
       return NextResponse.json({
         success: true,
         message: `${recipientProfile.username || recipientEmail} added as ${role} (dev mode - no email sent)`,
@@ -227,7 +221,6 @@ export async function POST(request: NextRequest) {
     // 12. Send invitation email
     if (!isEmailConfigured()) {
       console.warn('[API /invitations] Email service not configured. Invitation created but email not sent.');
-      console.log('[API /invitations] Accept link:', `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/accept-invitation?token=${token}`);
       
       return NextResponse.json({
         success: true,
@@ -244,12 +237,12 @@ export async function POST(request: NextRequest) {
         recipientEmail,
         recipientName: recipientProfile.username || recipientProfile.full_name,
         inviterName,
+        inviterEmail: profile?.email || '',
         projectName,
         role: role.charAt(0).toUpperCase() + role.slice(1),
         acceptLink,
       });
 
-      console.log('[API /invitations] Invitation email sent successfully to', recipientEmail);
       
       return NextResponse.json({
         success: true,

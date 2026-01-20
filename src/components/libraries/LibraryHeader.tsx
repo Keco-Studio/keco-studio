@@ -20,6 +20,8 @@ import styles from './LibraryHeader.module.css';
 import libraryHeadMoreIcon from '@/app/assets/images/libraryHeadMoreIcon.svg';
 import libraryHeadVersionControlIcon from '@/app/assets/images/libraryHeadVersionControlIcon.svg';
 import libraryHeadExpandCollaborators from '@/app/assets/images/libraryHeadExpandCollaborators.svg';
+import libraryHeadEditIcon from '@/app/assets/images/assetEditIcon.svg';
+import libraryHeadViewIcon from '@/app/assets/images/assetViewIcon.svg';
 
 interface LibraryHeaderProps {
   libraryId: string;
@@ -230,49 +232,64 @@ export function LibraryHeader({
           </Tooltip>
 
           {/* Members Panel */}
-          {showMembersPanel && (
-            <div className={styles.membersPanel}>
-              <div className={styles.membersPanelHeader}>
-                CURRENTLY VIEWING
-              </div>
-              <div className={styles.membersList}>
-                {sortedPresenceUsers.map((user) => {
-                  const isCurrentUser = user.userId === currentUserId;
-                  return (
-                    <div
-                      key={user.userId}
-                      className={`${styles.memberItem} ${isCurrentUser ? styles.memberItemHighlight : ''}`}
-                    >
+          {showMembersPanel && (() => {
+            const currentUser = sortedPresenceUsers.find(u => u.userId === currentUserId);
+            const otherUsers = sortedPresenceUsers.filter(u => u.userId !== currentUserId);
+            
+            return (
+              <div className={styles.membersPanel}>
+                {/* Current User Section */}
+                {currentUser && (
+                  <div className={styles.currentUserSection}>
+                    <div className={styles.currentUserItem}>
                       <Avatar
                         size={36}
-                        style={{ backgroundColor: user.avatarColor }}
+                        style={{ backgroundColor: currentUser.avatarColor }}
                       >
-                        {getUserInitials(user.userName)}
+                        {getUserInitials(currentUser.userName)}
                       </Avatar>
                       <div className={styles.memberInfo}>
                         <div className={styles.memberName}>
-                          {user.userName} {isCurrentUser && <span className={styles.youLabel}>(you)</span>}
+                          {currentUser.userName} <span className={styles.youLabel}>(you)</span>
                         </div>
-                        <div className={styles.memberEmail}>{user.userEmail}</div>
                       </div>
-                      <div
-                        className={styles.memberStatus}
-                        style={{
-                          backgroundColor: user.connectionStatus === 'online' ? '#52c41a' : '#faad14',
-                        }}
-                      />
                     </div>
-                  );
-                })}
-                
-                {sortedPresenceUsers.length === 0 && (
-                  <div className={styles.emptyState}>
-                    No one is currently viewing this library
                   </div>
                 )}
+                
+                {/* Currently Viewing Section */}
+                <div className={styles.membersPanelHeader}>
+                  CURRENTLY VIEWING
+                </div>
+                <div className={styles.membersList}>
+                  {otherUsers.length > 0 ? (
+                    otherUsers.map((user) => (
+                      <div
+                        key={user.userId}
+                        className={styles.memberItem}
+                      >
+                        <Avatar
+                          size={36}
+                          style={{ backgroundColor: user.avatarColor }}
+                        >
+                          {getUserInitials(user.userName)}
+                        </Avatar>
+                        <div className={styles.memberInfo}>
+                          <div className={styles.memberName}>
+                            {user.userName}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className={styles.emptyState}>
+                      No one else is currently viewing this library
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
         </div>
         {/* Share Button */}
         <div className={styles.shareSection}>
@@ -282,7 +299,29 @@ export function LibraryHeader({
             >
               Share
           </button>
-          <span className={styles.roleLabel}>{getRoleText(userRole)}</span>
+          {userRole === 'admin' && (
+            <button
+              className={styles.adminRoleLabel}
+              >
+                {getRoleText(userRole)}
+            </button>
+          )}
+          {userRole === 'editor' && (
+            <button
+              className={styles.editorRoleLabel}
+              >
+                <Image src={libraryHeadEditIcon} alt="Editing" width={16} height={16} />
+                {getRoleText(userRole)}
+            </button>
+          )}
+          {userRole === 'viewer' && (
+            <button
+              className={styles.viewerRoleLabel}
+              >
+                <Image src={libraryHeadViewIcon} alt="Viewing" width={16} height={16} />
+                {getRoleText(userRole)}
+            </button>
+          )}
         </div>
 
         {/* More Options Icon */}
@@ -312,13 +351,14 @@ export function LibraryHeader({
       {/* Invite Collaborator Modal */}
       <InviteCollaboratorModal
         projectId={projectId}
-        projectName={`Share ${libraryName}`}
+        projectName={libraryName}
         userRole={userRole}
         open={showInviteModal}
         onClose={() => setShowInviteModal(false)}
         onSuccess={() => {
           // Handle success (e.g., refresh collaborators list)
         }}
+        title={`Share ${libraryName}..`}
       />
     </div>
   );

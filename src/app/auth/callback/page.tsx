@@ -28,7 +28,6 @@ function AuthCallbackContent() {
           // login success - check for redirect parameter
           const redirectPath = searchParams.get('redirect');
           if (redirectPath) {
-            console.log('[AuthCallback] Redirecting to:', redirectPath);
             router.push(redirectPath);
           } else {
             router.push('/');

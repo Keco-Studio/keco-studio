@@ -97,15 +97,51 @@ export default function AcceptInvitationPage() {
       const result = await response.json();
       
       if (!result.success) {
+        // Clear pending token from sessionStorage on error to prevent retry loops
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem('pendingInvitationToken');
+        }
+        
+        // Check if invitation was already accepted or if email mismatch
+        const errorMsg = result.error || '';
+        const isAlreadyAccepted = errorMsg.includes('already been accepted');
+        const isEmailMismatch = errorMsg.includes('invitation was sent to');
+        
+        // If invitation already accepted, redirect to projects instead of showing error
+        if (isAlreadyAccepted) {
+          setStatus('error');
+          setMessage('Invitation already accepted');
+          setDescription('This invitation has already been accepted. Redirecting you to projects...');
+          
+          // Redirect to projects after 2 seconds
+          setTimeout(() => {
+            router.push('/projects');
+          }, 2000);
+          return;
+        }
+        
+        // If email mismatch and user just logged out/switched accounts, show helpful message
+        if (isEmailMismatch) {
+          setStatus('error');
+          setMessage('Email address mismatch');
+          setDescription(errorMsg);
+          return;
+        }
+        
         setStatus('error');
         setMessage('Failed to accept invitation');
-        setDescription(result.error || 'An unexpected error occurred while accepting the invitation.');
+        setDescription(errorMsg || 'An unexpected error occurred while accepting the invitation.');
         return;
       }
       
       // 6. Success! Set success state
       const resultProjectId = result.projectId;
       const resultProjectName = result.projectName || 'the project';
+      
+      // Clear pending token from sessionStorage on success
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pendingInvitationToken');
+      }
       
       setStatus('success');
       setMessage('Invitation accepted!');

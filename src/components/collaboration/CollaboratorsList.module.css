@@ -7,6 +7,7 @@
 
 .container {
   width: 100%;
+  background-color: #ffffff;
 }
 
 .errorBanner {
@@ -22,6 +23,60 @@
   border: 1px solid #fecaca;
   font-size: 14px;
   line-height: 1.5;
+}
+
+/* Table Header */
+.tableHeader {
+  display: flex;
+  align-items: center;
+  height: 48px;
+  padding: 0;
+  background-color: #ffffff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.24);
+  gap: 16px;
+}
+
+.headerName {
+  display: flex;
+  align-items: center;
+  flex: 1.7;
+  padding-left: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(125, 125, 125, 1);
+  text-transform: uppercase;
+  letter-spacing: normal;
+}
+
+.headerEmail {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(125, 125, 125, 1);
+  text-transform: uppercase;
+  letter-spacing: normal;
+}
+
+.headerRoleType {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  font-size: 13px;
+  font-weight: 400;
+  color: rgba(125, 125, 125, 1);
+  text-transform: uppercase;
+  letter-spacing: normal;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  flex-shrink: 0;
 }
 
 .errorClose {
@@ -44,23 +99,28 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
+  background-color: #ffffff;
+  padding: 6px 0;
 }
 
 .item {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 12px 16px;
+  height: 72px;
+  padding: 0;
   background-color: #ffffff;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.24);
   transition: all 0.2s;
+  gap: 16px;
+}
+
+.item:last-child {
+  border-bottom: none;
 }
 
 .item:hover {
-  border-color: #d1d5db;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  background-color: #f9fafb;
 }
 
 .itemLoading {
@@ -68,66 +128,87 @@
   pointer-events: none;
 }
 
-.itemLeft {
+.itemName {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex: 1;
+  gap: 16px;
+  flex: 1.7;
   min-width: 0;
+  padding-left: 0;
+}
+
+.itemEmail {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  font-size: 16px;
+  font-weight: 400;
+  color: rgba(33, 39, 42, 1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemRoleType {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 1;
+}
+
+.itemActions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  min-width: 32px;
+  flex-shrink: 0;
 }
 
 .avatar {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
-  font-weight: 600;
-  font-size: 16px;
+  font-weight: 400;
+  font-size: 26px;
   flex-shrink: 0;
   background-color: #94a3b8;
-}
-
-.userInfo {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
 }
 
 .userName {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #111827;
-  line-height: 1.5;
-}
-
-.userEmail {
-  font-size: 12px;
-  color: #6b7280;
-  line-height: 1.5;
+  font-size: 16px;
+  font-weight: 400;
+  color: rgba(33, 39, 42, 1);
+  line-height: normal;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.userNameSelf {
+  color: rgba(135, 38, 238, 1);
+}
+
 .youBadge {
   display: inline-flex;
   align-items: center;
-  padding: 2px 8px;
-  background-color: #dbeafe;
-  color: #1e40af;
-  border-radius: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.025em;
+  padding: 0;
+  background-color: transparent;
+  color: inherit;
+  border-radius: 0;
+  font-size: 16px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+  flex-shrink: 0;
+  margin-left: 4px;
 }
 
 .ownerBadge {
@@ -141,12 +222,6 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.025em;
-}
-
-.itemRight {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   flex-shrink: 0;
 }
 
@@ -161,6 +236,7 @@
   cursor: pointer;
   transition: all 0.2s;
   min-width: 100px;
+  text-align: left;
 }
 
 .roleSelect:hover:not(:disabled) {
@@ -176,6 +252,18 @@
 .roleSelect:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.roleText {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+  border-radius: 0;
+  font-size: 16px;
+  font-weight: 400;
+  color: rgba(33, 39, 42, 1);
+  justify-content: flex-start;
+  width: 100%;
 }
 
 .roleBadge {
@@ -212,17 +300,14 @@
   height: 32px;
   padding: 0;
   background: none;
-  border: 1px solid transparent;
+  border: none;
   border-radius: 6px;
-  color: #6b7280;
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .deleteButton:hover:not(:disabled) {
-  background-color: #fef2f2;
-  border-color: #fecaca;
-  color: #dc2626;
+  opacity: 0.7;
 }
 
 .deleteButton:disabled {
@@ -289,31 +374,237 @@
   margin: 0;
 }
 
+/* Delete Confirmation Modal */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modalContent {
+  background-color: #ffffff;
+  border-radius: 8px;
+  width: 100%;
+  max-width: 400px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.modalClose {
+  background: none;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s;
+}
+
+.modalClose:hover {
+  color: #111827;
+}
+
+.modalBody {
+  padding: 20px 24px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.modalBody p {
+  margin: 0;
+  font-size: 14px;
+  color: #111827;
+  line-height: 1.5;
+}
+
+.modalFooter {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+}
+
+.modalCancelButton {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  background-color: #ffffff;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modalCancelButton:hover:not(:disabled) {
+  background-color: #f9fafb;
+  border-color: #9ca3af;
+}
+
+.modalCancelButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.modalRemoveButton {
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  background-color: #dc2626;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.modalRemoveButton:hover:not(:disabled) {
+  background-color: #b91c1c;
+}
+
+.modalRemoveButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Responsive adjustments */
+@media (max-width: 1024px) {
+  .headerRight,
+  .itemRight {
+    gap: 100px;
+  }
+}
+
+@media (max-width: 768px) {
+  .headerName {
+    width: 120px;
+  }
+  
+  .headerRight,
+  .itemRight {
+    gap: 50px;
+  }
+  
+  .headerEmail,
+  .itemEmail {
+    width: 120px;
+  }
+  
+  .headerRoleType,
+  .itemRoleType {
+    width: 100px;
+  }
+  
+  .avatar {
+    width: 40px;
+    height: 40px;
+    font-size: 20px;
+  }
+  
+  .userName {
+    font-size: 14px;
+  }
+  
+  .itemEmail {
+    font-size: 14px;
+  }
+  
+  .roleText {
+    font-size: 14px;
+  }
+}
+
 @media (max-width: 640px) {
+  .tableHeader {
+    flex-wrap: wrap;
+    height: auto;
+    padding: 8px 0;
+  }
+  
+  .headerName {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  
+  .headerRight {
+    width: 100%;
+    gap: 20px;
+  }
+  
   .item {
-    padding: 10px 12px;
+    flex-wrap: wrap;
+    height: auto;
+    padding: 12px 0;
+  }
+  
+  .itemName {
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  
+  .itemRight {
+    width: 100%;
+    gap: 20px;
   }
   
   .avatar {
     width: 36px;
     height: 36px;
-    font-size: 14px;
+    font-size: 18px;
   }
   
   .userName {
     font-size: 13px;
   }
   
-  .userEmail {
-    font-size: 11px;
+  .itemEmail {
+    font-size: 12px;
+    width: auto;
+    flex: 1;
   }
   
-  .roleSelect,
-  .roleBadge {
+  .itemRoleType {
+    width: auto;
+    flex: 1;
+  }
+  
+  .roleSelect {
     min-width: 80px;
     font-size: 12px;
     padding: 4px 8px;
+  }
+  
+  .roleText {
+    font-size: 12px;
   }
   
   .deleteButton {

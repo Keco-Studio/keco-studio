@@ -4,10 +4,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 24px 32px;
   background: white;
-  border-bottom: 1px solid #e2e8f0;
-  min-height: 80px;
+  height: 60px;
 }
 
 .leftSection {
@@ -61,41 +59,62 @@
   align-items: center;
   gap: 8px;
   padding-left: 12px;
-  border-left: 1px solid #e2e8f0;
 }
 
 .shareButton {
   padding: 8px 16px;
-  border-radius: 8px;
-  border: 1px solid #5e00ff;
-  background: #5e00ff;
-  color: white;
+  border-radius: 20px;
+  border: 1px solid #F8C5D8;
+  background: #F8C5D8;
+  color: #000;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
 }
 
-.shareButton:hover {
-  background: #4a00cc;
-  border-color: #4a00cc;
+
+.adminRoleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid #e5e7eb;
+  background-color: #ffffff;
+  color: #8726EE;
+  font-size: 0.875rem;
 }
 
-.roleLabel {
-  font-size: 12px;
+.editorRoleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid #e5e7eb;
+  background-color: #ffffff;
   color: #64748b;
-  font-weight: 500;
-  text-transform: lowercase;
+  font-size: 0.875rem;
 }
 
+.viewerRoleLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: 9999px;
+  border: 1px solid #e5e7eb;
+  background-color: #ffffff;
+  color: #64748b;
+  font-size: 0.875rem;
+}
 /* Members Section */
 .membersSection {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
   padding-left: 12px;
-  border-left: 1px solid #e2e8f0;
 }
 
 .membersAvatars {
@@ -106,7 +125,6 @@
 }
 
 .expandCollaboratorsButton {
-  width: 32px;
   height: 32px;
   border: none;
   background: white;
@@ -156,28 +174,40 @@
   overflow: hidden;
 }
 
+/* Current User Section */
+.currentUserSection {
+  background: #FF005E0F;
+  padding: 12px 16px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.currentUserItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .membersPanelHeader {
-  padding: 16px 20px;
-  background: #f8fafc;
+  padding: 12px 20px;
+  background: white;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: 0.5px;
-  color: #64748b;
+  color: #94a3b8;
   text-transform: uppercase;
-  border-bottom: 1px solid #e2e8f0;
 }
 
 .membersList {
   max-height: 400px;
   overflow-y: auto;
-  padding: 8px;
+  padding: 4px 0;
 }
 
 .memberItem {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px;
+  padding: 12px 16px;
   border-radius: 8px;
   transition: background-color 0.2s;
   position: relative;
@@ -185,15 +215,6 @@
 
 .memberItem:hover {
   background: #f8fafc;
-}
-
-.memberItemHighlight {
-  background: rgba(94, 0, 255, 0.05);
-  border: 1px solid rgba(94, 0, 255, 0.2);
-}
-
-.memberItemHighlight:hover {
-  background: rgba(94, 0, 255, 0.08);
 }
 
 .memberInfo {
@@ -212,9 +233,9 @@
 }
 
 .youLabel {
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 400;
-  color: #5e00ff;
+  color: #000;
 }
 
 .memberEmail {

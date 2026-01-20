@@ -128,7 +128,6 @@ export default function AuthForm() {
       // Handle redirect after successful login
       const redirectPath = searchParams.get('redirect');
       if (redirectPath) {
-        console.log('[AuthForm] Redirecting to:', redirectPath);
         router.push(redirectPath);
       } else {
         router.push('/projects');
@@ -158,9 +157,6 @@ export default function AuthForm() {
       const redirectTo = redirectPath 
         ? `${currentOrigin}/auth/callback?redirect=${encodeURIComponent(redirectPath)}`
         : `${currentOrigin}/auth/callback`;
-      
-      console.log('Google OAuth redirectTo:', redirectTo);
-      console.log('Current origin:', currentOrigin);
       
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',

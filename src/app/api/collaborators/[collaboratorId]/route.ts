@@ -63,13 +63,16 @@ export async function PATCH(
     }
 
     // Check user is admin
-    const { role: userRole } = await getUserProjectRole(
+    const { role: userRole, isOwner } = await getUserProjectRole(
       supabase,
       collaborator.project_id,
       user.id
     );
     
-    if (!canUserManageCollaborators(userRole!)) {
+    // Allow if user is owner OR has admin role
+    const canManage = isOwner || (userRole && canUserManageCollaborators(userRole));
+    
+    if (!canManage) {
       return NextResponse.json(
         { error: 'Only admins can change collaborator roles' },
         { status: 403 }
@@ -82,6 +85,23 @@ export async function PATCH(
         { error: 'You cannot change your own role' },
         { status: 400 }
       );
+    }
+
+    // If changing an admin to non-admin, check there's at least one other admin
+    if (collaborator.role === 'admin' && newRole !== 'admin') {
+      const { data: admins, error: adminError } = await supabase
+        .from('project_collaborators')
+        .select('id')
+        .eq('project_id', collaborator.project_id)
+        .eq('role', 'admin')
+        .not('accepted_at', 'is', null);
+      
+      if (adminError || !admins || admins.length <= 1) {
+        return NextResponse.json(
+          { error: 'Cannot change the last admin. Promote another user to admin first.' },
+          { status: 400 }
+        );
+      }
     }
 
     // Update role
@@ -150,13 +170,16 @@ export async function DELETE(
     }
 
     // Check user is admin
-    const { role: userRole } = await getUserProjectRole(
+    const { role: userRole, isOwner } = await getUserProjectRole(
       supabase,
       collaborator.project_id,
       user.id
     );
     
-    if (!canUserManageCollaborators(userRole!)) {
+    // Allow if user is owner OR has admin role
+    const canManage = isOwner || (userRole && canUserManageCollaborators(userRole));
+    
+    if (!canManage) {
       return NextResponse.json(
         { error: 'Only admins can remove collaborators' },
         { status: 403 }

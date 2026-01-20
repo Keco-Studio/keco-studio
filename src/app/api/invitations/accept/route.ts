@@ -115,7 +115,6 @@ export async function POST(request: NextRequest) {
     });
 
     // 9. Get invitation details
-    console.log('[API /invitations/accept] Looking for invitation:', tokenPayload.invitationId);
     const { data: invitation, error: invitationError } = await supabase
       .from('collaboration_invitations')
       .select('*, projects:project_id(name)')
@@ -131,7 +130,6 @@ export async function POST(request: NextRequest) {
       );
     }
     
-    console.log('[API /invitations/accept] Found invitation:', invitation.id);
 
     // 10. Validate invitation status
     if (invitation.accepted_at) {
@@ -218,9 +216,6 @@ export async function POST(request: NextRequest) {
       console.error('Error updating invitation status:', updateError);
       // Don't fail the acceptance - collaborator was already added
     }
-
-    console.log('[API /invitations/accept] Invitation accepted successfully');
-    console.log('[API /invitations/accept] Added user', user.id, 'as', invitation.role, 'to project', invitation.project_id);
 
     return NextResponse.json({
       success: true,
