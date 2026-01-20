@@ -1,0 +1,18 @@
+/* Version List Styles */
+
+.versionList {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 24px;
+  position: relative;
+}
+
+.emptyState {
+  padding: 40px 20px;
+  text-align: center;
+  color: #697077;
+  font-size: 14px;
+  line-height: 1.5;
+}
+

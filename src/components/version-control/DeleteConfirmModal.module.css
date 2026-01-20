@@ -1,0 +1,112 @@
+/* Delete Confirm Modal Styles */
+/* Matches Delete row modal format */
+
+.confirmModalWrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirmModalWrap :global(.ant-modal) {
+  top: 50% !important;
+  left: 50% !important;
+  transform: translate(-50%, -50%) !important;
+  margin: 0 !important;
+  padding: 0;
+  position: fixed !important;
+}
+
+.confirmModalWrap :global(.ant-modal-content) {
+  border: 1px solid rgba(0, 0, 0, 0.17);
+  border-radius: 22px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+  width: 616px;
+}
+
+.confirmModalWrap :global(.ant-modal-header) {
+  border-bottom: 1px solid rgba(222, 226, 230, 1);
+  padding: 16px;
+  height: 59px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.confirmModalWrap :global(.ant-modal-title) {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 700;
+  font-size: 20px;
+  line-height: 150%;
+  letter-spacing: 0%;
+  color: #0f172a;
+}
+
+.confirmModalWrap :global(.ant-modal-body) {
+  padding: 24px;
+}
+
+.confirmModalWrap :global(.ant-modal-body p) {
+  font-family: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 150%;
+  letter-spacing: 0%;
+  color: #0f172a;
+  margin: 0;
+}
+
+.confirmModalWrap :global(.ant-modal-footer) {
+  border-top: 1px solid rgba(222, 226, 230, 1);
+  padding: 12px 24px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirmModalWrap :global(.ant-modal-footer .ant-btn) {
+  min-width: 80px;
+  height: 36px;
+  border-radius: 6px;
+  font-weight: 500;
+}
+
+.confirmModalWrap :global(.ant-modal-footer .ant-btn-default) {
+  border: 1px solid #d1d5db;
+  color: #374151;
+  background-color: #ffffff;
+}
+
+.confirmModalWrap :global(.ant-modal-footer .ant-btn-default:hover) {
+  border-color: #9ca3af;
+  color: #111827;
+}
+
+.confirmModalWrap :global(.ant-modal-footer .ant-btn-dangerous) {
+  background-color: rgba(170, 5, 44, 1) !important;
+  border-color: rgba(170, 5, 44, 1) !important;
+  color: #ffffff !important;
+  border-radius: 12px !important;
+}
+
+.confirmModalWrap :global(.ant-modal-footer .ant-btn-dangerous:hover) {
+  background-color: rgba(140, 4, 36, 1) !important;
+  border-color: rgba(140, 4, 36, 1) !important;
+}
+
+.confirmModalWrap :global(.ant-modal-close) {
+  top: 16px;
+  right: 16px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirmModalWrap :global(.ant-modal-close:hover) {
+  background-color: #f3f4f6;
+  border-radius: 4px;
+}
+
+

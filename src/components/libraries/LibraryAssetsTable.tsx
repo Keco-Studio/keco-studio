@@ -89,19 +89,86 @@ export function LibraryAssetsTable({
   const { yRows } = useYjs();
   const yjsRows = useYjsRows(yRows);
   
+  // Track previous rows to detect major changes (version switches)
+  const prevRowsRef = useRef<AssetRow[]>([]);
+  
+  // Edit mode state: track which cell is being edited (rowId and propertyKey)
+  // Declare before useEffect so it can be used in dependencies
+  const [editingCell, setEditingCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
+  const [editingCellValue, setEditingCellValue] = useState<string>('');
+  const editingCellRef = useRef<HTMLSpanElement | null>(null);
+  const isComposingRef = useRef(false);
+  
   // Initialize: sync props.rows to Yjs (only on first time, when Yjs is empty)
   useEffect(() => {
     if (yRows.length === 0 && rows.length > 0) {
       // Only initialize when Yjs is empty and props has data
       yRows.insert(0, rows);
+      prevRowsRef.current = rows;
     } else if (yRows.length > 0 && rows.length > 0) {
       // If Yjs already has data but props updated (e.g., from database refresh), need to sync
       // Update existing rows, add new rows, delete non-existent rows (but keep temp rows and rows being edited)
       const yjsRowsArray = yRows.toArray();
       const existingIds = new Set(yjsRowsArray.map(r => r.id));
       const propsIds = new Set(rows.map(r => r.id));
+      const prevIds = new Set(prevRowsRef.current.map(r => r.id));
       
-      // Find rows to update, add, and delete (but don't delete temp rows and rows being edited)
+      // Check if this is a major data change (version switch scenario)
+      // If less than 30% of IDs overlap with existing Yjs data, treat it as a complete replacement
+      const overlapCount = Array.from(existingIds).filter(id => propsIds.has(id)).length;
+      const overlapRatio = existingIds.size > 0 ? overlapCount / existingIds.size : 0;
+      const isMajorChange = overlapRatio < 0.3 && propsIds.size > 0;
+      
+      if (isMajorChange) {
+        // Complete replacement: clear all non-temp rows and reinitialize
+        // This happens when switching versions - the data is completely different
+        const tempRowsToKeep: AssetRow[] = [];
+        const indicesToKeep: number[] = [];
+        
+        // Find temp rows that are being edited (preserve user's current edits)
+        yjsRowsArray.forEach((yjsRow, index) => {
+          if (yjsRow.id.startsWith('temp-')) {
+            // Keep temp rows that are being edited
+            tempRowsToKeep.push(yjsRow);
+            indicesToKeep.push(index);
+          }
+        });
+        
+        // Delete all rows except temp rows being edited, in reverse order
+        const indicesToDelete: number[] = [];
+        for (let i = yjsRowsArray.length - 1; i >= 0; i--) {
+          if (!indicesToKeep.includes(i)) {
+            indicesToDelete.push(i);
+          }
+        }
+        
+        // Delete in reverse order to avoid index shifting issues
+        indicesToDelete.forEach(index => {
+          try {
+            if (index >= 0 && index < yRows.length) {
+              yRows.delete(index, 1);
+            }
+          } catch (e) {
+            // Ignore errors if index is out of bounds (already deleted)
+            console.warn('Failed to delete row at index:', index, e);
+          }
+        });
+        
+        // Insert new rows at the beginning
+        if (rows.length > 0) {
+          yRows.insert(0, rows);
+        }
+        
+        // Re-insert temp rows that were being edited at the end
+        if (tempRowsToKeep.length > 0) {
+          yRows.insert(yRows.length, tempRowsToKeep);
+        }
+        
+        prevRowsRef.current = rows;
+        return;
+      }
+      
+      // Incremental update: normal sync logic
       const rowsToUpdate: Array<{ index: number; row: AssetRow }> = [];
       const rowsToAdd: AssetRow[] = [];
       const indicesToDelete: number[] = [];
@@ -142,14 +209,37 @@ export function LibraryAssetsTable({
       
       // Delete in reverse order (avoid index changes)
       indicesToDelete.sort((a, b) => b - a).forEach(index => {
-        yRows.delete(index, 1);
+        try {
+          yRows.delete(index, 1);
+        } catch (e) {
+          // Ignore errors if index is out of bounds (already deleted)
+          console.warn('Failed to delete row at index:', index, e);
+        }
       });
       
       // Update in reverse order (avoid index changes)
+      // First, get current array snapshot to avoid index issues
+      const currentYjsArray = yRows.toArray();
       rowsToUpdate.sort((a, b) => b.index - a.index).forEach(({ index, row }) => {
-        yRows.delete(index, 1);
-        yRows.insert(index, [row]);
+        try {
+          // Find the current index of this row (index may have changed after deletions)
+          const currentIndex = currentYjsArray.findIndex(r => r.id === row.id);
+          if (currentIndex >= 0 && currentIndex < yRows.length) {
+            yRows.delete(currentIndex, 1);
+            yRows.insert(currentIndex, [row]);
+            // Update the array snapshot
+            currentYjsArray.splice(currentIndex, 1);
+            currentYjsArray.splice(currentIndex, 0, row);
+          } else {
+            console.warn('Row not found for update:', row.id);
+          }
+        } catch (e) {
+          console.warn('Failed to update row:', row.id, e);
+        }
       });
+      
+      // Update prevRowsRef after all updates
+      prevRowsRef.current = rows;
       
       // Add new rows
       // If there are temp rows created by insert, prioritize replacing them (maintain position)
@@ -182,9 +272,11 @@ export function LibraryAssetsTable({
           yRows.insert(yRows.length, remainingRows);
         }
       }
+      
+      // Update prevRowsRef after all updates
+      prevRowsRef.current = rows;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, yRows]); // editingRowId is defined below, not included here to avoid circular dependency
+  }, [rows, yRows, editingCell]);
   
   // Use Yjs rows as primary data source, fallback to props.rows if Yjs is empty (compatibility)
   const allRowsSource = yjsRows.length > 0 ? yjsRows : rows;
@@ -192,12 +284,6 @@ export function LibraryAssetsTable({
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [newRowData, setNewRowData] = useState<Record<string, any>>({});
   const [isSaving, setIsSaving] = useState(false);
-  
-  // Edit mode state: track which cell is being edited (rowId and propertyKey)
-  const [editingCell, setEditingCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
-  const [editingCellValue, setEditingCellValue] = useState<string>('');
-  const editingCellRef = useRef<HTMLSpanElement | null>(null);
-  const isComposingRef = useRef(false);
   
   // Track current user's focused cell (for collaboration presence)
   const [currentFocusedCell, setCurrentFocusedCell] = useState<{ assetId: string; propertyKey: string } | null>(null);
@@ -629,6 +715,7 @@ export function LibraryAssetsTable({
 
   // Ref for table container to detect clicks outside
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const batchEditMenuOriginalPositionRef = useRef<{ x: number; y: number; scrollY: number } | null>(null);
 
   // Modal state for reference selector
   const [referenceModalOpen, setReferenceModalOpen] = useState(false);
@@ -1976,24 +2063,55 @@ export function LibraryAssetsTable({
   // Get all rows for cell selection (helper function)
   // Use Yjs as data source to ensure all operations are based on the same array
   const getAllRowsForCellSelection = useCallback(() => {
-    const allRowsForSelection = allRowsSource
-      .filter((row): row is AssetRow => !deletedAssetIds.has(row.id))
-      .map((row): AssetRow => {
+    // Build rows map with optimistic updates (same logic as allRows in render)
+    const allRowsMap = new Map<string, AssetRow>();
+    
+    // Add all rows from allRowsSource with optimistic updates
+    allRowsSource.forEach(row => {
+      if (!deletedAssetIds.has(row.id)) {
         const assetRow = row as AssetRow;
         const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
         if (optimisticUpdate && optimisticUpdate.name === assetRow.name) {
-          return {
+          allRowsMap.set(assetRow.id, {
             ...assetRow,
             name: optimisticUpdate.name,
             propertyValues: { ...assetRow.propertyValues, ...optimisticUpdate.propertyValues }
-          };
+          });
+        } else {
+          allRowsMap.set(assetRow.id, assetRow);
         }
-        return assetRow;
-      });
+      }
+    });
     
-    const optimisticAssets: AssetRow[] = Array.from(optimisticNewAssets.values())
-      .sort((a, b) => a.id.localeCompare(b.id));
-    allRowsForSelection.push(...optimisticAssets);
+    // Add optimistic new assets (deduplicate)
+    optimisticNewAssets.forEach((asset, id) => {
+      if (!allRowsMap.has(id)) {
+        allRowsMap.set(id, asset);
+      }
+    });
+    
+    // Convert to array, maintain order (based on allRowsSource order)
+    const allRowsForSelection: AssetRow[] = [];
+    const processedIds = new Set<string>();
+    
+    // First add in allRowsSource order
+    allRowsSource.forEach(row => {
+      if (!deletedAssetIds.has(row.id) && !processedIds.has(row.id)) {
+        const rowToAdd = allRowsMap.get(row.id);
+        if (rowToAdd) {
+          allRowsForSelection.push(rowToAdd);
+          processedIds.add(row.id);
+        }
+      }
+    });
+    
+    // Then add optimistic new assets (not in allRowsSource) - maintain insertion order
+    optimisticNewAssets.forEach((asset, id) => {
+      if (!processedIds.has(id)) {
+        allRowsForSelection.push(asset);
+        processedIds.add(id);
+      }
+    });
     
     return allRowsForSelection;
   }, [allRowsSource, deletedAssetIds, optimisticEditUpdates, optimisticNewAssets]);
@@ -2012,7 +2130,8 @@ export function LibraryAssetsTable({
       return;
     }
     
-    // Don't select if we just completed a fill drag
+    // Don't select if we're currently filling cells
+    // Use a small delay to allow fill drag to complete
     if (isFillingCellsRef.current) {
       return;
     }
@@ -2255,14 +2374,24 @@ export function LibraryAssetsTable({
         const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
         const currentRowIndex = allRowsForSelection.findIndex(r => r.id === currentRowId);
         
+        // Validate indices are valid (not -1)
+        if (startRowIndex === -1 || currentRowIndex === -1) {
+          return;
+        }
+        
         // Only select cells if dragging downward
         if (currentRowIndex > startRowIndex) {
           const cellsToSelect = new Set<CellKey>();
           for (let r = startRowIndex; r <= currentRowIndex; r++) {
             const row = allRowsForSelection[r];
-            cellsToSelect.add(`${row.id}-${startPropertyKey}`);
+            if (row) {
+              cellsToSelect.add(`${row.id}-${startPropertyKey}`);
+            }
           }
           setSelectedCells(cellsToSelect);
+        } else if (currentRowIndex < startRowIndex) {
+          // If dragged above start, just select the start cell
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         } else if (currentRowIndex === startRowIndex) {
           // If back to start, just select the start cell
           setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
@@ -2274,12 +2403,14 @@ export function LibraryAssetsTable({
       document.removeEventListener('mousemove', fillDragMoveHandler);
       document.removeEventListener('mouseup', fillDragEndHandler);
       
-      // If it was just a click, don't do anything
+      // If it was just a click, reset to single cell selection
       if (isClick || !hasMoved) {
         if (isFillingCellsRef.current) {
           isFillingCellsRef.current = false;
           document.body.style.userSelect = '';
           setFillDragStartCell(null);
+          // Reset to single cell selection
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         }
         return;
       }
@@ -2288,9 +2419,6 @@ export function LibraryAssetsTable({
         return;
       }
       
-      isFillingCellsRef.current = false;
-      document.body.style.userSelect = '';
-      
       // Check if we dragged downward
       const allRowsForSelection = getAllRowsForCellSelection();
       const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
@@ -2298,13 +2426,21 @@ export function LibraryAssetsTable({
       // Find the cell under the cursor at end
       const elementBelow = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
       if (!elementBelow) {
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
         setFillDragStartCell(null);
+        // Reset to single cell selection if drag ended outside
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         return;
       }
       
       const cellElement = elementBelow.closest('td');
       if (!cellElement) {
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
         setFillDragStartCell(null);
+        // Reset to single cell selection if drag ended outside
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         return;
       }
       
@@ -2314,7 +2450,11 @@ export function LibraryAssetsTable({
           rowElement.classList.contains('headerRowBottom') || 
           rowElement.classList.contains('editRow') ||
           rowElement.classList.contains('addRow')) {
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
         setFillDragStartCell(null);
+        // Reset to single cell selection if drag ended on invalid row
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         return;
       }
       
@@ -2322,11 +2462,25 @@ export function LibraryAssetsTable({
       const endPropertyKey = cellElement.getAttribute('data-property-key');
       
       if (!endRowId || !endPropertyKey || endPropertyKey !== startPropertyKey) {
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
         setFillDragStartCell(null);
+        // Reset to single cell selection if drag ended on different property
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         return;
       }
       
       const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
+      
+      // Validate indices are valid (not -1)
+      if (startRowIndex === -1 || endRowIndex === -1) {
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
+        setFillDragStartCell(null);
+        // Reset to single cell selection if indices are invalid
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+        return;
+      }
       
       // Only fill if dragged downward and at least one row down
       if (endRowIndex > startRowIndex) {
@@ -2366,8 +2520,13 @@ export function LibraryAssetsTable({
         
         // Wait for all updates to complete
         await Promise.all(updates);
+      } else {
+        // If not dragged downward (dragged up or back to start), reset to single cell selection
+        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
       }
       
+      isFillingCellsRef.current = false;
+      document.body.style.userSelect = '';
       setFillDragStartCell(null);
     };
     
@@ -2434,6 +2593,7 @@ export function LibraryAssetsTable({
       if (!target.closest('.batchEditMenu')) {
         setBatchEditMenuVisible(false);
         setBatchEditMenuPosition(null);
+        batchEditMenuOriginalPositionRef.current = null;
       }
     };
     
@@ -2441,6 +2601,7 @@ export function LibraryAssetsTable({
       if (e.key === 'Escape') {
         setBatchEditMenuVisible(false);
         setBatchEditMenuPosition(null);
+        batchEditMenuOriginalPositionRef.current = null;
       }
     };
     
@@ -2450,6 +2611,109 @@ export function LibraryAssetsTable({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
+    };
+  }, [batchEditMenuVisible]);
+
+  // Clear original position ref when menu is closed
+  useEffect(() => {
+    if (!batchEditMenuVisible) {
+      batchEditMenuOriginalPositionRef.current = null;
+    }
+  }, [batchEditMenuVisible]);
+
+  // Helper function to get current scroll position from scrollable container
+  const getCurrentScrollY = useCallback(() => {
+    const tableContainer = tableContainerRef.current;
+    if (!tableContainer) {
+      return window.scrollY || window.pageYOffset || 0;
+    }
+
+    // Check if tableContainer itself is scrollable
+    const containerStyle = window.getComputedStyle(tableContainer);
+    const hasOverflow = containerStyle.overflow === 'auto' || containerStyle.overflow === 'scroll' || 
+                       containerStyle.overflowY === 'auto' || containerStyle.overflowY === 'scroll';
+    
+    if (hasOverflow && tableContainer.scrollHeight > tableContainer.clientHeight) {
+      return tableContainer.scrollTop;
+    }
+
+    // Check parent elements for scrollable container
+    let element: HTMLElement | null = tableContainer.parentElement;
+    while (element && element !== document.body) {
+      const style = window.getComputedStyle(element);
+      const hasOverflow = style.overflow === 'auto' || style.overflow === 'scroll' || 
+                         style.overflowY === 'auto' || style.overflowY === 'scroll';
+      
+      if (hasOverflow && element.scrollHeight > element.clientHeight) {
+        return element.scrollTop;
+      }
+      
+      element = element.parentElement;
+    }
+
+    // Fallback to window scroll
+    return window.scrollY || window.pageYOffset || 0;
+  }, []);
+
+  // Update batch edit menu position on scroll
+  useEffect(() => {
+    if (!batchEditMenuVisible || !batchEditMenuOriginalPositionRef.current) return;
+
+    const updateMenuPosition = () => {
+      const originalPos = batchEditMenuOriginalPositionRef.current;
+      if (!originalPos) return;
+
+      const currentScrollY = getCurrentScrollY();
+      const initialScrollY = originalPos.scrollY || 0;
+      
+      // Calculate scroll delta (positive when scrolling down)
+      const scrollDelta = currentScrollY - initialScrollY;
+      
+      // Debug log (can be removed later)
+      // console.log('Scroll update:', { currentScrollY, initialScrollY, scrollDelta, newY: originalPos.y - scrollDelta });
+      
+      // For fixed positioning, when table scrolls down, menu should move up relative to viewport
+      // So we subtract the scroll delta from the original Y position
+      const newY = originalPos.y - scrollDelta;
+      
+      setBatchEditMenuPosition({
+        x: originalPos.x,
+        y: newY,
+      });
+    };
+
+    // Listen to scroll events on multiple possible containers
+    const tableContainer = tableContainerRef.current;
+    const scrollElements: (HTMLElement | Window)[] = [];
+    
+    // Add table container and its scrollable parents
+    if (tableContainer) {
+      scrollElements.push(tableContainer);
+      let element: HTMLElement | null = tableContainer.parentElement;
+      while (element && element !== document.body) {
+        const style = window.getComputedStyle(element);
+        const hasOverflow = style.overflow === 'auto' || style.overflow === 'scroll' || 
+                           style.overflowY === 'auto' || style.overflowY === 'scroll';
+        if (hasOverflow) {
+          scrollElements.push(element);
+        }
+        element = element.parentElement;
+      }
+    }
+    
+    // Always listen to window scroll
+    scrollElements.push(window);
+    
+    // Add event listeners
+    scrollElements.forEach(element => {
+      element.addEventListener('scroll', updateMenuPosition, true);
+    });
+    
+    return () => {
+      // Remove event listeners
+      scrollElements.forEach(element => {
+        element.removeEventListener('scroll', updateMenuPosition, true);
+      });
     };
   }, [batchEditMenuVisible]);
 
@@ -2463,20 +2727,30 @@ export function LibraryAssetsTable({
     e.preventDefault();
     e.stopPropagation();
     
+    const scrollY = getCurrentScrollY();
+    const menuPos = adjustMenuPosition(e.clientX, e.clientY);
+    
+    // Save original position with scroll info for scroll tracking
+    batchEditMenuOriginalPositionRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollY: scrollY,
+    };
+    
     // Priority 1: If there are selected rows (via checkbox), use row selection
     // Clear any cell selection first to avoid conflicts
     if (selectedRowIds.size > 0) {
       setSelectedCells(new Set());
       // Show batch edit menu (operations will use selectedRowIds)
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
     // Priority 2: If there are selected cells (from drag selection), show batch edit menu
     if (selectedCells.size > 0) {
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
@@ -2491,20 +2765,30 @@ export function LibraryAssetsTable({
     e.preventDefault();
     e.stopPropagation();
     
+    const scrollY = getCurrentScrollY();
+    const menuPos = adjustMenuPosition(e.clientX, e.clientY);
+    
+    // Save original position with scroll info for scroll tracking
+    batchEditMenuOriginalPositionRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollY: scrollY,
+    };
+    
     // Priority 1: If there are selected rows (via checkbox), use row selection
     // Clear any cell selection first to avoid conflicts
     if (selectedRowIds.size > 0) {
       setSelectedCells(new Set());
       // Show batch edit menu (operations will use selectedRowIds)
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
     // Priority 2: If there are already selected cells (from drag selection), use them
     if (selectedCells.size > 0) {
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
@@ -2516,26 +2800,25 @@ export function LibraryAssetsTable({
     
     // Show batch edit menu
     setBatchEditMenuVisible(true);
-    setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
+    setBatchEditMenuPosition(menuPos);
   };
 
-  // Helper function to adjust context menu position to ensure it's fully visible
+  // Helper function to adjust context menu position
+  // Menu appears directly at right-click position and expands downward
+  // User can scroll the table if menu is cut off at bottom
   const adjustMenuPosition = useCallback((x: number, y: number, menuHeight: number = 400): { x: number; y: number } => {
-    const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 0;
     const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+    const padding = 10; // Padding from window edges
     
-    // Adjust Y position if menu would be cut off at bottom
-    let adjustedY = y;
-    if (y + menuHeight > windowHeight) {
-      // Position menu above the cursor if it would be cut off
-      adjustedY = Math.max(10, y - menuHeight);
-    }
+    // Use Y position directly - menu appears at right-click location and expands downward
+    // If menu is cut off at bottom, user can scroll the table to see it
+    const adjustedY = y;
     
-    // Adjust X position if menu would be cut off at right
+    // Only adjust X position if menu would be cut off at right edge
     let adjustedX = x;
     const menuWidth = 180; // minWidth from batchEditMenu style
-    if (x + menuWidth > windowWidth) {
-      adjustedX = Math.max(10, windowWidth - menuWidth - 10);
+    if (x + menuWidth > windowWidth - padding) {
+      adjustedX = Math.max(padding, windowWidth - menuWidth - padding);
     }
     
     return { x: adjustedX, y: adjustedY };

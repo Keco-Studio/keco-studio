@@ -1,0 +1,42 @@
+/* Restore Button Styles */
+
+.restoreButtonContainer {
+  position: relative;
+  display: inline-block;
+}
+
+.restoreButton {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: #697077;
+  border-radius: 4px;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.restoreButton:hover {
+  background: #f8fafc;
+  color: #21272A;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.restoreButtonContainer:hover .tooltip {
+  display: block;
+}
+
+

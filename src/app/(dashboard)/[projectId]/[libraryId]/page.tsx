@@ -28,6 +28,10 @@ import { PresenceIndicators } from '@/components/collaboration/PresenceIndicator
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
 import { YjsProvider } from '@/contexts/YjsContext';
+import { VersionControlSidebar } from '@/components/version-control/VersionControlSidebar';
+import { getVersionsByLibrary } from '@/lib/services/versionService';
+import type { LibraryVersion } from '@/lib/types/version';
+import { createPortal } from 'react-dom';
 import styles from './page.module.css';
 
 type FieldDef = {
@@ -59,6 +63,11 @@ export default function LibraryPage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<CollaboratorRole>('viewer');
+  const [isVersionControlOpen, setIsVersionControlOpen] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
+  const [restoreToastMessage, setRestoreToastMessage] = useState<string | null>(null);
+  const [versions, setVersions] = useState<LibraryVersion[]>([]);
+  const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
 
   // Phase 2: state for Library assets table view (placeholder data, wired via service layer)
   const [librarySummary, setLibrarySummary] = useState<LibrarySummary | null>(null);
@@ -246,6 +255,11 @@ export default function LibraryPage() {
   // Listen for asset changes (created/updated/deleted) from Sidebar or other sources
   useEffect(() => {
     const handleAssetChange = async (event: Event) => {
+      // Don't refresh if viewing a historical version
+      if (selectedVersionId && selectedVersionId !== '__current__') {
+        return;
+      }
+      
       const customEvent = event as CustomEvent<{ libraryId: string; assetId?: string }>;
       // Only refresh if the event is for this library
       if (customEvent.detail?.libraryId === libraryId) {
@@ -272,11 +286,119 @@ export default function LibraryPage() {
       window.removeEventListener('assetUpdated', handleAssetChange);
       window.removeEventListener('assetDeleted', handleAssetChange);
     };
-  }, [libraryId, supabase]);
+  }, [libraryId, supabase, selectedVersionId]);
+
+  // Load versions when version control is opened
+  useEffect(() => {
+    if (!isVersionControlOpen || !libraryId) return;
+
+    const loadVersions = async () => {
+      try {
+        const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
+        setVersions(loadedVersions);
+      } catch (e: any) {
+        console.error('Failed to load versions:', e);
+      }
+    };
+
+    loadVersions();
+  }, [isVersionControlOpen, libraryId, supabase]);
+
+  // Handle version selection - load data from snapshot or current database
+  useEffect(() => {
+    if (!libraryId) return;
+
+    const loadVersionData = async () => {
+      try {
+        // If no version selected or current version selected, load latest data from database
+        if (!selectedVersionId || selectedVersionId === '__current__') {
+          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+          setAssetRows(rows);
+          return;
+        }
+
+        // If versions haven't been loaded yet, wait for them
+        if (versions.length === 0) {
+          // Try to load versions first
+          try {
+            const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
+            setVersions(loadedVersions);
+            // Continue with the loaded versions
+            const selectedVersion = loadedVersions.find(v => v.id === selectedVersionId);
+            if (!selectedVersion || !selectedVersion.snapshotData) {
+              console.warn('Selected version not found or has no snapshot data');
+              // Fallback to current data
+              const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+              setAssetRows(rows);
+              return;
+            }
+
+            // Extract assets from snapshot data
+            const snapshotAssets = selectedVersion.snapshotData?.assets;
+            if (snapshotAssets && Array.isArray(snapshotAssets)) {
+              // Convert snapshot assets to AssetRow format
+              // The snapshot assets should already be in AssetRow format from createLibrarySnapshot
+              setAssetRows(snapshotAssets);
+            } else {
+              console.warn('Snapshot data does not contain valid assets array');
+              // Fallback to current data
+              const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+              setAssetRows(rows);
+            }
+          } catch (loadError) {
+            console.error('Failed to load versions:', loadError);
+            // Fallback to current data
+            const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+            setAssetRows(rows);
+          }
+          return;
+        }
+
+        // Find the selected version
+        const selectedVersion = versions.find(v => v.id === selectedVersionId);
+        if (!selectedVersion || !selectedVersion.snapshotData) {
+          console.warn('Selected version not found or has no snapshot data');
+          // Fallback to current data
+          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+          setAssetRows(rows);
+          return;
+        }
+
+        // Extract assets from snapshot data
+        const snapshotAssets = selectedVersion.snapshotData?.assets;
+        if (snapshotAssets && Array.isArray(snapshotAssets)) {
+          // Convert snapshot assets to AssetRow format
+          // The snapshot assets should already be in AssetRow format from createLibrarySnapshot
+          setAssetRows(snapshotAssets);
+        } else {
+          console.warn('Snapshot data does not contain valid assets array');
+          // Fallback to current data
+          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+          setAssetRows(rows);
+        }
+      } catch (e: any) {
+        console.error('Failed to load version data:', e);
+        // On error, fallback to current data
+        try {
+          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+          setAssetRows(rows);
+        } catch (fallbackError) {
+          console.error('Failed to load fallback data:', fallbackError);
+        }
+      }
+    };
+
+    loadVersionData();
+  }, [selectedVersionId, versions, libraryId, supabase]);
 
   // Listen to database changes for real-time sync across users
   useEffect(() => {
     if (!libraryId || !isAuthenticated) return;
+
+    // Skip real-time updates if viewing a historical version
+    if (selectedVersionId && selectedVersionId !== '__current__') {
+      return;
+    }
 
     console.log(`[Library Page] Setting up database subscription for library: ${libraryId}`);
 
@@ -336,7 +458,7 @@ export default function LibraryPage() {
       supabase.removeChannel(assetsChannel);
       supabase.removeChannel(valuesChannel);
     };
-  }, [libraryId, supabase, isAuthenticated]);
+  }, [libraryId, supabase, isAuthenticated, selectedVersionId]);
 
   const handleValueChange = (fieldId: string, value: any) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -469,50 +591,126 @@ export default function LibraryPage() {
           currentUserAvatarColor={userAvatarColor}
           userRole={userRole}
           presenceUsers={presenceUsers}
+          isVersionControlOpen={isVersionControlOpen}
+          onVersionControlToggle={() => setIsVersionControlOpen(!isVersionControlOpen)}
         />
       )}
 
-      {/* Phase 2: Library assets table preview (placeholder data).
-          Later phases will replace placeholder service logic with real Supabase-backed data
-          and upgrade the table to a two-level header that mirrors predefine + Figma. */}
-      <YjsProvider libraryId={libraryId}>
-        <LibraryAssetsTable
-          library={
-            librarySummary
-              ? {
-                  id: librarySummary.id,
-                  name: librarySummary.name,
-                  description: librarySummary.description,
+      {/* Main content area: Table and Version Control Sidebar side by side */}
+      <div className={styles.mainContent}>
+        {/* Phase 2: Library assets table preview (placeholder data).
+            Later phases will replace placeholder service logic with real Supabase-backed data
+            and upgrade the table to a two-level header that mirrors predefine + Figma. */}
+        <div className={styles.tableContainer}>
+          <YjsProvider libraryId={libraryId}>
+            <LibraryAssetsTable
+              library={
+                librarySummary
+                  ? {
+                      id: librarySummary.id,
+                      name: librarySummary.name,
+                      description: librarySummary.description,
+                    }
+                  : {
+                      id: library.id,
+                      name: library.name,
+                      description: library.description,
+                    }
+              }
+              sections={tableSections}
+              properties={tableProperties}
+              rows={assetRows}
+              onSaveAsset={handleSaveAssetFromTable}
+              onUpdateAsset={handleUpdateAssetFromTable}
+              onDeleteAsset={handleDeleteAssetFromTable}
+              currentUser={
+                userProfile
+                  ? {
+                      id: userProfile.id,
+                      name: userProfile.full_name || userProfile.username || 'Anonymous',
+                      email: userProfile.email,
+                      avatarColor: userAvatarColor,
+                    }
+                  : null
+              }
+              enableRealtime={isAuthenticated}
+              presenceTracking={{
+                updateActiveCell,
+                getUsersEditingCell,
+              }}
+            />
+          </YjsProvider>
+        </div>
+
+        {/* Version Control Sidebar */}
+        {isVersionControlOpen && (
+          <VersionControlSidebar
+            libraryId={libraryId}
+            isOpen={isVersionControlOpen}
+            onClose={() => {
+              setIsVersionControlOpen(false);
+              // Clear selection and reload latest data from database
+              setSelectedVersionId(null);
+              const reloadLatestData = async () => {
+                try {
+                  const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
+                  setAssetRows(rows);
+                } catch (e: any) {
+                  console.error('Failed to reload latest data:', e);
                 }
-              : {
-                  id: library.id,
-                  name: library.name,
-                  description: library.description,
+              };
+              reloadLatestData();
+            }}
+            selectedVersionId={selectedVersionId}
+            highlightedVersionId={highlightedVersionId}
+            onVersionSelect={async (versionId) => {
+              setSelectedVersionId(versionId);
+              // Reload versions to ensure we have the latest snapshot data
+              if (versionId && versionId !== '__current__') {
+                try {
+                  const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
+                  setVersions(loadedVersions);
+                } catch (e: any) {
+                  console.error('Failed to reload versions:', e);
                 }
-          }
-          sections={tableSections}
-          properties={tableProperties}
-          rows={assetRows}
-          onSaveAsset={handleSaveAssetFromTable}
-          onUpdateAsset={handleUpdateAssetFromTable}
-          onDeleteAsset={handleDeleteAssetFromTable}
-          currentUser={
-            userProfile
-              ? {
-                  id: userProfile.id,
-                  name: userProfile.full_name || userProfile.username || 'Anonymous',
-                  email: userProfile.email,
-                  avatarColor: userAvatarColor,
-                }
-              : null
-          }
-          enableRealtime={isAuthenticated}
-          presenceTracking={{
-            updateActiveCell,
-            getUsersEditingCell,
-          }}
-        />
-      </YjsProvider>
+              }
+            }}
+            onRestoreSuccess={async (restoredVersionId: string) => {
+              setRestoreToastMessage('Library restored');
+              setTimeout(() => {
+                setRestoreToastMessage(null);
+              }, 2000);
+              
+              // Reload versions and latest data after restore
+              // The restore has already applied the data to the database, so we just need to reload
+              try {
+                const [loadedVersions, rows] = await Promise.all([
+                  getVersionsByLibrary(supabase, libraryId),
+                  getLibraryAssetsWithProperties(supabase, libraryId),
+                ]);
+                setVersions(loadedVersions);
+                
+                // Notify Sidebar to refresh assets for this library
+                window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { libraryId } }));
+                
+                // Highlight the restored version for 1.5 seconds
+                setHighlightedVersionId(restoredVersionId);
+                
+                // After highlight animation, load the current data (which is now the restored version)
+                setTimeout(async () => {
+                  setHighlightedVersionId(null);
+                  
+                  // The database now contains the restored data, so load it as current version
+                  setAssetRows(rows);
+                  setSelectedVersionId(null); // Clear selection to show current version
+                }, 1500); // 1.5 seconds for highlight animation
+              } catch (e: any) {
+                console.error('Failed to reload data after restore:', e);
+              }
+            }}
+          />
+        )}
+      </div>
 
       {saveError && (
         <div className={styles.saveError}>
@@ -526,6 +724,31 @@ export default function LibraryPage() {
       )}
 
       {!authLoading && !isAuthenticated && <div className={styles.authWarning}>Please sign in to edit.</div>}
+
+      {/* Restore Toast Message */}
+      {restoreToastMessage && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            bottom: '24px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 10000,
+            backgroundColor: '#111827',
+            color: '#ffffff',
+            padding: '12px 24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
+            fontSize: '14px',
+            fontWeight: 500,
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+          }}
+        >
+          {restoreToastMessage}
+        </div>,
+        document.body
+      )}
 
       {/* {userProfile && (
         <div className={styles.formContainer}>

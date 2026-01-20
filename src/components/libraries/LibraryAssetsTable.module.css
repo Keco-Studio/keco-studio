@@ -1,6 +1,6 @@
 .tableContainer {
   margin-top: 24px;
-  margin-bottom: 200px; /* Add bottom margin to ensure context menu has space */
+  margin-bottom: 260px; /* Add bottom margin to ensure context menu has space (increased by ~60px for one more row) */
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   overflow: hidden;
