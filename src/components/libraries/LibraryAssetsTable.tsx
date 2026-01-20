@@ -5883,7 +5883,7 @@ export function LibraryAssetsTable({
                                   handleCellDoubleClick(row, property, e);
                                 }}
                               >
-                                {display ? display : <span className={styles.placeholderValue}>—</span>}
+                                {display || ''}
                               </span>
                               <button
                                 className={styles.viewDetailButton}
