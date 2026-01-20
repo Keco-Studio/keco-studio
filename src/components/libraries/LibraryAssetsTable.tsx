@@ -715,6 +715,7 @@ export function LibraryAssetsTable({
 
   // Ref for table container to detect clicks outside
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const batchEditMenuOriginalPositionRef = useRef<{ x: number; y: number; scrollY: number } | null>(null);
 
   // Modal state for reference selector
   const [referenceModalOpen, setReferenceModalOpen] = useState(false);
@@ -2592,6 +2593,7 @@ export function LibraryAssetsTable({
       if (!target.closest('.batchEditMenu')) {
         setBatchEditMenuVisible(false);
         setBatchEditMenuPosition(null);
+        batchEditMenuOriginalPositionRef.current = null;
       }
     };
     
@@ -2599,6 +2601,7 @@ export function LibraryAssetsTable({
       if (e.key === 'Escape') {
         setBatchEditMenuVisible(false);
         setBatchEditMenuPosition(null);
+        batchEditMenuOriginalPositionRef.current = null;
       }
     };
     
@@ -2608,6 +2611,109 @@ export function LibraryAssetsTable({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
+    };
+  }, [batchEditMenuVisible]);
+
+  // Clear original position ref when menu is closed
+  useEffect(() => {
+    if (!batchEditMenuVisible) {
+      batchEditMenuOriginalPositionRef.current = null;
+    }
+  }, [batchEditMenuVisible]);
+
+  // Helper function to get current scroll position from scrollable container
+  const getCurrentScrollY = useCallback(() => {
+    const tableContainer = tableContainerRef.current;
+    if (!tableContainer) {
+      return window.scrollY || window.pageYOffset || 0;
+    }
+
+    // Check if tableContainer itself is scrollable
+    const containerStyle = window.getComputedStyle(tableContainer);
+    const hasOverflow = containerStyle.overflow === 'auto' || containerStyle.overflow === 'scroll' || 
+                       containerStyle.overflowY === 'auto' || containerStyle.overflowY === 'scroll';
+    
+    if (hasOverflow && tableContainer.scrollHeight > tableContainer.clientHeight) {
+      return tableContainer.scrollTop;
+    }
+
+    // Check parent elements for scrollable container
+    let element: HTMLElement | null = tableContainer.parentElement;
+    while (element && element !== document.body) {
+      const style = window.getComputedStyle(element);
+      const hasOverflow = style.overflow === 'auto' || style.overflow === 'scroll' || 
+                         style.overflowY === 'auto' || style.overflowY === 'scroll';
+      
+      if (hasOverflow && element.scrollHeight > element.clientHeight) {
+        return element.scrollTop;
+      }
+      
+      element = element.parentElement;
+    }
+
+    // Fallback to window scroll
+    return window.scrollY || window.pageYOffset || 0;
+  }, []);
+
+  // Update batch edit menu position on scroll
+  useEffect(() => {
+    if (!batchEditMenuVisible || !batchEditMenuOriginalPositionRef.current) return;
+
+    const updateMenuPosition = () => {
+      const originalPos = batchEditMenuOriginalPositionRef.current;
+      if (!originalPos) return;
+
+      const currentScrollY = getCurrentScrollY();
+      const initialScrollY = originalPos.scrollY || 0;
+      
+      // Calculate scroll delta (positive when scrolling down)
+      const scrollDelta = currentScrollY - initialScrollY;
+      
+      // Debug log (can be removed later)
+      // console.log('Scroll update:', { currentScrollY, initialScrollY, scrollDelta, newY: originalPos.y - scrollDelta });
+      
+      // For fixed positioning, when table scrolls down, menu should move up relative to viewport
+      // So we subtract the scroll delta from the original Y position
+      const newY = originalPos.y - scrollDelta;
+      
+      setBatchEditMenuPosition({
+        x: originalPos.x,
+        y: newY,
+      });
+    };
+
+    // Listen to scroll events on multiple possible containers
+    const tableContainer = tableContainerRef.current;
+    const scrollElements: (HTMLElement | Window)[] = [];
+    
+    // Add table container and its scrollable parents
+    if (tableContainer) {
+      scrollElements.push(tableContainer);
+      let element: HTMLElement | null = tableContainer.parentElement;
+      while (element && element !== document.body) {
+        const style = window.getComputedStyle(element);
+        const hasOverflow = style.overflow === 'auto' || style.overflow === 'scroll' || 
+                           style.overflowY === 'auto' || style.overflowY === 'scroll';
+        if (hasOverflow) {
+          scrollElements.push(element);
+        }
+        element = element.parentElement;
+      }
+    }
+    
+    // Always listen to window scroll
+    scrollElements.push(window);
+    
+    // Add event listeners
+    scrollElements.forEach(element => {
+      element.addEventListener('scroll', updateMenuPosition, true);
+    });
+    
+    return () => {
+      // Remove event listeners
+      scrollElements.forEach(element => {
+        element.removeEventListener('scroll', updateMenuPosition, true);
+      });
     };
   }, [batchEditMenuVisible]);
 
@@ -2621,20 +2727,30 @@ export function LibraryAssetsTable({
     e.preventDefault();
     e.stopPropagation();
     
+    const scrollY = getCurrentScrollY();
+    const menuPos = adjustMenuPosition(e.clientX, e.clientY);
+    
+    // Save original position with scroll info for scroll tracking
+    batchEditMenuOriginalPositionRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollY: scrollY,
+    };
+    
     // Priority 1: If there are selected rows (via checkbox), use row selection
     // Clear any cell selection first to avoid conflicts
     if (selectedRowIds.size > 0) {
       setSelectedCells(new Set());
       // Show batch edit menu (operations will use selectedRowIds)
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
     // Priority 2: If there are selected cells (from drag selection), show batch edit menu
     if (selectedCells.size > 0) {
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
@@ -2649,20 +2765,30 @@ export function LibraryAssetsTable({
     e.preventDefault();
     e.stopPropagation();
     
+    const scrollY = getCurrentScrollY();
+    const menuPos = adjustMenuPosition(e.clientX, e.clientY);
+    
+    // Save original position with scroll info for scroll tracking
+    batchEditMenuOriginalPositionRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollY: scrollY,
+    };
+    
     // Priority 1: If there are selected rows (via checkbox), use row selection
     // Clear any cell selection first to avoid conflicts
     if (selectedRowIds.size > 0) {
       setSelectedCells(new Set());
       // Show batch edit menu (operations will use selectedRowIds)
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
     // Priority 2: If there are already selected cells (from drag selection), use them
     if (selectedCells.size > 0) {
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
@@ -2674,26 +2800,25 @@ export function LibraryAssetsTable({
     
     // Show batch edit menu
     setBatchEditMenuVisible(true);
-    setBatchEditMenuPosition(adjustMenuPosition(e.clientX, e.clientY));
+    setBatchEditMenuPosition(menuPos);
   };
 
-  // Helper function to adjust context menu position to ensure it's fully visible
+  // Helper function to adjust context menu position
+  // Menu appears directly at right-click position and expands downward
+  // User can scroll the table if menu is cut off at bottom
   const adjustMenuPosition = useCallback((x: number, y: number, menuHeight: number = 400): { x: number; y: number } => {
-    const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 0;
     const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+    const padding = 10; // Padding from window edges
     
-    // Adjust Y position if menu would be cut off at bottom
-    let adjustedY = y;
-    if (y + menuHeight > windowHeight) {
-      // Position menu above the cursor if it would be cut off
-      adjustedY = Math.max(10, y - menuHeight);
-    }
+    // Use Y position directly - menu appears at right-click location and expands downward
+    // If menu is cut off at bottom, user can scroll the table to see it
+    const adjustedY = y;
     
-    // Adjust X position if menu would be cut off at right
+    // Only adjust X position if menu would be cut off at right edge
     let adjustedX = x;
     const menuWidth = 180; // minWidth from batchEditMenu style
-    if (x + menuWidth > windowWidth) {
-      adjustedX = Math.max(10, windowWidth - menuWidth - 10);
+    if (x + menuWidth > windowWidth - padding) {
+      adjustedX = Math.max(padding, windowWidth - menuWidth - padding);
     }
     
     return { x: adjustedX, y: adjustedY };
