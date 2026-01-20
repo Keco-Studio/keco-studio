@@ -25,7 +25,7 @@ interface VersionItemProps {
   isLast: boolean;
   isFirst?: boolean;
   isSelected?: boolean;
-  onSelect?: (versionId: string) => void;
+  onSelect?: (versionId: string | null) => void;
   onRestoreSuccess?: (restoredVersionId: string) => void;
   isHighlighted?: boolean;
 }
@@ -64,7 +64,7 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
   // For restore versions, show restore time; otherwise show creation time
   const displayDate = version.restoredAt ? formatDate(version.restoredAt) : createdDate;
   const creatorText = version.restoredBy 
-    ? `restore by ${version.restoredBy.name}` 
+    ? `restored by ${version.restoredBy.name}` 
     : `added by ${creatorName}`;
 
   const handleClick = (e: React.MouseEvent) => {
@@ -171,6 +171,8 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
             libraryId={libraryId}
             externalMenuPosition={contextMenuPosition}
             onExternalMenuClose={handleCloseContextMenu}
+            isSelected={isSelected}
+            onVersionSelect={onSelect}
           />
         </div>
       )}

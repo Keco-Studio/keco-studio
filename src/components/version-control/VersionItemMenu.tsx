@@ -25,9 +25,11 @@ interface VersionItemMenuProps {
   libraryId: string;
   externalMenuPosition?: { x: number; y: number } | null;
   onExternalMenuClose?: () => void;
+  isSelected?: boolean;
+  onVersionSelect?: (versionId: string | null) => void;
 }
 
-export function VersionItemMenu({ version, libraryId, externalMenuPosition, onExternalMenuClose }: VersionItemMenuProps) {
+export function VersionItemMenu({ version, libraryId, externalMenuPosition, onExternalMenuClose, isSelected = false, onVersionSelect }: VersionItemMenuProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   const [showMenu, setShowMenu] = useState(false);
@@ -183,6 +185,10 @@ export function VersionItemMenu({ version, libraryId, externalMenuPosition, onEx
         onClose={() => setShowDeleteModal(false)}
         onSuccess={() => {
           setShowDeleteModal(false);
+          // 如果删除的版本是当前选中的版本，则回到 current version
+          if (isSelected && onVersionSelect) {
+            onVersionSelect(null);
+          }
         }}
       />
     </>
