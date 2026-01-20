@@ -60,7 +60,9 @@ jobs:
         run: npm ci
 
       - name: Install Supabase CLI
-        run: npm install -g supabase@latest
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
 
       # 根据分支选择 Supabase 项目和对应的 Access Token
       # main 分支 → Production, release 分支 → Preview
