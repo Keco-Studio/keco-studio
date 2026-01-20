@@ -73,9 +73,14 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
     if (target.closest(`.${styles.actions}`) || target.closest('button')) {
       return;
     }
-    // Don't select current version (including virtual one)
-    if (!isCurrent && onSelect && version.id !== '__current__') {
-      onSelect(version.id);
+    // Allow selecting any version including current version
+    if (onSelect) {
+      if (isCurrent || version.id === '__current__') {
+        // Selecting current version means going back to null (current editing state)
+        onSelect(null);
+      } else {
+        onSelect(version.id);
+      }
     }
   };
 

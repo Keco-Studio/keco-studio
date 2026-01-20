@@ -55,19 +55,24 @@ export function VersionList({ versions, libraryId, selectedVersionId, onVersionS
 
   return (
     <div className={styles.versionList}>
-      {allVersions.map((version, index) => (
-        <VersionItem
-          key={version.id}
-          version={version}
-          libraryId={libraryId}
-          isLast={index === allVersions.length - 1}
-          isFirst={index === 0}
-          isSelected={selectedVersionId === version.id}
-          onSelect={onVersionSelect}
-          onRestoreSuccess={onRestoreSuccess}
-          isHighlighted={highlightedVersionId === version.id}
-        />
-      ))}
+      {allVersions.map((version, index) => {
+        // Current version is selected when selectedVersionId is null
+        const isCurrentSelected = version.id === '__current__' && selectedVersionId === null;
+        const isVersionSelected = selectedVersionId === version.id;
+        return (
+          <VersionItem
+            key={version.id}
+            version={version}
+            libraryId={libraryId}
+            isLast={index === allVersions.length - 1}
+            isFirst={index === 0}
+            isSelected={isCurrentSelected || isVersionSelected}
+            onSelect={onVersionSelect}
+            onRestoreSuccess={onRestoreSuccess}
+            isHighlighted={highlightedVersionId === version.id}
+          />
+        );
+      })}
     </div>
   );
 }
