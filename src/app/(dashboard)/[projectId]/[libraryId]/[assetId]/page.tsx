@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ConfigProvider, Tabs, Switch } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -18,6 +18,10 @@ import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { AssetReferenceSelector } from '@/components/asset/AssetReferenceSelector';
 import { FieldPresenceAvatars } from '@/components/collaboration/FieldPresenceAvatars';
+import { useRealtimeSubscription } from '@/lib/hooks/useRealtimeSubscription';
+import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent } from '@/lib/types/collaboration';
+import { getUserAvatarColor } from '@/lib/utils/avatarColors';
+import { ConnectionStatusIndicator } from '@/components/collaboration/ConnectionStatusIndicator';
 
 type FieldDef = {
   id: string;
@@ -80,6 +84,18 @@ export default function AssetPage() {
   const [mode, setMode] = useState<AssetMode>(isNewAsset ? 'create' : 'edit');
   const [navigating, setNavigating] = useState(false);
   
+  // Auto-save related state
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const initialValuesLoadedRef = useRef(false);
+  const isSavingRef = useRef(false);
+  const handleSaveRef = useRef<(() => Promise<void>) | null>(null);
+  const previousValuesRef = useRef<Record<string, any>>({});
+  const broadcastCellUpdateRef = useRef<((assetId: string, propertyKey: string, newValue: any, oldValue?: any) => Promise<void>) | null>(null);
+  const assetRef = useRef<AssetRow | null>(null);
+  
+  // Realtime collaboration state
+  const [realtimeEditedFields, setRealtimeEditedFields] = useState<Map<string, { value: any; timestamp: number }>>(new Map());
+  
   // User role state (for permission control)
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
 
@@ -93,37 +109,150 @@ export default function AssetPage() {
     isTracking,
   } = usePresence();
 
+  // Keep assetRef updated (to avoid recreating callbacks when asset changes)
+  useEffect(() => {
+    assetRef.current = asset;
+  }, [asset]);
+
+  // Handle realtime cell updates from other users
+  const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
+    const currentAsset = assetRef.current;
+
+    // Only process updates for the current asset
+    if (!currentAsset || event.assetId !== currentAsset.id) {
+      return;
+    }
+
+    // Check if value actually changed (to prevent infinite loops from database subscriptions)
+    setValues(prev => {
+      const currentValue = prev[event.propertyKey];
+      const newValue = event.newValue;
+      
+      // Compare values using JSON.stringify to handle objects/arrays
+      const currentValueStr = JSON.stringify(currentValue);
+      const newValueStr = JSON.stringify(newValue);
+      
+      if (currentValueStr === newValueStr) {
+        return prev; // No change, return previous state
+      }
+
+      // Track this as a realtime edited field (for visual feedback)
+      setRealtimeEditedFields(prevFields => {
+        const next = new Map(prevFields);
+        next.set(event.propertyKey, { value: newValue, timestamp: event.timestamp });
+        return next;
+      });
+
+      // Clear the realtime edited state after a short delay
+      setTimeout(() => {
+        setRealtimeEditedFields(prevFields => {
+          const next = new Map(prevFields);
+          next.delete(event.propertyKey);
+          return next;
+        });
+      }, 2000);
+
+      // Return updated values
+      return {
+        ...prev,
+        [event.propertyKey]: newValue,
+      };
+    });
+  }, []);
+
+  // Handle asset creation events (not relevant for this page, but required by hook)
+  const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
+    // Not used in AssetPage
+  }, []);
+
+  // Handle asset deletion events
+  const handleAssetDeleteEvent = useCallback((event: AssetDeleteEvent) => {
+    const currentAsset = assetRef.current;
+    // If this asset was deleted by another user, redirect to library page
+    if (currentAsset && event.assetId === currentAsset.id) {
+      router.push(`/${projectId}/${libraryId}`);
+    }
+  }, [projectId, libraryId, router]);
+
+  // Handle conflicts (when both users edit the same field)
+  const handleConflictEvent = useCallback((event: CellUpdateEvent, localValue: any) => {
+    // For now, remote value wins (you can add a conflict resolution UI later)
+    setValues(prev => ({
+      ...prev,
+      [event.propertyKey]: event.newValue,
+    }));
+  }, []);
+
+  // Configure realtime subscription (use useMemo to prevent unnecessary re-initialization)
+  const realtimeConfig = useMemo(() => {
+    if (!libraryId || isNewAsset || !asset || !userProfile) {
+      return null;
+    }
+
+    return {
+      libraryId: libraryId,
+      currentUserId: userProfile.id,
+      currentUserName: userProfile.username || userProfile.full_name || userProfile.email,
+      currentUserEmail: userProfile.email,
+      avatarColor: getUserAvatarColor(userProfile.id),
+      onCellUpdate: handleCellUpdateEvent,
+      onAssetCreate: handleAssetCreateEvent,
+      onAssetDelete: handleAssetDeleteEvent,
+      onConflict: handleConflictEvent,
+    };
+  }, [
+    libraryId, 
+    isNewAsset, 
+    asset?.id,
+    userProfile?.id,
+    userProfile?.username,
+    userProfile?.full_name,
+    userProfile?.email,
+    handleCellUpdateEvent,
+    handleAssetCreateEvent,
+    handleAssetDeleteEvent,
+    handleConflictEvent,
+  ]);
+
+  // Initialize realtime subscription
+  const realtimeSubscription = useRealtimeSubscription(
+    realtimeConfig || {
+      libraryId: '',
+      currentUserId: '',
+      currentUserName: '',
+      currentUserEmail: '',
+      avatarColor: '',
+      onCellUpdate: () => {},
+      onAssetCreate: () => {},
+      onAssetDelete: () => {},
+      onConflict: () => {},
+    }
+  );
+
+  const {
+    connectionStatus,
+    broadcastCellUpdate,
+  } = realtimeConfig ? realtimeSubscription : {
+    connectionStatus: 'disconnected' as const,
+    broadcastCellUpdate: async () => {},
+  };
+
+  // Keep broadcastCellUpdateRef updated with the latest function
+  useEffect(() => {
+    broadcastCellUpdateRef.current = broadcastCellUpdate;
+  }, [broadcastCellUpdate]);
+
   // Set presence to indicate user is viewing this asset (when not editing any field)
   useEffect(() => {
-    console.log('[AssetPage] 🔍 Presence update check:', {
-      isNewAsset,
-      hasAsset: !!asset,
-      assetId: asset?.id?.slice(0, 8),
-      hasUpdateFn: !!updateActiveCell,
-      isTracking,
-      currentFocusedField,
-    });
-    
     if (!isNewAsset && asset && updateActiveCell) {
       // Always try to set viewing state when conditions are met
       // Even if isTracking is temporarily false, it will retry when isTracking becomes true
       if (isTracking) {
         if (!currentFocusedField) {
-          console.log(`[AssetPage] 👁️ Setting viewing state for asset: ${asset.id.slice(0, 8)}`);
           // Use a special propertyKey to indicate "viewing" (not editing)
           updateActiveCell(asset.id, '__viewing__');
-        } else {
-          console.log(`[AssetPage] ⚠️ Field focused, not setting viewing state`);
         }
-      } else {
-        console.log(`[AssetPage] ⏳ Waiting for tracking to start (isTracking: ${isTracking})`);
       }
-    } else {
-      console.log(`[AssetPage] ⚠️ Missing conditions:`, {
-        isNewAsset,
-        hasAsset: !!asset,
-        hasUpdateFn: !!updateActiveCell,
-      });
     }
   }, [asset, isNewAsset, updateActiveCell, currentFocusedField, isTracking]);
 
@@ -303,6 +432,8 @@ export default function AssetPage() {
             valueMap[v.field_id] = parsedValue;
           });
           setValues(valueMap);
+          // Store initial values for change detection in realtime updates
+          previousValuesRef.current = { ...valueMap };
         }
       } catch (e: any) {
         setError(e?.message || (isNewAsset ? 'Failed to load library' : 'Failed to load asset'));
@@ -330,9 +461,9 @@ export default function AssetPage() {
     if (isNewAsset) return; // New assets don't need to listen for updates
     
     const handleAssetUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ assetId: string; libraryId?: string }>;
-      // Only refresh if the event is for this asset
-      if (customEvent.detail?.assetId === assetId) {
+      const customEvent = event as CustomEvent<{ assetId: string; libraryId?: string; skipLocalRefresh?: boolean }>;
+      // Only refresh if the event is for this asset and skipLocalRefresh is not set
+      if (customEvent.detail?.assetId === assetId && !customEvent.detail?.skipLocalRefresh) {
         try {
           // Use a small delay to ensure database transaction is committed
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -512,7 +643,6 @@ export default function AssetPage() {
           if (valErr) throw valErr;
         }
 
-        setSaveSuccess('Asset created successfully! Loading asset page...');
         setValues({});
         setNavigating(true);
 
@@ -587,12 +717,36 @@ export default function AssetPage() {
           if (valErr) throw valErr;
         }
 
-        // Dispatch event to notify Sidebar to refresh assets
-        window.dispatchEvent(new CustomEvent('assetUpdated', {
-          detail: { libraryId, assetId: asset.id }
-        }));
+        // Broadcast realtime updates for changed fields
+        const broadcastFn = broadcastCellUpdateRef.current;
 
-        setSaveSuccess('Saved');
+        if (broadcastFn) {
+          for (const f of fieldDefs) {
+            const currentValue = values[f.id];
+            const previousValue = previousValuesRef.current[f.id];
+            
+            // Check if value changed
+            const hasChanged = JSON.stringify(currentValue) !== JSON.stringify(previousValue);
+            
+            if (hasChanged) {
+              // Broadcast the update to other users
+              try {
+                await broadcastFn(asset.id, f.id, currentValue, previousValue);
+              } catch (err) {
+                // Silently fail
+              }
+            }
+          }
+        }
+
+        // Update previousValuesRef with current values
+        previousValuesRef.current = { ...values };
+
+        // Dispatch event to notify Sidebar to refresh assets
+        // skipLocalRefresh: true to prevent re-fetching data in the same component (avoid auto-save loop)
+        window.dispatchEvent(new CustomEvent('assetUpdated', {
+          detail: { libraryId, assetId: asset.id, skipLocalRefresh: true }
+        }));
       } catch (e: any) {
         setSaveError(e?.message || 'Save failed');
       } finally {
@@ -601,15 +755,52 @@ export default function AssetPage() {
     }
   }, [isNewAsset, assetName, supabase, libraryId, fieldDefs, values, asset, router, projectId]);
 
-  // Auto-clear save success message after 2 seconds
+  // Keep handleSaveRef updated with the latest handleSave function
   useEffect(() => {
-    if (saveSuccess) {
-      const timer = setTimeout(() => {
-        setSaveSuccess(null);
-      }, 1000);
-      return () => clearTimeout(timer);
+    handleSaveRef.current = handleSave;
+  }, [handleSave]);
+
+  // Auto-save functionality for edit mode (not for new assets)
+  useEffect(() => {
+    // Skip auto-save for new assets or if initial values haven't loaded
+    if (isNewAsset || !asset || mode === 'view' || isSavingRef.current) {
+      return;
     }
-  }, [saveSuccess]);
+
+    // Mark initial values as loaded after first render
+    if (!initialValuesLoadedRef.current) {
+      initialValuesLoadedRef.current = true;
+      return;
+    }
+
+    // Clear existing timer
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    // Set new timer for auto-save (debounce for 1.5 seconds)
+    autoSaveTimerRef.current = setTimeout(() => {
+      // Don't trigger save if already saving
+      if (!isSavingRef.current && handleSaveRef.current) {
+        isSavingRef.current = true;
+        handleSaveRef.current().finally(() => {
+          isSavingRef.current = false;
+        });
+      }
+    }, 1500);
+
+    // Cleanup timer on unmount or when values change
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [values, isNewAsset, asset, mode]); // 移除 handleSave 依赖
+
+  // Reset initial values loaded flag when asset changes
+  useEffect(() => {
+    initialValuesLoadedRef.current = false;
+  }, [assetId]);
 
   // Listen to TopBar Create Asset button click for new assets
   useEffect(() => {
@@ -671,17 +862,14 @@ export default function AssetPage() {
           <h1 className={styles.title}>{assetName || 'New asset'}</h1>
         </div>
             <div className={styles.headerRight}>
-              {saveError && <div className={styles.saveError}>{saveError}</div>}
-              {saveSuccess && <div className={styles.saveSuccess}>{saveSuccess}</div>}
-              {!isNewAsset && userProfile && mode === 'edit' && (
-                <button
-                  onClick={handleSave}
-                  disabled={saving}
-                  className={styles.primaryButton}
-                >
-                  {saving ? 'Saving...' : 'Save changes'}
-                </button>
+              {/* Realtime connection status (only for existing assets) */}
+              {!isNewAsset && realtimeConfig && (
+                <ConnectionStatusIndicator 
+                  status={connectionStatus}
+                  queuedUpdatesCount={realtimeSubscription?.queuedUpdatesCount || 0}
+                />
               )}
+              {saveError && <div className={styles.saveError}>{saveError}</div>}
             </div>
           </div>
           {!authLoading && !isAuthenticated && isNewAsset && (
@@ -739,6 +927,7 @@ export default function AssetPage() {
                       const editingUsers = getFieldEditingUsers(f.id);
                       const borderColor = getFirstUserColor(editingUsers);
                       const isBeingEdited = editingUsers.length > 0;
+                      const isRealtimeEdited = realtimeEditedFields.has(f.id);
 
                       return (
                                     <div key={f.id} className={styles.fieldRow}>
@@ -797,6 +986,7 @@ export default function AssetPage() {
                       const editingUsers = getFieldEditingUsers(f.id);
                       const borderColor = getFirstUserColor(editingUsers);
                       const isBeingEdited = editingUsers.length > 0;
+                      const isRealtimeEdited = realtimeEditedFields.has(f.id);
 
                       return (
                                     <div key={f.id} className={styles.fieldRow}>
@@ -836,7 +1026,7 @@ export default function AssetPage() {
                                           }
                                           onFocus={() => handleFieldFocus(f.id)}
                                           onBlur={handleFieldBlur}
-                                          className={`${styles.fieldSelect} ${isBeingEdited ? styles.fieldInputEditing : ''} ${
+                                          className={`${styles.fieldSelect} ${isBeingEdited ? styles.fieldInputEditing : ''} ${isRealtimeEdited ? styles.fieldRealtimeEdited : ''} ${
                                             mode === 'view' ? styles.disabledInput : ''
                                           }`}
                                           style={borderColor ? { borderColor } : undefined}
@@ -859,6 +1049,7 @@ export default function AssetPage() {
                                   const editingUsers = getFieldEditingUsers(f.id);
                                   const borderColor = getFirstUserColor(editingUsers);
                                   const isBeingEdited = editingUsers.length > 0;
+                                  const isRealtimeEdited = realtimeEditedFields.has(f.id);
 
                                   return (
                                     <div key={f.id} className={styles.fieldRow}>
@@ -909,6 +1100,7 @@ export default function AssetPage() {
                                   const editingUsers = getFieldEditingUsers(f.id);
                                   const borderColor = getFirstUserColor(editingUsers);
                                   const isBeingEdited = editingUsers.length > 0;
+                                  const isRealtimeEdited = realtimeEditedFields.has(f.id);
 
                                   return (
                                     <div key={f.id} className={styles.fieldRow}>
@@ -970,6 +1162,9 @@ export default function AssetPage() {
                     const editingUsers = getFieldEditingUsers(f.id);
                     const borderColor = getFirstUserColor(editingUsers);
                     const isBeingEdited = editingUsers.length > 0;
+                    
+                    // Check if this field was just updated by a remote user
+                    const isRealtimeEdited = realtimeEditedFields.has(f.id);
 
                     return (
                                   <div key={f.id} className={styles.fieldRow}>
@@ -1007,7 +1202,7 @@ export default function AssetPage() {
                                         }
                                         onFocus={() => handleFieldFocus(f.id)}
                                         onBlur={handleFieldBlur}
-                                        className={`${inputClassName} ${isBeingEdited ? styles.fieldInputEditing : ''}`}
+                                        className={`${inputClassName} ${isBeingEdited ? styles.fieldInputEditing : ''} ${isRealtimeEdited ? styles.fieldRealtimeEdited : ''}`}
                                         style={borderColor ? { borderColor } : undefined}
                           placeholder={f.label}
                         />

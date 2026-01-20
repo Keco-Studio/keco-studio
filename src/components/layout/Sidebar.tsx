@@ -234,21 +234,21 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   // Debug: Monitor presence changes with clearer logging
   useEffect(() => {
-    console.log(`[Sidebar] 📊 Current state:`, {
-      libraryId: currentIds.libraryId?.slice(0, 8) || 'none',
-      assetId: currentIds.assetId?.slice(0, 8) || 'none',
-      presenceCount: presenceUsersArray.length,
-      userName: userProfile?.full_name || userProfile?.username || 'unknown'
-    });
+    // console.log(`[Sidebar] 📊 Current state:`, {
+    //   libraryId: currentIds.libraryId?.slice(0, 8) || 'none',
+    //   assetId: currentIds.assetId?.slice(0, 8) || 'none',
+    //   presenceCount: presenceUsersArray.length,
+    //   userName: userProfile?.full_name || userProfile?.username || 'unknown'
+    // });
     
     if (currentIds.libraryId && presenceUsersArray.length > 0) {
-      console.log(`[Sidebar] 👥 Presence in library ${currentIds.libraryId.slice(0, 8)}:`, 
-        presenceUsersArray.map(u => ({
-          name: u.userName,
-          asset: u.activeCell?.assetId?.slice(0, 8) || 'none',
-          property: u.activeCell?.propertyKey || 'none'
-        }))
-      );
+      // console.log(`[Sidebar] 👥 Presence in library ${currentIds.libraryId.slice(0, 8)}:`, 
+      //   presenceUsersArray.map(u => ({
+      //     name: u.userName,
+      //     asset: u.activeCell?.assetId?.slice(0, 8) || 'none',
+      //     property: u.activeCell?.propertyKey || 'none'
+      //   }))
+      // );
     }
   }, [presenceUsersArray, currentIds.libraryId, currentIds.assetId, userProfile]);
 
@@ -258,11 +258,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Always show presence for any asset in the current library (not just when on asset page)
     // This allows users to see who's viewing/editing assets even from the library list view
     if (!currentIds.libraryId) {
-      console.log('[Sidebar] ⚠️ getUsersOnAsset: No libraryId');
+      // console.log('[Sidebar] ⚠️ getUsersOnAsset: No libraryId');
       return [];
     }
     if (!presenceUsersArray || presenceUsersArray.length === 0) {
-      console.log('[Sidebar] ⚠️ getUsersOnAsset: No presence users');
+      // console.log('[Sidebar] ⚠️ getUsersOnAsset: No presence users');
       return [];
     }
     
@@ -274,9 +274,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       return user?.activeCell?.assetId === assetId;
     });
     
-    console.log(`[Sidebar] 🔍 getUsersOnAsset(${assetId.slice(0, 8)}): found ${users.length} user(s)`, 
-      users.map(u => ({ name: u.userName, cell: u.activeCell }))
-    );
+    // console.log(`[Sidebar] 🔍 getUsersOnAsset(${assetId.slice(0, 8)}): found ${users.length} user(s)`, 
+    //   users.map(u => ({ name: u.userName, cell: u.activeCell }))
+    // );
     
     return users;
   }, [currentIds.libraryId, presenceUsersArray]);
@@ -433,7 +433,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           const roleResult = await roleResponse.json();
           setUserRole(roleResult.role || null);
           setIsProjectOwner(roleResult.isOwner || false);
-          console.log('[Sidebar] User role:', roleResult.role, 'isOwner:', roleResult.isOwner);
+          // console.log('[Sidebar] User role:', roleResult.role, 'isOwner:', roleResult.isOwner);
         } else {
           setUserRole(null);
           setIsProjectOwner(false);
@@ -454,9 +454,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (currentIds.projectId && projects.length > 0 && !loadingProjects) {
       const currentProjectExists = projects.some(p => p.id === currentIds.projectId);
       if (!currentProjectExists) {
-        console.log('[Sidebar] Current project not in list, refreshing projects...');
-        console.log('[Sidebar] Current project ID:', currentIds.projectId);
-        console.log('[Sidebar] Projects in list:', projects.map(p => p.id));
+        // console.log('[Sidebar] Current project not in list, refreshing projects...');
+        // console.log('[Sidebar] Current project ID:', currentIds.projectId);
+        // console.log('[Sidebar] Projects in list:', projects.map(p => p.id));
         
         // Clear globalRequestCache and refetch
         (async () => {
@@ -467,7 +467,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               // Clear projects list cache
               const projectsCacheKey = `projects:list:${user.id}`;
               globalRequestCache.invalidate(projectsCacheKey);
-              console.log('[Sidebar] Cleared globalRequestCache for key:', projectsCacheKey);
+              // console.log('[Sidebar] Cleared globalRequestCache for key:', projectsCacheKey);
               
               // Clear all caches for this project (important!)
               // This ensures fresh data and permissions
@@ -479,12 +479,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               ];
               cacheKeys.forEach(key => {
                 globalRequestCache.invalidate(key);
-                console.log('[Sidebar] Cleared cache for key:', key);
+                // console.log('[Sidebar] Cleared cache for key:', key);
               });
             }
             // Refetch projects list
             await refetchProjects();
-            console.log('[Sidebar] Projects list refreshed');
+            // console.log('[Sidebar] Projects list refreshed');
           } catch (error) {
             console.error('[Sidebar] Error refreshing projects:', error);
           }

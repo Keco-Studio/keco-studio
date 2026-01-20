@@ -310,6 +310,22 @@
   padding: 9px; /* Compensate for thicker border */
 }
 
+/* Field that was just updated by remote user */
+.fieldRealtimeEdited {
+  animation: realtimeFlash 0.8s ease-in-out;
+}
+
+@keyframes realtimeFlash {
+  0% {
+    background-color: #e6f7ff;
+    border-color: #1890ff;
+  }
+  100% {
+    background-color: transparent;
+    border-color: #d9d9d9;
+  }
+}
+
 .fieldSelect {
   padding-right: 30px;
   appearance: none;

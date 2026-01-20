@@ -53,6 +53,9 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [optimisticUpdates, setOptimisticUpdates] = useState<Map<string, OptimisticUpdate>>(new Map());
   const [queuedUpdates, setQueuedUpdates] = useState<CellUpdateEvent[]>([]);
+  
+  // Track recent broadcasts to prevent processing our own database updates
+  const recentBroadcastsRef = useRef<Map<string, number>>(new Map());
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -196,13 +199,23 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           return;
         }
 
-        if (!channelRef.current) return;
+        if (!channelRef.current) {
+          return;
+        }
 
         await channelRef.current.send({
           type: 'broadcast',
           event: 'cell:update',
           payload: event,
         });
+
+        // Track this broadcast to prevent processing our own database update
+        recentBroadcastsRef.current.set(cellKey, Date.now());
+        
+        // Clean up old broadcasts after 3 seconds
+        setTimeout(() => {
+          recentBroadcastsRef.current.delete(cellKey);
+        }, 3000);
 
         // Remove optimistic update after successful broadcast
         setTimeout(() => {
@@ -309,8 +322,6 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       return;
     }
 
-    // console.log(`Processing ${queuedUpdates.length} queued updates...`);
-
     for (const event of queuedUpdates) {
       try {
         await channelRef.current.send({
@@ -334,11 +345,11 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       return;
     }
 
-    // console.log(`[Realtime] Initializing subscription for library: ${libraryId}`);
+    const channelName = `library:${libraryId}:edits`;
     setConnectionStatus('connecting');
 
     // Create the edit broadcast channel
-    const channel = supabase.channel(`library:${libraryId}:edits`, {
+    const channel = supabase.channel(channelName, {
       config: {
         broadcast: { ack: false }, // Fire-and-forget for speed
       },
@@ -346,16 +357,144 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     channelRef.current = channel;
 
-    // Set up event listeners
+    // Set up broadcast event listeners (for fast updates)
     channel
       .on('broadcast', { event: 'cell:update' }, handleCellUpdateEvent)
       .on('broadcast', { event: 'asset:create' }, handleAssetCreateEvent)
-      .on('broadcast', { event: 'asset:delete' }, handleAssetDeleteEvent);
+      .on('broadcast', { event: 'asset:delete' }, handleAssetDeleteEvent)
+      // Add database subscription as backup (ensures updates even if broadcast fails)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'library_asset_values',
+        },
+        async (payload) => {
+          // Extract field_id and new value from the database update
+          const newRecord = payload.new as any;
+          const oldRecord = payload.old as any;
+          
+          if (newRecord && newRecord.asset_id && newRecord.field_id) {
+            // Check if this is our own recent broadcast (to prevent infinite loops)
+            const cellKey = `${newRecord.asset_id}-${newRecord.field_id}`;
+            const recentBroadcastTime = recentBroadcastsRef.current.get(cellKey);
+            
+            if (recentBroadcastTime && Date.now() - recentBroadcastTime < 2000) {
+              return;
+            }
+            
+            // Verify that this asset belongs to our library
+            // (to avoid processing updates from other libraries)
+            try {
+              const { data: assetData } = await supabase
+                .from('library_assets')
+                .select('library_id')
+                .eq('id', newRecord.asset_id)
+                .single();
+              
+              if (!assetData || assetData.library_id !== libraryId) {
+                return;
+              }
+              
+              // Check if value actually changed
+              const oldValueStr = JSON.stringify(oldRecord?.value_json);
+              const newValueStr = JSON.stringify(newRecord.value_json);
+              
+              if (oldValueStr === newValueStr) {
+                return;
+              }
+              
+              // Create a synthetic CellUpdateEvent from database change
+              // Note: We don't have userName/avatarColor from database, so use placeholder
+              const syntheticEvent: CellUpdateEvent = {
+                type: 'cell:update',
+                userId: '', // Unknown user (from database)
+                userName: 'Another user',
+                avatarColor: '#888888',
+                assetId: newRecord.asset_id,
+                propertyKey: newRecord.field_id,
+                newValue: newRecord.value_json,
+                oldValue: oldRecord?.value_json,
+                timestamp: Date.now(),
+              };
+              
+              handleCellUpdateEvent({ payload: syntheticEvent });
+            } catch (error) {
+              // Silently fail
+            }
+          }
+        }
+      )
+      // Subscribe to asset creation events
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'library_assets',
+          filter: `library_id=eq.${libraryId}`
+        },
+        async (payload) => {
+          const newRecord = payload.new as any;
+          
+          if (newRecord && newRecord.id && newRecord.name) {
+            // Fetch property values for this asset
+            const { data: values } = await supabase
+              .from('library_asset_values')
+              .select('field_id, value_json')
+              .eq('asset_id', newRecord.id);
+            
+            const propertyValues: Record<string, any> = {};
+            values?.forEach((v: any) => {
+              propertyValues[v.field_id] = v.value_json;
+            });
+            
+            // Create a synthetic AssetCreateEvent
+            const syntheticEvent: AssetCreateEvent = {
+              type: 'asset:create',
+              userId: '', // Unknown user (from database)
+              userName: 'Another user',
+              assetId: newRecord.id,
+              assetName: newRecord.name,
+              propertyValues,
+              timestamp: Date.now(),
+            };
+            
+            handleAssetCreateEvent({ payload: syntheticEvent });
+          }
+        }
+      )
+      // Subscribe to asset deletion events
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'library_assets',
+          filter: `library_id=eq.${libraryId}`
+        },
+        (payload) => {
+          const oldRecord = payload.old as any;
+          
+          if (oldRecord && oldRecord.id) {
+            // Create a synthetic AssetDeleteEvent
+            const syntheticEvent: AssetDeleteEvent = {
+              type: 'asset:delete',
+              userId: '', // Unknown user (from database)
+              userName: 'Another user',
+              assetId: oldRecord.id,
+              assetName: oldRecord.name || 'Unknown',
+              timestamp: Date.now(),
+            };
+            
+            handleAssetDeleteEvent({ payload: syntheticEvent });
+          }
+        }
+      );
 
     // Handle system events for connection status
     channel.on('system', {}, (payload) => {
-      // console.log('[Realtime] System event:', payload);
-
       if (payload.status === 'SUBSCRIBED') {
         setConnectionStatus('connected');
         processQueuedUpdates(); // Process any queued updates
@@ -367,7 +506,6 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           clearTimeout(reconnectTimeoutRef.current);
         }
         reconnectTimeoutRef.current = setTimeout(() => {
-          // console.log('[Realtime] Attempting reconnection...');
           setConnectionStatus('reconnecting');
           channel.subscribe();
         }, 2000);
@@ -376,8 +514,6 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     // Subscribe to the channel
     channel.subscribe((status) => {
-      // console.log('[Realtime] Subscription status:', status);
-      
       if (status === 'SUBSCRIBED') {
         setConnectionStatus('connected');
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
@@ -387,8 +523,6 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     // Cleanup on unmount
     return () => {
-      // console.log(`[Realtime] Cleaning up subscription for library: ${libraryId}`);
-      
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
