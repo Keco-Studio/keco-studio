@@ -62,6 +62,7 @@ export default function LibraryPage() {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
+  const [fieldValidationErrors, setFieldValidationErrors] = useState<Record<string, string>>({});
   const [userRole, setUserRole] = useState<CollaboratorRole>('viewer');
   const [isVersionControlOpen, setIsVersionControlOpen] = useState(false);
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(null);
@@ -467,10 +468,52 @@ export default function LibraryPage() {
   const handleCreateAsset = async () => {
     setSaveError(null);
     setSaveSuccess(null);
+    setFieldValidationErrors({});
+    
     if (!assetName.trim()) {
       setSaveError('Asset name is required');
       return;
     }
+    
+    // Validate field types before saving
+    const validationErrors: Record<string, string> = {};
+    fieldDefs.forEach((f) => {
+      const raw = values[f.id];
+      if (raw === '' || raw === undefined || raw === null) {
+        return; // Empty values are allowed
+      }
+      
+      if (f.data_type === 'int') {
+        // Int type: must be a valid integer (no decimal point)
+        const trimmed = String(raw).trim();
+        if (trimmed.includes('.')) {
+          validationErrors[f.id] = 'type mismatch';
+        } else {
+          const intValue = parseInt(trimmed, 10);
+          if (isNaN(intValue) || String(intValue) !== trimmed.replace(/^-/, '')) {
+            validationErrors[f.id] = 'type mismatch';
+          }
+        }
+      } else if (f.data_type === 'float') {
+        // Float type: must contain a decimal point (cannot be pure integer)
+        const trimmed = String(raw).trim();
+        if (!trimmed.includes('.')) {
+          validationErrors[f.id] = 'type mismatch';
+        } else {
+          const floatValue = parseFloat(trimmed);
+          if (isNaN(floatValue)) {
+            validationErrors[f.id] = 'type mismatch';
+          }
+        }
+      }
+    });
+    
+    if (Object.keys(validationErrors).length > 0) {
+      setFieldValidationErrors(validationErrors);
+      setSaveError('请修正类型错误后再保存');
+      return;
+    }
+    
     setSaving(true);
     try {
       // create asset
@@ -818,15 +861,33 @@ export default function LibraryPage() {
                     return (
                       <label key={f.id} className={styles.fieldLabel}>
                         <span>{label}</span>
-                        <input
-                          type={inputType}
-                          step={step}
-                          value={value ?? ''}
-                          onChange={(e) => {
+                        <div style={{ position: 'relative', width: '100%' }}>
+                          <input
+                            type={inputType}
+                            step={step}
+                            value={value ?? ''}
+                            onChange={(e) => {
                             let inputValue = e.target.value;
                             
                             // Validate int type: only allow integers
                             if (f.data_type === 'int' && inputValue !== '') {
+                              // Check if contains decimal point - show error immediately
+                              if (inputValue.includes('.')) {
+                                setFieldValidationErrors(prev => ({
+                                  ...prev,
+                                  [f.id]: 'type mismatch'
+                                }));
+                                // Remove decimal point and everything after it
+                                inputValue = inputValue.split('.')[0];
+                              } else {
+                                // Clear error if no decimal point
+                                setFieldValidationErrors(prev => {
+                                  const newErrors = { ...prev };
+                                  delete newErrors[f.id];
+                                  return newErrors;
+                                });
+                              }
+                              
                               // Remove any non-digit characters except minus sign at the start
                               const cleaned = inputValue.replace(/[^\d-]/g, '');
                               const intValue = cleaned.startsWith('-') 
@@ -839,8 +900,15 @@ export default function LibraryPage() {
                               }
                               inputValue = intValue;
                             }
-                            // Validate float type: allow decimals (integers are also valid for float)
+                            // Validate float type: must contain decimal point
                             else if (f.data_type === 'float' && inputValue !== '') {
+                              // Clear error initially
+                              setFieldValidationErrors(prev => {
+                                const newErrors = { ...prev };
+                                delete newErrors[f.id];
+                                return newErrors;
+                              });
+                              
                               // Remove invalid characters but keep valid float format
                               const cleaned = inputValue.replace(/[^\d.-]/g, '');
                               const floatValue = cleaned.startsWith('-') 
@@ -856,13 +924,57 @@ export default function LibraryPage() {
                                 return; // Don't update if invalid
                               }
                               inputValue = finalValue;
+                            } else {
+                              // Clear error for other types
+                              setFieldValidationErrors(prev => {
+                                const newErrors = { ...prev };
+                                delete newErrors[f.id];
+                                return newErrors;
+                              });
                             }
                             
                             handleValueChange(f.id, inputValue);
                           }}
+                          onBlur={() => {
+                            // Validate on blur for float type: check if integer was entered
+                            if (f.data_type === 'float' && values[f.id] !== '' && values[f.id] !== undefined && values[f.id] !== null) {
+                              const trimmed = String(values[f.id]).trim();
+                              if (!trimmed.includes('.')) {
+                                setFieldValidationErrors(prev => ({
+                                  ...prev,
+                                  [f.id]: 'type mismatch'
+                                }));
+                                // Clear the invalid value
+                                handleValueChange(f.id, '');
+                              }
+                            }
+                          }}
                           className={styles.fieldInput}
                           placeholder={f.label}
                         />
+                        {fieldValidationErrors[f.id] && (
+                          <Tooltip 
+                            title={fieldValidationErrors[f.id]}
+                            open={true}
+                            placement="bottom"
+                            overlayStyle={{ fontSize: '12px' }}
+                          >
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: '4px',
+                                right: '4px',
+                                width: '8px',
+                                height: '8px',
+                                backgroundColor: '#ff4d4f',
+                                borderRadius: '50%',
+                                zIndex: 1001,
+                                pointerEvents: 'none'
+                              }}
+                            />
+                          </Tooltip>
+                        )}
+                        </div>
                       </label>
                     );
                   })}

@@ -99,6 +99,10 @@ export function LibraryAssetsTable({
   const editingCellRef = useRef<HTMLSpanElement | null>(null);
   const isComposingRef = useRef(false);
   
+  // Type validation error state: track validation errors for current editing cell
+  const [typeValidationError, setTypeValidationError] = useState<string | null>(null);
+  const typeValidationErrorRef = useRef<HTMLDivElement | null>(null);
+  
   // Initialize: sync props.rows to Yjs (only on first time, when Yjs is empty)
   useEffect(() => {
     if (yRows.length === 0 && rows.length > 0) {
@@ -1821,6 +1825,72 @@ export function LibraryAssetsTable({
       });
   };
 
+  // Validate value based on data type
+  const validateValueByType = useCallback((value: string, dataType: string): { isValid: boolean; error: string | null; normalizedValue: string | number | null } => {
+    if (value === '' || value === null || value === undefined) {
+      return { isValid: true, error: null, normalizedValue: null };
+    }
+    
+    if (dataType === 'int') {
+      // Int type: must be a valid integer (no decimal point)
+      const trimmed = value.trim();
+      if (trimmed === '' || trimmed === '-') {
+        return { isValid: true, error: null, normalizedValue: null };
+      }
+      
+      // Check if contains decimal point
+      if (trimmed.includes('.')) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      // Check if valid integer
+      const intValue = parseInt(trimmed, 10);
+      if (isNaN(intValue) || String(intValue) !== trimmed.replace(/^-/, '')) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      return { isValid: true, error: null, normalizedValue: intValue };
+    } else if (dataType === 'float') {
+      // Float type: must contain a decimal point (cannot be pure integer)
+      const trimmed = value.trim();
+      if (trimmed === '' || trimmed === '-' || trimmed === '.') {
+        return { isValid: true, error: null, normalizedValue: null };
+      }
+      
+      // Check if contains decimal point
+      if (!trimmed.includes('.')) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      // Check if valid float
+      const floatValue = parseFloat(trimmed);
+      if (isNaN(floatValue)) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      return { isValid: true, error: null, normalizedValue: floatValue };
+    }
+    
+    // Other types: no validation needed
+    return { isValid: true, error: null, normalizedValue: value };
+  }, []);
+
   // Handle save edited cell
   const handleSaveEditedCell = useCallback(async () => {
     if (!editingCell || !onUpdateAsset) return;
@@ -1833,10 +1903,33 @@ export function LibraryAssetsTable({
     const property = properties.find(p => p.key === propertyKey);
     const isNameField = property && properties[0]?.key === propertyKey;
     
-    // Update property values
+    // Validate value based on data type (only for non-name fields)
+    if (!isNameField && property) {
+      const validation = validateValueByType(editingCellValue, property.dataType);
+      
+      if (!validation.isValid) {
+        // Show error message and prevent saving
+        setTypeValidationError(validation.error);
+        // Keep editing state so user can correct the error
+        // Focus back on the input
+        setTimeout(() => {
+          editingCellRef.current?.focus();
+        }, 100);
+        return;
+      }
+      
+      // Clear validation error if valid
+      setTypeValidationError(null);
+    }
+    
+    // Update property values with normalized value
+    const normalizedValue = (!isNameField && property) 
+      ? validateValueByType(editingCellValue, property.dataType).normalizedValue
+      : editingCellValue;
+    
     const updatedPropertyValues = {
       ...row.propertyValues,
-      [propertyKey]: editingCellValue
+      [propertyKey]: normalizedValue
     };
     
     // Get asset name (use first property value or row name)
@@ -1873,6 +1966,7 @@ export function LibraryAssetsTable({
     const savedValue = editingCellValue;
     setEditingCell(null);
     setEditingCellValue('');
+    setTypeValidationError(null); // Clear validation error
     editingCellRef.current = null;
     isComposingRef.current = false;
     setCurrentFocusedCell(null); // Clear focused cell when saving
@@ -1908,7 +2002,7 @@ export function LibraryAssetsTable({
     } finally {
       setIsSaving(false);
     }
-  }, [editingCell, editingCellValue, onUpdateAsset, properties, rows, yRows, setOptimisticEditUpdates]);
+  }, [editingCell, editingCellValue, onUpdateAsset, properties, rows, yRows, setOptimisticEditUpdates, validateValueByType, presenceTracking]);
 
   // Handle double click on cell to start editing (only for editable cell types)
   const handleCellDoubleClick = (row: AssetRow, property: PropertyConfig, e: React.MouseEvent) => {
@@ -1968,6 +2062,7 @@ export function LibraryAssetsTable({
 
   // Handle cancel editing
   const handleCancelEditing = () => {
+    setTypeValidationError(null); // Clear validation error when canceling
     setEditingCell(null);
     setEditingCellValue('');
     editingCellRef.current = null;
@@ -5836,7 +5931,10 @@ export function LibraryAssetsTable({
                       key={property.id}
                       data-property-key={property.key}
                       className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
-                      style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                      style={{
+                        ...(borderColor ? { borderLeft: `3px solid ${borderColor}` } : {}),
+                        ...(isCellEditing ? { position: 'relative' } : {})
+                      }}
                       onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                       onClick={(e) => handleCellClick(row.id, property.key, e)}
                       onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
@@ -5868,41 +5966,75 @@ export function LibraryAssetsTable({
                     >
                       {isCellEditing ? (
                         // Cell is being edited: use contentEditable for direct cell editing
-                        <span
-                          ref={editingCellRef}
-                          contentEditable
-                          suppressContentEditableWarning
-                          onFocus={() => {
-                            // Update presence tracking when input gains focus
-                            if (editingCell) {
-                              handleCellFocus(editingCell.rowId, editingCell.propertyKey);
-                            }
-                          }}
-                          onBlur={(e) => {
-                            if (!isComposingRef.current) {
-                              const newValue = e.currentTarget.textContent || '';
-                              setEditingCellValue(newValue);
-                              handleSaveEditedCell();
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !isComposingRef.current) {
-                              e.preventDefault();
-                              const newValue = e.currentTarget.textContent || '';
-                              setEditingCellValue(newValue);
-                              handleSaveEditedCell();
-                            } else if (e.key === 'Escape') {
-                              e.preventDefault();
-                              handleCancelEditing();
-                            }
-                          }}
-                          onInput={(e) => {
+                        <div style={{ position: 'relative', width: '100%' }}>
+                          <span
+                            ref={editingCellRef}
+                            contentEditable
+                            suppressContentEditableWarning
+                            onFocus={() => {
+                              // Update presence tracking when input gains focus
+                              if (editingCell) {
+                                handleCellFocus(editingCell.rowId, editingCell.propertyKey);
+                              }
+                            }}
+                            onBlur={(e) => {
+                              if (!isComposingRef.current) {
+                                const newValue = e.currentTarget.textContent || '';
+                                setEditingCellValue(newValue);
+                                handleSaveEditedCell();
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !isComposingRef.current) {
+                                e.preventDefault();
+                                const newValue = e.currentTarget.textContent || '';
+                                setEditingCellValue(newValue);
+                                handleSaveEditedCell();
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                handleCancelEditing();
+                              }
+                            }}
+                            onInput={(e) => {
                             // Only update state when not composing (for IME input)
                             if (!isComposingRef.current) {
                               let newValue = e.currentTarget.textContent || '';
                               
                               // Validate int type: only allow integers
                               if (property.dataType === 'int' && newValue !== '') {
+                                // Check if contains decimal point - show error immediately
+                                if (newValue.includes('.')) {
+                                  setTypeValidationError('type mismatch');
+                                  // Remove decimal point and everything after it
+                                  const intValue = newValue.split('.')[0];
+                                  const selection = window.getSelection();
+                                  const range = selection?.getRangeAt(0);
+                                  const cursorPosition = range?.startOffset || 0;
+                                  
+                                  e.currentTarget.textContent = intValue;
+                                  
+                                  // Restore cursor position
+                                  if (range && selection) {
+                                    try {
+                                      const newRange = document.createRange();
+                                      const textNode = e.currentTarget.firstChild;
+                                      if (textNode) {
+                                        const newPosition = Math.min(cursorPosition, intValue.length);
+                                        newRange.setStart(textNode, newPosition);
+                                        newRange.setEnd(textNode, newPosition);
+                                        selection.removeAllRanges();
+                                        selection.addRange(newRange);
+                                      }
+                                    } catch (err) {
+                                      // Ignore cursor restoration errors
+                                    }
+                                  }
+                                  newValue = intValue;
+                                } else {
+                                  // Clear error if no decimal point
+                                  setTypeValidationError(null);
+                                }
+                                
                                 // Remove any non-digit characters except minus sign at the start
                                 // Allow: digits, minus sign only at the beginning
                                 const cleaned = newValue.replace(/[^\d-]/g, '');
@@ -5946,8 +6078,11 @@ export function LibraryAssetsTable({
                                 
                                 newValue = intValue;
                               }
-                              // Validate float type: allow decimals (but integers are also valid)
+                              // Validate float type: must contain decimal point
                               else if (property.dataType === 'float' && newValue !== '') {
+                                // Clear error initially
+                                setTypeValidationError(null);
+                                
                                 // Allow digits, one decimal point, and optional minus sign
                                 // Remove invalid characters but keep valid float format
                                 const cleaned = newValue.replace(/[^\d.-]/g, '');
@@ -5994,6 +6129,9 @@ export function LibraryAssetsTable({
                                 }
                                 
                                 newValue = finalValue;
+                              } else {
+                                // Clear error for other types
+                                setTypeValidationError(null);
                               }
                               
                               setEditingCellValue(newValue);
@@ -6008,6 +6146,16 @@ export function LibraryAssetsTable({
                             
                             // Validate int type: only allow integers
                             if (property.dataType === 'int' && newValue !== '') {
+                              // Check if contains decimal point - show error
+                              if (newValue.includes('.')) {
+                                setTypeValidationError('type mismatch');
+                                const intValue = newValue.split('.')[0];
+                                e.currentTarget.textContent = intValue;
+                                newValue = intValue;
+                              } else {
+                                setTypeValidationError(null);
+                              }
+                              
                               // Remove any non-digit characters except minus sign at the start
                               const cleaned = newValue.replace(/[^\d-]/g, '');
                               const intValue = cleaned.startsWith('-') 
@@ -6024,8 +6172,10 @@ export function LibraryAssetsTable({
                               }
                               newValue = intValue;
                             }
-                            // Validate float type: allow decimals (integers are also valid)
+                            // Validate float type: must contain decimal point
                             else if (property.dataType === 'float' && newValue !== '') {
+                              setTypeValidationError(null); // Clear error initially
+                              
                               const cleaned = newValue.replace(/[^\d.-]/g, '');
                               const floatValue = cleaned.startsWith('-') 
                                 ? '-' + cleaned.slice(1).replace(/-/g, '')
@@ -6044,17 +6194,43 @@ export function LibraryAssetsTable({
                                 e.currentTarget.textContent = finalValue;
                               }
                               newValue = finalValue;
+                            } else {
+                              setTypeValidationError(null);
                             }
                             
                             setEditingCellValue(newValue);
                           }}
-                          style={{
-                            outline: 'none',
-                            minHeight: '1em',
-                            display: 'block',
-                            width: '100%'
-                          }}
-                        />
+                            style={{
+                              outline: 'none',
+                              minHeight: '1em',
+                              display: 'block',
+                              width: '100%'
+                            }}
+                          />
+                          {typeValidationError && (
+                            <Tooltip 
+                              title={typeValidationError}
+                              open={true}
+                              placement="bottom"
+                              overlayStyle={{ fontSize: '12px' }}
+                            >
+                              <div
+                                ref={typeValidationErrorRef}
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  right: 0,
+                                  width: '8px',
+                                  height: '8px',
+                                  backgroundColor: '#ff4d4f',
+                                  borderRadius: '50%',
+                                  zIndex: 1001,
+                                  pointerEvents: 'none'
+                                }}
+                              />
+                            </Tooltip>
+                          )}
+                        </div>
                       ) : (
                         <>
                           {isNameField ? (
