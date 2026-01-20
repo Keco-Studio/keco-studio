@@ -2071,7 +2071,9 @@ export function LibraryAssetsTable({
       if (!deletedAssetIds.has(row.id)) {
         const assetRow = row as AssetRow;
         const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
-        if (optimisticUpdate && optimisticUpdate.name === assetRow.name) {
+        // Always apply optimistic updates if they exist (rowId matching ensures correctness)
+        // Removed name matching check to fix issue where cleared cells weren't reflected in fill operations
+        if (optimisticUpdate) {
           allRowsMap.set(assetRow.id, {
             ...assetRow,
             name: optimisticUpdate.name,
@@ -2403,131 +2405,313 @@ export function LibraryAssetsTable({
       document.removeEventListener('mousemove', fillDragMoveHandler);
       document.removeEventListener('mouseup', fillDragEndHandler);
       
-      // If it was just a click, reset to single cell selection
-      if (isClick || !hasMoved) {
-        if (isFillingCellsRef.current) {
-          isFillingCellsRef.current = false;
-          document.body.style.userSelect = '';
-          setFillDragStartCell(null);
-          // Reset to single cell selection
-          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        }
-        return;
-      }
-      
-      if (!isFillingCellsRef.current) {
-        return;
-      }
-      
-      // Check if we dragged downward
-      const allRowsForSelection = getAllRowsForCellSelection();
-      const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-      
-      // Find the cell under the cursor at end
-      const elementBelow = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
-      if (!elementBelow) {
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        setFillDragStartCell(null);
-        // Reset to single cell selection if drag ended outside
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        return;
-      }
-      
-      const cellElement = elementBelow.closest('td');
-      if (!cellElement) {
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        setFillDragStartCell(null);
-        // Reset to single cell selection if drag ended outside
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        return;
-      }
-      
-      const rowElement = cellElement.closest('tr');
-      if (!rowElement || 
-          rowElement.classList.contains('headerRowTop') || 
-          rowElement.classList.contains('headerRowBottom') || 
-          rowElement.classList.contains('editRow') ||
-          rowElement.classList.contains('addRow')) {
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        setFillDragStartCell(null);
-        // Reset to single cell selection if drag ended on invalid row
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        return;
-      }
-      
-      const endRowId = rowElement.getAttribute('data-row-id');
-      const endPropertyKey = cellElement.getAttribute('data-property-key');
-      
-      if (!endRowId || !endPropertyKey || endPropertyKey !== startPropertyKey) {
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        setFillDragStartCell(null);
-        // Reset to single cell selection if drag ended on different property
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        return;
-      }
-      
-      const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
-      
-      // Validate indices are valid (not -1)
-      if (startRowIndex === -1 || endRowIndex === -1) {
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        setFillDragStartCell(null);
-        // Reset to single cell selection if indices are invalid
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        return;
-      }
-      
-      // Only fill if dragged downward and at least one row down
-      if (endRowIndex > startRowIndex) {
-        // Get the source cell value
-        const sourceRow = allRowsForSelection[startRowIndex];
-        const sourceProperty = orderedProperties.find(p => p.key === startPropertyKey);
-        
-        if (!sourceRow || !sourceProperty || !onUpdateAsset) {
-          setFillDragStartCell(null);
+      // Use try-finally to ensure state is always reset, even if errors occur
+      try {
+        // If it was just a click, reset to single cell selection
+        if (isClick || !hasMoved) {
+          if (isFillingCellsRef.current) {
+            // Reset to single cell selection
+            setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          }
           return;
         }
         
-        const sourceValue = sourceRow.propertyValues[startPropertyKey];
-        
-        // Fill all cells from startRowIndex + 1 to endRowIndex
-        const updates: Array<Promise<void>> = [];
-        
-        for (let r = startRowIndex + 1; r <= endRowIndex; r++) {
-          const targetRow = allRowsForSelection[r];
-          if (!targetRow) continue;
-          
-          // Only update if the value is different
-          if (targetRow.propertyValues[startPropertyKey] !== sourceValue) {
-            const updatedPropertyValues = {
-              ...targetRow.propertyValues,
-              [startPropertyKey]: sourceValue
-            };
-            
-            updates.push(
-              onUpdateAsset(targetRow.id, targetRow.name, updatedPropertyValues)
-                .catch(error => {
-                  console.error(`Failed to fill cell ${targetRow.id}-${startPropertyKey}:`, error);
-                })
-            );
-          }
+        if (!isFillingCellsRef.current) {
+          return;
         }
         
-        // Wait for all updates to complete
-        await Promise.all(updates);
-      } else {
-        // If not dragged downward (dragged up or back to start), reset to single cell selection
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+        // Check if we dragged downward - get fresh data including optimistic updates
+        const allRowsForSelection = getAllRowsForCellSelection();
+        const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
+        
+        // Find the cell under the cursor at end
+        const elementBelow = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
+        if (!elementBelow) {
+          // Reset to single cell selection if drag ended outside
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const cellElement = elementBelow.closest('td');
+        if (!cellElement) {
+          // Reset to single cell selection if drag ended outside
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const rowElement = cellElement.closest('tr');
+        if (!rowElement || 
+            rowElement.classList.contains('headerRowTop') || 
+            rowElement.classList.contains('headerRowBottom') || 
+            rowElement.classList.contains('editRow') ||
+            rowElement.classList.contains('addRow')) {
+          // Reset to single cell selection if drag ended on invalid row
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const endRowId = rowElement.getAttribute('data-row-id');
+        const endPropertyKey = cellElement.getAttribute('data-property-key');
+        
+        if (!endRowId || !endPropertyKey || endPropertyKey !== startPropertyKey) {
+          // Reset to single cell selection if drag ended on different property
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
+        
+        // Validate indices are valid (not -1)
+        if (startRowIndex === -1 || endRowIndex === -1) {
+          // Reset to single cell selection if indices are invalid
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        // Only fill if dragged downward and at least one row down
+        if (endRowIndex > startRowIndex) {
+          // Get fresh data right before filling to ensure we have the latest values
+          const allRowsForFill = getAllRowsForCellSelection();
+          
+          // Recalculate indices based on the fresh data to ensure consistency
+          const freshStartRowIndex = allRowsForFill.findIndex(r => r.id === startRowId);
+          const freshEndRowIndex = allRowsForFill.findIndex(r => r.id === endRowId);
+          
+          // Validate indices are valid (not -1)
+          if (freshStartRowIndex === -1 || freshEndRowIndex === -1 || freshEndRowIndex <= freshStartRowIndex) {
+            // Reset to single cell selection if indices are invalid
+            setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+            return;
+          }
+          
+          const sourceRowForFill = allRowsForFill[freshStartRowIndex];
+          const sourceProperty = orderedProperties.find(p => p.key === startPropertyKey);
+          
+          if (!sourceRowForFill || !sourceProperty || !onUpdateAsset) {
+            return;
+          }
+          
+          // Get source value from the latest data (includes optimistic updates)
+          const sourceValue = sourceRowForFill.propertyValues[startPropertyKey] ?? null;
+          
+          // CRITICAL: For batch fill, we need to update ONLY the target property
+          // We must preserve existing optimistic updates for other properties
+          // This prevents restoring old values when filling after clearing cells
+          
+          const updates: Array<Promise<void>> = [];
+          const fillUpdates: Array<{ rowId: string; propertyKey: string; value: any }> = [];
+          
+          // Collect all cells that need to be filled
+          for (let r = freshStartRowIndex + 1; r <= freshEndRowIndex; r++) {
+            if (r >= allRowsForFill.length) {
+              console.warn(`Row index ${r} is out of bounds (array length: ${allRowsForFill.length})`);
+              continue;
+            }
+            
+            const targetRow = allRowsForFill[r];
+            if (!targetRow) {
+              console.warn(`Row at index ${r} is undefined`);
+              continue;
+            }
+            
+            // Store the fill operation info
+            fillUpdates.push({
+              rowId: targetRow.id,
+              propertyKey: startPropertyKey,
+              value: sourceValue
+            });
+          }
+          
+          // Apply optimistic updates IMMEDIATELY for better UX
+          // IMPORTANT: Only update the target property, preserve other properties
+          setOptimisticEditUpdates(prev => {
+            const newMap = new Map(prev);
+            fillUpdates.forEach(({ rowId, propertyKey, value }) => {
+              const existingUpdate = newMap.get(rowId);
+              if (existingUpdate) {
+                // Merge: preserve existing optimistic updates, only update the target property
+                newMap.set(rowId, {
+                  name: existingUpdate.name,
+                  propertyValues: {
+                    ...existingUpdate.propertyValues,
+                    [propertyKey]: value
+                  }
+                });
+              } else {
+                // No existing optimistic update, get current row data
+                const targetRow = allRowsForFill.find(r => r.id === rowId);
+                if (targetRow) {
+                  // Create new optimistic update with only the target property changed
+                  newMap.set(rowId, {
+                    name: targetRow.name,
+                    propertyValues: {
+                      ...targetRow.propertyValues,
+                      [propertyKey]: value
+                    }
+                  });
+                }
+              }
+            });
+            return newMap;
+          });
+          
+          // Prepare all update data BEFORE applying optimistic updates
+          // This ensures we capture the correct state before any state changes
+          const updateDataMap = new Map<string, { 
+            rowId: string; 
+            rowName: string; 
+            propertyKey: string;
+            fillValue: any;
+            propertyValues: Record<string, any> 
+          }>();
+          
+          // Check if we're filling the name field (first property)
+          const isFillingNameField = orderedProperties[0]?.key === startPropertyKey;
+          
+          fillUpdates.forEach(({ rowId, propertyKey, value }) => {
+            const targetRow = allRowsForFill.find(r => r.id === rowId);
+            if (!targetRow) {
+              console.warn(`Row ${rowId} not found for fill update`);
+              return;
+            }
+            
+            // Get existing optimistic update if any
+            const existingOptimisticUpdate = optimisticEditUpdates.get(rowId);
+            
+            // Get the name field key (first property)
+            const nameFieldKey = orderedProperties[0]?.key;
+            
+            // Build propertyValues: start with base row data, apply optimistic updates, then apply fill
+            // CRITICAL: This preserves cleared values from optimistic updates
+            let propertyValuesToSave: Record<string, any>;
+            let rowNameToSave: string;
+            
+            if (existingOptimisticUpdate) {
+              // Has optimistic update: merge base data + optimistic updates + fill value
+              // The order matters: optimistic updates override base data, fill value overrides both
+              propertyValuesToSave = {
+                ...targetRow.propertyValues,
+                ...existingOptimisticUpdate.propertyValues,
+                [propertyKey]: value
+              };
+              rowNameToSave = existingOptimisticUpdate.name;
+            } else {
+              // No optimistic update
+              // CRITICAL: If we're NOT filling the name field, we must preserve the current name field value
+              // This prevents restoring old name values when filling other fields after clearing name
+              propertyValuesToSave = {
+                ...targetRow.propertyValues,
+                [propertyKey]: value
+              };
+              
+              // If not filling name field, ensure name field value is preserved from targetRow
+              // targetRow comes from getAllRowsForCellSelection which includes optimistic updates
+              // So if name was cleared, targetRow.propertyValues[nameFieldKey] should be null
+              if (!isFillingNameField && nameFieldKey) {
+                // Preserve the current name field value (which may be null if cleared)
+                // Don't restore from targetRow.name which might be old value
+                const currentNameValue = targetRow.propertyValues[nameFieldKey];
+                if (currentNameValue === null || currentNameValue === undefined || currentNameValue === '') {
+                  // Name was cleared, keep it cleared
+                  propertyValuesToSave[nameFieldKey] = null;
+                  rowNameToSave = ''; // Empty name
+                } else {
+                  // Name has a value, use it
+                  rowNameToSave = String(currentNameValue);
+                }
+              } else {
+                // Filling name field or no name field, use targetRow.name
+                rowNameToSave = targetRow.name;
+              }
+            }
+            
+            updateDataMap.set(rowId, {
+              rowId,
+              rowName: rowNameToSave,
+              propertyKey,
+              fillValue: value,
+              propertyValues: propertyValuesToSave
+            });
+          });
+          
+          // Execute all updates
+          updateDataMap.forEach(({ rowId, rowName, propertyKey, fillValue, propertyValues }) => {
+            updates.push(
+              onUpdateAsset(rowId, rowName, propertyValues)
+                .then(() => {
+                  // Clear optimistic update after successful save (with delay to allow parent refresh)
+                  setTimeout(() => {
+                    setOptimisticEditUpdates(prev => {
+                      const newMap = new Map(prev);
+                      const currentUpdate = newMap.get(rowId);
+                      if (currentUpdate) {
+                        // Check if this property was filled by us
+                        if (currentUpdate.propertyValues[propertyKey] === fillValue) {
+                          // Remove only this property from optimistic update
+                          const updatedPropertyValues = { ...currentUpdate.propertyValues };
+                          delete updatedPropertyValues[propertyKey];
+                          
+                          if (Object.keys(updatedPropertyValues).length > 0) {
+                            // Keep other optimistic updates (e.g., cleared values)
+                            newMap.set(rowId, {
+                              name: currentUpdate.name,
+                              propertyValues: updatedPropertyValues
+                            });
+                          } else {
+                            // No more optimistic updates for this row
+                            newMap.delete(rowId);
+                          }
+                        }
+                      }
+                      return newMap;
+                    });
+                  }, 500);
+                })
+                .catch(error => {
+                  console.error(`Failed to fill cell ${rowId}-${propertyKey}:`, error);
+                  // On error, remove only this property from optimistic update
+                  setOptimisticEditUpdates(prev => {
+                    const newMap = new Map(prev);
+                    const currentUpdate = newMap.get(rowId);
+                    if (currentUpdate) {
+                      const updatedPropertyValues = { ...currentUpdate.propertyValues };
+                      delete updatedPropertyValues[propertyKey];
+                      
+                      if (Object.keys(updatedPropertyValues).length > 0) {
+                        newMap.set(rowId, {
+                          name: currentUpdate.name,
+                          propertyValues: updatedPropertyValues
+                        });
+                      } else {
+                        newMap.delete(rowId);
+                      }
+                    }
+                    return newMap;
+                  });
+                  // Re-throw to be caught by Promise.allSettled
+                  throw error;
+                })
+            );
+          });
+          
+          // Wait for all updates to complete, but don't fail if some fail
+          const results = await Promise.allSettled(updates);
+          
+          // Check for failures and log them
+          const failures = results.filter(r => r.status === 'rejected');
+          if (failures.length > 0) {
+            console.warn(`Batch fill completed with ${failures.length} failures out of ${updates.length} updates`);
+          }
+        } else {
+          // If not dragged downward (dragged up or back to start), reset to single cell selection
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+        }
+      } finally {
+        // Always reset state, even if errors occurred
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
+        setFillDragStartCell(null);
       }
-      
-      isFillingCellsRef.current = false;
-      document.body.style.userSelect = '';
-      setFillDragStartCell(null);
     };
     
     // Add event listeners
