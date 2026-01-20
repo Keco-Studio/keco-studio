@@ -690,6 +690,9 @@ export default function LibraryPage() {
                 ]);
                 setVersions(loadedVersions);
                 
+                // Notify Sidebar to refresh assets for this library
+                window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { libraryId } }));
+                
                 // Highlight the restored version for 1.5 seconds
                 setHighlightedVersionId(restoredVersionId);
                 
