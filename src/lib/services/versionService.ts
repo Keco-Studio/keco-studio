@@ -626,7 +626,7 @@ export async function deleteVersion(
 export async function duplicateVersionAsLibrary(
   supabase: SupabaseClient,
   request: DuplicateVersionRequest
-): Promise<{ libraryId: string; versionId: string }> {
+): Promise<{ libraryId: string; versionId: string; projectId: string }> {
   const { versionId } = request;
 
   // Get version to duplicate
@@ -676,7 +676,93 @@ export async function duplicateVersionAsLibrary(
     throw new Error(`Failed to create new library: ${libraryError.message}`);
   }
 
-  // Create initial version for new library
+  // Copy field definitions from original library to new library
+  // This must be done before restoring assets, as asset values reference field definitions
+  // Also create a mapping from old field_id to new field_id
+  const fieldIdMap = new Map<string, string>();
+  try {
+    const { data: originalFieldDefs, error: fieldDefsError } = await supabase
+      .from('library_field_definitions')
+      .select('*')
+      .eq('library_id', libraryId)
+      .order('section', { ascending: true })
+      .order('order_index', { ascending: true });
+
+    if (fieldDefsError) {
+      throw new Error(`Failed to fetch field definitions: ${fieldDefsError.message}`);
+    }
+
+    if (originalFieldDefs && originalFieldDefs.length > 0) {
+      // Create new field definitions for the new library
+      const newFieldDefs = originalFieldDefs.map(field => ({
+        library_id: newLibrary.id,
+        section: field.section,
+        label: field.label,
+        data_type: field.data_type,
+        enum_options: field.enum_options,
+        required: field.required,
+        order_index: field.order_index,
+        reference_libraries: field.reference_libraries,
+      }));
+
+      const { data: insertedFieldDefs, error: insertFieldDefsError } = await supabase
+        .from('library_field_definitions')
+        .insert(newFieldDefs)
+        .select('id');
+
+      if (insertFieldDefsError) {
+        // Rollback: delete the new library if field definitions copy fails
+        await supabase.from('libraries').delete().eq('id', newLibrary.id);
+        throw new Error(`Failed to copy field definitions: ${insertFieldDefsError.message}`);
+      }
+
+      // Create mapping from old field_id to new field_id
+      if (insertedFieldDefs) {
+        originalFieldDefs.forEach((oldField, index) => {
+          const newField = insertedFieldDefs[index];
+          if (newField) {
+            fieldIdMap.set(oldField.id, newField.id);
+          }
+        });
+      }
+    }
+  } catch (fieldDefsError: any) {
+    // Rollback: delete the new library if field definitions copy fails
+    await supabase.from('libraries').delete().eq('id', newLibrary.id);
+    throw new Error(`Failed to copy field definitions: ${fieldDefsError.message}`);
+  }
+
+  // Restore snapshot data to the new library with field_id mapping
+  // This populates the new library with the assets from the snapshot
+  if (version.snapshot_data) {
+    try {
+      // Create a modified snapshot with mapped field_ids
+      const modifiedSnapshot = { ...version.snapshot_data };
+      if (modifiedSnapshot.assets && Array.isArray(modifiedSnapshot.assets)) {
+        modifiedSnapshot.assets = modifiedSnapshot.assets.map((asset: any) => {
+          if (asset.propertyValues) {
+            const mappedPropertyValues: Record<string, any> = {};
+            Object.entries(asset.propertyValues).forEach(([oldFieldId, value]) => {
+              const newFieldId = fieldIdMap.get(oldFieldId);
+              if (newFieldId) {
+                mappedPropertyValues[newFieldId] = value;
+              }
+            });
+            return { ...asset, propertyValues: mappedPropertyValues };
+          }
+          return asset;
+        });
+      }
+
+      await restoreLibraryFromSnapshot(supabase, newLibrary.id, modifiedSnapshot);
+    } catch (restoreError: any) {
+      // Rollback: delete the new library if restore fails
+      await supabase.from('libraries').delete().eq('id', newLibrary.id);
+      throw new Error(`Failed to restore snapshot data: ${restoreError.message}`);
+    }
+  }
+
+  // Create version record for new library (as a history version, not current)
   // Version name format: {originalLibraryName} duplicated from ({version_name})
   const duplicatedVersionName = `${originalLibraryName} duplicated from (${version.version_name})`;
 
@@ -688,7 +774,7 @@ export async function duplicateVersionAsLibrary(
       version_type: 'manual',
       created_by: userId,
       snapshot_data: version.snapshot_data,
-      is_current: true,
+      is_current: false, // This is a history version, not the current editing state
     })
     .select()
     .single();
@@ -711,6 +797,7 @@ export async function duplicateVersionAsLibrary(
   return {
     libraryId: newLibrary.id,
     versionId: newVersion.id,
+    projectId: projectId,
   };
 }
 

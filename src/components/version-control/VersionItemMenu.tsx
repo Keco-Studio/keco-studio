@@ -44,11 +44,12 @@ export function VersionItemMenu({ version, libraryId, externalMenuPosition, onEx
   const duplicateMutation = useMutation({
     mutationFn: () => duplicateVersionAsLibrary(supabase, { versionId: version.id }),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['folders-libraries'] });
+      // Invalidate folders-libraries query with projectId to refresh the left sidebar
+      queryClient.invalidateQueries({ queryKey: ['folders-libraries', data.projectId] });
       message.success('Library duplicated successfully');
       setShowMenu(false);
       // Optionally navigate to the new library
-      // router.push(`/${projectId}/${data.libraryId}`);
+      // router.push(`/${data.projectId}/${data.libraryId}`);
     },
     onError: (error: any) => {
       message.error(error?.message || 'Failed to duplicate library');
