@@ -9,6 +9,8 @@ import { getLibrary } from '@/lib/services/libraryService';
 import {
   verifyLibraryAccess,
   verifyAssetAccess,
+  verifyAssetDeletionPermission,
+  verifyAssetCreationPermission,
 } from './authorizationService';
 
 type FieldDefinitionRow = {
@@ -249,8 +251,8 @@ export async function createAsset(
     createdAt?: Date; // Optional: set created_at to control insertion position
   }
 ): Promise<string> {
-  // verify library access
-  await verifyLibraryAccess(supabase, libraryId);
+  // verify creation permission (admin and editor can create)
+  await verifyAssetCreationPermission(supabase, libraryId);
   
   // Step 1: Insert the asset
   const insertData: {
@@ -350,8 +352,8 @@ export async function deleteAsset(
   supabase: SupabaseClient,
   assetId: string
 ): Promise<void> {
-  // verify asset access
-  await verifyAssetAccess(supabase, assetId);
+  // verify deletion permission (admin and editor can delete)
+  await verifyAssetDeletionPermission(supabase, assetId);
   
   // delete asset (cascade delete will handle associated values)
   const { error } = await supabase

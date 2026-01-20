@@ -309,3 +309,178 @@ export async function verifyMultipleProjectsOwnership(
   }
 }
 
+/**
+ * Verify that the user has admin permission to delete a library
+ * Only owner or admin collaborators can delete libraries
+ */
+export async function verifyLibraryDeletionPermission(
+  supabase: SupabaseClient,
+  libraryId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get the project that owns the library
+  const { data: library, error: libraryError } = await supabase
+    .from('libraries')
+    .select('project_id')
+    .eq('id', libraryId)
+    .single();
+  
+  if (libraryError || !library) {
+    throw new AuthorizationError('Library not found');
+  }
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  
+  // Only admin can delete library
+  if (role !== 'admin') {
+    throw new AuthorizationError('Only admin users can delete libraries');
+  }
+}
+
+/**
+ * Verify that the user has admin permission to delete a folder
+ * Only owner or admin collaborators can delete folders
+ */
+export async function verifyFolderDeletionPermission(
+  supabase: SupabaseClient,
+  folderId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get the project that owns the folder
+  const { data: folder, error: folderError } = await supabase
+    .from('folders')
+    .select('project_id')
+    .eq('id', folderId)
+    .single();
+  
+  if (folderError || !folder) {
+    throw new AuthorizationError('Folder not found');
+  }
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, folder.project_id, currentUserId);
+  
+  // Only admin can delete folder
+  if (role !== 'admin') {
+    throw new AuthorizationError('Only admin users can delete folders');
+  }
+}
+
+/**
+ * Verify that the user has permission to delete an asset
+ * Admin and editor can delete assets, viewer cannot
+ */
+export async function verifyAssetDeletionPermission(
+  supabase: SupabaseClient,
+  assetId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get the library that owns the asset
+  const { data: asset, error: assetError } = await supabase
+    .from('library_assets')
+    .select('library_id')
+    .eq('id', assetId)
+    .single();
+  
+  if (assetError || !asset) {
+    throw new AuthorizationError('Asset not found');
+  }
+  
+  // Get the project that owns the library
+  const { data: library, error: libraryError } = await supabase
+    .from('libraries')
+    .select('project_id')
+    .eq('id', asset.library_id)
+    .single();
+  
+  if (libraryError || !library) {
+    throw new AuthorizationError('Library not found');
+  }
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  
+  // Admin and editor can delete asset, viewer cannot
+  if (role !== 'admin' && role !== 'editor') {
+    throw new AuthorizationError('Only admin and editor users can delete assets');
+  }
+}
+
+/**
+ * Verify that the user has admin permission to create a library
+ * Only owner or admin collaborators can create libraries
+ */
+export async function verifyLibraryCreationPermission(
+  supabase: SupabaseClient,
+  projectId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  
+  // Only admin can create library
+  if (role !== 'admin') {
+    throw new AuthorizationError('Only admin users can create libraries');
+  }
+}
+
+/**
+ * Verify that the user has admin permission to create a folder
+ * Only owner or admin collaborators can create folders
+ */
+export async function verifyFolderCreationPermission(
+  supabase: SupabaseClient,
+  projectId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  
+  // Only admin can create folder
+  if (role !== 'admin') {
+    throw new AuthorizationError('Only admin users can create folders');
+  }
+}
+
+/**
+ * Verify that the user has permission to create an asset
+ * Admin and editor can create assets, viewer cannot
+ */
+export async function verifyAssetCreationPermission(
+  supabase: SupabaseClient,
+  libraryId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get the project that owns the library
+  const { data: library, error: libraryError } = await supabase
+    .from('libraries')
+    .select('project_id')
+    .eq('id', libraryId)
+    .single();
+  
+  if (libraryError || !library) {
+    throw new AuthorizationError('Library not found');
+  }
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  
+  // Admin and editor can create asset, viewer cannot
+  if (role !== 'admin' && role !== 'editor') {
+    throw new AuthorizationError('Only admin and editor users can create assets');
+  }
+}
+

@@ -19,7 +19,7 @@ import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { AssetReferenceSelector } from '@/components/asset/AssetReferenceSelector';
 import { FieldPresenceAvatars } from '@/components/collaboration/FieldPresenceAvatars';
 import { useRealtimeSubscription } from '@/lib/hooks/useRealtimeSubscription';
-import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent } from '@/lib/types/collaboration';
+import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState } from '@/lib/types/collaboration';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import { ConnectionStatusIndicator } from '@/components/collaboration/ConnectionStatusIndicator';
 
@@ -563,11 +563,32 @@ export default function AssetPage() {
     }
   }, [updateActiveCell, asset, isNewAsset]);
 
-  // Get users editing a specific field
+  // Get users editing a specific field (including current user if they're editing it)
   const getFieldEditingUsers = useCallback((fieldId: string) => {
     if (!getUsersEditingCell || !asset) return [];
-    return getUsersEditingCell(asset.id, fieldId);
-  }, [getUsersEditingCell, asset]);
+    let editingUsers = getUsersEditingCell(asset.id, fieldId);
+    
+    // If current user is editing this field, ensure they're in the list
+    if (currentFocusedField === fieldId && userProfile) {
+      const hasCurrentUser = editingUsers.some(u => u.userId === userProfile.id);
+      if (!hasCurrentUser) {
+        // Add current user at the beginning (they should be shown first)
+        const currentUserPresence: PresenceState = {
+          userId: userProfile.id,
+          userName: userProfile.full_name || userProfile.username || userProfile.email,
+          userEmail: userProfile.email,
+          avatarColor: getUserAvatarColor(userProfile.id),
+          activeCell: { assetId: asset.id, propertyKey: fieldId },
+          cursorPosition: null,
+          lastActivity: new Date().toISOString(),
+          connectionStatus: 'online',
+        };
+        editingUsers = [currentUserPresence, ...editingUsers];
+      }
+    }
+    
+    return editingUsers;
+  }, [getUsersEditingCell, asset, currentFocusedField, userProfile]);
 
   // Get the first user's color for border styling
   const getFirstUserColor = useCallback((users: any[]) => {

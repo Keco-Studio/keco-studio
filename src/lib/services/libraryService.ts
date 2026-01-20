@@ -5,6 +5,8 @@ import {
   verifyProjectOwnership,
   verifyProjectAccess,
   verifyLibraryAccess,
+  verifyLibraryDeletionPermission,
+  verifyLibraryCreationPermission,
 } from './authorizationService';
 
 export type Library = {
@@ -76,7 +78,8 @@ export async function createLibrary(
 
   const projectId = await resolveProjectId(supabase, input.projectId);
   
-  await verifyProjectOwnership(supabase, projectId);
+  // verify creation permission (only admin can create)
+  await verifyLibraryCreationPermission(supabase, projectId);
 
   // Validate folder_id if provided
   let folderId: string | null = null;
@@ -259,8 +262,8 @@ export async function deleteLibrary(
   // Get library info before deleting to invalidate proper caches
   const library = await getLibrary(supabase, libraryId);
   
-  // verify library access
-  await verifyLibraryAccess(supabase, libraryId);
+  // verify deletion permission (only admin can delete)
+  await verifyLibraryDeletionPermission(supabase, libraryId);
   
   const { error } = await supabase.from('libraries').delete().eq('id', libraryId);
   if (error) {
@@ -293,8 +296,8 @@ export async function checkLibraryNameExists(
 
   const resolvedProjectId = await resolveProjectId(supabase, projectId);
   
-  // verify project ownership
-  await verifyProjectOwnership(supabase, resolvedProjectId);
+  // verify creation permission (only admin can check/create)
+  await verifyLibraryCreationPermission(supabase, resolvedProjectId);
 
   let query = supabase
     .from('libraries')

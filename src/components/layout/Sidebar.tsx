@@ -2055,6 +2055,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           type={contextMenu.type}
           onClose={() => setContextMenu(null)}
           onAction={handleContextMenuAction}
+          userRole={userRole}
+          isProjectOwner={isProjectOwner}
         />
       )}
     </aside>
