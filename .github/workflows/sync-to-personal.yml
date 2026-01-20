@@ -26,15 +26,49 @@ jobs:
         with:
           fetch-depth: 0  # Full history
 
-      - name: Push to personal repository
-        uses: cpina/github-action-push-to-another-repository@main
-        env:
-          API_TOKEN_GITHUB: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
-        with:
-          source-directory: '.'
-          destination-github-username: 'xzy1124'
-          destination-repository-name: 'keco-studio'
-          user-email: 'github-actions[bot]@users.noreply.github.com'
-          user-name: 'github-actions[bot]'
-          target-branch: main
-          commit-message: 'Sync from team repository'
+      - name: Configure git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Add personal repository as remote
+        run: |
+          git remote add personal https://${{ secrets.PERSONAL_GITHUB_TOKEN }}@github.com/xzy1124/keco-studio.git || true
+          git remote set-url personal https://${{ secrets.PERSONAL_GITHUB_TOKEN }}@github.com/xzy1124/keco-studio.git
+
+      - name: Verify token and push to personal repository
+        run: |
+          echo "🚀 开始推送到个人仓库..."
+          
+          # 先检查 token 是否有效
+          echo "🔍 验证 token 权限..."
+          TOKEN_VALID=$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: token ${{ secrets.PERSONAL_GITHUB_TOKEN }}" https://api.github.com/user)
+          if [ "$TOKEN_VALID" != "200" ]; then
+            echo "❌ Token 验证失败 (HTTP $TOKEN_VALID)"
+            echo "请检查 PERSONAL_GITHUB_TOKEN secret 是否："
+            echo "  1. 已正确配置"
+            echo "  2. 具有 repo 权限（需要勾选 'repo' scope）"
+            echo "  3. 未过期"
+            exit 1
+          fi
+          echo "✅ Token 验证成功"
+          
+          # 获取当前分支的 commit
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
+          echo "当前分支: $CURRENT_BRANCH"
+          echo "当前 commit: $CURRENT_COMMIT"
+          
+          # 推送到个人仓库（使用 --force 确保覆盖，因为这是同步脚本）
+          # 如果需要保留个人仓库的更改，可以改为先 pull 再 push
+          echo "📤 推送到 xzy1124/keco-studio:main..."
+          if git push personal $CURRENT_BRANCH:main --force; then
+            echo "✅ 推送成功"
+          else
+            echo "❌ 推送失败"
+            echo "可能的原因："
+            echo "  1. Token 没有 push 权限（需要 'repo' scope 下的 'public_repo' 或 'repo' 权限）"
+            echo "  2. 个人仓库不存在或无法访问"
+            echo "  3. 分支保护规则阻止了推送"
+            exit 1
+          fi
