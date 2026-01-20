@@ -844,12 +844,49 @@ export default function AssetPage() {
                                     <div className={styles.fieldControl}>
                         <input
                           type={inputType}
+                          step={f.data_type === 'int' ? '1' : f.data_type === 'float' ? 'any' : undefined}
                           value={value ?? ''}
                                         disabled={mode === 'view'}
                                         onChange={
                                           mode !== 'view'
-                                            ? (e) =>
-                                                handleValueChange(f.id, e.target.value)
+                                            ? (e) => {
+                                                let inputValue = e.target.value;
+                                                
+                                                // Validate int type: only allow integers
+                                                if (f.data_type === 'int' && inputValue !== '') {
+                                                  // Remove any non-digit characters except minus sign at the start
+                                                  const cleaned = inputValue.replace(/[^\d-]/g, '');
+                                                  const intValue = cleaned.startsWith('-') 
+                                                    ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                                    : cleaned.replace(/-/g, '');
+                                                  
+                                                  // Only update if valid integer format
+                                                  if (!/^-?\d*$/.test(intValue)) {
+                                                    return; // Don't update if invalid
+                                                  }
+                                                  inputValue = intValue;
+                                                }
+                                                // Validate float type: allow decimals (integers are also valid for float)
+                                                else if (f.data_type === 'float' && inputValue !== '') {
+                                                  // Remove invalid characters but keep valid float format
+                                                  const cleaned = inputValue.replace(/[^\d.-]/g, '');
+                                                  const floatValue = cleaned.startsWith('-') 
+                                                    ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                                    : cleaned.replace(/-/g, '');
+                                                  // Ensure only one decimal point
+                                                  const parts = floatValue.split('.');
+                                                  const finalValue = parts.length > 2 
+                                                    ? parts[0] + '.' + parts.slice(1).join('')
+                                                    : floatValue;
+                                                  
+                                                  if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                                                    return; // Don't update if invalid
+                                                  }
+                                                  inputValue = finalValue;
+                                                }
+                                                
+                                                handleValueChange(f.id, inputValue);
+                                              }
                                             : undefined
                                         }
                                         className={inputClassName}

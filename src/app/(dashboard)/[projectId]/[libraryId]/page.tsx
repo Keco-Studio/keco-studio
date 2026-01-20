@@ -814,13 +814,52 @@ export default function LibraryPage() {
                       );
                     }
                     const inputType = f.data_type === 'int' || f.data_type === 'float' ? 'number' : f.data_type === 'date' ? 'date' : 'text';
+                    const step = f.data_type === 'int' ? '1' : f.data_type === 'float' ? 'any' : undefined;
                     return (
                       <label key={f.id} className={styles.fieldLabel}>
                         <span>{label}</span>
                         <input
                           type={inputType}
+                          step={step}
                           value={value ?? ''}
-                          onChange={(e) => handleValueChange(f.id, e.target.value)}
+                          onChange={(e) => {
+                            let inputValue = e.target.value;
+                            
+                            // Validate int type: only allow integers
+                            if (f.data_type === 'int' && inputValue !== '') {
+                              // Remove any non-digit characters except minus sign at the start
+                              const cleaned = inputValue.replace(/[^\d-]/g, '');
+                              const intValue = cleaned.startsWith('-') 
+                                ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                : cleaned.replace(/-/g, '');
+                              
+                              // Only update if valid integer format
+                              if (!/^-?\d*$/.test(intValue)) {
+                                return; // Don't update if invalid
+                              }
+                              inputValue = intValue;
+                            }
+                            // Validate float type: allow decimals (integers are also valid for float)
+                            else if (f.data_type === 'float' && inputValue !== '') {
+                              // Remove invalid characters but keep valid float format
+                              const cleaned = inputValue.replace(/[^\d.-]/g, '');
+                              const floatValue = cleaned.startsWith('-') 
+                                ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                : cleaned.replace(/-/g, '');
+                              // Ensure only one decimal point
+                              const parts = floatValue.split('.');
+                              const finalValue = parts.length > 2 
+                                ? parts[0] + '.' + parts.slice(1).join('')
+                                : floatValue;
+                              
+                              if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                                return; // Don't update if invalid
+                              }
+                              inputValue = finalValue;
+                            }
+                            
+                            handleValueChange(f.id, inputValue);
+                          }}
                           className={styles.fieldInput}
                           placeholder={f.label}
                         />

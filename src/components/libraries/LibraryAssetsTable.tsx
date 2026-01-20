@@ -5715,7 +5715,103 @@ export function LibraryAssetsTable({
                           onInput={(e) => {
                             // Only update state when not composing (for IME input)
                             if (!isComposingRef.current) {
-                              const newValue = e.currentTarget.textContent || '';
+                              let newValue = e.currentTarget.textContent || '';
+                              
+                              // Validate int type: only allow integers
+                              if (property.dataType === 'int' && newValue !== '') {
+                                // Remove any non-digit characters except minus sign at the start
+                                // Allow: digits, minus sign only at the beginning
+                                const cleaned = newValue.replace(/[^\d-]/g, '');
+                                // Ensure minus sign is only at the start
+                                const intValue = cleaned.startsWith('-') 
+                                  ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                  : cleaned.replace(/-/g, '');
+                                
+                                // Validate format: optional minus followed by digits
+                                if (!/^-?\d*$/.test(intValue)) {
+                                  // Restore previous valid value
+                                  e.currentTarget.textContent = editingCellValue;
+                                  return;
+                                }
+                                
+                                // Only update if value changed
+                                if (intValue !== newValue) {
+                                  const selection = window.getSelection();
+                                  const range = selection?.getRangeAt(0);
+                                  const cursorPosition = range?.startOffset || 0;
+                                  
+                                  e.currentTarget.textContent = intValue;
+                                  
+                                  // Restore cursor position
+                                  if (range && selection) {
+                                    try {
+                                      const newRange = document.createRange();
+                                      const textNode = e.currentTarget.firstChild;
+                                      if (textNode) {
+                                        const newPosition = Math.min(cursorPosition, intValue.length);
+                                        newRange.setStart(textNode, newPosition);
+                                        newRange.setEnd(textNode, newPosition);
+                                        selection.removeAllRanges();
+                                        selection.addRange(newRange);
+                                      }
+                                    } catch (err) {
+                                      // Ignore cursor restoration errors
+                                    }
+                                  }
+                                }
+                                
+                                newValue = intValue;
+                              }
+                              // Validate float type: allow decimals (but integers are also valid)
+                              else if (property.dataType === 'float' && newValue !== '') {
+                                // Allow digits, one decimal point, and optional minus sign
+                                // Remove invalid characters but keep valid float format
+                                const cleaned = newValue.replace(/[^\d.-]/g, '');
+                                // Ensure minus sign is only at the start
+                                const floatValue = cleaned.startsWith('-') 
+                                  ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                  : cleaned.replace(/-/g, '');
+                                // Ensure only one decimal point
+                                const parts = floatValue.split('.');
+                                const finalValue = parts.length > 2 
+                                  ? parts[0] + '.' + parts.slice(1).join('')
+                                  : floatValue;
+                                
+                                if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                                  // Restore previous valid value
+                                  e.currentTarget.textContent = editingCellValue;
+                                  return;
+                                }
+                                
+                                // Only update if value changed
+                                if (finalValue !== newValue) {
+                                  const selection = window.getSelection();
+                                  const range = selection?.getRangeAt(0);
+                                  const cursorPosition = range?.startOffset || 0;
+                                  
+                                  e.currentTarget.textContent = finalValue;
+                                  
+                                  // Restore cursor position
+                                  if (range && selection) {
+                                    try {
+                                      const newRange = document.createRange();
+                                      const textNode = e.currentTarget.firstChild;
+                                      if (textNode) {
+                                        const newPosition = Math.min(cursorPosition, finalValue.length);
+                                        newRange.setStart(textNode, newPosition);
+                                        newRange.setEnd(textNode, newPosition);
+                                        selection.removeAllRanges();
+                                        selection.addRange(newRange);
+                                      }
+                                    } catch (err) {
+                                      // Ignore cursor restoration errors
+                                    }
+                                  }
+                                }
+                                
+                                newValue = finalValue;
+                              }
+                              
                               setEditingCellValue(newValue);
                             }
                           }}
@@ -5724,7 +5820,48 @@ export function LibraryAssetsTable({
                           }}
                           onCompositionEnd={(e) => {
                             isComposingRef.current = false;
-                            const newValue = e.currentTarget.textContent || '';
+                            let newValue = e.currentTarget.textContent || '';
+                            
+                            // Validate int type: only allow integers
+                            if (property.dataType === 'int' && newValue !== '') {
+                              // Remove any non-digit characters except minus sign at the start
+                              const cleaned = newValue.replace(/[^\d-]/g, '');
+                              const intValue = cleaned.startsWith('-') 
+                                ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                : cleaned.replace(/-/g, '');
+                              
+                              if (!/^-?\d*$/.test(intValue)) {
+                                e.currentTarget.textContent = editingCellValue;
+                                return;
+                              }
+                              
+                              if (intValue !== newValue) {
+                                e.currentTarget.textContent = intValue;
+                              }
+                              newValue = intValue;
+                            }
+                            // Validate float type: allow decimals (integers are also valid)
+                            else if (property.dataType === 'float' && newValue !== '') {
+                              const cleaned = newValue.replace(/[^\d.-]/g, '');
+                              const floatValue = cleaned.startsWith('-') 
+                                ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                : cleaned.replace(/-/g, '');
+                              const parts = floatValue.split('.');
+                              const finalValue = parts.length > 2 
+                                ? parts[0] + '.' + parts.slice(1).join('')
+                                : floatValue;
+                              
+                              if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                                e.currentTarget.textContent = editingCellValue;
+                                return;
+                              }
+                              
+                              if (finalValue !== newValue) {
+                                e.currentTarget.textContent = finalValue;
+                              }
+                              newValue = finalValue;
+                            }
+                            
                             setEditingCellValue(newValue);
                           }}
                           style={{
@@ -5928,11 +6065,54 @@ export function LibraryAssetsTable({
                   );
                 }
                 
+                // Determine input type and validation based on data type
+                const isInt = property.dataType === 'int';
+                const isFloat = property.dataType === 'float';
+                const inputType = isInt || isFloat ? 'number' : 'text';
+                const step = isInt ? '1' : isFloat ? 'any' : undefined;
+                
                 return (
                   <td key={property.id} className={styles.editCell}>
                     <Input
+                      type={inputType}
+                      step={step}
                       value={newRowData[property.key] || ''}
-                      onChange={(e) => handleInputChange(property.key, e.target.value)}
+                      onChange={(e) => {
+                        let value = e.target.value;
+                        // Validate int type: only allow integers
+                        if (isInt && value !== '') {
+                          // Remove any non-digit characters except minus sign at the start
+                          const cleaned = value.replace(/[^\d-]/g, '');
+                          const intValue = cleaned.startsWith('-') 
+                            ? '-' + cleaned.slice(1).replace(/-/g, '')
+                            : cleaned.replace(/-/g, '');
+                          
+                          // Only update if valid integer format
+                          if (!/^-?\d*$/.test(intValue)) {
+                            return; // Don't update if invalid
+                          }
+                          value = intValue;
+                        }
+                        // Validate float type: allow decimals (integers are also valid for float)
+                        else if (isFloat && value !== '') {
+                          // Remove invalid characters but keep valid float format
+                          const cleaned = value.replace(/[^\d.-]/g, '');
+                          const floatValue = cleaned.startsWith('-') 
+                            ? '-' + cleaned.slice(1).replace(/-/g, '')
+                            : cleaned.replace(/-/g, '');
+                          // Ensure only one decimal point
+                          const parts = floatValue.split('.');
+                          const finalValue = parts.length > 2 
+                            ? parts[0] + '.' + parts.slice(1).join('')
+                            : floatValue;
+                          
+                          if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                            return; // Don't update if invalid
+                          }
+                          value = finalValue;
+                        }
+                        handleInputChange(property.key, value);
+                      }}
                       placeholder=""
                       className={styles.editInput}
                       disabled={isSaving}
