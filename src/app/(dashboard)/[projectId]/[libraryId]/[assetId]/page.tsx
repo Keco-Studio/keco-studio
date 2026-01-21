@@ -22,6 +22,8 @@ import { useRealtimeSubscription } from '@/lib/hooks/useRealtimeSubscription';
 import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState } from '@/lib/types/collaboration';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import { ConnectionStatusIndicator } from '@/components/collaboration/ConnectionStatusIndicator';
+import { AssetHeader } from '@/components/asset/AssetHeader';
+import type { CollaboratorRole } from '@/lib/types/collaboration';
 
 type FieldDef = {
   id: string;
@@ -107,6 +109,7 @@ export default function AssetPage() {
     updateActiveCell,
     getUsersEditingCell,
     isTracking,
+    presenceUsers,
   } = usePresence();
 
   // Keep assetRef updated (to avoid recreating callbacks when asset changes)
@@ -878,18 +881,37 @@ export default function AssetPage() {
     >
     <div className={styles.container}>
         <div className={styles.contentWrapper}>
+      {/* Asset Header (only for existing assets) */}
+      {!isNewAsset && userProfile && (
+        <AssetHeader
+          assetId={assetId}
+          assetName={assetName}
+          projectId={projectId}
+          libraryId={libraryId}
+          libraryName={library?.name || ''}
+          currentUserId={userProfile.id}
+          currentUserName={userProfile.username || userProfile.full_name || userProfile.email}
+          currentUserEmail={userProfile.email}
+          currentUserAvatarColor={getUserAvatarColor(userProfile.id)}
+          userRole={userRole as CollaboratorRole || 'viewer'}
+          presenceUsers={presenceUsers || []}
+        />
+      )}
+      
       <div className={styles.header}>
-        <div>
-          <h1 className={styles.title}>{assetName || 'New asset'}</h1>
-        </div>
+        {isNewAsset && (
+          <div>
+            <h1 className={styles.title}>{assetName || 'New asset'}</h1>
+          </div>
+        )}
             <div className={styles.headerRight}>
               {/* Realtime connection status (only for existing assets) */}
-              {!isNewAsset && realtimeConfig && (
+              {/* {!isNewAsset && realtimeConfig && (
                 <ConnectionStatusIndicator 
                   status={connectionStatus}
                   queuedUpdatesCount={realtimeSubscription?.queuedUpdatesCount || 0}
                 />
-              )}
+              )} */}
               {saveError && <div className={styles.saveError}>{saveError}</div>}
             </div>
           </div>

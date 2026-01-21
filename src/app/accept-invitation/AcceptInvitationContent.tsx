@@ -60,10 +60,11 @@ export function AcceptInvitationContent({
     }
   }, [status, projectId, router, supabase]);
   
-  // Check if error is due to invitation already being accepted or declined
+  // Check if error is due to invitation already being accepted, declined, or not found
   const isInvalidInvitation = message.toLowerCase().includes('already been accepted') || 
                                 message.toLowerCase().includes('already been declined') ||
-                                message.toLowerCase().includes('invitation not found');
+                                message.toLowerCase().includes('invalid invitation') ||
+                                message.toLowerCase().includes('not found');
   
   const getStatusConfig = () => {
     switch (status) {

@@ -102,9 +102,11 @@ export default function AcceptInvitationPage() {
           sessionStorage.removeItem('pendingInvitationToken');
         }
         
-        // Check if invitation was already accepted or if email mismatch
+        // Check if invitation was already accepted, declined, or not found
         const errorMsg = result.error || '';
         const isAlreadyAccepted = errorMsg.includes('already been accepted');
+        const isAlreadyDeclined = errorMsg.includes('already been declined');
+        const isNotFound = errorMsg.toLowerCase().includes('not found');
         const isEmailMismatch = errorMsg.includes('invitation was sent to');
         
         // If invitation already accepted, redirect to projects instead of showing error
@@ -117,6 +119,14 @@ export default function AcceptInvitationPage() {
           setTimeout(() => {
             router.push('/projects');
           }, 2000);
+          return;
+        }
+        
+        // If invitation already declined or not found (was deleted), show invalid invitation message
+        if (isAlreadyDeclined || isNotFound) {
+          setStatus('error');
+          setMessage('Invalid invitation');
+          setDescription('This organization invite is no longer valid as it has either been accepted or declined');
           return;
         }
         

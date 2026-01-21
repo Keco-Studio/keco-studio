@@ -268,72 +268,29 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       if (isCreatingNewAsset) {
         // Create mode - show Create Asset button
         return (
-          <button
-            className={`${styles.topbarPillButton} ${styles.topbarPillPrimary}`}
-            onClick={handleCreateAsset}
-          >
-            <span className={styles.topbarPillIcon}>
-              <Image src={topbarPredefinePublishIcon} alt="Create" width={16} height={16} />
-            </span>
-            <span>Create Asset</span>
-          </button>
-        );
-      } else {
-        // View/Edit mode - show mode toggle and share
-        // Viewer only sees viewing button
-        if (userRole === 'viewer') {
-          return (
-            <>
-              <div className={styles.assetModeGroup}>
-                <button
-                  className={`${styles.assetModeButton} ${styles.assetModeButtonActive}`}
-                >
-                  <Image src={assetViewIcon} alt="Viewing" width={16} height={16} />
-                  <span>Viewing</span>
-                </button>
-              </div>
-              <button
-                className={styles.shareButton}
-                onClick={handleShareClick}
-              >
-                <Image src={assetShareIcon} alt="Share" width={16} height={16} />
-                <span>Share</span>  
-              </button>
-          </>
-          );
-        }
-        
-        return (
           <>
-            <div className={styles.assetModeGroup}>
-              <button
-                className={`${styles.assetModeButton} ${
-                  assetMode === 'view' ? styles.assetModeButtonActive : ''
-                }`}
-                onClick={() => changeAssetMode('view')}
-              >
-                <Image src={assetViewIcon} alt="Viewing" width={16} height={16} />
-                <span>Viewing</span>
-              </button>
-              <button
-                className={`${styles.assetModeButton} ${
-                  assetMode === 'edit' ? styles.assetModeButtonActive : ''
-                }`}
-                onClick={() => changeAssetMode('edit')}
-              >
-                <Image src={assetEditIcon} alt="Editing" width={16} height={16} />
-                <span>Editing</span>
-              </button>
-            </div>
             <button
-              className={styles.shareButton}
-              onClick={handleShareClick}
+              className={`${styles.topbarPillButton} ${styles.topbarPillPrimary}`}
+              onClick={handleCreateAsset}
             >
-              <Image src={assetShareIcon} alt="Share" width={16} height={16} />
-              <span>Share</span>
+              <span className={styles.topbarPillIcon}>
+                <Image src={topbarPredefinePublishIcon} alt="Create" width={16} height={16} />
+              </span>
+              <span>Create Asset</span>
+            </button>
+            <button className={`${styles.button} ${styles.buttonText}`}>
+              <Image src={homeMorehorizontalIcon} alt="More" width={20} height={20} />
+            </button>
+            <button className={styles.button}>
+              <Image src={homeQuestionIcon} alt="Question" width={20} height={20} />
+            </button>
+            <button className={styles.button}>
+              <Image src={homeMessageIcon} alt="Message" width={20} height={20} />
             </button>
           </>
         );
+      } else {
+  
       }
     }
 

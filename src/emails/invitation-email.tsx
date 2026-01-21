@@ -73,7 +73,7 @@ export function InvitationEmail({
                   {inviterName} ({inviterEmail})
                 </Heading>
                 <Text style={inviteText}>
-                  invited you to work together with keco library
+                  invited you to work together with keco project
                 </Text>
               </Column>
             </Row>
@@ -208,7 +208,7 @@ const projectIcon = {
 const projectNameText = {
   color: '#525252',
   fontSize: '16px',
-  fontWeight: '400',
+  fontWeight: '600',
   margin: '0',
   textAlign: 'left' as const,
   lineHeight: '24px',

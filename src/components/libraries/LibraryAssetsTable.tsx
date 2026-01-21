@@ -4275,7 +4275,7 @@ export function LibraryAssetsTable({
 
   return (
     <>
-      {enableRealtime && currentUser && (
+      {/* {enableRealtime && currentUser && (
         <div style={{ 
           display: 'flex', 
           justifyContent: 'flex-end', 
@@ -4288,7 +4288,7 @@ export function LibraryAssetsTable({
             queuedUpdatesCount={realtimeSubscription?.queuedUpdatesCount || 0}
           />
         </div>
-      )}
+      )} */}
       <div className={styles.tableContainer} ref={tableContainerRef}>
         <table className={styles.table}>
         <thead>
