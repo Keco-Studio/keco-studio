@@ -23,9 +23,11 @@ interface MediaFileUploadProps {
   onChange: (value: MediaFileMetadata | null) => void;
   disabled?: boolean;
   fieldType?: 'image' | 'file';
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
-export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image' }: MediaFileUploadProps) {
+export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image', onFocus, onBlur }: MediaFileUploadProps) {
   const supabase = useSupabase();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
   const [uploading, setUploading] = useState(false);
@@ -69,10 +71,14 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
       setUploadProgress('Upload complete!');
       setTimeout(() => {
         setUploadProgress('');
+        // Trigger blur callback after upload completes
+        onBlur?.();
       }, 2000);
     } catch (e: any) {
       setError(e?.message || 'Upload failed');
       setUploadProgress('');
+      // Trigger blur callback on error
+      onBlur?.();
     } finally {
       setUploading(false);
       // Reset file input
@@ -83,6 +89,8 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
   };
 
   const handleReplace = () => {
+    // Trigger focus callback when clicking replace button
+    onFocus?.();
     fileInputRef.current?.click();
   };
 
@@ -120,7 +128,14 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
   };
 
   const handleChooseFile = () => {
+    // Trigger focus callback when clicking upload button
+    onFocus?.();
     fileInputRef.current?.click();
+  };
+  
+  const handleFileInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    // Handle file selection (blur will be called after upload completes)
+    await handleFileSelect(event);
   };
 
   const uploadLabel = fieldType === 'image' ? 'upload image' : 'upload file';
@@ -133,10 +148,12 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
       <input
         ref={fileInputRef}
         type="file"
-        onChange={handleFileSelect}
+        onChange={handleFileInputChange}
         disabled={disabled || uploading}
         className={styles.fileInput}
         accept={acceptTypes}
+        onFocus={onFocus}
+        onBlur={onBlur}
       />
 
       {!value && (

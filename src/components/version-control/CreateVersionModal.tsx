@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { createVersion } from '@/lib/services/versionService';
+import { createVersion, checkVersionNameExists } from '@/lib/services/versionService';
+import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
 import closeIcon from '@/app/assets/images/closeIcon32.svg';
 import styles from './CreateVersionModal.module.css';
@@ -41,6 +42,26 @@ export function CreateVersionModal({
       return;
     }
     
+    // Validate name for disallowed characters (emoji, HTML tags, special symbols)
+    const validationError = validateName(trimmed);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    
+    // Check if version name already exists
+    try {
+      const nameExists = await checkVersionNameExists(supabase, libraryId, trimmed);
+      if (nameExists) {
+        setError('Name exists');
+        return;
+      }
+    } catch (e: any) {
+      console.error('Failed to check version name:', e);
+      setError(e?.message || 'Failed to check version name');
+      return;
+    }
+    
     setSubmitting(true);
     setError(null);
     
@@ -52,7 +73,12 @@ export function CreateVersionModal({
       onClose();
     } catch (e: any) {
       console.error('Version creation error:', e);
-      setError(e?.message || 'Failed to create version');
+      // If error is "Name exists", show it directly
+      if (e?.message === 'Name exists') {
+        setError('Name exists');
+      } else {
+        setError(e?.message || 'Failed to create version');
+      }
     } finally {
       setSubmitting(false);
     }

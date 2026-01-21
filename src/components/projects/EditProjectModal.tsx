@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { updateProject, getProject, Project } from '@/lib/services/projectService';
+import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
 import projectIcon from '@/app/assets/images/projectIcon52.svg';
 import closeIcon from '@/app/assets/images/closeIcon32.svg';
@@ -58,6 +59,13 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
     const trimmed = name.trim();
     if (!trimmed) {
       setError('Project name is required');
+      return;
+    }
+    
+    // Validate name for disallowed characters (emoji, HTML tags, special symbols)
+    const validationError = validateName(trimmed);
+    if (validationError) {
+      setError(validationError);
       return;
     }
     

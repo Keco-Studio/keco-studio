@@ -1,8 +1,9 @@
 .container {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0;
   width: 100%;
+  min-height: 0;
 }
 
 .fileInput {
@@ -13,18 +14,20 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px 16px;
+  gap: 6px;
+  padding: 6px 12px;
   background-color: #F5F5F7;
   color: #21272A;
   border: 1px dashed #D1D1D6;
-  border-radius: 6px;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   transition: all 0.2s;
   white-space: nowrap;
   width: 100%;
+  min-height: 32px;
+  height: auto;
 }
 
 .uploadButton:hover:not(:disabled) {
@@ -40,12 +43,13 @@
 .uploadedFileContainer {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 6px 10px;
   background-color: #F5F5F7;
   border: 1px solid #E5E5EA;
-  border-radius: 6px;
+  border-radius: 4px;
   width: 100%;
+  min-height: 32px;
 }
 
 .fileInfoClickable {
@@ -72,8 +76,8 @@
 }
 
 .imageThumbnail {
-  width: 40px;
-  height: 40px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   border-radius: 4px;
   overflow: hidden;
@@ -91,7 +95,7 @@
 
 .uploadedFileName {
   flex: 1;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 400;
   color: #21272A;
   overflow: hidden;

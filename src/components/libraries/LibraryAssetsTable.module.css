@@ -1,3 +1,9 @@
+/* When filling cells, force crosshair cursor on all cells */
+:global(body.filling-cells) .tableContainer .cell,
+:global(body.filling-cells) .tableContainer .cell * {
+  cursor: crosshair !important;
+}
+
 .tableContainer {
   margin-top: 24px;
   margin-bottom: 260px; /* Add bottom margin to ensure context menu has space (increased by ~60px for one more row) */
@@ -999,6 +1005,15 @@ td.cellCopy.copyBorderRight:hover {
   flex-shrink: 0;
   display: inline-block;
   z-index: 1;
+}
+
+/* Container for MediaFileUpload component in cells */
+.mediaFileUploadContainer {
+  width: 100%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  min-height: 0;
 }
 
 /* Media field display styles */

@@ -9,6 +9,7 @@ import {
   SectionConfig,
 } from '@/lib/types/libraryAssets';
 import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
+import { DeleteAssetModal, ClearContentsModal, DeleteRowModal } from './LibraryAssetsTableModals';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useYjs } from '@/contexts/YjsContext';
@@ -34,7 +35,6 @@ import noassetIcon2 from '@/app/assets/images/NoassetIcon2.svg';
 import libraryAssetTableAddIcon from '@/app/assets/images/LibraryAssetTableAddIcon.svg';
 import libraryAssetTableSelectIcon from '@/app/assets/images/LibraryAssetTableSelectIcon.svg';
 import batchEditAddIcon from '@/app/assets/images/BatchEditAddIcon.svg';
-import batchEditingCloseIcon from '@/app/assets/images/BatchEditingCloseIcon.svg';
 import tableAssetDetailIcon from '@/app/assets/images/TableAssetDetailIcon.svg';
 import styles from './LibraryAssetsTable.module.css';
 
@@ -1823,14 +1823,78 @@ export function LibraryAssetsTable({
     }
     
     // For media files, we need to save immediately when changed
-    if (!editingCell || !onUpdateAsset) return;
+    if (!onUpdateAsset) return;
     
-    const { rowId } = editingCell;
     const row = rows.find(r => r.id === rowId);
-    if (!row) return;
+    if (!row) {
+      // Try to find in allRowsSource if not in rows
+      const allRowsForSelection = getAllRowsForCellSelection();
+      const foundRow = allRowsForSelection.find(r => r.id === rowId);
+      if (!foundRow) return;
+      // Use foundRow instead
+      const updatedPropertyValues: Record<string, any> = {
+        ...foundRow.propertyValues,
+        [propertyKey]: value
+      };
+      
+      // Get asset name
+      const assetName = foundRow.name || 'Untitled';
+      
+      // Immediately update Yjs (optimistic update)
+      const allRows = yRows.toArray();
+      const rowIndex = allRows.findIndex(r => r.id === rowId);
+      
+      if (rowIndex >= 0) {
+        const existingRow = allRows[rowIndex];
+        const updatedRow = {
+          ...existingRow,
+          name: String(assetName),
+          propertyValues: updatedPropertyValues
+        };
+        
+        // Update Yjs
+        yRows.delete(rowIndex, 1);
+        yRows.insert(rowIndex, [updatedRow]);
+      }
+
+      // Apply optimistic update
+      setOptimisticEditUpdates(prev => {
+        const newMap = new Map(prev);
+        newMap.set(rowId, {
+          name: String(assetName),
+          propertyValues: updatedPropertyValues
+        });
+        return newMap;
+      });
+
+      // Save immediately for media files
+      setIsSaving(true);
+      onUpdateAsset(rowId, assetName, updatedPropertyValues)
+        .then(() => {
+          setTimeout(() => {
+            setOptimisticEditUpdates(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(rowId);
+              return newMap;
+            });
+          }, 500);
+        })
+        .catch((error) => {
+          console.error('Failed to update media file:', error);
+          setOptimisticEditUpdates(prev => {
+            const newMap = new Map(prev);
+            newMap.delete(rowId);
+            return newMap;
+          });
+        })
+        .finally(() => {
+          setIsSaving(false);
+        });
+      return;
+    }
     
     // Update property values
-    const updatedPropertyValues = {
+    const updatedPropertyValues: Record<string, any> = {
       ...row.propertyValues,
       [propertyKey]: value
     };
@@ -1847,7 +1911,7 @@ export function LibraryAssetsTable({
       const updatedRow = {
         ...existingRow,
         name: String(assetName),
-        propertyValues: updatedPropertyValues as Record<string, string | number | boolean>
+        propertyValues: updatedPropertyValues
       };
       
       // Update Yjs
@@ -1860,14 +1924,14 @@ export function LibraryAssetsTable({
       const newMap = new Map(prev);
       newMap.set(rowId, {
         name: String(assetName),
-        propertyValues: updatedPropertyValues as Record<string, string | number | boolean>
+        propertyValues: updatedPropertyValues
       });
       return newMap;
     });
 
     // Save immediately for media files
     setIsSaving(true);
-    onUpdateAsset(rowId, assetName, updatedPropertyValues as Record<string, string | number | boolean>)
+    onUpdateAsset(rowId, assetName, updatedPropertyValues)
       .then(() => {
         setTimeout(() => {
           setOptimisticEditUpdates(prev => {
@@ -2519,11 +2583,18 @@ export function LibraryAssetsTable({
           setFillDragStartCell({ rowId: startRowId, propertyKey: startPropertyKey, startY });
           // Now prevent text selection since we're dragging
           document.body.style.userSelect = 'none';
+          // Set cursor to crosshair during fill drag
+          document.body.style.cursor = 'crosshair';
+          // Add class to body to force crosshair cursor on all cells
+          document.body.classList.add('filling-cells');
         }
       }
       
       // Only show selection feedback if we've actually dragged
       if (!hasMoved || !isFillingCellsRef.current) return;
+      
+      // Keep cursor as crosshair during fill drag
+      document.body.style.cursor = 'crosshair';
       
       // Find the cell under the cursor
       const elementBelow = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
@@ -2891,6 +2962,8 @@ export function LibraryAssetsTable({
         // Always reset state, even if errors occurred
         isFillingCellsRef.current = false;
         document.body.style.userSelect = '';
+        document.body.style.cursor = ''; // Reset cursor to default
+        document.body.classList.remove('filling-cells'); // Remove class to restore normal cursor
         setFillDragStartCell(null);
       }
     };
@@ -5418,9 +5491,6 @@ export function LibraryAssetsTable({
                     
                     // Check if this is an image or file type field
                   if (property.dataType === 'image' || property.dataType === 'file') {
-                    // Check if this cell is being edited
-                    const isCellEditing = editingCell?.rowId === row.id && editingCell?.propertyKey === property.key;
-                    
                     const value = row.propertyValues[property.key];
                     let mediaValue: MediaFileMetadata | null = null;
                     
@@ -5484,12 +5554,29 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
-                        style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
-                        onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
-                        onClick={(e) => handleCellClick(row.id, property.key, e)}
+                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
+                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                        onClick={(e) => {
+                          // Prevent cell selection when clicking on MediaFileUpload component
+                          const target = e.target as HTMLElement;
+                          if (target.closest(`.${styles.mediaFileUploadContainer}`) || 
+                              target.closest('button') ||
+                              target.closest('input')) {
+                            return;
+                          }
+                          handleCellClick(row.id, property.key, e);
+                        }}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
-                        onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
+                        onMouseDown={(e) => {
+                          // Prevent fill drag when clicking on MediaFileUpload component
+                          const target = e.target as HTMLElement;
+                          if (target.closest(`.${styles.mediaFileUploadContainer}`) || 
+                              target.closest('button') ||
+                              target.closest('input')) {
+                            return;
+                          }
+                          handleCellFillDragStart(row.id, property.key, e);
+                        }}
                         onMouseMove={(e) => {
                           if (showExpandIcon) {
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -5515,59 +5602,22 @@ export function LibraryAssetsTable({
                           }
                         }}
                       >
-                        {isCellEditing ? (
-                          // Cell is being edited: show MediaFileUpload component
+                        {/* Always show MediaFileUpload component for image/file fields */}
+                        <div className={styles.mediaFileUploadContainer}>
                           <MediaFileUpload
                             value={mediaValue || null}
-                            onChange={(value) => handleEditMediaFileChange(property.key, value)}
+                            onChange={(value) => handleEditMediaFileChange(row.id, property.key, value)}
                             disabled={isSaving}
                             fieldType={property.dataType}
+                            onFocus={() => handleCellFocus(row.id, property.key)}
+                            onBlur={handleCellBlur}
                           />
-                        ) : (
-                          <>
-                            {mediaValue ? (
-                              <div className={styles.mediaCellContent}>
-                                {isImageFile(mediaValue.fileType) ? (
-                                  <div className={styles.mediaThumbnail}>
-                                    <Image
-                                      src={mediaValue.url}
-                                      alt={mediaValue.fileName}
-                                      width={32}
-                                      height={32}
-                                      className={styles.mediaThumbnailImage}
-                                      unoptimized
-                                      onError={(e) => {
-                                        // Fallback to icon if image fails to load
-                                        const target = e.target as HTMLImageElement;
-                                        target.style.display = 'none';
-                                        const parent = target.parentElement;
-                                        if (parent) {
-                                          const icon = document.createElement('span');
-                                          icon.className = styles.mediaFileIcon;
-                                          icon.textContent = getFileIcon(mediaValue!.fileType);
-                                          parent.appendChild(icon);
-                                        }
-                                      }}
-                                    />
-                                  </div>
-                                ) : (
-                                  <span className={styles.mediaFileIcon}>{getFileIcon(mediaValue.fileType)}</span>
-                                )}
-                                <span className={styles.mediaFileName} title={mediaValue.fileName}>
-                                  {mediaValue.fileName}
-                                </span>
-                              </div>
-                            ) : (
-                              // Show blank instead of dash for empty media fields
-                              <span></span>
-                            )}
-                            {/* Show expand icon for cell selection - always render, CSS controls visibility */}
-                            <div
-                              className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
-                              onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                            />
-                          </>
-                        )}
+                        </div>
+                        {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                        <div
+                          className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                        />
                         {/* Show collaboration avatars in cell corner */}
                         {editingUsers.length > 0 && (
                           <CellPresenceAvatars users={editingUsers} />
@@ -7044,73 +7094,32 @@ export function LibraryAssetsTable({
     )}
 
     {/* Delete Confirmation Modal */}
-    <Modal
+    <DeleteAssetModal
       open={deleteConfirmVisible}
-      title="Confirm Delete"
       onOk={handleDeleteAsset}
       onCancel={() => {
         setDeleteConfirmVisible(false);
         setDeletingAssetId(null);
       }}
-      okText="Delete"
-      cancelText="Cancel"
-      okButtonProps={{ danger: true }}
-    >
-      <p>Are you sure you want to delete this asset? This action cannot be undone.</p>
-    </Modal>
+    />
 
     {/* Clear Contents Confirmation Modal */}
-    <Modal
+    <ClearContentsModal
       open={clearContentsConfirmVisible}
-      title="Clear content"
       onOk={handleClearContents}
       onCancel={() => {
         setClearContentsConfirmVisible(false);
       }}
-      okText="Delete"
-      cancelText="Cancel"
-      okButtonProps={{ 
-        danger: true,
-        style: {
-          backgroundColor: 'rgba(170, 5, 44, 1)',
-          borderColor: 'rgba(170, 5, 44, 1)',
-          borderRadius: '12px',
-        }
-      }}
-      width={616}
-      centered
-      className={styles.confirmModal}
-      wrapClassName={styles.confirmModalWrap}
-      closeIcon={
-        <Image
-          src={batchEditingCloseIcon}
-          alt="Close"
-          width={32}
-          height={32}
-        />
-      }
-    >
-      <p>Are you sure you want to clear these content?</p>
-    </Modal>
+    />
 
     {/* Delete Row Confirmation Modal */}
-    <Modal
+    <DeleteRowModal
       open={deleteRowConfirmVisible}
-      title="Delete row"
       onOk={handleDeleteRow}
       onCancel={() => {
         setDeleteRowConfirmVisible(false);
       }}
-      okText="Delete"
-      cancelText="Cancel"
-      okButtonProps={{ danger: true }}
-      width={616}
-      centered
-      className={styles.confirmModal}
-      wrapClassName={styles.confirmModalWrap}
-    >
-      <p>Are you sure you want to delete these row?</p>
-    </Modal>
+    />
     </>
   );
 }

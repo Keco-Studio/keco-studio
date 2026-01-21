@@ -26,6 +26,43 @@ import { getLibrary } from './libraryService';
 import { getLibraryAssetsWithProperties, getLibrarySchema } from './libraryAssetsService';
 
 /**
+ * Extract display name from user profile
+ * Priority: full_name > username > email (extract username part) > 'Unknown'
+ */
+function getUserDisplayName(profile: any): string {
+  if (!profile) {
+    return 'Unknown';
+  }
+  
+  // First try full_name
+  if (profile.full_name && profile.full_name.trim()) {
+    return profile.full_name.trim();
+  }
+  
+  // Then try username
+  if (profile.username && profile.username.trim()) {
+    return profile.username.trim();
+  }
+  
+  // If both are empty, try to extract from email (for Google OAuth users)
+  if (profile.email && profile.email.trim()) {
+    const email = profile.email.trim();
+    const atIndex = email.indexOf('@');
+    if (atIndex > 0) {
+      // Extract username part before @
+      const emailUsername = email.substring(0, atIndex);
+      // Capitalize first letter for better display
+      return emailUsername.charAt(0).toUpperCase() + emailUsername.slice(1);
+    }
+    // If no @ found, use the email as is
+    return email;
+  }
+  
+  // Fallback to Unknown
+  return 'Unknown';
+}
+
+/**
  * Convert database version (snake_case) to application version (camelCase)
  */
 function dbVersionToAppVersion(dbVersion: LibraryVersionDb, createdByProfile?: any, restoredByProfile?: any): LibraryVersion {
@@ -37,7 +74,7 @@ function dbVersionToAppVersion(dbVersion: LibraryVersionDb, createdByProfile?: a
     parentVersionId: dbVersion.parent_version_id,
     createdBy: createdByProfile ? {
       id: createdByProfile.id,
-      name: createdByProfile.full_name || createdByProfile.username || 'Unknown',
+      name: getUserDisplayName(createdByProfile),
       email: createdByProfile.email,
       avatarColor: createdByProfile.avatar_color,
     } : {
@@ -49,7 +86,7 @@ function dbVersionToAppVersion(dbVersion: LibraryVersionDb, createdByProfile?: a
     restoreFromVersionId: dbVersion.restore_from_version_id,
     restoredBy: restoredByProfile ? {
       id: restoredByProfile.id,
-      name: restoredByProfile.full_name || restoredByProfile.username || 'Unknown',
+      name: getUserDisplayName(restoredByProfile),
       email: restoredByProfile.email,
     } : (dbVersion.restored_by ? {
       id: dbVersion.restored_by,
@@ -291,6 +328,28 @@ export async function getVersionsByLibrary(
 }
 
 /**
+ * Check if a version name already exists for a library
+ */
+export async function checkVersionNameExists(
+  supabase: SupabaseClient,
+  libraryId: string,
+  versionName: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('library_versions')
+    .select('id')
+    .eq('library_id', libraryId)
+    .eq('version_name', versionName.trim())
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to check version name: ${error.message}`);
+  }
+
+  return data !== null;
+}
+
+/**
  * Create a new version (manual save)
  */
 export async function createVersion(
@@ -305,6 +364,12 @@ export async function createVersion(
 
   // Verify library access
   await verifyLibraryAccess(supabase, libraryId);
+
+  // Check if version name already exists
+  const nameExists = await checkVersionNameExists(supabase, libraryId, versionName.trim());
+  if (nameExists) {
+    throw new Error('Name exists');
+  }
 
   // Get current user
   const userId = await getCurrentUserId(supabase);
@@ -383,6 +448,12 @@ export async function restoreVersion(
   // This is because the user may have made changes but not yet created a version
   let backupVersion: LibraryVersion | undefined;
   if (backupCurrent) {
+    // Check if backup version name already exists
+    const backupNameExists = await checkVersionNameExists(supabase, libraryId, backupVersionName!.trim());
+    if (backupNameExists) {
+      throw new Error('Name exists');
+    }
+
     // Create backup version from current library state
     const backupSnapshot = await createLibrarySnapshot(supabase, libraryId);
     
@@ -445,7 +516,23 @@ export async function restoreVersion(
   }
   
   // Generate restore version name using original version name and original created_at
-  const restoreVersionName = generateRestoreVersionName(versionToRestore.version_name.trim(), originalCreatedAt);
+  let restoreVersionName = generateRestoreVersionName(versionToRestore.version_name.trim(), originalCreatedAt);
+  
+  // Check if restore version name already exists, if so, append timestamp to make it unique
+  let nameExists = await checkVersionNameExists(supabase, libraryId, restoreVersionName);
+  if (nameExists) {
+    // Append timestamp to make it unique
+    const timestamp = new Date().getTime();
+    restoreVersionName = `${restoreVersionName} (${timestamp})`;
+    
+    // Double-check the new name doesn't exist (very unlikely but possible)
+    nameExists = await checkVersionNameExists(supabase, libraryId, restoreVersionName);
+    if (nameExists) {
+      // If still exists, append random number
+      const randomSuffix = Math.floor(Math.random() * 10000);
+      restoreVersionName = `${restoreVersionName}-${randomSuffix}`;
+    }
+  }
   
   console.log('Restore version name generated:', {
     originalName: versionToRestore.version_name,

@@ -33,8 +33,8 @@ jobs:
 
       - name: Add personal repository as remote
         run: |
-          git remote add personal https://${{ secrets.PERSONAL_GITHUB_TOKEN }}@github.com/xzy1124/keco-studio.git || true
-          git remote set-url personal https://${{ secrets.PERSONAL_GITHUB_TOKEN }}@github.com/xzy1124/keco-studio.git
+          git remote add personal https://x-access-token:${{ secrets.PERSONAL_GITHUB_TOKEN }}@github.com/xzy1124/keco-studio.git || true
+          git remote set-url personal https://x-access-token:${{ secrets.PERSONAL_GITHUB_TOKEN }}@github.com/xzy1124/keco-studio.git
 
       - name: Verify token and push to personal repository
         run: |
