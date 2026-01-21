@@ -1816,7 +1816,7 @@ export function LibraryAssetsTable({
   };
 
   // Handle media file change for editing cell (with immediate save)
-  const handleEditMediaFileChange = (propertyKey: string, value: MediaFileMetadata | null) => {
+  const handleEditMediaFileChange = (rowId: string, propertyKey: string, value: MediaFileMetadata | null) => {
     // Prevent editing if user is a viewer
     if (userRole === 'viewer') {
       return;
@@ -1825,12 +1825,6 @@ export function LibraryAssetsTable({
     // For media files, we need to save immediately when changed
     if (!onUpdateAsset) return;
     
-    // Get rowId from editingCell state
-    if (!editingCell || editingCell.propertyKey !== propertyKey) {
-      return;
-    }
-    
-    const rowId = editingCell.rowId;
     const row = rows.find(r => r.id === rowId);
     if (!row) {
       // Try to find in allRowsSource if not in rows
