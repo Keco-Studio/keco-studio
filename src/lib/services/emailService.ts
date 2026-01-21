@@ -8,8 +8,18 @@
 import { Resend } from 'resend';
 import { InvitationEmail } from '@/emails/invitation-email';
 
-// Initialize Resend client
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy initialization of Resend client to avoid build-time errors
+// Initialize only when needed and API key is available
+function getResendClient(): Resend {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error('RESEND_API_KEY is not configured. Please check your environment variables.');
+  }
+  if (apiKey === 're_your_resend_api_key_here') {
+    throw new Error('RESEND_API_KEY is set to placeholder value. Please set a valid API key.');
+  }
+  return new Resend(apiKey);
+}
 
 /**
  * Email sender configuration
@@ -83,6 +93,7 @@ export async function sendInvitationEmail(
         await new Promise(resolve => setTimeout(resolve, delay));
       }
 
+      const resend = getResendClient();
       const result = await resend.emails.send({
         from: FROM_EMAIL,
         to: recipientEmail,

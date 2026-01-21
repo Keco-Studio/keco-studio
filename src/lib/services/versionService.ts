@@ -335,18 +335,21 @@ export async function checkVersionNameExists(
   libraryId: string,
   versionName: string
 ): Promise<boolean> {
+  // Use limit(1) instead of maybeSingle() to handle cases where multiple records exist
+  // (which shouldn't happen but can occur due to data inconsistencies)
   const { data, error } = await supabase
     .from('library_versions')
     .select('id')
     .eq('library_id', libraryId)
     .eq('version_name', versionName.trim())
-    .maybeSingle();
+    .limit(1);
 
   if (error) {
     throw new Error(`Failed to check version name: ${error.message}`);
   }
 
-  return data !== null;
+  // Return true if any records exist (data array has length > 0)
+  return (data?.length || 0) > 0;
 }
 
 /**

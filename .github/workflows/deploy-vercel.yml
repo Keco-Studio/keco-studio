@@ -204,7 +204,7 @@ jobs:
       - name: Push database migrations
         run: |
           echo "🚀 开始推送数据库迁移到 ${{ steps.select-project.outputs.environment }} 环境..."
-          supabase db push
+          supabase db push --include-all
           echo "✅ 迁移完成"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ steps.select-project.outputs.access-token }}

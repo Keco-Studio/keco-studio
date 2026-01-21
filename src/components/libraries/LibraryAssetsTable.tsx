@@ -1816,7 +1816,7 @@ export function LibraryAssetsTable({
   };
 
   // Handle media file change for editing cell (with immediate save)
-  const handleEditMediaFileChange = (propertyKey: string, value: MediaFileMetadata | null) => {
+  const handleEditMediaFileChange = (rowId: string, propertyKey: string, value: MediaFileMetadata | null) => {
     // Prevent editing if user is a viewer
     if (userRole === 'viewer') {
       return;

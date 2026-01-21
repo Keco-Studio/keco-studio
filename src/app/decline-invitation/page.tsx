@@ -6,11 +6,11 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { isTokenExpired } from '@/lib/utils/invitationToken';
 
-export default function DeclineInvitationPage() {
+function DeclineInvitationContent() {
   const searchParams = useSearchParams();
   const token = searchParams.get('token');
   
@@ -126,6 +126,35 @@ export default function DeclineInvitationPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function DeclineInvitationPage() {
+  return (
+    <Suspense fallback={
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        padding: '24px',
+        backgroundColor: '#f6f9fc',
+      }}>
+        <div style={{
+          backgroundColor: '#ffffff',
+          borderRadius: '8px',
+          padding: '48px',
+          maxWidth: '600px',
+          width: '100%',
+          boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
+          textAlign: 'center',
+        }}>
+          <div>Loading...</div>
+        </div>
+      </div>
+    }>
+      <DeclineInvitationContent />
+    </Suspense>
   );
 }
 

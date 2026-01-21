@@ -144,7 +144,16 @@ export async function sendInvitation(
       };
     }
     
-    // 5. Send email
+    // 5. Get inviter email for email template
+    const { data: inviterProfile } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', inviterId)
+      .single();
+    
+    const inviterEmail = inviterProfile?.email || '';
+    
+    // 6. Send email
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const acceptLink = `${appUrl}/accept-invitation?token=${token}`;
     
@@ -152,6 +161,7 @@ export async function sendInvitation(
       await sendInvitationEmail({
         recipientEmail,
         inviterName,
+        inviterEmail,
         projectName,
         role: role.charAt(0).toUpperCase() + role.slice(1), // Capitalize role
         acceptLink,
