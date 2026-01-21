@@ -15,6 +15,18 @@
   flex-direction: column;
 }
 
+.mainContent {
+  display: flex;
+  flex-direction: row;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.tableContainer {
+  flex: 1;
+  min-width: 0; /* Allows table to shrink if needed */
+}
+
 .header {
   display: flex;
   justify-content: space-between;

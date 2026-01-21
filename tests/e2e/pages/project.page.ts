@@ -30,7 +30,14 @@ export class ProjectPage {
 
     // Main projects page elements
     this.projectsHeading = page.getByRole('heading', { name: /projects/i });
-    this.createProjectButton = page.getByRole('button', { name: /create project/i });
+    // Button text varies: 
+    // - "New Project" (when projects exist, in header)
+    // - "Create Project" (in sidebar when no projects)
+    // - "Create first project" (in empty state)
+    // Try to find button in main content area first, then sidebar
+    this.createProjectButton = page.getByRole('button', { 
+      name: /^(new project|create project|create first project)$/i 
+    });
     this.projectList = page.locator('[role="list"], [data-testid="project-list"]');
 
     // Project form inputs - using getByLabel for accessibility
@@ -52,7 +59,10 @@ export class ProjectPage {
    */
   async goto(): Promise<void> {
     await this.page.goto('/projects');
-    await expect(this.projectsHeading).toBeVisible();
+    await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await expect(this.projectsHeading).toBeVisible({ timeout: 10000 });
+    // Wait a bit more for buttons to render
+    await this.page.waitForTimeout(1000);
   }
 
   /**
@@ -82,8 +92,31 @@ export class ProjectPage {
       { timeout: 15000 }
     );
 
-    // Click create project button
-    await this.createProjectButton.click();
+    // Always navigate to /projects page to ensure we're in the right place
+    // After login, user might be redirected to a project detail page, so we need to go to projects list
+    const currentUrl = this.page.url();
+    if (!currentUrl.includes('/projects')) {
+      // Navigate to projects page
+      await this.page.goto('/projects');
+      await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    } else {
+      // Already on projects page, but ensure it's fully loaded
+      await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    }
+
+    // Wait for the projects heading to be visible (confirms we're on projects page)
+    await expect(this.projectsHeading).toBeVisible({ timeout: 15000 });
+    
+    // Wait a bit for React components to fully render
+    await this.page.waitForTimeout(2000);
+
+    // Wait for create project button to be visible
+    // It might be "New Project" (header), "Create Project" (sidebar), or "Create first project" (empty state)
+    // Use first() to get the first matching button
+    await expect(this.createProjectButton.first()).toBeVisible({ timeout: 15000 });
+
+    // Click the first visible create project button
+    await this.createProjectButton.first().click();
 
     // Wait for modal to appear
     await expect(this.projectNameInput).toBeVisible({ timeout: 5000 });

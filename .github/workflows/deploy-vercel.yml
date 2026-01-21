@@ -5,13 +5,11 @@ on:
     branches:
       - main      
       - master
-      - release
       - 'release/**'
   pull_request:
     branches:
       - main
       - master
-      - release
       - 'release/**'
     types: [opened, synchronize, reopened]  
 
@@ -28,17 +26,82 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 2  
+          fetch-depth: 0  # 获取完整历史以便比较分支
 
       - name: Check for migration changes
         id: check
         run: |
-          if git diff --name-only HEAD~1 HEAD | grep -q "^supabase/migrations/"; then
-            echo "has-migrations=true" >> $GITHUB_OUTPUT
-            echo "✅ 检测到迁移文件变化"
+          echo "🔍 开始检查迁移文件..."
+          echo "当前分支: ${{ github.ref }}"
+          echo "当前 commit: ${{ github.sha }}"
+          
+          # 列出所有迁移文件（用于调试）
+          echo "📋 当前分支的迁移文件："
+          if [ -d "supabase/migrations" ]; then
+            ls -la supabase/migrations/*.sql 2>/dev/null || echo "  没有找到 .sql 文件"
           else
-            echo "has-migrations=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ 没有迁移文件变化，跳过迁移任务"
+            echo "  supabase/migrations 目录不存在"
+          fi
+          
+          # 确定 base 分支
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
+            BASE_BRANCH="origin/main"
+            # 如果 main 不存在，尝试 master
+            if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
+              BASE_BRANCH="origin/master"
+            fi
+          elif [[ "${{ github.ref }}" =~ ^refs/heads/release ]]; then
+            # release 分支与 main 比较
+            BASE_BRANCH="origin/main"
+            if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
+              BASE_BRANCH="origin/master"
+            fi
+          else
+            # PR 或其他情况，与 main 比较
+            BASE_BRANCH="origin/main"
+            if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
+              BASE_BRANCH="origin/master"
+            fi
+          fi
+          
+          echo "Base 分支: $BASE_BRANCH"
+          
+          # 检查当前分支相对于 base 分支的迁移文件变化
+          # 如果 base 分支不存在（首次推送），检查是否有迁移文件
+          if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
+            echo "⚠️ Base 分支不存在，检查是否有迁移文件..."
+            if [ -d "supabase/migrations" ] && [ "$(ls -A supabase/migrations/*.sql 2>/dev/null)" ]; then
+              echo "has-migrations=true" >> $GITHUB_OUTPUT
+              echo "✅ 检测到迁移文件（首次推送）"
+            else
+              echo "has-migrations=false" >> $GITHUB_OUTPUT
+              echo "ℹ️ 没有迁移文件"
+            fi
+          else
+            # 获取 base 分支的 commit
+            git fetch origin ${BASE_BRANCH#origin/}:${BASE_BRANCH#origin/} 2>/dev/null || true
+            
+            # 比较当前分支与 base 分支的差异
+            MIGRATION_FILES=$(git diff --name-only "$BASE_BRANCH" HEAD | grep "^supabase/migrations/" || true)
+            
+            if [ -n "$MIGRATION_FILES" ]; then
+              echo "has-migrations=true" >> $GITHUB_OUTPUT
+              echo "✅ 检测到迁移文件变化（相对于 $BASE_BRANCH）"
+              echo "变化的迁移文件："
+              echo "$MIGRATION_FILES" | while read -r file; do
+                echo "  - $file"
+              done
+            else
+              # 即使没有文件变化，也检查是否有迁移文件存在
+              # 因为可能之前的迁移没有成功应用
+              if [ -d "supabase/migrations" ] && [ "$(ls -A supabase/migrations/*.sql 2>/dev/null)" ]; then
+                echo "has-migrations=true" >> $GITHUB_OUTPUT
+                echo "✅ 检测到迁移文件（虽然没有变化，但可能存在未应用的迁移）"
+              else
+                echo "has-migrations=false" >> $GITHUB_OUTPUT
+                echo "ℹ️ 没有迁移文件变化（相对于 $BASE_BRANCH）"
+              fi
+            fi
           fi
 
   
@@ -46,7 +109,15 @@ jobs:
     runs-on: ubuntu-latest
     name: Run Supabase Migrations
     needs: check-migrations
-    if: github.repository == 'xzy1124/keco-studio' && needs.check-migrations.outputs.has-migrations == 'true'
+    # 对于 main 和 release 分支，总是运行迁移（supabase db push 是幂等的，只会应用未应用的迁移）
+    # 这样可以确保即使之前的迁移失败，也能重新应用
+    if: |
+      github.repository == 'xzy1124/keco-studio' && (
+        needs.check-migrations.outputs.has-migrations == 'true' ||
+        github.ref == 'refs/heads/main' ||
+        github.ref == 'refs/heads/master' ||
+        startsWith(github.ref, 'refs/heads/release/')
+      )
     
     steps:
       - name: Checkout code
@@ -62,7 +133,19 @@ jobs:
         run: npm ci
 
       - name: Install Supabase CLI
-        run: npm install -g supabase@latest
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Check migration files exist
+        run: |
+          if [ ! -d "supabase/migrations" ] || [ -z "$(ls -A supabase/migrations/*.sql 2>/dev/null)" ]; then
+            echo "⚠️ 没有找到迁移文件，跳过迁移任务"
+            exit 0
+          else
+            echo "✅ 找到迁移文件，继续执行迁移"
+            ls -la supabase/migrations/*.sql
+          fi
 
       # 根据分支选择 Supabase 项目和对应的 Access Token
       # main 分支 → Production, release 分支 → Preview

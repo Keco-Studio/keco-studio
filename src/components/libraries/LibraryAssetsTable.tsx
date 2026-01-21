@@ -35,6 +35,7 @@ import libraryAssetTableAddIcon from '@/app/assets/images/LibraryAssetTableAddIc
 import libraryAssetTableSelectIcon from '@/app/assets/images/LibraryAssetTableSelectIcon.svg';
 import batchEditAddIcon from '@/app/assets/images/BatchEditAddIcon.svg';
 import batchEditingCloseIcon from '@/app/assets/images/BatchEditingCloseIcon.svg';
+import tableAssetDetailIcon from '@/app/assets/images/TableAssetDetailIcon.svg';
 import styles from './LibraryAssetsTable.module.css';
 
 export type LibraryAssetsTableProps = {
@@ -88,19 +89,90 @@ export function LibraryAssetsTable({
   const { yRows } = useYjs();
   const yjsRows = useYjsRows(yRows);
   
+  // Track previous rows to detect major changes (version switches)
+  const prevRowsRef = useRef<AssetRow[]>([]);
+  
+  // Edit mode state: track which cell is being edited (rowId and propertyKey)
+  // Declare before useEffect so it can be used in dependencies
+  const [editingCell, setEditingCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
+  const [editingCellValue, setEditingCellValue] = useState<string>('');
+  const editingCellRef = useRef<HTMLSpanElement | null>(null);
+  const isComposingRef = useRef(false);
+  
+  // Type validation error state: track validation errors for current editing cell
+  const [typeValidationError, setTypeValidationError] = useState<string | null>(null);
+  const typeValidationErrorRef = useRef<HTMLDivElement | null>(null);
+  
   // Initialize: sync props.rows to Yjs (only on first time, when Yjs is empty)
   useEffect(() => {
     if (yRows.length === 0 && rows.length > 0) {
       // Only initialize when Yjs is empty and props has data
       yRows.insert(0, rows);
+      prevRowsRef.current = rows;
     } else if (yRows.length > 0 && rows.length > 0) {
       // If Yjs already has data but props updated (e.g., from database refresh), need to sync
       // Update existing rows, add new rows, delete non-existent rows (but keep temp rows and rows being edited)
       const yjsRowsArray = yRows.toArray();
       const existingIds = new Set(yjsRowsArray.map(r => r.id));
       const propsIds = new Set(rows.map(r => r.id));
+      const prevIds = new Set(prevRowsRef.current.map(r => r.id));
       
-      // Find rows to update, add, and delete (but don't delete temp rows and rows being edited)
+      // Check if this is a major data change (version switch scenario)
+      // If less than 30% of IDs overlap with existing Yjs data, treat it as a complete replacement
+      const overlapCount = Array.from(existingIds).filter(id => propsIds.has(id)).length;
+      const overlapRatio = existingIds.size > 0 ? overlapCount / existingIds.size : 0;
+      const isMajorChange = overlapRatio < 0.3 && propsIds.size > 0;
+      
+      if (isMajorChange) {
+        // Complete replacement: clear all non-temp rows and reinitialize
+        // This happens when switching versions - the data is completely different
+        const tempRowsToKeep: AssetRow[] = [];
+        const indicesToKeep: number[] = [];
+        
+        // Find temp rows that are being edited (preserve user's current edits)
+        yjsRowsArray.forEach((yjsRow, index) => {
+          if (yjsRow.id.startsWith('temp-')) {
+            // Keep temp rows that are being edited
+            tempRowsToKeep.push(yjsRow);
+            indicesToKeep.push(index);
+          }
+        });
+        
+        // Delete all rows except temp rows being edited, in reverse order
+        const indicesToDelete: number[] = [];
+        for (let i = yjsRowsArray.length - 1; i >= 0; i--) {
+          if (!indicesToKeep.includes(i)) {
+            indicesToDelete.push(i);
+          }
+        }
+        
+        // Delete in reverse order to avoid index shifting issues
+        indicesToDelete.forEach(index => {
+          try {
+            if (index >= 0 && index < yRows.length) {
+              yRows.delete(index, 1);
+            }
+          } catch (e) {
+            // Ignore errors if index is out of bounds (already deleted)
+            console.warn('Failed to delete row at index:', index, e);
+          }
+        });
+        
+        // Insert new rows at the beginning
+        if (rows.length > 0) {
+          yRows.insert(0, rows);
+        }
+        
+        // Re-insert temp rows that were being edited at the end
+        if (tempRowsToKeep.length > 0) {
+          yRows.insert(yRows.length, tempRowsToKeep);
+        }
+        
+        prevRowsRef.current = rows;
+        return;
+      }
+      
+      // Incremental update: normal sync logic
       const rowsToUpdate: Array<{ index: number; row: AssetRow }> = [];
       const rowsToAdd: AssetRow[] = [];
       const indicesToDelete: number[] = [];
@@ -141,14 +213,37 @@ export function LibraryAssetsTable({
       
       // Delete in reverse order (avoid index changes)
       indicesToDelete.sort((a, b) => b - a).forEach(index => {
-        yRows.delete(index, 1);
+        try {
+          yRows.delete(index, 1);
+        } catch (e) {
+          // Ignore errors if index is out of bounds (already deleted)
+          console.warn('Failed to delete row at index:', index, e);
+        }
       });
       
       // Update in reverse order (avoid index changes)
+      // First, get current array snapshot to avoid index issues
+      const currentYjsArray = yRows.toArray();
       rowsToUpdate.sort((a, b) => b.index - a.index).forEach(({ index, row }) => {
-        yRows.delete(index, 1);
-        yRows.insert(index, [row]);
+        try {
+          // Find the current index of this row (index may have changed after deletions)
+          const currentIndex = currentYjsArray.findIndex(r => r.id === row.id);
+          if (currentIndex >= 0 && currentIndex < yRows.length) {
+            yRows.delete(currentIndex, 1);
+            yRows.insert(currentIndex, [row]);
+            // Update the array snapshot
+            currentYjsArray.splice(currentIndex, 1);
+            currentYjsArray.splice(currentIndex, 0, row);
+          } else {
+            console.warn('Row not found for update:', row.id);
+          }
+        } catch (e) {
+          console.warn('Failed to update row:', row.id, e);
+        }
       });
+      
+      // Update prevRowsRef after all updates
+      prevRowsRef.current = rows;
       
       // Add new rows
       // If there are temp rows created by insert, prioritize replacing them (maintain position)
@@ -181,9 +276,11 @@ export function LibraryAssetsTable({
           yRows.insert(yRows.length, remainingRows);
         }
       }
+      
+      // Update prevRowsRef after all updates
+      prevRowsRef.current = rows;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rows, yRows]); // editingRowId is defined below, not included here to avoid circular dependency
+  }, [rows, yRows, editingCell]);
   
   // Use Yjs rows as primary data source, fallback to props.rows if Yjs is empty (compatibility)
   const allRowsSource = yjsRows.length > 0 ? yjsRows : rows;
@@ -191,12 +288,6 @@ export function LibraryAssetsTable({
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [newRowData, setNewRowData] = useState<Record<string, any>>({});
   const [isSaving, setIsSaving] = useState(false);
-  
-  // Edit mode state: track which cell is being edited (rowId and propertyKey)
-  const [editingCell, setEditingCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
-  const [editingCellValue, setEditingCellValue] = useState<string>('');
-  const editingCellRef = useRef<HTMLSpanElement | null>(null);
-  const isComposingRef = useRef(false);
   
   // Track current user's focused cell (for collaboration presence)
   const [currentFocusedCell, setCurrentFocusedCell] = useState<{ assetId: string; propertyKey: string } | null>(null);
@@ -229,11 +320,22 @@ export function LibraryAssetsTable({
   
   // Cut/Copy/Paste state
   const [cutCells, setCutCells] = useState<Set<CellKey>>(new Set()); // Cells that have been cut (for dashed border)
+  const [copyCells, setCopyCells] = useState<Set<CellKey>>(new Set()); // Cells that have been copied (for dashed border)
   const [clipboardData, setClipboardData] = useState<Array<Array<string | number | null>> | null>(null); // Clipboard data for paste
   const [isCutOperation, setIsCutOperation] = useState(false); // Whether clipboard contains cut data (vs copy)
   
   // Store cut selection bounds for border rendering
   const [cutSelectionBounds, setCutSelectionBounds] = useState<{
+    minRowIndex: number;
+    maxRowIndex: number;
+    minPropertyIndex: number;
+    maxPropertyIndex: number;
+    rowIds: string[];
+    propertyKeys: string[];
+  } | null>(null);
+  
+  // Store copy selection bounds for border rendering
+  const [copySelectionBounds, setCopySelectionBounds] = useState<{
     minRowIndex: number;
     maxRowIndex: number;
     minPropertyIndex: number;
@@ -507,19 +609,77 @@ export function LibraryAssetsTable({
   // Clean up optimistic assets when rows are updated (parent refresh)
   // This ensures that when a real asset is added/updated from the parent, we remove the optimistic one
   useEffect(() => {
-    // Clear all optimistic edit updates when rows prop changes
-    // This ensures external updates (e.g., from sidebar) always override optimistic updates
-    // The parent component will provide the updated data, so we should use it
+    // CRITICAL FIX: Only clear optimistic updates when the row data matches the optimistic update
+    // This prevents clearing optimistic updates for other columns when one column is filled
+    // We should only clear when ALL property values in the optimistic update match the row data
     setOptimisticEditUpdates(prev => {
       if (prev.size === 0) return prev;
       
-      // Clear optimistic updates for all assets that exist in the new rows
       const newMap = new Map(prev);
       let hasChanges = false;
       const clearedIds: string[] = [];
       
       for (const row of rows) {
-        if (newMap.has(row.id)) {
+        const optimisticUpdate = newMap.get(row.id);
+        if (!optimisticUpdate) continue;
+        
+        // Check if the optimistic update matches the row data
+        // If all property values in the optimistic update match the row data, we can clear it
+        // Otherwise, keep the optimistic update (it might be for other columns)
+        let allMatch = true;
+        
+        // Check if name matches
+        if (optimisticUpdate.name !== row.name) {
+          allMatch = false;
+        }
+        
+        // Check if all property values in optimistic update match row data
+        if (allMatch) {
+          for (const [propertyKey, optimisticValue] of Object.entries(optimisticUpdate.propertyValues)) {
+            const rowValue = row.propertyValues[propertyKey];
+            
+            // Compare values (handle null/undefined)
+            if (optimisticValue !== rowValue) {
+              // For objects, do a deeper comparison
+              if (typeof optimisticValue === 'object' && optimisticValue !== null &&
+                  typeof rowValue === 'object' && rowValue !== null) {
+                const optimisticObj = optimisticValue as Record<string, any>;
+                const rowObj = rowValue as Record<string, any>;
+                
+                // Check if it's MediaFileMetadata-like object
+                if (optimisticObj.url && rowObj.url) {
+                  if (optimisticObj.url !== rowObj.url && 
+                      optimisticObj.path !== rowObj.path &&
+                      optimisticObj.fileName !== rowObj.fileName) {
+                    allMatch = false;
+                    break;
+                  }
+                } else {
+                  // For other objects, compare all keys
+                  const optimisticKeys = Object.keys(optimisticObj);
+                  const rowKeys = Object.keys(rowObj);
+                  if (optimisticKeys.length !== rowKeys.length) {
+                    allMatch = false;
+                    break;
+                  }
+                  for (const key of optimisticKeys) {
+                    if (optimisticObj[key] !== rowObj[key]) {
+                      allMatch = false;
+                      break;
+                    }
+                  }
+                  if (!allMatch) break;
+                }
+              } else {
+                allMatch = false;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Only clear if all values match (meaning the optimistic update has been saved)
+        if (allMatch) {
           newMap.delete(row.id);
           clearedIds.push(row.id);
           hasChanges = true;
@@ -617,6 +777,7 @@ export function LibraryAssetsTable({
 
   // Ref for table container to detect clicks outside
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  const batchEditMenuOriginalPositionRef = useRef<{ x: number; y: number; scrollY: number } | null>(null);
 
   // Modal state for reference selector
   const [referenceModalOpen, setReferenceModalOpen] = useState(false);
@@ -1056,6 +1217,7 @@ export function LibraryAssetsTable({
     assetId: string | null;
     rowId: string;
     assetNamesCache: Record<string, string>;
+    isCellSelected: boolean;
     onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
     onAvatarMouseLeave: () => void;
     onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
@@ -1064,6 +1226,7 @@ export function LibraryAssetsTable({
     assetId,
     rowId,
     assetNamesCache,
+    isCellSelected,
     onAvatarMouseEnter,
     onAvatarMouseLeave,
     onOpenReferenceModal,
@@ -1072,6 +1235,7 @@ export function LibraryAssetsTable({
     assetId: string | null;
     rowId: string;
     assetNamesCache: Record<string, string>;
+    isCellSelected: boolean;
     onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
     onAvatarMouseLeave: () => void;
     onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
@@ -1108,7 +1272,31 @@ export function LibraryAssetsTable({
         }}
       >
         {hasValue && assetId ? (
-          <div className={styles.referenceSelectedAssetLeft}>
+          <div 
+            className={styles.referenceSelectedAssetLeft}
+            data-reference-background="true"
+            onClick={(e) => {
+              // Only trigger if cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+                e.preventDefault();
+                // Call the modal handler immediately
+                onOpenReferenceModal(property, assetId, rowId);
+                return;
+              }
+              // If not selected, let the event bubble to cell to select it
+            }}
+            onMouseDown={(e) => {
+              // Prevent mouse down from interfering with click when cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+              }
+            }}
+            onDoubleClick={(e) => {
+              // Prevent double click from bubbling to cell
+              e.stopPropagation();
+            }}
+          >
             <Image
               src={libraryAssetTableIcon}
               alt=""
@@ -1121,9 +1309,6 @@ export function LibraryAssetsTable({
               onMouseEnter={(e) => {
                 e.stopPropagation();
                 setIsHovered(true); // Keep hovered state when over avatar
-                if (assetId && avatarRef.current) {
-                  onAvatarMouseEnter(assetId, avatarRef.current);
-                }
               }}
               onMouseLeave={(e) => {
                 e.stopPropagation();
@@ -1131,7 +1316,6 @@ export function LibraryAssetsTable({
                 const relatedTarget = e.relatedTarget as HTMLElement;
                 if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
                   setIsHovered(false);
-                  onAvatarMouseLeave();
                 }
               }}
               className={styles.referenceAvatarWrapper}
@@ -1156,19 +1340,34 @@ export function LibraryAssetsTable({
               onMouseEnter={() => {
                 setIsHovered(true);
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onOpenReferenceModal(property, assetId, rowId);
-              }}
-              onDoubleClick={(e) => {
-                // Prevent double click from bubbling to cell
-                e.stopPropagation();
-              }}
             />
           </div>
         ) : (
-          <>
+          <div 
+            className={styles.referenceSelectedAssetLeft}
+            data-reference-background="true"
+            onClick={(e) => {
+              // Only trigger if cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+                e.preventDefault();
+                // Call the modal handler immediately
+                onOpenReferenceModal(property, assetId, rowId);
+                return;
+              }
+              // If not selected, let the event bubble to cell to select it
+            }}
+            onMouseDown={(e) => {
+              // Prevent mouse down from interfering with click when cell is selected
+              if (isCellSelected) {
+                e.stopPropagation();
+              }
+            }}
+            onDoubleClick={(e) => {
+              // Prevent double click from bubbling to cell
+              e.stopPropagation();
+            }}
+          >
             <Image
               src={libraryAssetTableIcon}
               alt=""
@@ -1185,17 +1384,8 @@ export function LibraryAssetsTable({
               onMouseEnter={() => {
                 setIsHovered(true);
               }}
-              onClick={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-                onOpenReferenceModal(property, assetId, rowId);
-              }}
-              onDoubleClick={(e) => {
-                // Prevent double click from bubbling to cell
-                e.stopPropagation();
-              }}
             />
-          </>
+          </div>
         )}
       </div>
     );
@@ -1205,6 +1395,7 @@ export function LibraryAssetsTable({
       prevProps.assetId === nextProps.assetId &&
       prevProps.rowId === nextProps.rowId &&
       prevProps.property.id === nextProps.property.id &&
+      prevProps.isCellSelected === nextProps.isCellSelected &&
       prevProps.assetNamesCache[prevProps.assetId || ''] === nextProps.assetNamesCache[nextProps.assetId || '']
     );
   });
@@ -1704,6 +1895,72 @@ export function LibraryAssetsTable({
       });
   };
 
+  // Validate value based on data type
+  const validateValueByType = useCallback((value: string, dataType: string): { isValid: boolean; error: string | null; normalizedValue: string | number | null } => {
+    if (value === '' || value === null || value === undefined) {
+      return { isValid: true, error: null, normalizedValue: null };
+    }
+    
+    if (dataType === 'int') {
+      // Int type: must be a valid integer (no decimal point)
+      const trimmed = value.trim();
+      if (trimmed === '' || trimmed === '-') {
+        return { isValid: true, error: null, normalizedValue: null };
+      }
+      
+      // Check if contains decimal point
+      if (trimmed.includes('.')) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      // Check if valid integer
+      const intValue = parseInt(trimmed, 10);
+      if (isNaN(intValue) || String(intValue) !== trimmed.replace(/^-/, '')) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      return { isValid: true, error: null, normalizedValue: intValue };
+    } else if (dataType === 'float') {
+      // Float type: must contain a decimal point (cannot be pure integer)
+      const trimmed = value.trim();
+      if (trimmed === '' || trimmed === '-' || trimmed === '.') {
+        return { isValid: true, error: null, normalizedValue: null };
+      }
+      
+      // Check if contains decimal point
+      if (!trimmed.includes('.')) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      // Check if valid float
+      const floatValue = parseFloat(trimmed);
+      if (isNaN(floatValue)) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      return { isValid: true, error: null, normalizedValue: floatValue };
+    }
+    
+    // Other types: no validation needed
+    return { isValid: true, error: null, normalizedValue: value };
+  }, []);
+
   // Handle save edited cell
   const handleSaveEditedCell = useCallback(async () => {
     // Prevent editing if user is a viewer
@@ -1721,10 +1978,33 @@ export function LibraryAssetsTable({
     const property = properties.find(p => p.key === propertyKey);
     const isNameField = property && properties[0]?.key === propertyKey;
     
-    // Update property values
+    // Validate value based on data type (only for non-name fields)
+    if (!isNameField && property) {
+      const validation = validateValueByType(editingCellValue, property.dataType);
+      
+      if (!validation.isValid) {
+        // Show error message and prevent saving
+        setTypeValidationError(validation.error);
+        // Keep editing state so user can correct the error
+        // Focus back on the input
+        setTimeout(() => {
+          editingCellRef.current?.focus();
+        }, 100);
+        return;
+      }
+      
+      // Clear validation error if valid
+      setTypeValidationError(null);
+    }
+    
+    // Update property values with normalized value
+    const normalizedValue = (!isNameField && property) 
+      ? validateValueByType(editingCellValue, property.dataType).normalizedValue
+      : editingCellValue;
+    
     const updatedPropertyValues = {
       ...row.propertyValues,
-      [propertyKey]: editingCellValue
+      [propertyKey]: normalizedValue
     };
     
     // Get asset name (use first property value or row name)
@@ -1763,6 +2043,7 @@ export function LibraryAssetsTable({
     const savedPropertyKey = editingCell.propertyKey;
     setEditingCell(null);
     setEditingCellValue('');
+    setTypeValidationError(null); // Clear validation error
     editingCellRef.current = null;
     isComposingRef.current = false;
     setCurrentFocusedCell(null); // Clear focused cell when saving
@@ -1866,6 +2147,7 @@ export function LibraryAssetsTable({
 
   // Handle cancel editing
   const handleCancelEditing = () => {
+    setTypeValidationError(null); // Clear validation error when canceling
     setEditingCell(null);
     setEditingCellValue('');
     editingCellRef.current = null;
@@ -1956,24 +2238,57 @@ export function LibraryAssetsTable({
   // Get all rows for cell selection (helper function)
   // Use Yjs as data source to ensure all operations are based on the same array
   const getAllRowsForCellSelection = useCallback(() => {
-    const allRowsForSelection = allRowsSource
-      .filter((row): row is AssetRow => !deletedAssetIds.has(row.id))
-      .map((row): AssetRow => {
+    // Build rows map with optimistic updates (same logic as allRows in render)
+    const allRowsMap = new Map<string, AssetRow>();
+    
+    // Add all rows from allRowsSource with optimistic updates
+    allRowsSource.forEach(row => {
+      if (!deletedAssetIds.has(row.id)) {
         const assetRow = row as AssetRow;
         const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
-        if (optimisticUpdate && optimisticUpdate.name === assetRow.name) {
-          return {
+        // Always apply optimistic updates if they exist (rowId matching ensures correctness)
+        // Removed name matching check to fix issue where cleared cells weren't reflected in fill operations
+        if (optimisticUpdate) {
+          allRowsMap.set(assetRow.id, {
             ...assetRow,
             name: optimisticUpdate.name,
             propertyValues: { ...assetRow.propertyValues, ...optimisticUpdate.propertyValues }
-          };
+          });
+        } else {
+          allRowsMap.set(assetRow.id, assetRow);
         }
-        return assetRow;
-      });
+      }
+    });
     
-    const optimisticAssets: AssetRow[] = Array.from(optimisticNewAssets.values())
-      .sort((a, b) => a.id.localeCompare(b.id));
-    allRowsForSelection.push(...optimisticAssets);
+    // Add optimistic new assets (deduplicate)
+    optimisticNewAssets.forEach((asset, id) => {
+      if (!allRowsMap.has(id)) {
+        allRowsMap.set(id, asset);
+      }
+    });
+    
+    // Convert to array, maintain order (based on allRowsSource order)
+    const allRowsForSelection: AssetRow[] = [];
+    const processedIds = new Set<string>();
+    
+    // First add in allRowsSource order
+    allRowsSource.forEach(row => {
+      if (!deletedAssetIds.has(row.id) && !processedIds.has(row.id)) {
+        const rowToAdd = allRowsMap.get(row.id);
+        if (rowToAdd) {
+          allRowsForSelection.push(rowToAdd);
+          processedIds.add(row.id);
+        }
+      }
+    });
+    
+    // Then add optimistic new assets (not in allRowsSource) - maintain insertion order
+    optimisticNewAssets.forEach((asset, id) => {
+      if (!processedIds.has(id)) {
+        allRowsForSelection.push(asset);
+        processedIds.add(id);
+      }
+    });
     
     return allRowsForSelection;
   }, [allRowsSource, deletedAssetIds, optimisticEditUpdates, optimisticNewAssets]);
@@ -1992,9 +2307,19 @@ export function LibraryAssetsTable({
       return;
     }
     
-    // Don't select if we just completed a fill drag
+    // Don't select if we're currently filling cells
+    // Use a small delay to allow fill drag to complete
     if (isFillingCellsRef.current) {
       return;
+    }
+    
+    // If cell is already selected and clicking on reference background area, let the child handle it
+    const currentCellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
+    const referenceBackground = target.closest('[data-reference-background="true"]');
+    if (selectedCells.has(currentCellKey) && referenceBackground) {
+      // Don't stop propagation here, let the reference background area handle the click
+      // The reference background onClick will call stopPropagation itself
+      return; // Let the reference background area handle the click
     }
     
     e.stopPropagation();
@@ -2028,8 +2353,13 @@ export function LibraryAssetsTable({
       return;
     }
 
-    // Only allow drag when single cell is selected
+    // Don't start drag if clicking on reference background area when cell is selected
     const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
+    if (selectedCells.has(cellKey) && target.closest('[data-reference-background="true"]')) {
+      return; // Let the reference background area handle the click
+    }
+
+    // Only allow drag when single cell is selected
     if (!selectedCells.has(cellKey) || selectedCells.size !== 1) {
       return;
     }
@@ -2221,14 +2551,24 @@ export function LibraryAssetsTable({
         const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
         const currentRowIndex = allRowsForSelection.findIndex(r => r.id === currentRowId);
         
+        // Validate indices are valid (not -1)
+        if (startRowIndex === -1 || currentRowIndex === -1) {
+          return;
+        }
+        
         // Only select cells if dragging downward
         if (currentRowIndex > startRowIndex) {
           const cellsToSelect = new Set<CellKey>();
           for (let r = startRowIndex; r <= currentRowIndex; r++) {
             const row = allRowsForSelection[r];
-            cellsToSelect.add(`${row.id}-${startPropertyKey}`);
+            if (row) {
+              cellsToSelect.add(`${row.id}-${startPropertyKey}`);
+            }
           }
           setSelectedCells(cellsToSelect);
+        } else if (currentRowIndex < startRowIndex) {
+          // If dragged above start, just select the start cell
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
         } else if (currentRowIndex === startRowIndex) {
           // If back to start, just select the start cell
           setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
@@ -2240,101 +2580,319 @@ export function LibraryAssetsTable({
       document.removeEventListener('mousemove', fillDragMoveHandler);
       document.removeEventListener('mouseup', fillDragEndHandler);
       
-      // If it was just a click, don't do anything
-      if (isClick || !hasMoved) {
-        if (isFillingCellsRef.current) {
-          isFillingCellsRef.current = false;
-          document.body.style.userSelect = '';
-          setFillDragStartCell(null);
-        }
-        return;
-      }
-      
-      if (!isFillingCellsRef.current) {
-        return;
-      }
-      
-      isFillingCellsRef.current = false;
-      document.body.style.userSelect = '';
-      
-      // Check if we dragged downward
-      const allRowsForSelection = getAllRowsForCellSelection();
-      const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-      
-      // Find the cell under the cursor at end
-      const elementBelow = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
-      if (!elementBelow) {
-        setFillDragStartCell(null);
-        return;
-      }
-      
-      const cellElement = elementBelow.closest('td');
-      if (!cellElement) {
-        setFillDragStartCell(null);
-        return;
-      }
-      
-      const rowElement = cellElement.closest('tr');
-      if (!rowElement || 
-          rowElement.classList.contains('headerRowTop') || 
-          rowElement.classList.contains('headerRowBottom') || 
-          rowElement.classList.contains('editRow') ||
-          rowElement.classList.contains('addRow')) {
-        setFillDragStartCell(null);
-        return;
-      }
-      
-      const endRowId = rowElement.getAttribute('data-row-id');
-      const endPropertyKey = cellElement.getAttribute('data-property-key');
-      
-      if (!endRowId || !endPropertyKey || endPropertyKey !== startPropertyKey) {
-        setFillDragStartCell(null);
-        return;
-      }
-      
-      const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
-      
-      // Only fill if dragged downward and at least one row down
-      if (endRowIndex > startRowIndex) {
-        // Get the source cell value
-        const sourceRow = allRowsForSelection[startRowIndex];
-        const sourceProperty = orderedProperties.find(p => p.key === startPropertyKey);
-        
-        if (!sourceRow || !sourceProperty || !onUpdateAsset) {
-          setFillDragStartCell(null);
+      // Use try-finally to ensure state is always reset, even if errors occur
+      try {
+        // If it was just a click, reset to single cell selection
+        if (isClick || !hasMoved) {
+          if (isFillingCellsRef.current) {
+            // Reset to single cell selection
+            setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          }
           return;
         }
         
-        const sourceValue = sourceRow.propertyValues[startPropertyKey];
-        
-        // Fill all cells from startRowIndex + 1 to endRowIndex
-        const updates: Array<Promise<void>> = [];
-        
-        for (let r = startRowIndex + 1; r <= endRowIndex; r++) {
-          const targetRow = allRowsForSelection[r];
-          if (!targetRow) continue;
-          
-          // Only update if the value is different
-          if (targetRow.propertyValues[startPropertyKey] !== sourceValue) {
-            const updatedPropertyValues = {
-              ...targetRow.propertyValues,
-              [startPropertyKey]: sourceValue
-            };
-            
-            updates.push(
-              onUpdateAsset(targetRow.id, targetRow.name, updatedPropertyValues)
-                .catch(error => {
-                  console.error(`Failed to fill cell ${targetRow.id}-${startPropertyKey}:`, error);
-                })
-            );
-          }
+        if (!isFillingCellsRef.current) {
+          return;
         }
         
-        // Wait for all updates to complete
-        await Promise.all(updates);
+        // Check if we dragged downward - get fresh data including optimistic updates
+        const allRowsForSelection = getAllRowsForCellSelection();
+        const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
+        
+        // Find the cell under the cursor at end
+        const elementBelow = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
+        if (!elementBelow) {
+          // Reset to single cell selection if drag ended outside
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const cellElement = elementBelow.closest('td');
+        if (!cellElement) {
+          // Reset to single cell selection if drag ended outside
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const rowElement = cellElement.closest('tr');
+        if (!rowElement || 
+            rowElement.classList.contains('headerRowTop') || 
+            rowElement.classList.contains('headerRowBottom') || 
+            rowElement.classList.contains('editRow') ||
+            rowElement.classList.contains('addRow')) {
+          // Reset to single cell selection if drag ended on invalid row
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const endRowId = rowElement.getAttribute('data-row-id');
+        const endPropertyKey = cellElement.getAttribute('data-property-key');
+        
+        if (!endRowId || !endPropertyKey || endPropertyKey !== startPropertyKey) {
+          // Reset to single cell selection if drag ended on different property
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
+        
+        // Validate indices are valid (not -1)
+        if (startRowIndex === -1 || endRowIndex === -1) {
+          // Reset to single cell selection if indices are invalid
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        // Only fill if dragged downward and at least one row down
+        if (endRowIndex > startRowIndex) {
+          // Get fresh data right before filling to ensure we have the latest values
+          const allRowsForFill = getAllRowsForCellSelection();
+          
+          // Recalculate indices based on the fresh data to ensure consistency
+          const freshStartRowIndex = allRowsForFill.findIndex(r => r.id === startRowId);
+          const freshEndRowIndex = allRowsForFill.findIndex(r => r.id === endRowId);
+          
+          // Validate indices are valid (not -1)
+          if (freshStartRowIndex === -1 || freshEndRowIndex === -1 || freshEndRowIndex <= freshStartRowIndex) {
+            // Reset to single cell selection if indices are invalid
+            setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+            return;
+          }
+          
+          const sourceRowForFill = allRowsForFill[freshStartRowIndex];
+          const sourceProperty = orderedProperties.find(p => p.key === startPropertyKey);
+          
+          if (!sourceRowForFill || !sourceProperty || !onUpdateAsset) {
+            return;
+          }
+          
+          // Get source value from the latest data (includes optimistic updates)
+          const sourceValue = sourceRowForFill.propertyValues[startPropertyKey] ?? null;
+          
+          // CRITICAL: For batch fill, we need to update ONLY the target property
+          // We must preserve existing optimistic updates for other properties
+          // This prevents restoring old values when filling after clearing cells
+          
+          const updates: Array<Promise<void>> = [];
+          const fillUpdates: Array<{ rowId: string; propertyKey: string; value: any }> = [];
+          
+          // Collect all cells that need to be filled
+          for (let r = freshStartRowIndex + 1; r <= freshEndRowIndex; r++) {
+            if (r >= allRowsForFill.length) {
+              console.warn(`Row index ${r} is out of bounds (array length: ${allRowsForFill.length})`);
+              continue;
+            }
+            
+            const targetRow = allRowsForFill[r];
+            if (!targetRow) {
+              console.warn(`Row at index ${r} is undefined`);
+              continue;
+            }
+            
+            // Store the fill operation info
+            fillUpdates.push({
+              rowId: targetRow.id,
+              propertyKey: startPropertyKey,
+              value: sourceValue
+            });
+          }
+          
+          // CRITICAL FIX: Calculate merged optimistic updates BEFORE updating state
+          // This ensures we use the latest optimistic updates when building save data
+          // We need to simulate what the optimistic updates will be after the fill
+          const mergedOptimisticUpdates = new Map(optimisticEditUpdates);
+          fillUpdates.forEach(({ rowId, propertyKey, value }) => {
+            const existingUpdate = mergedOptimisticUpdates.get(rowId);
+            if (existingUpdate) {
+              // Merge: preserve existing optimistic updates, only update the target property
+              mergedOptimisticUpdates.set(rowId, {
+                name: existingUpdate.name,
+                propertyValues: {
+                  ...existingUpdate.propertyValues,
+                  [propertyKey]: value
+                }
+              });
+            } else {
+              // No existing optimistic update, get current row data
+              const targetRow = allRowsForFill.find(r => r.id === rowId);
+              if (targetRow) {
+                // Create new optimistic update with only the target property changed
+                mergedOptimisticUpdates.set(rowId, {
+                  name: targetRow.name,
+                  propertyValues: {
+                    ...targetRow.propertyValues,
+                    [propertyKey]: value
+                  }
+                });
+              }
+            }
+          });
+          
+          // Apply optimistic updates IMMEDIATELY for better UX
+          // IMPORTANT: Only update the target property, preserve other properties
+          setOptimisticEditUpdates(mergedOptimisticUpdates);
+          
+          // Prepare all update data using the merged optimistic updates
+          // This ensures we use the latest optimistic updates including the fill values
+          const updateDataMap = new Map<string, { 
+            rowId: string; 
+            rowName: string; 
+            propertyKey: string;
+            fillValue: any;
+            propertyValues: Record<string, any> 
+          }>();
+          
+          // Check if we're filling the name field (first property)
+          const isFillingNameField = orderedProperties[0]?.key === startPropertyKey;
+          
+          fillUpdates.forEach(({ rowId, propertyKey, value }) => {
+            // Get base row data from allRowsSource (not from allRowsForFill which includes old optimistic updates)
+            const baseRow = allRowsSource.find(r => r.id === rowId);
+            if (!baseRow) {
+              console.warn(`Row ${rowId} not found for fill update`);
+              return;
+            }
+            
+            // Get merged optimistic update (includes the fill value we just added)
+            const mergedOptimisticUpdate = mergedOptimisticUpdates.get(rowId);
+            
+            // Get the name field key (first property)
+            const nameFieldKey = orderedProperties[0]?.key;
+            
+            // Build propertyValues: start with BASE row data, then apply ALL merged optimistic updates
+            // CRITICAL: Start from baseRow.propertyValues (not targetRow.propertyValues) to avoid stale optimistic updates
+            // Then apply mergedOptimisticUpdate.propertyValues which includes both existing optimistic updates AND the fill value
+            // This ensures other columns' optimistic updates are preserved correctly
+            let propertyValuesToSave: Record<string, any>;
+            let rowNameToSave: string;
+            
+            if (mergedOptimisticUpdate) {
+              // CRITICAL FIX: When filling, we should ONLY save the filled property
+              // Other columns' optimistic updates should remain as optimistic updates until explicitly saved
+              // This prevents other columns from being overwritten when filling one column
+              // Start with baseRow.propertyValues (fresh from data source), then only add the fill value
+              propertyValuesToSave = {
+                ...baseRow.propertyValues,
+                [propertyKey]: value  // Only save the filled property, keep other columns' optimistic updates
+              };
+              
+              // For name field, use the optimistic update name if it exists
+              // Otherwise, use baseRow.name
+              rowNameToSave = mergedOptimisticUpdate.name || baseRow.name;
+            } else {
+              // No optimistic update (shouldn't happen after merge, but handle it)
+              propertyValuesToSave = {
+                ...baseRow.propertyValues,
+                [propertyKey]: value
+              };
+              
+              // If not filling name field, ensure name field value is preserved from baseRow
+              if (!isFillingNameField && nameFieldKey) {
+                // Preserve the current name field value from baseRow
+                const currentNameValue = baseRow.propertyValues[nameFieldKey];
+                if (currentNameValue === null || currentNameValue === undefined || currentNameValue === '') {
+                  // Name was cleared, keep it cleared
+                  propertyValuesToSave[nameFieldKey] = null;
+                  rowNameToSave = ''; // Empty name
+                } else {
+                  // Name has a value, use it
+                  rowNameToSave = String(currentNameValue);
+                }
+              } else {
+                // Filling name field or no name field, use baseRow.name
+                rowNameToSave = baseRow.name;
+              }
+            }
+            
+            updateDataMap.set(rowId, {
+              rowId,
+              rowName: rowNameToSave,
+              propertyKey,
+              fillValue: value,
+              propertyValues: propertyValuesToSave
+            });
+          });
+          
+          // Execute all updates
+          updateDataMap.forEach(({ rowId, rowName, propertyKey, fillValue, propertyValues }) => {
+            updates.push(
+              onUpdateAsset(rowId, rowName, propertyValues)
+                .then(() => {
+                  // Clear optimistic update after successful save (with delay to allow parent refresh)
+                  // CRITICAL: Only remove the filled property from optimistic update
+                  // Other columns' optimistic updates should remain until they are explicitly saved
+                  setTimeout(() => {
+                    setOptimisticEditUpdates(prev => {
+                      const newMap = new Map(prev);
+                      const currentUpdate = newMap.get(rowId);
+                      if (currentUpdate) {
+                        // Check if this property was filled by us
+                        if (currentUpdate.propertyValues[propertyKey] === fillValue) {
+                          // Remove only this property from optimistic update
+                          const updatedPropertyValues = { ...currentUpdate.propertyValues };
+                          delete updatedPropertyValues[propertyKey];
+                          
+                          if (Object.keys(updatedPropertyValues).length > 0) {
+                            // Keep other optimistic updates (e.g., other columns)
+                            newMap.set(rowId, {
+                              name: currentUpdate.name,
+                              propertyValues: updatedPropertyValues
+                            });
+                          } else {
+                            // No more optimistic updates for this row
+                            newMap.delete(rowId);
+                          }
+                        }
+                      }
+                      return newMap;
+                    });
+                  }, 500);
+                })
+                .catch(error => {
+                  console.error(`Failed to fill cell ${rowId}-${propertyKey}:`, error);
+                  // On error, remove only this property from optimistic update
+                  setOptimisticEditUpdates(prev => {
+                    const newMap = new Map(prev);
+                    const currentUpdate = newMap.get(rowId);
+                    if (currentUpdate) {
+                      const updatedPropertyValues = { ...currentUpdate.propertyValues };
+                      delete updatedPropertyValues[propertyKey];
+                      
+                      if (Object.keys(updatedPropertyValues).length > 0) {
+                        newMap.set(rowId, {
+                          name: currentUpdate.name,
+                          propertyValues: updatedPropertyValues
+                        });
+                      } else {
+                        newMap.delete(rowId);
+                      }
+                    }
+                    return newMap;
+                  });
+                  // Re-throw to be caught by Promise.allSettled
+                  throw error;
+                })
+            );
+          });
+          
+          // Wait for all updates to complete, but don't fail if some fail
+          const results = await Promise.allSettled(updates);
+          
+          // Check for failures and log them
+          const failures = results.filter(r => r.status === 'rejected');
+          if (failures.length > 0) {
+            console.warn(`Batch fill completed with ${failures.length} failures out of ${updates.length} updates`);
+          }
+        } else {
+          // If not dragged downward (dragged up or back to start), reset to single cell selection
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+        }
+      } finally {
+        // Always reset state, even if errors occurred
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
+        setFillDragStartCell(null);
       }
-      
-      setFillDragStartCell(null);
     };
     
     // Add event listeners
@@ -2400,6 +2958,7 @@ export function LibraryAssetsTable({
       if (!target.closest('.batchEditMenu')) {
         setBatchEditMenuVisible(false);
         setBatchEditMenuPosition(null);
+        batchEditMenuOriginalPositionRef.current = null;
       }
     };
     
@@ -2407,6 +2966,7 @@ export function LibraryAssetsTable({
       if (e.key === 'Escape') {
         setBatchEditMenuVisible(false);
         setBatchEditMenuPosition(null);
+        batchEditMenuOriginalPositionRef.current = null;
       }
     };
     
@@ -2416,6 +2976,109 @@ export function LibraryAssetsTable({
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
+    };
+  }, [batchEditMenuVisible]);
+
+  // Clear original position ref when menu is closed
+  useEffect(() => {
+    if (!batchEditMenuVisible) {
+      batchEditMenuOriginalPositionRef.current = null;
+    }
+  }, [batchEditMenuVisible]);
+
+  // Helper function to get current scroll position from scrollable container
+  const getCurrentScrollY = useCallback(() => {
+    const tableContainer = tableContainerRef.current;
+    if (!tableContainer) {
+      return window.scrollY || window.pageYOffset || 0;
+    }
+
+    // Check if tableContainer itself is scrollable
+    const containerStyle = window.getComputedStyle(tableContainer);
+    const hasOverflow = containerStyle.overflow === 'auto' || containerStyle.overflow === 'scroll' || 
+                       containerStyle.overflowY === 'auto' || containerStyle.overflowY === 'scroll';
+    
+    if (hasOverflow && tableContainer.scrollHeight > tableContainer.clientHeight) {
+      return tableContainer.scrollTop;
+    }
+
+    // Check parent elements for scrollable container
+    let element: HTMLElement | null = tableContainer.parentElement;
+    while (element && element !== document.body) {
+      const style = window.getComputedStyle(element);
+      const hasOverflow = style.overflow === 'auto' || style.overflow === 'scroll' || 
+                         style.overflowY === 'auto' || style.overflowY === 'scroll';
+      
+      if (hasOverflow && element.scrollHeight > element.clientHeight) {
+        return element.scrollTop;
+      }
+      
+      element = element.parentElement;
+    }
+
+    // Fallback to window scroll
+    return window.scrollY || window.pageYOffset || 0;
+  }, []);
+
+  // Update batch edit menu position on scroll
+  useEffect(() => {
+    if (!batchEditMenuVisible || !batchEditMenuOriginalPositionRef.current) return;
+
+    const updateMenuPosition = () => {
+      const originalPos = batchEditMenuOriginalPositionRef.current;
+      if (!originalPos) return;
+
+      const currentScrollY = getCurrentScrollY();
+      const initialScrollY = originalPos.scrollY || 0;
+      
+      // Calculate scroll delta (positive when scrolling down)
+      const scrollDelta = currentScrollY - initialScrollY;
+      
+      // Debug log (can be removed later)
+      // console.log('Scroll update:', { currentScrollY, initialScrollY, scrollDelta, newY: originalPos.y - scrollDelta });
+      
+      // For fixed positioning, when table scrolls down, menu should move up relative to viewport
+      // So we subtract the scroll delta from the original Y position
+      const newY = originalPos.y - scrollDelta;
+      
+      setBatchEditMenuPosition({
+        x: originalPos.x,
+        y: newY,
+      });
+    };
+
+    // Listen to scroll events on multiple possible containers
+    const tableContainer = tableContainerRef.current;
+    const scrollElements: (HTMLElement | Window)[] = [];
+    
+    // Add table container and its scrollable parents
+    if (tableContainer) {
+      scrollElements.push(tableContainer);
+      let element: HTMLElement | null = tableContainer.parentElement;
+      while (element && element !== document.body) {
+        const style = window.getComputedStyle(element);
+        const hasOverflow = style.overflow === 'auto' || style.overflow === 'scroll' || 
+                           style.overflowY === 'auto' || style.overflowY === 'scroll';
+        if (hasOverflow) {
+          scrollElements.push(element);
+        }
+        element = element.parentElement;
+      }
+    }
+    
+    // Always listen to window scroll
+    scrollElements.push(window);
+    
+    // Add event listeners
+    scrollElements.forEach(element => {
+      element.addEventListener('scroll', updateMenuPosition, true);
+    });
+    
+    return () => {
+      // Remove event listeners
+      scrollElements.forEach(element => {
+        element.removeEventListener('scroll', updateMenuPosition, true);
+      });
     };
   }, [batchEditMenuVisible]);
 
@@ -2429,20 +3092,30 @@ export function LibraryAssetsTable({
     e.preventDefault();
     e.stopPropagation();
     
+    const scrollY = getCurrentScrollY();
+    const menuPos = adjustMenuPosition(e.clientX, e.clientY);
+    
+    // Save original position with scroll info for scroll tracking
+    batchEditMenuOriginalPositionRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollY: scrollY,
+    };
+    
     // Priority 1: If there are selected rows (via checkbox), use row selection
     // Clear any cell selection first to avoid conflicts
     if (selectedRowIds.size > 0) {
       setSelectedCells(new Set());
       // Show batch edit menu (operations will use selectedRowIds)
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
     // Priority 2: If there are selected cells (from drag selection), show batch edit menu
     if (selectedCells.size > 0) {
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
@@ -2457,20 +3130,30 @@ export function LibraryAssetsTable({
     e.preventDefault();
     e.stopPropagation();
     
+    const scrollY = getCurrentScrollY();
+    const menuPos = adjustMenuPosition(e.clientX, e.clientY);
+    
+    // Save original position with scroll info for scroll tracking
+    batchEditMenuOriginalPositionRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      scrollY: scrollY,
+    };
+    
     // Priority 1: If there are selected rows (via checkbox), use row selection
     // Clear any cell selection first to avoid conflicts
     if (selectedRowIds.size > 0) {
       setSelectedCells(new Set());
       // Show batch edit menu (operations will use selectedRowIds)
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
     // Priority 2: If there are already selected cells (from drag selection), use them
     if (selectedCells.size > 0) {
       setBatchEditMenuVisible(true);
-      setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+      setBatchEditMenuPosition(menuPos);
       return;
     }
     
@@ -2482,8 +3165,29 @@ export function LibraryAssetsTable({
     
     // Show batch edit menu
     setBatchEditMenuVisible(true);
-    setBatchEditMenuPosition({ x: e.clientX, y: e.clientY });
+    setBatchEditMenuPosition(menuPos);
   };
+
+  // Helper function to adjust context menu position
+  // Menu appears directly at right-click position and expands downward
+  // User can scroll the table if menu is cut off at bottom
+  const adjustMenuPosition = useCallback((x: number, y: number, menuHeight: number = 400): { x: number; y: number } => {
+    const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
+    const padding = 10; // Padding from window edges
+    
+    // Use Y position directly - menu appears at right-click location and expands downward
+    // If menu is cut off at bottom, user can scroll the table to see it
+    const adjustedY = y;
+    
+    // Only adjust X position if menu would be cut off at right edge
+    let adjustedX = x;
+    const menuWidth = 180; // minWidth from batchEditMenu style
+    if (x + menuWidth > windowWidth - padding) {
+      adjustedX = Math.max(padding, windowWidth - menuWidth - padding);
+    }
+    
+    return { x: adjustedX, y: adjustedY };
+  }, []);
 
   // Helper function to check if a cell is on the border of cut selection
   const getCutBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
@@ -2510,6 +3214,32 @@ export function LibraryAssetsTable({
     
     return classes.join(' ');
   }, [cutSelectionBounds, cutCells, orderedProperties, getAllRowsForCellSelection]);
+
+  // Helper function to check if a cell is on the border of copy selection
+  const getCopyBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
+    if (!copySelectionBounds || !copyCells.has(`${rowId}-${orderedProperties[propertyIndex].key}` as CellKey)) {
+      return '';
+    }
+    
+    const allRowsForSelection = getAllRowsForCellSelection();
+    const rowIndex = allRowsForSelection.findIndex(r => r.id === rowId);
+    
+    if (rowIndex === -1) return '';
+    
+    const { minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex } = copySelectionBounds;
+    const isTop = rowIndex === minRowIndex;
+    const isBottom = rowIndex === maxRowIndex;
+    const isLeft = propertyIndex === minPropertyIndex;
+    const isRight = propertyIndex === maxPropertyIndex;
+    
+    const classes: string[] = [];
+    if (isTop) classes.push(styles.copyBorderTop);
+    if (isBottom) classes.push(styles.copyBorderBottom);
+    if (isLeft) classes.push(styles.copyBorderLeft);
+    if (isRight) classes.push(styles.copyBorderRight);
+    
+    return classes.join(' ');
+  }, [copySelectionBounds, copyCells, orderedProperties, getAllRowsForCellSelection]);
 
   // Helper function to check if a cell is on the border of selection
   const getSelectionBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
@@ -3077,8 +3807,34 @@ export function LibraryAssetsTable({
     setClipboardData(clipboardArray);
     setIsCutOperation(false); // Important: mark as copy, not cut
     
-    // Do NOT set cutCells or cutSelectionBounds for copy operation
-    // Copy operation should not show visual feedback (no dashed border)
+    // Calculate selection bounds for border rendering (only show outer border)
+    const rowIndices = rowIds.map(rowId => {
+      return allRowsForSelection.findIndex(r => r.id === rowId);
+    }).filter(idx => idx !== -1);
+    
+    const propertyIndices = sortedPropertyKeys.map(propKey => {
+      return orderedProperties.findIndex(p => p.key === propKey);
+    }).filter(idx => idx !== -1);
+    
+    const minRowIndex = Math.min(...rowIndices);
+    const maxRowIndex = Math.max(...rowIndices);
+    const minPropertyIndex = Math.min(...propertyIndices);
+    const maxPropertyIndex = Math.max(...propertyIndices);
+    
+    // Mark cells as copied (for dashed border visual feedback)
+    setCopyCells(new Set(validCells));
+    
+    // Store selection bounds for border rendering (only show outer border)
+    if (rowIndices.length > 0 && propertyIndices.length > 0) {
+      setCopySelectionBounds({
+        minRowIndex,
+        maxRowIndex,
+        minPropertyIndex,
+        maxPropertyIndex,
+        rowIds,
+        propertyKeys: sortedPropertyKeys,
+      });
+    }
     
     // Show toast message immediately
     setToastMessage('Content copied');
@@ -3389,7 +4145,12 @@ export function LibraryAssetsTable({
       setIsCutOperation(false);
       setClipboardData(null);
     } else {
-      // If not a cut operation, still clear clipboard data
+      // If not a cut operation, clear copy state to remove visual feedback (dashed border)
+      if (copyCells.size > 0) {
+        setCopyCells(new Set());
+        setCopySelectionBounds(null);
+      }
+      // Clear clipboard data
       setClipboardData(null);
       setIsCutOperation(false);
     }
@@ -3408,6 +4169,86 @@ export function LibraryAssetsTable({
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
   }, [clipboardData, selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, isCutOperation, cutCells, onSaveAsset, onUpdateAsset, library]);
+
+  // Keyboard shortcuts for Cut, Copy, Paste
+  useEffect(() => {
+    // Detect OS to use correct modifier key (Ctrl for Windows/Linux, Cmd for macOS)
+    // Use modern API if available, fallback to userAgent
+    const isMac = typeof navigator !== 'undefined' && (
+      // Modern API (Chrome 92+, Edge 92+) - check if available
+      (('userAgentData' in navigator) && 
+       (navigator as any).userAgentData?.platform?.toLowerCase().includes('mac')) ||
+      // Fallback to userAgent
+      navigator.userAgent.toUpperCase().includes('MAC')
+    );
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger shortcuts if:
+      // 1. User is editing a cell (contentEditable)
+      // 2. User is typing in an input, textarea, or select element
+      // 3. User is in a modal or dropdown
+      const target = e.target as HTMLElement;
+      const isEditing = editingCell !== null;
+      const isInputElement = target.tagName === 'INPUT' || 
+                            target.tagName === 'TEXTAREA' || 
+                            target.tagName === 'SELECT' ||
+                            target.isContentEditable ||
+                            target.closest('input') !== null ||
+                            target.closest('textarea') !== null ||
+                            target.closest('[contenteditable="true"]') !== null ||
+                            target.closest('.ant-select') !== null ||
+                            target.closest('.ant-input') !== null ||
+                            target.closest('.ant-modal') !== null;
+      
+      if (isEditing || isInputElement) {
+        return; // Let browser handle default behavior
+      }
+
+      // Check modifier key
+      const hasModifier = isMac ? e.metaKey : e.ctrlKey;
+      if (!hasModifier) {
+        return;
+      }
+
+      // Handle Cut (Ctrl/Cmd + X)
+      if (e.key === 'x' || e.key === 'X') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (selectedCells.size > 0 || selectedRowIds.size > 0) {
+          handleCut();
+        }
+        return;
+      }
+
+      // Handle Copy (Ctrl/Cmd + C)
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (selectedCells.size > 0 || selectedRowIds.size > 0) {
+          handleCopy();
+        }
+        return;
+      }
+
+      // Handle Paste (Ctrl/Cmd + V)
+      if (e.key === 'v' || e.key === 'V') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (clipboardData && clipboardData.length > 0 && clipboardData[0].length > 0) {
+          handlePaste();
+        }
+        return;
+      }
+    };
+
+    // Add event listener
+    window.addEventListener('keydown', handleKeyDown);
+
+    // Cleanup
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [editingCell, selectedCells, selectedRowIds, clipboardData, handleCut, handleCopy, handlePaste]);
 
   // Handle Insert Row Above operation
   const handleInsertRowAbove = useCallback(async () => {
@@ -4449,7 +5290,9 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    const isCellCopy = copyCells.has(cellKey);
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4470,12 +5313,15 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
@@ -4487,6 +5333,22 @@ export function LibraryAssetsTable({
                         onClick={(e) => handleCellClick(row.id, property.key, e)}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
+                        onMouseEnter={(e) => {
+                          // Show ASSET CARD when hovering over cell with assetId, but only if cell is not selected
+                          if (assetId && !isCellSelected) {
+                            handleAvatarMouseEnter(assetId, e.currentTarget);
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          // Hide ASSET CARD when leaving cell, but only if cell is not selected
+                          if (assetId && !isCellSelected) {
+                            handleAvatarMouseLeave();
+                          }
+                          // Handle expand icon hover
+                          if (hoveredCellForExpand?.rowId === row.id && hoveredCellForExpand?.propertyKey === property.key) {
+                            setHoveredCellForExpand(null);
+                          }
+                        }}
                         onMouseMove={(e) => {
                           if (showExpandIcon) {
                             const rect = e.currentTarget.getBoundingClientRect();
@@ -4506,40 +5368,50 @@ export function LibraryAssetsTable({
                             }
                           }
                         }}
-                        onMouseLeave={() => {
-                          if (hoveredCellForExpand?.rowId === row.id && hoveredCellForExpand?.propertyKey === property.key) {
-                            setHoveredCellForExpand(null);
-                          }
-                        }}
                       >
                           <ReferenceField
                             property={property}
                             assetId={assetId}
                             rowId={row.id}
                             assetNamesCache={assetNamesCache}
+                            isCellSelected={isCellSelected}
                             onAvatarMouseEnter={handleAvatarMouseEnter}
                             onAvatarMouseLeave={handleAvatarMouseLeave}
                             onOpenReferenceModal={handleOpenReferenceModal}
                           />
+                          {/* Show detail icon when cell is selected - positioned on the right */}
+                          {isCellSelected && (
+                            <Image
+                              src={tableAssetDetailIcon}
+                              alt=""
+                              width={16}
+                              height={16}
+                              className={styles.referenceDetailIcon}
+                              onMouseEnter={(e) => {
+                                // Show ASSET CARD when hovering over detail icon in selected cell
+                                if (assetId) {
+                                  e.stopPropagation();
+                                  handleAvatarMouseEnter(assetId, e.currentTarget);
+                                }
+                              }}
+                              onMouseLeave={(e) => {
+                                // Hide ASSET CARD when leaving detail icon
+                                if (assetId) {
+                                  e.stopPropagation();
+                                  handleAvatarMouseLeave();
+                                }
+                              }}
+                            />
+                          )}
                           {/* Show collaboration avatars in cell corner */}
                           {editingUsers.length > 0 && (
                             <CellPresenceAvatars users={editingUsers} />
                           )}
-                          {/* Show expand icon for cell selection */}
-                          {shouldShowExpandIcon && (
-                            <div
-                              className={styles.cellExpandIcon}
-                              onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                            >
-                              <Image
-                                src={batchEditAddIcon}
-                                alt="Expand selection"
-                                width={18}
-                                height={18}
-                                style={{ pointerEvents: 'none' }}
-                              />
-                            </div>
-                          )}
+                          {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                          <div
+                            className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                          />
                         </td>
                       );
                     }
@@ -4575,7 +5447,9 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    const isCellCopy = copyCells.has(cellKey);
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4596,12 +5470,15 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
@@ -4684,20 +5561,11 @@ export function LibraryAssetsTable({
                               // Show blank instead of dash for empty media fields
                               <span></span>
                             )}
-                            {shouldShowExpandIcon && (
-                              <div
-                                className={styles.cellExpandIcon}
-                                onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                              >
-                                <Image
-                                  src={batchEditAddIcon}
-                                  alt="Expand selection"
-                                  width={18}
-                                  height={18}
-                                  style={{ pointerEvents: 'none' }}
-                                />
-                              </div>
-                            )}
+                            {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                            <div
+                              className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                              onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                            />
                           </>
                         )}
                         {/* Show collaboration avatars in cell corner */}
@@ -4729,7 +5597,9 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    const isCellCopy = copyCells.has(cellKey);
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4750,12 +5620,15 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
@@ -4894,21 +5767,11 @@ export function LibraryAssetsTable({
                         {editingUsers.length > 0 && (
                           <CellPresenceAvatars users={editingUsers} />
                         )}
-                        {/* Show expand icon for cell selection */}
-                        {shouldShowExpandIcon && (
-                          <div
-                            className={styles.cellExpandIcon}
-                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                          >
-                            <Image
-                              src={batchEditAddIcon}
-                              alt="Expand selection"
-                              width={18}
-                              height={18}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </div>
-                        )}
+                        {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                        <div
+                          className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                        />
                       </td>
                     );
                   }
@@ -4935,7 +5798,9 @@ export function LibraryAssetsTable({
                     const cellKey: CellKey = `${row.id}-${property.key}`;
                     const isCellSelected = selectedCells.has(cellKey);
                     const isCellCut = cutCells.has(cellKey);
-                    const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                    const isCellCopy = copyCells.has(cellKey);
+                    // Show expand icon when cell is selected (single or multiple selection)
+                    const showExpandIcon = isCellSelected;
                     const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                     const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                     
@@ -4956,12 +5821,15 @@ export function LibraryAssetsTable({
                       cutBorderClass = borderClasses.join(' ');
                     }
                     
+                    // Check if cell is on border of copy selection (only show outer border)
+                    const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                    
                     // Check if cell is on border of selection (only show outer border)
                     const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                     
                     const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                       hoveredCellForExpand?.propertyKey === property.key;
-                    const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                    const shouldShowExpandIcon = showExpandIcon;
                     
                     return (
                       <td
@@ -5106,21 +5974,11 @@ export function LibraryAssetsTable({
                         {editingUsers.length > 0 && (
                           <CellPresenceAvatars users={editingUsers} />
                         )}
-                        {/* Show expand icon for cell selection */}
-                        {shouldShowExpandIcon && (
-                          <div
-                            className={styles.cellExpandIcon}
-                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                          >
-                            <Image
-                              src={batchEditAddIcon}
-                              alt="Expand selection"
-                              width={18}
-                              height={18}
-                              style={{ pointerEvents: 'none' }}
-                            />
-                          </div>
-                        )}
+                        {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                        <div
+                          className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                        />
                       </td>
                     );
                   }
@@ -5156,7 +6014,9 @@ export function LibraryAssetsTable({
                   const cellKey: CellKey = `${row.id}-${property.key}`;
                   const isCellSelected = selectedCells.has(cellKey);
                   const isCellCut = cutCells.has(cellKey);
-                  const showExpandIcon = selectedCells.size === 1 && isCellSelected;
+                  const isCellCopy = copyCells.has(cellKey);
+                  // Show expand icon when cell is selected (single or multiple selection)
+                  const showExpandIcon = isCellSelected;
                   const isMultipleSelected = selectedCells.size > 1 && isCellSelected;
                   const isSingleSelected = selectedCells.size === 1 && isCellSelected;
                   
@@ -5177,12 +6037,16 @@ export function LibraryAssetsTable({
                     cutBorderClass = borderClasses.join(' ');
                   }
                   
+                  // Check if cell is on border of copy selection (only show outer border)
+                  const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
+                  
                   // Check if cell is on border of selection (only show outer border)
                   const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
                   
                   const isHoveredForExpand = hoveredCellForExpand?.rowId === row.id && 
                     hoveredCellForExpand?.propertyKey === property.key;
-                  const shouldShowExpandIcon = showExpandIcon && isHoveredForExpand;
+                  // Show expand icon when cell is selected (always visible, not dependent on hover)
+                  const shouldShowExpandIcon = showExpandIcon;
                   
                   return (
                     <td
@@ -5221,38 +6085,174 @@ export function LibraryAssetsTable({
                     >
                       {isCellEditing ? (
                         // Cell is being edited: use contentEditable for direct cell editing
-                        <span
-                          ref={editingCellRef}
-                          contentEditable
-                          suppressContentEditableWarning
-                          onFocus={() => {
-                            // Update presence tracking when input gains focus
-                            if (editingCell) {
-                              handleCellFocus(editingCell.rowId, editingCell.propertyKey);
-                            }
-                          }}
-                          onBlur={(e) => {
-                            if (!isComposingRef.current) {
-                              const newValue = e.currentTarget.textContent || '';
-                              setEditingCellValue(newValue);
-                              handleSaveEditedCell();
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !isComposingRef.current) {
-                              e.preventDefault();
-                              const newValue = e.currentTarget.textContent || '';
-                              setEditingCellValue(newValue);
-                              handleSaveEditedCell();
-                            } else if (e.key === 'Escape') {
-                              e.preventDefault();
-                              handleCancelEditing();
-                            }
-                          }}
-                          onInput={(e) => {
+                        <div style={{ position: 'relative', width: '100%' }}>
+                          <span
+                            ref={editingCellRef}
+                            contentEditable
+                            suppressContentEditableWarning
+                            onFocus={() => {
+                              // Update presence tracking when input gains focus
+                              if (editingCell) {
+                                handleCellFocus(editingCell.rowId, editingCell.propertyKey);
+                              }
+                            }}
+                            onBlur={(e) => {
+                              if (!isComposingRef.current) {
+                                const newValue = e.currentTarget.textContent || '';
+                                setEditingCellValue(newValue);
+                                handleSaveEditedCell();
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !isComposingRef.current) {
+                                e.preventDefault();
+                                const newValue = e.currentTarget.textContent || '';
+                                setEditingCellValue(newValue);
+                                handleSaveEditedCell();
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                handleCancelEditing();
+                              }
+                            }}
+                            onInput={(e) => {
                             // Only update state when not composing (for IME input)
                             if (!isComposingRef.current) {
-                              const newValue = e.currentTarget.textContent || '';
+                              let newValue = e.currentTarget.textContent || '';
+                              
+                              // Validate int type: only allow integers
+                              if (property.dataType === 'int' && newValue !== '') {
+                                // Check if contains decimal point - show error immediately
+                                if (newValue.includes('.')) {
+                                  setTypeValidationError('type mismatch');
+                                  // Remove decimal point and everything after it
+                                  const intValue = newValue.split('.')[0];
+                                  const selection = window.getSelection();
+                                  const range = selection?.getRangeAt(0);
+                                  const cursorPosition = range?.startOffset || 0;
+                                  
+                                  e.currentTarget.textContent = intValue;
+                                  
+                                  // Restore cursor position
+                                  if (range && selection) {
+                                    try {
+                                      const newRange = document.createRange();
+                                      const textNode = e.currentTarget.firstChild;
+                                      if (textNode) {
+                                        const newPosition = Math.min(cursorPosition, intValue.length);
+                                        newRange.setStart(textNode, newPosition);
+                                        newRange.setEnd(textNode, newPosition);
+                                        selection.removeAllRanges();
+                                        selection.addRange(newRange);
+                                      }
+                                    } catch (err) {
+                                      // Ignore cursor restoration errors
+                                    }
+                                  }
+                                  newValue = intValue;
+                                } else {
+                                  // Clear error if no decimal point
+                                  setTypeValidationError(null);
+                                }
+                                
+                                // Remove any non-digit characters except minus sign at the start
+                                // Allow: digits, minus sign only at the beginning
+                                const cleaned = newValue.replace(/[^\d-]/g, '');
+                                // Ensure minus sign is only at the start
+                                const intValue = cleaned.startsWith('-') 
+                                  ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                  : cleaned.replace(/-/g, '');
+                                
+                                // Validate format: optional minus followed by digits
+                                if (!/^-?\d*$/.test(intValue)) {
+                                  // Restore previous valid value
+                                  e.currentTarget.textContent = editingCellValue;
+                                  return;
+                                }
+                                
+                                // Only update if value changed
+                                if (intValue !== newValue) {
+                                  const selection = window.getSelection();
+                                  const range = selection?.getRangeAt(0);
+                                  const cursorPosition = range?.startOffset || 0;
+                                  
+                                  e.currentTarget.textContent = intValue;
+                                  
+                                  // Restore cursor position
+                                  if (range && selection) {
+                                    try {
+                                      const newRange = document.createRange();
+                                      const textNode = e.currentTarget.firstChild;
+                                      if (textNode) {
+                                        const newPosition = Math.min(cursorPosition, intValue.length);
+                                        newRange.setStart(textNode, newPosition);
+                                        newRange.setEnd(textNode, newPosition);
+                                        selection.removeAllRanges();
+                                        selection.addRange(newRange);
+                                      }
+                                    } catch (err) {
+                                      // Ignore cursor restoration errors
+                                    }
+                                  }
+                                }
+                                
+                                newValue = intValue;
+                              }
+                              // Validate float type: must contain decimal point
+                              else if (property.dataType === 'float' && newValue !== '') {
+                                // Clear error initially
+                                setTypeValidationError(null);
+                                
+                                // Allow digits, one decimal point, and optional minus sign
+                                // Remove invalid characters but keep valid float format
+                                const cleaned = newValue.replace(/[^\d.-]/g, '');
+                                // Ensure minus sign is only at the start
+                                const floatValue = cleaned.startsWith('-') 
+                                  ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                  : cleaned.replace(/-/g, '');
+                                // Ensure only one decimal point
+                                const parts = floatValue.split('.');
+                                const finalValue = parts.length > 2 
+                                  ? parts[0] + '.' + parts.slice(1).join('')
+                                  : floatValue;
+                                
+                                if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                                  // Restore previous valid value
+                                  e.currentTarget.textContent = editingCellValue;
+                                  return;
+                                }
+                                
+                                // Only update if value changed
+                                if (finalValue !== newValue) {
+                                  const selection = window.getSelection();
+                                  const range = selection?.getRangeAt(0);
+                                  const cursorPosition = range?.startOffset || 0;
+                                  
+                                  e.currentTarget.textContent = finalValue;
+                                  
+                                  // Restore cursor position
+                                  if (range && selection) {
+                                    try {
+                                      const newRange = document.createRange();
+                                      const textNode = e.currentTarget.firstChild;
+                                      if (textNode) {
+                                        const newPosition = Math.min(cursorPosition, finalValue.length);
+                                        newRange.setStart(textNode, newPosition);
+                                        newRange.setEnd(textNode, newPosition);
+                                        selection.removeAllRanges();
+                                        selection.addRange(newRange);
+                                      }
+                                    } catch (err) {
+                                      // Ignore cursor restoration errors
+                                    }
+                                  }
+                                }
+                                
+                                newValue = finalValue;
+                              } else {
+                                // Clear error for other types
+                                setTypeValidationError(null);
+                              }
+                              
                               setEditingCellValue(newValue);
                             }
                           }}
@@ -5261,16 +6261,95 @@ export function LibraryAssetsTable({
                           }}
                           onCompositionEnd={(e) => {
                             isComposingRef.current = false;
-                            const newValue = e.currentTarget.textContent || '';
+                            let newValue = e.currentTarget.textContent || '';
+                            
+                            // Validate int type: only allow integers
+                            if (property.dataType === 'int' && newValue !== '') {
+                              // Check if contains decimal point - show error
+                              if (newValue.includes('.')) {
+                                setTypeValidationError('type mismatch');
+                                const intValue = newValue.split('.')[0];
+                                e.currentTarget.textContent = intValue;
+                                newValue = intValue;
+                              } else {
+                                setTypeValidationError(null);
+                              }
+                              
+                              // Remove any non-digit characters except minus sign at the start
+                              const cleaned = newValue.replace(/[^\d-]/g, '');
+                              const intValue = cleaned.startsWith('-') 
+                                ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                : cleaned.replace(/-/g, '');
+                              
+                              if (!/^-?\d*$/.test(intValue)) {
+                                e.currentTarget.textContent = editingCellValue;
+                                return;
+                              }
+                              
+                              if (intValue !== newValue) {
+                                e.currentTarget.textContent = intValue;
+                              }
+                              newValue = intValue;
+                            }
+                            // Validate float type: must contain decimal point
+                            else if (property.dataType === 'float' && newValue !== '') {
+                              setTypeValidationError(null); // Clear error initially
+                              
+                              const cleaned = newValue.replace(/[^\d.-]/g, '');
+                              const floatValue = cleaned.startsWith('-') 
+                                ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                : cleaned.replace(/-/g, '');
+                              const parts = floatValue.split('.');
+                              const finalValue = parts.length > 2 
+                                ? parts[0] + '.' + parts.slice(1).join('')
+                                : floatValue;
+                              
+                              if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                                e.currentTarget.textContent = editingCellValue;
+                                return;
+                              }
+                              
+                              if (finalValue !== newValue) {
+                                e.currentTarget.textContent = finalValue;
+                              }
+                              newValue = finalValue;
+                            } else {
+                              setTypeValidationError(null);
+                            }
+                            
                             setEditingCellValue(newValue);
                           }}
-                          style={{
-                            outline: 'none',
-                            minHeight: '1em',
-                            display: 'block',
-                            width: '100%'
-                          }}
-                        />
+                            style={{
+                              outline: 'none',
+                              minHeight: '1em',
+                              display: 'block',
+                              width: '100%'
+                            }}
+                          />
+                          {typeValidationError && (
+                            <Tooltip 
+                              title={typeValidationError}
+                              open={true}
+                              placement="bottom"
+                              overlayStyle={{ fontSize: '12px' }}
+                            >
+                              <div
+                                ref={typeValidationErrorRef}
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  right: 0,
+                                  width: '8px',
+                                  height: '8px',
+                                  backgroundColor: '#ff4d4f',
+                                  borderRadius: '50%',
+                                  zIndex: 1001,
+                                  pointerEvents: 'none'
+                                }}
+                              />
+                            </Tooltip>
+                          )}
+                        </div>
                       ) : (
                         <>
                           {isNameField ? (
@@ -5283,7 +6362,7 @@ export function LibraryAssetsTable({
                                   handleCellDoubleClick(row, property, e);
                                 }}
                               >
-                                {display ? display : <span className={styles.placeholderValue}>—</span>}
+                                {display || ''}
                               </span>
                               <button
                                 className={styles.viewDetailButton}
@@ -5317,21 +6396,11 @@ export function LibraryAssetsTable({
                       {editingUsers.length > 0 && (
                         <CellPresenceAvatars users={editingUsers} />
                       )}
-                      {/* Show expand icon for cell selection */}
-                      {shouldShowExpandIcon && (
-                        <div
-                          className={styles.cellExpandIcon}
-                          onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                        >
-                          <Image
-                            src={batchEditAddIcon}
-                            alt="Expand selection"
-                            width={18}
-                            height={18}
-                            style={{ pointerEvents: 'none' }}
-                          />
-                        </div>
-                      )}
+                      {/* Show expand icon for cell selection - always render, CSS controls visibility */}
+                      <div
+                        className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}
+                        onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                      />
                     </td>
                   );
                 })}
@@ -5348,13 +6417,29 @@ export function LibraryAssetsTable({
                   const assetId = newRowData[property.key] ? String(newRowData[property.key]) : null;
                   
                   return (
-                    <td key={property.id} className={styles.editCell}>
+                    <td 
+                      key={property.id} 
+                      className={styles.editCell}
+                      onMouseEnter={(e) => {
+                        // Show ASSET CARD when hovering over cell with assetId
+                        if (assetId) {
+                          handleAvatarMouseEnter(assetId, e.currentTarget);
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        // Hide ASSET CARD when leaving cell
+                        if (assetId) {
+                          handleAvatarMouseLeave();
+                        }
+                      }}
+                    >
                       <div className={styles.referenceInputContainer}>
                         <ReferenceField
                           property={property}
                           assetId={assetId}
                           rowId="new"
                           assetNamesCache={assetNamesCache}
+                          isCellSelected={false}
                           onAvatarMouseEnter={handleAvatarMouseEnter}
                           onAvatarMouseLeave={handleAvatarMouseLeave}
                           onOpenReferenceModal={handleOpenReferenceModal}
@@ -5457,12 +6542,55 @@ export function LibraryAssetsTable({
                   );
                 }
                 
+                // Determine input type and validation based on data type
+                const isInt = property.dataType === 'int';
+                const isFloat = property.dataType === 'float';
+                const inputType = isInt || isFloat ? 'number' : 'text';
+                const step = isInt ? '1' : isFloat ? 'any' : undefined;
+                
                 return (
                   <td key={property.id} className={styles.editCell}>
                     <Input
+                      type={inputType}
+                      step={step}
                       value={newRowData[property.key] || ''}
-                      onChange={(e) => handleInputChange(property.key, e.target.value)}
-                      placeholder={`Enter ${property.name.toLowerCase()}`}
+                      onChange={(e) => {
+                        let value = e.target.value;
+                        // Validate int type: only allow integers
+                        if (isInt && value !== '') {
+                          // Remove any non-digit characters except minus sign at the start
+                          const cleaned = value.replace(/[^\d-]/g, '');
+                          const intValue = cleaned.startsWith('-') 
+                            ? '-' + cleaned.slice(1).replace(/-/g, '')
+                            : cleaned.replace(/-/g, '');
+                          
+                          // Only update if valid integer format
+                          if (!/^-?\d*$/.test(intValue)) {
+                            return; // Don't update if invalid
+                          }
+                          value = intValue;
+                        }
+                        // Validate float type: allow decimals (integers are also valid for float)
+                        else if (isFloat && value !== '') {
+                          // Remove invalid characters but keep valid float format
+                          const cleaned = value.replace(/[^\d.-]/g, '');
+                          const floatValue = cleaned.startsWith('-') 
+                            ? '-' + cleaned.slice(1).replace(/-/g, '')
+                            : cleaned.replace(/-/g, '');
+                          // Ensure only one decimal point
+                          const parts = floatValue.split('.');
+                          const finalValue = parts.length > 2 
+                            ? parts[0] + '.' + parts.slice(1).join('')
+                            : floatValue;
+                          
+                          if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                            return; // Don't update if invalid
+                          }
+                          value = finalValue;
+                        }
+                        handleInputChange(property.key, value);
+                      }}
+                      placeholder=""
                       className={styles.editInput}
                       disabled={isSaving}
                     />

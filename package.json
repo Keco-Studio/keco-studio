@@ -45,6 +45,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "validate": "npm run lint && npm run build",
     "test:e2e": "playwright test",
     "test:e2e:parallel": "playwright test --workers=50%",
     "test:e2e:clean": "tsx scripts/clean-remote-test-data.ts && playwright test",

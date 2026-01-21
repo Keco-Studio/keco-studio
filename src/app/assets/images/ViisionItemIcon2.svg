@@ -1,0 +1,7 @@
+<svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="30" height="30" rx="15" fill="#FF6CAA" style="fill:#FF6CAA;fill:color(display-p3 1.0000 0.4224 0.6650);fill-opacity:1;"/>
+<rect x="0.3125" y="0.3125" width="29.375" height="29.375" rx="14.6875" stroke="black" stroke-opacity="0.19" style="stroke:black;stroke-opacity:0.19;" stroke-width="0.625"/>
+<path d="M15 15.625C15.3452 15.625 15.625 15.3452 15.625 15C15.625 14.6548 15.3452 14.375 15 14.375C14.6548 14.375 14.375 14.6548 14.375 15C14.375 15.3452 14.6548 15.625 15 15.625Z" stroke="white" style="stroke:white;stroke-opacity:1;" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M15 18.125C16.7259 18.125 18.125 16.7259 18.125 15C18.125 13.2741 16.7259 11.875 15 11.875C13.2741 11.875 11.875 13.2741 11.875 15C11.875 16.7259 13.2741 18.125 15 18.125Z" stroke="white" style="stroke:white;stroke-opacity:1;" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M15 20.625C18.1066 20.625 20.625 18.1066 20.625 15C20.625 11.8934 18.1066 9.375 15 9.375C11.8934 9.375 9.375 11.8934 9.375 15C9.375 18.1066 11.8934 20.625 15 20.625Z" stroke="white" style="stroke:white;stroke-opacity:1;" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
