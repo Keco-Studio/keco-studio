@@ -1825,6 +1825,12 @@ export function LibraryAssetsTable({
     // For media files, we need to save immediately when changed
     if (!onUpdateAsset) return;
     
+    // Get rowId from editingCell state
+    if (!editingCell || editingCell.propertyKey !== propertyKey) {
+      return;
+    }
+    
+    const rowId = editingCell.rowId;
     const row = rows.find(r => r.id === rowId);
     if (!row) {
       // Try to find in allRowsSource if not in rows
