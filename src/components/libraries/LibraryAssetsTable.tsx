@@ -99,6 +99,10 @@ export function LibraryAssetsTable({
   const editingCellRef = useRef<HTMLSpanElement | null>(null);
   const isComposingRef = useRef(false);
   
+  // Type validation error state: track validation errors for current editing cell
+  const [typeValidationError, setTypeValidationError] = useState<string | null>(null);
+  const typeValidationErrorRef = useRef<HTMLDivElement | null>(null);
+  
   // Initialize: sync props.rows to Yjs (only on first time, when Yjs is empty)
   useEffect(() => {
     if (yRows.length === 0 && rows.length > 0) {
@@ -605,19 +609,77 @@ export function LibraryAssetsTable({
   // Clean up optimistic assets when rows are updated (parent refresh)
   // This ensures that when a real asset is added/updated from the parent, we remove the optimistic one
   useEffect(() => {
-    // Clear all optimistic edit updates when rows prop changes
-    // This ensures external updates (e.g., from sidebar) always override optimistic updates
-    // The parent component will provide the updated data, so we should use it
+    // CRITICAL FIX: Only clear optimistic updates when the row data matches the optimistic update
+    // This prevents clearing optimistic updates for other columns when one column is filled
+    // We should only clear when ALL property values in the optimistic update match the row data
     setOptimisticEditUpdates(prev => {
       if (prev.size === 0) return prev;
       
-      // Clear optimistic updates for all assets that exist in the new rows
       const newMap = new Map(prev);
       let hasChanges = false;
       const clearedIds: string[] = [];
       
       for (const row of rows) {
-        if (newMap.has(row.id)) {
+        const optimisticUpdate = newMap.get(row.id);
+        if (!optimisticUpdate) continue;
+        
+        // Check if the optimistic update matches the row data
+        // If all property values in the optimistic update match the row data, we can clear it
+        // Otherwise, keep the optimistic update (it might be for other columns)
+        let allMatch = true;
+        
+        // Check if name matches
+        if (optimisticUpdate.name !== row.name) {
+          allMatch = false;
+        }
+        
+        // Check if all property values in optimistic update match row data
+        if (allMatch) {
+          for (const [propertyKey, optimisticValue] of Object.entries(optimisticUpdate.propertyValues)) {
+            const rowValue = row.propertyValues[propertyKey];
+            
+            // Compare values (handle null/undefined)
+            if (optimisticValue !== rowValue) {
+              // For objects, do a deeper comparison
+              if (typeof optimisticValue === 'object' && optimisticValue !== null &&
+                  typeof rowValue === 'object' && rowValue !== null) {
+                const optimisticObj = optimisticValue as Record<string, any>;
+                const rowObj = rowValue as Record<string, any>;
+                
+                // Check if it's MediaFileMetadata-like object
+                if (optimisticObj.url && rowObj.url) {
+                  if (optimisticObj.url !== rowObj.url && 
+                      optimisticObj.path !== rowObj.path &&
+                      optimisticObj.fileName !== rowObj.fileName) {
+                    allMatch = false;
+                    break;
+                  }
+                } else {
+                  // For other objects, compare all keys
+                  const optimisticKeys = Object.keys(optimisticObj);
+                  const rowKeys = Object.keys(rowObj);
+                  if (optimisticKeys.length !== rowKeys.length) {
+                    allMatch = false;
+                    break;
+                  }
+                  for (const key of optimisticKeys) {
+                    if (optimisticObj[key] !== rowObj[key]) {
+                      allMatch = false;
+                      break;
+                    }
+                  }
+                  if (!allMatch) break;
+                }
+              } else {
+                allMatch = false;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Only clear if all values match (meaning the optimistic update has been saved)
+        if (allMatch) {
           newMap.delete(row.id);
           clearedIds.push(row.id);
           hasChanges = true;
@@ -1821,6 +1883,72 @@ export function LibraryAssetsTable({
       });
   };
 
+  // Validate value based on data type
+  const validateValueByType = useCallback((value: string, dataType: string): { isValid: boolean; error: string | null; normalizedValue: string | number | null } => {
+    if (value === '' || value === null || value === undefined) {
+      return { isValid: true, error: null, normalizedValue: null };
+    }
+    
+    if (dataType === 'int') {
+      // Int type: must be a valid integer (no decimal point)
+      const trimmed = value.trim();
+      if (trimmed === '' || trimmed === '-') {
+        return { isValid: true, error: null, normalizedValue: null };
+      }
+      
+      // Check if contains decimal point
+      if (trimmed.includes('.')) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      // Check if valid integer
+      const intValue = parseInt(trimmed, 10);
+      if (isNaN(intValue) || String(intValue) !== trimmed.replace(/^-/, '')) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      return { isValid: true, error: null, normalizedValue: intValue };
+    } else if (dataType === 'float') {
+      // Float type: must contain a decimal point (cannot be pure integer)
+      const trimmed = value.trim();
+      if (trimmed === '' || trimmed === '-' || trimmed === '.') {
+        return { isValid: true, error: null, normalizedValue: null };
+      }
+      
+      // Check if contains decimal point
+      if (!trimmed.includes('.')) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      // Check if valid float
+      const floatValue = parseFloat(trimmed);
+      if (isNaN(floatValue)) {
+        return { 
+          isValid: false, 
+          error: 'type mismatch', 
+          normalizedValue: null 
+        };
+      }
+      
+      return { isValid: true, error: null, normalizedValue: floatValue };
+    }
+    
+    // Other types: no validation needed
+    return { isValid: true, error: null, normalizedValue: value };
+  }, []);
+
   // Handle save edited cell
   const handleSaveEditedCell = useCallback(async () => {
     if (!editingCell || !onUpdateAsset) return;
@@ -1833,10 +1961,33 @@ export function LibraryAssetsTable({
     const property = properties.find(p => p.key === propertyKey);
     const isNameField = property && properties[0]?.key === propertyKey;
     
-    // Update property values
+    // Validate value based on data type (only for non-name fields)
+    if (!isNameField && property) {
+      const validation = validateValueByType(editingCellValue, property.dataType);
+      
+      if (!validation.isValid) {
+        // Show error message and prevent saving
+        setTypeValidationError(validation.error);
+        // Keep editing state so user can correct the error
+        // Focus back on the input
+        setTimeout(() => {
+          editingCellRef.current?.focus();
+        }, 100);
+        return;
+      }
+      
+      // Clear validation error if valid
+      setTypeValidationError(null);
+    }
+    
+    // Update property values with normalized value
+    const normalizedValue = (!isNameField && property) 
+      ? validateValueByType(editingCellValue, property.dataType).normalizedValue
+      : editingCellValue;
+    
     const updatedPropertyValues = {
       ...row.propertyValues,
-      [propertyKey]: editingCellValue
+      [propertyKey]: normalizedValue
     };
     
     // Get asset name (use first property value or row name)
@@ -1873,6 +2024,7 @@ export function LibraryAssetsTable({
     const savedValue = editingCellValue;
     setEditingCell(null);
     setEditingCellValue('');
+    setTypeValidationError(null); // Clear validation error
     editingCellRef.current = null;
     isComposingRef.current = false;
     setCurrentFocusedCell(null); // Clear focused cell when saving
@@ -1908,7 +2060,7 @@ export function LibraryAssetsTable({
     } finally {
       setIsSaving(false);
     }
-  }, [editingCell, editingCellValue, onUpdateAsset, properties, rows, yRows, setOptimisticEditUpdates]);
+  }, [editingCell, editingCellValue, onUpdateAsset, properties, rows, yRows, setOptimisticEditUpdates, validateValueByType, presenceTracking]);
 
   // Handle double click on cell to start editing (only for editable cell types)
   const handleCellDoubleClick = (row: AssetRow, property: PropertyConfig, e: React.MouseEvent) => {
@@ -1968,6 +2120,7 @@ export function LibraryAssetsTable({
 
   // Handle cancel editing
   const handleCancelEditing = () => {
+    setTypeValidationError(null); // Clear validation error when canceling
     setEditingCell(null);
     setEditingCellValue('');
     editingCellRef.current = null;
@@ -2071,7 +2224,9 @@ export function LibraryAssetsTable({
       if (!deletedAssetIds.has(row.id)) {
         const assetRow = row as AssetRow;
         const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
-        if (optimisticUpdate && optimisticUpdate.name === assetRow.name) {
+        // Always apply optimistic updates if they exist (rowId matching ensures correctness)
+        // Removed name matching check to fix issue where cleared cells weren't reflected in fill operations
+        if (optimisticUpdate) {
           allRowsMap.set(assetRow.id, {
             ...assetRow,
             name: optimisticUpdate.name,
@@ -2403,131 +2558,319 @@ export function LibraryAssetsTable({
       document.removeEventListener('mousemove', fillDragMoveHandler);
       document.removeEventListener('mouseup', fillDragEndHandler);
       
-      // If it was just a click, reset to single cell selection
-      if (isClick || !hasMoved) {
-        if (isFillingCellsRef.current) {
-          isFillingCellsRef.current = false;
-          document.body.style.userSelect = '';
-          setFillDragStartCell(null);
-          // Reset to single cell selection
-          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        }
-        return;
-      }
-      
-      if (!isFillingCellsRef.current) {
-        return;
-      }
-      
-      // Check if we dragged downward
-      const allRowsForSelection = getAllRowsForCellSelection();
-      const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-      
-      // Find the cell under the cursor at end
-      const elementBelow = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
-      if (!elementBelow) {
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        setFillDragStartCell(null);
-        // Reset to single cell selection if drag ended outside
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        return;
-      }
-      
-      const cellElement = elementBelow.closest('td');
-      if (!cellElement) {
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        setFillDragStartCell(null);
-        // Reset to single cell selection if drag ended outside
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        return;
-      }
-      
-      const rowElement = cellElement.closest('tr');
-      if (!rowElement || 
-          rowElement.classList.contains('headerRowTop') || 
-          rowElement.classList.contains('headerRowBottom') || 
-          rowElement.classList.contains('editRow') ||
-          rowElement.classList.contains('addRow')) {
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        setFillDragStartCell(null);
-        // Reset to single cell selection if drag ended on invalid row
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        return;
-      }
-      
-      const endRowId = rowElement.getAttribute('data-row-id');
-      const endPropertyKey = cellElement.getAttribute('data-property-key');
-      
-      if (!endRowId || !endPropertyKey || endPropertyKey !== startPropertyKey) {
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        setFillDragStartCell(null);
-        // Reset to single cell selection if drag ended on different property
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        return;
-      }
-      
-      const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
-      
-      // Validate indices are valid (not -1)
-      if (startRowIndex === -1 || endRowIndex === -1) {
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        setFillDragStartCell(null);
-        // Reset to single cell selection if indices are invalid
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        return;
-      }
-      
-      // Only fill if dragged downward and at least one row down
-      if (endRowIndex > startRowIndex) {
-        // Get the source cell value
-        const sourceRow = allRowsForSelection[startRowIndex];
-        const sourceProperty = orderedProperties.find(p => p.key === startPropertyKey);
-        
-        if (!sourceRow || !sourceProperty || !onUpdateAsset) {
-          setFillDragStartCell(null);
+      // Use try-finally to ensure state is always reset, even if errors occur
+      try {
+        // If it was just a click, reset to single cell selection
+        if (isClick || !hasMoved) {
+          if (isFillingCellsRef.current) {
+            // Reset to single cell selection
+            setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          }
           return;
         }
         
-        const sourceValue = sourceRow.propertyValues[startPropertyKey];
-        
-        // Fill all cells from startRowIndex + 1 to endRowIndex
-        const updates: Array<Promise<void>> = [];
-        
-        for (let r = startRowIndex + 1; r <= endRowIndex; r++) {
-          const targetRow = allRowsForSelection[r];
-          if (!targetRow) continue;
-          
-          // Only update if the value is different
-          if (targetRow.propertyValues[startPropertyKey] !== sourceValue) {
-            const updatedPropertyValues = {
-              ...targetRow.propertyValues,
-              [startPropertyKey]: sourceValue
-            };
-            
-            updates.push(
-              onUpdateAsset(targetRow.id, targetRow.name, updatedPropertyValues)
-                .catch(error => {
-                  console.error(`Failed to fill cell ${targetRow.id}-${startPropertyKey}:`, error);
-                })
-            );
-          }
+        if (!isFillingCellsRef.current) {
+          return;
         }
         
-        // Wait for all updates to complete
-        await Promise.all(updates);
-      } else {
-        // If not dragged downward (dragged up or back to start), reset to single cell selection
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+        // Check if we dragged downward - get fresh data including optimistic updates
+        const allRowsForSelection = getAllRowsForCellSelection();
+        const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
+        
+        // Find the cell under the cursor at end
+        const elementBelow = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
+        if (!elementBelow) {
+          // Reset to single cell selection if drag ended outside
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const cellElement = elementBelow.closest('td');
+        if (!cellElement) {
+          // Reset to single cell selection if drag ended outside
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const rowElement = cellElement.closest('tr');
+        if (!rowElement || 
+            rowElement.classList.contains('headerRowTop') || 
+            rowElement.classList.contains('headerRowBottom') || 
+            rowElement.classList.contains('editRow') ||
+            rowElement.classList.contains('addRow')) {
+          // Reset to single cell selection if drag ended on invalid row
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const endRowId = rowElement.getAttribute('data-row-id');
+        const endPropertyKey = cellElement.getAttribute('data-property-key');
+        
+        if (!endRowId || !endPropertyKey || endPropertyKey !== startPropertyKey) {
+          // Reset to single cell selection if drag ended on different property
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
+        
+        // Validate indices are valid (not -1)
+        if (startRowIndex === -1 || endRowIndex === -1) {
+          // Reset to single cell selection if indices are invalid
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+          return;
+        }
+        
+        // Only fill if dragged downward and at least one row down
+        if (endRowIndex > startRowIndex) {
+          // Get fresh data right before filling to ensure we have the latest values
+          const allRowsForFill = getAllRowsForCellSelection();
+          
+          // Recalculate indices based on the fresh data to ensure consistency
+          const freshStartRowIndex = allRowsForFill.findIndex(r => r.id === startRowId);
+          const freshEndRowIndex = allRowsForFill.findIndex(r => r.id === endRowId);
+          
+          // Validate indices are valid (not -1)
+          if (freshStartRowIndex === -1 || freshEndRowIndex === -1 || freshEndRowIndex <= freshStartRowIndex) {
+            // Reset to single cell selection if indices are invalid
+            setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+            return;
+          }
+          
+          const sourceRowForFill = allRowsForFill[freshStartRowIndex];
+          const sourceProperty = orderedProperties.find(p => p.key === startPropertyKey);
+          
+          if (!sourceRowForFill || !sourceProperty || !onUpdateAsset) {
+            return;
+          }
+          
+          // Get source value from the latest data (includes optimistic updates)
+          const sourceValue = sourceRowForFill.propertyValues[startPropertyKey] ?? null;
+          
+          // CRITICAL: For batch fill, we need to update ONLY the target property
+          // We must preserve existing optimistic updates for other properties
+          // This prevents restoring old values when filling after clearing cells
+          
+          const updates: Array<Promise<void>> = [];
+          const fillUpdates: Array<{ rowId: string; propertyKey: string; value: any }> = [];
+          
+          // Collect all cells that need to be filled
+          for (let r = freshStartRowIndex + 1; r <= freshEndRowIndex; r++) {
+            if (r >= allRowsForFill.length) {
+              console.warn(`Row index ${r} is out of bounds (array length: ${allRowsForFill.length})`);
+              continue;
+            }
+            
+            const targetRow = allRowsForFill[r];
+            if (!targetRow) {
+              console.warn(`Row at index ${r} is undefined`);
+              continue;
+            }
+            
+            // Store the fill operation info
+            fillUpdates.push({
+              rowId: targetRow.id,
+              propertyKey: startPropertyKey,
+              value: sourceValue
+            });
+          }
+          
+          // CRITICAL FIX: Calculate merged optimistic updates BEFORE updating state
+          // This ensures we use the latest optimistic updates when building save data
+          // We need to simulate what the optimistic updates will be after the fill
+          const mergedOptimisticUpdates = new Map(optimisticEditUpdates);
+          fillUpdates.forEach(({ rowId, propertyKey, value }) => {
+            const existingUpdate = mergedOptimisticUpdates.get(rowId);
+            if (existingUpdate) {
+              // Merge: preserve existing optimistic updates, only update the target property
+              mergedOptimisticUpdates.set(rowId, {
+                name: existingUpdate.name,
+                propertyValues: {
+                  ...existingUpdate.propertyValues,
+                  [propertyKey]: value
+                }
+              });
+            } else {
+              // No existing optimistic update, get current row data
+              const targetRow = allRowsForFill.find(r => r.id === rowId);
+              if (targetRow) {
+                // Create new optimistic update with only the target property changed
+                mergedOptimisticUpdates.set(rowId, {
+                  name: targetRow.name,
+                  propertyValues: {
+                    ...targetRow.propertyValues,
+                    [propertyKey]: value
+                  }
+                });
+              }
+            }
+          });
+          
+          // Apply optimistic updates IMMEDIATELY for better UX
+          // IMPORTANT: Only update the target property, preserve other properties
+          setOptimisticEditUpdates(mergedOptimisticUpdates);
+          
+          // Prepare all update data using the merged optimistic updates
+          // This ensures we use the latest optimistic updates including the fill values
+          const updateDataMap = new Map<string, { 
+            rowId: string; 
+            rowName: string; 
+            propertyKey: string;
+            fillValue: any;
+            propertyValues: Record<string, any> 
+          }>();
+          
+          // Check if we're filling the name field (first property)
+          const isFillingNameField = orderedProperties[0]?.key === startPropertyKey;
+          
+          fillUpdates.forEach(({ rowId, propertyKey, value }) => {
+            // Get base row data from allRowsSource (not from allRowsForFill which includes old optimistic updates)
+            const baseRow = allRowsSource.find(r => r.id === rowId);
+            if (!baseRow) {
+              console.warn(`Row ${rowId} not found for fill update`);
+              return;
+            }
+            
+            // Get merged optimistic update (includes the fill value we just added)
+            const mergedOptimisticUpdate = mergedOptimisticUpdates.get(rowId);
+            
+            // Get the name field key (first property)
+            const nameFieldKey = orderedProperties[0]?.key;
+            
+            // Build propertyValues: start with BASE row data, then apply ALL merged optimistic updates
+            // CRITICAL: Start from baseRow.propertyValues (not targetRow.propertyValues) to avoid stale optimistic updates
+            // Then apply mergedOptimisticUpdate.propertyValues which includes both existing optimistic updates AND the fill value
+            // This ensures other columns' optimistic updates are preserved correctly
+            let propertyValuesToSave: Record<string, any>;
+            let rowNameToSave: string;
+            
+            if (mergedOptimisticUpdate) {
+              // CRITICAL FIX: When filling, we should ONLY save the filled property
+              // Other columns' optimistic updates should remain as optimistic updates until explicitly saved
+              // This prevents other columns from being overwritten when filling one column
+              // Start with baseRow.propertyValues (fresh from data source), then only add the fill value
+              propertyValuesToSave = {
+                ...baseRow.propertyValues,
+                [propertyKey]: value  // Only save the filled property, keep other columns' optimistic updates
+              };
+              
+              // For name field, use the optimistic update name if it exists
+              // Otherwise, use baseRow.name
+              rowNameToSave = mergedOptimisticUpdate.name || baseRow.name;
+            } else {
+              // No optimistic update (shouldn't happen after merge, but handle it)
+              propertyValuesToSave = {
+                ...baseRow.propertyValues,
+                [propertyKey]: value
+              };
+              
+              // If not filling name field, ensure name field value is preserved from baseRow
+              if (!isFillingNameField && nameFieldKey) {
+                // Preserve the current name field value from baseRow
+                const currentNameValue = baseRow.propertyValues[nameFieldKey];
+                if (currentNameValue === null || currentNameValue === undefined || currentNameValue === '') {
+                  // Name was cleared, keep it cleared
+                  propertyValuesToSave[nameFieldKey] = null;
+                  rowNameToSave = ''; // Empty name
+                } else {
+                  // Name has a value, use it
+                  rowNameToSave = String(currentNameValue);
+                }
+              } else {
+                // Filling name field or no name field, use baseRow.name
+                rowNameToSave = baseRow.name;
+              }
+            }
+            
+            updateDataMap.set(rowId, {
+              rowId,
+              rowName: rowNameToSave,
+              propertyKey,
+              fillValue: value,
+              propertyValues: propertyValuesToSave
+            });
+          });
+          
+          // Execute all updates
+          updateDataMap.forEach(({ rowId, rowName, propertyKey, fillValue, propertyValues }) => {
+            updates.push(
+              onUpdateAsset(rowId, rowName, propertyValues)
+                .then(() => {
+                  // Clear optimistic update after successful save (with delay to allow parent refresh)
+                  // CRITICAL: Only remove the filled property from optimistic update
+                  // Other columns' optimistic updates should remain until they are explicitly saved
+                  setTimeout(() => {
+                    setOptimisticEditUpdates(prev => {
+                      const newMap = new Map(prev);
+                      const currentUpdate = newMap.get(rowId);
+                      if (currentUpdate) {
+                        // Check if this property was filled by us
+                        if (currentUpdate.propertyValues[propertyKey] === fillValue) {
+                          // Remove only this property from optimistic update
+                          const updatedPropertyValues = { ...currentUpdate.propertyValues };
+                          delete updatedPropertyValues[propertyKey];
+                          
+                          if (Object.keys(updatedPropertyValues).length > 0) {
+                            // Keep other optimistic updates (e.g., other columns)
+                            newMap.set(rowId, {
+                              name: currentUpdate.name,
+                              propertyValues: updatedPropertyValues
+                            });
+                          } else {
+                            // No more optimistic updates for this row
+                            newMap.delete(rowId);
+                          }
+                        }
+                      }
+                      return newMap;
+                    });
+                  }, 500);
+                })
+                .catch(error => {
+                  console.error(`Failed to fill cell ${rowId}-${propertyKey}:`, error);
+                  // On error, remove only this property from optimistic update
+                  setOptimisticEditUpdates(prev => {
+                    const newMap = new Map(prev);
+                    const currentUpdate = newMap.get(rowId);
+                    if (currentUpdate) {
+                      const updatedPropertyValues = { ...currentUpdate.propertyValues };
+                      delete updatedPropertyValues[propertyKey];
+                      
+                      if (Object.keys(updatedPropertyValues).length > 0) {
+                        newMap.set(rowId, {
+                          name: currentUpdate.name,
+                          propertyValues: updatedPropertyValues
+                        });
+                      } else {
+                        newMap.delete(rowId);
+                      }
+                    }
+                    return newMap;
+                  });
+                  // Re-throw to be caught by Promise.allSettled
+                  throw error;
+                })
+            );
+          });
+          
+          // Wait for all updates to complete, but don't fail if some fail
+          const results = await Promise.allSettled(updates);
+          
+          // Check for failures and log them
+          const failures = results.filter(r => r.status === 'rejected');
+          if (failures.length > 0) {
+            console.warn(`Batch fill completed with ${failures.length} failures out of ${updates.length} updates`);
+          }
+        } else {
+          // If not dragged downward (dragged up or back to start), reset to single cell selection
+          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
+        }
+      } finally {
+        // Always reset state, even if errors occurred
+        isFillingCellsRef.current = false;
+        document.body.style.userSelect = '';
+        setFillDragStartCell(null);
       }
-      
-      isFillingCellsRef.current = false;
-      document.body.style.userSelect = '';
-      setFillDragStartCell(null);
     };
     
     // Add event listeners
@@ -5652,7 +5995,10 @@ export function LibraryAssetsTable({
                       key={property.id}
                       data-property-key={property.key}
                       className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
-                      style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                      style={{
+                        ...(borderColor ? { borderLeft: `3px solid ${borderColor}` } : {}),
+                        ...(isCellEditing ? { position: 'relative' } : {})
+                      }}
                       onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
                       onClick={(e) => handleCellClick(row.id, property.key, e)}
                       onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
@@ -5684,38 +6030,174 @@ export function LibraryAssetsTable({
                     >
                       {isCellEditing ? (
                         // Cell is being edited: use contentEditable for direct cell editing
-                        <span
-                          ref={editingCellRef}
-                          contentEditable
-                          suppressContentEditableWarning
-                          onFocus={() => {
-                            // Update presence tracking when input gains focus
-                            if (editingCell) {
-                              handleCellFocus(editingCell.rowId, editingCell.propertyKey);
-                            }
-                          }}
-                          onBlur={(e) => {
-                            if (!isComposingRef.current) {
-                              const newValue = e.currentTarget.textContent || '';
-                              setEditingCellValue(newValue);
-                              handleSaveEditedCell();
-                            }
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !isComposingRef.current) {
-                              e.preventDefault();
-                              const newValue = e.currentTarget.textContent || '';
-                              setEditingCellValue(newValue);
-                              handleSaveEditedCell();
-                            } else if (e.key === 'Escape') {
-                              e.preventDefault();
-                              handleCancelEditing();
-                            }
-                          }}
-                          onInput={(e) => {
+                        <div style={{ position: 'relative', width: '100%' }}>
+                          <span
+                            ref={editingCellRef}
+                            contentEditable
+                            suppressContentEditableWarning
+                            onFocus={() => {
+                              // Update presence tracking when input gains focus
+                              if (editingCell) {
+                                handleCellFocus(editingCell.rowId, editingCell.propertyKey);
+                              }
+                            }}
+                            onBlur={(e) => {
+                              if (!isComposingRef.current) {
+                                const newValue = e.currentTarget.textContent || '';
+                                setEditingCellValue(newValue);
+                                handleSaveEditedCell();
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && !isComposingRef.current) {
+                                e.preventDefault();
+                                const newValue = e.currentTarget.textContent || '';
+                                setEditingCellValue(newValue);
+                                handleSaveEditedCell();
+                              } else if (e.key === 'Escape') {
+                                e.preventDefault();
+                                handleCancelEditing();
+                              }
+                            }}
+                            onInput={(e) => {
                             // Only update state when not composing (for IME input)
                             if (!isComposingRef.current) {
-                              const newValue = e.currentTarget.textContent || '';
+                              let newValue = e.currentTarget.textContent || '';
+                              
+                              // Validate int type: only allow integers
+                              if (property.dataType === 'int' && newValue !== '') {
+                                // Check if contains decimal point - show error immediately
+                                if (newValue.includes('.')) {
+                                  setTypeValidationError('type mismatch');
+                                  // Remove decimal point and everything after it
+                                  const intValue = newValue.split('.')[0];
+                                  const selection = window.getSelection();
+                                  const range = selection?.getRangeAt(0);
+                                  const cursorPosition = range?.startOffset || 0;
+                                  
+                                  e.currentTarget.textContent = intValue;
+                                  
+                                  // Restore cursor position
+                                  if (range && selection) {
+                                    try {
+                                      const newRange = document.createRange();
+                                      const textNode = e.currentTarget.firstChild;
+                                      if (textNode) {
+                                        const newPosition = Math.min(cursorPosition, intValue.length);
+                                        newRange.setStart(textNode, newPosition);
+                                        newRange.setEnd(textNode, newPosition);
+                                        selection.removeAllRanges();
+                                        selection.addRange(newRange);
+                                      }
+                                    } catch (err) {
+                                      // Ignore cursor restoration errors
+                                    }
+                                  }
+                                  newValue = intValue;
+                                } else {
+                                  // Clear error if no decimal point
+                                  setTypeValidationError(null);
+                                }
+                                
+                                // Remove any non-digit characters except minus sign at the start
+                                // Allow: digits, minus sign only at the beginning
+                                const cleaned = newValue.replace(/[^\d-]/g, '');
+                                // Ensure minus sign is only at the start
+                                const intValue = cleaned.startsWith('-') 
+                                  ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                  : cleaned.replace(/-/g, '');
+                                
+                                // Validate format: optional minus followed by digits
+                                if (!/^-?\d*$/.test(intValue)) {
+                                  // Restore previous valid value
+                                  e.currentTarget.textContent = editingCellValue;
+                                  return;
+                                }
+                                
+                                // Only update if value changed
+                                if (intValue !== newValue) {
+                                  const selection = window.getSelection();
+                                  const range = selection?.getRangeAt(0);
+                                  const cursorPosition = range?.startOffset || 0;
+                                  
+                                  e.currentTarget.textContent = intValue;
+                                  
+                                  // Restore cursor position
+                                  if (range && selection) {
+                                    try {
+                                      const newRange = document.createRange();
+                                      const textNode = e.currentTarget.firstChild;
+                                      if (textNode) {
+                                        const newPosition = Math.min(cursorPosition, intValue.length);
+                                        newRange.setStart(textNode, newPosition);
+                                        newRange.setEnd(textNode, newPosition);
+                                        selection.removeAllRanges();
+                                        selection.addRange(newRange);
+                                      }
+                                    } catch (err) {
+                                      // Ignore cursor restoration errors
+                                    }
+                                  }
+                                }
+                                
+                                newValue = intValue;
+                              }
+                              // Validate float type: must contain decimal point
+                              else if (property.dataType === 'float' && newValue !== '') {
+                                // Clear error initially
+                                setTypeValidationError(null);
+                                
+                                // Allow digits, one decimal point, and optional minus sign
+                                // Remove invalid characters but keep valid float format
+                                const cleaned = newValue.replace(/[^\d.-]/g, '');
+                                // Ensure minus sign is only at the start
+                                const floatValue = cleaned.startsWith('-') 
+                                  ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                  : cleaned.replace(/-/g, '');
+                                // Ensure only one decimal point
+                                const parts = floatValue.split('.');
+                                const finalValue = parts.length > 2 
+                                  ? parts[0] + '.' + parts.slice(1).join('')
+                                  : floatValue;
+                                
+                                if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                                  // Restore previous valid value
+                                  e.currentTarget.textContent = editingCellValue;
+                                  return;
+                                }
+                                
+                                // Only update if value changed
+                                if (finalValue !== newValue) {
+                                  const selection = window.getSelection();
+                                  const range = selection?.getRangeAt(0);
+                                  const cursorPosition = range?.startOffset || 0;
+                                  
+                                  e.currentTarget.textContent = finalValue;
+                                  
+                                  // Restore cursor position
+                                  if (range && selection) {
+                                    try {
+                                      const newRange = document.createRange();
+                                      const textNode = e.currentTarget.firstChild;
+                                      if (textNode) {
+                                        const newPosition = Math.min(cursorPosition, finalValue.length);
+                                        newRange.setStart(textNode, newPosition);
+                                        newRange.setEnd(textNode, newPosition);
+                                        selection.removeAllRanges();
+                                        selection.addRange(newRange);
+                                      }
+                                    } catch (err) {
+                                      // Ignore cursor restoration errors
+                                    }
+                                  }
+                                }
+                                
+                                newValue = finalValue;
+                              } else {
+                                // Clear error for other types
+                                setTypeValidationError(null);
+                              }
+                              
                               setEditingCellValue(newValue);
                             }
                           }}
@@ -5724,16 +6206,95 @@ export function LibraryAssetsTable({
                           }}
                           onCompositionEnd={(e) => {
                             isComposingRef.current = false;
-                            const newValue = e.currentTarget.textContent || '';
+                            let newValue = e.currentTarget.textContent || '';
+                            
+                            // Validate int type: only allow integers
+                            if (property.dataType === 'int' && newValue !== '') {
+                              // Check if contains decimal point - show error
+                              if (newValue.includes('.')) {
+                                setTypeValidationError('type mismatch');
+                                const intValue = newValue.split('.')[0];
+                                e.currentTarget.textContent = intValue;
+                                newValue = intValue;
+                              } else {
+                                setTypeValidationError(null);
+                              }
+                              
+                              // Remove any non-digit characters except minus sign at the start
+                              const cleaned = newValue.replace(/[^\d-]/g, '');
+                              const intValue = cleaned.startsWith('-') 
+                                ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                : cleaned.replace(/-/g, '');
+                              
+                              if (!/^-?\d*$/.test(intValue)) {
+                                e.currentTarget.textContent = editingCellValue;
+                                return;
+                              }
+                              
+                              if (intValue !== newValue) {
+                                e.currentTarget.textContent = intValue;
+                              }
+                              newValue = intValue;
+                            }
+                            // Validate float type: must contain decimal point
+                            else if (property.dataType === 'float' && newValue !== '') {
+                              setTypeValidationError(null); // Clear error initially
+                              
+                              const cleaned = newValue.replace(/[^\d.-]/g, '');
+                              const floatValue = cleaned.startsWith('-') 
+                                ? '-' + cleaned.slice(1).replace(/-/g, '')
+                                : cleaned.replace(/-/g, '');
+                              const parts = floatValue.split('.');
+                              const finalValue = parts.length > 2 
+                                ? parts[0] + '.' + parts.slice(1).join('')
+                                : floatValue;
+                              
+                              if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                                e.currentTarget.textContent = editingCellValue;
+                                return;
+                              }
+                              
+                              if (finalValue !== newValue) {
+                                e.currentTarget.textContent = finalValue;
+                              }
+                              newValue = finalValue;
+                            } else {
+                              setTypeValidationError(null);
+                            }
+                            
                             setEditingCellValue(newValue);
                           }}
-                          style={{
-                            outline: 'none',
-                            minHeight: '1em',
-                            display: 'block',
-                            width: '100%'
-                          }}
-                        />
+                            style={{
+                              outline: 'none',
+                              minHeight: '1em',
+                              display: 'block',
+                              width: '100%'
+                            }}
+                          />
+                          {typeValidationError && (
+                            <Tooltip 
+                              title={typeValidationError}
+                              open={true}
+                              placement="bottom"
+                              overlayStyle={{ fontSize: '12px' }}
+                            >
+                              <div
+                                ref={typeValidationErrorRef}
+                                style={{
+                                  position: 'absolute',
+                                  top: 0,
+                                  right: 0,
+                                  width: '8px',
+                                  height: '8px',
+                                  backgroundColor: '#ff4d4f',
+                                  borderRadius: '50%',
+                                  zIndex: 1001,
+                                  pointerEvents: 'none'
+                                }}
+                              />
+                            </Tooltip>
+                          )}
+                        </div>
                       ) : (
                         <>
                           {isNameField ? (
@@ -5746,7 +6307,7 @@ export function LibraryAssetsTable({
                                   handleCellDoubleClick(row, property, e);
                                 }}
                               >
-                                {display ? display : <span className={styles.placeholderValue}>—</span>}
+                                {display || ''}
                               </span>
                               <button
                                 className={styles.viewDetailButton}
@@ -5928,11 +6489,54 @@ export function LibraryAssetsTable({
                   );
                 }
                 
+                // Determine input type and validation based on data type
+                const isInt = property.dataType === 'int';
+                const isFloat = property.dataType === 'float';
+                const inputType = isInt || isFloat ? 'number' : 'text';
+                const step = isInt ? '1' : isFloat ? 'any' : undefined;
+                
                 return (
                   <td key={property.id} className={styles.editCell}>
                     <Input
+                      type={inputType}
+                      step={step}
                       value={newRowData[property.key] || ''}
-                      onChange={(e) => handleInputChange(property.key, e.target.value)}
+                      onChange={(e) => {
+                        let value = e.target.value;
+                        // Validate int type: only allow integers
+                        if (isInt && value !== '') {
+                          // Remove any non-digit characters except minus sign at the start
+                          const cleaned = value.replace(/[^\d-]/g, '');
+                          const intValue = cleaned.startsWith('-') 
+                            ? '-' + cleaned.slice(1).replace(/-/g, '')
+                            : cleaned.replace(/-/g, '');
+                          
+                          // Only update if valid integer format
+                          if (!/^-?\d*$/.test(intValue)) {
+                            return; // Don't update if invalid
+                          }
+                          value = intValue;
+                        }
+                        // Validate float type: allow decimals (integers are also valid for float)
+                        else if (isFloat && value !== '') {
+                          // Remove invalid characters but keep valid float format
+                          const cleaned = value.replace(/[^\d.-]/g, '');
+                          const floatValue = cleaned.startsWith('-') 
+                            ? '-' + cleaned.slice(1).replace(/-/g, '')
+                            : cleaned.replace(/-/g, '');
+                          // Ensure only one decimal point
+                          const parts = floatValue.split('.');
+                          const finalValue = parts.length > 2 
+                            ? parts[0] + '.' + parts.slice(1).join('')
+                            : floatValue;
+                          
+                          if (!/^-?\d*\.?\d*$/.test(finalValue)) {
+                            return; // Don't update if invalid
+                          }
+                          value = finalValue;
+                        }
+                        handleInputChange(property.key, value);
+                      }}
                       placeholder=""
                       className={styles.editInput}
                       disabled={isSaving}
