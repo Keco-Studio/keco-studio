@@ -9,6 +9,7 @@ import {
   SectionConfig,
 } from '@/lib/types/libraryAssets';
 import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
+import { DeleteAssetModal, ClearContentsModal, DeleteRowModal } from './LibraryAssetsTableModals';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useYjs } from '@/contexts/YjsContext';
@@ -34,7 +35,6 @@ import noassetIcon2 from '@/app/assets/images/NoassetIcon2.svg';
 import libraryAssetTableAddIcon from '@/app/assets/images/LibraryAssetTableAddIcon.svg';
 import libraryAssetTableSelectIcon from '@/app/assets/images/LibraryAssetTableSelectIcon.svg';
 import batchEditAddIcon from '@/app/assets/images/BatchEditAddIcon.svg';
-import batchEditingCloseIcon from '@/app/assets/images/BatchEditingCloseIcon.svg';
 import tableAssetDetailIcon from '@/app/assets/images/TableAssetDetailIcon.svg';
 import styles from './LibraryAssetsTable.module.css';
 
@@ -7041,73 +7041,32 @@ export function LibraryAssetsTable({
     )}
 
     {/* Delete Confirmation Modal */}
-    <Modal
+    <DeleteAssetModal
       open={deleteConfirmVisible}
-      title="Confirm Delete"
       onOk={handleDeleteAsset}
       onCancel={() => {
         setDeleteConfirmVisible(false);
         setDeletingAssetId(null);
       }}
-      okText="Delete"
-      cancelText="Cancel"
-      okButtonProps={{ danger: true }}
-    >
-      <p>Are you sure you want to delete this asset? This action cannot be undone.</p>
-    </Modal>
+    />
 
     {/* Clear Contents Confirmation Modal */}
-    <Modal
+    <ClearContentsModal
       open={clearContentsConfirmVisible}
-      title="Clear content"
       onOk={handleClearContents}
       onCancel={() => {
         setClearContentsConfirmVisible(false);
       }}
-      okText="Delete"
-      cancelText="Cancel"
-      okButtonProps={{ 
-        danger: true,
-        style: {
-          backgroundColor: 'rgba(170, 5, 44, 1)',
-          borderColor: 'rgba(170, 5, 44, 1)',
-          borderRadius: '12px',
-        }
-      }}
-      width={616}
-      centered
-      className={styles.confirmModal}
-      wrapClassName={styles.confirmModalWrap}
-      closeIcon={
-        <Image
-          src={batchEditingCloseIcon}
-          alt="Close"
-          width={32}
-          height={32}
-        />
-      }
-    >
-      <p>Are you sure you want to clear these content?</p>
-    </Modal>
+    />
 
     {/* Delete Row Confirmation Modal */}
-    <Modal
+    <DeleteRowModal
       open={deleteRowConfirmVisible}
-      title="Delete row"
       onOk={handleDeleteRow}
       onCancel={() => {
         setDeleteRowConfirmVisible(false);
       }}
-      okText="Delete"
-      cancelText="Cancel"
-      okButtonProps={{ danger: true }}
-      width={616}
-      centered
-      className={styles.confirmModal}
-      wrapClassName={styles.confirmModalWrap}
-    >
-      <p>Are you sure you want to delete these row?</p>
-    </Modal>
+    />
     </>
   );
 }
