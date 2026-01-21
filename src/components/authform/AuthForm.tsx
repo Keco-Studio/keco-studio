@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState, useEffect } from "react";
+import { FormEvent, useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import loginImg from "@/app/assets/images/loginImg.png";
@@ -26,7 +26,7 @@ type LoginState = {
   password: string;
 };
 
-export default function AuthForm() {
+function AuthFormContent() {
   const supabase = useSupabase();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -411,6 +411,24 @@ export default function AuthForm() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function AuthForm() {
+  return (
+    <Suspense fallback={
+      <div className={styles.page}>
+        <div className={styles.card}>
+          <div className={styles.cardInner}>
+            <div className={styles.formSide}>
+              <div>Loading...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    }>
+      <AuthFormContent />
+    </Suspense>
   );
 }
 
