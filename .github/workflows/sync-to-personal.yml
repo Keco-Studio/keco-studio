@@ -4,10 +4,10 @@ name: Sync to Personal Repository
 on:
   push:
     branches:
-      - epic3-bugs
+      - main
   pull_request:
     branches:
-      - epic3-bugs
+      - main
     types: [closed]  # Only trigger on PR merge (closed)
 
 jobs:
