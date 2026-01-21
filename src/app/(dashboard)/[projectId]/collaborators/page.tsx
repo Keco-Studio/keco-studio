@@ -19,7 +19,8 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import Image from 'next/image';
 import CollaboratorsList from '@/components/collaboration/CollaboratorsList';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
-import type { Collaborator, PendingInvitation } from '@/lib/types/collaboration';
+import type { Collaborator } from '@/lib/types/collaboration';
+import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import collaborationReturnIcon from '@/app/assets/images/collaborationReturnIcon.svg';
 import collaborationAdminNumIcon from '@/app/assets/images/collaborationAdminNumIcon.svg';
 import collaborationEditNumIcon from '@/app/assets/images/collaborationEditNumIcon.svg';
@@ -40,19 +41,20 @@ export default function CollaboratorsPage() {
   const [isOwner, setIsOwner] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>('');
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
-  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [searchValue, setSearchValue] = useState('');
+  const [highlightUserId, setHighlightUserId] = useState<string | null>(null);
   
   // Fetch data function (can be called to refresh)
-  const fetchData = useCallback(async () => {
+  // Returns the updated collaborators list for immediate use
+  const fetchData = useCallback(async (): Promise<Collaborator[]> => {
     // Validate projectId is a valid UUID
     if (!projectId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) {
       console.error('[CollaboratorsPage] Invalid project ID:', projectId);
       setError('Invalid project ID');
       setLoading(false);
       router.push('/projects');
-      return;
+      return [];
     }
     
     setLoading(true);
@@ -131,7 +133,7 @@ export default function CollaboratorsPage() {
       // Use direct client query as fallback since sessionStorage auth doesn't work with server actions
       try {
         
-        // Query collaborators with profile data
+        // Query collaborators with profile data (including pending ones)
         const { data: collabData, error: collabError } = await supabase
           .from('project_collaborators')
           .select(`
@@ -153,7 +155,6 @@ export default function CollaboratorsPage() {
             )
           `)
           .eq('project_id', projectId)
-          .not('accepted_at', 'is', null)
           .order('created_at', { ascending: true });
         
         if (collabError) {
@@ -162,83 +163,140 @@ export default function CollaboratorsPage() {
         }
         
         // Transform data to match Collaborator type
-        const transformedCollaborators = (collabData || []).map((collab: any) => ({
-          id: collab.id,
-          userId: collab.user_id,
-          userName: collab.profile?.username || collab.profile?.full_name || collab.profile?.email || 'User',
-          userEmail: collab.profile?.email || '',
-          avatarColor: collab.profile?.avatar_color || '#94a3b8',
-          role: collab.role,
-          invitedBy: collab.invited_by,
-          invitedByName: null, // Could fetch inviter profile if needed
-          invitedAt: collab.invited_at,
-          acceptedAt: collab.accepted_at,
-          lastActiveAt: null,
-          // Keep aliases for CollaboratorsList component compatibility
-          user_id: collab.user_id,
-          avatar_color: collab.profile?.avatar_color || '#94a3b8',
-          profile: collab.profile,
-          profiles: collab.profile,
-          user_profiles: collab.profile,
-        } as any));
+        const transformedCollaborators = (collabData || []).map((collab: any) => {
+          const email = collab.profile?.email || '';
+          const userId = collab.user_id;
+          // Always generate color from userId to ensure consistency with TopBar and other components
+          const avatarColor = userId ? getUserAvatarColor(userId) : '#94a3b8';
+          
+          return {
+            id: collab.id,
+            userId: userId,
+            userName: collab.profile?.username || collab.profile?.full_name || email.split('@')[0] || 'User',
+            userEmail: email,
+            avatarColor: avatarColor,
+            role: collab.role,
+            invitedBy: collab.invited_by,
+            invitedByName: null, // Could fetch inviter profile if needed
+            invitedAt: collab.invited_at,
+            acceptedAt: collab.accepted_at,
+            lastActiveAt: null,
+            // Keep aliases for CollaboratorsList component compatibility
+            user_id: userId,
+            avatar_color: avatarColor,
+            profile: collab.profile,
+            profiles: collab.profile,
+            user_profiles: collab.profile,
+          } as any;
+        });
+        
+        // Query pending invitations and convert them to Collaborator format
+        let pendingInvitesAsCollaborators: any[] = [];
+        console.log('[CollaboratorsPage] Current userRole:', userRole);
+        console.log('[CollaboratorsPage] Checking for pending invitations...');
+        
+        // Query pending invitations for all users (not just admin)
+        const { data: inviteData, error: inviteError } = await supabase
+          .from('collaboration_invitations')
+          .select(`
+            id,
+            recipient_email,
+            role,
+            invited_by,
+            sent_at,
+            expires_at,
+            accepted_at,
+            inviter:invited_by (
+              username,
+              full_name,
+              email
+            )
+          `)
+          .eq('project_id', projectId)
+          .is('accepted_at', null)
+          .order('sent_at', { ascending: false });
+        
+        console.log('[CollaboratorsPage] Pending invitations query result:', { inviteData, inviteError });
+        
+        if (!inviteError && inviteData) {
+          // For each pending invitation, try to find the user profile by email
+          const pendingEmails = inviteData.map(inv => inv.recipient_email.toLowerCase());
+          
+          // Query profiles by email to get existing user info
+          const { data: profilesData } = await supabase
+            .from('profiles')
+            .select('id, email, username, full_name, avatar_color, avatar_url')
+            .in('email', pendingEmails);
+          
+          // Create a map of email -> profile for quick lookup
+          const emailToProfile = new Map(
+            (profilesData || []).map(p => [p.email.toLowerCase(), p])
+          );
+          
+          console.log('[CollaboratorsPage] Found profiles for pending invites:', emailToProfile.size);
+          
+          // Convert pending invitations to Collaborator format
+          pendingInvitesAsCollaborators = inviteData.map((invite: any) => {
+              const email = invite.recipient_email.toLowerCase();
+              const profile = emailToProfile.get(email);
+              
+              // If user profile exists, use their real info; otherwise use email-based fallback
+              const userId = profile?.id || null;
+              const userName = profile?.username || profile?.full_name || email.split('@')[0];
+              // Always generate color from userId (if exists) to ensure consistency, fallback to email for unregistered users
+              const avatarColor = userId ? getUserAvatarColor(userId) : getUserAvatarColor(email);
+              
+              return {
+                id: `invite-${invite.id}`, // Use a prefix to distinguish from real collaborators
+                userId: userId, // Use real user_id if profile exists
+                userName: userName, // Use real username or fallback to email part
+                userEmail: email,
+                avatarColor: avatarColor, // Use profile color or generate from userId/email
+                role: invite.role,
+                invitedBy: invite.invited_by,
+                invitedByName: invite.inviter?.username || invite.inviter?.full_name || invite.inviter?.email || 'Unknown',
+                invitedAt: invite.sent_at,
+                acceptedAt: null, // This marks it as pending
+                lastActiveAt: null,
+                // Keep aliases for CollaboratorsList component compatibility
+                user_id: userId,
+                avatar_color: avatarColor,
+                profile: profile || null,
+                profiles: profile || null,
+                user_profiles: profile || null,
+              } as any;
+            });
+          }
+        
+        console.log('[CollaboratorsPage] Pending invites as collaborators:', pendingInvitesAsCollaborators);
+        
+        // Combine accepted collaborators and pending invitations
+        const allCollaborators = [...transformedCollaborators, ...pendingInvitesAsCollaborators];
+        console.log('[CollaboratorsPage] Total collaborators (including pending):', allCollaborators.length);
         
         // Sort collaborators: current user first, then others
-        transformedCollaborators.sort((a, b) => {
+        allCollaborators.sort((a, b) => {
           // Current user always comes first
           if (a.userId === user.id) return -1;
           if (b.userId === user.id) return 1;
-          // Others sorted by created_at (earliest first)
+          // Others sorted by invited_at (earliest first)
           return new Date(a.invitedAt).getTime() - new Date(b.invitedAt).getTime();
         });
         
-        setCollaborators(transformedCollaborators);
-        
-        // Query pending invitations (only if admin)
-        if (userRole === 'admin') {
-          const { data: inviteData, error: inviteError } = await supabase
-            .from('collaboration_invitations')
-            .select(`
-              id,
-              recipient_email,
-              role,
-              invited_by,
-              sent_at,
-              expires_at,
-              accepted_at,
-              inviter:invited_by (
-                username,
-                full_name,
-                email
-              )
-            `)
-            .eq('project_id', projectId)
-            .is('accepted_at', null)
-            .order('sent_at', { ascending: false });
-          
-          if (!inviteError && inviteData) {
-            const transformedInvites = inviteData.map((invite: any) => ({
-              id: invite.id,
-              recipientEmail: invite.recipient_email,
-              role: invite.role,
-              invitedBy: invite.invited_by,
-              inviterName: invite.inviter?.username || invite.inviter?.full_name || invite.inviter?.email || 'Unknown',
-              invitedAt: invite.sent_at,
-              expiresAt: invite.expires_at,
-            }));
-            
-            setPendingInvitations(transformedInvites);
-          }
-        }
+        setCollaborators(allCollaborators);
+        setLoading(false);
+        return allCollaborators; // Return the new data
       } catch (err: any) {
         console.error('[CollaboratorsPage] Error loading collaborators:', err);
         setError(err.message || 'Failed to load collaborators');
+        setLoading(false);
+        return [];
       }
-      
-      setLoading(false);
     } catch (err: any) {
       console.error('[CollaboratorsPage] Error loading collaborators page:', err);
       setError(err.message || 'Failed to load page');
       setLoading(false);
+      return [];
     }
   }, [projectId, supabase, router]);
   
@@ -475,6 +533,7 @@ export default function CollaboratorsPage() {
           currentUserId={currentUserId}
           currentUserRole={userRole}
           onUpdate={fetchData}
+          highlightUserId={highlightUserId}
         />
       ) : (
         <div style={{ 
@@ -489,68 +548,6 @@ export default function CollaboratorsPage() {
         </div>
       )}
       
-      {/* Pending Invitations Section (Admin Only) */}
-      {userRole === 'admin' && pendingInvitations.length > 0 && (
-        <div style={{ marginBottom: '32px' }}>
-          <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '16px', color: '#111827' }}>
-            Pending Invitations ({pendingInvitations.length})
-          </h2>
-          
-          <div style={{ 
-            backgroundColor: '#ffffff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            overflow: 'hidden'
-          }}>
-            {pendingInvitations.map((invite) => (
-              <div 
-                key={invite.id}
-                style={{ 
-                  padding: '16px', 
-                  borderBottom: '1px solid #e5e7eb',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
-                <div>
-                  <div style={{ fontWeight: '500', marginBottom: '4px', color: '#111827' }}>
-                    {invite.recipientEmail}
-                  </div>
-                  <div style={{ fontSize: '13px', color: '#6b7280' }}>
-                    Invited by {invite.inviterName} • {new Date(invite.invitedAt).toLocaleDateString()}
-                  </div>
-                </div>
-                <div style={{ 
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '12px'
-                }}>
-                  <div style={{ 
-                    padding: '6px 12px', 
-                    backgroundColor: '#fef3c7', 
-                    color: '#92400e',
-                    borderRadius: '6px',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                    textTransform: 'capitalize'
-                  }}>
-                    {invite.role}
-                  </div>
-                  <div style={{ 
-                    fontSize: '12px', 
-                    color: '#f59e0b',
-                    fontWeight: '500'
-                  }}>
-                    Pending
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-      
       {/* Invite Collaborator Modal */}
       {userRole && (
         <InviteCollaboratorModal
@@ -559,7 +556,24 @@ export default function CollaboratorsPage() {
           userRole={userRole}
           open={inviteModalOpen}
           onClose={() => setInviteModalOpen(false)}
-          onSuccess={fetchData}
+          onSuccess={async (invitedEmail) => {
+            // Refresh data and get the updated list
+            const updatedCollaborators = await fetchData();
+            // Find the newly invited user by email in the fresh data
+            if (invitedEmail && updatedCollaborators) {
+              const newCollaborator = updatedCollaborators.find(c => 
+                c.userEmail.toLowerCase() === invitedEmail.toLowerCase()
+              );
+              if (newCollaborator) {
+                console.log('[CollaboratorsPage] Found newly invited user:', newCollaborator);
+                // Highlight the newly invited user
+                setHighlightUserId(newCollaborator.userId);
+              } else {
+                console.log('[CollaboratorsPage] Could not find newly invited user with email:', invitedEmail);
+                console.log('[CollaboratorsPage] Updated collaborators:', updatedCollaborators);
+              }
+            }
+          }}
           title="Invite new collaborator"
         />
       )}

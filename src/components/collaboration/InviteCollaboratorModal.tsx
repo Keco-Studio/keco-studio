@@ -24,7 +24,7 @@ interface InviteCollaboratorModalProps {
   userRole: CollaboratorRole;
   open: boolean;
   onClose: () => void;
-  onSuccess?: () => void;
+  onSuccess?: (invitedEmail?: string) => void;
   title?: string; // Custom modal title
 }
 
@@ -108,6 +108,8 @@ export function InviteCollaboratorModal({
       const result = await response.json();
 
       if (result.success) {
+        const invitedEmail = email.trim().toLowerCase();
+        
         // Show different message based on whether user was auto-accepted
         if (result.autoAccepted) {
           message.success(result.message || 'Collaborator added successfully!');
@@ -129,11 +131,19 @@ export function InviteCollaboratorModal({
           // This will refresh the inviter's Sidebar, but won't affect the invited user's browser
           window.dispatchEvent(new CustomEvent('projectCreated'));
         } else {
+          // Show toast message before closing modal
           message.success('Invite sent');
         }
+        
+        // Reset form and close modal
         form.resetFields();
         onClose();
-        onSuccess?.();
+        
+        // Call onSuccess callback after modal is closed
+        // Add a small delay to ensure state updates are processed
+        setTimeout(() => {
+          onSuccess?.(invitedEmail);
+        }, 100);
       } else {
         setError(result.error || 'Failed to send invitation');
       }

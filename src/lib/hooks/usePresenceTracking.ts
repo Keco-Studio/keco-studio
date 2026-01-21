@@ -309,6 +309,7 @@ export function usePresenceTracking(config: PresenceConfig) {
   /**
    * Get users currently editing a specific cell
    * Memoized to ensure stable reference but always returns fresh data
+   * Users are sorted by lastActivity (earliest first), so users[0] is the first user who entered the cell
    */
   const getUsersEditingCell = useCallback((assetId: string, propertyKey: string): PresenceState[] => {
     const users: PresenceState[] = [];
@@ -321,6 +322,12 @@ export function usePresenceTracking(config: PresenceConfig) {
       ) {
         users.push(presence);
       }
+    });
+
+    // Sort by lastActivity time (earliest first)
+    // This ensures users[0] is always the first user who entered the cell
+    users.sort((a, b) => {
+      return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
     });
 
     return users;

@@ -29,16 +29,21 @@ export function FieldPresenceAvatars({ users, maxVisible = 3 }: FieldPresenceAva
     return parts[0].charAt(0).toUpperCase();
   };
 
-  const visibleUsers = users.slice(0, maxVisible);
-  const remainingCount = users.length - maxVisible;
+  // Reverse order: first user (rightmost) has priority - consistent with StackedAvatars
+  const orderedUsers = [...users].reverse();
+  const visibleUsers = orderedUsers.slice(0, maxVisible);
+  const remainingCount = orderedUsers.length - maxVisible;
 
   return (
     <div className={styles.fieldPresenceAvatars}>
-      {visibleUsers.map((user) => (
+      {visibleUsers.map((user, index) => (
         <Tooltip key={user.userId} title={user.userName} placement="top">
           <div
             className={styles.fieldPresenceAvatar}
-            style={{ backgroundColor: user.avatarColor }}
+            style={{ 
+              backgroundColor: user.avatarColor,
+              zIndex: visibleUsers.length - index // First user (rightmost) has highest z-index
+            }}
           >
             {getUserInitials(user.userName)}
           </div>
@@ -46,7 +51,7 @@ export function FieldPresenceAvatars({ users, maxVisible = 3 }: FieldPresenceAva
       ))}
       {remainingCount > 0 && (
         <Tooltip
-          title={users
+          title={orderedUsers
             .slice(maxVisible)
             .map((u) => u.userName)
             .join(', ')}

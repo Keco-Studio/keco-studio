@@ -576,7 +576,12 @@ export default function AssetPage() {
     if (currentFocusedField === fieldId && userProfile) {
       const hasCurrentUser = editingUsers.some(u => u.userId === userProfile.id);
       if (!hasCurrentUser) {
-        // Add current user at the beginning (they should be shown first)
+        // Use a slightly earlier timestamp if this is the first user (empty list)
+        // This ensures the first user to enter keeps their position
+        const timestamp = editingUsers.length === 0 
+          ? new Date(Date.now() - 1000).toISOString() // 1 second earlier if first
+          : new Date().toISOString();
+        
         const currentUserPresence: PresenceState = {
           userId: userProfile.id,
           userName: userProfile.full_name || userProfile.username || userProfile.email,
@@ -584,10 +589,15 @@ export default function AssetPage() {
           avatarColor: getUserAvatarColor(userProfile.id),
           activeCell: { assetId: asset.id, propertyKey: fieldId },
           cursorPosition: null,
-          lastActivity: new Date().toISOString(),
+          lastActivity: timestamp,
           connectionStatus: 'online',
         };
-        editingUsers = [currentUserPresence, ...editingUsers];
+        editingUsers.push(currentUserPresence);
+        
+        // Re-sort to ensure consistent ordering
+        editingUsers.sort((a, b) => {
+          return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
+        });
       }
     }
     
@@ -1263,7 +1273,7 @@ export default function AssetPage() {
                                         {DATA_TYPE_LABEL[f.data_type]}
                                       </div>
                                     </div>
-                                    <div className={styles.fieldControl} style={{ position: 'relative', width: '100%' }}>
+                                    <div className={styles.fieldControl}>
                         <input
                           type={inputType}
                           step={f.data_type === 'int' ? '1' : f.data_type === 'float' ? 'any' : undefined}

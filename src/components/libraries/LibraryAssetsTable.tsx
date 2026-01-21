@@ -539,7 +539,7 @@ export function LibraryAssetsTable({
 
   const getUsersEditingCell = useCallback((assetId: string, propertyKey: string) => {
     if (!presenceTracking) return [];
-    const users = presenceTracking.getUsersEditingCell(assetId, propertyKey);
+    let users = presenceTracking.getUsersEditingCell(assetId, propertyKey);
     
     // If current user is focused on this specific cell, make sure they're included
     if (currentUser && currentFocusedCell && 
@@ -549,15 +549,26 @@ export function LibraryAssetsTable({
       const hasCurrentUser = users.some(u => u.userId === currentUser.id);
       if (!hasCurrentUser) {
         // Add current user to the list
-        users.unshift({
+        // Use a slightly earlier timestamp if this is the first user (empty list)
+        // This ensures the first user to enter keeps their position
+        const timestamp = users.length === 0 
+          ? new Date(Date.now() - 1000).toISOString() // 1 second earlier if first
+          : new Date().toISOString();
+        
+        users.push({
           userId: currentUser.id,
           userName: currentUser.name,
           userEmail: currentUser.email,
           avatarColor: currentUser.avatarColor || getUserAvatarColor(currentUser.id),
           activeCell: { assetId, propertyKey },
           cursorPosition: null,
-          lastActivity: new Date().toISOString(),
+          lastActivity: timestamp,
           connectionStatus: 'online' as const,
+        });
+        
+        // Re-sort to ensure consistent ordering
+        users.sort((a, b) => {
+          return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
         });
       }
     }
@@ -1816,7 +1827,7 @@ export function LibraryAssetsTable({
   };
 
   // Handle media file change for editing cell (with immediate save)
-  const handleEditMediaFileChange = (propertyKey: string, value: MediaFileMetadata | null) => {
+  const handleEditMediaFileChange = (rowId: string, propertyKey: string, value: MediaFileMetadata | null) => {
     // Prevent editing if user is a viewer
     if (userRole === 'viewer') {
       return;
@@ -7044,25 +7055,27 @@ export function LibraryAssetsTable({
         
         <div className={styles.batchEditMenuDivider}></div>
         
-        {/* Delete row */}
-        <div
-          className={styles.batchEditMenuItem}
-          style={{ color: '#ff4d4f' }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#fff1f0';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-          onClick={() => {
-            // Show confirmation modal
-            setBatchEditMenuVisible(false);
-            setBatchEditMenuPosition(null);
-            setDeleteRowConfirmVisible(true);
-          }}
-        >
-          <span className={styles.batchEditMenuText} style={{ color: '#ff4d4f' }}>Delete row</span>
-        </div>
+        {/* Delete row - only show for admin and editor */}
+        {userRole !== 'viewer' && (
+          <div
+            className={styles.batchEditMenuItem}
+            style={{ color: '#ff4d4f' }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.backgroundColor = '#fff1f0';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }}
+            onClick={() => {
+              // Show confirmation modal
+              setBatchEditMenuVisible(false);
+              setBatchEditMenuPosition(null);
+              setDeleteRowConfirmVisible(true);
+            }}
+          >
+            <span className={styles.batchEditMenuText} style={{ color: '#ff4d4f' }}>Delete row</span>
+          </div>
+        )}
       </div>,
       document.body
     )}
