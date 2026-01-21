@@ -609,19 +609,77 @@ export function LibraryAssetsTable({
   // Clean up optimistic assets when rows are updated (parent refresh)
   // This ensures that when a real asset is added/updated from the parent, we remove the optimistic one
   useEffect(() => {
-    // Clear all optimistic edit updates when rows prop changes
-    // This ensures external updates (e.g., from sidebar) always override optimistic updates
-    // The parent component will provide the updated data, so we should use it
+    // CRITICAL FIX: Only clear optimistic updates when the row data matches the optimistic update
+    // This prevents clearing optimistic updates for other columns when one column is filled
+    // We should only clear when ALL property values in the optimistic update match the row data
     setOptimisticEditUpdates(prev => {
       if (prev.size === 0) return prev;
       
-      // Clear optimistic updates for all assets that exist in the new rows
       const newMap = new Map(prev);
       let hasChanges = false;
       const clearedIds: string[] = [];
       
       for (const row of rows) {
-        if (newMap.has(row.id)) {
+        const optimisticUpdate = newMap.get(row.id);
+        if (!optimisticUpdate) continue;
+        
+        // Check if the optimistic update matches the row data
+        // If all property values in the optimistic update match the row data, we can clear it
+        // Otherwise, keep the optimistic update (it might be for other columns)
+        let allMatch = true;
+        
+        // Check if name matches
+        if (optimisticUpdate.name !== row.name) {
+          allMatch = false;
+        }
+        
+        // Check if all property values in optimistic update match row data
+        if (allMatch) {
+          for (const [propertyKey, optimisticValue] of Object.entries(optimisticUpdate.propertyValues)) {
+            const rowValue = row.propertyValues[propertyKey];
+            
+            // Compare values (handle null/undefined)
+            if (optimisticValue !== rowValue) {
+              // For objects, do a deeper comparison
+              if (typeof optimisticValue === 'object' && optimisticValue !== null &&
+                  typeof rowValue === 'object' && rowValue !== null) {
+                const optimisticObj = optimisticValue as Record<string, any>;
+                const rowObj = rowValue as Record<string, any>;
+                
+                // Check if it's MediaFileMetadata-like object
+                if (optimisticObj.url && rowObj.url) {
+                  if (optimisticObj.url !== rowObj.url && 
+                      optimisticObj.path !== rowObj.path &&
+                      optimisticObj.fileName !== rowObj.fileName) {
+                    allMatch = false;
+                    break;
+                  }
+                } else {
+                  // For other objects, compare all keys
+                  const optimisticKeys = Object.keys(optimisticObj);
+                  const rowKeys = Object.keys(rowObj);
+                  if (optimisticKeys.length !== rowKeys.length) {
+                    allMatch = false;
+                    break;
+                  }
+                  for (const key of optimisticKeys) {
+                    if (optimisticObj[key] !== rowObj[key]) {
+                      allMatch = false;
+                      break;
+                    }
+                  }
+                  if (!allMatch) break;
+                }
+              } else {
+                allMatch = false;
+                break;
+              }
+            }
+          }
+        }
+        
+        // Only clear if all values match (meaning the optimistic update has been saved)
+        if (allMatch) {
           newMap.delete(row.id);
           clearedIds.push(row.id);
           hasChanges = true;
@@ -2617,41 +2675,43 @@ export function LibraryAssetsTable({
             });
           }
           
-          // Apply optimistic updates IMMEDIATELY for better UX
-          // IMPORTANT: Only update the target property, preserve other properties
-          setOptimisticEditUpdates(prev => {
-            const newMap = new Map(prev);
-            fillUpdates.forEach(({ rowId, propertyKey, value }) => {
-              const existingUpdate = newMap.get(rowId);
-              if (existingUpdate) {
-                // Merge: preserve existing optimistic updates, only update the target property
-                newMap.set(rowId, {
-                  name: existingUpdate.name,
+          // CRITICAL FIX: Calculate merged optimistic updates BEFORE updating state
+          // This ensures we use the latest optimistic updates when building save data
+          // We need to simulate what the optimistic updates will be after the fill
+          const mergedOptimisticUpdates = new Map(optimisticEditUpdates);
+          fillUpdates.forEach(({ rowId, propertyKey, value }) => {
+            const existingUpdate = mergedOptimisticUpdates.get(rowId);
+            if (existingUpdate) {
+              // Merge: preserve existing optimistic updates, only update the target property
+              mergedOptimisticUpdates.set(rowId, {
+                name: existingUpdate.name,
+                propertyValues: {
+                  ...existingUpdate.propertyValues,
+                  [propertyKey]: value
+                }
+              });
+            } else {
+              // No existing optimistic update, get current row data
+              const targetRow = allRowsForFill.find(r => r.id === rowId);
+              if (targetRow) {
+                // Create new optimistic update with only the target property changed
+                mergedOptimisticUpdates.set(rowId, {
+                  name: targetRow.name,
                   propertyValues: {
-                    ...existingUpdate.propertyValues,
+                    ...targetRow.propertyValues,
                     [propertyKey]: value
                   }
                 });
-              } else {
-                // No existing optimistic update, get current row data
-                const targetRow = allRowsForFill.find(r => r.id === rowId);
-                if (targetRow) {
-                  // Create new optimistic update with only the target property changed
-                  newMap.set(rowId, {
-                    name: targetRow.name,
-                    propertyValues: {
-                      ...targetRow.propertyValues,
-                      [propertyKey]: value
-                    }
-                  });
-                }
               }
-            });
-            return newMap;
+            }
           });
           
-          // Prepare all update data BEFORE applying optimistic updates
-          // This ensures we capture the correct state before any state changes
+          // Apply optimistic updates IMMEDIATELY for better UX
+          // IMPORTANT: Only update the target property, preserve other properties
+          setOptimisticEditUpdates(mergedOptimisticUpdates);
+          
+          // Prepare all update data using the merged optimistic updates
+          // This ensures we use the latest optimistic updates including the fill values
           const updateDataMap = new Map<string, { 
             rowId: string; 
             rowName: string; 
@@ -2664,48 +2724,50 @@ export function LibraryAssetsTable({
           const isFillingNameField = orderedProperties[0]?.key === startPropertyKey;
           
           fillUpdates.forEach(({ rowId, propertyKey, value }) => {
-            const targetRow = allRowsForFill.find(r => r.id === rowId);
-            if (!targetRow) {
+            // Get base row data from allRowsSource (not from allRowsForFill which includes old optimistic updates)
+            const baseRow = allRowsSource.find(r => r.id === rowId);
+            if (!baseRow) {
               console.warn(`Row ${rowId} not found for fill update`);
               return;
             }
             
-            // Get existing optimistic update if any
-            const existingOptimisticUpdate = optimisticEditUpdates.get(rowId);
+            // Get merged optimistic update (includes the fill value we just added)
+            const mergedOptimisticUpdate = mergedOptimisticUpdates.get(rowId);
             
             // Get the name field key (first property)
             const nameFieldKey = orderedProperties[0]?.key;
             
-            // Build propertyValues: start with base row data, apply optimistic updates, then apply fill
-            // CRITICAL: This preserves cleared values from optimistic updates
+            // Build propertyValues: start with BASE row data, then apply ALL merged optimistic updates
+            // CRITICAL: Start from baseRow.propertyValues (not targetRow.propertyValues) to avoid stale optimistic updates
+            // Then apply mergedOptimisticUpdate.propertyValues which includes both existing optimistic updates AND the fill value
+            // This ensures other columns' optimistic updates are preserved correctly
             let propertyValuesToSave: Record<string, any>;
             let rowNameToSave: string;
             
-            if (existingOptimisticUpdate) {
-              // Has optimistic update: merge base data + optimistic updates + fill value
-              // The order matters: optimistic updates override base data, fill value overrides both
+            if (mergedOptimisticUpdate) {
+              // CRITICAL FIX: When filling, we should ONLY save the filled property
+              // Other columns' optimistic updates should remain as optimistic updates until explicitly saved
+              // This prevents other columns from being overwritten when filling one column
+              // Start with baseRow.propertyValues (fresh from data source), then only add the fill value
               propertyValuesToSave = {
-                ...targetRow.propertyValues,
-                ...existingOptimisticUpdate.propertyValues,
-                [propertyKey]: value
+                ...baseRow.propertyValues,
+                [propertyKey]: value  // Only save the filled property, keep other columns' optimistic updates
               };
-              rowNameToSave = existingOptimisticUpdate.name;
+              
+              // For name field, use the optimistic update name if it exists
+              // Otherwise, use baseRow.name
+              rowNameToSave = mergedOptimisticUpdate.name || baseRow.name;
             } else {
-              // No optimistic update
-              // CRITICAL: If we're NOT filling the name field, we must preserve the current name field value
-              // This prevents restoring old name values when filling other fields after clearing name
+              // No optimistic update (shouldn't happen after merge, but handle it)
               propertyValuesToSave = {
-                ...targetRow.propertyValues,
+                ...baseRow.propertyValues,
                 [propertyKey]: value
               };
               
-              // If not filling name field, ensure name field value is preserved from targetRow
-              // targetRow comes from getAllRowsForCellSelection which includes optimistic updates
-              // So if name was cleared, targetRow.propertyValues[nameFieldKey] should be null
+              // If not filling name field, ensure name field value is preserved from baseRow
               if (!isFillingNameField && nameFieldKey) {
-                // Preserve the current name field value (which may be null if cleared)
-                // Don't restore from targetRow.name which might be old value
-                const currentNameValue = targetRow.propertyValues[nameFieldKey];
+                // Preserve the current name field value from baseRow
+                const currentNameValue = baseRow.propertyValues[nameFieldKey];
                 if (currentNameValue === null || currentNameValue === undefined || currentNameValue === '') {
                   // Name was cleared, keep it cleared
                   propertyValuesToSave[nameFieldKey] = null;
@@ -2715,8 +2777,8 @@ export function LibraryAssetsTable({
                   rowNameToSave = String(currentNameValue);
                 }
               } else {
-                // Filling name field or no name field, use targetRow.name
-                rowNameToSave = targetRow.name;
+                // Filling name field or no name field, use baseRow.name
+                rowNameToSave = baseRow.name;
               }
             }
             
@@ -2735,6 +2797,8 @@ export function LibraryAssetsTable({
               onUpdateAsset(rowId, rowName, propertyValues)
                 .then(() => {
                   // Clear optimistic update after successful save (with delay to allow parent refresh)
+                  // CRITICAL: Only remove the filled property from optimistic update
+                  // Other columns' optimistic updates should remain until they are explicitly saved
                   setTimeout(() => {
                     setOptimisticEditUpdates(prev => {
                       const newMap = new Map(prev);
@@ -2747,7 +2811,7 @@ export function LibraryAssetsTable({
                           delete updatedPropertyValues[propertyKey];
                           
                           if (Object.keys(updatedPropertyValues).length > 0) {
-                            // Keep other optimistic updates (e.g., cleared values)
+                            // Keep other optimistic updates (e.g., other columns)
                             newMap.set(rowId, {
                               name: currentUpdate.name,
                               propertyValues: updatedPropertyValues
