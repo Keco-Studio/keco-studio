@@ -996,6 +996,15 @@ td.cellCopy.copyBorderRight:hover {
   z-index: 1;
 }
 
+/* Container for MediaFileUpload component in cells */
+.mediaFileUploadContainer {
+  width: 100%;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  min-height: 0;
+}
+
 /* Media field display styles */
 .mediaCellContent {
   display: flex;
