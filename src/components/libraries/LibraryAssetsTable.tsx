@@ -2497,11 +2497,18 @@ export function LibraryAssetsTable({
           setFillDragStartCell({ rowId: startRowId, propertyKey: startPropertyKey, startY });
           // Now prevent text selection since we're dragging
           document.body.style.userSelect = 'none';
+          // Set cursor to crosshair during fill drag
+          document.body.style.cursor = 'crosshair';
+          // Add class to body to force crosshair cursor on all cells
+          document.body.classList.add('filling-cells');
         }
       }
       
       // Only show selection feedback if we've actually dragged
       if (!hasMoved || !isFillingCellsRef.current) return;
+      
+      // Keep cursor as crosshair during fill drag
+      document.body.style.cursor = 'crosshair';
       
       // Find the cell under the cursor
       const elementBelow = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
@@ -2869,6 +2876,8 @@ export function LibraryAssetsTable({
         // Always reset state, even if errors occurred
         isFillingCellsRef.current = false;
         document.body.style.userSelect = '';
+        document.body.style.cursor = ''; // Reset cursor to default
+        document.body.classList.remove('filling-cells'); // Remove class to restore normal cursor
         setFillDragStartCell(null);
       }
     };

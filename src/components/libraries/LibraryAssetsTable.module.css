@@ -1,3 +1,9 @@
+/* When filling cells, force crosshair cursor on all cells */
+:global(body.filling-cells) .tableContainer .cell,
+:global(body.filling-cells) .tableContainer .cell * {
+  cursor: crosshair !important;
+}
+
 .tableContainer {
   margin-top: 24px;
   margin-bottom: 260px; /* Add bottom margin to ensure context menu has space (increased by ~60px for one more row) */
