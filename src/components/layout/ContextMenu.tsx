@@ -20,9 +20,11 @@ type ContextMenuProps = {
   type?: 'project' | 'library' | 'folder' | 'asset';
   onClose: () => void;
   onAction?: (action: ContextMenuAction) => void;
+  userRole?: 'admin' | 'editor' | 'viewer' | null;
+  isProjectOwner?: boolean;
 };
 
-export function ContextMenu({ x, y, onClose, onAction, type }: ContextMenuProps) {
+export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProjectOwner }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -58,8 +60,25 @@ export function ContextMenu({ x, y, onClose, onAction, type }: ContextMenuProps)
     onClose();
   };
 
+  // Check if user can delete based on type and role
+  const canDelete = () => {
+    if (type === 'project') {
+      // Only project owner can delete project
+      return isProjectOwner;
+    } else if (type === 'library' || type === 'folder') {
+      // Only admin can delete library or folder
+      return userRole === 'admin';
+    } else if (type === 'asset') {
+      // Admin and editor can delete asset, viewer cannot
+      return userRole === 'admin' || userRole === 'editor';
+    }
+    return false;
+  };
+
   // Render menu items based on type
   const renderMenuItems = () => {
+    const showDeleteButton = canDelete();
+    
     if (type === 'project') {
       // Project: Project info, Collaborators, Duplicate, separator, Delete
       return (
@@ -85,13 +104,17 @@ export function ContextMenu({ x, y, onClose, onAction, type }: ContextMenuProps)
           >
             Duplicate
           </button>
-          <div className={styles.separator} />
-          <button
-            className={`${styles.menuItem} ${styles.deleteItem}`}
-            onClick={() => handleAction('delete')}
-          >
-            Delete
-          </button>
+          {showDeleteButton && (
+            <>
+              <div className={styles.separator} />
+              <button
+                className={`${styles.menuItem} ${styles.deleteItem}`}
+                onClick={() => handleAction('delete')}
+              >
+                Delete
+              </button>
+            </>
+          )}
         </>
       );
     } else if (type === 'library') {
@@ -141,13 +164,17 @@ export function ContextMenu({ x, y, onClose, onAction, type }: ContextMenuProps)
           >
             Move to...
           </button>
-          <div className={styles.separator} />
-          <button
-            className={`${styles.menuItem} ${styles.deleteItem}`}
-            onClick={() => handleAction('delete')}
-          >
-            Delete
-          </button>
+          {showDeleteButton && (
+            <>
+              <div className={styles.separator} />
+              <button
+                className={`${styles.menuItem} ${styles.deleteItem}`}
+                onClick={() => handleAction('delete')}
+              >
+                Delete
+              </button>
+            </>
+          )}
         </>
       );
     } else if (type === 'folder' || type === 'asset') {
@@ -169,13 +196,17 @@ export function ContextMenu({ x, y, onClose, onAction, type }: ContextMenuProps)
           >
             Duplicate
           </button>
-          <div className={styles.separator} />
-          <button
-            className={`${styles.menuItem} ${styles.deleteItem}`}
-            onClick={() => handleAction('delete')}
-          >
-            Delete
-          </button>
+          {showDeleteButton && (
+            <>
+              <div className={styles.separator} />
+              <button
+                className={`${styles.menuItem} ${styles.deleteItem}`}
+                onClick={() => handleAction('delete')}
+              >
+                Delete
+              </button>
+            </>
+          )}
         </>
       );
     }

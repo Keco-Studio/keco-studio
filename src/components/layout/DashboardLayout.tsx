@@ -5,7 +5,9 @@ import { TopBar } from './TopBar';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import AuthForm from '@/components/authform/AuthForm';
 import styles from './DashboardLayout.module.css';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import { usePathname } from 'next/navigation';
+import { PresenceProvider } from '@/lib/contexts/PresenceContext';
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -13,8 +15,21 @@ type DashboardLayoutProps = {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { isAuthenticated, isLoading, userProfile, signOut } = useAuth();
+  const pathname = usePathname();
   const prevAuthenticatedRef = useRef<boolean | null>(null);
   const [showAuthForm, setShowAuthForm] = useState(true);
+
+  // Extract libraryId from URL for presence tracking
+  const currentLibraryId = useMemo(() => {
+    const parts = pathname.split("/").filter(Boolean);
+    // Handle /[projectId]/[libraryId] or /[projectId]/[libraryId]/[assetId] structure
+    const specialRoutes = ['folder', 'collaborators', 'settings', 'members', 'projects'];
+    
+    if (parts.length >= 2 && !specialRoutes.includes(parts[1])) {
+      return parts[1]; // This is the libraryId
+    }
+    return null;
+  }, [pathname]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -52,15 +67,17 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <div className={styles.dashboard}>
-      <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
-      <div className={styles.main}>
-        <TopBar />
-        <div className={styles.content}>
-          {children}
+    <PresenceProvider libraryId={currentLibraryId}>
+      <div className={styles.dashboard}>
+        <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
+        <div className={styles.main}>
+          <TopBar />
+          <div className={styles.content}>
+            {children}
+          </div>
         </div>
       </div>
-    </div>
+    </PresenceProvider>
   );
 }
 

@@ -122,11 +122,14 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (invitationError || !invitation) {
+      console.error('[API /invitations/accept] Invitation not found. Error:', invitationError);
+      console.error('[API /invitations/accept] Token payload:', JSON.stringify(tokenPayload, null, 2));
       return NextResponse.json(
         { success: false, error: 'Invitation not found' },
         { status: 404 }
       );
     }
+    
 
     // 10. Validate invitation status
     if (invitation.accepted_at) {
@@ -213,9 +216,6 @@ export async function POST(request: NextRequest) {
       console.error('Error updating invitation status:', updateError);
       // Don't fail the acceptance - collaborator was already added
     }
-
-    console.log('[API /invitations/accept] Invitation accepted successfully');
-    console.log('[API /invitations/accept] Added user', user.id, 'as', invitation.role, 'to project', invitation.project_id);
 
     return NextResponse.json({
       success: true,

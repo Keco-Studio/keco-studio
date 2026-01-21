@@ -24,6 +24,7 @@ export type SendInvitationEmailParams = {
   recipientEmail: string;
   recipientName?: string;
   inviterName: string;
+  inviterEmail: string;
   projectName: string;
   role: string;
   acceptLink: string;
@@ -48,47 +49,120 @@ export type SendInvitationEmailParams = {
  * ```
  */
 export async function sendInvitationEmail(
-  params: SendInvitationEmailParams
+  params: SendInvitationEmailParams,
+  retries: number = 2
 ): Promise<string> {
   const {
     recipientEmail,
     recipientName,
     inviterName,
+    inviterEmail,
     projectName,
     role,
     acceptLink,
   } = params;
 
-  try {
-    const result = await resend.emails.send({
-      from: FROM_EMAIL,
-      to: recipientEmail,
-      subject: `${inviterName} invited you to collaborate on ${projectName}`,
-      react: InvitationEmail({
-        recipientName: recipientName || recipientEmail.split('@')[0],
-        inviterName,
-        projectName,
-        role,
-        acceptLink,
-      }),
-    });
-
-    if (result.error) {
-      throw new Error(`Email send failed: ${result.error.message}`);
-    }
-
-    if (!result.data?.id) {
-      throw new Error('Email send succeeded but no ID returned');
-    }
-
-    return result.data.id;
-  } catch (error) {
-    // Re-throw with context for better error handling upstream
-    if (error instanceof Error) {
-      throw new Error(`Failed to send invitation email: ${error.message}`);
-    }
-    throw new Error('Failed to send invitation email: Unknown error');
+  // Validate configuration before attempting to send
+  if (!process.env.RESEND_API_KEY) {
+    throw new Error('RESEND_API_KEY is not configured. Please check your environment variables.');
   }
+
+  if (process.env.RESEND_API_KEY === 're_your_resend_api_key_here') {
+    throw new Error('RESEND_API_KEY is set to placeholder value. Please set a valid API key.');
+  }
+
+  let lastError: Error | null = null;
+  
+  // Retry logic for network errors
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      if (attempt > 0) {
+        // Wait before retry: 1s, 2s, 4s (exponential backoff)
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 4000);
+        console.log(`[EmailService] Retrying email send (attempt ${attempt + 1}/${retries + 1}) after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      const result = await resend.emails.send({
+        from: FROM_EMAIL,
+        to: recipientEmail,
+        subject: `${inviterName} invited you to collaborate on ${projectName}`,
+        react: InvitationEmail({
+          recipientName: recipientName || recipientEmail.split('@')[0],
+          inviterName,
+          inviterEmail,
+          projectName,
+          role,
+          acceptLink,
+        }),
+      });
+
+      if (result.error) {
+        console.error('[EmailService] Resend API error:', {
+          message: result.error.message,
+          name: result.error.name,
+          statusCode: (result.error as any).statusCode,
+        });
+        throw new Error(`Email send failed: ${result.error.message}`);
+      }
+
+      if (!result.data?.id) {
+        throw new Error('Email send succeeded but no ID returned');
+      }
+
+      if (attempt > 0) {
+        console.log(`[EmailService] Email sent successfully after ${attempt} retries:`, result.data.id);
+      } else {
+        console.log('[EmailService] Email sent successfully:', result.data.id);
+      }
+      return result.data.id;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      
+      // Check if it's a network error that we should retry
+      const errorMessage = lastError.message;
+      const isNetworkError = 
+        errorMessage.includes('Unable to fetch') ||
+        errorMessage.includes('fetch failed') ||
+        errorMessage.includes('ENOTFOUND') ||
+        errorMessage.includes('ECONNREFUSED') ||
+        errorMessage.includes('ETIMEDOUT') ||
+        errorMessage.includes('request could not be resolved');
+      
+      // Only retry on network errors, and only if we have retries left
+      if (isNetworkError && attempt < retries) {
+        console.warn(`[EmailService] Network error on attempt ${attempt + 1}, will retry...`);
+        continue; // Retry
+      }
+      
+      // If not a network error, or no retries left, throw immediately
+      if (error instanceof Error) {
+        // Enhanced error handling with network diagnostics
+        if (isNetworkError) {
+          console.error('[EmailService] Network error after all retries:', {
+            message: errorMessage,
+            attempts: attempt + 1,
+            apiKeyConfigured: !!process.env.RESEND_API_KEY,
+            apiKeyLength: process.env.RESEND_API_KEY?.length || 0,
+            fromEmail: FROM_EMAIL,
+          });
+          throw new Error(
+            `Network error: Unable to connect to Resend API after ${attempt + 1} attempts. ` +
+            `This could be due to: 1) Network connectivity issues, 2) DNS resolution problems, ` +
+            `3) Firewall/proxy blocking the request, or 4) Resend API service outage. ` +
+            `Original error: ${errorMessage}`
+          );
+        }
+        
+        // Re-throw with context for better error handling upstream
+        throw new Error(`Failed to send invitation email: ${errorMessage}`);
+      }
+      throw new Error('Failed to send invitation email: Unknown error');
+    }
+  }
+  
+  // If we get here, all retries failed
+  throw lastError || new Error('Failed to send invitation email: Unknown error');
 }
 
 /**

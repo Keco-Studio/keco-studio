@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useSupabase } from '@/lib/SupabaseContext';
 import Image from 'next/image';
 import { useRef, useState, useEffect, useMemo } from 'react';
 import { Avatar } from 'antd';
@@ -32,12 +33,14 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const { breadcrumbs, currentAssetId, showCreateProjectBreadcrumb: contextShowCreateProjectBreadcrumb } = useNavigation();
   const showCreateProjectBreadcrumb = propShowCreateProjectBreadcrumb ?? contextShowCreateProjectBreadcrumb;
   const { userProfile, signOut } = useAuth();
+  const supabase = useSupabase();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [assetMode, setAssetMode] = useState<AssetMode>('edit');
   const [isCreatingNewAsset, setIsCreatingNewAsset] = useState(false);
   const [isPredefineCreatingNewSection, setIsPredefineCreatingNewSection] = useState(false);
   const [predefineActiveSectionId, setPredefineActiveSectionId] = useState<string | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
 
   // Resolve display name: prefer username, then full_name, then email
   const displayName =
@@ -71,6 +74,51 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     setAssetMode('edit');
     setIsCreatingNewAsset(false);
   }, [currentAssetId]);
+
+  // Fetch user role for current project
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      // Extract projectId from pathname
+      const parts = pathname.split('/').filter(Boolean);
+      const projectId = parts[0] || null;
+      
+      // Check if projectId is a valid UUID (not "projects" or other route segments)
+      const isValidUUID = projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+      
+      if (!isValidUUID || !userProfile) {
+        setUserRole(null);
+        return;
+      }
+      
+      try {
+        // Get session for authorization
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setUserRole(null);
+          return;
+        }
+        
+        // Call API to get user role
+        const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+        });
+        
+        if (roleResponse.ok) {
+          const roleResult = await roleResponse.json();
+          setUserRole(roleResult.role || null);
+        } else {
+          setUserRole(null);
+        }
+      } catch (error) {
+        console.error('[TopBar] Error fetching user role:', error);
+        setUserRole(null);
+      }
+    };
+    
+    fetchUserRole();
+  }, [pathname, userProfile, supabase]);
 
   // Listen to asset page mode updates (for create/view/edit detection)
   useEffect(() => {
@@ -220,49 +268,29 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       if (isCreatingNewAsset) {
         // Create mode - show Create Asset button
         return (
-          <button
-            className={`${styles.topbarPillButton} ${styles.topbarPillPrimary}`}
-            onClick={handleCreateAsset}
-          >
-            <span className={styles.topbarPillIcon}>
-              <Image src={topbarPredefinePublishIcon} alt="Create" width={16} height={16} />
-            </span>
-            <span>Create Asset</span>
-          </button>
-        );
-      } else {
-        // View/Edit mode - show mode toggle and share
-        return (
           <>
-            <div className={styles.assetModeGroup}>
-              <button
-                className={`${styles.assetModeButton} ${
-                  assetMode === 'view' ? styles.assetModeButtonActive : ''
-                }`}
-                onClick={() => changeAssetMode('view')}
-              >
-                <Image src={assetViewIcon} alt="Viewing" width={16} height={16} />
-                <span>Viewing</span>
-              </button>
-              <button
-                className={`${styles.assetModeButton} ${
-                  assetMode === 'edit' ? styles.assetModeButtonActive : ''
-                }`}
-                onClick={() => changeAssetMode('edit')}
-              >
-                <Image src={assetEditIcon} alt="Editing" width={16} height={16} />
-                <span>Editing</span>
-              </button>
-            </div>
             <button
-              className={styles.shareButton}
-              onClick={handleShareClick}
+              className={`${styles.topbarPillButton} ${styles.topbarPillPrimary}`}
+              onClick={handleCreateAsset}
             >
-              <Image src={assetShareIcon} alt="Share" width={16} height={16} />
-              <span>Share</span>
+              <span className={styles.topbarPillIcon}>
+                <Image src={topbarPredefinePublishIcon} alt="Create" width={16} height={16} />
+              </span>
+              <span>Create Asset</span>
+            </button>
+            <button className={`${styles.button} ${styles.buttonText}`}>
+              <Image src={homeMorehorizontalIcon} alt="More" width={20} height={20} />
+            </button>
+            <button className={styles.button}>
+              <Image src={homeQuestionIcon} alt="Question" width={20} height={20} />
+            </button>
+            <button className={styles.button}>
+              <Image src={homeMessageIcon} alt="Message" width={20} height={20} />
             </button>
           </>
         );
+      } else {
+  
       }
     }
 

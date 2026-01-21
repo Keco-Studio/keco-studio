@@ -11,7 +11,7 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { Result, Button } from 'antd';
-import { CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
 interface AcceptInvitationContentProps {
   status: 'success' | 'error' | 'expired';
@@ -53,12 +53,18 @@ export function AcceptInvitationContent({
       })();
       
       const timer = setTimeout(() => {
-        router.push(`/${projectId}`);
+        router.push(`/${projectId}/collaborators`);
       }, 2000);
       
       return () => clearTimeout(timer);
     }
   }, [status, projectId, router, supabase]);
+  
+  // Check if error is due to invitation already being accepted, declined, or not found
+  const isInvalidInvitation = message.toLowerCase().includes('already been accepted') || 
+                                message.toLowerCase().includes('already been declined') ||
+                                message.toLowerCase().includes('invalid invitation') ||
+                                message.toLowerCase().includes('not found');
   
   const getStatusConfig = () => {
     switch (status) {
@@ -70,9 +76,9 @@ export function AcceptInvitationContent({
             <Button 
               type="primary" 
               size="large"
-              onClick={() => router.push(`/${projectId}`)}
+              onClick={() => router.push(`/${projectId}/collaborators`)}
             >
-              Go to {projectName || 'Project'}
+              Go to {projectName || 'Project'} Collaborators
             </Button>
           ) : (
             <Button 
@@ -101,6 +107,22 @@ export function AcceptInvitationContent({
       
       case 'error':
       default:
+        // Use special styling for invalid invitation errors
+        if (isInvalidInvitation) {
+          return {
+            status: 'info' as const,
+            icon: <InfoCircleOutlined style={{ fontSize: 72, color: '#94a3b8' }} />,
+            extra: (
+              <Button 
+                size="large"
+                onClick={() => router.push('/projects')}
+              >
+                Back to projects
+              </Button>
+            ),
+          };
+        }
+        
         return {
           status: 'error' as const,
           icon: <CloseCircleOutlined style={{ fontSize: 72, color: '#ff4d4f' }} />,
@@ -117,6 +139,95 @@ export function AcceptInvitationContent({
   };
   
   const config = getStatusConfig();
+  
+  // Custom UI for invalid invitation
+  if (status === 'error' && isInvalidInvitation) {
+    return (
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        padding: '24px',
+        backgroundColor: '#ffffff',
+      }}>
+        <div style={{
+          maxWidth: '800px',
+          width: '100%',
+        }}>
+          {/* Logo */}
+          <div style={{
+            textAlign: 'center',
+            marginBottom: '48px',
+          }}>
+            <h1 style={{
+              fontSize: '32px',
+              fontWeight: '700',
+              color: '#1a1a1a',
+              margin: '0',
+            }}>
+              keco-studio
+            </h1>
+          </div>
+          
+          {/* Error Card */}
+          <div style={{
+            backgroundColor: '#ffffff',
+            border: '1px solid #e5e7eb',
+            borderRadius: '8px',
+            padding: '48px',
+            boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+          }}>
+            <div style={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              marginBottom: '24px',
+            }}>
+              <InfoCircleOutlined style={{
+                fontSize: '24px',
+                color: '#94a3b8',
+                marginRight: '16px',
+                marginTop: '4px',
+              }} />
+              <div style={{ flex: 1 }}>
+                <h2 style={{
+                  fontSize: '20px',
+                  fontWeight: '600',
+                  color: '#1a1a1a',
+                  margin: '0 0 8px 0',
+                }}>
+                  Invalid invitation
+                </h2>
+                <p style={{
+                  fontSize: '16px',
+                  color: '#737373',
+                  margin: '0',
+                  lineHeight: '1.5',
+                }}>
+                  This organization invite is no longer valid as it has either been accepted or declined
+                </p>
+              </div>
+            </div>
+            
+            <div style={{
+              textAlign: 'center',
+              marginTop: '32px',
+            }}>
+              <Button 
+                size="large"
+                onClick={() => router.push('/projects')}
+                style={{
+                  minWidth: '200px',
+                }}
+              >
+                Back to projects
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div style={{

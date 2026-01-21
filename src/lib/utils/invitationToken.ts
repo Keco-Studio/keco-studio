@@ -29,9 +29,16 @@ function getSecret(): Uint8Array {
 }
 
 /**
- * Default token expiration (7 days in seconds)
+ * Default token expiration (365 days / 1 year in seconds)
+ * 
+ * Set to 365 days for long-term invitations.
+ * Can be changed to:
+ * - 7 for 1 week
+ * - 30 for 1 month  
+ * - 365 for 1 year
+ * - 3650 for 10 years (effectively permanent)
  */
-const DEFAULT_EXPIRATION_DAYS = 7;
+const DEFAULT_EXPIRATION_DAYS = 365;
 const SECONDS_PER_DAY = 24 * 60 * 60;
 
 /**
@@ -141,9 +148,18 @@ export function decodeInvitationTokenUnsafe(token: string): JWTPayload | null {
     }
     
     // Decode payload (middle part)
-    const payload = JSON.parse(
-      Buffer.from(parts[1], 'base64url').toString('utf-8')
-    );
+    // Use atob for browser compatibility, fallback to Buffer for Node.js
+    let payloadStr: string;
+    if (typeof window !== 'undefined' && typeof atob !== 'undefined') {
+      // Browser environment: use atob
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      payloadStr = atob(base64);
+    } else {
+      // Node.js environment: use Buffer
+      payloadStr = Buffer.from(parts[1], 'base64url').toString('utf-8');
+    }
+    
+    const payload = JSON.parse(payloadStr);
     
     return payload;
   } catch {

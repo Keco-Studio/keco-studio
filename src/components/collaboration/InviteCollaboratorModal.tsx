@@ -25,6 +25,7 @@ interface InviteCollaboratorModalProps {
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  title?: string; // Custom modal title
 }
 
 export function InviteCollaboratorModal({
@@ -34,6 +35,7 @@ export function InviteCollaboratorModal({
   open,
   onClose,
   onSuccess,
+  title,
 }: InviteCollaboratorModalProps) {
   const supabase = useSupabase();
   const [form] = Form.useForm();
@@ -80,16 +82,8 @@ export function InviteCollaboratorModal({
       const values = await form.validateFields();
       const { email, role } = values;
 
-      console.log('[InviteCollaboratorModal] Sending invitation:', {
-        projectId,
-        recipientEmail: email.trim().toLowerCase(),
-        role,
-      });
-
       // Get current session for authorization header
       const { data: { session } } = await supabase.auth.getSession();
-      console.log('[InviteCollaboratorModal] Session:', session ? 'exists' : 'null');
-      console.log('[InviteCollaboratorModal] Access token:', session?.access_token ? 'exists (length: ' + session.access_token.length + ')' : 'null');
       
       if (!session) {
         setError('You must be logged in to send invitations');
@@ -135,7 +129,7 @@ export function InviteCollaboratorModal({
           // This will refresh the inviter's Sidebar, but won't affect the invited user's browser
           window.dispatchEvent(new CustomEvent('projectCreated'));
         } else {
-          message.success('Invitation sent successfully!');
+          message.success('Invite sent');
         }
         form.resetFields();
         onClose();
@@ -159,9 +153,12 @@ export function InviteCollaboratorModal({
     }
   };
 
+  // Use custom title if provided, otherwise default
+  const modalTitle = title || 'Invite Collaborator';
+
   return (
     <Modal
-      title="Invite Collaborator"
+      title={modalTitle}
       open={open}
       onCancel={handleCancel}
       footer={[
@@ -197,7 +194,7 @@ export function InviteCollaboratorModal({
         >
           <Form.Item
             name="email"
-            label="Email Address"
+            label="Email"
             rules={[
               { required: true, message: 'Please enter an email address' },
               { type: 'email', message: 'Please enter a valid email address' },
@@ -213,7 +210,7 @@ export function InviteCollaboratorModal({
 
           <Form.Item
             name="role"
-            label="Role"
+            label="Role type"
             rules={[{ required: true, message: 'Please select a role' }]}
           >
             <Select

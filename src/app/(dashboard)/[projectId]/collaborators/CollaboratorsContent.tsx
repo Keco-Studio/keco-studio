@@ -344,6 +344,7 @@ export function CollaboratorsContent({
         open={inviteModalOpen}
         onClose={() => setInviteModalOpen(false)}
         onSuccess={handleInviteSuccess}
+        title="Invite new collaborator"
       />
     </div>
   );

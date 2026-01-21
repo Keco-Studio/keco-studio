@@ -1,57 +1,56 @@
 /**
- * Library Header Component
+ * Asset Header Component
  * 
- * Displays library header with:
- * - Library name and description
- * - Version control and more options
+ * Displays asset header with:
+ * - Asset name
  * - Share button for collaboration
  * - Viewing members indicator
+ * - More options
+ * 
+ * Similar to LibraryHeader but without version control
  */
 
 'use client';
 
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { Avatar, Tooltip, Badge } from 'antd';
+import { Avatar, Tooltip } from 'antd';
 import Image from 'next/image';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
-import styles from './LibraryHeader.module.css';
+import styles from './AssetHeader.module.css';
 import libraryHeadMoreIcon from '@/app/assets/images/libraryHeadMoreIcon.svg';
-import libraryHeadVersionControlIcon from '@/app/assets/images/libraryHeadVersionControlIcon.svg';
 import libraryHeadExpandCollaborators from '@/app/assets/images/libraryHeadExpandCollaborators.svg';
 import libraryHeadEditIcon from '@/app/assets/images/assetEditIcon.svg';
 import libraryHeadViewIcon from '@/app/assets/images/assetViewIcon.svg';
 
-interface LibraryHeaderProps {
-  libraryId: string;
-  libraryName: string;
-  libraryDescription?: string | null;
+interface AssetHeaderProps {
+  assetId: string;
+  assetName: string;
   projectId: string;
+  libraryId: string;
+  libraryName?: string;
   currentUserId: string;
   currentUserName?: string;
   currentUserEmail?: string;
   currentUserAvatarColor?: string;
   userRole: CollaboratorRole;
   presenceUsers: PresenceState[];
-  isVersionControlOpen?: boolean;
-  onVersionControlToggle?: () => void;
 }
 
-export function LibraryHeader({
-  libraryId,
-  libraryName,
-  libraryDescription,
+export function AssetHeader({
+  assetId,
+  assetName,
   projectId,
+  libraryId,
+  libraryName = '',
   currentUserId,
   currentUserName = 'You',
   currentUserEmail = '',
   currentUserAvatarColor = '#999999',
   userRole,
   presenceUsers,
-  isVersionControlOpen = false,
-  onVersionControlToggle,
-}: LibraryHeaderProps) {
+}: AssetHeaderProps) {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const membersPanelRef = useRef<HTMLDivElement>(null);
@@ -70,10 +69,18 @@ export function LibraryHeader({
     }
   };
 
+  // Filter presence users to only show those viewing/editing this specific asset
+  const assetPresenceUsers = useMemo(() => {
+    return presenceUsers.filter(user => {
+      // Check if user is viewing or editing this asset
+      return user.activeCell?.assetId === assetId;
+    });
+  }, [presenceUsers, assetId]);
+
   // Sort presence users: current user first, then by last activity
   // Make sure current user is always included
   const sortedPresenceUsers = useMemo(() => {
-    const users = [...presenceUsers];
+    const users = [...assetPresenceUsers];
     
     // Check if current user is in the list
     const hasCurrentUser = users.some(u => u.userId === currentUserId);
@@ -85,7 +92,7 @@ export function LibraryHeader({
         userName: currentUserName,
         userEmail: currentUserEmail,
         avatarColor: currentUserAvatarColor,
-        activeCell: null,
+        activeCell: { assetId, propertyKey: '__viewing__' },
         cursorPosition: null,
         lastActivity: new Date().toISOString(),
         connectionStatus: 'online' as const,
@@ -100,9 +107,9 @@ export function LibraryHeader({
       // Then sort by last activity (most recent first)
       return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
     });
-  }, [presenceUsers, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor]);
+  }, [assetPresenceUsers, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor, assetId]);
 
-  // Get users for avatar display (max 3)
+  // Get users for avatar display (max 2)
   const displayUsers = useMemo(() => {
     const result = [];
     
@@ -116,7 +123,7 @@ export function LibraryHeader({
         userName: currentUserName,
         userEmail: currentUserEmail,
         avatarColor: currentUserAvatarColor,
-        activeCell: null,
+        activeCell: { assetId, propertyKey: '__viewing__' },
         cursorPosition: null,
         lastActivity: new Date().toISOString(),
         connectionStatus: 'online' as const,
@@ -132,10 +139,9 @@ export function LibraryHeader({
     }
     
     return result;
-  }, [sortedPresenceUsers, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor]);
+  }, [sortedPresenceUsers, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor, assetId]);
 
   // Get remaining count (excluding displayed users)
-  // If current user is displayed, count should exclude them
   const remainingCount = useMemo(() => {
     const displayed = displayUsers.length;
     const total = sortedPresenceUsers.length;
@@ -169,20 +175,11 @@ export function LibraryHeader({
   return (
     <div className={styles.header}>
       <div className={styles.leftSection}>
-        <h1 className={styles.title}>{libraryName}</h1>
-        {libraryDescription && (
-          <Tooltip title={libraryDescription.length > 50 ? libraryDescription : undefined}>
-            <div className={styles.description}>
-              {libraryDescription.length > 50
-                ? `${libraryDescription.slice(0, 50)}...`
-                : libraryDescription}
-            </div>
-          </Tooltip>
-        )}
+        <h1 className={styles.title}>{assetName || 'Untitled Asset'}</h1>
       </div>
 
       <div className={styles.rightSection}>
-           {/* Viewing Members Indicator */}
+        {/* Viewing Members Indicator */}
         <div className={styles.membersSection} ref={membersPanelRef}>
           <div className={styles.membersAvatars}>
             {displayUsers.map((user, index) => (
@@ -287,7 +284,7 @@ export function LibraryHeader({
                     ))
                   ) : (
                     <div className={styles.emptyState}>
-                      No one else is currently viewing this library
+                      No one else is currently viewing this asset
                     </div>
                   )}
                 </div>
@@ -295,59 +292,40 @@ export function LibraryHeader({
             );
           })()}
         </div>
+
         {/* Share Button */}
         <div className={styles.shareSection}>
           <button
             className={styles.shareButton}
             onClick={() => setShowInviteModal(true)}
-            >
-              Share
+          >
+            Share
           </button>
           {userRole === 'admin' && (
-            <button
-              className={styles.adminRoleLabel}
-              >
-                {getRoleText(userRole)}
+            <button className={styles.adminRoleLabel}>
+              {getRoleText(userRole)}
             </button>
           )}
           {userRole === 'editor' && (
-            <button
-              className={styles.editorRoleLabel}
-              >
-                <Image src={libraryHeadEditIcon} alt="Editing" width={16} height={16} />
-                {getRoleText(userRole)}
+            <button className={styles.editorRoleLabel}>
+              <Image src={libraryHeadEditIcon} alt="Editing" width={16} height={16} />
+              {getRoleText(userRole)}
             </button>
           )}
           {userRole === 'viewer' && (
-            <button
-              className={styles.viewerRoleLabel}
-              >
-                <Image src={libraryHeadViewIcon} alt="Viewing" width={16} height={16} />
-                {getRoleText(userRole)}
+            <button className={styles.viewerRoleLabel}>
+              <Image src={libraryHeadViewIcon} alt="Viewing" width={16} height={16} />
+              {getRoleText(userRole)}
             </button>
           )}
         </div>
 
-        {/* More Options Icon */}
+        {/* More Options Icon (no Version Control) */}
         <Tooltip title="More Options">
           <button className={styles.iconButton}>
             <Image
               src={libraryHeadMoreIcon}
               alt="More"
-              width={32}
-              height={32}
-            />
-          </button>
-        </Tooltip>
-        {/* Version Control Icon */}
-        <Tooltip title="Version Control">
-          <button 
-            className={styles.iconButton}
-            onClick={onVersionControlToggle}
-          >
-            <Image
-              src={libraryHeadVersionControlIcon}
-              alt="Version Control"
               width={32}
               height={32}
             />
@@ -365,7 +343,7 @@ export function LibraryHeader({
         onSuccess={() => {
           // Handle success (e.g., refresh collaborators list)
         }}
-        title={`Share ${libraryName}..`}
+        title="Invite new collaborator"
       />
     </div>
   );

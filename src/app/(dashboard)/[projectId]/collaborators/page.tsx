@@ -16,9 +16,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
+import Image from 'next/image';
 import CollaboratorsList from '@/components/collaboration/CollaboratorsList';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
 import type { Collaborator, PendingInvitation } from '@/lib/types/collaboration';
+import collaborationReturnIcon from '@/app/assets/images/collaborationReturnIcon.svg';
+import collaborationAdminNumIcon from '@/app/assets/images/collaborationAdminNumIcon.svg';
+import collaborationEditNumIcon from '@/app/assets/images/collaborationEditNumIcon.svg';
+import collaborationViewNumIcon from '@/app/assets/images/collaborationViewNumIcon.svg';
+import searchIcon from '@/app/assets/images/searchIcon.svg';
+import libraryHeadMoreIcon from '@/app/assets/images/libraryHeadMoreIcon.svg';
 
 export default function CollaboratorsPage() {
   const params = useParams();
@@ -35,14 +42,23 @@ export default function CollaboratorsPage() {
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([]);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
+  const [searchValue, setSearchValue] = useState('');
   
   // Fetch data function (can be called to refresh)
   const fetchData = useCallback(async () => {
+    // Validate projectId is a valid UUID
+    if (!projectId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId)) {
+      console.error('[CollaboratorsPage] Invalid project ID:', projectId);
+      setError('Invalid project ID');
+      setLoading(false);
+      router.push('/projects');
+      return;
+    }
+    
     setLoading(true);
     setError(null);
     
     try {
-      console.log('[CollaboratorsPage] Loading collaborators page for project:', projectId);
       
       // 1. Get current user
       const { data: { user } } = await supabase.auth.getUser();
@@ -65,7 +81,6 @@ export default function CollaboratorsPage() {
         setError('Failed to load project: ' + projectError.message);
       } else if (project) {
         setProjectName(project.name);
-        console.log('[CollaboratorsPage] Project loaded:', project.name);
         
         // Check if current user is owner
         if (user && project.owner_id === user.id) {
@@ -90,7 +105,6 @@ export default function CollaboratorsPage() {
           },
         });
         const roleResult = await roleResponse.json();
-        console.log('[CollaboratorsPage] User role result:', roleResult);
         
         if (roleResult.role) {
           setUserRole(roleResult.role);
@@ -116,7 +130,6 @@ export default function CollaboratorsPage() {
       // 4. Get collaborators and invitations
       // Use direct client query as fallback since sessionStorage auth doesn't work with server actions
       try {
-        console.log('[CollaboratorsPage] Fetching collaborators directly from client');
         
         // Query collaborators with profile data
         const { data: collabData, error: collabError } = await supabase
@@ -179,7 +192,6 @@ export default function CollaboratorsPage() {
         });
         
         setCollaborators(transformedCollaborators);
-        console.log('[CollaboratorsPage] Collaborators loaded:', transformedCollaborators.length);
         
         // Query pending invitations (only if admin)
         if (userRole === 'admin') {
@@ -215,7 +227,6 @@ export default function CollaboratorsPage() {
             }));
             
             setPendingInvitations(transformedInvites);
-            console.log('[CollaboratorsPage] Pending invitations:', transformedInvites.length);
           }
         }
       } catch (err: any) {
@@ -229,7 +240,7 @@ export default function CollaboratorsPage() {
       setError(err.message || 'Failed to load page');
       setLoading(false);
     }
-  }, [projectId, supabase]);
+  }, [projectId, supabase, router]);
   
   // Initial data fetch
   useEffect(() => {
@@ -246,21 +257,99 @@ export default function CollaboratorsPage() {
     );
   }
   
+  // Calculate role counts
+  const adminCount = collaborators.filter(c => c.role === 'admin').length;
+  const editorCount = collaborators.filter(c => c.role === 'editor').length;
+  const viewerCount = collaborators.filter(c => c.role === 'viewer').length;
+
   return (
     <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-      {/* Page Header */}
-      <div style={{ marginBottom: '32px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-        <div>
-          <h1 style={{ fontSize: '28px', fontWeight: '700', margin: '0 0 8px', color: '#111827' }}>
-            Collaborators
-          </h1>
-          <p style={{ fontSize: '14px', color: '#6b7280', margin: '0' }}>
-            Manage who has access to <strong>{projectName || 'this project'}</strong>
-          </p>
+      {/* Page Header - All in one row */}
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '16px', 
+        marginBottom: '32px',
+        flexWrap: 'wrap'
+      }}>
+        {/* Return Button */}
+        <button
+          onClick={() => router.push(`/${projectId}`)}
+          style={{
+            padding: '0',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+          aria-label="Return to project"
+        >
+          <Image
+            src={collaborationReturnIcon}
+            alt="Return"
+            width={32}
+            height={32}
+          />
+        </button>
+        
+        {/* Title */}
+        <h1 style={{ 
+          fontSize: '28px', 
+          fontWeight: '700', 
+          margin: '0', 
+          color: '#111827',
+          flexShrink: 0,
+        }}>
+          Collaborators
+        </h1>
+        
+        {/* Role Statistics */}
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginLeft: 'auto' }}>
+          {/* Admin Count */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Image
+              src={collaborationAdminNumIcon}
+              alt="Admin"
+              width={24}
+              height={24}
+            />
+            <span style={{ fontSize: '16px', fontWeight: '400', color: 'rgba(154, 26, 255, 1)' }}>
+              {adminCount}
+            </span>
+          </div>
+          
+          {/* Editor Count */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Image
+              src={collaborationEditNumIcon}
+              alt="Editor"
+              width={24}
+              height={24}
+            />
+            <span style={{ fontSize: '16px', fontWeight: '400', color: 'rgba(6, 147, 249, 1)' }}>
+              {editorCount}
+            </span>
+          </div>
+          
+          {/* Viewer Count */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Image
+              src={collaborationViewNumIcon}
+              alt="Viewer"
+              width={24}
+              height={24}
+            />
+            <span style={{ fontSize: '16px', fontWeight: '400', color: 'rgba(26, 26, 26, 1)' }}>
+              {viewerCount}
+            </span>
+          </div>
         </div>
         
-        {/* Invite Button (Admin Only) */}
-        {userRole === 'admin' && (
+        {/* Invite Button */}
+        {userRole && (
           <button
             onClick={() => setInviteModalOpen(true)}
             style={{
@@ -276,6 +365,7 @@ export default function CollaboratorsPage() {
               fontWeight: '500',
               cursor: 'pointer',
               transition: 'all 0.2s',
+              flexShrink: 0,
             }}
             onMouseOver={(e) => {
               e.currentTarget.style.backgroundColor = '#FFA0CF';
@@ -290,6 +380,76 @@ export default function CollaboratorsPage() {
             Invite
           </button>
         )}
+        
+        {/* More Options Icon */}
+        <button
+          style={{
+            padding: '0',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: 0,
+          }}
+          aria-label="More options"
+        >
+          <Image
+            src={libraryHeadMoreIcon}
+            alt="More"
+            width={32}
+            height={32}
+          />
+        </button>
+        
+        {/* Search Box */}
+        <div style={{
+          position: 'relative',
+          width: '278px',
+          height: '32px',
+          display: 'flex',
+          alignItems: 'center',
+          flexShrink: 0,
+        }}>
+          <Image
+            src={searchIcon}
+            alt="Search"
+            width={24}
+            height={24}
+            style={{
+              position: 'absolute',
+              left: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              pointerEvents: 'none',
+              zIndex: 1,
+            }}
+          />
+          <input
+            type="text"
+            placeholder="Search"
+            value={searchValue}
+            onChange={(e) => setSearchValue(e.target.value)}
+            style={{
+              width: '100%',
+              height: '32px',
+              padding: '0 12px 0 44px',
+              border: '1px solid #E5E5E5',
+              borderRadius: '6px',
+              fontSize: '14px',
+              outline: 'none',
+              transition: 'border-color 0.2s',
+              boxSizing: 'border-box',
+            }}
+            onFocus={(e) => {
+              e.currentTarget.style.borderColor = '#FF69B4';
+            }}
+            onBlur={(e) => {
+              e.currentTarget.style.borderColor = '#E5E5E5';
+            }}
+          />
+        </div>
       </div>
       
       {/* Error Banner */}
@@ -307,49 +467,27 @@ export default function CollaboratorsPage() {
         </div>
       )}
       
-      {/* User Role Info */}
-      {userRole && (
+      {/* Collaborators List */}
+      {userRole && currentUserId ? (
+        <CollaboratorsList
+          projectId={projectId}
+          collaborators={collaborators}
+          currentUserId={currentUserId}
+          currentUserRole={userRole}
+          onUpdate={fetchData}
+        />
+      ) : (
         <div style={{ 
-          padding: '12px 16px', 
-          backgroundColor: '#dbeafe', 
-          color: '#1e40af',
+          padding: '24px', 
+          textAlign: 'center', 
+          color: '#6b7280',
+          backgroundColor: '#f9fafb',
           borderRadius: '8px',
-          marginBottom: '24px',
-          fontSize: '14px',
-          fontWeight: '500'
+          border: '1px solid #e5e7eb'
         }}>
-          Your role: <strong style={{ textTransform: 'capitalize' }}>{userRole}</strong>
-          {isOwner && <span style={{ marginLeft: '8px' }}>(Project Owner)</span>}
+          Loading member information...
         </div>
       )}
-      
-      {/* Project Members Section */}
-      <div style={{ marginBottom: '32px' }}>
-        <h2 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '16px', color: '#111827' }}>
-          Project Members ({collaborators.length})
-        </h2>
-        
-        {userRole && currentUserId ? (
-          <CollaboratorsList
-            projectId={projectId}
-            collaborators={collaborators}
-            currentUserId={currentUserId}
-            currentUserRole={userRole}
-            onUpdate={fetchData}
-          />
-        ) : (
-          <div style={{ 
-            padding: '24px', 
-            textAlign: 'center', 
-            color: '#6b7280',
-            backgroundColor: '#f9fafb',
-            borderRadius: '8px',
-            border: '1px solid #e5e7eb'
-          }}>
-            Loading member information...
-          </div>
-        )}
-      </div>
       
       {/* Pending Invitations Section (Admin Only) */}
       {userRole === 'admin' && pendingInvitations.length > 0 && (
@@ -422,6 +560,7 @@ export default function CollaboratorsPage() {
           open={inviteModalOpen}
           onClose={() => setInviteModalOpen(false)}
           onSuccess={fetchData}
+          title="Invite new collaborator"
         />
       )}
     </div>
