@@ -18,11 +18,14 @@ import {
   Preview,
   Section,
   Text,
+  Row,
+  Column,
 } from '@react-email/components';
 
 interface InvitationEmailProps {
   recipientName: string;
   inviterName: string;
+  inviterEmail: string;
   projectName: string;
   role: string;
   acceptLink: string;
@@ -31,11 +34,24 @@ interface InvitationEmailProps {
 export function InvitationEmail({
   recipientName = 'there',
   inviterName = 'A team member',
+  inviterEmail = 'user@example.com',
   projectName = 'Untitled Project',
   role = 'Editor',
   acceptLink = 'https://app.keco.studio',
 }: InvitationEmailProps) {
-  const previewText = `${inviterName} invited you to collaborate on ${projectName}`;
+  const previewText = `${inviterName} invited you to work together with ${projectName}`;
+  
+  // Extract token from acceptLink for decline link
+  const url = new URL(acceptLink);
+  const token = url.searchParams.get('token') || '';
+  const declineLink = `${url.origin}/decline-invitation?token=${token}`;
+
+  // SVG icon as base64 data URL (converted from LibraryBookIcon.svg)
+  // URL-encoded SVG for better email client compatibility
+  const svgContent = encodeURIComponent(
+    '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 3H8C9.06087 3 10.0783 3.42143 10.8284 4.17157C11.5786 4.92172 12 5.93913 12 7V21C12 20.2044 11.6839 19.4413 11.1213 18.8787C10.5587 18.3161 9.79565 18 9 18H2V3Z" stroke="#21272A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 3H16C14.9391 3 13.9217 3.42143 13.1716 4.17157C12.4214 4.92172 12 5.93913 12 7V21C12 20.2044 12.3161 19.4413 12.8787 18.8787C13.4413 18.3161 14.2044 18 15 18H22V3Z" stroke="#21272A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  );
+  const bookIconSvg = `data:image/svg+xml;charset=utf-8,${svgContent}`;
 
   return (
     <Html>
@@ -43,72 +59,47 @@ export function InvitationEmail({
       <Preview>{previewText}</Preview>
       <Body style={main}>
         <Container style={container}>
-          {/* Logo */}
-          <Section style={logoSection}>
-            <Heading style={logoText}>Keco Studio</Heading>
-          </Section>
-
-          {/* Main Content */}
-          <Section style={content}>
-            <Heading style={h1}>You've been invited!</Heading>
+          {/* Main Content Card */}
+          <Section style={cardSection}>
+            {/* Avatar and Inviter Info - Left/Right Layout */}
+            <Row>
+              <Column style={avatarColumn}>
+                <div style={avatar}>
+                  <Text style={avatarText}>{inviterName.charAt(0).toUpperCase()}</Text>
+                </div>
+              </Column>
+              <Column style={infoColumn}>
+                <Heading style={inviterNameHeading}>
+                  {inviterName} ({inviterEmail})
+                </Heading>
+                <Text style={inviteText}>
+                  invited you to work together with keco project
+                </Text>
+              </Column>
+            </Row>
             
-            <Text style={text}>
-              Hi {recipientName},
-            </Text>
+            {/* Project Name - Left/Right Layout */}
+            <Row style={projectRow}>
+              <Column style={iconColumn}>
+                <Text style={projectIcon}>📖</Text>
+              </Column>
+              <Column style={projectNameColumn}>
+                <Text style={projectNameText}>({projectName})</Text>
+              </Column>
+            </Row>
             
-            <Text style={text}>
-              <strong>{inviterName}</strong> has invited you to collaborate on 
-              the project <strong>{projectName}</strong> as a <strong>{role}</strong>.
-            </Text>
-            
-            <Text style={text}>
-              As a {role.toLowerCase()}, you'll be able to:
-            </Text>
-            
-            <ul style={list}>
-              {role === 'Admin' && (
-                <>
-                  <li style={listItem}>Invite and manage collaborators</li>
-                  <li style={listItem}>Edit all project content and settings</li>
-                  <li style={listItem}>View all project libraries and assets</li>
-                </>
-              )}
-              {role === 'Editor' && (
-                <>
-                  <li style={listItem}>Edit project libraries and assets</li>
-                  <li style={listItem}>Create and modify library content</li>
-                  <li style={listItem}>Collaborate in real-time with team members</li>
-                </>
-              )}
-              {role === 'Viewer' && (
-                <>
-                  <li style={listItem}>View project libraries and assets</li>
-                  <li style={listItem}>See real-time updates from editors</li>
-                  <li style={listItem}>Export and share library content</li>
-                </>
-              )}
-            </ul>
-            
+            {/* Accept Button */}
             <Section style={buttonSection}>
-              <Button style={button} href={acceptLink}>
-                Accept Invitation
+              <Button style={acceptButton} href={acceptLink}>
+                Accept invite
               </Button>
             </Section>
             
-            <Text style={text}>
-              Or copy and paste this URL into your browser:
-            </Text>
-            <Text style={linkText}>
-              <Link href={acceptLink} style={link}>
-                {acceptLink}
+            {/* Decline Link */}
+            <Text style={declineText}>
+              <Link href={declineLink} style={declineLinkStyle}>
+                or decline
               </Link>
-            </Text>
-            
-            <Hr style={hr} />
-            
-            <Text style={footer}>
-              This invitation will expire in 7 days. If you didn't expect this invitation, 
-              you can safely ignore this email.
             </Text>
           </Section>
         </Container>
@@ -124,104 +115,134 @@ export default InvitationEmail;
 // ============================================================================
 
 const main = {
-  backgroundColor: '#f6f9fc',
+  backgroundColor: '#ede9fe',
   fontFamily:
     '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Ubuntu,sans-serif',
+  padding: '40px 20px',
 };
 
 const container = {
-  backgroundColor: '#ffffff',
   margin: '0 auto',
-  padding: '20px 0 48px',
-  marginBottom: '64px',
   maxWidth: '600px',
 };
 
-const logoSection = {
-  padding: '32px 40px',
-  textAlign: 'center' as const,
-  borderBottom: '1px solid #e6e8eb',
+const cardSection = {
+  backgroundColor: '#ffffff',
+  borderRadius: '12px',
+  padding: '48px 40px',
+  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
 };
 
-const logoText = {
-  color: '#1a1a1a',
-  fontSize: '24px',
-  fontWeight: '700',
+// Avatar column (left)
+const avatarColumn = {
+  width: '80px',
+  verticalAlign: 'top',
+  paddingRight: '20px',
+};
+
+// Info column (right)
+const infoColumn = {
+  verticalAlign: 'top',
+};
+
+const avatar = {
+  width: '64px',
+  height: '64px',
+  borderRadius: '50%',
+  backgroundColor: '#10b981',
+  display: 'block',
   margin: '0',
-  letterSpacing: '-0.5px',
+  textAlign: 'center' as const,
+  lineHeight: '64px',
 };
 
-const content = {
-  padding: '40px 40px',
-};
-
-const h1 = {
-  color: '#1a1a1a',
+const avatarText = {
+  color: '#ffffff',
   fontSize: '28px',
-  fontWeight: '700',
+  fontWeight: '600',
+  margin: '0',
+  lineHeight: '64px',
+  display: 'block',
+};
+
+const inviterNameHeading = {
+  color: '#7c3aed',
+  fontSize: '24px',
+  fontWeight: '600',
+  margin: '0 0 8px 0',
   lineHeight: '1.3',
-  margin: '0 0 24px',
+  textAlign: 'left' as const,
 };
 
-const text = {
+const inviteText = {
+  color: '#1a1a1a',
+  fontSize: '18px',
+  fontWeight: '400',
+  margin: '0 0 32px 0',
+  lineHeight: '1.5',
+  textAlign: 'left' as const,
+};
+
+// Project row
+const projectRow = {
+  marginBottom: '32px',
+};
+
+// Icon column (left)
+const iconColumn = {
+  width: '32px',
+  verticalAlign: 'middle',
+  paddingRight: '12px',
+};
+
+// Project name column (right)
+const projectNameColumn = {
+  verticalAlign: 'middle',
+};
+
+const projectIcon = {
+  display: 'block',
+  margin: '0',
+};
+
+const projectNameText = {
   color: '#525252',
   fontSize: '16px',
-  lineHeight: '1.6',
-  margin: '0 0 16px',
-};
-
-const list = {
-  color: '#525252',
-  fontSize: '16px',
-  lineHeight: '1.6',
-  margin: '0 0 16px',
-  paddingLeft: '20px',
-};
-
-const listItem = {
-  marginBottom: '8px',
+  fontWeight: '600',
+  margin: '0',
+  textAlign: 'left' as const,
+  lineHeight: '24px',
 };
 
 const buttonSection = {
   textAlign: 'center' as const,
-  margin: '32px 0',
+  margin: '0 0 16px',
 };
 
-const button = {
-  backgroundColor: '#000000',
-  borderRadius: '6px',
+const acceptButton = {
+  backgroundColor: '#7c3aed',
+  borderRadius: '8px',
   color: '#ffffff',
   fontSize: '16px',
   fontWeight: '600',
   textDecoration: 'none',
   textAlign: 'center' as const,
   display: 'inline-block',
-  padding: '12px 32px',
+  padding: '14px 48px',
   lineHeight: '1.5',
+  width: '100%',
+  maxWidth: '400px',
 };
 
-const linkText = {
+const declineText = {
   color: '#737373',
   fontSize: '14px',
-  lineHeight: '1.6',
-  margin: '0 0 16px',
-  wordBreak: 'break-all' as const,
-};
-
-const link = {
-  color: '#2563eb',
-  textDecoration: 'underline',
-};
-
-const hr = {
-  borderColor: '#e6e8eb',
-  margin: '32px 0',
-};
-
-const footer = {
-  color: '#737373',
-  fontSize: '14px',
-  lineHeight: '1.6',
   margin: '0',
+  textAlign: 'center' as const,
+};
+
+const declineLinkStyle = {
+  color: '#737373',
+  textDecoration: 'none',
 };
 

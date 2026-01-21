@@ -45,9 +45,6 @@ export async function POST(request: NextRequest) {
     p_description: description,
   });
 
-  console.log('RPC full response:', { data, error });
-  console.log('Data type:', Array.isArray(data) ? 'array' : typeof data);
-
   if (error) {
     console.error('RPC error:', error);
     return NextResponse.json({ error: error.message }, { status: 400 });

@@ -174,7 +174,6 @@ function PredefinePageContent() {
           : s
       )
     );
-    console.log('handleChangeField:', sections);
     setErrors([]);
   };
 
@@ -221,7 +220,6 @@ function PredefinePageContent() {
     // Combine with existing sections
 
     const allSections = [...sections, { id: uid(), ...newSection }];
-    console.log('allSections:', allSections);
     await saveSchema(allSections);
   };
 
@@ -239,7 +237,6 @@ function PredefinePageContent() {
       const tempName = tempSectionNames.get(section.id);
       
       let updatedSection = { ...section };
-      console.log('updatedSection:', updatedSection);
       
       // Apply temp section name if exists
       if (tempName !== undefined) {
@@ -247,21 +244,7 @@ function PredefinePageContent() {
       }
       
       // Add pending field if exists
-      console.log('Checking pendingField for section:', section.id, {
-        pendingField,
-        hasPendingField: !!pendingField,
-        label: pendingField?.label,
-        dataType: pendingField?.dataType,
-        referenceLibraries: pendingField?.referenceLibraries,
-      });
       if (pendingField && pendingField.label.trim()) {
-        // Debug: Log pendingField to verify referenceLibraries is included
-        if (pendingField.dataType === 'reference') {
-          console.log('Saving reference field:', {
-            label: pendingField.label,
-            referenceLibraries: pendingField.referenceLibraries,
-          });
-        }
         updatedSection.fields = [...updatedSection.fields, { id: uid(), ...pendingField }];
       }
       
@@ -291,7 +274,6 @@ function PredefinePageContent() {
     setErrors([]);
     try {
       // Use incremental update to preserve field IDs and asset data
-      console.log('finalSections:', finalSections);
       await saveSchemaIncremental(supabase, libraryId, finalSections);
 
       message.success('Saved successfully, loading...');

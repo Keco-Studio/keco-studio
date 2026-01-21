@@ -514,6 +514,13 @@
   align-items: center;
 }
 
+.assetPresenceAvatars {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  margin-right: 4px;
+}
+
 /* Project item actions: position delete button relative to sidebar's right edge */
 /* .item has margin-right: 0.75rem, so item's right edge is 0.75rem from sidebar right edge */
 /* .item has padding-right: 0.75rem, so original delete button was at item right edge - 0.75rem (padding) */

@@ -138,6 +138,17 @@
   background-color: transparent !important;
 }
 
+/* Cell being edited (by current user or others): full border with user's avatar color */
+.cellEditing {
+  background-color: transparent !important;
+  position: relative;
+  z-index: 2; /* Higher than selected state */
+}
+
+.cellEditing:hover {
+  background-color: transparent !important;
+}
+
 /* Ensure selected cells have proper border during drag */
 .cellSelected:not(:first-child) {
   border-left: 2px solid rgba(135, 38, 238, 1) !important;
@@ -1261,11 +1272,7 @@ td.cellCopy.copyBorderRight:hover {
   animation: conflictHighlight 1s ease-in-out infinite;
 }
 
-/* Collaboration presence styles */
-.cellWithPresence {
-  border-left: 3px solid transparent;
-  transition: border-color 0.2s ease;
-}
+/* Collaboration presence styles - removed, will be handled by .cellEditing */
 
 .cellPresenceAvatars {
   position: absolute;

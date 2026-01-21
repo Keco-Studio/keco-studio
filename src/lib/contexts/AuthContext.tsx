@@ -117,6 +117,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Clear all caches when user signs out
       await clearAllCaches();
+      
+      // Clear pending invitation token to prevent issues when switching accounts
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('pendingInvitationToken');
+      }
     } catch (e) {
       console.error('Logout failed', e);
     }

@@ -14,9 +14,11 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Image from 'next/image';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { Collaborator } from '@/lib/types/collaboration';
 import styles from './CollaboratorsList.module.css';
+import collaborationDeleteIcon from '@/app/assets/images/collaborationDeleteIcon.svg';
 
 interface CollaboratorsListProps {
   projectId: string;
@@ -55,7 +57,6 @@ export default function CollaboratorsList({
   useEffect(() => {
     if (!projectId) return;
     
-    console.log('[CollaboratorsList] Setting up real-time subscription for project:', projectId);
     
     const channel = supabase
       .channel(`project:${projectId}:collaborators`)
@@ -68,7 +69,6 @@ export default function CollaboratorsList({
           filter: `project_id=eq.${projectId}`,
         },
         (payload) => {
-          console.log('[CollaboratorsList] Database change detected:', payload);
           
           // Refresh collaborators list when changes occur
           if (onUpdate) {
@@ -77,11 +77,9 @@ export default function CollaboratorsList({
         }
       )
       .subscribe((status) => {
-        console.log('[CollaboratorsList] Subscription status:', status);
       });
     
     return () => {
-      console.log('[CollaboratorsList] Cleaning up subscription');
       channel.unsubscribe();
     };
   }, [projectId, supabase, onUpdate]);
@@ -113,19 +111,15 @@ export default function CollaboratorsList({
     setOptimisticUpdates(prev => new Map(prev).set(collaboratorId, { role: newRole }));
     
     try {
-      console.log(`[CollaboratorsList] Updating role: ${currentRole} → ${newRole}`);
       
       // Get session for authorization
       const { data: { session } } = await supabase.auth.getSession();
-      console.log('[CollaboratorsList] Session:', session ? 'exists' : 'null');
-      console.log('[CollaboratorsList] Access token:', session?.access_token ? `exists (length: ${session.access_token.length})` : 'null');
       
       if (!session) {
         throw new Error('You must be logged in');
       }
       
       // Call API route with authorization header
-      console.log('[CollaboratorsList] Sending PATCH with auth header');
       const response = await fetch(`/api/collaborators/${collaboratorId}`, {
         method: 'PATCH',
         headers: {
@@ -134,7 +128,6 @@ export default function CollaboratorsList({
         },
         body: JSON.stringify({ newRole }),
       });
-      console.log('[CollaboratorsList] Response status:', response.status);
 
       const result = await response.json();
       
@@ -148,7 +141,6 @@ export default function CollaboratorsList({
         });
         setError(result.error || 'Failed to update role');
       } else {
-        console.log('[CollaboratorsList] Role updated successfully');
         // Clear optimistic update after success
         setOptimisticUpdates(prev => {
           const next = new Map(prev);
@@ -179,17 +171,16 @@ export default function CollaboratorsList({
     }
   };
   
-  // Handle collaborator removal
+  // Handle delete button click - show modal
+  const handleDeleteClick = (collaboratorId: string) => {
+    if (!canManage) return;
+    setConfirmingDelete(collaboratorId);
+  };
+  
+  // Handle collaborator removal (called from modal)
   const handleRemoveCollaborator = async (collaboratorId: string, userName: string) => {
     if (!canManage) return;
     
-    // First click: show confirmation
-    if (confirmingDelete !== collaboratorId) {
-      setConfirmingDelete(collaboratorId);
-      return;
-    }
-    
-    // Second click: actually remove
     setError(null);
     setConfirmingDelete(null);
     setLoadingActions(prev => new Set(prev).add(collaboratorId));
@@ -198,7 +189,6 @@ export default function CollaboratorsList({
     setOptimisticUpdates(prev => new Map(prev).set(collaboratorId, { removing: true }));
     
     try {
-      console.log(`[CollaboratorsList] Removing collaborator: ${userName}`);
       
       // Get session for authorization
       const { data: { session } } = await supabase.auth.getSession();
@@ -226,7 +216,6 @@ export default function CollaboratorsList({
         });
         setError(result.error || 'Failed to remove collaborator');
       } else {
-        console.log('[CollaboratorsList] Collaborator removed successfully');
         // Keep optimistic update until parent refreshes
         // The real-time subscription will trigger onUpdate()
         if (onUpdate) {
@@ -256,12 +245,20 @@ export default function CollaboratorsList({
     setConfirmingDelete(null);
   };
   
+  // Get collaborator being deleted for modal
+  const getCollaboratorBeingDeleted = () => {
+    if (!confirmingDelete) return null;
+    return collaborators.find(c => c.id === confirmingDelete);
+  };
+  
+  const collaboratorToDelete = getCollaboratorBeingDeleted();
+  
   // Check if user is current user
   const isCurrentUser = (userId: string) => userId === currentUserId;
   
   // Get display name for collaborator
   const getDisplayName = (collab: Collaborator): string => {
-    return collab.userName || collab.userEmail || 'User';
+    return collab.userName || 'User';
   };
   
   // Get email for collaborator
@@ -285,6 +282,14 @@ export default function CollaboratorsList({
         </div>
       )}
       
+      {/* Column Headers */}
+      <div className={styles.tableHeader}>
+        <div className={styles.headerName}>MEMBER NAME</div>
+        <div className={styles.headerEmail}>EMAIL</div>
+        <div className={styles.headerRoleType}>ROLE TYPE</div>
+        {isAdmin && <div className={styles.headerActions}></div>}
+      </div>
+      
       {/* Collaborators list */}
       <div className={styles.list}>
         {collaborators.map((collab) => {
@@ -305,8 +310,8 @@ export default function CollaboratorsList({
               key={collab.id}
               className={`${styles.item} ${isLoading ? styles.itemLoading : ''}`}
             >
-              <div className={styles.itemLeft}>
-                {/* Avatar */}
+              {/* Member Name Column */}
+              <div className={styles.itemName}>
                 <div 
                   className={styles.avatar}
                   style={{ 
@@ -315,23 +320,21 @@ export default function CollaboratorsList({
                 >
                   {displayName.charAt(0).toUpperCase()}
                 </div>
-                
-                {/* User info */}
-                <div className={styles.userInfo}>
-                  <div className={styles.userName}>
-                    {displayName}
-                    {isSelf && (
-                      <span className={styles.youBadge}>(YOU)</span>
-                    )}
-                  </div>
-                  {email && (
-                    <div className={styles.userEmail}>{email}</div>
+                <div className={`${styles.userName} ${isSelf ? styles.userNameSelf : ''}`}>
+                  {displayName}
+                  {isSelf && (
+                    <span className={styles.youBadge}>(me)</span>
                   )}
                 </div>
               </div>
               
-              <div className={styles.itemRight}>
-                {/* Role selector (admin-only for others, read-only for self) */}
+              {/* Email Column */}
+              <div className={styles.itemEmail}>
+                {email || '-'}
+              </div>
+              
+              {/* Role Type Column */}
+              <div className={styles.itemRoleType}>
                 {canManage && !isSelf ? (
                   <select
                     className={styles.roleSelect}
@@ -344,59 +347,35 @@ export default function CollaboratorsList({
                     <option value="viewer">Viewer</option>
                   </select>
                 ) : (
-                  <div className={`${styles.roleBadge} ${styles[`role${effectiveRole.charAt(0).toUpperCase() + effectiveRole.slice(1)}`]}`}>
+                  <div className={styles.roleText}>
                     {effectiveRole.charAt(0).toUpperCase() + effectiveRole.slice(1)}
                   </div>
                 )}
-                
-                {/* Delete button (admin-only, not for self) */}
-                {canManage && !isSelf && (
-                  <>
-                    {isConfirmingDelete ? (
-                      <div className={styles.confirmDelete}>
-                        <button
-                          className={styles.confirmDeleteButton}
-                          onClick={() => handleRemoveCollaborator(collab.id, displayName)}
-                          disabled={isLoading}
-                        >
-                          Confirm
-                        </button>
-                        <button
-                          className={styles.cancelDeleteButton}
-                          onClick={handleCancelDelete}
-                          disabled={isLoading}
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        className={styles.deleteButton}
-                        onClick={() => handleRemoveCollaborator(collab.id, displayName)}
-                        disabled={isLoading}
-                        title="Remove collaborator"
-                        aria-label={`Remove ${displayName}`}
-                      >
-                        <svg 
-                          width="16" 
-                          height="16" 
-                          viewBox="0 0 16 16" 
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <path 
-                            d="M6 2h4M2 4h12M13.333 4l-.459 6.875a2 2 0 01-1.996 1.875H5.122a2 2 0 01-1.996-1.875L2.667 4M6.667 7.333v3.334M9.333 7.333v3.334" 
-                            stroke="currentColor" 
-                            strokeWidth="1.5" 
-                            strokeLinecap="round" 
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      </button>
-                    )}
-                  </>
-                )}
               </div>
+              
+              {/* Delete button for admin (at the end) */}
+              {canManage ? (
+                !isSelf ? (
+                  <div className={styles.itemActions}>
+                    <button
+                      className={styles.deleteButton}
+                      onClick={() => handleDeleteClick(collab.id)}
+                      disabled={isLoading}
+                      title="Remove collaborator"
+                      aria-label={`Remove ${displayName}`}
+                    >
+                      <Image
+                        src={collaborationDeleteIcon}
+                        alt="Delete"
+                        width={32}
+                        height={32}
+                      />
+                    </button>
+                  </div>
+                ) : (
+                  <div className={styles.itemActions}></div>
+                )
+              ) : null}
             </div>
           );
         })}
@@ -406,6 +385,46 @@ export default function CollaboratorsList({
       {collaborators.length === 0 && (
         <div className={styles.emptyState}>
           <p>No collaborators found</p>
+        </div>
+      )}
+      
+      {/* Delete Confirmation Modal */}
+      {collaboratorToDelete && (
+        <div className={styles.modalOverlay} onClick={handleCancelDelete}>
+          <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.modalHeader}>
+              <h3 className={styles.modalTitle}>Remove collaborator</h3>
+              <button
+                className={styles.modalClose}
+                onClick={handleCancelDelete}
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className={styles.modalBody}>
+              <p>Are you sure you want to remove this collaborator?</p>
+            </div>
+            <div className={styles.modalFooter}>
+              <button
+                className={styles.modalCancelButton}
+                onClick={handleCancelDelete}
+                disabled={loadingActions.has(collaboratorToDelete.id)}
+              >
+                Cancel
+              </button>
+              <button
+                className={styles.modalRemoveButton}
+                onClick={() => handleRemoveCollaborator(
+                  collaboratorToDelete.id,
+                  getDisplayName(collaboratorToDelete)
+                )}
+                disabled={loadingActions.has(collaboratorToDelete.id)}
+              >
+                {loadingActions.has(collaboratorToDelete.id) ? 'Removing...' : 'Remove'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

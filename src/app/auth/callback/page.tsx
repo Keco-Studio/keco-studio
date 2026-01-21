@@ -25,8 +25,13 @@ function AuthCallbackContent() {
             return;
           }
 
-          // login success
-          router.push('/');
+          // login success - check for redirect parameter
+          const redirectPath = searchParams.get('redirect');
+          if (redirectPath) {
+            router.push(redirectPath);
+          } else {
+            router.push('/');
+          }
         } catch (err) {
           console.error('Auth callback error:', err);
           router.push('/?error=auth_error');

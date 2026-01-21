@@ -5,6 +5,8 @@ import {
   verifyProjectOwnership,
   verifyProjectAccess,
   verifyFolderAccess,
+  verifyFolderDeletionPermission,
+  verifyFolderCreationPermission,
 } from './authorizationService';
 
 export type Folder = {
@@ -58,8 +60,8 @@ export async function createFolder(
 
   const projectId = await resolveProjectId(supabase, input.projectId);
   
-  // verify project ownership
-  await verifyProjectOwnership(supabase, projectId);
+  // verify creation permission (only admin can create)
+  await verifyFolderCreationPermission(supabase, projectId);
 
   const { data, error } = await supabase
     .from('folders')
@@ -230,8 +232,8 @@ export async function deleteFolder(
     throw new Error('Invalid folder ID format');
   }
 
-  // verify folder access
-  await verifyFolderAccess(supabase, folderId);
+  // verify deletion permission (only admin can delete)
+  await verifyFolderDeletionPermission(supabase, folderId);
 
   // First, delete all libraries associated with this folder (cascade delete)
   // Query libraries first to get their IDs, then delete them individually

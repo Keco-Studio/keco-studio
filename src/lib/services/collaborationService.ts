@@ -148,11 +148,6 @@ export async function sendInvitation(
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const acceptLink = `${appUrl}/accept-invitation?token=${token}`;
     
-    // TODO: Email sending temporarily disabled for UI testing
-    // Uncomment when email service is configured (RESEND_API_KEY set)
-    console.log('[sendInvitation] Email sending disabled. Accept link:', acceptLink);
-    
-    /* 
     try {
       await sendInvitationEmail({
         recipientEmail,
@@ -161,6 +156,7 @@ export async function sendInvitation(
         role: role.charAt(0).toUpperCase() + role.slice(1), // Capitalize role
         acceptLink,
       });
+      console.log('[sendInvitation] Invitation email sent successfully to', recipientEmail);
     } catch (emailError) {
       console.error('Error sending invitation email:', emailError);
       return { 
@@ -168,7 +164,6 @@ export async function sendInvitation(
         error: 'Invitation created but email failed to send. Please try resending.' 
       };
     }
-    */
     
     return { success: true, invitationId: invitation.id };
   } catch (error) {
