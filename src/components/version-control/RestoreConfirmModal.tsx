@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom';
 import { Switch } from 'antd';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { restoreVersion } from '@/lib/services/versionService';
+import { restoreVersion, checkVersionNameExists } from '@/lib/services/versionService';
 import Image from 'next/image';
 import closeIcon from '@/app/assets/images/closeIcon32.svg';
 import styles from './RestoreConfirmModal.module.css';
@@ -61,15 +61,36 @@ export function RestoreConfirmModal({
       onSuccess(data.restoredVersion.id);
     },
     onError: (error: any) => {
-      setError(error?.message || 'Failed to restore version');
+      // If error is "Name exists", show it directly
+      if (error?.message === 'Name exists') {
+        setError('Name exists');
+      } else {
+        setError(error?.message || 'Failed to restore version');
+      }
     },
   });
 
-  const handleRestore = () => {
+  const handleRestore = async () => {
     if (backupEnabled && !backupVersionName.trim()) {
       setError('Version name is required when backup is enabled');
       return;
     }
+
+    // Check if backup version name already exists
+    if (backupEnabled) {
+      try {
+        const nameExists = await checkVersionNameExists(supabase, libraryId, backupVersionName.trim());
+        if (nameExists) {
+          setError('Name exists');
+          return;
+        }
+      } catch (e: any) {
+        console.error('Failed to check version name:', e);
+        setError(e?.message || 'Failed to check version name');
+        return;
+      }
+    }
+
     setError(null);
     restoreMutation.mutate({
       backupCurrent: backupEnabled,

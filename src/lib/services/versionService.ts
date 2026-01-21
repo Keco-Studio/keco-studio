@@ -328,6 +328,28 @@ export async function getVersionsByLibrary(
 }
 
 /**
+ * Check if a version name already exists for a library
+ */
+export async function checkVersionNameExists(
+  supabase: SupabaseClient,
+  libraryId: string,
+  versionName: string
+): Promise<boolean> {
+  const { data, error } = await supabase
+    .from('library_versions')
+    .select('id')
+    .eq('library_id', libraryId)
+    .eq('version_name', versionName.trim())
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(`Failed to check version name: ${error.message}`);
+  }
+
+  return data !== null;
+}
+
+/**
  * Create a new version (manual save)
  */
 export async function createVersion(
@@ -342,6 +364,12 @@ export async function createVersion(
 
   // Verify library access
   await verifyLibraryAccess(supabase, libraryId);
+
+  // Check if version name already exists
+  const nameExists = await checkVersionNameExists(supabase, libraryId, versionName.trim());
+  if (nameExists) {
+    throw new Error('Name exists');
+  }
 
   // Get current user
   const userId = await getCurrentUserId(supabase);
@@ -420,6 +448,12 @@ export async function restoreVersion(
   // This is because the user may have made changes but not yet created a version
   let backupVersion: LibraryVersion | undefined;
   if (backupCurrent) {
+    // Check if backup version name already exists
+    const backupNameExists = await checkVersionNameExists(supabase, libraryId, backupVersionName!.trim());
+    if (backupNameExists) {
+      throw new Error('Name exists');
+    }
+
     // Create backup version from current library state
     const backupSnapshot = await createLibrarySnapshot(supabase, libraryId);
     
@@ -482,7 +516,23 @@ export async function restoreVersion(
   }
   
   // Generate restore version name using original version name and original created_at
-  const restoreVersionName = generateRestoreVersionName(versionToRestore.version_name.trim(), originalCreatedAt);
+  let restoreVersionName = generateRestoreVersionName(versionToRestore.version_name.trim(), originalCreatedAt);
+  
+  // Check if restore version name already exists, if so, append timestamp to make it unique
+  let nameExists = await checkVersionNameExists(supabase, libraryId, restoreVersionName);
+  if (nameExists) {
+    // Append timestamp to make it unique
+    const timestamp = new Date().getTime();
+    restoreVersionName = `${restoreVersionName} (${timestamp})`;
+    
+    // Double-check the new name doesn't exist (very unlikely but possible)
+    nameExists = await checkVersionNameExists(supabase, libraryId, restoreVersionName);
+    if (nameExists) {
+      // If still exists, append random number
+      const randomSuffix = Math.floor(Math.random() * 10000);
+      restoreVersionName = `${restoreVersionName}-${randomSuffix}`;
+    }
+  }
   
   console.log('Restore version name generated:', {
     originalName: versionToRestore.version_name,
