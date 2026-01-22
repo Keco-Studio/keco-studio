@@ -7,6 +7,7 @@ import {
   verifyFolderAccess,
   verifyFolderDeletionPermission,
   verifyFolderCreationPermission,
+  verifyFolderUpdatePermission,
 } from './authorizationService';
 
 export type Folder = {
@@ -163,8 +164,8 @@ export async function updateFolder(
     throw new Error('Folder not found');
   }
 
-  // verify folder access
-  await verifyFolderAccess(supabase, folderId);
+  // Verify user has admin permission (owner or admin collaborator)
+  await verifyFolderUpdatePermission(supabase, folderId);
 
   const name = updates.name?.trim();
   const description = trimOrNull(updates.description ?? null);

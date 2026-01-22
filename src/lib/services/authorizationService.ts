@@ -484,3 +484,147 @@ export async function verifyAssetCreationPermission(
   }
 }
 
+/**
+ * Verify that the user has admin permission to update a project
+ * Only owner or admin collaborators can update projects
+ */
+export async function verifyProjectUpdatePermission(
+  supabase: SupabaseClient,
+  projectId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  
+  // Only admin can update project
+  if (role !== 'admin') {
+    throw new AuthorizationError('Only admin users can update projects');
+  }
+}
+
+/**
+ * Verify that the user has admin permission to delete a project
+ * Only owner or admin collaborators can delete projects
+ */
+export async function verifyProjectDeletionPermission(
+  supabase: SupabaseClient,
+  projectId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  
+  // Only admin can delete project
+  if (role !== 'admin') {
+    throw new AuthorizationError('Only admin users can delete projects');
+  }
+}
+
+/**
+ * Verify that the user has admin permission to update a library
+ * Only owner or admin collaborators can update libraries
+ */
+export async function verifyLibraryUpdatePermission(
+  supabase: SupabaseClient,
+  libraryId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get the project that owns the library
+  const { data: library, error: libraryError } = await supabase
+    .from('libraries')
+    .select('project_id')
+    .eq('id', libraryId)
+    .single();
+  
+  if (libraryError || !library) {
+    throw new AuthorizationError('Library not found');
+  }
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  
+  // Only admin can update library
+  if (role !== 'admin') {
+    throw new AuthorizationError('Only admin users can update libraries');
+  }
+}
+
+/**
+ * Verify that the user has admin permission to update a folder
+ * Only owner or admin collaborators can update folders
+ */
+export async function verifyFolderUpdatePermission(
+  supabase: SupabaseClient,
+  folderId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get the project that owns the folder
+  const { data: folder, error: folderError } = await supabase
+    .from('folders')
+    .select('project_id')
+    .eq('id', folderId)
+    .single();
+  
+  if (folderError || !folder) {
+    throw new AuthorizationError('Folder not found');
+  }
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, folder.project_id, currentUserId);
+  
+  // Only admin can update folder
+  if (role !== 'admin') {
+    throw new AuthorizationError('Only admin users can update folders');
+  }
+}
+
+/**
+ * Verify that the user has permission to update an asset
+ * Admin and editor can update assets, viewer cannot
+ */
+export async function verifyAssetUpdatePermission(
+  supabase: SupabaseClient,
+  assetId: string,
+  userId?: string
+): Promise<void> {
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  
+  // Get the library that owns the asset
+  const { data: asset, error: assetError } = await supabase
+    .from('library_assets')
+    .select('library_id')
+    .eq('id', assetId)
+    .single();
+  
+  if (assetError || !asset) {
+    throw new AuthorizationError('Asset not found');
+  }
+  
+  // Get the project that owns the library
+  const { data: library, error: libraryError } = await supabase
+    .from('libraries')
+    .select('project_id')
+    .eq('id', asset.library_id)
+    .single();
+  
+  if (libraryError || !library) {
+    throw new AuthorizationError('Library not found');
+  }
+  
+  // Get user's role in the project
+  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  
+  // Admin and editor can update asset, viewer cannot
+  if (role !== 'admin' && role !== 'editor') {
+    throw new AuthorizationError('Only admin and editor users can update assets');
+  }
+}
+

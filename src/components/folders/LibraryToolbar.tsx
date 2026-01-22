@@ -28,6 +28,11 @@ type LibraryToolbarProps = {
    * - For folder page: folder name
    */
   title?: string;
+  /**
+   * User's role in the current project
+   * Only admin users can see the Create button
+   */
+  userRole?: 'admin' | 'editor' | 'viewer' | null;
 };
 
 export function LibraryToolbar({
@@ -38,6 +43,7 @@ export function LibraryToolbar({
   onViewModeChange,
   mode = 'project',
   title,
+  userRole,
 }: LibraryToolbarProps) {
   const [searchValue, setSearchValue] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -89,37 +95,42 @@ export function LibraryToolbar({
     }
   };
 
+  // Only admin can create folders and libraries
+  const canCreate = userRole === 'admin';
+
   return (
     <div className={styles.toolbar}>
       {title && (
         <h1 className={styles.title}>{title}</h1>
       )}
-      <button
-        ref={setCreateButtonRef}
-        className={styles.createButton}
-        onClick={handleCreateButtonClick}
-        aria-label={mode === 'folder' ? 'Create Library' : 'Create Folder/Library'}
-      >
-        <span className={styles.plusIcon}>
-          <Image
-            src={plusHorizontal}
-            alt=""
-            width={17}
-            height={2}
-            className={styles.plusHorizontal}
-          />
-          <Image
-            src={plusVertical}
-            alt=""
-            width={2}
-            height={17}
-            className={styles.plusVertical}
-          />
-        </span>
-        <span className={styles.createButtonText}>
-          {mode === 'folder' ? 'Create Library' : 'Create'}
-        </span>
-      </button>
+      {canCreate && (
+        <button
+          ref={setCreateButtonRef}
+          className={styles.createButton}
+          onClick={handleCreateButtonClick}
+          aria-label={mode === 'folder' ? 'Create Library' : 'Create Folder/Library'}
+        >
+          <span className={styles.plusIcon}>
+            <Image
+              src={plusHorizontal}
+              alt=""
+              width={17}
+              height={2}
+              className={styles.plusHorizontal}
+            />
+            <Image
+              src={plusVertical}
+              alt=""
+              width={2}
+              height={17}
+              className={styles.plusVertical}
+            />
+          </span>
+          <span className={styles.createButtonText}>
+            {mode === 'folder' ? 'Create Library' : 'Create'}
+          </span>
+        </button>
+      )}
       
       <div className={styles.searchContainer}>
         <Image

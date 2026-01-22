@@ -7,6 +7,7 @@ import {
   verifyLibraryAccess,
   verifyLibraryDeletionPermission,
   verifyLibraryCreationPermission,
+  verifyLibraryUpdatePermission,
 } from './authorizationService';
 
 export type Library = {
@@ -402,8 +403,8 @@ export async function updateLibrary(
     throw new Error('Library not found');
   }
 
-  // verify library access
-  await verifyLibraryAccess(supabase, libraryId);
+  // Verify user has admin permission (owner or admin collaborator)
+  await verifyLibraryUpdatePermission(supabase, libraryId);
 
   const name = input.name.trim();
   const description = trimOrNull(input.description ?? null);

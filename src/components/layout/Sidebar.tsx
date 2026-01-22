@@ -1384,16 +1384,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (action === 'delete') {
       if (contextMenu.type === 'project') {
         if (window.confirm('Delete this project? All libraries under it will be removed.')) {
-          deleteProject(supabase, contextMenu.id).then(() => {
-            // Use React Query to refresh cache
-            queryClient.invalidateQueries({ queryKey: ['projects'] });
-            // If currently viewing the deleted project, navigate to home
-            if (currentIds.projectId === contextMenu.id) {
-              router.push('/');
-            }
-          }).catch((err: any) => {
-            setError(err?.message || 'Failed to delete project');
-          });
+          // Call API route to delete project (requires service role)
+          handleProjectDeleteViaAPI(contextMenu.id);
         }
       } else if (contextMenu.type === 'library') {
         if (window.confirm('Delete this library?')) {
@@ -1476,14 +1468,53 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const handleProjectDelete = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!window.confirm('Delete this project? All libraries under it will be removed.')) return;
+    handleProjectDeleteViaAPI(projectId);
+  };
+
+  const handleProjectDeleteViaAPI = async (projectId: string) => {
     try {
-      await deleteProject(supabase, projectId);
-      // Use React Query to refresh cache
+      // Get user session for API call
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        setError('You must be logged in to delete projects');
+        return;
+      }
+
+      // Call API route to delete project
+      const response = await fetch(`/api/projects/${projectId}/delete`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (!result.success) {
+        setError(result.error || 'Failed to delete project');
+        return;
+      }
+
+      // Success - refresh cache and navigate
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      
+      // Clear globalRequestCache
+      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+      const { getCurrentUserId } = await import('@/lib/services/authorizationService');
+      try {
+        const userId = await getCurrentUserId(supabase);
+        globalRequestCache.invalidate(`projects:list:${userId}`);
+        globalRequestCache.invalidate(`project:${projectId}`);
+      } catch (err) {
+        console.warn('Failed to clear cache:', err);
+      }
+
+      // Navigate away if viewing deleted project
       if (currentIds.projectId === projectId) {
-        router.push('/');
+        router.push('/projects');
       }
     } catch (err: any) {
+      console.error('[Sidebar] Error deleting project:', err);
       setError(err?.message || 'Failed to delete project');
     }
   };

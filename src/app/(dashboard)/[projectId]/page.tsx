@@ -6,7 +6,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { getProject, Project } from '@/lib/services/projectService';
 import { listFolders, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
-import { AuthorizationError } from '@/lib/services/authorizationService';
+import { AuthorizationError, getUserProjectRole } from '@/lib/services/authorizationService';
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
 import projectNoFolderPreIcon from "@/app/assets/images/projectNoFolderPreIcon.svg";
 import plusHorizontal from "@/app/assets/images/plusHorizontal.svg";
@@ -39,7 +39,8 @@ export default function ProjectPage() {
   const [showFolderModal, setShowFolderModal] = useState(false);
   const [assetCounts, setAssetCounts] = useState<Record<string, number>>({}); 
   const [showCreateMenu, setShowCreateMenu] = useState(false);
-  const [createButtonRef, setCreateButtonRef] = useState<HTMLButtonElement | null>(null); 
+  const [createButtonRef, setCreateButtonRef] = useState<HTMLButtonElement | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null); 
 
   const fetchData = useCallback(async () => {
     if (!projectId) return;
@@ -101,6 +102,26 @@ export default function ProjectPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Fetch user role in current project
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!projectId) {
+        setUserRole(null);
+        return;
+      }
+      
+      try {
+        const role = await getUserProjectRole(supabase, projectId);
+        setUserRole(role);
+      } catch (error) {
+        console.error('[ProjectPage] Error fetching user role:', error);
+        setUserRole(null);
+      }
+    };
+    
+    fetchUserRole();
+  }, [projectId, supabase]);
 
   // Listen for folder and library creation/deletion events to refresh the list
   useEffect(() => {
@@ -307,6 +328,7 @@ export default function ProjectPage() {
         onCreateLibrary={handleCreateLibrary}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        userRole={userRole}
       />
       {!hasItems ? (
         <div className={styles.emptyState}>

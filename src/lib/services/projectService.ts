@@ -1,12 +1,34 @@
 'use client';
 
-import { SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseClient, createClient } from '@supabase/supabase-js';
 import {
   verifyProjectCreation,
   verifyProjectOwnership,
   verifyProjectAccess,
+  verifyProjectUpdatePermission,
+  verifyProjectDeletionPermission,
   getCurrentUserId,
 } from './authorizationService';
+
+/**
+ * Create Supabase client with service role for admin operations
+ * ONLY use for operations that need to bypass RLS (like project deletion by admin collaborators)
+ */
+function getServiceClient() {
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  
+  if (!supabaseServiceRole) {
+    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
+  }
+  
+  return createClient(supabaseUrl, supabaseServiceRole, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    }
+  });
+}
 
 export type Project = {
   id: string;
@@ -236,10 +258,13 @@ export async function deleteProject(
   supabase: SupabaseClient,
   projectId: string
 ): Promise<void> {
- 
-  await verifyProjectOwnership(supabase, projectId);
+  // Verify user has admin permission (only admin role can delete, not based on ownership)
+  await verifyProjectDeletionPermission(supabase, projectId);
   
-  const { error } = await supabase.from('projects').delete().eq('id', projectId);
+  // Use service role client to bypass RLS and allow admin collaborators to delete
+  // RLS only allows owner to delete, but we want any admin to be able to delete
+  const serviceClient = getServiceClient();
+  const { error } = await serviceClient.from('projects').delete().eq('id', projectId);
   if (error) {
     throw error;
   }
@@ -291,7 +316,8 @@ export async function updateProject(
   projectId: string,
   input: UpdateProjectInput
 ): Promise<void> {
-  await verifyProjectOwnership(supabase, projectId);
+  // Verify user has admin permission (owner or admin collaborator)
+  await verifyProjectUpdatePermission(supabase, projectId);
 
   const name = input.name.trim();
   const description = trimOrNull(input.description ?? null);

@@ -11,6 +11,7 @@ import {
   verifyAssetAccess,
   verifyAssetDeletionPermission,
   verifyAssetCreationPermission,
+  verifyAssetUpdatePermission,
 } from './authorizationService';
 
 type FieldDefinitionRow = {
@@ -314,8 +315,8 @@ export async function updateAsset(
   assetName: string,
   propertyValues: Record<string, any>
 ): Promise<void> {
-  // verify asset access
-  await verifyAssetAccess(supabase, assetId);
+  // Verify user has permission to update asset (admin or editor)
+  await verifyAssetUpdatePermission(supabase, assetId);
   
   // Step 1: Update the asset name
   const { error: assetError } = await supabase

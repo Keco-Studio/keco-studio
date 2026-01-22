@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getFolder, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
+import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { LibraryCard } from '@/components/folders/LibraryCard';
 import { LibraryListView } from '@/components/folders/LibraryListView';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
@@ -29,6 +30,7 @@ export default function FolderPage() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [assetCounts, setAssetCounts] = useState<Record<string, number>>({});
+  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
 
   const fetchData = useCallback(async () => {
     if (!projectId || !folderId) return;
@@ -59,6 +61,26 @@ export default function FolderPage() {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Fetch user role in current project
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      if (!projectId) {
+        setUserRole(null);
+        return;
+      }
+      
+      try {
+        const role = await getUserProjectRole(supabase, projectId);
+        setUserRole(role);
+      } catch (error) {
+        console.error('[FolderPage] Error fetching user role:', error);
+        setUserRole(null);
+      }
+    };
+    
+    fetchUserRole();
+  }, [projectId, supabase]);
 
   // Fetch asset counts when libraries change
   useEffect(() => {
@@ -205,6 +227,10 @@ export default function FolderPage() {
     );
   }
 
+  // Only admin can create folders and libraries
+  const canCreate = userRole === 'admin';
+
+
   return (
     <div className={styles.container}>
       <LibraryToolbar
@@ -213,6 +239,7 @@ export default function FolderPage() {
         onCreateLibrary={handleCreateLibrary}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
+        userRole={userRole}
       />
       {libraries.length === 0 ? (
         <div className={styles.emptyStateWrapper}>
@@ -228,6 +255,7 @@ export default function FolderPage() {
             <div className={styles.emptyText}>
               There is no any library here. you need to create a library firstly
             </div>
+            {canCreate && (
             <button
               className={styles.createLibraryButton}
               onClick={handleCreateLibrary}
@@ -250,6 +278,7 @@ export default function FolderPage() {
               </span>
               <span className={styles.buttonText}>Create Library</span>
             </button>
+            )}
           </div>
         </div>
       ) : viewMode === 'grid' ? (
