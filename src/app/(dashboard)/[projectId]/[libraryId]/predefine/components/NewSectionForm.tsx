@@ -25,6 +25,9 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
   const [fields, setFields] = useState<FieldConfig[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [pendingField, setPendingField] = useState<Omit<FieldConfig, 'id'> | null>(null);
+  // Track invalid fields for validation UI (show red border)
+  const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
+  const [invalidPendingField, setInvalidPendingField] = useState<{ labelInvalid: boolean; dataTypeInvalid: boolean } | undefined>(undefined);
 
   // If this is the first section, automatically add mandatory name field on initialization
   useEffect(() => {
@@ -41,19 +44,15 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
   }, [isFirstSection]);
 
   const handleAddField = (fieldData: Omit<FieldConfig, 'id'>) => {
-    const parsed = fieldSchema.safeParse(fieldData);
-    if (!parsed.success) {
-      setErrors(parsed.error.issues.map((i) => i.message));
-      return;
-    }
-
+    // Allow adding empty field rows (user can fill them later)
+    // Validation will happen at section save time
     const field: FieldConfig = {
       id: uid(),
-      label: parsed.data.label,
-      dataType: parsed.data.dataType,
-      required: parsed.data.required,
-      ...(parsed.data.enumOptions && { enumOptions: parsed.data.enumOptions }),
-      ...(parsed.data.referenceLibraries && { referenceLibraries: parsed.data.referenceLibraries }),
+      label: fieldData.label,
+      dataType: fieldData.dataType,
+      required: fieldData.required,
+      ...(fieldData.enumOptions && { enumOptions: fieldData.enumOptions }),
+      ...(fieldData.referenceLibraries && { referenceLibraries: fieldData.referenceLibraries }),
     };
     setFields((prev) => [...prev, field]);
     setErrors([]);
@@ -69,28 +68,15 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
       const field = fields.find((f) => f.id === fieldId);
       if (field && field.label === 'name' && field.dataType === 'string') {
         // Only allow modifying required property, don't allow modifying label and dataType
-        const parsed = fieldSchema.safeParse({
-          ...fieldData,
-          label: 'name',
-          dataType: 'string',
-        });
-        if (!parsed.success) {
-          setErrors(parsed.error.issues.map((i) => i.message));
-          return;
-        }
-        setFields((prev) => prev.map((f) => (f.id === fieldId ? { ...f, required: parsed.data.required } : f)));
+        setFields((prev) => prev.map((f) => (f.id === fieldId ? { ...f, required: fieldData.required } : f)));
         setErrors([]);
         return;
       }
     }
 
-    const parsed = fieldSchema.safeParse(fieldData);
-    if (!parsed.success) {
-      setErrors(parsed.error.issues.map((i) => i.message));
-      return;
-    }
-
-    setFields((prev) => prev.map((f) => (f.id === fieldId ? { ...f, ...parsed.data } : f)));
+    // Allow updating field without validation
+    // Validation will happen at section save time
+    setFields((prev) => prev.map((f) => (f.id === fieldId ? { ...f, ...fieldData } : f)));
     setErrors([]);
   };
 
@@ -108,19 +94,17 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
 
     // If there's a pending field with data, add it first
     let finalFields = fields;
-    if (pendingField && pendingField.label.trim()) {
-      const parsed = fieldSchema.safeParse(pendingField);
-      if (parsed.success) {
-        const newField: FieldConfig = {
-          id: uid(),
-          label: parsed.data.label,
-          dataType: parsed.data.dataType,
-          required: parsed.data.required,
-          ...(parsed.data.enumOptions && { enumOptions: parsed.data.enumOptions }),
-          ...(parsed.data.referenceLibraries && { referenceLibraries: parsed.data.referenceLibraries }),
-        };
-        finalFields = [...fields, newField];
-      }
+    if (pendingField && pendingField.label.trim() && pendingField.dataType) {
+      // Only add pending field if it has both label and dataType
+      const newField: FieldConfig = {
+        id: uid(),
+        label: pendingField.label,
+        dataType: pendingField.dataType,
+        required: pendingField.required,
+        ...(pendingField.enumOptions && { enumOptions: pendingField.enumOptions }),
+        ...(pendingField.referenceLibraries && { referenceLibraries: pendingField.referenceLibraries }),
+      };
+      finalFields = [...fields, newField];
     }
 
     if (finalFields.length === 0) {
@@ -128,6 +112,46 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
       return;
     }
 
+    // Validate: check for empty labels or missing data types
+    let hasInvalidFields = false;
+    const newInvalidFields = new Set<string>();
+    let newInvalidPendingField: { labelInvalid: boolean; dataTypeInvalid: boolean } | undefined = undefined;
+    
+    finalFields.forEach((field) => {
+      if (!field.label || !field.label.trim() || !field.dataType) {
+        hasInvalidFields = true;
+        newInvalidFields.add(field.id);
+      }
+    });
+    
+    // Check pending field
+    if (pendingField) {
+      // If pending field exists and has any content (label OR dataType), both must be filled
+      const hasLabel = pendingField.label && pendingField.label.trim();
+      const hasDataType = !!pendingField.dataType;
+      
+      if (hasLabel || hasDataType) {
+        // User has started filling the field, validate both are complete
+        const labelInvalid = !hasLabel;
+        const dataTypeInvalid = !hasDataType;
+        if (labelInvalid || dataTypeInvalid) {
+          hasInvalidFields = true;
+          newInvalidPendingField = { labelInvalid, dataTypeInvalid };
+        }
+      }
+    }
+
+    if (hasInvalidFields) {
+      const errorMessage = 'Please complete all fields: Label text and Data type are required for each field';
+      setErrors([errorMessage]);
+      setInvalidFields(newInvalidFields);
+      setInvalidPendingField(newInvalidPendingField);
+      return;
+    }
+
+    // Clear validation errors if all fields are valid
+    setInvalidFields(new Set());
+    setInvalidPendingField(undefined);
     setErrors([]);
     await onSave({ name: trimmedName, fields: finalFields });
   }, [sectionName, fields, pendingField, onSave]);
@@ -190,17 +214,35 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
         </div>
         <FieldsList
           fields={fields}
-          onChangeField={handleChangeField}
+          onChangeField={(fieldId, data) => {
+            handleChangeField(fieldId, data);
+            // Clear validation error for this field when user edits it
+            if (invalidFields.has(fieldId)) {
+              setInvalidFields((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(fieldId);
+                return newSet;
+              });
+            }
+          }}
           onDeleteField={handleDeleteField}
           onReorderFields={handleReorderFields}
           disabled={saving}
           isFirstSection={isFirstSection}
+          invalidFields={invalidFields}
         />
         <FieldForm
           onSubmit={handleAddField}
           onCancel={onCancel}
           disabled={saving}
-          onFieldChange={setPendingField}
+          onFieldChange={(field) => {
+            setPendingField(field);
+            // Clear validation error for pending field when user edits it
+            if (invalidPendingField) {
+              setInvalidPendingField(undefined);
+            }
+          }}
+          validationError={invalidPendingField}
         />
       </div>
 

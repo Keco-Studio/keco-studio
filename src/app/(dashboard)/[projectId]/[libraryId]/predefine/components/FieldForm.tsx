@@ -18,9 +18,10 @@ interface FieldFormProps {
   onCancel?: () => void;
   disabled?: boolean;
   onFieldChange?: (field: Omit<FieldConfig, 'id'> | null) => void;
+  validationError?: { labelInvalid: boolean; dataTypeInvalid: boolean };
 }
 
-export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldChange }: FieldFormProps) {
+export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldChange, validationError }: FieldFormProps) {
   const supabase = useSupabase();
   const params = useParams();
   const projectId = params?.projectId as string | undefined;
@@ -29,7 +30,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
   const [field, setField] = useState<Omit<FieldConfig, 'id'>>(
     initialField || {
       label: '',
-      dataType: 'string',
+      dataType: undefined, // No default type - user must select
       required: false,
       enumOptions: [],
       referenceLibraries: [],
@@ -58,8 +59,11 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
   // Notify parent of field changes
   useEffect(() => {
     if (onFieldChangeRef.current) {
-      // Only pass field if it has content (label is not empty)
-      if (field.label.trim()) {
+      // Pass field if it has any content (label OR dataType)
+      const hasLabel = field.label && field.label.trim();
+      const hasDataType = !!field.dataType;
+      
+      if (hasLabel || hasDataType) {
         onFieldChangeRef.current(field);
       } else {
         onFieldChangeRef.current(null);
@@ -78,7 +82,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
       // Reset form when initialField becomes null/undefined
       setField({
         label: '',
-        dataType: 'string',
+        dataType: undefined,
         required: false,
         enumOptions: [],
         referenceLibraries: [],
@@ -171,6 +175,8 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
   }, [showConfigMenu, field.dataType, projectId, currentLibraryId, supabase]);
 
   const handleSubmit = () => {
+    // Allow adding empty field rows (user can fill them later)
+    // Validation will happen at section save time
     const payload = {
       ...field,
       enumOptions:
@@ -187,7 +193,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
       // Reset form only if not editing
       setField({
         label: '',
-        dataType: 'string',
+        dataType: undefined,
         required: false,
         enumOptions: [],
         referenceLibraries: [],
@@ -278,7 +284,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
       <button 
         className={styles.addButton} 
         onClick={handleSubmit}
-        disabled={!field.label.trim() || disabled}
+        disabled={disabled}
         title="Add property"
       >
         <Image src={predefineLabelAddIcon} alt="Add" width={20} height={20} />
@@ -295,29 +301,29 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
           className={styles.labelInput}
           onPressEnter={handleSubmit}
           disabled={disabled}
+          status={validationError?.labelInvalid ? 'error' : undefined}
         />
       </div>
       <div className={styles.dataTypeDisplay}>
         <Input
           ref={dataTypeInputRef}
-          placeholder="Click to Select"
-          value={dataTypeSelected ? getDataTypeLabel(field.dataType) : ''}
+          placeholder="Click to select"
+          value={dataTypeSelected && field.dataType ? getDataTypeLabel(field.dataType) : ''}
           readOnly
           onFocus={handleDataTypeFocus}
           className={styles.dataTypeInput}
           disabled={disabled}
+          status={validationError?.dataTypeInvalid ? 'error' : undefined}
           prefix={
-            dataTypeSelected ? (
+            dataTypeSelected && field.dataType ? (
               <Image
                 src={getFieldTypeIcon(field.dataType)}
                 alt={field.dataType}
                 width={16}
                 height={16}
               />
-            ) : (
-              <span style={{ width: 16, height: 16, display: 'inline-block' }} />
-            )
-          }
+            ) : undefined
+            }
         />
         {showSlashMenu && (
           <div ref={slashMenuRef} className={styles.slashMenu}>

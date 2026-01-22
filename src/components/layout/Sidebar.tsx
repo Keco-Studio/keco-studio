@@ -179,6 +179,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
+  const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -384,6 +385,33 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       window.removeEventListener('authStateChanged' as any, handleAuthStateChanged as EventListener);
     };
   }, [queryClient]);
+
+  // Listen to sidebar toggle event from TopBar
+  useEffect(() => {
+    const handleSidebarToggle = () => {
+      setIsSidebarVisible(prev => !prev);
+    };
+
+    window.addEventListener('sidebar-toggle', handleSidebarToggle);
+    
+    return () => {
+      window.removeEventListener('sidebar-toggle', handleSidebarToggle);
+    };
+  }, []);
+
+  // Auto-navigate to first project on login if user has projects
+  useEffect(() => {
+    // Only auto-navigate if:
+    // 1. User is on /projects page (pathname === '/projects')
+    // 2. Projects list is loaded and not empty
+    // 3. User is not a guest (userProfile exists)
+    if (pathname === '/projects' && projects.length > 0 && !loadingProjects && userProfile) {
+      const firstProject = projects[0];
+      if (firstProject?.id) {
+        router.push(`/${firstProject.id}`);
+      }
+    }
+  }, [pathname, projects, loadingProjects, userProfile, router]);
 
   // Track current project ID to detect project switching
   const prevProjectIdRef = useRef<string | null>(null);
@@ -1569,7 +1597,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   return (
-    <aside className={styles.sidebar}>
+    <aside className={`${styles.sidebar} ${!isSidebarVisible ? styles.sidebarHidden : ''}`}>
       <div className={styles.header}>
         <div className={styles.headerLogo}>
           <Image src={loginProductIcon} alt="Keco Studio" width={32} height={32} />
@@ -1614,7 +1642,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 />
               </button>
             </div>
-            <div className={styles.sectionList}>
+            <div className={styles.projectsListContainer}>
               {projects.map((project) => {
                 const isActive = currentIds.projectId === project.id;
                 return (

@@ -3,7 +3,7 @@ export type FieldType = 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date'
 export type FieldConfig = {
   id: string;
   label: string;
-  dataType: FieldType;
+  dataType?: FieldType; // Optional to allow adding empty field rows first
   required: boolean;
   enumOptions?: string[];
   referenceLibraries?: string[]; // For reference type: which libraries can be referenced

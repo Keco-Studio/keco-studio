@@ -222,6 +222,13 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     console.log('Share asset');
   };
 
+  const handleSidebarToggle = () => {
+    // Dispatch event to toggle sidebar
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('sidebar-toggle'));
+    }
+  };
+
   const handleCreateAsset = () => {
     // Trigger asset save from the asset page
     if (typeof window !== 'undefined') {
@@ -320,7 +327,14 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </div>
         ) : (
           <div className={styles.breadcrumb}>
-            <Image src={topBarBreadCrumbIcon} alt="Breadcrumb" width={20} height={20} style={{ marginRight: '5px' }} />
+            <Image 
+              src={topBarBreadCrumbIcon} 
+              alt="Breadcrumb" 
+              width={20} 
+              height={20} 
+              style={{ marginRight: '5px', cursor: 'pointer' }} 
+              onClick={handleSidebarToggle}
+            />
             {displayBreadcrumbs.map((item, index) => (
               <span key={index}>
                 <button
