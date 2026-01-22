@@ -28,9 +28,11 @@ interface FieldsListProps {
   onReorderFields: (newOrder: FieldConfig[]) => void;
   disabled?: boolean;
   isFirstSection?: boolean;
+  /** Set of field IDs that have validation errors */
+  invalidFields?: Set<string>;
 }
 
-export function FieldsList({ fields, onChangeField, onDeleteField, onReorderFields, disabled, isFirstSection = false }: FieldsListProps) {
+export function FieldsList({ fields, onChangeField, onDeleteField, onReorderFields, disabled, isFirstSection = false, invalidFields }: FieldsListProps) {
   // Local state for optimistic UI updates during drag
   const [localFields, setLocalFields] = useState(fields);
   
@@ -103,6 +105,7 @@ export function FieldsList({ fields, onChangeField, onDeleteField, onReorderFiel
                 disabled={disabled}
                 isMandatoryNameField={isMandatoryNameField}
                 isDraggable={!disabled}
+                hasValidationError={invalidFields?.has(field.id) ?? false}
               />
             );
           })}

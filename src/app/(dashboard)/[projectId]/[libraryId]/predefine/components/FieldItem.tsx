@@ -24,6 +24,7 @@ interface FieldItemProps {
   disabled?: boolean;
   isMandatoryNameField?: boolean;
   isDraggable?: boolean;
+  hasValidationError?: boolean;
 }
 
 export function FieldItem({
@@ -34,6 +35,7 @@ export function FieldItem({
   disabled,
   isMandatoryNameField = false,
   isDraggable = false,
+  hasValidationError = false,
 }: FieldItemProps) {
   const supabase = useSupabase();
   const params = useParams();
@@ -324,31 +326,50 @@ export function FieldItem({
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
             disabled={disabled || isMandatoryNameField}
+            status={hasValidationError && (!field.label || !field.label.trim()) ? 'error' : undefined}
           />
         </div>
         <div className={styles.dataTypeDisplay}>
           <Input
             ref={dataTypeInputRef}
-            placeholder="/ Slash Action..."
-            value={getDataTypeLabel(field.dataType as FieldType)}
+            placeholder="Click to select"
+            value={field.dataType ? getDataTypeLabel(field.dataType as FieldType) : ''}
             readOnly
             onKeyDown={handleDataTypeKeyDown}
+            onClick={() => {
+              if (!disabled && !isMandatoryNameField) {
+                setShowSlashMenu(true);
+              }
+            }}
+            onFocus={() => {
+              if (!disabled && !isMandatoryNameField) {
+                setShowSlashMenu(true);
+              }
+            }}
             className={styles.dataTypeInput}
             disabled={disabled || isMandatoryNameField}
+            status={hasValidationError && !field.dataType ? 'error' : undefined}
             prefix={
-              <Image
-                src={getFieldTypeIcon(field.dataType)}
-                alt={field.dataType}
-                width={16}
-                height={16}
-              />
+              field.dataType ? (
+                <Image
+                  src={getFieldTypeIcon(field.dataType)}
+                  alt={field.dataType}
+                  width={16}
+                  height={16}
+                />
+              ) : undefined
             }
             suffix={
               !isMandatoryNameField && (
                 <button
                   type="button"
                   className={styles.typeSwitchButton}
-                  onClick={() => !disabled && setShowSlashMenu(true)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!disabled) {
+                      setShowSlashMenu(true);
+                    }
+                  }}
                   disabled={disabled}
                   title="Choose type"
                 >

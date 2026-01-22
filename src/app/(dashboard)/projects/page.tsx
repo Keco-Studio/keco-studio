@@ -105,22 +105,10 @@ export default function ProjectsPage() {
 
   return (
     <div className={styles.container}>
-      <div className={styles.header}>
-        <h1 className={styles.title}>Projects</h1>
-        {!loading && projects.length > 0 && (
-          <button
-            onClick={() => setShowModal(true)}
-            className={styles.newProjectButton}
-          >
-            New Project
-          </button>
-        )}
-      </div>
-
       {loading && <div>Loading projects...</div>}
       {projectsError && <div className={styles.error}>{(projectsError as any)?.message || 'Failed to load projects'}</div>}
 
-      {!loading && projects.length === 0 ? (
+      {!loading && projects.length === 0 && (
         <div className={styles.emptyStateWrapper}>
           <div className={styles.emptyStateContainer}>
             <div className={styles.emptyIcon}>
@@ -157,23 +145,6 @@ export default function ProjectsPage() {
               <span className={styles.buttonText}>Create first project</span>
             </button>
           </div>
-        </div>
-      ) : (
-        <div className={styles.projectsGrid}>
-        {projects.map((project) => (
-          <div
-            key={project.id}
-            onClick={() => goToProject(project.id)}
-            className={styles.projectCard}
-          >
-            <div className={styles.projectName}>{project.name}</div>
-            {project.description && (
-              <div className={styles.projectDescription}>
-                {project.description}
-              </div>
-            )}
-          </div>
-        ))}
         </div>
       )}
 

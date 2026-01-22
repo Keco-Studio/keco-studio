@@ -53,6 +53,10 @@ function PredefinePageContent() {
   const autoEnterChecked = useRef(false);
   // Track if we auto-entered creation mode due to empty sections (to handle slow loading)
   const autoEnteredCreationMode = useRef(false);
+  // Track invalid fields for validation UI (show red border)
+  const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
+  // Track invalid pending fields (in FieldForm) - Map<sectionId, { labelInvalid, dataTypeInvalid }>
+  const [invalidPendingFields, setInvalidPendingFields] = useState<Map<string, { labelInvalid: boolean; dataTypeInvalid: boolean }>>(new Map());
 
   const activeSection = useMemo(
     () => sections.find((s) => s.id === activeSectionId) || null,
@@ -200,12 +204,27 @@ function PredefinePageContent() {
       return;
     }
 
-    // Validate new section
+    // Validate: check for empty labels or missing data types
+    let hasInvalidFields = false;
+    newSection.fields.forEach((field) => {
+      if (!field.label || !field.label.trim() || !field.dataType) {
+        hasInvalidFields = true;
+      }
+    });
+
+    if (hasInvalidFields) {
+      const errorMessage = 'Please complete all fields: Label text and Data type are required for each field';
+      setErrors([errorMessage]);
+      message.error(errorMessage);
+      return;
+    }
+
+    // Validate new section with schema (only complete fields)
     const parsed = sectionSchema.safeParse({
       name: newSection.name.trim(),
       fields: newSection.fields.map((f) => ({
         label: f.label,
-        dataType: f.dataType,
+        dataType: f.dataType!,
         required: f.required,
         enumOptions: f.enumOptions,
         referenceLibraries: f.referenceLibraries,
@@ -213,12 +232,13 @@ function PredefinePageContent() {
     });
 
     if (!parsed.success) {
-      setErrors(parsed.error.issues.map((i) => i.message));
+      const errorMessages = parsed.error.issues.map((i) => i.message);
+      setErrors(errorMessages);
+      message.error('Validation failed: ' + errorMessages.join(', '));
       return;
     }
 
     // Combine with existing sections
-
     const allSections = [...sections, { id: uid(), ...newSection }];
     await saveSchema(allSections);
   };
@@ -243,7 +263,7 @@ function PredefinePageContent() {
         updatedSection.name = tempName;
       }
       
-      // Add pending field if exists
+      // Add pending field if exists and has label
       if (pendingField && pendingField.label.trim()) {
         updatedSection.fields = [...updatedSection.fields, { id: uid(), ...pendingField }];
       }
@@ -251,22 +271,72 @@ function PredefinePageContent() {
       return updatedSection;
     });
 
-    // Validate all sections
-    const parsed = z.array(sectionSchema).safeParse(
-      finalSections.map((s) => ({
-        name: s.name,
-        fields: s.fields.map((f) => ({
+    // Validate: check for empty labels or missing data types
+    let hasInvalidFields = false;
+    const newInvalidFields = new Set<string>();
+    const newInvalidPendingFields = new Map<string, { labelInvalid: boolean; dataTypeInvalid: boolean }>();
+    
+    finalSections.forEach((section) => {
+      section.fields.forEach((field) => {
+        if (!field.label || !field.label.trim() || !field.dataType) {
+          hasInvalidFields = true;
+          newInvalidFields.add(field.id);
+        }
+      });
+      
+      // Check pending field for this section
+      const pendingField = pendingFieldsRef.current.get(section.id);
+      if (pendingField) {
+        // If pending field exists and has any content (label OR dataType), both must be filled
+        const hasLabel = pendingField.label && pendingField.label.trim();
+        const hasDataType = !!pendingField.dataType;
+        
+        if (hasLabel || hasDataType) {
+          // User has started filling the field, validate both are complete
+          const labelInvalid = !hasLabel;
+          const dataTypeInvalid = !hasDataType;
+          if (labelInvalid || dataTypeInvalid) {
+            hasInvalidFields = true;
+            newInvalidPendingFields.set(section.id, { labelInvalid, dataTypeInvalid });
+          }
+        }
+      }
+    });
+
+    if (hasInvalidFields) {
+      const errorMessage = 'Please complete all fields: Label text and Data type are required for each field';
+      setErrors([errorMessage]);
+      setInvalidFields(newInvalidFields);
+      setInvalidPendingFields(newInvalidPendingFields);
+      message.error(errorMessage);
+      return;
+    }
+    
+    // Clear validation errors if all fields are valid
+    setInvalidFields(new Set());
+    setInvalidPendingFields(new Map());
+
+    // Validate all sections with schema (only validate fields that have both label and dataType)
+    // Filter out incomplete fields before validation to avoid zod errors
+    const sectionsForValidation = finalSections.map((s) => ({
+      name: s.name,
+      fields: s.fields
+        .filter((f) => f.label && f.label.trim() && f.dataType) // Only validate complete fields
+        .map((f) => ({
           label: f.label,
-          dataType: f.dataType,
+          dataType: f.dataType!,
           required: f.required,
           enumOptions: f.enumOptions,
           referenceLibraries: f.referenceLibraries,
         })),
-      }))
-    );
+    }));
+
+    const parsed = z.array(sectionSchema).safeParse(sectionsForValidation);
 
     if (!parsed.success) {
-      setErrors(parsed.error.issues.map((i) => i.message));
+      const errorMessages = parsed.error.issues.map((i) => i.message);
+      setErrors(errorMessages);
+      // Don't show message.error here as we already show the error in the UI
       return;
     }
 
@@ -466,11 +536,22 @@ function PredefinePageContent() {
         </div>
         <FieldsList
           fields={section.fields}
-          onChangeField={(fieldId, data) => handleChangeField(section.id, fieldId, data)}
+          onChangeField={(fieldId, data) => {
+            handleChangeField(section.id, fieldId, data);
+            // Clear validation error for this field when user edits it
+            if (invalidFields.has(fieldId)) {
+              setInvalidFields((prev) => {
+                const newSet = new Set(prev);
+                newSet.delete(fieldId);
+                return newSet;
+              });
+            }
+          }}
           onDeleteField={(fieldId) => handleDeleteField(section.id, fieldId)}
           onReorderFields={(newOrder) => handleReorderFields(section.id, newOrder)}
           disabled={saving}
           isFirstSection={sectionIndex === 0}
+          invalidFields={invalidFields}
         />
         <FieldForm
           onSubmit={(data) => handleAddField(section.id, data)}
@@ -495,7 +576,17 @@ function PredefinePageContent() {
               }
               return newMap;
             });
+            
+            // Clear validation error for this pending field when user edits it
+            if (invalidPendingFields.has(section.id)) {
+              setInvalidPendingFields((prev) => {
+                const newMap = new Map(prev);
+                newMap.delete(section.id);
+                return newMap;
+              });
+            }
           }}
+          validationError={invalidPendingFields.get(section.id)}
         />
       </div>
     ),
