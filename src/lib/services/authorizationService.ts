@@ -144,12 +144,10 @@ export async function getUserProjectRole(
       throw new AuthorizationError('Project not found');
     }
     
-    // Owner has admin role
-    if (project.owner_id === currentUserId) {
-      return 'admin';
-    }
+    const isOwner = project.owner_id === currentUserId;
     
-    // Check collaborator role
+    // First check collaborator role (this takes precedence over owner status)
+    // This allows an admin collaborator to change the owner's role
     const { data: collaborator, error: collabError } = await supabase
       .from('project_collaborators')
       .select('role, accepted_at')
@@ -161,11 +159,18 @@ export async function getUserProjectRole(
       throw new AuthorizationError('Error checking collaborator status');
     }
     
-    if (!collaborator || !collaborator.accepted_at) {
-      throw new AuthorizationError('User is not a collaborator of this project');
+    // If user has a collaborator record with accepted invitation, use that role
+    if (collaborator && collaborator.accepted_at) {
+      return collaborator.role as 'admin' | 'editor' | 'viewer';
     }
     
-    return collaborator.role as 'admin' | 'editor' | 'viewer';
+    // If not a collaborator but is owner, default to admin
+    if (isOwner) {
+      return 'admin';
+    }
+    
+    // Not owner and not collaborator - no access
+    throw new AuthorizationError('User is not a collaborator of this project');
   });
 }
 

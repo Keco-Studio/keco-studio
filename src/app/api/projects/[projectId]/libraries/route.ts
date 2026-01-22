@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyProjectOwnership } from '@/lib/services/authorizationService';
+import { verifyProjectOwnership, verifyLibraryCreationPermission } from '@/lib/services/authorizationService';
 
 type Params = { params: Promise<{ projectId: string }> };
 
@@ -45,8 +45,8 @@ export async function POST(request: Request, { params }: Params) {
   let projectId: string;
   try {
     projectId = await resolveProjectId(supabase, projectIdParam);
-    // 验证用户有权限在此项目中创建库
-    await verifyProjectOwnership(supabase, projectId);
+    // Verify user has admin permission to create library
+    await verifyLibraryCreationPermission(supabase, projectId);
   } catch (e: any) {
     if (e.name === 'AuthorizationError') {
       return NextResponse.json({ error: e.message }, { status: 403 });

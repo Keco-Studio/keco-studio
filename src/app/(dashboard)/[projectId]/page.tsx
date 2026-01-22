@@ -318,6 +318,9 @@ export default function ProjectPage() {
   }
 
   const hasItems = folders.length > 0 || libraries.length > 0;
+  
+  // Only admin can create folders and libraries
+  const canCreate = userRole === 'admin';
 
   return (
     <div className={styles.container}>
@@ -340,37 +343,41 @@ export default function ProjectPage() {
             className={styles.emptyIcon}
           />
           <div className={styles.emptyText}>There is no any folder or library here in this project yet.</div>
-          <button
-            ref={setCreateButtonRef}
-            className={styles.createButton}
-            onClick={() => setShowCreateMenu(!showCreateMenu)}
-            aria-label="Create Folder/Library"
-          >
-            <span className={styles.plusIcon}>
-              <Image
-                src={plusHorizontal}
-                alt=""
-                width={17}
-                height={2}
-                className={styles.plusHorizontal}
+          {canCreate && (
+            <>
+              <button
+                ref={setCreateButtonRef}
+                className={styles.createButton}
+                onClick={() => setShowCreateMenu(!showCreateMenu)}
+                aria-label="Create Folder/Library"
+              >
+                <span className={styles.plusIcon}>
+                  <Image
+                    src={plusHorizontal}
+                    alt=""
+                    width={17}
+                    height={2}
+                    className={styles.plusHorizontal}
+                  />
+                  <Image
+                    src={plusVertical}
+                    alt=""
+                    width={2}
+                    height={17}
+                    className={styles.plusVertical}
+                  />
+                </span>
+                <span className={styles.createButtonText}>Create</span>
+              </button>
+              <AddLibraryMenu
+                open={showCreateMenu}
+                anchorElement={createButtonRef}
+                onClose={() => setShowCreateMenu(false)}
+                onCreateFolder={handleCreateFolder}
+                onCreateLibrary={handleCreateLibrary}
               />
-              <Image
-                src={plusVertical}
-                alt=""
-                width={2}
-                height={17}
-                className={styles.plusVertical}
-              />
-            </span>
-            <span className={styles.createButtonText}>Create</span>
-          </button>
-          <AddLibraryMenu
-            open={showCreateMenu}
-            anchorElement={createButtonRef}
-            onClose={() => setShowCreateMenu(false)}
-            onCreateFolder={handleCreateFolder}
-            onCreateLibrary={handleCreateLibrary}
-          />
+            </>
+          )}
         </div>
       ) : viewMode === 'grid' ? (
         <div className={styles.grid}>
