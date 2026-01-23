@@ -128,14 +128,24 @@ export function useClipboardOperations({
     
     let value: string | number | null = null;
     
-    // Convert to appropriate type based on property data type
+    // Convert to appropriate type based on property data type.
+    // For int/float: preserve number as-is to avoid losing decimals (e.g. 12.5).
+    // Truncation to int happens only when pasting into an int column.
     if (rawValue !== null && rawValue !== undefined && rawValue !== '') {
       if (property.dataType === 'int') {
-        const numValue = parseInt(String(rawValue), 10);
-        value = isNaN(numValue) ? null : numValue;
+        if (typeof rawValue === 'number' && !isNaN(rawValue)) {
+          value = rawValue;
+        } else {
+          const numValue = parseFloat(String(rawValue));
+          value = isNaN(numValue) ? null : numValue;
+        }
       } else if (property.dataType === 'float') {
-        const numValue = parseFloat(String(rawValue));
-        value = isNaN(numValue) ? null : numValue;
+        if (typeof rawValue === 'number' && !isNaN(rawValue)) {
+          value = rawValue;
+        } else {
+          const numValue = parseFloat(String(rawValue));
+          value = isNaN(numValue) ? null : numValue;
+        }
       } else if (property.dataType === 'string') {
         value = String(rawValue);
       }
@@ -209,8 +219,17 @@ export function useClipboardOperations({
       const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
       const isNameField = propertyIndex === 0;
       
-      // Get the cell value
-      const value = getCellValue(row, propertyKey, foundProperty, isNameField);
+      // 对齐 batch fill：从 base 取源值，保留原始类型（如 float 12.5），避免 getRowsWithOptimisticUpdates 合并导致的小数丢失
+      const baseRow = dataManager.getRowBaseValue(rowId);
+      let value: string | number | null;
+      if (baseRow) {
+        const raw = isNameField
+          ? (baseRow.name ?? baseRow.propertyValues?.[propertyKey] ?? null)
+          : (baseRow.propertyValues?.[propertyKey] ?? null);
+        value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
+      } else {
+        value = getCellValue(row, propertyKey, foundProperty, isNameField);
+      }
       
       if (!cellsByRow.has(rowId)) {
         cellsByRow.set(rowId, []);
@@ -351,39 +370,30 @@ export function useClipboardOperations({
         }
       });
       
-      // Apply clearing updates - update Yjs first, then update database
-      setIsSaving(true);
+      // 先改 Yjs（同步、瞬间生效），再并行持久化到 DB，不占用 setIsSaving，避免与紧接着的 Paste 冲突导致卡顿
       (async () => {
         try {
           const allRows = yRows.toArray();
+          const toUpdate: Array<{ rowId: string; rowIndex: number; assetName: string; propertyValues: Record<string, any>; updatedRow: AssetRow }> = [];
           for (const [rowId, rowData] of cutCellsByRow.entries()) {
             const row = allRows.find(r => r.id === rowId);
-            if (row) {
-              // Use the updated assetName if name field was cleared, otherwise use original name
-              const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
-              
-              // Immediately update Yjs (optimistic update)
-              const rowIndex = allRows.findIndex(r => r.id === rowId);
-              if (rowIndex >= 0) {
-                const updatedRow = {
-                  ...row,
-                  name: assetName,
-                  propertyValues: rowData.propertyValues
-                };
-                
-                // Update Yjs
-                yRows.delete(rowIndex, 1);
-                yRows.insert(rowIndex, [updatedRow]);
-              }
-              
-              // Asynchronously update database
-              await onUpdateAsset(rowId, assetName, rowData.propertyValues);
-            }
+            if (!row) continue;
+            const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
+            const rowIndex = allRows.findIndex(r => r.id === rowId);
+            if (rowIndex < 0) continue;
+            const updatedRow = { ...row, name: assetName, propertyValues: rowData.propertyValues };
+            toUpdate.push({ rowId, rowIndex, assetName, propertyValues: rowData.propertyValues, updatedRow });
           }
+          // Yjs 按索引从大到小更新，避免 delete+insert 导致下标错位
+          toUpdate.sort((a, b) => b.rowIndex - a.rowIndex);
+          toUpdate.forEach(({ rowIndex, updatedRow }) => {
+            yRows.delete(rowIndex, 1);
+            yRows.insert(rowIndex, [updatedRow]);
+          });
+          // 并行写 DB，缩短 Cut 完成时间，减少与 Paste 重叠造成的排队
+          await Promise.all(toUpdate.map(({ rowId, assetName, propertyValues }) => onUpdateAsset(rowId, assetName, propertyValues)));
         } catch (error) {
           console.error('Failed to clear cut cells:', error);
-        } finally {
-          setIsSaving(false);
         }
       })();
     }
@@ -406,6 +416,7 @@ export function useClipboardOperations({
       setToastMessage(null);
     }, 2000);
   }, [
+    dataManager,
     selectedCells,
     selectedRowIds,
     getAllRowsForCellSelection,
@@ -421,7 +432,6 @@ export function useClipboardOperations({
     setClipboardData,
     setIsCutOperation,
     setCutSelectionBounds,
-    setIsSaving,
     setToastMessage,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
@@ -480,8 +490,17 @@ export function useClipboardOperations({
       const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
       const isNameField = propertyIndex === 0;
       
-      // Get the cell value
-      const value = getCellValue(row, propertyKey, foundProperty, isNameField);
+      // 对齐 batch fill：从 base 取源值，保留原始类型（如 float 12.5），避免 getRowsWithOptimisticUpdates 合并导致的小数丢失
+      const baseRow = dataManager.getRowBaseValue(rowId);
+      let value: string | number | null;
+      if (baseRow) {
+        const raw = isNameField
+          ? (baseRow.name ?? baseRow.propertyValues?.[propertyKey] ?? null)
+          : (baseRow.propertyValues?.[propertyKey] ?? null);
+        value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
+      } else {
+        value = getCellValue(row, propertyKey, foundProperty, isNameField);
+      }
       
       if (!cellsByRow.has(rowId)) {
         cellsByRow.set(rowId, []);
@@ -593,6 +612,7 @@ export function useClipboardOperations({
       setToastMessage(null);
     }, 2000);
   }, [
+    dataManager,
     selectedCells,
     selectedRowIds,
     getAllRowsForCellSelection,
@@ -699,15 +719,20 @@ export function useClipboardOperations({
           return; // Skip unsupported types
         }
         
-        // Convert value to appropriate type
+        // Convert value to appropriate type (string, int, float)
         let convertedValue: string | number | null = null;
         if (cellValue !== null && cellValue !== undefined && cellValue !== '') {
           if (targetProperty.dataType === 'int') {
             const numValue = parseInt(String(cellValue), 10);
             convertedValue = isNaN(numValue) ? null : numValue;
           } else if (targetProperty.dataType === 'float') {
-            const numValue = parseFloat(String(cellValue));
-            convertedValue = isNaN(numValue) ? null : numValue;
+            // Preserve number as-is to avoid losing decimals (e.g. 12.3 from cut/copy)
+            if (typeof cellValue === 'number' && !isNaN(cellValue)) {
+              convertedValue = cellValue;
+            } else {
+              const numValue = parseFloat(String(cellValue));
+              convertedValue = isNaN(numValue) ? null : numValue;
+            }
           } else if (targetProperty.dataType === 'string') {
             convertedValue = String(cellValue);
           }
@@ -808,12 +833,14 @@ export function useClipboardOperations({
         // Group updates by rowId for efficiency
         const updatesByRow = new Map<string, Record<string, any>>();
         
-        // Initialize updatesByRow with existing property values
+        // 对齐 batch fill：从 base 构建 propertyValues 再合并粘贴值，避免合并逻辑导致 float 小数丢失
         updatesToApply.forEach(({ rowId, propertyKey, value }) => {
           if (!updatesByRow.has(rowId)) {
+            const baseRow = dataManager.getRowBaseValue(rowId);
             const row = allRowsForSelection.find(r => r.id === rowId);
-            if (row) {
-              // Copy all existing property values (may include boolean and other types)
+            if (baseRow) {
+              updatesByRow.set(rowId, { ...baseRow.propertyValues });
+            } else if (row) {
               updatesByRow.set(rowId, { ...row.propertyValues });
             } else {
               updatesByRow.set(rowId, {});
@@ -858,14 +885,13 @@ export function useClipboardOperations({
           yRows.insert(index, [row]);
         });
         
-        // Then asynchronously update database
-        for (const [rowId, propertyValues] of updatesByRow.entries()) {
-          const row = allRowsForSelection.find(r => r.id === rowId);
-          if (row) {
-            const assetName = row.name || 'Untitled';
-            await onUpdateAsset(rowId, assetName, propertyValues);
-          }
-        }
+        //
+        const updatePromises = Array.from(updatesByRow.entries())
+          .map(([rowId, propertyValues]) => {
+            const row = allRowsForSelection.find(r => r.id === rowId);
+            return row ? onUpdateAsset(rowId, row.name || 'Untitled', propertyValues) : Promise.resolve();
+          });
+        await Promise.all(updatePromises);
       } catch (error) {
         console.error('Failed to update rows for paste:', error);
         setIsSaving(false);
@@ -914,6 +940,7 @@ export function useClipboardOperations({
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
   }, [
+    dataManager,
     selectedCells,
     selectedRowIds,
     getAllRowsForCellSelection,

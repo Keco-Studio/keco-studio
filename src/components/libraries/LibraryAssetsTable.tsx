@@ -4329,6 +4329,19 @@ export function LibraryAssetsTable({
                                 handleCancelEditing();
                               }
                             }}
+                            onPaste={(e) => {
+                              // 强制使用 text/plain，避免浏览器粘贴 HTML 导致 float 的小数部分丢失（如 12.5 变成 12）
+                              e.preventDefault();
+                              const raw = e.clipboardData?.getData('text/plain') || '';
+                              const text = raw.split(/\t|\n/)[0] ?? '';
+                              const el = e.currentTarget;
+                              const sel = window.getSelection();
+                              const range = document.createRange();
+                              range.selectNodeContents(el);
+                              sel?.removeAllRanges();
+                              sel?.addRange(range);
+                              document.execCommand('insertText', false, text);
+                            }}
                             onInput={(e) => {
                             // Only update state when not composing (for IME input)
                             if (!isComposingRef.current) {
