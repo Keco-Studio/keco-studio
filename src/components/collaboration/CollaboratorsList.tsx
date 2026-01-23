@@ -26,6 +26,7 @@ interface CollaboratorsListProps {
   currentUserId: string;
   currentUserRole: 'admin' | 'editor' | 'viewer';
   onUpdate?: () => void;
+  highlightUserId?: string | null; // User ID to highlight with animation
 }
 
 export default function CollaboratorsList({
@@ -34,6 +35,7 @@ export default function CollaboratorsList({
   currentUserId,
   currentUserRole,
   onUpdate,
+  highlightUserId = null,
 }: CollaboratorsListProps) {
   const supabase = useSupabase();
   
@@ -43,6 +45,7 @@ export default function CollaboratorsList({
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [loadingActions, setLoadingActions] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [highlightedUserId, setHighlightedUserId] = useState<string | null>(highlightUserId);
   
   // Computed values
   const isAdmin = currentUserRole === 'admin';
@@ -52,6 +55,18 @@ export default function CollaboratorsList({
   useEffect(() => {
     setCollaborators(initialCollaborators);
   }, [initialCollaborators]);
+  
+  // Handle highlight animation
+  useEffect(() => {
+    if (highlightUserId) {
+      setHighlightedUserId(highlightUserId);
+      // Remove highlight after 2 seconds
+      const timer = setTimeout(() => {
+        setHighlightedUserId(null);
+      }, 2000);
+      return () => clearTimeout(timer);
+    }
+  }, [highlightUserId]);
   
   // Real-time subscription for database changes
   useEffect(() => {
@@ -258,12 +273,28 @@ export default function CollaboratorsList({
   
   // Get display name for collaborator
   const getDisplayName = (collab: Collaborator): string => {
-    return collab.userName || 'User';
+    // If userName exists and is not empty, use it
+    if (collab.userName && collab.userName.trim()) {
+      return collab.userName;
+    }
+    // Otherwise, extract name from email (before @)
+    if (collab.userEmail) {
+      return collab.userEmail.split('@')[0];
+    }
+    // Fallback
+    return 'User';
   };
   
   // Get email for collaborator
   const getEmail = (collab: Collaborator): string => {
     return collab.userEmail || '';
+  };
+  
+  // Get avatar initials for display
+  const getAvatarInitials = (collab: Collaborator): string => {
+    const displayName = getDisplayName(collab);
+    // Get first character of display name
+    return displayName.charAt(0).toUpperCase();
   };
   
   return (
@@ -305,10 +336,15 @@ export default function CollaboratorsList({
             return null; // Hide removed items optimistically
           }
           
+          // Check if this user should be highlighted
+          const shouldHighlight = highlightedUserId === collab.userId;
+          // Check if invitation is pending (not yet accepted)
+          const isPendingInvite = !collab.acceptedAt;
+          
           return (
             <div 
               key={collab.id}
-              className={`${styles.item} ${isLoading ? styles.itemLoading : ''}`}
+              className={`${styles.item} ${isLoading ? styles.itemLoading : ''} ${shouldHighlight ? styles.itemHighlight : ''}`}
             >
               {/* Member Name Column */}
               <div className={styles.itemName}>
@@ -318,12 +354,15 @@ export default function CollaboratorsList({
                     backgroundColor: collab.avatarColor || '#94a3b8' 
                   }}
                 >
-                  {displayName.charAt(0).toUpperCase()}
+                  {getAvatarInitials(collab)}
                 </div>
                 <div className={`${styles.userName} ${isSelf ? styles.userNameSelf : ''}`}>
                   {displayName}
                   {isSelf && (
                     <span className={styles.youBadge}>(me)</span>
+                  )}
+                  {isPendingInvite && (
+                    <span className={styles.inviteSentBadge}>(invite sent)</span>
                   )}
                 </div>
               </div>

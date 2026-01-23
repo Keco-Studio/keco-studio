@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyProjectOwnership } from '@/lib/services/authorizationService';
+import { verifyProjectOwnership, verifyFolderCreationPermission } from '@/lib/services/authorizationService';
 
 type Params = { params: Promise<{ projectId: string }> };
 
@@ -80,8 +80,8 @@ export async function POST(request: Request, { params }: Params) {
   let projectId: string;
   try {
     projectId = await resolveProjectId(supabase, projectIdParam);
-    // verify project ownership
-    await verifyProjectOwnership(supabase, projectId);
+    // Verify user has admin permission to create folder
+    await verifyFolderCreationPermission(supabase, projectId);
   } catch (e: any) {
     if (e.name === 'AuthorizationError') {
       return NextResponse.json({ error: e.message }, { status: 403 });

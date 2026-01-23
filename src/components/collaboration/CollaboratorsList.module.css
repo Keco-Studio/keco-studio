@@ -496,6 +496,39 @@
   cursor: not-allowed;
 }
 
+/* Highlight animation for newly invited collaborators */
+.itemHighlight {
+  animation: highlightPulse 2s ease-in-out;
+}
+
+@keyframes highlightPulse {
+  0%, 100% {
+    background-color: #ffffff;
+  }
+  25%, 75% {
+    background-color: #fef3c7;
+  }
+  50% {
+    background-color: #fde68a;
+  }
+}
+
+/* Invite sent badge */
+.inviteSentBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background-color: #fef3c7;
+  color: #92400e;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: normal;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
 /* Responsive adjustments */
 @media (max-width: 1024px) {
   .headerRight,
