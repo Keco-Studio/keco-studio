@@ -106,6 +106,7 @@ function PredefinePageContent() {
       if (sections.length === 0) {
         // No sections exist, auto-enter creation mode
         setIsCreatingNewSection(true);
+        setNewSectionName('New Section'); // Initialize default section name
         autoEnteredCreationMode.current = true;
       } else {
         // Sections exist, set first as active if needed
@@ -121,6 +122,7 @@ function PredefinePageContent() {
         // but now sections exist (slow loading), exit creation mode
         if (autoEnteredCreationMode.current && isCreatingNewSection) {
           setIsCreatingNewSection(false);
+          setNewSectionName(''); // Clear section name when exiting creation mode
           autoEnteredCreationMode.current = false;
         }
         if (!activeSectionId || !sections.find((s) => s.id === activeSectionId)) {
@@ -223,6 +225,17 @@ function PredefinePageContent() {
       return;
     }
 
+    // Check for duplicate section name
+    const duplicateSection = sections.find(
+      (s) => s.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+    if (duplicateSection) {
+      const errorMessage = `Section name "${trimmedName}" already exists. Please use a different name.`;
+      setErrors([errorMessage]);
+      message.error(errorMessage);
+      return;
+    }
+
     // Validate: check for empty labels or missing data types
     let hasInvalidFields = false;
     newSection.fields.forEach((field) => {
@@ -289,6 +302,27 @@ function PredefinePageContent() {
       
       return updatedSection;
     });
+
+    // Check for duplicate section names
+    const sectionNames = new Map<string, string[]>(); // Map<lowercase name, [original names]>
+    finalSections.forEach((section) => {
+      const lowerName = section.name.toLowerCase();
+      if (!sectionNames.has(lowerName)) {
+        sectionNames.set(lowerName, []);
+      }
+      sectionNames.get(lowerName)!.push(section.name);
+    });
+    
+    const duplicates = Array.from(sectionNames.entries())
+      .filter(([_, names]) => names.length > 1)
+      .map(([_, names]) => names[0]);
+    
+    if (duplicates.length > 0) {
+      const errorMessage = `Duplicate section name${duplicates.length > 1 ? 's' : ''}: "${duplicates.join('", "')}". Each section must have a unique name.`;
+      setErrors([errorMessage]);
+      message.error(errorMessage);
+      return;
+    }
 
     // Validate: check for empty labels or missing data types
     let hasInvalidFields = false;
