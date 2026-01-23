@@ -29,6 +29,7 @@ import { useBatchFill } from './hooks/useBatchFill';
 import { useClipboardOperations } from './hooks/useClipboardOperations';
 import { useCellEditing } from './hooks/useCellEditing';
 import { useCellSelection, type CellKey } from './hooks/useCellSelection';
+import { useUserRole } from './hooks/useUserRole';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
 import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
 import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
@@ -795,48 +796,8 @@ export function LibraryAssetsTable({
   const supabase = useSupabase();
 
   const hasSections = sections.length > 0;
-  
-  // User role state (for permission control)
-  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
-  
-  // Fetch user role
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      const projectId = params.projectId as string;
-      if (!projectId) {
-        setUserRole(null);
-        return;
-      }
-      
-      try {
-        // Get session for authorization
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          setUserRole(null);
-          return;
-        }
-        
-        // Call API to get user role
-        const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        });
-        
-        if (roleResponse.ok) {
-          const roleResult = await roleResponse.json();
-          setUserRole(roleResult.role || null);
-        } else {
-          setUserRole(null);
-        }
-      } catch (error) {
-        console.error('[LibraryAssetsTable] Error fetching user role:', error);
-        setUserRole(null);
-      }
-    };
-    
-    fetchUserRole();
-  }, [params.projectId, supabase]);
+
+  const userRole = useUserRole(params?.projectId as string | undefined, supabase);
 
   // Cell editing hook (must be after userRole is defined)
   const cellEditing = useCellEditing({
