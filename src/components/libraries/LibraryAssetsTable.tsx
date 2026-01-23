@@ -28,6 +28,7 @@ import { useTableDataManager } from './hooks/useTableDataManager';
 import { useBatchFill } from './hooks/useBatchFill';
 import { useClipboardOperations } from './hooks/useClipboardOperations';
 import { useCellEditing } from './hooks/useCellEditing';
+import { useCellSelection, type CellKey } from './hooks/useCellSelection';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
 import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
 import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
@@ -335,14 +336,6 @@ export function LibraryAssetsTable({
     maxPropertyIndex: number;
     rowIds: string[];
     propertyKeys: string[];
-  } | null>(null);
-  
-  // Store selection bounds for multiple cell selection border rendering
-  const [selectionBounds, setSelectionBounds] = useState<{
-    minRowIndex: number;
-    maxRowIndex: number;
-    minPropertyIndex: number;
-    maxPropertyIndex: number;
   } | null>(null);
   
   // Toast message state
@@ -781,26 +774,8 @@ export function LibraryAssetsTable({
   // Asset names cache for display
   const [assetNamesCache, setAssetNamesCache] = useState<Record<string, string>>({});
 
-  // Row selection state (for checkbox selection)
-  const [selectedRowIds, setSelectedRowIds] = useState<Set<string>>(new Set());
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
-  
-  // Cell selection state (for drag selection)
-  type CellKey = `${string}-${string}`; // Format: "rowId-propertyKey"
-  const [selectedCells, setSelectedCells] = useState<Set<CellKey>>(new Set());
-  const selectedCellsRef = useRef<Set<CellKey>>(new Set());
   const contextMenuRowIdRef = useRef<string | null>(null);
-  const [dragStartCell, setDragStartCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
-  const [dragCurrentCell, setDragCurrentCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
-  const isDraggingCellsRef = useRef(false);
-  const dragCurrentCellRef = useRef<{ rowId: string; propertyKey: string } | null>(null);
-  
-  // Fill drag state (for Excel-like fill down functionality)
-  const [fillDragStartCell, setFillDragStartCell] = useState<{ rowId: string; propertyKey: string; startY: number } | null>(null);
-  const isFillingCellsRef = useRef(false);
-  
-  // Track hover state for expand icon (show only when hovering over bottom-right corner of selected cell)
-  const [hoveredCellForExpand, setHoveredCellForExpand] = useState<{ rowId: string; propertyKey: string } | null>(null);
 
   // Hover state for asset card
   const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
@@ -2066,214 +2041,10 @@ export function LibraryAssetsTable({
     router.push(`/${projectId}/${libraryId}/predefine`);
   };
 
-  // Handle row selection toggle
-  const handleRowSelectionToggle = (rowId: string, e?: React.MouseEvent | MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-    }
-    setSelectedRowIds(prev => {
-      const next = new Set(prev);
-      if (next.has(rowId)) {
-        next.delete(rowId);
-      } else {
-        next.add(rowId);
-      }
-      return next;
-    });
-  };
-
   // Get all rows for cell selection (helper function)
-  // Use Yjs as data source to ensure all operations are based on the same array
-  // Use dataManager to get rows with optimistic updates
-  // This replaces the old getAllRowsForCellSelection function
   const getAllRowsForCellSelection = useCallback(() => {
     return dataManager.getRowsWithOptimisticUpdates();
   }, [dataManager]);
-
-  // Handle cell click (select single cell)
-  const handleCellClick = (rowId: string, propertyKey: string, e: React.MouseEvent) => {
-    // Don't select if clicking on interactive elements
-    const target = e.target as HTMLElement;
-    if (target.closest('button') || 
-        target.closest('.ant-checkbox') || 
-        target.closest('.ant-select') ||
-        target.closest('.ant-switch') ||
-        target.closest('input') ||
-        target.closest('select') ||
-        target.closest('.cellExpandIcon')) {
-      return;
-    }
-    
-    // Don't select if we're currently filling cells
-    // Use a small delay to allow fill drag to complete
-    if (isFillingCellsRef.current) {
-      return;
-    }
-    
-    // If cell is already selected and clicking on reference background area, let the child handle it
-    const currentCellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
-    const referenceBackground = target.closest('[data-reference-background="true"]');
-    if (selectedCells.has(currentCellKey) && referenceBackground) {
-      // Don't stop propagation here, let the reference background area handle the click
-      // The reference background onClick will call stopPropagation itself
-      return; // Let the reference background area handle the click
-    }
-    
-    e.stopPropagation();
-    
-    // Clear presence tracking if clicking on a different cell
-    // This handles the case where boolean/option types set presence tracking
-    // but don't use editingCell state, so handleClickOutside doesn't clear it
-    if (currentFocusedCell && 
-        (currentFocusedCell.assetId !== rowId || currentFocusedCell.propertyKey !== propertyKey)) {
-      handleCellBlur();
-    }
-    
-    // Select single cell
-    const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
-    setSelectedCells(new Set<CellKey>([cellKey]));
-    setDragStartCell({ rowId, propertyKey });
-    setDragCurrentCell(null);
-  };
-
-  // Handle cell drag selection start (from cell itself - for multi-selection)
-  const handleCellFillDragStart = (rowId: string, propertyKey: string, e: React.MouseEvent) => {
-    // Don't start drag if clicking on interactive elements or expand icon
-    const target = e.target as HTMLElement;
-    if (target.closest('button') || 
-        target.closest('.ant-checkbox') || 
-        target.closest('.ant-select') ||
-        target.closest('.ant-switch') ||
-        target.closest('input') ||
-        target.closest('select') ||
-        target.closest('.cellExpandIcon')) {
-      return;
-    }
-
-    // Don't start drag if clicking on reference background area when cell is selected
-    const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
-    if (selectedCells.has(cellKey) && target.closest('[data-reference-background="true"]')) {
-      return; // Let the reference background area handle the click
-    }
-
-    // Only allow drag when single cell is selected
-    if (!selectedCells.has(cellKey) || selectedCells.size !== 1) {
-      return;
-    }
-
-    // Only handle if left mouse button
-    if (e.button !== 0) {
-      return;
-    }
-
-    e.preventDefault();
-    e.stopPropagation();
-    
-    isDraggingCellsRef.current = true;
-    const startCell = { rowId, propertyKey };
-    setDragStartCell(startCell);
-    setDragCurrentCell(startCell);
-    dragCurrentCellRef.current = startCell;
-    
-    // Create handlers for drag move and end
-    const dragMoveHandler = (moveEvent: MouseEvent) => {
-      if (!isDraggingCellsRef.current) return;
-      
-      // Use the captured values from closure
-      const startRowId = rowId;
-      const startPropertyKey = propertyKey;
-      
-      // Find the cell under the cursor
-      const elementBelow = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
-      if (!elementBelow) return;
-      
-      const cellElement = elementBelow.closest('td');
-      if (!cellElement) return;
-      
-      // Get row and property info from data attributes
-      const rowElement = cellElement.closest('tr');
-      if (!rowElement || 
-          rowElement.classList.contains('headerRowTop') || 
-          rowElement.classList.contains('headerRowBottom') || 
-          rowElement.classList.contains('editRow') ||
-          rowElement.classList.contains('addRow')) {
-        return;
-      }
-      
-      const currentRowId = rowElement.getAttribute('data-row-id');
-      const currentPropertyKey = cellElement.getAttribute('data-property-key');
-      
-      if (currentRowId && currentPropertyKey) {
-        const newCell = { rowId: currentRowId, propertyKey: currentPropertyKey };
-        dragCurrentCellRef.current = newCell;
-        setDragCurrentCell(newCell);
-      }
-    };
-    
-    const dragEndHandler = (endEvent: MouseEvent) => {
-      if (!isDraggingCellsRef.current) {
-        return;
-      }
-      
-      isDraggingCellsRef.current = false;
-      document.removeEventListener('mousemove', dragMoveHandler);
-      document.removeEventListener('mouseup', dragEndHandler);
-      document.body.style.userSelect = '';
-      
-      // Get all rows and properties for selection
-      const allRowsForSelection = getAllRowsForCellSelection();
-      // Use captured values from closure
-      const startRowId = rowId;
-      const startPropertyKey = propertyKey;
-      // Get current end from ref (updated by dragMoveHandler)
-      const endCell = dragCurrentCellRef.current || { rowId: startRowId, propertyKey: startPropertyKey };
-      const endRowId = endCell.rowId;
-      const endPropertyKey = endCell.propertyKey;
-      
-      // Find start and end indices
-      const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-      const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
-      
-      // Find property indices in orderedProperties
-      const startPropertyIndex = orderedProperties.findIndex(p => p.key === startPropertyKey);
-      const endPropertyIndex = orderedProperties.findIndex(p => p.key === endPropertyKey);
-      
-      if (startRowIndex !== -1 && endRowIndex !== -1 && 
-          startPropertyIndex !== -1 && endPropertyIndex !== -1) {
-        // Select all cells in the rectangle
-        const rowStart = Math.min(startRowIndex, endRowIndex);
-        const rowEnd = Math.max(startRowIndex, endRowIndex);
-        const propStart = Math.min(startPropertyIndex, endPropertyIndex);
-        const propEnd = Math.max(startPropertyIndex, endPropertyIndex);
-        
-        const cellsToSelect = new Set<CellKey>();
-        
-        for (let r = rowStart; r <= rowEnd; r++) {
-          const row = allRowsForSelection[r];
-          for (let p = propStart; p <= propEnd; p++) {
-            const property = orderedProperties[p];
-            cellsToSelect.add(`${row.id}-${property.key}`);
-          }
-        }
-        
-        setSelectedCells(cellsToSelect);
-      } else {
-        // Fallback: just select the start cell
-        setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-      }
-      
-      setDragStartCell(null);
-      setDragCurrentCell(null);
-      dragCurrentCellRef.current = null;
-    };
-    
-    // Add event listeners
-    document.addEventListener('mousemove', dragMoveHandler);
-    document.addEventListener('mouseup', dragEndHandler);
-    
-    // Prevent text selection during drag
-    document.body.style.userSelect = 'none';
-  };
 
   // Batch fill hook: handle fill down operations
   // Must be defined after orderedProperties and getAllRowsForCellSelection
@@ -2284,6 +2055,36 @@ export function LibraryAssetsTable({
     onUpdateAsset,
     setOptimisticEditUpdates,
     optimisticEditUpdates,
+  });
+
+  // Cell selection hook: row/cell selection, drag-to-select, fill-drag
+  const {
+    selectedRowIds,
+    setSelectedRowIds,
+    selectedCells,
+    setSelectedCells,
+    selectedCellsRef,
+    fillDragStartCell,
+    hoveredCellForExpand,
+    setHoveredCellForExpand,
+    isFillingCellsRef,
+    handleRowSelectionToggle,
+    handleCellClick,
+    handleCellFillDragStart,
+    handleCellDragStart,
+    getSelectionBorderClasses,
+  } = useCellSelection({
+    orderedProperties,
+    getAllRowsForCellSelection,
+    fillDown,
+    currentFocusedCell,
+    handleCellBlur,
+    selectionBorderClassNames: {
+      selectionBorderTop: styles.selectionBorderTop,
+      selectionBorderBottom: styles.selectionBorderBottom,
+      selectionBorderLeft: styles.selectionBorderLeft,
+      selectionBorderRight: styles.selectionBorderRight,
+    },
   });
 
   // Clipboard operations hook: handle Cut/Copy/Paste operations
@@ -2316,250 +2117,6 @@ export function LibraryAssetsTable({
     cutCells,
     copyCells,
   });
-
-  // Handle cell fill drag start (from expand icon - Excel-like fill down functionality)
-  const handleCellDragStart = (rowId: string, propertyKey: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    // Only allow fill drag when single cell is selected
-    const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
-    if (!selectedCells.has(cellKey) || selectedCells.size !== 1) {
-      return;
-    }
-
-    // Check if this property type supports fill (only string, int, float)
-    const property = orderedProperties.find(p => p.key === propertyKey);
-    if (!property || !['string', 'int', 'float'].includes(property.dataType)) {
-      return;
-    }
-
-    // Capture values in closure
-    const startRowId = rowId;
-    const startPropertyKey = propertyKey;
-    const startX = e.clientX;
-    const startY = e.clientY;
-    let hasMoved = false;
-    let isClick = true;
-    const DRAG_THRESHOLD = 5; // Minimum pixel movement to consider it a drag
-    
-    // Create handlers for fill drag move and end
-    const fillDragMoveHandler = (moveEvent: MouseEvent) => {
-      // Check if mouse has moved enough to be considered a drag
-      const deltaX = Math.abs(moveEvent.clientX - startX);
-      const deltaY = Math.abs(moveEvent.clientY - startY);
-      if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
-        hasMoved = true;
-        isClick = false;
-        
-        // Only start fill drag if we've actually moved
-        if (!isFillingCellsRef.current) {
-          isFillingCellsRef.current = true;
-          setFillDragStartCell({ rowId: startRowId, propertyKey: startPropertyKey, startY });
-          // Now prevent text selection since we're dragging
-          document.body.style.userSelect = 'none';
-          // Set cursor to crosshair during fill drag
-          document.body.style.cursor = 'crosshair';
-          // Add class to body to force crosshair cursor on all cells
-          document.body.classList.add('filling-cells');
-        }
-      }
-      
-      // Only show selection feedback if we've actually dragged
-      if (!hasMoved || !isFillingCellsRef.current) return;
-      
-      // Keep cursor as crosshair during fill drag
-      document.body.style.cursor = 'crosshair';
-      
-      // Find the cell under the cursor
-      const elementBelow = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
-      if (!elementBelow) return;
-      
-      const cellElement = elementBelow.closest('td');
-      if (!cellElement) return;
-      
-      // Get row and property info from data attributes
-      const rowElement = cellElement.closest('tr');
-      if (!rowElement || 
-          rowElement.classList.contains('headerRowTop') || 
-          rowElement.classList.contains('headerRowBottom') || 
-          rowElement.classList.contains('editRow') ||
-          rowElement.classList.contains('addRow')) {
-        return;
-      }
-      
-      const currentRowId = rowElement.getAttribute('data-row-id');
-      const currentPropertyKey = cellElement.getAttribute('data-property-key');
-      
-      // Only allow downward fill (same column)
-      if (currentRowId && currentPropertyKey && currentPropertyKey === startPropertyKey) {
-        const allRowsForSelection = getAllRowsForCellSelection();
-        const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-        const currentRowIndex = allRowsForSelection.findIndex(r => r.id === currentRowId);
-        
-        // Validate indices are valid (not -1)
-        if (startRowIndex === -1 || currentRowIndex === -1) {
-          return;
-        }
-        
-        // Only select cells if dragging downward
-        if (currentRowIndex > startRowIndex) {
-          const cellsToSelect = new Set<CellKey>();
-          for (let r = startRowIndex; r <= currentRowIndex; r++) {
-            const row = allRowsForSelection[r];
-            if (row) {
-              cellsToSelect.add(`${row.id}-${startPropertyKey}`);
-            }
-          }
-          setSelectedCells(cellsToSelect);
-        } else if (currentRowIndex < startRowIndex) {
-          // If dragged above start, just select the start cell
-          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        } else if (currentRowIndex === startRowIndex) {
-          // If back to start, just select the start cell
-          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        }
-      }
-    };
-    
-    const fillDragEndHandler = async (endEvent: MouseEvent) => {
-      document.removeEventListener('mousemove', fillDragMoveHandler);
-      document.removeEventListener('mouseup', fillDragEndHandler);
-      
-      // Use try-finally to ensure state is always reset, even if errors occur
-      try {
-        // If it was just a click, reset to single cell selection
-        if (isClick || !hasMoved) {
-          if (isFillingCellsRef.current) {
-            // Reset to single cell selection
-            setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-          }
-          return;
-        }
-        
-        if (!isFillingCellsRef.current) {
-          return;
-        }
-        
-        // Check if we dragged downward - get fresh data including optimistic updates
-        const allRowsForSelection = getAllRowsForCellSelection();
-        const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-        
-        // Find the cell under the cursor at end
-        const elementBelow = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
-        if (!elementBelow) {
-          // Reset to single cell selection if drag ended outside
-          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-          return;
-        }
-        
-        const cellElement = elementBelow.closest('td');
-        if (!cellElement) {
-          // Reset to single cell selection if drag ended outside
-          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-          return;
-        }
-        
-        const rowElement = cellElement.closest('tr');
-        if (!rowElement || 
-            rowElement.classList.contains('headerRowTop') || 
-            rowElement.classList.contains('headerRowBottom') || 
-            rowElement.classList.contains('editRow') ||
-            rowElement.classList.contains('addRow')) {
-          // Reset to single cell selection if drag ended on invalid row
-          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-          return;
-        }
-        
-        const endRowId = rowElement.getAttribute('data-row-id');
-        const endPropertyKey = cellElement.getAttribute('data-property-key');
-        
-        if (!endRowId || !endPropertyKey || endPropertyKey !== startPropertyKey) {
-          // Reset to single cell selection if drag ended on different property
-          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-          return;
-        }
-        
-        const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
-        
-        // Validate indices are valid (not -1)
-        if (startRowIndex === -1 || endRowIndex === -1) {
-          // Reset to single cell selection if indices are invalid
-          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-          return;
-        }
-        
-        // Only fill if dragged downward and at least one row down
-        if (endRowIndex > startRowIndex) {
-          // Use the fillDown method from useBatchFill hook
-          await fillDown(startRowId, endRowId, startPropertyKey);
-        } else {
-          // If not dragged downward (dragged up or back to start), reset to single cell selection
-          setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-        }
-      } finally {
-        // Always reset state, even if errors occurred
-        isFillingCellsRef.current = false;
-        document.body.style.userSelect = '';
-        document.body.style.cursor = ''; // Reset cursor to default
-        document.body.classList.remove('filling-cells'); // Remove class to restore normal cursor
-        setFillDragStartCell(null);
-      }
-    };
-    
-    // Add event listeners
-    document.addEventListener('mousemove', fillDragMoveHandler);
-    document.addEventListener('mouseup', fillDragEndHandler);
-    
-    // Note: We don't prevent default or set userSelect here
-    // Only do that when we detect actual dragging movement
-  };
-
-  // Update selected cells during drag (for visual feedback)
-  useEffect(() => {
-    if (!isDraggingCellsRef.current || !dragStartCell || !dragCurrentCell) {
-      return;
-    }
-    
-    const allRowsForSelection = getAllRowsForCellSelection();
-    const startRowId = dragStartCell.rowId;
-    const startPropertyKey = dragStartCell.propertyKey;
-    const endRowId = dragCurrentCell.rowId;
-    const endPropertyKey = dragCurrentCell.propertyKey;
-    
-    // Find indices
-    const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-    const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
-    const startPropertyIndex = orderedProperties.findIndex(p => p.key === startPropertyKey);
-    const endPropertyIndex = orderedProperties.findIndex(p => p.key === endPropertyKey);
-    
-    if (startRowIndex !== -1 && endRowIndex !== -1 && 
-        startPropertyIndex !== -1 && endPropertyIndex !== -1) {
-      const rowStart = Math.min(startRowIndex, endRowIndex);
-      const rowEnd = Math.max(startRowIndex, endRowIndex);
-      const propStart = Math.min(startPropertyIndex, endPropertyIndex);
-      const propEnd = Math.max(startPropertyIndex, endPropertyIndex);
-      
-      const cellsToSelect = new Set<CellKey>();
-      
-      for (let r = rowStart; r <= rowEnd; r++) {
-        const row = allRowsForSelection[r];
-        for (let p = propStart; p <= propEnd; p++) {
-          const property = orderedProperties[p];
-          cellsToSelect.add(`${row.id}-${property.key}`);
-        }
-      }
-      
-      setSelectedCells(cellsToSelect);
-    }
-  }, [dragStartCell, dragCurrentCell, getAllRowsForCellSelection, orderedProperties]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      document.body.style.userSelect = '';
-    };
-  }, []);
 
   // Close batch edit menu when clicking outside
   useEffect(() => {
@@ -2852,85 +2409,6 @@ export function LibraryAssetsTable({
     
     return classes.join(' ');
   }, [copySelectionBounds, copyCells, orderedProperties, getAllRowsForCellSelection]);
-
-  // Helper function to check if a cell is on the border of selection
-  const getSelectionBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
-    if (!selectionBounds || selectedCells.size <= 1) {
-      return '';
-    }
-    
-    const allRowsForSelection = getAllRowsForCellSelection();
-    const rowIndex = allRowsForSelection.findIndex(r => r.id === rowId);
-    
-    if (rowIndex === -1) return '';
-    
-    const cellKey = `${rowId}-${orderedProperties[propertyIndex].key}` as CellKey;
-    if (!selectedCells.has(cellKey)) {
-      return '';
-    }
-    
-    const { minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex } = selectionBounds;
-    const isTop = rowIndex === minRowIndex;
-    const isBottom = rowIndex === maxRowIndex;
-    const isLeft = propertyIndex === minPropertyIndex;
-    const isRight = propertyIndex === maxPropertyIndex;
-    
-    const classes: string[] = [];
-    if (isTop) classes.push(styles.selectionBorderTop);
-    if (isBottom) classes.push(styles.selectionBorderBottom);
-    if (isLeft) classes.push(styles.selectionBorderLeft);
-    if (isRight) classes.push(styles.selectionBorderRight);
-    
-    return classes.join(' ');
-  }, [selectionBounds, selectedCells, orderedProperties, getAllRowsForCellSelection]);
-
-  // Calculate selection bounds when selectedCells changes
-  useEffect(() => {
-    if (selectedCells.size <= 1) {
-      setSelectionBounds(null);
-      return;
-    }
-    
-    const allRowsForSelection = getAllRowsForCellSelection();
-    let minRowIndex = Infinity;
-    let maxRowIndex = -Infinity;
-    let minPropertyIndex = Infinity;
-    let maxPropertyIndex = -Infinity;
-    
-    selectedCells.forEach((cellKey) => {
-      // Parse cellKey to get rowId and propertyKey
-      for (const property of orderedProperties) {
-        const propertyKeyWithDash = '-' + property.key;
-        if (cellKey.endsWith(propertyKeyWithDash)) {
-          const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-          const propertyKey = property.key;
-          
-          const rowIndex = allRowsForSelection.findIndex(r => r.id === rowId);
-          const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
-          
-          if (rowIndex !== -1 && propertyIndex !== -1) {
-            minRowIndex = Math.min(minRowIndex, rowIndex);
-            maxRowIndex = Math.max(maxRowIndex, rowIndex);
-            minPropertyIndex = Math.min(minPropertyIndex, propertyIndex);
-            maxPropertyIndex = Math.max(maxPropertyIndex, propertyIndex);
-          }
-          break;
-        }
-      }
-    });
-    
-    if (minRowIndex !== Infinity && maxRowIndex !== -Infinity && 
-        minPropertyIndex !== Infinity && maxPropertyIndex !== -Infinity) {
-      setSelectionBounds({
-        minRowIndex,
-        maxRowIndex,
-        minPropertyIndex,
-        maxPropertyIndex,
-      });
-    } else {
-      setSelectionBounds(null);
-    }
-  }, [selectedCells, getAllRowsForCellSelection, orderedProperties]);
 
   // Cut/Copy/Paste operations are now handled by useClipboardOperations hook
   // The functions (handleCut, handleCopy, handlePaste) are available from the hook above
@@ -3657,11 +3135,6 @@ export function LibraryAssetsTable({
       setIsSaving(false);
     }
   }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onUpdateAsset]);
-
-  // Sync selectedCells to ref for use in callbacks
-  useEffect(() => {
-    selectedCellsRef.current = selectedCells;
-  }, [selectedCells]);
 
   // Handle Delete Row operation
   const handleDeleteRow = useCallback(async () => {
