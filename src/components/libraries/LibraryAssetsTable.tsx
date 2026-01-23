@@ -24,6 +24,7 @@ import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent } from '@/lib/types/collaboration';
 import { ConnectionStatusIndicator } from '@/components/collaboration/ConnectionStatusIndicator';
 import { StackedAvatars, getFirstUserColor } from '@/components/collaboration/StackedAvatars';
+import { useTableDataManager } from './hooks/useTableDataManager';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
 import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
 import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
@@ -283,7 +284,10 @@ export function LibraryAssetsTable({
   }, [rows, yRows, editingCell]);
   
   // Use Yjs rows as primary data source, fallback to props.rows if Yjs is empty (compatibility)
-  const allRowsSource = yjsRows.length > 0 ? yjsRows : rows;
+  // Use useMemo to stabilize the reference and prevent infinite loops
+  const allRowsSource = useMemo(() => {
+    return yjsRows.length > 0 ? yjsRows : rows;
+  }, [yjsRows, rows]);
   
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [newRowData, setNewRowData] = useState<Record<string, any>>({});
@@ -373,6 +377,14 @@ export function LibraryAssetsTable({
   // Optimistic update: track edited assets to show updates immediately
   // Format: { rowId: { name, propertyValues } }
   const [optimisticEditUpdates, setOptimisticEditUpdates] = useState<Map<string, { name: string; propertyValues: Record<string, any> }>>(new Map());
+
+  // Data manager: unified data source and optimistic update management
+  const dataManager = useTableDataManager({
+    baseRows: allRowsSource,
+    optimisticEditUpdates,
+    optimisticNewAssets,
+    deletedAssetIds,
+  });
 
   // Realtime collaboration: event handlers
   const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
@@ -2312,61 +2324,11 @@ export function LibraryAssetsTable({
 
   // Get all rows for cell selection (helper function)
   // Use Yjs as data source to ensure all operations are based on the same array
+  // Use dataManager to get rows with optimistic updates
+  // This replaces the old getAllRowsForCellSelection function
   const getAllRowsForCellSelection = useCallback(() => {
-    // Build rows map with optimistic updates (same logic as allRows in render)
-    const allRowsMap = new Map<string, AssetRow>();
-    
-    // Add all rows from allRowsSource with optimistic updates
-    allRowsSource.forEach(row => {
-      if (!deletedAssetIds.has(row.id)) {
-        const assetRow = row as AssetRow;
-        const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
-        // Always apply optimistic updates if they exist (rowId matching ensures correctness)
-        // Removed name matching check to fix issue where cleared cells weren't reflected in fill operations
-        if (optimisticUpdate) {
-          allRowsMap.set(assetRow.id, {
-            ...assetRow,
-            name: optimisticUpdate.name,
-            propertyValues: { ...assetRow.propertyValues, ...optimisticUpdate.propertyValues }
-          });
-        } else {
-          allRowsMap.set(assetRow.id, assetRow);
-        }
-      }
-    });
-    
-    // Add optimistic new assets (deduplicate)
-    optimisticNewAssets.forEach((asset, id) => {
-      if (!allRowsMap.has(id)) {
-        allRowsMap.set(id, asset);
-      }
-    });
-    
-    // Convert to array, maintain order (based on allRowsSource order)
-    const allRowsForSelection: AssetRow[] = [];
-    const processedIds = new Set<string>();
-    
-    // First add in allRowsSource order
-    allRowsSource.forEach(row => {
-      if (!deletedAssetIds.has(row.id) && !processedIds.has(row.id)) {
-        const rowToAdd = allRowsMap.get(row.id);
-        if (rowToAdd) {
-          allRowsForSelection.push(rowToAdd);
-          processedIds.add(row.id);
-        }
-      }
-    });
-    
-    // Then add optimistic new assets (not in allRowsSource) - maintain insertion order
-    optimisticNewAssets.forEach((asset, id) => {
-      if (!processedIds.has(id)) {
-        allRowsForSelection.push(asset);
-        processedIds.add(id);
-      }
-    });
-    
-    return allRowsForSelection;
-  }, [allRowsSource, deletedAssetIds, optimisticEditUpdates, optimisticNewAssets]);
+    return dataManager.getRowsWithOptimisticUpdates();
+  }, [dataManager]);
 
   // Handle cell click (select single cell)
   const handleCellClick = (rowId: string, propertyKey: string, e: React.MouseEvent) => {
@@ -2748,8 +2710,9 @@ export function LibraryAssetsTable({
             return;
           }
           
-          // Get source value from the latest data (includes optimistic updates)
-          const sourceValue = sourceRowForFill.propertyValues[startPropertyKey] ?? null;
+          // CRITICAL FIX: Get source value from base data source (not from optimistic updates)
+          // This ensures we get the latest saved value, not a stale optimistic update
+          const sourceValue = dataManager.getRowBaseValue(startRowId, startPropertyKey);
           
           // CRITICAL: For batch fill, we need to update ONLY the target property
           // We must preserve existing optimistic updates for other properties
@@ -2795,14 +2758,16 @@ export function LibraryAssetsTable({
                 }
               });
             } else {
-              // No existing optimistic update, get current row data
-              const targetRow = allRowsForFill.find(r => r.id === rowId);
-              if (targetRow) {
+              // No existing optimistic update, get BASE row data (not from allRowsForFill which may contain old optimistic updates)
+              // CRITICAL FIX: Use base data source to avoid copying old optimistic updates from other columns
+              const baseRow = dataManager.getRowBaseValue(rowId);
+              if (baseRow) {
                 // Create new optimistic update with only the target property changed
+                // Start from base row propertyValues to avoid including stale optimistic updates
                 mergedOptimisticUpdates.set(rowId, {
-                  name: targetRow.name,
+                  name: baseRow.name,
                   propertyValues: {
-                    ...targetRow.propertyValues,
+                    ...baseRow.propertyValues,
                     [propertyKey]: value
                   }
                 });
@@ -2828,8 +2793,8 @@ export function LibraryAssetsTable({
           const isFillingNameField = orderedProperties[0]?.key === startPropertyKey;
           
           fillUpdates.forEach(({ rowId, propertyKey, value }) => {
-            // Get base row data from allRowsSource (not from allRowsForFill which includes old optimistic updates)
-            const baseRow = allRowsSource.find(r => r.id === rowId);
+            // CRITICAL FIX: Get base row data using dataManager (ensures we get fresh base data)
+            const baseRow = dataManager.getRowBaseValue(rowId);
             if (!baseRow) {
               console.warn(`Row ${rowId} not found for fill update`);
               return;
@@ -2841,17 +2806,13 @@ export function LibraryAssetsTable({
             // Get the name field key (first property)
             const nameFieldKey = orderedProperties[0]?.key;
             
-            // Build propertyValues: start with BASE row data, then apply ALL merged optimistic updates
-            // CRITICAL: Start from baseRow.propertyValues (not targetRow.propertyValues) to avoid stale optimistic updates
-            // Then apply mergedOptimisticUpdate.propertyValues which includes both existing optimistic updates AND the fill value
-            // This ensures other columns' optimistic updates are preserved correctly
+            // Build propertyValues: start with BASE row data, then only add the fill value
+            // CRITICAL: Only save the filled property, keep other columns' optimistic updates as optimistic
+            // This prevents other columns from being overwritten when filling one column
             let propertyValuesToSave: Record<string, any>;
             let rowNameToSave: string;
             
             if (mergedOptimisticUpdate) {
-              // CRITICAL FIX: When filling, we should ONLY save the filled property
-              // Other columns' optimistic updates should remain as optimistic updates until explicitly saved
-              // This prevents other columns from being overwritten when filling one column
               // Start with baseRow.propertyValues (fresh from data source), then only add the fill value
               propertyValuesToSave = {
                 ...baseRow.propertyValues,
