@@ -64,6 +64,19 @@ export async function sendInvitation(
   const { projectId, recipientEmail, role } = input;
   
   try {
+    // 0. Get inviter's email to check for self-invitation
+    const { data: inviterProfileData } = await supabase
+      .from('profiles')
+      .select('email')
+      .eq('id', inviterId)
+      .maybeSingle();
+    
+    const inviterEmail = inviterProfileData?.email || '';
+    
+    // Check if user is trying to invite themselves
+    if (inviterEmail && inviterEmail.toLowerCase() === recipientEmail.toLowerCase()) {
+      return { success: false, error: 'Cannot invite yourself' };
+    }
     
     // 1. Check if recipient email already has a user account and is a collaborator
     // First, try to find user by email
@@ -84,7 +97,7 @@ export async function sendInvitation(
         .maybeSingle();
       
       if (existingCollaborator) {
-        return { success: false, error: 'This user is already a collaborator on this project' };
+        return { success: false, error: 'User already exists' };
       }
     }
     
@@ -144,16 +157,7 @@ export async function sendInvitation(
       };
     }
     
-    // 5. Get inviter email for email template
-    const { data: inviterProfile } = await supabase
-      .from('profiles')
-      .select('email')
-      .eq('id', inviterId)
-      .single();
-    
-    const inviterEmail = inviterProfile?.email || '';
-    
-    // 6. Send email
+    // 5. Send email (inviterEmail already fetched at the beginning)
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const acceptLink = `${appUrl}/accept-invitation?token=${token}`;
     

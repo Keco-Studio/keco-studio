@@ -83,6 +83,14 @@ export async function POST(request: NextRequest) {
       .eq('id', user.id)
       .single();
 
+    // Check if user is trying to invite themselves
+    if (profile?.email && profile.email.toLowerCase() === recipientEmail.toLowerCase()) {
+      return NextResponse.json({
+        success: false,
+        error: 'Cannot invite yourself',
+      });
+    }
+
     const { data: project } = await supabase
       .from('projects')
       .select('name')
@@ -126,7 +134,7 @@ export async function POST(request: NextRequest) {
     if (existingCollaborator) {
       return NextResponse.json({
         success: false,
-        error: 'This user is already a collaborator on this project',
+        error: 'User already exists',
       });
     }
 

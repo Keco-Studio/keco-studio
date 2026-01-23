@@ -9,6 +9,7 @@ import type { TabsProps } from 'antd/es/tabs';
 import Image from 'next/image';
 import predefineLabelAddIcon from '@/app/assets/images/predefineLabelAddIcon.svg';
 import predefineLabelDelIcon from '@/app/assets/images/predefineLabelDelIcon.svg';
+import predefineAddSectionIcon from '@/app/assets/images/predefineAddSectionIcon.svg';
 import type { SectionConfig, FieldConfig } from './types';
 import type { Library } from '@/lib/services/libraryService';
 import { getLibrary } from '@/lib/services/libraryService';
@@ -57,6 +58,13 @@ function PredefinePageContent() {
   const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
   // Track invalid pending fields (in FieldForm) - Map<sectionId, { labelInvalid, dataTypeInvalid }>
   const [invalidPendingFields, setInvalidPendingFields] = useState<Map<string, { labelInvalid: boolean; dataTypeInvalid: boolean }>>(new Map());
+  // Ref for tabs container to calculate add button position
+  const tabsContainerRef = useRef<HTMLDivElement>(null);
+  const [addButtonLeft, setAddButtonLeft] = useState<number>(0);
+  // Track which tab name is being edited (section ID)
+  const [editingTabId, setEditingTabId] = useState<string | null>(null);
+  // Track new section name when creating
+  const [newSectionName, setNewSectionName] = useState('');
 
   const activeSection = useMemo(
     () => sections.find((s) => s.id === activeSectionId) || null,
@@ -126,11 +134,13 @@ function PredefinePageContent() {
 
   const startCreatingNewSection = useCallback(() => {
     setIsCreatingNewSection(true);
+    setNewSectionName('New Section');
     setErrors([]);
   }, []);
 
   const cancelCreatingNewSection = useCallback(() => {
     setIsCreatingNewSection(false);
+    setNewSectionName('');
     setErrors([]);
   }, []);
 
@@ -204,6 +214,15 @@ function PredefinePageContent() {
       return;
     }
 
+    // Validate section name
+    const trimmedName = newSection.name.trim();
+    if (!trimmedName) {
+      const errorMessage = 'Section name is required';
+      setErrors([errorMessage]);
+      message.error(errorMessage);
+      return;
+    }
+
     // Validate: check for empty labels or missing data types
     let hasInvalidFields = false;
     newSection.fields.forEach((field) => {
@@ -221,7 +240,7 @@ function PredefinePageContent() {
 
     // Validate new section with schema (only complete fields)
     const parsed = sectionSchema.safeParse({
-      name: newSection.name.trim(),
+      name: trimmedName,
       fields: newSection.fields.map((f) => ({
         label: f.label,
         dataType: f.dataType!,
@@ -358,6 +377,7 @@ function PredefinePageContent() {
       if (isCreatingNewSection) {
         setLoadingAfterSave(true);
         setIsCreatingNewSection(false);
+        setNewSectionName(''); // Clear new section name
         const loadedSections = await reloadSections();
         if (loadedSections && loadedSections.length > 0) {
           setActiveSectionId(loadedSections[loadedSections.length - 1].id);
@@ -489,45 +509,137 @@ function PredefinePageContent() {
     };
   }, [isCreatingNewSection, activeSectionId, cancelCreatingNewSection, handleDeleteSection]);
 
+  // Calculate add button position based on the rightmost tab
+  useEffect(() => {
+    const calculateButtonPosition = () => {
+      if (!tabsContainerRef.current) return;
+      
+      // Find all tab elements
+      const tabNavWrap = tabsContainerRef.current.querySelector('.ant-tabs-nav-wrap');
+      if (!tabNavWrap) return;
+      
+      const tabList = tabNavWrap.querySelector('.ant-tabs-nav-list');
+      if (!tabList) return;
+      
+      const tabs = tabList.querySelectorAll('.ant-tabs-tab');
+      if (tabs.length === 0) return;
+      
+      // Get the last tab (rightmost)
+      const lastTab = tabs[tabs.length - 1] as HTMLElement;
+      const tabRect = lastTab.getBoundingClientRect();
+      const containerRect = tabsContainerRef.current.getBoundingClientRect();
+      
+      // Calculate position: right edge of last tab + some margin
+      const leftPosition = tabRect.right - containerRect.left + 25;
+      setAddButtonLeft(leftPosition);
+    };
+    
+    // Calculate on mount and when dependencies change
+    calculateButtonPosition();
+    
+    // Recalculate after a short delay to ensure tabs are rendered
+    const timer = setTimeout(calculateButtonPosition, 100);
+    
+    // Set up ResizeObserver to watch for tab size changes
+    let resizeObserver: ResizeObserver | null = null;
+    let mutationObserver: MutationObserver | null = null;
+    
+    const setupObservers = () => {
+      if (!tabsContainerRef.current) return;
+      
+      const tabNavWrap = tabsContainerRef.current.querySelector('.ant-tabs-nav-wrap');
+      if (!tabNavWrap) return;
+      
+      const tabList = tabNavWrap.querySelector('.ant-tabs-nav-list');
+      if (!tabList) return;
+      
+      // Watch for size changes in the tab list
+      resizeObserver = new ResizeObserver(() => {
+        calculateButtonPosition();
+      });
+      resizeObserver.observe(tabList);
+      
+      // Watch for DOM changes (adding/removing tabs, content changes)
+      mutationObserver = new MutationObserver(() => {
+        calculateButtonPosition();
+      });
+      mutationObserver.observe(tabList, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
+    };
+    
+    // Set up observers after a delay to ensure DOM is ready
+    const observerTimer = setTimeout(setupObservers, 200);
+    
+    return () => {
+      clearTimeout(timer);
+      clearTimeout(observerTimer);
+      if (resizeObserver) {
+        resizeObserver.disconnect();
+      }
+      if (mutationObserver) {
+        mutationObserver.disconnect();
+      }
+    };
+  }, [sections, isCreatingNewSection, activeSectionId, editingTabId, tempSectionNames, newSectionName]);
+
   const baseTabItems = sections.map((section, sectionIndex): TabsProps['items'][0] => ({
     key: section.id,
-    label: section.name,
+    label: (
+      <div
+        onClick={(e) => {
+          // Only trigger edit mode if clicking on the tab itself, not during onChange
+          if (activeSectionId === section.id) {
+            e.stopPropagation();
+            setEditingTabId(section.id);
+          }
+        }}
+        style={{ display: 'inline-block' }}
+      >
+        {editingTabId === section.id ? (
+          <Input
+            autoFocus
+            value={tempSectionNames.get(section.id) ?? section.name}
+            onChange={(e) => {
+              e.stopPropagation();
+              const newName = e.target.value;
+              setTempSectionNames((prev) => {
+                const newMap = new Map(prev);
+                newMap.set(section.id, newName);
+                return newMap;
+              });
+            }}
+            onKeyDown={(e) => {
+              // Allow space key and other normal input keys
+              if (e.key === ' ' || e.key === 'Enter') {
+                e.stopPropagation();
+              }
+            }}
+            onBlur={() => {
+              setEditingTabId(null);
+            }}
+            onPressEnter={() => {
+              setEditingTabId(null);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            className={styles.tabNameInput}
+            style={{ 
+              width: `${Math.max(60, Math.min(200, (tempSectionNames.get(section.id) ?? section.name).length * 8 + 30))}px`, 
+              height: '24px', 
+              padding: '0 8px' 
+            }}
+          />
+        ) : (
+          <span>{tempSectionNames.get(section.id) ?? section.name}</span>
+        )}
+      </div>
+    ),
     children: (
       <div className={styles.tabContent}>
         <div>
-          <div className={sectionHeaderStyles.generalSection}>
-            <div>
-              <div>
-                  <Image src={predefineExpandIcon} alt="expand" width={16} height={16} style={{ paddingTop: 3 }}/>
-                  <span className={sectionHeaderStyles.generalLabel}>General</span>
-              </div>
-              <div className={sectionHeaderStyles.lineSeparator}></div>
-              <div className={sectionHeaderStyles.sectionNameContainer}>
-                <div className={sectionHeaderStyles.dragHandle} style={{ visibility: 'hidden' }}>
-                  <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
-                </div>
-                <Input
-                  value={tempSectionNames.get(section.id) ?? section.name}
-                  onChange={(e) => {
-                    const newName = e.target.value;
-                    setTempSectionNames((prev) => {
-                      const newMap = new Map(prev);
-                      newMap.set(section.id, newName);
-                      return newMap;
-                    });
-                  }}
-                  className={sectionHeaderStyles.sectionNameInput}
-                  placeholder="section name"
-                  disabled={saving}
-                />
-              </div>
-            </div>
-          </div>
-          <div>
-              <Image src={predefineExpandIcon} alt="expand" width={16} height={16} style={{ paddingTop: 3 }}/>
-              <span className={styles.sectionTitle}>Pre-define property</span>
-          </div>
-          <div className={sectionHeaderStyles.lineSeparator}></div>
           <div className={styles.headerRow}>
             <div className={styles.headerLabel}>Label text</div>
             <div className={styles.headerDataType}>Data type</div>
@@ -598,14 +710,56 @@ function PredefinePageContent() {
   if (isCreatingNewSection) {
     tabItems.push({
       key: NEW_SECTION_TAB_KEY,
-      label: 'New Section',
+      label: (
+        <div
+          onClick={(e) => {
+            e.stopPropagation();
+            setEditingTabId(NEW_SECTION_TAB_KEY);
+          }}
+          style={{ display: 'inline-block' }}
+        >
+          {editingTabId === NEW_SECTION_TAB_KEY ? (
+            <Input
+              autoFocus
+              value={newSectionName}
+              onChange={(e) => {
+                e.stopPropagation();
+                setNewSectionName(e.target.value);
+              }}
+              onKeyDown={(e) => {
+                // Allow space key and other normal input keys
+                if (e.key === ' ' || e.key === 'Enter') {
+                  e.stopPropagation();
+                }
+              }}
+              onBlur={() => {
+                setEditingTabId(null);
+              }}
+              onPressEnter={() => {
+                setEditingTabId(null);
+              }}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              className={styles.tabNameInput}
+              style={{ 
+                width: `${Math.max(60, Math.min(200, newSectionName.length * 8 + 30))}px`, 
+                height: '24px', 
+                padding: '0 8px' 
+              }}
+            />
+          ) : (
+            <span>{newSectionName || 'New Section'}</span>
+          )}
+        </div>
+      ),
       children: (
         <div className={styles.tabContent}>
           <NewSectionForm
             onCancel={sections.length > 0 ? cancelCreatingNewSection : undefined}
-            onSave={handleSaveNewSection}
+            onSave={(section) => handleSaveNewSection({ ...section, name: newSectionName || section.name })}
             saving={saving}
             isFirstSection={sections.length === 0}
+            sectionName={newSectionName}
           />
         </div>
       ),
@@ -655,7 +809,7 @@ function PredefinePageContent() {
           )}
 
           <>
-            <div className={styles.tabsContainer}>
+            <div className={styles.tabsContainer} ref={tabsContainerRef}>
               {(sections.length > 0 || isCreatingNewSection) && (
                 <>
                   <Tabs
@@ -678,9 +832,9 @@ function PredefinePageContent() {
                     <button
                       onClick={startCreatingNewSection}
                       className={styles.addSectionButton}
+                      style={{ left: `${addButtonLeft}px` }}
                     >
-                      <Image src={predefineLabelAddIcon} alt="Add" width={20} height={20} />
-                      Add Section
+                      <Image src={predefineAddSectionIcon} alt="Add Section" width={24} height={24} />
                     </button>
                   )}
                 </>

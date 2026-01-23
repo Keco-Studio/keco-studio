@@ -17,6 +17,23 @@ export type Folder = {
   description: string | null;
   created_at: string;
   updated_at: string;
+  updated_by: string | null;
+  updater?: {
+    id: string;
+    username: string | null;
+    full_name: string | null;
+    email: string | null;
+    avatar_color: string | null;
+  } | null;
+  // Last data update info (from libraries inside folder)
+  last_data_updated_at?: string | null;
+  data_updater?: {
+    id: string;
+    username: string | null;
+    full_name: string | null;
+    email: string | null;
+    avatar_color: string | null;
+  } | null;
 };
 
 type CreateFolderInput = {
@@ -104,7 +121,16 @@ export async function listFolders(
   return globalRequestCache.fetch(cacheKey, async () => {
     const { data, error } = await supabase
       .from('folders')
-      .select('*')
+      .select(`
+        *,
+        updater:updated_by (
+          id,
+          username,
+          full_name,
+          email,
+          avatar_color
+        )
+      `)
       .eq('project_id', resolvedProjectId)
       .order('created_at', { ascending: true });
 
@@ -112,7 +138,10 @@ export async function listFolders(
       throw error;
     }
 
-    return (data ?? []) as Folder[];
+    return ((data ?? []) as any[]).map(folder => ({
+      ...folder,
+      updater: folder.updater || null,
+    })) as Folder[];
   });
 }
 

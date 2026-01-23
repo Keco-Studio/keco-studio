@@ -117,11 +117,23 @@
 .configButton {
   padding: 0;
   border: none;
-  padding: 4px;
+  padding: 6px;
   background: transparent;
   cursor: pointer;
   transition: all 0.2s;
-  border-radius: 4px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.configButton:hover:not(:disabled),
+.configButtonActive {
+  background-color: #5E00FF14;
+}
+
+.configButtonActive {
+  background-color: #5E00FF14;
 }
 
 .deleteButton {
@@ -138,7 +150,6 @@
   border-radius: 4px;
 }
 
-.configButton:hover,
 .deleteButton:hover {
   background-color: #f3f4f6;
 }
