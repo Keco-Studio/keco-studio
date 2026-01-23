@@ -13,7 +13,6 @@ import { DeleteAssetModal, ClearContentsModal, DeleteRowModal } from './LibraryA
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useYjs } from '@/contexts/YjsContext';
-import { useYjsRows } from '@/hooks/useYjsRows';
 import { 
   type MediaFileMetadata,
   isImageFile,
@@ -30,6 +29,7 @@ import { useClipboardOperations } from './hooks/useClipboardOperations';
 import { useCellEditing } from './hooks/useCellEditing';
 import { useCellSelection, type CellKey } from './hooks/useCellSelection';
 import { useUserRole } from './hooks/useUserRole';
+import { useYjsSync } from './hooks/useYjsSync';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
 import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
 import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
@@ -93,193 +93,8 @@ export function LibraryAssetsTable({
 }: LibraryAssetsTableProps) {
   // Yjs integration - unified data source to resolve row ordering issues
   const { yRows } = useYjs();
-  const yjsRows = useYjsRows(yRows);
-  
-  // Track previous rows to detect major changes (version switches)
-  const prevRowsRef = useRef<AssetRow[]>([]);
-  
-  // Initialize: sync props.rows to Yjs (only on first time, when Yjs is empty)
-  useEffect(() => {
-    if (yRows.length === 0 && rows.length > 0) {
-      // Only initialize when Yjs is empty and props has data
-      yRows.insert(0, rows);
-      prevRowsRef.current = rows;
-    } else if (yRows.length > 0 && rows.length > 0) {
-      // If Yjs already has data but props updated (e.g., from database refresh), need to sync
-      // Update existing rows, add new rows, delete non-existent rows (but keep temp rows and rows being edited)
-      const yjsRowsArray = yRows.toArray();
-      const existingIds = new Set(yjsRowsArray.map(r => r.id));
-      const propsIds = new Set(rows.map(r => r.id));
-      const prevIds = new Set(prevRowsRef.current.map(r => r.id));
-      
-      // Check if this is a major data change (version switch scenario)
-      // If less than 30% of IDs overlap with existing Yjs data, treat it as a complete replacement
-      const overlapCount = Array.from(existingIds).filter(id => propsIds.has(id)).length;
-      const overlapRatio = existingIds.size > 0 ? overlapCount / existingIds.size : 0;
-      const isMajorChange = overlapRatio < 0.3 && propsIds.size > 0;
-      
-      if (isMajorChange) {
-        // Complete replacement: clear all non-temp rows and reinitialize
-        // This happens when switching versions - the data is completely different
-        const tempRowsToKeep: AssetRow[] = [];
-        const indicesToKeep: number[] = [];
-        
-        // Find temp rows that are being edited (preserve user's current edits)
-        yjsRowsArray.forEach((yjsRow, index) => {
-          if (yjsRow.id.startsWith('temp-')) {
-            // Keep temp rows that are being edited
-            tempRowsToKeep.push(yjsRow);
-            indicesToKeep.push(index);
-          }
-        });
-        
-        // Delete all rows except temp rows being edited, in reverse order
-        const indicesToDelete: number[] = [];
-        for (let i = yjsRowsArray.length - 1; i >= 0; i--) {
-          if (!indicesToKeep.includes(i)) {
-            indicesToDelete.push(i);
-          }
-        }
-        
-        // Delete in reverse order to avoid index shifting issues
-        indicesToDelete.forEach(index => {
-          try {
-            if (index >= 0 && index < yRows.length) {
-              yRows.delete(index, 1);
-            }
-          } catch (e) {
-            // Ignore errors if index is out of bounds (already deleted)
-            console.warn('Failed to delete row at index:', index, e);
-          }
-        });
-        
-        // Insert new rows at the beginning
-        if (rows.length > 0) {
-          yRows.insert(0, rows);
-        }
-        
-        // Re-insert temp rows that were being edited at the end
-        if (tempRowsToKeep.length > 0) {
-          yRows.insert(yRows.length, tempRowsToKeep);
-        }
-        
-        prevRowsRef.current = rows;
-        return;
-      }
-      
-      // Incremental update: normal sync logic
-      const rowsToUpdate: Array<{ index: number; row: AssetRow }> = [];
-      const rowsToAdd: AssetRow[] = [];
-      const indicesToDelete: number[] = [];
-      
-      // Check each row in Yjs
-      yjsRowsArray.forEach((yjsRow, index) => {
-        // If it's a temp row (starts with 'temp-'), keep it
-        if (yjsRow.id.startsWith('temp-')) {
-          return;
-        }
-        
-        // Note: editingCell check removed - will be handled by hook after it's initialized
-        
-        // If it exists in props, update it
-        const propsRow = rows.find(r => r.id === yjsRow.id);
-        if (propsRow) {
-          // Only update if the row in props differs from Yjs (avoid unnecessary updates)
-          const yjsRowStr = JSON.stringify({ ...yjsRow, propertyValues: yjsRow.propertyValues });
-          const propsRowStr = JSON.stringify({ ...propsRow, propertyValues: propsRow.propertyValues });
-          if (yjsRowStr !== propsRowStr) {
-            rowsToUpdate.push({ index, row: propsRow });
-          }
-        } else {
-          // If not in props, mark for deletion (but keep temp rows and rows being edited)
-          indicesToDelete.push(index);
-        }
-      });
-      
-      // Find rows to add
-      rows.forEach(propsRow => {
-        if (!existingIds.has(propsRow.id)) {
-          rowsToAdd.push(propsRow);
-        }
-      });
-      
-      // Delete in reverse order (avoid index changes)
-      indicesToDelete.sort((a, b) => b - a).forEach(index => {
-        try {
-          yRows.delete(index, 1);
-        } catch (e) {
-          // Ignore errors if index is out of bounds (already deleted)
-          console.warn('Failed to delete row at index:', index, e);
-        }
-      });
-      
-      // Update in reverse order (avoid index changes)
-      // First, get current array snapshot to avoid index issues
-      const currentYjsArray = yRows.toArray();
-      rowsToUpdate.sort((a, b) => b.index - a.index).forEach(({ index, row }) => {
-        try {
-          // Find the current index of this row (index may have changed after deletions)
-          const currentIndex = currentYjsArray.findIndex(r => r.id === row.id);
-          if (currentIndex >= 0 && currentIndex < yRows.length) {
-            yRows.delete(currentIndex, 1);
-            yRows.insert(currentIndex, [row]);
-            // Update the array snapshot
-            currentYjsArray.splice(currentIndex, 1);
-            currentYjsArray.splice(currentIndex, 0, row);
-          } else {
-            console.warn('Row not found for update:', row.id);
-          }
-        } catch (e) {
-          console.warn('Failed to update row:', row.id, e);
-        }
-      });
-      
-      // Update prevRowsRef after all updates
-      prevRowsRef.current = rows;
-      
-      // Add new rows
-      // If there are temp rows created by insert, prioritize replacing them (maintain position)
-      if (rowsToAdd.length > 0) {
-        // Re-find temp rows created by insert (after delete/update)
-        const currentYjsRows = yRows.toArray();
-        const insertTempRows: Array<{ index: number; id: string }> = [];
-        currentYjsRows.forEach((row, index) => {
-          if (row.id.startsWith('temp-insert-')) {
-            insertTempRows.push({ index, id: row.id });
-          }
-        });
-        // Sort by index ascending (maintain insert order)
-        insertTempRows.sort((a, b) => a.index - b.index);
-        
-        // Prioritize replacing insert temp rows (maintain insert position)
-        const rowsToReplace = rowsToAdd.slice(0, Math.min(insertTempRows.length, rowsToAdd.length));
-        // Replace in reverse order (from larger index), avoid index changes
-        for (let i = rowsToReplace.length - 1; i >= 0; i--) {
-          const newRow = rowsToReplace[i];
-          const tempRow = insertTempRows[i];
-          // Replace temp row (maintain position)
-          yRows.delete(tempRow.index, 1);
-          yRows.insert(tempRow.index, [newRow]);
-        }
-        
-        // Add remaining new rows to the end
-        const remainingRows = rowsToAdd.slice(insertTempRows.length);
-        if (remainingRows.length > 0) {
-          yRows.insert(yRows.length, remainingRows);
-        }
-      }
-      
-      // Update prevRowsRef after all updates
-      prevRowsRef.current = rows;
-    }
-  }, [rows, yRows]);
-  
-  // Use Yjs rows as primary data source, fallback to props.rows if Yjs is empty (compatibility)
-  // Use useMemo to stabilize the reference and prevent infinite loops
-  const allRowsSource = useMemo(() => {
-    return yjsRows.length > 0 ? yjsRows : rows;
-  }, [yjsRows, rows]);
-  
+  const { allRowsSource } = useYjsSync(rows, yRows);
+
   const [isAddingRow, setIsAddingRow] = useState(false);
   const [newRowData, setNewRowData] = useState<Record<string, any>>({});
   const [isSaving, setIsSaving] = useState(false);
