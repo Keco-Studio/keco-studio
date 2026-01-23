@@ -31,6 +31,8 @@ import { useCellSelection, type CellKey } from './hooks/useCellSelection';
 import { useUserRole } from './hooks/useUserRole';
 import { useYjsSync } from './hooks/useYjsSync';
 import { useAssetHover } from './hooks/useAssetHover';
+import { useRowOperations } from './hooks/useRowOperations';
+import { useReferenceModal } from './hooks/useReferenceModal';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
 import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
 import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
@@ -582,15 +584,6 @@ export function LibraryAssetsTable({
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const batchEditMenuOriginalPositionRef = useRef<{ x: number; y: number; scrollY: number } | null>(null);
 
-  // Modal state for reference selector
-  const [referenceModalOpen, setReferenceModalOpen] = useState(false);
-  const [referenceModalProperty, setReferenceModalProperty] = useState<PropertyConfig | null>(null);
-  const [referenceModalValue, setReferenceModalValue] = useState<string | null>(null);
-  const [referenceModalRowId, setReferenceModalRowId] = useState<string | null>(null);
-  
-  // Asset names cache for display
-  const [assetNamesCache, setAssetNamesCache] = useState<Record<string, string>>({});
-
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const contextMenuRowIdRef = useRef<string | null>(null);
 
@@ -669,6 +662,28 @@ export function LibraryAssetsTable({
     
     message.info(`Accepted changes from ${conflict.userName}`, 2);
   }, [conflictedCells, editingCell, setEditingCellValue]);
+
+  const {
+    referenceModalOpen,
+    referenceModalProperty,
+    referenceModalValue,
+    assetNamesCache,
+    handleOpenReferenceModal,
+    handleApplyReference,
+    handleCloseReferenceModal,
+  } = useReferenceModal({
+    setNewRowData,
+    allRowsSource,
+    yRows,
+    onUpdateAsset,
+    rows,
+    newRowData,
+    properties,
+    editingCell,
+    isAddingRow,
+    supabase,
+    setOptimisticEditUpdates,
+  });
   
   const hasProperties = properties.length > 0;
   const hasRows = rows.length > 0;
@@ -694,154 +709,6 @@ export function LibraryAssetsTable({
                  name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
     const index = hash % assetColorPalette.length;
     return assetColorPalette[index];
-  };
-
-  // Load asset name by ID
-  useEffect(() => {
-    const loadAssetNames = async () => {
-      // Collect all asset IDs from property values
-      const assetIds = new Set<string>();
-      
-      // From rows
-      rows.forEach(row => {
-        properties.forEach(prop => {
-          if (prop.dataType === 'reference') {
-            const value = row.propertyValues[prop.key];
-            if (value && typeof value === 'string') {
-              assetIds.add(value);
-            }
-          }
-        });
-      });
-      
-      // From editing cell (reference fields don't use cell editing, so skip)
-      
-      // From new row data
-      if (isAddingRow) {
-        properties.forEach(prop => {
-          if (prop.dataType === 'reference') {
-            const value = newRowData[prop.key];
-            if (value && typeof value === 'string') {
-              assetIds.add(value);
-            }
-          }
-        });
-      }
-      
-      if (assetIds.size === 0) return;
-      
-      // Load asset names
-      try {
-        const { data, error } = await supabase
-          .from('library_assets')
-          .select('id, name')
-          .in('id', Array.from(assetIds));
-        
-        if (error) throw error;
-        
-        const namesMap: Record<string, string> = {};
-        (data || []).forEach(asset => {
-          namesMap[asset.id] = asset.name;
-        });
-        
-        setAssetNamesCache(prev => ({ ...prev, ...namesMap }));
-      } catch (error) {
-        console.error('Failed to load asset names:', error);
-      }
-    };
-    
-    loadAssetNames();
-  }, [rows, newRowData, properties, editingCell, isAddingRow, supabase]);
-
-  // Listen for asset updates to refresh asset names cache and clear optimistic updates
-  useEffect(() => {
-    const handleAssetUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ assetId: string; libraryId?: string }>;
-      if (customEvent.detail?.assetId) {
-        try {
-          // Refresh the specific asset name in cache
-          const { data, error } = await supabase
-            .from('library_assets')
-            .select('id, name')
-            .eq('id', customEvent.detail.assetId)
-            .single();
-          
-          if (!error && data) {
-            setAssetNamesCache(prev => ({ ...prev, [data.id]: data.name }));
-            // Clear optimistic update for this asset since we have the real data now
-            // The parent component will refresh rows prop with updated data
-            setOptimisticEditUpdates(prev => {
-              const newMap = new Map(prev);
-              if (newMap.has(customEvent.detail.assetId)) {
-                newMap.delete(customEvent.detail.assetId);
-                return newMap;
-              }
-              return prev;
-            });
-          }
-        } catch (error) {
-          console.error('Failed to refresh asset name:', error);
-        }
-      }
-    };
-
-    window.addEventListener('assetUpdated', handleAssetUpdated as EventListener);
-
-    return () => {
-      window.removeEventListener('assetUpdated', handleAssetUpdated as EventListener);
-    };
-  }, [supabase]);
-
-  // Handle opening reference modal
-  const handleOpenReferenceModal = (property: PropertyConfig, currentValue: string | null, rowId: string) => {
-    setReferenceModalProperty(property);
-    setReferenceModalValue(currentValue);
-    setReferenceModalRowId(rowId);
-    setReferenceModalOpen(true);
-  };
-
-  // Handle applying reference selection
-  const handleApplyReference = async (assetId: string | null) => {
-    if (!referenceModalProperty || !referenceModalRowId) return;
-    
-    if (referenceModalRowId === 'new') {
-      // For new row, update newRowData
-      handleInputChange(referenceModalProperty.key, assetId);
-    } else {
-      // For existing row not in edit mode, update the asset directly
-      // Use allRowsSource (Yjs data source) instead of rows
-      const row = allRowsSource.find(r => r.id === referenceModalRowId);
-      
-      if (row && onUpdateAsset) {
-        // Immediately update Yjs (optimistic update)
-        const allRows = yRows.toArray();
-        const rowIndex = allRows.findIndex(r => r.id === referenceModalRowId);
-        
-        if (rowIndex >= 0) {
-          const updatedPropertyValues = { ...row.propertyValues };
-          updatedPropertyValues[referenceModalProperty.key] = assetId;
-          
-          const updatedRow = {
-            ...row,
-            propertyValues: updatedPropertyValues
-          };
-          
-          // Update Yjs
-          yRows.delete(rowIndex, 1);
-          yRows.insert(rowIndex, [updatedRow]);
-        }
-        
-        // Asynchronously update database
-        const updatedPropertyValues = { ...row.propertyValues };
-        updatedPropertyValues[referenceModalProperty.key] = assetId;
-        await onUpdateAsset(row.id, row.name, updatedPropertyValues);
-      }
-    }
-    
-    setReferenceModalOpen(false);
-    setReferenceModalProperty(null);
-    setReferenceModalValue(null);
-    setReferenceModalRowId(null);
   };
 
   // Reference Field Component - memoized to prevent unnecessary re-renders
@@ -1729,6 +1596,48 @@ export function LibraryAssetsTable({
     copyCells,
   });
 
+  const {
+    handleInsertRowAbove,
+    handleInsertRowBelow,
+    handleClearContents,
+    handleDeleteRow,
+    handleDeleteAsset,
+  } = useRowOperations({
+    onSaveAsset,
+    onUpdateAsset,
+    onDeleteAsset,
+    library,
+    supabase,
+    orderedProperties,
+    getAllRowsForCellSelection,
+    yRows,
+    selectedCells,
+    selectedRowIds,
+    selectedCellsRef,
+    contextMenuRowIdRef,
+    setSelectedCells,
+    setSelectedRowIds,
+    setBatchEditMenuVisible,
+    setBatchEditMenuPosition,
+    setContextMenuRowId,
+    setContextMenuPosition,
+    setClearContentsConfirmVisible,
+    setDeleteRowConfirmVisible,
+    setDeleteConfirmVisible,
+    setDeletingAssetId,
+    setOptimisticNewAssets,
+    setOptimisticEditUpdates,
+    setDeletedAssetIds,
+    setToastMessage,
+    setIsSaving,
+    enableRealtime,
+    currentUser,
+    broadcastAssetCreate,
+    broadcastAssetDelete,
+    deletingAssetId,
+    rows,
+  });
+
   // Close batch edit menu when clicking outside
   useEffect(() => {
     if (!batchEditMenuVisible) return;
@@ -2103,815 +2012,6 @@ export function LibraryAssetsTable({
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [editingCell, selectedCells, selectedRowIds, clipboardData, handleCut, handleCopy, handlePaste]);
-
-  // Handle Insert Row Above operation
-  const handleInsertRowAbove = useCallback(async () => {
-    
-    if (!onSaveAsset || !library) {
-      setBatchEditMenuVisible(false);
-      setBatchEditMenuPosition(null);
-      setContextMenuRowId(null);
-      setContextMenuPosition(null);
-      return;
-    }
-
-    const allRowsForSelection = getAllRowsForCellSelection();
-    let rowsToUse: Set<string>;
-    
-    // Priority: use selectedRowIds if available, otherwise extract from selectedCells
-    if (selectedRowIds.size > 0) {
-      rowsToUse = new Set(selectedRowIds);
-    } else if (selectedCells.size > 0) {
-      // Extract unique row IDs from selected cells
-      rowsToUse = new Set<string>();
-      selectedCells.forEach((cellKey) => {
-        // Parse cellKey to extract rowId
-        for (const property of orderedProperties) {
-          const propertyKeyWithDash = '-' + property.key;
-          if (cellKey.endsWith(propertyKeyWithDash)) {
-            const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-            rowsToUse.add(rowId);
-            break;
-          }
-        }
-      });
-    } else if (contextMenuRowIdRef.current) {
-      // Use contextMenuRowId if available (from right-click menu)
-      rowsToUse = new Set([contextMenuRowIdRef.current]);
-    } else {
-      setBatchEditMenuVisible(false);
-      setBatchEditMenuPosition(null);
-      setContextMenuRowId(null);
-      setContextMenuPosition(null);
-      return;
-    }
-
-    if (rowsToUse.size === 0) {
-      setBatchEditMenuVisible(false);
-      setBatchEditMenuPosition(null);
-      setContextMenuRowId(null);
-      setContextMenuPosition(null);
-      return;
-    }
-
-    // Sort row IDs by their index in Yjs array (not allRowsForSelection, to ensure consistency)
-    // Use Yjs array for sorting to ensure using the same data source as insert operation
-    const allRows = yRows.toArray();
-    const sortedRowIds = Array.from(rowsToUse).sort((a, b) => {
-      const indexA = allRows.findIndex(r => r.id === a);
-      const indexB = allRows.findIndex(r => r.id === b);
-      return indexA - indexB;
-    });
-
-
-    // Insert n rows above the first selected row (where n = number of selected rows)
-    // All n rows should be inserted consecutively above the first selected row
-    const numRowsToInsert = sortedRowIds.length;
-    const firstRowId = sortedRowIds[0]; // First selected row (topmost)
-    
-    setIsSaving(true);
-    try {
-      // Find the target row index in Yjs array
-      const allRows = yRows.toArray();
-      const targetRowIndex = allRows.findIndex(r => r.id === firstRowId);
-      
-      if (targetRowIndex === -1) {
-        console.error('Target row not found in Yjs array');
-        setBatchEditMenuVisible(false);
-        setBatchEditMenuPosition(null);
-        setIsSaving(false);
-        return;
-      }
-      
-      if (supabase) {
-        // Query the first selected row's created_at to calculate insertion position
-        const { data: targetRowData, error: queryError } = await supabase
-          .from('library_assets')
-          .select('created_at')
-          .eq('id', firstRowId)
-          .single();
-        
-        if (queryError) {
-          console.error('Failed to query target row created_at:', queryError);
-          setBatchEditMenuVisible(false);
-          setBatchEditMenuPosition(null);
-          setIsSaving(false);
-          setToastMessage('Failed to insert rows above');
-          setTimeout(() => setToastMessage(null), 2000);
-          return;
-        }
-        
-        const targetCreatedAt = new Date(targetRowData.created_at);
-        
-        if (targetRowIndex === -1) {
-          console.error('Target row not found in Yjs array');
-          setBatchEditMenuVisible(false);
-          setBatchEditMenuPosition(null);
-          setIsSaving(false);
-          return;
-        }
-        
-        // Create optimistic assets and insert them directly into Yjs at the correct position
-        const createdTempIds: string[] = [];
-        const optimisticAssets: AssetRow[] = [];
-        
-        for (let i = 0; i < numRowsToInsert; i++) {
-          // Calculate created_at: each row is 1 second before the next
-          const offsetMs = (numRowsToInsert - i) * 1000;
-          const newCreatedAt = new Date(targetCreatedAt.getTime() - offsetMs);
-          
-          const assetName = 'Untitled';
-          const tempId = `temp-insert-above-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          createdTempIds.push(tempId);
-          
-          const optimisticAsset: AssetRow = {
-            id: tempId,
-            libraryId: library.id,
-            name: assetName,
-            propertyValues: {},
-          };
-          
-          optimisticAssets.push(optimisticAsset);
-        }
-        
-        // Insert directly into Yjs at the target index (in reverse order to maintain correct position)
-        for (let i = optimisticAssets.length - 1; i >= 0; i--) {
-          yRows.insert(targetRowIndex, [optimisticAssets[i]]);
-        }
-        
-        // Add to optimisticNewAssets for display
-        optimisticAssets.forEach(asset => {
-          setOptimisticNewAssets(prev => {
-            const newMap = new Map(prev);
-            newMap.set(asset.id, asset);
-            return newMap;
-          });
-        });
-        
-        // Save to database asynchronously
-        for (let i = 0; i < numRowsToInsert; i++) {
-          const offsetMs = (numRowsToInsert - i) * 1000;
-          const newCreatedAt = new Date(targetCreatedAt.getTime() - offsetMs);
-          await onSaveAsset('Untitled', {}, { createdAt: newCreatedAt });
-          
-          // Broadcast asset creation if realtime is enabled
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            const tempId = createdTempIds[i];
-            const asset = optimisticAssets[i];
-            try {
-              await broadcastAssetCreate(tempId, asset.name, asset.propertyValues, {
-                insertBeforeRowId: firstRowId, // Insert above the first selected row
-              });
-            } catch (error) {
-              console.error('Failed to broadcast asset creation:', error);
-            }
-          }
-        }
-      } else {
-        // Fallback if supabase is not available
-        // Create optimistic assets and insert them directly into Yjs at the correct position
-        const createdTempIds: string[] = [];
-        const optimisticAssets: AssetRow[] = [];
-        
-        for (let i = 0; i < numRowsToInsert; i++) {
-          const assetName = 'Untitled';
-          const tempId = `temp-insert-above-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          createdTempIds.push(tempId);
-          
-          const optimisticAsset: AssetRow = {
-            id: tempId,
-            libraryId: library.id,
-            name: assetName,
-            propertyValues: {},
-          };
-          
-          optimisticAssets.push(optimisticAsset);
-        }
-        
-        // Insert directly into Yjs at the target index (in reverse order to maintain correct position)
-        for (let i = optimisticAssets.length - 1; i >= 0; i--) {
-          yRows.insert(targetRowIndex, [optimisticAssets[i]]);
-        }
-        
-        // Add to optimisticNewAssets for display
-        optimisticAssets.forEach(asset => {
-          setOptimisticNewAssets(prev => {
-            const newMap = new Map(prev);
-            newMap.set(asset.id, asset);
-            return newMap;
-          });
-        });
-        
-        const assetName = 'Untitled';
-        for (let i = 0; i < numRowsToInsert; i++) {
-          await onSaveAsset(assetName, {});
-          
-          // Broadcast asset creation if realtime is enabled
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            const tempId = createdTempIds[i];
-            const asset = optimisticAssets[i];
-            try {
-              await broadcastAssetCreate(tempId, asset.name, asset.propertyValues, {
-                insertBeforeRowId: firstRowId, // Insert above the first selected row
-              });
-            } catch (error) {
-              console.error('Failed to broadcast asset creation:', error);
-            }
-          }
-        }
-      }
-      
-      // Wait a bit for rows to be created and parent to refresh
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Show success toast message
-      const rowCount = numRowsToInsert;
-      setToastMessage(rowCount === 1 ? '1 row inserted' : `${rowCount} rows inserted`);
-      setTimeout(() => {
-        setToastMessage(null);
-      }, 2000);
-    } catch (error) {
-      console.error('Failed to insert rows above:', error);
-      setToastMessage('Failed to insert rows above');
-      setTimeout(() => setToastMessage(null), 2000);
-    } finally {
-      setIsSaving(false);
-    }
-
-    // Close menu
-    setBatchEditMenuVisible(false);
-    setBatchEditMenuPosition(null);
-    setContextMenuRowId(null);
-    setContextMenuPosition(null);
-    contextMenuRowIdRef.current = null;
-    
-    // Clear selected cells and rows after insert operation
-    setSelectedCells(new Set());
-    setSelectedRowIds(new Set());
-  }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase, enableRealtime, currentUser, broadcastAssetCreate, yRows, setOptimisticNewAssets]);
-
-  // Handle Insert Row Below operation
-  const handleInsertRowBelow = useCallback(async () => {
-    // console.log('handleInsertRowBelow called, selectedCells:', selectedCells);
-    // console.log('selectedRowIds:', selectedRowIds);
-    
-    if (!onSaveAsset || !library) {
-      setBatchEditMenuVisible(false);
-      setBatchEditMenuPosition(null);
-      setContextMenuRowId(null);
-      setContextMenuPosition(null);
-      return;
-    }
-
-    const allRowsForSelection = getAllRowsForCellSelection();
-    let rowsToUse: Set<string>;
-    
-    // Priority: use selectedRowIds if available, otherwise extract from selectedCells
-    if (selectedRowIds.size > 0) {
-      rowsToUse = new Set(selectedRowIds);
-    } else if (selectedCells.size > 0) {
-      // Extract unique row IDs from selected cells
-      rowsToUse = new Set<string>();
-      selectedCells.forEach((cellKey) => {
-        // Parse cellKey to extract rowId
-        for (const property of orderedProperties) {
-          const propertyKeyWithDash = '-' + property.key;
-          if (cellKey.endsWith(propertyKeyWithDash)) {
-            const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-            rowsToUse.add(rowId);
-            break;
-          }
-        }
-      });
-    } else if (contextMenuRowIdRef.current) {
-      // Use contextMenuRowId if available (from right-click menu)
-      rowsToUse = new Set([contextMenuRowIdRef.current]);
-    } else {
-      setBatchEditMenuVisible(false);
-      setBatchEditMenuPosition(null);
-      setContextMenuRowId(null);
-      setContextMenuPosition(null);
-      return;
-    }
-
-    if (rowsToUse.size === 0) {
-      setBatchEditMenuVisible(false);
-      setBatchEditMenuPosition(null);
-      setContextMenuRowId(null);
-      setContextMenuPosition(null);
-      return;
-    }
-
-    // Sort row IDs by their index in Yjs array (not allRowsForSelection, to ensure consistency)
-    // Use Yjs array for sorting to ensure using the same data source as insert operation
-    const allRows = yRows.toArray();
-    const sortedRowIds = Array.from(rowsToUse).sort((a, b) => {
-      const indexA = allRows.findIndex(r => r.id === a);
-      const indexB = allRows.findIndex(r => r.id === b);
-      return indexA - indexB;
-    });
-
-
-    // Insert n rows below the last selected row (where n = number of selected rows)
-    // All n rows should be inserted consecutively below the last selected row
-    const numRowsToInsert = sortedRowIds.length;
-    const lastRowId = sortedRowIds[sortedRowIds.length - 1]; // Last selected row (bottommost)
-    
-    setIsSaving(true);
-    try {
-      // Find the target row index in Yjs array
-      const allRows = yRows.toArray();
-      const targetRowIndex = allRows.findIndex(r => r.id === lastRowId);
-      
-      if (targetRowIndex === -1) {
-        console.error('Target row not found in Yjs array');
-        setBatchEditMenuVisible(false);
-        setBatchEditMenuPosition(null);
-        setIsSaving(false);
-        return;
-      }
-      
-      if (supabase) {
-        // Query the last selected row's created_at to calculate insertion position
-        const { data: targetRowData, error: queryError } = await supabase
-          .from('library_assets')
-          .select('created_at')
-          .eq('id', lastRowId)
-          .single();
-        
-        if (queryError) {
-          console.error('Failed to query target row created_at:', queryError);
-          setBatchEditMenuVisible(false);
-          setBatchEditMenuPosition(null);
-          setIsSaving(false);
-          setToastMessage('Failed to insert rows below');
-          setTimeout(() => setToastMessage(null), 2000);
-          return;
-        }
-        
-        const targetCreatedAt = new Date(targetRowData.created_at);
-        
-        if (targetRowIndex === -1) {
-          console.error('Target row not found in Yjs array');
-          setBatchEditMenuVisible(false);
-          setBatchEditMenuPosition(null);
-          setIsSaving(false);
-          return;
-        }
-        
-        // Create optimistic assets and insert them directly into Yjs at the correct position
-        const createdTempIds: string[] = [];
-        const optimisticAssets: AssetRow[] = [];
-        
-        for (let i = 0; i < numRowsToInsert; i++) {
-          // Calculate created_at: each row is 1 second after the previous
-          const offsetMs = (i + 1) * 1000;
-          const newCreatedAt = new Date(targetCreatedAt.getTime() + offsetMs);
-          
-          const assetName = 'Untitled';
-          const tempId = `temp-insert-below-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          createdTempIds.push(tempId);
-          
-          const optimisticAsset: AssetRow = {
-            id: tempId,
-            libraryId: library.id,
-            name: assetName,
-            propertyValues: {},
-          };
-          
-          optimisticAssets.push(optimisticAsset);
-        }
-        
-        // Insert directly into Yjs at the target index + 1 (below the target row)
-        const insertIndex = targetRowIndex + 1;
-        for (let i = optimisticAssets.length - 1; i >= 0; i--) {
-          yRows.insert(insertIndex, [optimisticAssets[i]]);
-        }
-        
-        // Add to optimisticNewAssets for display
-        optimisticAssets.forEach(asset => {
-          setOptimisticNewAssets(prev => {
-            const newMap = new Map(prev);
-            newMap.set(asset.id, asset);
-            return newMap;
-          });
-        });
-        
-        // Save to database asynchronously
-        for (let i = 0; i < numRowsToInsert; i++) {
-          const offsetMs = (i + 1) * 1000;
-          const newCreatedAt = new Date(targetCreatedAt.getTime() + offsetMs);
-          await onSaveAsset('Untitled', {}, { createdAt: newCreatedAt });
-          
-          // Broadcast asset creation if realtime is enabled
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            const tempId = createdTempIds[i];
-            const asset = optimisticAssets[i];
-            try {
-              await broadcastAssetCreate(tempId, asset.name, asset.propertyValues, {
-                insertAfterRowId: lastRowId, // Insert below the last selected row
-              });
-            } catch (error) {
-              console.error('Failed to broadcast asset creation:', error);
-            }
-          }
-        }
-      } else {
-        // Fallback if supabase is not available
-        // Create optimistic assets and insert them directly into Yjs at the correct position
-        const createdTempIds: string[] = [];
-        const optimisticAssets: AssetRow[] = [];
-        
-        for (let i = 0; i < numRowsToInsert; i++) {
-          const assetName = 'Untitled';
-          const tempId = `temp-insert-below-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          createdTempIds.push(tempId);
-          
-          const optimisticAsset: AssetRow = {
-            id: tempId,
-            libraryId: library.id,
-            name: assetName,
-            propertyValues: {},
-          };
-          
-          optimisticAssets.push(optimisticAsset);
-        }
-        
-        // Insert directly into Yjs at the target index + 1 (below the target row)
-        const insertIndex = targetRowIndex + 1;
-        for (let i = optimisticAssets.length - 1; i >= 0; i--) {
-          yRows.insert(insertIndex, [optimisticAssets[i]]);
-        }
-        
-        // Add to optimisticNewAssets for display
-        optimisticAssets.forEach(asset => {
-          setOptimisticNewAssets(prev => {
-            const newMap = new Map(prev);
-            newMap.set(asset.id, asset);
-            return newMap;
-          });
-        });
-        
-        const assetName = 'Untitled';
-        for (let i = 0; i < numRowsToInsert; i++) {
-          await onSaveAsset(assetName, {});
-          
-          // Broadcast asset creation if realtime is enabled
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            const tempId = createdTempIds[i];
-            const asset = optimisticAssets[i];
-            try {
-              await broadcastAssetCreate(tempId, asset.name, asset.propertyValues, {
-                insertAfterRowId: lastRowId, // Insert below the last selected row
-              });
-            } catch (error) {
-              console.error('Failed to broadcast asset creation:', error);
-            }
-          }
-        }
-      }
-      
-      // Wait a bit for rows to be created and parent to refresh
-      await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Show success toast message
-      const rowCount = numRowsToInsert;
-      setToastMessage(rowCount === 1 ? '1 row inserted' : `${rowCount} rows inserted`);
-      setTimeout(() => {
-        setToastMessage(null);
-      }, 2000);
-    } catch (error) {
-      console.error('Failed to insert rows below:', error);
-      setToastMessage('Failed to insert rows below');
-      setTimeout(() => setToastMessage(null), 2000);
-    } finally {
-      setIsSaving(false);
-    }
-
-    // Close menu
-    setBatchEditMenuVisible(false);
-    setBatchEditMenuPosition(null);
-    setContextMenuRowId(null);
-    setContextMenuPosition(null);
-    contextMenuRowIdRef.current = null;
-    
-    // Clear selected cells and rows after insert operation
-    setSelectedCells(new Set());
-    setSelectedRowIds(new Set());
-  }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onSaveAsset, library, supabase, enableRealtime, currentUser, broadcastAssetCreate, yRows, setOptimisticNewAssets]);
-
-  // Handle Clear Contents operation
-  const handleClearContents = useCallback(async () => {
-    
-    // If rows are selected but cells are not, convert rows to cells
-    let cellsToClear = selectedCells;
-    if (selectedCells.size === 0 && selectedRowIds.size > 0) {
-      const allRowCellKeys: CellKey[] = [];
-      selectedRowIds.forEach(selectedRowId => {
-        orderedProperties.forEach(property => {
-          allRowCellKeys.push(`${selectedRowId}-${property.key}` as CellKey);
-        });
-      });
-      cellsToClear = new Set(allRowCellKeys);
-      setSelectedCells(cellsToClear);
-    }
-    
-    if (cellsToClear.size === 0) {
-      setClearContentsConfirmVisible(false);
-      return;
-    }
-
-    if (!onUpdateAsset) {
-      setClearContentsConfirmVisible(false);
-      return;
-    }
-
-    const allRowsForSelection = getAllRowsForCellSelection();
-    
-    // Group selected cells by rowId for efficient updates
-    // Format: { rowId: { propertyValues: {...}, assetName: string | null } }
-    const cellsByRow = new Map<string, { propertyValues: Record<string, any>; assetName: string | null }>();
-    
-    cellsToClear.forEach((cellKey) => {
-      // Parse cellKey to extract rowId and propertyKey
-      let rowId = '';
-      let propertyKey = '';
-      let propertyIndex = -1;
-      
-      for (let i = 0; i < orderedProperties.length; i++) {
-        const property = orderedProperties[i];
-        const propertyKeyWithDash = '-' + property.key;
-        if (cellKey.endsWith(propertyKeyWithDash)) {
-          rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-          propertyKey = property.key;
-          propertyIndex = i;
-          break;
-        }
-      }
-      
-      if (rowId && propertyKey) {
-        const row = allRowsForSelection.find(r => r.id === rowId);
-        if (row) {
-          // Initialize row updates if not exists
-          if (!cellsByRow.has(rowId)) {
-            cellsByRow.set(rowId, { 
-              propertyValues: { ...row.propertyValues },
-              assetName: row.name || null
-            });
-          }
-          const rowData = cellsByRow.get(rowId);
-          if (rowData) {
-            // Get the property to check its data type
-            const property = orderedProperties[propertyIndex];
-            // Check if this is the name field (first property, index 0)
-            const isNameField = propertyIndex === 0;
-            if (isNameField) {
-              // Clear the name field by setting both assetName and propertyValues
-              // Table displays name from propertyValues first, then falls back to row.name
-              rowData.assetName = '';
-              rowData.propertyValues[propertyKey] = null;
-            } else {
-              // For boolean type, set to false; for other types, set to null
-              if (property && property.dataType === 'boolean') {
-                rowData.propertyValues[propertyKey] = false;
-              } else {
-                rowData.propertyValues[propertyKey] = null;
-              }
-            }
-          }
-        }
-      }
-    });
-    
-    
-    // Close modal immediately before starting clearing (better UX)
-    setClearContentsConfirmVisible(false);
-    
-    // Apply optimistic updates immediately for better UX
-    setOptimisticEditUpdates(prev => {
-      const newMap = new Map(prev);
-      for (const [rowId, rowData] of cellsByRow.entries()) {
-        const row = allRowsForSelection.find(r => r.id === rowId);
-        if (row) {
-          // Use the original row.name for matching condition (optimisticUpdate.name === assetRow.name)
-          // This ensures the optimistic update will be applied even when name is cleared
-          // The actual name to save is determined by assetName, but for matching we use original name
-          const originalName = row.name || 'Untitled';
-          newMap.set(rowId, {
-            name: originalName,
-            propertyValues: { ...rowData.propertyValues }
-          });
-        }
-      }
-      return newMap;
-    });
-    
-    // Apply updates to clear cell contents
-    setIsSaving(true);
-    try {
-      for (const [rowId, rowData] of cellsByRow.entries()) {
-        const row = allRowsForSelection.find(r => r.id === rowId);
-        if (row) {
-          // Use the updated assetName if name field was cleared, otherwise use original name
-          const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
-          await onUpdateAsset(rowId, assetName, rowData.propertyValues);
-        }
-      }
-      
-      // Remove optimistic updates after a short delay to allow parent to refresh
-      setTimeout(() => {
-        setOptimisticEditUpdates(prev => {
-          const newMap = new Map(prev);
-          for (const rowId of cellsByRow.keys()) {
-            newMap.delete(rowId);
-          }
-          return newMap;
-        });
-      }, 500);
-      
-      // Clear selected cells and rows after clearing contents
-      setSelectedCells(new Set());
-      setSelectedRowIds(new Set());
-    } catch (error) {
-      console.error('Failed to clear contents:', error);
-      // On error, revert optimistic updates
-      setOptimisticEditUpdates(prev => {
-        const newMap = new Map(prev);
-        for (const rowId of cellsByRow.keys()) {
-          newMap.delete(rowId);
-        }
-        return newMap;
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  }, [selectedCells, selectedRowIds, getAllRowsForCellSelection, orderedProperties, onUpdateAsset]);
-
-  // Handle Delete Row operation
-  const handleDeleteRow = useCallback(async () => {
-    // Use ref to get the latest selectedCells value
-    const currentSelectedCells = selectedCellsRef.current;
-    
-    
-    // If rows are selected via checkbox but cells are not, use selectedRowIds directly
-    let rowsToDelete: Set<string>;
-    if (currentSelectedCells && currentSelectedCells.size > 0) {
-      // Extract unique row IDs from selected cells
-      const allRowsForSelection = getAllRowsForCellSelection();
-      rowsToDelete = new Set<string>();
-      
-      currentSelectedCells.forEach((cellKey) => {
-        // Parse cellKey to extract rowId
-        for (const property of orderedProperties) {
-          const propertyKeyWithDash = '-' + property.key;
-          if (cellKey.endsWith(propertyKeyWithDash)) {
-            const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-            rowsToDelete.add(rowId);
-            break;
-          }
-        }
-      });
-    } else if (selectedRowIds.size > 0) {
-      // Use selectedRowIds directly (from checkbox selection)
-      rowsToDelete = new Set(selectedRowIds);
-    } else {
-      setDeleteRowConfirmVisible(false);
-      return;
-    }
-
-    if (!onDeleteAsset) {
-      setDeleteRowConfirmVisible(false);
-      return;
-    }
-
-    if (rowsToDelete.size === 0) {
-      setDeleteRowConfirmVisible(false);
-      return;
-    }
-
-
-    // Close modal immediately before starting deletion (better UX)
-    setDeleteRowConfirmVisible(false);
-
-    // Delete rows sequentially
-    const failedRowIds: string[] = [];
-    try {
-      for (const rowId of rowsToDelete) {
-        // Optimistic update: immediately hide the row
-        setDeletedAssetIds(prev => new Set(prev).add(rowId));
-        
-        try {
-          // Delete the asset
-          await onDeleteAsset(rowId);
-        } catch (error: any) {
-          // If asset is not found, consider it as successfully deleted (already deleted)
-          // This can happen due to concurrent deletions or database sync delays
-          if (error?.name === 'AuthorizationError' && error?.message === 'Asset not found') {
-            // Continue with next asset, don't revert optimistic update
-            continue;
-          }
-          
-          // For other errors, mark as failed and revert optimistic update
-          console.error(`Failed to delete asset ${rowId}:`, error);
-          failedRowIds.push(rowId);
-          setDeletedAssetIds(prev => {
-            const next = new Set(prev);
-            next.delete(rowId);
-            return next;
-          });
-        }
-      }
-      
-      // Clear selected cells and rows after deletion (only if all deletions succeeded or were already deleted)
-      if (failedRowIds.length === 0) {
-        setSelectedCells(new Set());
-        setSelectedRowIds(new Set());
-      }
-      
-      // Remove from deleted set after a short delay to ensure parent refresh
-      setTimeout(() => {
-        rowsToDelete.forEach(rowId => {
-          // Don't remove failed rows from deleted set
-          if (!failedRowIds.includes(rowId)) {
-            setDeletedAssetIds(prev => {
-              const next = new Set(prev);
-              next.delete(rowId);
-              return next;
-            });
-          }
-        });
-      }, 100);
-      
-      // If there were failures, show error message
-      if (failedRowIds.length > 0) {
-        console.error(`Failed to delete ${failedRowIds.length} row(s):`, failedRowIds);
-        // Optionally show user-friendly error message
-        alert(`Failed to delete ${failedRowIds.length} row(s). Please try again.`);
-      }
-    } catch (error) {
-      console.error('Failed to delete rows:', error);
-      
-      // Revert optimistic update on error for all remaining rows
-      rowsToDelete.forEach(rowId => {
-        if (!failedRowIds.includes(rowId)) {
-          setDeletedAssetIds(prev => {
-            const next = new Set(prev);
-            next.delete(rowId);
-            return next;
-          });
-        }
-      });
-    }
-  }, [selectedRowIds, getAllRowsForCellSelection, orderedProperties, onDeleteAsset]);
-
-  // Handle delete asset with optimistic update
-  const handleDeleteAsset = async () => {
-    if (!deletingAssetId || !onDeleteAsset) return;
-    
-    const assetIdToDelete = deletingAssetId;
-    
-    // Find the asset name for broadcasting
-    const asset = rows.find(r => r.id === assetIdToDelete);
-    const assetName = asset?.name || 'Untitled';
-    
-    // Optimistic update: immediately hide the row
-    setDeletedAssetIds(prev => new Set(prev).add(assetIdToDelete));
-    
-    // Close modal immediately
-    setDeleteConfirmVisible(false);
-    setDeletingAssetId(null);
-    setContextMenuRowId(null);
-    setContextMenuPosition(null);
-    
-    // Delete in background
-    try {
-      await onDeleteAsset(assetIdToDelete);
-      
-      // Broadcast asset deletion if realtime is enabled
-      if (enableRealtime && currentUser) {
-        await broadcastAssetDelete(assetIdToDelete, assetName);
-      }
-      
-      // Success: row is already hidden, parent will refresh data
-      // Remove from deleted set after a short delay to ensure parent refresh
-      setTimeout(() => {
-        setDeletedAssetIds(prev => {
-          const next = new Set(prev);
-          next.delete(assetIdToDelete);
-          return next;
-        });
-      }, 100);
-    } catch (error) {
-      console.error('Failed to delete asset:', error);
-      // On error, revert optimistic update - show the row again
-      setDeletedAssetIds(prev => {
-        const next = new Set(prev);
-        next.delete(assetIdToDelete);
-        return next;
-      });
-      alert('Failed to delete asset. Please try again.');
-    }
-  };
 
   // Close context menu when clicking outside
   useEffect(() => {
@@ -4475,11 +3575,7 @@ export function LibraryAssetsTable({
         open={referenceModalOpen}
         value={referenceModalValue}
         referenceLibraries={referenceModalProperty.referenceLibraries || []}
-        onClose={() => {
-          setReferenceModalOpen(false);
-          setReferenceModalProperty(null);
-          setReferenceModalValue(null);
-        }}
+        onClose={handleCloseReferenceModal}
         onApply={handleApplyReference}
       />
     )}
