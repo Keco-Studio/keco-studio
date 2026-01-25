@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Input, Select, Button, Avatar, Spin, Tooltip, Checkbox, Dropdown, Modal, Switch, message } from 'antd';
-import { createPortal } from 'react-dom';
+import { Input, Select, Button, Avatar, Tooltip, Checkbox, Dropdown, Modal, Switch, message } from 'antd';
 import Image from 'next/image';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -38,10 +37,10 @@ import { useAddRow } from './hooks/useAddRow';
 import { ReferenceField } from './components/ReferenceField';
 import { CellPresenceAvatars } from './components/CellPresenceAvatars';
 import { TableToast } from './components/TableToast';
-import { getAssetAvatarColor, getAssetAvatarText } from './utils/libraryAssetUtils';
+import { RowContextMenu } from './components/RowContextMenu';
+import { BatchEditMenu } from './components/BatchEditMenu';
+import { AssetCardPanel } from './components/AssetCardPanel';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
-import libraryAssetTable5Icon from '@/app/assets/images/LibraryAssetTable5.svg';
-import libraryAssetTable6Icon from '@/app/assets/images/LibraryAssetTable6.svg';
 import noassetIcon1 from '@/app/assets/images/NoassetIcon1.svg';
 import noassetIcon2 from '@/app/assets/images/NoassetIcon2.svg';
 import libraryAssetTableAddIcon from '@/app/assets/images/LibraryAssetTableAddIcon.svg';
@@ -3075,375 +3074,69 @@ export function LibraryAssetsTable({
       />
     )}
 
-    {/* Asset Card Panel - shown when hovering over avatar */}
-    {hoveredAssetId && hoveredAvatarPosition && (typeof document !== 'undefined') && createPortal(
-      <>
-        {/* Invisible bridge to prevent mouse from leaving */}
-        <div
-          className={styles.assetCardBridge}
-          style={{
-            left: `${hoveredAvatarPosition.x - 40}px`,
-            top: `${hoveredAvatarPosition.y}px`,
-          }}
-          onMouseEnter={handleAssetCardMouseEnter}
-          onMouseLeave={handleAssetCardMouseLeave}
-        />
-        <div
-          className={styles.assetCardPanel}
-          style={{
-            left: `${hoveredAvatarPosition.x}px`,
-            top: `${hoveredAvatarPosition.y}px`,
-          }}
-          onMouseEnter={handleAssetCardMouseEnter}
-          onMouseLeave={handleAssetCardMouseLeave}
-        >
-          <div className={styles.assetCardHeader}>
-            <div className={styles.assetCardTitle}>ASSET CARD</div>
-            <button
-              className={styles.assetCardCloseButton}
-              onClick={() => setHoveredAssetId(null)}
-              aria-label="Close"
-            >
-              ×
-            </button>
-          </div>
-          <div className={styles.assetCardContent}>
-            {loadingAssetDetails ? (
-              <div className={styles.assetCardLoading}>
-                <Spin />
-              </div>
-            ) : hoveredAssetDetails ? (
-              <>
-                <div className={styles.assetCardDetailsSection}>
-                  <div className={styles.assetCardDetailsLabel}>Details</div>
-                  <div className={styles.assetCardDetailsContent}>
-                    <div className={styles.assetCardDetailRow}>
-                      <div className={styles.assetCardIconWrapper}>
-                        <Avatar
-                          size={48}
-                          style={{ 
-                            backgroundColor: hoveredAssetId ? getAssetAvatarColor(hoveredAssetId, hoveredAssetDetails.name) : '#FF6CAA',
-                            borderRadius: '6px'
-                          }}
-                          className={styles.assetCardIconAvatar}
-                        >
-                          {getAssetAvatarText(hoveredAssetDetails.name)}
-                        </Avatar>
-                      </div>
-                      <div className={styles.assetCardDetailInfo}>
-                        <div className={styles.assetCardDetailItem}>
-                          <span className={styles.assetCardDetailLabel}>Name</span>
-                          <span className={styles.assetCardDetailValue}>{hoveredAssetDetails.name}</span>
-                        </div>
-                        <div className={styles.assetCardDetailItem}>
-                          <span className={styles.assetCardDetailLabel}>From Library</span>
-                          <div 
-                            className={styles.assetCardLibraryLink}
-                            onClick={() => {
-                              const projectId = params.projectId;
-                              if (projectId && hoveredAssetDetails?.libraryId) {
-                                router.push(`/${projectId}/${hoveredAssetDetails.libraryId}`);
-                              }
-                            }}
-                            style={{ cursor: 'pointer' }}
-                          >
-                            <Image
-                              src={libraryAssetTable5Icon}
-                              alt=""
-                              width={16}
-                              height={16}
-                              className={styles.assetCardLibraryIcon}
-                            />
-                            <span className={styles.assetCardLibraryName}>{hoveredAssetDetails.libraryName}</span>
-                            <Image
-                              src={libraryAssetTable6Icon}
-                              alt=""
-                              width={16}
-                              height={16}
-                              className={styles.assetCardLibraryArrow}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-      </>,
-      document.body
-    )}
+    <AssetCardPanel
+      visible={!!(hoveredAssetId && hoveredAvatarPosition)}
+      position={hoveredAvatarPosition ?? { x: 0, y: 0 }}
+      assetId={hoveredAssetId}
+      details={hoveredAssetDetails ? { name: hoveredAssetDetails.name, libraryId: hoveredAssetDetails.libraryId, libraryName: hoveredAssetDetails.libraryName } : null}
+      loading={loadingAssetDetails}
+      onClose={() => setHoveredAssetId(null)}
+      onMouseEnter={handleAssetCardMouseEnter}
+      onMouseLeave={handleAssetCardMouseLeave}
+      onLibraryClick={params?.projectId ? (libraryId) => router.push(`/${params.projectId}/${libraryId}`) : undefined}
+    />
 
-    {/* Context Menu for right-click operations */}
-    {contextMenuRowId && contextMenuPosition && (typeof document !== 'undefined') && createPortal(
-      <div
-        style={{
-          position: 'fixed',
-          left: `${contextMenuPosition.x}px`,
-          top: `${contextMenuPosition.y}px`,
-          zIndex: 1000,
-          backgroundColor: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '6px',
-          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-          padding: 0,
-          minWidth: '160px',
-          overflow: 'hidden',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Insert row above */}
-        <div
-          style={{
-            padding: '8px 16px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            color: '#333333',
-            transition: 'background-color 0.2s',
-            width: '100%',
-            boxSizing: 'border-box',
-            margin: 0,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#f5f5f5';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-          onClick={() => {
-            handleInsertRowAbove();
-            setContextMenuRowId(null);
-            setContextMenuPosition(null);
-            contextMenuRowIdRef.current = null;
-          }}
-        >
-          Insert row above
-        </div>
-        {/* Insert row below */}
-        <div
-          style={{
-            padding: '8px 16px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            color: '#333333',
-            transition: 'background-color 0.2s',
-            width: '100%',
-            boxSizing: 'border-box',
-            margin: 0,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#f5f5f5';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-          onClick={() => {
-            handleInsertRowBelow();
-            setContextMenuRowId(null);
-            setContextMenuPosition(null);
-            contextMenuRowIdRef.current = null;
-          }}
-        >
-          Insert row below
-        </div>
-        {/* Separator */}
-        <div
-          style={{
-            height: '1px',
-            backgroundColor: '#e2e8f0',
-            margin: '4px 0',
-          }}
-        />
-        {/* Delete */}
-        <div
-          style={{
-            padding: '8px 16px',
-            cursor: 'pointer',
-            fontSize: '14px',
-            color: '#ff4d4f',
-            transition: 'background-color 0.2s',
-            width: '100%',
-            boxSizing: 'border-box',
-            margin: 0,
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#fff1f0';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-          onClick={() => {
-            if (!onDeleteAsset) {
-              alert('Delete function is not enabled. Please provide onDeleteAsset callback.');
-              setContextMenuRowId(null);
-              setContextMenuPosition(null);
-              return;
-            }
-            setDeletingAssetId(contextMenuRowId);
-            setDeleteConfirmVisible(true);
-            setContextMenuRowId(null);
-            setContextMenuPosition(null);
-          }}
-        >
-          Delete
-        </div>
-      </div>,
-      document.body
-    )}
+    <RowContextMenu
+      visible={!!(contextMenuRowId && contextMenuPosition)}
+      position={contextMenuPosition ?? { x: 0, y: 0 }}
+      onInsertAbove={() => {
+        handleInsertRowAbove();
+        setContextMenuRowId(null);
+        setContextMenuPosition(null);
+        contextMenuRowIdRef.current = null;
+      }}
+      onInsertBelow={() => {
+        handleInsertRowBelow();
+        setContextMenuRowId(null);
+        setContextMenuPosition(null);
+        contextMenuRowIdRef.current = null;
+      }}
+      onDelete={() => {
+        if (!onDeleteAsset) {
+          alert('Delete function is not enabled. Please provide onDeleteAsset callback.');
+          setContextMenuRowId(null);
+          setContextMenuPosition(null);
+          return;
+        }
+        if (contextMenuRowId) {
+          setDeletingAssetId(contextMenuRowId);
+          setDeleteConfirmVisible(true);
+        }
+        setContextMenuRowId(null);
+        setContextMenuPosition(null);
+      }}
+    />
 
-    {/* Batch Edit Context Menu */}
-    {batchEditMenuVisible && batchEditMenuPosition && (typeof document !== 'undefined') && createPortal(
-      <div
-        className="batchEditMenu"
-        style={{
-          position: 'fixed',
-          left: `${batchEditMenuPosition.x}px`,
-          top: `${batchEditMenuPosition.y}px`,
-          zIndex: 1000,
-          backgroundColor: '#ffffff',
-          border: '1px solid #e2e8f0',
-          borderRadius: '8px',
-          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12)',
-          padding: '8px 0',
-          minWidth: '180px',
-          overflow: 'hidden',
-        }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Title: ACTIONS */}
-        <div className={styles.batchEditMenuTitle}>ACTIONS</div>
-        
-        {/* Cut - enabled when cells or rows are selected */}
-        <div
-          className={styles.batchEditMenuItem}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#fff1f0';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-          onClick={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            try {
-              handleCut();
-            } catch (error) {
-              console.error('Error in handleCut:', error);
-            }
-          }}
-        >
-          <span className={styles.batchEditMenuText}>Cut</span>
-        </div>
-        
-        {/* Copy */}
-        <div
-          className={styles.batchEditMenuItem}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#fff1f0';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-          onClick={() => {
-            handleCopy();
-          }}
-        >
-          <span className={styles.batchEditMenuText}>Copy</span>
-        </div>
-        
-        {/* Paste */}
-        <div
-          className={styles.batchEditMenuItem}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#fff1f0';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-          onClick={() => {
-            handlePaste();
-          }}
-        >
-          <span className={styles.batchEditMenuText}>Paste</span>
-        </div>
-        
-        <div className={styles.batchEditMenuDivider}></div>
-        
-        {/* Insert row above */}
-        <div
-          className={styles.batchEditMenuItem}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#f3f4f6';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-          onClick={() => {
-            handleInsertRowAbove();
-          }}
-        >
-          <span className={styles.batchEditMenuText}>Insert row above</span>
-        </div> 
-        {/* Insert row below */}
-        <div
-          className={styles.batchEditMenuItem}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#f3f4f6';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-          onClick={() => {
-            handleInsertRowBelow();
-          }}
-        >
-          <span className={styles.batchEditMenuText}>Insert row below</span>
-        </div>  
-        {/* Clear contents */}
-        <div
-          className={styles.batchEditMenuItem}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.backgroundColor = '#f3f4f6';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.backgroundColor = 'transparent';
-          }}
-          onClick={() => {
-            // Show confirmation modal
-            setBatchEditMenuVisible(false);
-            setBatchEditMenuPosition(null);
-            setClearContentsConfirmVisible(true);
-          }}
-        >
-          <span className={styles.batchEditMenuText}>Clear contents</span>
-        </div>
-        <div className={styles.batchEditMenuDivider}></div>
-        {/* Delete row - only show for admin and editor */}
-        {userRole !== 'viewer' && (
-          <div
-            className={styles.batchEditMenuItem}
-            style={{ color: '#ff4d4f' }}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.backgroundColor = '#fff1f0';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.backgroundColor = 'transparent';
-            }}
-            onClick={() => {
-              // Show confirmation modal
-              setBatchEditMenuVisible(false);
-              setBatchEditMenuPosition(null);
-              setDeleteRowConfirmVisible(true);
-            }}
-          >
-            <span className={styles.batchEditMenuText} style={{ color: '#ff4d4f' }}>Delete row</span>
-          </div>
-        )}
-      </div>,
-      document.body
-    )}
+    <BatchEditMenu
+      visible={batchEditMenuVisible && !!batchEditMenuPosition}
+      position={batchEditMenuPosition ?? { x: 0, y: 0 }}
+      userRole={userRole}
+      onCut={handleCut}
+      onCopy={handleCopy}
+      onPaste={handlePaste}
+      onInsertRowAbove={handleInsertRowAbove}
+      onInsertRowBelow={handleInsertRowBelow}
+      onClearContents={() => {
+        setBatchEditMenuVisible(false);
+        setBatchEditMenuPosition(null);
+        setClearContentsConfirmVisible(true);
+      }}
+      onDeleteRow={() => {
+        setBatchEditMenuVisible(false);
+        setBatchEditMenuPosition(null);
+        setDeleteRowConfirmVisible(true);
+      }}
+    />
     <TableToast message={toastMessage} />
     {/* Delete Confirmation Modal */}
     <DeleteAssetModal
