@@ -4,11 +4,11 @@ import React, { useState, useRef, useCallback } from 'react';
 import Image from 'next/image';
 import { Avatar } from 'antd';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
-import { getAssetAvatarColor, getAssetAvatarText } from './utils/libraryAssetUtils';
+import { getAssetAvatarColor, getAssetAvatarText } from '../utils/libraryAssetUtils';
 import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
 import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
 import libraryAssetTable3Icon from '@/app/assets/images/LibraryAssetTable3.svg';
-import styles from './LibraryAssetsTable.module.css';
+import styles from '../LibraryAssetsTable.module.css';
 
 export type ReferenceFieldProps = {
   property: PropertyConfig;

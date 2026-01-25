@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Tooltip } from 'antd';
-import styles from './LibraryAssetsTable.module.css';
+import styles from '../LibraryAssetsTable.module.css';
 
 export type PresenceUser = {
   userId: string;
