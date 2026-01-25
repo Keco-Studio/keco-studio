@@ -34,6 +34,7 @@ import { useAssetHover } from './hooks/useAssetHover';
 import { useRowOperations } from './hooks/useRowOperations';
 import { useReferenceModal } from './hooks/useReferenceModal';
 import { useOptimisticCleanup } from './hooks/useOptimisticCleanup';
+import { useAddRow } from './hooks/useAddRow';
 import { ReferenceField } from './ReferenceField';
 import { CellPresenceAvatars } from './CellPresenceAvatars';
 import { getAssetAvatarColor, getAssetAvatarText } from './utils/libraryAssetUtils';
@@ -99,8 +100,6 @@ export function LibraryAssetsTable({
   const { yRows } = useYjs();
   const { allRowsSource } = useYjsSync(rows, yRows);
 
-  const [isAddingRow, setIsAddingRow] = useState(false);
-  const [newRowData, setNewRowData] = useState<Record<string, any>>({});
   const [isSaving, setIsSaving] = useState(false);
   
   // Track current user's focused cell (for collaboration presence)
@@ -442,7 +441,29 @@ export function LibraryAssetsTable({
 
   const userRole = useUserRole(params?.projectId as string | undefined, supabase);
 
-  // Cell editing hook (must be after userRole is defined)
+  const {
+    isAddingRow,
+    setIsAddingRow,
+    newRowData,
+    setNewRowData,
+    handleSaveNewAsset,
+    handleCancelAdding,
+    handleInputChange,
+    handleMediaFileChange,
+  } = useAddRow({
+    properties,
+    library,
+    onSaveAsset,
+    userRole,
+    yRows,
+    setOptimisticNewAssets,
+    setIsSaving,
+    enableRealtime,
+    currentUser,
+    broadcastAssetCreate: enableRealtime && currentUser ? broadcastAssetCreate : undefined,
+  });
+
+  // Cell editing hook (must be after userRole and useAddRow)
   const cellEditing = useCellEditing({
     properties,
     rows,
@@ -535,92 +556,6 @@ export function LibraryAssetsTable({
       }
     }
   }, [enableRealtime, currentUser, broadcastCellUpdate]);
-
-  // Handle save new asset
-  const handleSaveNewAsset = async () => {
-    // Prevent adding if user is a viewer
-    if (userRole === 'viewer') {
-      return;
-    }
-    
-    if (!onSaveAsset || !library) return;
-
-    // Get asset name from first property (assuming first property is name)
-    const assetName = newRowData[properties[0]?.id] || 'Untitled';
-
-    // Create optimistic asset row with temporary ID
-    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-    const optimisticAsset: AssetRow = {
-      id: tempId,
-      libraryId: library.id,
-      name: String(assetName),
-      propertyValues: { ...newRowData },
-    };
-
-    // Optimistically add the asset to Yjs immediately (resolve row ordering issues)
-    yRows.insert(yRows.length, [optimisticAsset]);
-    
-    // Also add to optimisticNewAssets for compatibility
-    setOptimisticNewAssets(prev => {
-      const newMap = new Map(prev);
-      newMap.set(tempId, optimisticAsset);
-      return newMap;
-    });
-
-    // Reset adding state immediately for better UX
-    setIsAddingRow(false);
-    const savedNewRowData = { ...newRowData };
-    setNewRowData({});
-
-    setIsSaving(true);
-    try {
-      await onSaveAsset(assetName, savedNewRowData);
-      
-      // Broadcast asset creation if realtime is enabled
-      if (enableRealtime && currentUser) {
-        await broadcastAssetCreate(tempId, assetName, savedNewRowData);
-      }
-      
-      // Remove optimistic asset after a short delay to allow parent to refresh
-      // The parent refresh will replace it with the real asset
-      setTimeout(() => {
-        // Remove temp row from Yjs (if still exists)
-        const index = yRows.toArray().findIndex(r => r.id === tempId);
-        if (index >= 0) {
-          yRows.delete(index, 1);
-        }
-        setOptimisticNewAssets(prev => {
-          const newMap = new Map(prev);
-          newMap.delete(tempId);
-          return newMap;
-        });
-      }, 500);
-    } catch (error) {
-      console.error('Failed to save asset:', error);
-      // On error, revert optimistic update - remove from Yjs
-      const index = yRows.toArray().findIndex(r => r.id === tempId);
-      if (index >= 0) {
-        yRows.delete(index, 1);
-      }
-      setOptimisticNewAssets(prev => {
-        const newMap = new Map(prev);
-        newMap.delete(tempId);
-        return newMap;
-      });
-      // Restore adding state so user can try again
-      setIsAddingRow(true);
-      setNewRowData(savedNewRowData);
-      alert('Failed to save asset. Please try again.');
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  // Handle cancel adding
-  const handleCancelAdding = () => {
-    setIsAddingRow(false);
-    setNewRowData({});
-  };
 
   // Handle click outside to auto-save new asset or cancel editing
   useEffect(() => {
@@ -866,16 +801,6 @@ export function LibraryAssetsTable({
       };
     }
   }, [isAddingRow, editingCell, editingCellValue, isSaving, newRowData, onSaveAsset, onUpdateAsset, properties, rows, referenceModalOpen, yRows, setOptimisticEditUpdates]);
-
-  // Handle input change for new row
-  const handleInputChange = (propertyId: string, value: any) => {
-    setNewRowData((prev) => ({ ...prev, [propertyId]: value }));
-  };
-
-  // Handle media file change for new row
-  const handleMediaFileChange = (propertyId: string, value: MediaFileMetadata | null) => {
-    setNewRowData((prev) => ({ ...prev, [propertyId]: value }));
-  };
 
   // Handle input change for editing cell
   const handleEditCellValueChange = (value: string) => {
