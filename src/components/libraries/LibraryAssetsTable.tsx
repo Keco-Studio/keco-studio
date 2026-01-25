@@ -33,10 +33,10 @@ import { useYjsSync } from './hooks/useYjsSync';
 import { useAssetHover } from './hooks/useAssetHover';
 import { useRowOperations } from './hooks/useRowOperations';
 import { useReferenceModal } from './hooks/useReferenceModal';
+import { ReferenceField } from './ReferenceField';
+import { CellPresenceAvatars } from './CellPresenceAvatars';
+import { getAssetAvatarColor, getAssetAvatarText } from './utils/libraryAssetUtils';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
-import libraryAssetTableIcon from '@/app/assets/images/LibraryAssetTableIcon.svg';
-import libraryAssetTable2Icon from '@/app/assets/images/LibraryAssetTable2.svg';
-import libraryAssetTable3Icon from '@/app/assets/images/LibraryAssetTable3.svg';
 import libraryAssetTable5Icon from '@/app/assets/images/LibraryAssetTable5.svg';
 import libraryAssetTable6Icon from '@/app/assets/images/LibraryAssetTable6.svg';
 import noassetIcon1 from '@/app/assets/images/NoassetIcon1.svg';
@@ -659,7 +659,6 @@ export function LibraryAssetsTable({
       next.delete(cellKey);
       return next;
     });
-    
     message.info(`Accepted changes from ${conflict.userName}`, 2);
   }, [conflictedCells, editingCell, setEditingCellValue]);
 
@@ -687,271 +686,6 @@ export function LibraryAssetsTable({
   
   const hasProperties = properties.length > 0;
   const hasRows = rows.length > 0;
-
-  // Helper functions for Avatar
-  const getAvatarText = (name: string) => {
-    return name.charAt(0).toUpperCase();
-  };
-
-  // Color palette for asset icons - using the same palette as AssetReferenceModal
-  const assetColorPalette = [
-    '#f56a00', '#7265e6', '#ffbf00', '#00a2ae', '#87d068', '#f50', '#2db7f5', '#108ee9',
-    '#FF6CAA', '#52c41a', '#fa8c16', '#eb2f96', '#13c2c2', '#722ed1', '#faad14', '#a0d911',
-    '#1890ff', '#f5222d', '#fa541c', '#2f54eb', '#096dd9', '#531dab', '#c41d7f', '#cf1322',
-    '#d4380d', '#7cb305', '#389e0d', '#0958d9', '#1d39c4', '#10239e', '#061178', '#780650'
-  ];
-
-  // Generate consistent color for an asset based on its ID and name
-  // This ensures different assets get different colors, even with same first letter
-  const getAvatarColor = (assetId: string, name: string) => {
-    // Use both ID and name to generate a more unique hash
-    const hash = assetId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0) +
-                 name.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    const index = hash % assetColorPalette.length;
-    return assetColorPalette[index];
-  };
-
-  // Reference Field Component - memoized to prevent unnecessary re-renders
-  const ReferenceField = React.memo<{
-    property: PropertyConfig;
-    assetId: string | null;
-    rowId: string;
-    assetNamesCache: Record<string, string>;
-    isCellSelected: boolean;
-    onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
-    onAvatarMouseLeave: () => void;
-    onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
-  }>(({
-    property,
-    assetId,
-    rowId,
-    assetNamesCache,
-    isCellSelected,
-    onAvatarMouseEnter,
-    onAvatarMouseLeave,
-    onOpenReferenceModal,
-  }: {
-    property: PropertyConfig;
-    assetId: string | null;
-    rowId: string;
-    assetNamesCache: Record<string, string>;
-    isCellSelected: boolean;
-    onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
-    onAvatarMouseLeave: () => void;
-    onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
-  }) => {
-    const hasValue = assetId && assetId.trim() !== '';
-    const assetName = hasValue ? (assetNamesCache[assetId] || assetId) : '';
-    const [isHovered, setIsHovered] = useState(false);
-    
-    // Use ref to store element reference without triggering re-renders
-    const avatarRef = useRef<HTMLDivElement | null>(null);
-    
-    // Set ref and store in map only when element mounts/unmounts
-    const setAvatarRef = useCallback((el: HTMLDivElement | null) => {
-      if (el && assetId) {
-        avatarRef.current = el;
-        avatarRefs.current.set(assetId, el);
-      } else if (!el && assetId && avatarRefs.current.get(assetId) === avatarRef.current) {
-        avatarRefs.current.delete(assetId);
-      }
-    }, [assetId]);
-    
-    return (
-      <div
-        className={styles.referenceFieldWrapper}
-        onMouseEnter={() => {
-          setIsHovered(true);
-        }}
-        onMouseLeave={(e) => {
-          // Only set hovered to false if mouse is not moving to avatar wrapper or arrow icon
-          const relatedTarget = e.relatedTarget as HTMLElement;
-          if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-            setIsHovered(false);
-          }
-        }}
-      >
-        {hasValue && assetId ? (
-          <div 
-            className={styles.referenceSelectedAssetLeft}
-            data-reference-background="true"
-            onClick={(e) => {
-              // Only trigger if cell is selected
-              if (isCellSelected) {
-                e.stopPropagation();
-                e.preventDefault();
-                // Call the modal handler immediately
-                onOpenReferenceModal(property, assetId, rowId);
-                return;
-              }
-              // If not selected, let the event bubble to cell to select it
-            }}
-            onMouseDown={(e) => {
-              // Prevent mouse down from interfering with click when cell is selected
-              if (isCellSelected) {
-                e.stopPropagation();
-              }
-            }}
-            onDoubleClick={(e) => {
-              // Prevent double click from bubbling to cell
-              e.stopPropagation();
-            }}
-          >
-            <Image
-              src={libraryAssetTableIcon}
-              alt=""
-              width={16}
-              height={16}
-              className={styles.referenceDiamondIcon}
-            />
-            <div
-              ref={setAvatarRef}
-              onMouseEnter={(e) => {
-                e.stopPropagation();
-                setIsHovered(true); // Keep hovered state when over avatar
-              }}
-              onMouseLeave={(e) => {
-                e.stopPropagation();
-                // Only hide if mouse is not moving to another part of the wrapper
-                const relatedTarget = e.relatedTarget as HTMLElement;
-                if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-                  setIsHovered(false);
-                }
-              }}
-              className={styles.referenceAvatarWrapper}
-            >
-              <Avatar
-                size={16}
-                style={{ 
-                  backgroundColor: getAvatarColor(assetId, assetName),
-                  borderRadius: '2.4px'
-                }}
-                className={styles.referenceAvatar}
-              >
-                {getAvatarText(assetName)}
-              </Avatar>
-            </div>
-            <Image
-              src={isHovered ? libraryAssetTable3Icon : libraryAssetTable2Icon}
-              alt=""
-              width={16}
-              height={16}
-              className={styles.referenceExpandIcon}
-              onMouseEnter={() => {
-                setIsHovered(true);
-              }}
-            />
-          </div>
-        ) : (
-          <div 
-            className={styles.referenceSelectedAssetLeft}
-            data-reference-background="true"
-            onClick={(e) => {
-              // Only trigger if cell is selected
-              if (isCellSelected) {
-                e.stopPropagation();
-                e.preventDefault();
-                // Call the modal handler immediately
-                onOpenReferenceModal(property, assetId, rowId);
-                return;
-              }
-              // If not selected, let the event bubble to cell to select it
-            }}
-            onMouseDown={(e) => {
-              // Prevent mouse down from interfering with click when cell is selected
-              if (isCellSelected) {
-                e.stopPropagation();
-              }
-            }}
-            onDoubleClick={(e) => {
-              // Prevent double click from bubbling to cell
-              e.stopPropagation();
-            }}
-          >
-            <Image
-              src={libraryAssetTableIcon}
-              alt=""
-              width={16}
-              height={16}
-              className={styles.referenceDiamondIcon}
-            />
-            <Image
-              src={isHovered ? libraryAssetTable3Icon : libraryAssetTable2Icon}
-              alt=""
-              width={16}
-              height={16}
-              className={styles.referenceArrowIcon}
-              onMouseEnter={() => {
-                setIsHovered(true);
-              }}
-            />
-          </div>
-        )}
-      </div>
-    );
-  }, (prevProps, nextProps) => {
-    // Custom comparison function to prevent unnecessary re-renders
-    return (
-      prevProps.assetId === nextProps.assetId &&
-      prevProps.rowId === nextProps.rowId &&
-      prevProps.property.id === nextProps.property.id &&
-      prevProps.isCellSelected === nextProps.isCellSelected &&
-      prevProps.assetNamesCache[prevProps.assetId || ''] === nextProps.assetNamesCache[nextProps.assetId || '']
-    );
-  });
-
-  // Set display name for debugging
-  ReferenceField.displayName = 'ReferenceField';
-
-  // Cell Presence Avatars Component - displays small avatars in cell corner
-  const CellPresenceAvatars = React.memo<{
-    users: Array<{
-      userId: string;
-      userName: string;
-      userEmail: string;
-      avatarColor: string;
-    }>;
-  }>(({ users }) => {
-    if (users.length === 0) return null;
-
-    // Reverse order: first user (rightmost) has priority
-    const orderedUsers = [...users].reverse();
-    const visibleUsers = orderedUsers.slice(0, 3); // Show max 3 avatars
-    const hiddenCount = Math.max(0, orderedUsers.length - 3);
-
-    const getUserInitials = (name: string): string => {
-      const parts = name.trim().split(/\s+/);
-      if (parts.length === 0) return '?';
-      return parts[0].charAt(0).toUpperCase();
-    };
-
-    return (
-      <div className={styles.cellPresenceAvatars}>
-        {visibleUsers.map((user) => (
-          <Tooltip key={user.userId} title={user.userName} placement="top">
-            <div
-              className={styles.cellPresenceAvatar}
-              style={{ backgroundColor: user.avatarColor }}
-            >
-              {getUserInitials(user.userName)}
-            </div>
-          </Tooltip>
-        ))}
-        {hiddenCount > 0 && (
-          <Tooltip title={`${hiddenCount} more`} placement="top">
-            <div
-              className={styles.cellPresenceAvatar}
-              style={{ backgroundColor: '#999' }}
-            >
-              +{hiddenCount}
-            </div>
-          </Tooltip>
-        )}
-      </div>
-    );
-  });
-
-  CellPresenceAvatars.displayName = 'CellPresenceAvatars';
 
   // Helper function to broadcast cell updates
   const broadcastCellUpdateIfEnabled = useCallback(async (
@@ -2324,6 +2058,7 @@ export function LibraryAssetsTable({
                             rowId={row.id}
                             assetNamesCache={assetNamesCache}
                             isCellSelected={isCellSelected}
+                            avatarRefs={avatarRefs}
                             onAvatarMouseEnter={handleAvatarMouseEnter}
                             onAvatarMouseLeave={handleAvatarMouseLeave}
                             onOpenReferenceModal={handleOpenReferenceModal}
@@ -3379,6 +3114,7 @@ export function LibraryAssetsTable({
                           rowId="new"
                           assetNamesCache={assetNamesCache}
                           isCellSelected={false}
+                          avatarRefs={avatarRefs}
                           onAvatarMouseEnter={handleAvatarMouseEnter}
                           onAvatarMouseLeave={handleAvatarMouseLeave}
                           onOpenReferenceModal={handleOpenReferenceModal}
@@ -3627,12 +3363,12 @@ export function LibraryAssetsTable({
                         <Avatar
                           size={48}
                           style={{ 
-                            backgroundColor: hoveredAssetId ? getAvatarColor(hoveredAssetId, hoveredAssetDetails.name) : '#FF6CAA',
+                            backgroundColor: hoveredAssetId ? getAssetAvatarColor(hoveredAssetId, hoveredAssetDetails.name) : '#FF6CAA',
                             borderRadius: '6px'
                           }}
                           className={styles.assetCardIconAvatar}
                         >
-                          {getAvatarText(hoveredAssetDetails.name)}
+                          {getAssetAvatarText(hoveredAssetDetails.name)}
                         </Avatar>
                       </div>
                       <div className={styles.assetCardDetailInfo}>
@@ -3890,8 +3626,7 @@ export function LibraryAssetsTable({
           }}
         >
           <span className={styles.batchEditMenuText}>Insert row above</span>
-        </div>
-        
+        </div> 
         {/* Insert row below */}
         <div
           className={styles.batchEditMenuItem}
@@ -3906,8 +3641,7 @@ export function LibraryAssetsTable({
           }}
         >
           <span className={styles.batchEditMenuText}>Insert row below</span>
-        </div>
-        
+        </div>  
         {/* Clear contents */}
         <div
           className={styles.batchEditMenuItem}
@@ -3926,9 +3660,7 @@ export function LibraryAssetsTable({
         >
           <span className={styles.batchEditMenuText}>Clear contents</span>
         </div>
-        
         <div className={styles.batchEditMenuDivider}></div>
-        
         {/* Delete row - only show for admin and editor */}
         {userRole !== 'viewer' && (
           <div
@@ -3953,7 +3685,6 @@ export function LibraryAssetsTable({
       </div>,
       document.body
     )}
-
     {/* Toast Message */}
     {toastMessage && (typeof document !== 'undefined') && createPortal(
       <div
@@ -3979,7 +3710,6 @@ export function LibraryAssetsTable({
       </div>,
       document.body
     )}
-
     {/* Delete Confirmation Modal */}
     <DeleteAssetModal
       open={deleteConfirmVisible}
@@ -3989,7 +3719,6 @@ export function LibraryAssetsTable({
         setDeletingAssetId(null);
       }}
     />
-
     {/* Clear Contents Confirmation Modal */}
     <ClearContentsModal
       open={clearContentsConfirmVisible}
@@ -3998,7 +3727,6 @@ export function LibraryAssetsTable({
         setClearContentsConfirmVisible(false);
       }}
     />
-
     {/* Delete Row Confirmation Modal */}
     <DeleteRowModal
       open={deleteRowConfirmVisible}
@@ -4010,7 +3738,6 @@ export function LibraryAssetsTable({
     </>
   );
 }
-
 export default LibraryAssetsTable;
 
 
