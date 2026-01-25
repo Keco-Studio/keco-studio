@@ -18,10 +18,10 @@ interface NewSectionFormProps {
   onSave: (section: { name: string; fields: FieldConfig[] }) => Promise<void>;
   saving?: boolean;
   isFirstSection?: boolean;
+  sectionName: string;
 }
 
-export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = false }: NewSectionFormProps) {
-  const [sectionName, setSectionName] = useState('');
+export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = false, sectionName }: NewSectionFormProps) {
   const [fields, setFields] = useState<FieldConfig[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [pendingField, setPendingField] = useState<Omit<FieldConfig, 'id'> | null>(null);
@@ -86,12 +86,6 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
   };
 
   const handleSave = useCallback(async () => {
-    const trimmedName = sectionName.trim();
-    if (!trimmedName) {
-      setErrors(['Section name is required']);
-      return;
-    }
-
     // If there's a pending field with data, add it first
     let finalFields = fields;
     if (pendingField && pendingField.label.trim() && pendingField.dataType) {
@@ -153,7 +147,9 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
     setInvalidFields(new Set());
     setInvalidPendingField(undefined);
     setErrors([]);
-    await onSave({ name: trimmedName, fields: finalFields });
+    // Note: sectionName validation is handled by the parent component (page.tsx)
+    // which manages the newSectionName state
+    await onSave({ name: sectionName, fields: finalFields });
   }, [sectionName, fields, pendingField, onSave]);
 
   // Listen to top bar "Save" button when creating new section
@@ -176,37 +172,6 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
   return (
     <div>
       <div className={styles.newSectionContainer}>
-        <div className={sectionHeaderStyles.generalSection}>
-          <div>
-            <div>
-              <Image src={predefineExpandIcon} alt="expand" width={16} height={16} style={{ paddingTop: 3 }}/>
-              <span className={sectionHeaderStyles.generalLabel}>General</span>
-            </div>
-            <div className={sectionHeaderStyles.lineSeparator}></div>
-            <div className={sectionHeaderStyles.sectionNameContainer}>
-              <div className={sectionHeaderStyles.dragHandle} style={{ visibility: 'hidden' }}>
-                <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
-              </div>
-              <Input
-                placeholder="Enter section name"
-                value={sectionName}
-                onChange={(e) => {
-                  setSectionName(e.target.value);
-                  setErrors([]);
-                }}
-                className={sectionHeaderStyles.sectionNameInput}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className={styles.newSectionContainer}>
-        <div>
-          <Image src={predefineExpandIcon} alt="expand" width={16} height={16} style={{ paddingTop: 3 }}/>
-          <span className={styles.sectionTitle}>Pre-define property</span>
-        </div>
-        <div className={sectionHeaderStyles.lineSeparator}></div>
         <div className={styles.headerRow}>
           <div className={styles.headerLabel}>Label text</div>
           <div className={styles.headerDataType}>Data type</div>

@@ -27,10 +27,13 @@
 }
 
 .headerCell:nth-child(2) {
-  width: 120px;
+  width: 150px;
 }
 
-.headerCell:nth-child(3),
+.headerCell:nth-child(3) {
+  width: 150px;
+}
+
 .headerCell:nth-child(4) {
   width: 150px;
 }
@@ -126,5 +129,35 @@
 .actionButtonActive {
   background-color: #FF69B4 !important;
   border-color: #FF69B4 !important;
+}
+
+.avatarCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: white;
+  flex-shrink: 0;
+}
+
+.avatarName {
+  font-size: 14px;
+  color: #21272A;
+  font-weight: 400;
+}
+
+.emptyText {
+  font-size: 14px;
+  color: #94a3b8;
 }
 

@@ -18,8 +18,13 @@ import { LibraryCard } from '@/components/folders/LibraryCard';
 import { LibraryListView } from '@/components/folders/LibraryListView';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { NewLibraryModal } from '@/components/libraries/NewLibraryModal';
+import { EditLibraryModal } from '@/components/libraries/EditLibraryModal';
 import { NewFolderModal } from '@/components/folders/NewFolderModal';
+import { EditFolderModal } from '@/components/folders/EditFolderModal';
 import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
+import { ContextMenuAction } from '@/components/layout/ContextMenu';
+import { deleteLibrary } from '@/lib/services/libraryService';
+import { deleteFolder } from '@/lib/services/folderService';
 
 export default function ProjectPage() {
   const params = useParams();
@@ -37,6 +42,10 @@ export default function ProjectPage() {
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
+  const [showEditLibraryModal, setShowEditLibraryModal] = useState(false);
+  const [showEditFolderModal, setShowEditFolderModal] = useState(false);
+  const [editingLibraryId, setEditingLibraryId] = useState<string | null>(null);
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
   const [assetCounts, setAssetCounts] = useState<Record<string, number>>({}); 
   const [showCreateMenu, setShowCreateMenu] = useState(false);
   const [createButtonRef, setCreateButtonRef] = useState<HTMLButtonElement | null>(null);
@@ -267,6 +276,74 @@ export default function ProjectPage() {
     console.log('Delete:', libraryId);
   };
 
+  const handleLibraryAction = async (libraryId: string, action: ContextMenuAction) => {
+    switch (action) {
+      case 'rename':
+        setEditingLibraryId(libraryId);
+        setShowEditLibraryModal(true);
+        break;
+      case 'delete':
+        if (window.confirm('Delete this library?')) {
+          try {
+            // Get library info before deleting to notify proper events
+            const libraryToDelete = libraries.find(lib => lib.id === libraryId);
+            const deletedFolderId = libraryToDelete?.folder_id || null;
+            
+            await deleteLibrary(supabase, libraryId);
+            fetchData(); // Refresh data
+            
+            // Dispatch event to notify Sidebar
+            window.dispatchEvent(new CustomEvent('libraryDeleted', {
+              detail: { folderId: deletedFolderId, libraryId, projectId }
+            }));
+            
+            // If viewing this library, navigate to project
+            if (pathname.includes(libraryId)) {
+              router.push(`/${projectId}`);
+            }
+          } catch (err: any) {
+            console.error('Failed to delete library:', err);
+            alert(err?.message || 'Failed to delete library');
+          }
+        }
+        break;
+      default:
+        console.log('Library action not implemented:', action);
+    }
+  };
+
+  const handleFolderAction = async (folderId: string, action: ContextMenuAction) => {
+    switch (action) {
+      case 'rename':
+        setEditingFolderId(folderId);
+        setShowEditFolderModal(true);
+        break;
+      case 'delete':
+        if (window.confirm('Delete this folder? All libraries under it will be removed.')) {
+          try {
+            await deleteFolder(supabase, folderId);
+            fetchData(); // Refresh data
+            
+            // Dispatch event to notify Sidebar
+            window.dispatchEvent(new CustomEvent('folderDeleted', {
+              detail: { folderId, projectId }
+            }));
+            
+            // If viewing this folder, navigate to project
+            if (pathname.includes(`/folder/${folderId}`)) {
+              router.push(`/${projectId}`);
+            }
+          } catch (err: any) {
+            console.error('Failed to delete folder:', err);
+            alert(err?.message || 'Failed to delete folder');
+          }
+        }
+        break;
+      default:
+        console.log('Folder action not implemented:', action);
+    }
+  };
+
   const handleCreateFolder = () => {
     setShowFolderModal(true);
   };
@@ -387,8 +464,9 @@ export default function ProjectPage() {
               folder={folder}
               projectId={projectId}
               libraries={folderLibraries[folder.id] || []}
+              userRole={userRole}
               onClick={handleFolderClick}
-              onMoreClick={handleFolderMoreClick}
+              onAction={handleFolderAction}
             />
           ))}
           {libraries.map((library) => (
@@ -397,35 +475,48 @@ export default function ProjectPage() {
               library={library}
               projectId={projectId}
               assetCount={assetCounts[library.id] || 0} 
+              userRole={userRole}
               onClick={handleLibraryClick}
               onSettingsClick={handleLibrarySettingsClick}
-              onMoreClick={handleLibraryMoreClick}
-              onExport={handleExport}
-              onVersionHistory={handleVersionHistory}
-              onCreateBranch={handleCreateBranch}
-              onRename={handleRename}
-              onDuplicate={handleDuplicate}
-              onMoveTo={handleMoveTo}
-              onDelete={handleDelete}
+              onAction={handleLibraryAction}
             />
           ))}
         </div>
       ) : (
         <LibraryListView
+          folders={folders.map(folder => {
+            const libs = folderLibraries[folder.id] || [];
+            // Find the library with the most recent data update in this folder
+            let mostRecentLibrary = null;
+            let mostRecentDate = folder.updated_at;
+            
+            for (const lib of libs) {
+              const libUpdateDate = lib.last_data_updated_at || lib.updated_at;
+              if (new Date(libUpdateDate) > new Date(mostRecentDate)) {
+                mostRecentDate = libUpdateDate;
+                mostRecentLibrary = lib;
+              }
+            }
+            
+            return {
+              ...folder,
+              libraryCount: libs.length,
+              // Use the most recent data update time and user from libraries in folder
+              last_data_updated_at: mostRecentDate,
+              data_updater: mostRecentLibrary ? mostRecentLibrary.data_updater : folder.updater,
+            };
+          })}
           libraries={libraries.map(lib => ({
             ...lib,
             assetCount: assetCounts[lib.id] || 0
           }))}
           projectId={projectId}
+          userRole={userRole}
+          onFolderClick={handleFolderClick}
           onLibraryClick={handleLibraryClick}
           onSettingsClick={handleLibrarySettingsClick}
-          onExport={handleExport}
-          onVersionHistory={handleVersionHistory}
-          onCreateBranch={handleCreateBranch}
-          onRename={handleRename}
-          onDuplicate={handleDuplicate}
-          onMoveTo={handleMoveTo}
-          onDelete={handleDelete}
+          onLibraryAction={handleLibraryAction}
+          onFolderAction={handleFolderAction}
         />
       )}
       <NewLibraryModal
@@ -435,12 +526,46 @@ export default function ProjectPage() {
         folderId={null}
         onCreated={handleLibraryCreated}
       />
+      {editingLibraryId && (
+        <EditLibraryModal
+          open={showEditLibraryModal}
+          libraryId={editingLibraryId}
+          onClose={() => {
+            setShowEditLibraryModal(false);
+            setEditingLibraryId(null);
+          }}
+          onUpdated={() => {
+            fetchData(); // Refresh data
+            // Dispatch event to notify Sidebar
+            window.dispatchEvent(new CustomEvent('libraryUpdated', {
+              detail: { libraryId: editingLibraryId, projectId }
+            }));
+          }}
+        />
+      )}
       <NewFolderModal
         open={showFolderModal}
         onClose={() => setShowFolderModal(false)}
         projectId={projectId}
         onCreated={handleFolderCreated}
       />
+      {editingFolderId && (
+        <EditFolderModal
+          open={showEditFolderModal}
+          folderId={editingFolderId}
+          onClose={() => {
+            setShowEditFolderModal(false);
+            setEditingFolderId(null);
+          }}
+          onUpdated={() => {
+            fetchData(); // Refresh data
+            // Dispatch event to notify Sidebar
+            window.dispatchEvent(new CustomEvent('folderUpdated', {
+              detail: { folderId: editingFolderId, projectId }
+            }));
+          }}
+        />
+      )}
     </div>
   );
 }

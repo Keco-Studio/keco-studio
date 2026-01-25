@@ -1,11 +1,13 @@
 'use client';
 
+import { useState } from 'react';
 import Image from 'next/image';
 import { Folder } from '@/lib/services/folderService';
 import { Library } from '@/lib/services/libraryService';
 import projectPreviewFolderIcon from "@/app/assets/images/projectPreviewFolderIcon.svg";
 import projectPreviewFolderMoreIcon from "@/app/assets/images/projectPreviewFolderMoreIcon.svg";
 import libraryIconImage from "@/app/assets/images/LibraryBookIcon.svg";
+import { ContextMenu, ContextMenuAction } from '../layout/ContextMenu';
 import styles from './FolderCard.module.css';
 
 // Helper function to calculate character display width (Chinese = 2, English/Number = 1)
@@ -41,17 +43,26 @@ type FolderCardProps = {
   folder: Folder;
   projectId: string;
   libraries?: Library[];
-  onMoreClick?: (folderId: string, e: React.MouseEvent) => void;
+  userRole?: 'admin' | 'editor' | 'viewer' | null;
+  isProjectOwner?: boolean;
   onClick?: (folderId: string) => void;
+  onAction?: (folderId: string, action: ContextMenuAction) => void;
 };
 
 export function FolderCard({ 
   folder, 
   projectId, 
   libraries = [],
-  onMoreClick,
-  onClick 
+  userRole,
+  isProjectOwner,
+  onClick,
+  onAction,
 }: FolderCardProps) {
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+
   const handleCardClick = () => {
     if (onClick) {
       onClick(folder.id);
@@ -60,9 +71,18 @@ export function FolderCard({
 
   const handleMoreClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onMoreClick) {
-      onMoreClick(folder.id, e);
+    const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setContextMenu({
+      x: buttonRect.left - 180,
+      y: buttonRect.bottom + 4,
+    });
+  };
+
+  const handleContextMenuAction = (action: ContextMenuAction) => {
+    if (onAction) {
+      onAction(folder.id, action);
     }
+    setContextMenu(null);
   };
 
   // Determine which libraries to show
@@ -71,9 +91,10 @@ export function FolderCard({
   const showMoreIndicator = libraryCount > 3;
 
   return (
-    <div className={styles.card} onClick={handleCardClick}>
-      {/* Library tags section */}
-      {libraries.length > 0 ? (
+    <>
+      <div className={styles.card} onClick={handleCardClick}>
+        {/* Library tags section */}
+        {libraries.length > 0 ? (
         <div className={styles.librariesSection}>
           {displayLibraries.map((library) => (
             <div key={library.id} className={styles.libraryTag}>
@@ -140,7 +161,19 @@ export function FolderCard({
           />
         </button>
       </div>
-    </div>
+      </div>
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          type="folder"
+          onClose={() => setContextMenu(null)}
+          onAction={handleContextMenuAction}
+          userRole={userRole}
+          isProjectOwner={isProjectOwner}
+        />
+      )}
+    </>
   );
 }
 

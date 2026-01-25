@@ -412,12 +412,17 @@ export function FieldItem({
           <div className={styles.configButtonWrapper}>
             <button 
               ref={configButtonRef}
-              className={styles.configButton}
+              className={`${styles.configButton} ${showConfigMenu ? styles.configButtonActive : ''}`}
               onClick={() => !disabled && setShowConfigMenu(!showConfigMenu)}
               disabled={disabled}
               title="Configure options"
             >
-              <Image src={predefineLabelConfigIcon} alt="Config" width={20} height={20} />
+              <Image 
+                src={predefineLabelConfigIcon} 
+                alt="Config" 
+                width={20} 
+                height={20} 
+              />
             </button>
             {showConfigMenu && field.dataType === 'enum' && (
               <div ref={configMenuRef} className={styles.configMenu}>

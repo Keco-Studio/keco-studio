@@ -123,7 +123,9 @@ test.describe('Login Flow', () => {
     await loginPage.login(users.seedEmpty);
 
     // Verify we're on the projects dashboard
-    await expect(page.getByRole('heading', { name: /projects/i })).toBeVisible();
+    await expect(page).toHaveURL(/\/projects$/);
+  
+    await expect(page.getByText(/There is no any project here/i)).toBeVisible({ timeout: 10000 });
   });
 
   test('should show error with incorrect password', async () => {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, usePathname } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getFolder, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
@@ -10,6 +10,9 @@ import { LibraryCard } from '@/components/folders/LibraryCard';
 import { LibraryListView } from '@/components/folders/LibraryListView';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { NewLibraryModal } from '@/components/libraries/NewLibraryModal';
+import { EditLibraryModal } from '@/components/libraries/EditLibraryModal';
+import { ContextMenuAction } from '@/components/layout/ContextMenu';
+import { deleteLibrary } from '@/lib/services/libraryService';
 import libraryEmptyIcon from '@/app/assets/images/libraryEmptyIcon.svg';
 import plusHorizontal from '@/app/assets/images/plusHorizontal.svg';
 import plusVertical from '@/app/assets/images/plusVertical.svg';
@@ -19,6 +22,7 @@ import styles from './FolderPage.module.css';
 export default function FolderPage() {
   const params = useParams();
   const router = useRouter();
+  const pathname = usePathname();
   const supabase = useSupabase();
   const projectId = params.projectId as string;
   const folderId = params.folderId as string;
@@ -29,6 +33,8 @@ export default function FolderPage() {
   const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [showEditLibraryModal, setShowEditLibraryModal] = useState(false);
+  const [editingLibraryId, setEditingLibraryId] = useState<string | null>(null);
   const [assetCounts, setAssetCounts] = useState<Record<string, number>>({});
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
 
@@ -190,6 +196,38 @@ export default function FolderPage() {
     console.log('Delete:', libraryId);
   };
 
+  const handleLibraryAction = async (libraryId: string, action: ContextMenuAction) => {
+    switch (action) {
+      case 'rename':
+        setEditingLibraryId(libraryId);
+        setShowEditLibraryModal(true);
+        break;
+      case 'delete':
+        if (window.confirm('Delete this library?')) {
+          try {
+            await deleteLibrary(supabase, libraryId);
+            fetchData(); // Refresh data
+            
+            // Dispatch event to notify Sidebar
+            window.dispatchEvent(new CustomEvent('libraryDeleted', {
+              detail: { folderId, libraryId, projectId }
+            }));
+            
+            // If viewing this library, navigate back to folder
+            if (pathname.includes(libraryId)) {
+              router.push(`/${projectId}/folder/${folderId}`);
+            }
+          } catch (err: any) {
+            console.error('Failed to delete library:', err);
+            alert(err?.message || 'Failed to delete library');
+          }
+        }
+        break;
+      default:
+        console.log('Library action not implemented:', action);
+    }
+  };
+
   const handleCreateLibrary = () => {
     setShowLibraryModal(true);
   };
@@ -289,16 +327,10 @@ export default function FolderPage() {
               library={library}
               projectId={projectId}
               assetCount={assetCounts[library.id] || 0}
+              userRole={userRole}
               onClick={handleLibraryClick}
               onSettingsClick={handleLibrarySettingsClick}
-              onMoreClick={handleLibraryMoreClick}
-              onExport={handleExport}
-              onVersionHistory={handleVersionHistory}
-              onCreateBranch={handleCreateBranch}
-              onRename={handleRename}
-              onDuplicate={handleDuplicate}
-              onMoveTo={handleMoveTo}
-              onDelete={handleDelete}
+              onAction={handleLibraryAction}
             />
           ))}
         </div>
@@ -309,15 +341,10 @@ export default function FolderPage() {
             assetCount: assetCounts[lib.id] || 0
           }))}
           projectId={projectId}
+          userRole={userRole}
           onLibraryClick={handleLibraryClick}
           onSettingsClick={handleLibrarySettingsClick}
-          onExport={handleExport}
-          onVersionHistory={handleVersionHistory}
-          onCreateBranch={handleCreateBranch}
-          onRename={handleRename}
-          onDuplicate={handleDuplicate}
-          onMoveTo={handleMoveTo}
-          onDelete={handleDelete}
+          onLibraryAction={handleLibraryAction}
         />
       )}
       <NewLibraryModal
@@ -327,6 +354,23 @@ export default function FolderPage() {
         folderId={folderId}
         onCreated={handleLibraryCreated}
       />
+      {editingLibraryId && (
+        <EditLibraryModal
+          open={showEditLibraryModal}
+          libraryId={editingLibraryId}
+          onClose={() => {
+            setShowEditLibraryModal(false);
+            setEditingLibraryId(null);
+          }}
+          onUpdated={() => {
+            fetchData(); // Refresh data
+            // Dispatch event to notify Sidebar
+            window.dispatchEvent(new CustomEvent('libraryUpdated', {
+              detail: { libraryId: editingLibraryId, projectId }
+            }));
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
 import { Tooltip } from 'antd';
 import { Library } from '@/lib/services/libraryService';
@@ -8,45 +8,37 @@ import libraryCardIcon from "@/app/assets/images/LibraryCardIcon.svg";
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
 import moreOptionsIcon from "@/app/assets/images/moreOptionsIcon.svg";
 import tableThumbnail from "@/app/assets/images/tableThumbnail.svg";
-import { LibraryCardMenu } from './LibraryCardMenu';
+import { ContextMenu, ContextMenuAction } from '../layout/ContextMenu';
 import styles from './LibraryCard.module.css';
 
 type LibraryCardProps = {
   library: Library;
   projectId: string;
   assetCount?: number;
+  userRole?: 'admin' | 'editor' | 'viewer' | null;
+  isProjectOwner?: boolean;
   onSettingsClick?: (libraryId: string, e: React.MouseEvent) => void;
-  onMoreClick?: (libraryId: string, e: React.MouseEvent) => void;
   onClick?: (libraryId: string) => void;
-  onExport?: (libraryId: string) => void;
-  onVersionHistory?: (libraryId: string) => void;
-  onCreateBranch?: (libraryId: string) => void;
-  onRename?: (libraryId: string) => void;
-  onDuplicate?: (libraryId: string) => void;
-  onMoveTo?: (libraryId: string) => void;
-  onDelete?: (libraryId: string) => void;
+  onAction?: (libraryId: string, action: ContextMenuAction) => void;
 };
 
 export function LibraryCard({ 
   library, 
   projectId,
   assetCount = 0,
+  userRole,
+  isProjectOwner,
   onSettingsClick,
-  onMoreClick,
   onClick,
-  onExport,
-  onVersionHistory,
-  onCreateBranch,
-  onRename,
-  onDuplicate,
-  onMoveTo,
-  onDelete,
+  onAction,
 }: LibraryCardProps) {
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const moreButtonRef = useRef<HTMLButtonElement>(null);
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
 
   const handleCardClick = () => {
-    if (onClick && !isMenuOpen) {
+    if (onClick && !contextMenu) {
       onClick(library.id);
     }
   };
@@ -60,21 +52,18 @@ export function LibraryCard({
 
   const handleMoreClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    setIsMenuOpen(!isMenuOpen);
-    if (onMoreClick) {
-      onMoreClick(library.id, e);
-    }
+    const buttonRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setContextMenu({
+      x: buttonRect.left - 180,
+      y: buttonRect.bottom + 4,
+    });
   };
 
-  const handleMenuClose = () => {
-    setIsMenuOpen(false);
-  };
-
-  const handleMenuAction = (action?: (libraryId: string) => void) => {
-    if (action) {
-      action(library.id);
+  const handleContextMenuAction = (action: ContextMenuAction) => {
+    if (onAction) {
+      onAction(library.id, action);
     }
-    setIsMenuOpen(false);
+    setContextMenu(null);
   };
 
   return (
@@ -124,8 +113,7 @@ export function LibraryCard({
               </button>
             </Tooltip>
             <button
-              ref={moreButtonRef}
-              className={`${styles.actionButton} ${isMenuOpen ? styles.actionButtonActive : ''}`}
+              className={`${styles.actionButton} ${contextMenu ? styles.actionButtonActive : ''}`}
               onClick={handleMoreClick}
               aria-label="More options"
             >
@@ -139,18 +127,17 @@ export function LibraryCard({
           </div>
         </div>
       </div>
-      <LibraryCardMenu
-        isOpen={isMenuOpen}
-        onClose={handleMenuClose}
-        anchorElement={moreButtonRef.current}
-        onExport={() => handleMenuAction(onExport)}
-        onVersionHistory={() => handleMenuAction(onVersionHistory)}
-        onCreateBranch={() => handleMenuAction(onCreateBranch)}
-        onRename={() => handleMenuAction(onRename)}
-        onDuplicate={() => handleMenuAction(onDuplicate)}
-        onMoveTo={() => handleMenuAction(onMoveTo)}
-        onDelete={() => handleMenuAction(onDelete)}
-      />
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          type="library"
+          onClose={() => setContextMenu(null)}
+          onAction={handleContextMenuAction}
+          userRole={userRole}
+          isProjectOwner={isProjectOwner}
+        />
+      )}
     </>
   );
 }

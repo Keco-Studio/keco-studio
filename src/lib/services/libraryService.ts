@@ -18,7 +18,25 @@ export type Library = {
   description: string | null;
   created_at: string;
   updated_at: string;
+  updated_by: string | null;
   asset_count?: number; // Number of assets in this library
+  updater?: {
+    id: string;
+    username: string | null;
+    full_name: string | null;
+    email: string | null;
+    avatar_color: string | null;
+  } | null;
+  // Last data update info (from library_assets)
+  last_data_updated_at?: string | null;
+  last_data_updated_by?: string | null;
+  data_updater?: {
+    id: string;
+    username: string | null;
+    full_name: string | null;
+    email: string | null;
+    avatar_color: string | null;
+  } | null;
 };
 
 type CreateLibraryInput = {
@@ -151,7 +169,16 @@ export async function listLibraries(
   return globalRequestCache.fetch(cacheKey, async () => {
     let query = supabase
       .from('libraries')
-      .select('*')
+      .select(`
+        *,
+        updater:updated_by (
+          id,
+          username,
+          full_name,
+          email,
+          avatar_color
+        )
+      `)
       .eq('project_id', resolvedProjectId);
 
     // If folderId is provided, filter by folder_id
@@ -208,11 +235,49 @@ export async function listLibraries(
       countMap.set(asset.library_id, currentCount + 1);
     });
 
-    // Merge asset counts into libraries
-    return libraries.map(lib => ({
-      ...lib,
-      asset_count: countMap.get(lib.id) || 0,
-    }));
+    // Get most recent asset update for each library
+    const libraryIdsForUpdate = libraries.map(lib => lib.id);
+    
+    // Query to get the most recent asset update for each library
+    const { data: recentAssets } = await supabase
+      .from('library_assets')
+      .select(`
+        library_id,
+        updated_at,
+        updated_by,
+        updater:updated_by (
+          id,
+          username,
+          full_name,
+          email,
+          avatar_color
+        )
+      `)
+      .in('library_id', libraryIdsForUpdate)
+      .order('updated_at', { ascending: false });
+
+    // Create a map of library_id to most recent asset update
+    const recentAssetMap = new Map<string, any>();
+    (recentAssets || []).forEach(asset => {
+      if (!recentAssetMap.has(asset.library_id)) {
+        recentAssetMap.set(asset.library_id, asset);
+      }
+    });
+
+    // Merge asset counts and recent update info into libraries
+    return libraries.map((lib: any) => {
+      const recentAsset = recentAssetMap.get(lib.id);
+      
+      return {
+        ...lib,
+        asset_count: countMap.get(lib.id) || 0,
+        updater: lib.updater || null,
+        // Use asset update info if available, otherwise fall back to library update info
+        last_data_updated_at: recentAsset?.updated_at || lib.updated_at,
+        last_data_updated_by: recentAsset?.updated_by || lib.updated_by,
+        data_updater: recentAsset?.updater || lib.updater || null,
+      };
+    });
   });
 }
 
