@@ -34,6 +34,7 @@ import { useRowOperations } from './hooks/useRowOperations';
 import { useReferenceModal } from './hooks/useReferenceModal';
 import { useOptimisticCleanup } from './hooks/useOptimisticCleanup';
 import { useAddRow } from './hooks/useAddRow';
+import { useClickOutsideAutoSave } from './hooks/useClickOutsideAutoSave';
 import { ReferenceField } from './components/ReferenceField';
 import { CellPresenceAvatars } from './components/CellPresenceAvatars';
 import { TableToast } from './components/TableToast';
@@ -557,250 +558,30 @@ export function LibraryAssetsTable({
     }
   }, [enableRealtime, currentUser, broadcastCellUpdate]);
 
-  // Handle click outside to auto-save new asset or cancel editing
-  useEffect(() => {
-    const handleClickOutside = async (event: MouseEvent) => {
-      if (isSaving) return;
-      
-      // Don't trigger auto-save if reference modal is open
-      if (referenceModalOpen) {
-        return;
-      }
-
-      const target = event.target as Node;
-      
-      // Don't trigger auto-save if clicking on modal or modal-related elements
-      // Check if the click is on a modal element (modals are typically rendered outside the table container)
-      const clickedElement = target as Element;
-      if (clickedElement.closest && (
-        clickedElement.closest('[role="dialog"]') ||
-        clickedElement.closest('.ant-modal') ||
-        clickedElement.closest('[class*="modal"]') ||
-        clickedElement.closest('[class*="Modal"]') ||
-        // Exclude Ant Design Select dropdown menu
-        clickedElement.closest('.ant-select-dropdown') ||
-        clickedElement.closest('[class*="select-dropdown"]') ||
-        clickedElement.closest('.rc-select-dropdown')
-      )) {
-        return;
-      }
-
-      // Check if click is outside the table container
-      if (tableContainerRef.current && !tableContainerRef.current.contains(target)) {
-        // Handle new row auto-save
-        if (isAddingRow) {
-          // Check if we have at least some data to save
-          const hasData = Object.keys(newRowData).some(key => {
-            const value = newRowData[key];
-            return value !== null && value !== undefined && value !== '';
-          });
-
-          if (hasData && onSaveAsset && library) {
-            // Get asset name from first property (assuming first property is name)
-            const assetName = newRowData[properties[0]?.id] || 'Untitled';
-            
-            // Create optimistic asset row with temporary ID
-            const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-            const optimisticAsset: AssetRow = {
-              id: tempId,
-              libraryId: library.id,
-              name: String(assetName),
-              propertyValues: { ...newRowData },
-            };
-
-            // Optimistically add the asset to the display immediately
-            setOptimisticNewAssets(prev => {
-              const newMap = new Map(prev);
-              newMap.set(tempId, optimisticAsset);
-              return newMap;
-            });
-
-            // Reset adding state immediately for better UX
-            setIsAddingRow(false);
-            const savedNewRowData = { ...newRowData };
-            setNewRowData({});
-            
-            setIsSaving(true);
-            try {
-              await onSaveAsset(assetName, savedNewRowData);
-              // Don't remove optimistic asset immediately - let the cleanup useEffect handle it
-              // when parent refreshes and adds the real asset to rows
-              // The improved matching logic will detect the real asset and remove the optimistic one
-              // Set a timeout as fallback in case parent doesn't refresh
-              setTimeout(() => {
-                setOptimisticNewAssets(prev => {
-                  if (prev.has(tempId)) {
-                    const newMap = new Map(prev);
-                    newMap.delete(tempId);
-                    return newMap;
-                  }
-                  return prev;
-                });
-              }, 2000); // Increased timeout to give parent more time to refresh
-            } catch (error) {
-              console.error('Failed to save asset:', error);
-              // On error, revert optimistic update
-              setOptimisticNewAssets(prev => {
-                const newMap = new Map(prev);
-                newMap.delete(tempId);
-                return newMap;
-              });
-              // Restore adding state so user can try again
-              setIsAddingRow(true);
-              setNewRowData(savedNewRowData);
-            } finally {
-              setIsSaving(false);
-            }
-          } else if (!hasData) {
-            // If no data, still create a blank row (for paste operations or manual editing later)
-            // This allows users to create empty rows that can be used for paste
-            if (onSaveAsset && library) {
-              // Create a blank asset with empty name (will display as blank, not "Untitled")
-              // Note: We still need to pass a name to onSaveAsset for database constraint,
-              // but the display will be empty
-              const assetName = 'Untitled'; // Required for database, but won't be displayed
-              
-              // Create optimistic asset row with temporary ID
-              const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-              const optimisticAsset: AssetRow = {
-                id: tempId,
-                libraryId: library.id,
-                name: assetName,
-                propertyValues: {}, // Empty property values
-              };
-
-              // Optimistically add the blank asset to the display immediately
-              setOptimisticNewAssets(prev => {
-                const newMap = new Map(prev);
-                newMap.set(tempId, optimisticAsset);
-                return newMap;
-              });
-
-              // Reset adding state immediately
-              setIsAddingRow(false);
-              setNewRowData({});
-              
-              setIsSaving(true);
-              try {
-                await onSaveAsset(assetName, {});
-                // Remove optimistic asset after parent refreshes
-                setTimeout(() => {
-                  setOptimisticNewAssets(prev => {
-                    if (prev.has(tempId)) {
-                      const newMap = new Map(prev);
-                      newMap.delete(tempId);
-                      return newMap;
-                    }
-                    return prev;
-                  });
-                }, 2000);
-              } catch (error) {
-                console.error('Failed to save blank asset:', error);
-                // On error, revert optimistic update
-                setOptimisticNewAssets(prev => {
-                  const newMap = new Map(prev);
-                  newMap.delete(tempId);
-                  return newMap;
-                });
-                // Restore adding state so user can try again
-                setIsAddingRow(true);
-              } finally {
-                setIsSaving(false);
-              }
-            } else {
-              // If no onSaveAsset callback, just cancel (shouldn't happen in normal usage)
-              setIsAddingRow(false);
-              setNewRowData({});
-            }
-          }
-        }
-        
-        // Handle editing cell auto-save
-        if (editingCell && onUpdateAsset) {
-          const { rowId, propertyKey } = editingCell;
-          const row = rows.find(r => r.id === rowId);
-          if (row) {
-            const property = properties.find(p => p.key === propertyKey);
-            const isNameField = property && properties[0]?.key === propertyKey;
-            const updatedPropertyValues = {
-              ...row.propertyValues,
-              [propertyKey]: editingCellValue
-            };
-            const assetName = isNameField ? editingCellValue : (row.name || 'Untitled');
-            
-            // Immediately update Yjs
-            const allRows = yRows.toArray();
-            const rowIndex = allRows.findIndex(r => r.id === rowId);
-            if (rowIndex >= 0) {
-              const existingRow = allRows[rowIndex];
-              const updatedRow = {
-                ...existingRow,
-                name: String(assetName),
-                propertyValues: updatedPropertyValues
-              };
-              yRows.delete(rowIndex, 1);
-              yRows.insert(rowIndex, [updatedRow]);
-            }
-            
-            // Apply optimistic update
-            setOptimisticEditUpdates(prev => {
-              const newMap = new Map(prev);
-              newMap.set(rowId, {
-                name: String(assetName),
-                propertyValues: updatedPropertyValues
-              });
-              return newMap;
-            });
-            
-            // Reset editing state immediately for better UX
-            const savedValue = editingCellValue;
-            setEditingCell(null);
-            setEditingCellValue('');
-            setCurrentFocusedCell(null); // Clear focused cell when auto-saving
-            
-            // Delay clearing presence to give other users time to see the highlight
-            setTimeout(() => {
-              if (presenceTracking) {
-                presenceTracking.updateActiveCell(null, null);
-              }
-            }, 1000); // 1 second delay
-            
-            setIsSaving(true);
-            onUpdateAsset(rowId, assetName, updatedPropertyValues)
-              .then(() => {
-                setTimeout(() => {
-                  setOptimisticEditUpdates(prev => {
-                    const newMap = new Map(prev);
-                    newMap.delete(rowId);
-                    return newMap;
-                  });
-                }, 500);
-              })
-              .catch((error) => {
-                console.error('Failed to update cell:', error);
-                setOptimisticEditUpdates(prev => {
-                  const newMap = new Map(prev);
-                  newMap.delete(rowId);
-                  return newMap;
-                });
-                setEditingCell({ rowId, propertyKey });
-                setEditingCellValue(savedValue);
-              })
-              .finally(() => {
-                setIsSaving(false);
-              });
-          }
-        }
-      }
-    };
-
-    if (isAddingRow || editingCell) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => {
-        document.removeEventListener('mousedown', handleClickOutside);
-      };
-    }
-  }, [isAddingRow, editingCell, editingCellValue, isSaving, newRowData, onSaveAsset, onUpdateAsset, properties, rows, referenceModalOpen, yRows, setOptimisticEditUpdates]);
+  useClickOutsideAutoSave({
+    tableContainerRef,
+    isAddingRow,
+    newRowData,
+    setIsAddingRow,
+    setNewRowData,
+    isSaving,
+    setIsSaving,
+    referenceModalOpen,
+    onSaveAsset,
+    library,
+    properties,
+    setOptimisticNewAssets,
+    editingCell,
+    editingCellValue,
+    setEditingCell,
+    setEditingCellValue,
+    setCurrentFocusedCell,
+    onUpdateAsset,
+    rows,
+    yRows,
+    setOptimisticEditUpdates,
+    presenceTracking,
+  });
 
   // Handle input change for editing cell
   const handleEditCellValueChange = (value: string) => {
