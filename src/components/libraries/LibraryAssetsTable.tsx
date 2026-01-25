@@ -33,6 +33,7 @@ import { useYjsSync } from './hooks/useYjsSync';
 import { useAssetHover } from './hooks/useAssetHover';
 import { useRowOperations } from './hooks/useRowOperations';
 import { useReferenceModal } from './hooks/useReferenceModal';
+import { useOptimisticCleanup } from './hooks/useOptimisticCleanup';
 import { ReferenceField } from './ReferenceField';
 import { CellPresenceAvatars } from './CellPresenceAvatars';
 import { getAssetAvatarColor, getAssetAvatarText } from './utils/libraryAssetUtils';
@@ -405,180 +406,12 @@ export function LibraryAssetsTable({
 
   // Note: handleAcceptRemoteChanges will be defined after useCellEditing hook
 
-  // Create a string representation of rows for dependency tracking
-  // This ensures we detect changes even if the array reference doesn't change
-  const rowsSignature = useMemo(() => {
-    return rows.map(r => `${r.id}:${r.name}`).join('|');
-  }, [rows]);
-
-  // Clean up optimistic assets when rows are updated (parent refresh)
-  // This ensures that when a real asset is added/updated from the parent, we remove the optimistic one
-  useEffect(() => {
-    // CRITICAL FIX: Only clear optimistic updates when the row data matches the optimistic update
-    // This prevents clearing optimistic updates for other columns when one column is filled
-    // We should only clear when ALL property values in the optimistic update match the row data
-    setOptimisticEditUpdates(prev => {
-      if (prev.size === 0) return prev;
-      
-      const newMap = new Map(prev);
-      let hasChanges = false;
-      const clearedIds: string[] = [];
-      
-      for (const row of rows) {
-        const optimisticUpdate = newMap.get(row.id);
-        if (!optimisticUpdate) continue;
-        
-        // Check if the optimistic update matches the row data
-        // If all property values in the optimistic update match the row data, we can clear it
-        // Otherwise, keep the optimistic update (it might be for other columns)
-        let allMatch = true;
-        
-        // Check if name matches
-        if (optimisticUpdate.name !== row.name) {
-          allMatch = false;
-        }
-        
-        // Check if all property values in optimistic update match row data
-        if (allMatch) {
-          for (const [propertyKey, optimisticValue] of Object.entries(optimisticUpdate.propertyValues)) {
-            const rowValue = row.propertyValues[propertyKey];
-            
-            // Compare values (handle null/undefined)
-            if (optimisticValue !== rowValue) {
-              // For objects, do a deeper comparison
-              if (typeof optimisticValue === 'object' && optimisticValue !== null &&
-                  typeof rowValue === 'object' && rowValue !== null) {
-                const optimisticObj = optimisticValue as Record<string, any>;
-                const rowObj = rowValue as Record<string, any>;
-                
-                // Check if it's MediaFileMetadata-like object
-                if (optimisticObj.url && rowObj.url) {
-                  if (optimisticObj.url !== rowObj.url && 
-                      optimisticObj.path !== rowObj.path &&
-                      optimisticObj.fileName !== rowObj.fileName) {
-                    allMatch = false;
-                    break;
-                  }
-                } else {
-                  // For other objects, compare all keys
-                  const optimisticKeys = Object.keys(optimisticObj);
-                  const rowKeys = Object.keys(rowObj);
-                  if (optimisticKeys.length !== rowKeys.length) {
-                    allMatch = false;
-                    break;
-                  }
-                  for (const key of optimisticKeys) {
-                    if (optimisticObj[key] !== rowObj[key]) {
-                      allMatch = false;
-                      break;
-                    }
-                  }
-                  if (!allMatch) break;
-                }
-              } else {
-                allMatch = false;
-                break;
-              }
-            }
-          }
-        }
-        
-        // Only clear if all values match (meaning the optimistic update has been saved)
-        if (allMatch) {
-          newMap.delete(row.id);
-          clearedIds.push(row.id);
-          hasChanges = true;
-        }
-      }
-      
-      return hasChanges ? newMap : prev;
-    });
-    
-    let hasChanges = false;
-    
-    // Clean up optimistic new assets
-    if (optimisticNewAssets.size > 0) {
-      setOptimisticNewAssets(prev => {
-        const newMap = new Map(prev);
-        
-        for (const [tempId, optimisticAsset] of newMap.entries()) {
-          // Check if there's a real row with matching name and similar property values
-          const matchingRow = rows.find((row) => {
-            const assetRow = row as AssetRow;
-            if (assetRow.name !== optimisticAsset.name) return false;
-            // Check if property values match (allowing for some differences due to data transformation)
-            const optimisticKeys = Object.keys(optimisticAsset.propertyValues);
-            const rowKeys = Object.keys(assetRow.propertyValues);
-            if (optimisticKeys.length !== rowKeys.length) return false;
-            
-            // Compare property values, handling objects (like MediaFileMetadata) specially
-            const matchingKeys = optimisticKeys.filter(key => {
-              const optimisticValue = optimisticAsset.propertyValues[key];
-              const rowValue = assetRow.propertyValues[key];
-              
-              // If both are null/undefined, they match
-              if (!optimisticValue && !rowValue) return true;
-              if (!optimisticValue || !rowValue) return false;
-              
-              // If both are objects, compare key fields (for MediaFileMetadata: url, path, fileName)
-              if (typeof optimisticValue === 'object' && optimisticValue !== null && 
-                  typeof rowValue === 'object' && rowValue !== null) {
-                // Check if it looks like MediaFileMetadata (has url, path, fileName)
-                const optimisticObj = optimisticValue as Record<string, any>;
-                const rowObj = rowValue as Record<string, any>;
-                if (optimisticObj.url && rowObj.url) {
-                  return optimisticObj.url === rowObj.url || 
-                         optimisticObj.path === rowObj.path ||
-                         optimisticObj.fileName === rowObj.fileName;
-                }
-                // For other objects, do deep comparison of key fields
-                const objKeys = Object.keys(optimisticObj);
-                return objKeys.every(k => optimisticObj[k] === rowObj[k]);
-              }
-              
-              // For primitive values, use strict equality
-              return optimisticValue === rowValue;
-            });
-            
-            // If most keys match, consider it a match
-            return matchingKeys.length >= optimisticKeys.length * 0.8; // 80% match threshold
-          });
-          
-          if (matchingRow) {
-            newMap.delete(tempId);
-            hasChanges = true;
-          }
-        }
-        
-        return hasChanges ? newMap : prev;
-      });
-    }
-    
-    // Also clear optimistic updates where the name doesn't match the row name
-    // This handles the case where external updates happened but the effect didn't catch it
-    setOptimisticEditUpdates(prev => {
-      if (prev.size === 0) return prev;
-      
-      const newMap = new Map(prev);
-      let hasChanges = false;
-      const staleIds: string[] = [];
-      
-      for (const [assetId, optimisticUpdate] of newMap.entries()) {
-        const row = rows.find(r => r.id === assetId);
-        if (row && row.name !== optimisticUpdate.name) {
-          // Name doesn't match, so this optimistic update is stale
-          newMap.delete(assetId);
-          staleIds.push(assetId);
-          hasChanges = true;
-        }
-      }
-      
-      return hasChanges ? newMap : prev;
-    });
-    
-    // Note: optimistic edit updates are already cleared at the beginning of this effect
-    // when rows prop changes, so we don't need to clear them again here
-  }, [rows, rowsSignature, optimisticNewAssets.size]);
+  useOptimisticCleanup({
+    rows,
+    optimisticNewAssets,
+    setOptimisticEditUpdates,
+    setOptimisticNewAssets,
+  });
 
   // Ref for table container to detect clicks outside
   const tableContainerRef = useRef<HTMLDivElement>(null);
@@ -3739,5 +3572,3 @@ export function LibraryAssetsTable({
   );
 }
 export default LibraryAssetsTable;
-
-
