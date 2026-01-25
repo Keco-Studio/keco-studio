@@ -5,6 +5,7 @@ import Image from 'next/image';
 import { Library } from '@/lib/services/libraryService';
 import { Folder } from '@/lib/services/folderService';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import libraryIcon48 from "@/app/assets/images/projectPreviewListLibraryIcon.svg";
 import folderIcon from "@/app/assets/images/projectPreviewListFolderIcon.svg";
 import settingsIcon18 from "@/app/assets/images/settingsIcon18.svg";
@@ -160,7 +161,7 @@ export function LibraryListView({
                     <div className={styles.avatarCell}>
                       <div 
                         className={styles.avatar}
-                        style={{ backgroundColor: item.data_updater.avatar_color || '#999999' }}
+                        style={{ backgroundColor: getUserAvatarColor(item.data_updater.id) }}
                       >
                         {getUserInitials(item.data_updater.username, item.data_updater.full_name, item.data_updater.email)}
                       </div>

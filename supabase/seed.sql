@@ -15,11 +15,7 @@ begin;
 -- The instance_id for local projects is all zeros.
 
 -- User 1: empty account
-with u as (
-  select
-    gen_random_uuid() as id,
-    crypt('Password123!', gen_salt('bf')) as enc_pwd
-)
+-- Using fixed UUID to prevent auth.uid() mismatch after db reset
 insert into auth.users (
   id, instance_id, email, encrypted_password,
   raw_app_meta_data, raw_user_meta_data,
@@ -28,18 +24,22 @@ insert into auth.users (
   confirmation_token, recovery_token, email_change_token_new,
   email_change_token_current, email_change, reauthentication_token
 )
-select
-  u.id,
+values (
+  'aaaaaaaa-bbbb-cccc-dddd-000000000001'::uuid,  -- Fixed UUID
   '00000000-0000-0000-0000-000000000000',
   'seed-empty@mailinator.com',
-  u.enc_pwd,
+  crypt('Password123!', gen_salt('bf')),
   jsonb_build_object('provider', 'email', 'providers', array['email']),
   jsonb_build_object('username', 'seed-empty'),
   now(), now(),
   'authenticated', 'authenticated',
   now(), now(), now(),
   '', '', '', '', '', ''
-from u;
+)
+on conflict (id) do update set
+  email = excluded.email,
+  encrypted_password = excluded.encrypted_password,
+  updated_at = now();
 
 -- User 2: empty account (for parallel testing)
 with u as (
@@ -189,6 +189,9 @@ from project3;
 -- ==========================================
 
 -- Happy Path Test User: Complete data matching happy-path test output
+-- CRITICAL FIX: Using fixed UUID to prevent auth.uid() mismatch after db reset
+-- Problem: gen_random_uuid() creates different UUID each reset, breaking RLS policies
+-- Solution: Fixed UUID ensures auth.uid() always matches owner_id
 with happy_path_user as (
   insert into auth.users (
     id, instance_id, email, encrypted_password,
@@ -198,8 +201,8 @@ with happy_path_user as (
     confirmation_token, recovery_token, email_change_token_new,
     email_change_token_current, email_change, reauthentication_token
   )
-  select
-    gen_random_uuid(),
+  values (
+    'aaaaaaaa-bbbb-cccc-dddd-000000000007'::uuid,  -- Fixed UUID for consistency
     '00000000-0000-0000-0000-000000000000',
     'seed-happy-path@mailinator.com',
     crypt('Password123!', gen_salt('bf')),
@@ -209,6 +212,11 @@ with happy_path_user as (
     'authenticated', 'authenticated',
     now(), now(), now(),
     '', '', '', '', '', ''
+  )
+  on conflict (id) do update set
+    email = excluded.email,
+    encrypted_password = excluded.encrypted_password,
+    updated_at = now()
   returning id
 ),
 happy_path_project as (
