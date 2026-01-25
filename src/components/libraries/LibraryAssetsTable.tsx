@@ -36,6 +36,9 @@ import { useOptimisticCleanup } from './hooks/useOptimisticCleanup';
 import { useAddRow } from './hooks/useAddRow';
 import { useClickOutsideAutoSave } from './hooks/useClickOutsideAutoSave';
 import { useTableMenuPosition } from './hooks/useTableMenuPosition';
+import { useClipboardShortcuts } from './hooks/useClipboardShortcuts';
+import { useResolvedRows } from './hooks/useResolvedRows';
+import { useCloseOnDocumentClick } from './hooks/useCloseOnDocumentClick';
 import { ReferenceField } from './components/ReferenceField';
 import { CellPresenceAvatars } from './components/CellPresenceAvatars';
 import { TableToast } from './components/TableToast';
@@ -410,6 +413,14 @@ export function LibraryAssetsTable({
     setOptimisticEditUpdates,
     setOptimisticNewAssets,
   });
+
+  const resolvedRows = useResolvedRows({
+    allRowsSource,
+    deletedAssetIds,
+    optimisticEditUpdates,
+    optimisticNewAssets,
+  });
+
   // Ref for table container to detect clicks outside
   const tableContainerRef = useRef<HTMLDivElement>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
@@ -996,103 +1007,21 @@ export function LibraryAssetsTable({
     setBatchEditMenuPosition(menuPos);
   };
 
-  // Cut/Copy/Paste operations are now handled by useClipboardOperations hook
-  // The functions (handleCut, handleCopy, handlePaste) are available from the hook above
+  useClipboardShortcuts({
+    editingCell,
+    selectedCells,
+    selectedRowIds,
+    clipboardData,
+    onCut: handleCut,
+    onCopy: handleCopy,
+    onPaste: handlePaste,
+  });
 
-  // Keyboard shortcuts for Cut, Copy, Paste
-  useEffect(() => {
-    // Detect OS to use correct modifier key (Ctrl for Windows/Linux, Cmd for macOS)
-    // Use modern API if available, fallback to userAgent
-    const isMac = typeof navigator !== 'undefined' && (
-      // Modern API (Chrome 92+, Edge 92+) - check if available
-      (('userAgentData' in navigator) && 
-       (navigator as any).userAgentData?.platform?.toLowerCase().includes('mac')) ||
-      // Fallback to userAgent
-      navigator.userAgent.toUpperCase().includes('MAC')
-    );
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger shortcuts if:
-      // 1. User is editing a cell (contentEditable)
-      // 2. User is typing in an input, textarea, or select element
-      // 3. User is in a modal or dropdown
-      const target = e.target as HTMLElement;
-      const isEditing = editingCell !== null;
-      const isInputElement = target.tagName === 'INPUT' || 
-                            target.tagName === 'TEXTAREA' || 
-                            target.tagName === 'SELECT' ||
-                            target.isContentEditable ||
-                            target.closest('input') !== null ||
-                            target.closest('textarea') !== null ||
-                            target.closest('[contenteditable="true"]') !== null ||
-                            target.closest('.ant-select') !== null ||
-                            target.closest('.ant-input') !== null ||
-                            target.closest('.ant-modal') !== null;
-      
-      if (isEditing || isInputElement) {
-        return; // Let browser handle default behavior
-      }
-
-      // Check modifier key
-      const hasModifier = isMac ? e.metaKey : e.ctrlKey;
-      if (!hasModifier) {
-        return;
-      }
-
-      // Handle Cut (Ctrl/Cmd + X)
-      if (e.key === 'x' || e.key === 'X') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (selectedCells.size > 0 || selectedRowIds.size > 0) {
-          handleCut();
-        }
-        return;
-      }
-
-      // Handle Copy (Ctrl/Cmd + C)
-      if (e.key === 'c' || e.key === 'C') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (selectedCells.size > 0 || selectedRowIds.size > 0) {
-          handleCopy();
-        }
-        return;
-      }
-
-      // Handle Paste (Ctrl/Cmd + V)
-      if (e.key === 'v' || e.key === 'V') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (clipboardData && clipboardData.length > 0 && clipboardData[0].length > 0) {
-          handlePaste();
-        }
-        return;
-      }
-    };
-
-    // Add event listener
-    window.addEventListener('keydown', handleKeyDown);
-
-    // Cleanup
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [editingCell, selectedCells, selectedRowIds, clipboardData, handleCut, handleCopy, handlePaste]);
-
-  // Close context menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = () => {
-      setContextMenuRowId(null);
-      setContextMenuPosition(null);
-    };
-    
-    if (contextMenuRowId) {
-      document.addEventListener('click', handleClickOutside);
-      return () => {
-        document.removeEventListener('click', handleClickOutside);
-      };
-    }
-  }, [contextMenuRowId]);
+  const closeRowContextMenu = useCallback(() => {
+    setContextMenuRowId(null);
+    setContextMenuPosition(null);
+  }, []);
+  useCloseOnDocumentClick(!!contextMenuRowId, closeRowContextMenu);
 
   if (!hasProperties) {
     return <EmptyState userRole={userRole} onPredefineClick={handlePredefineClick} />;
@@ -1121,68 +1050,7 @@ export function LibraryAssetsTable({
         <table className={styles.table}>
         <TableHeader groups={groups} />
         <tbody className={styles.body}>
-          {(() => {
-            // Combine real rows with optimistic new assets and apply optimistic edit updates
-            // Use Yjs data source (allRowsSource) to ensure all operations are based on the same array
-            // Key: use Map to deduplicate, ensure each row.id appears only once (resolve key duplication issue)
-            
-            const allRowsMap = new Map<string, AssetRow>();
-            
-            // Add rows from allRowsSource (deduplicate)
-            allRowsSource
-              .filter((row): row is AssetRow => !deletedAssetIds.has(row.id))
-              .forEach((row) => {
-                const assetRow = row as AssetRow;
-                const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
-                
-                // Only use optimistic update if the row name matches the optimistic name
-                if (optimisticUpdate && optimisticUpdate.name === assetRow.name) {
-                  allRowsMap.set(assetRow.id, {
-                    ...assetRow,
-                    name: optimisticUpdate.name,
-                    propertyValues: { ...assetRow.propertyValues, ...optimisticUpdate.propertyValues }
-                  });
-                } else {
-                  // If already exists, keep the first one (avoid duplicates)
-                  if (!allRowsMap.has(assetRow.id)) {
-                    allRowsMap.set(assetRow.id, assetRow);
-                  }
-                }
-              });
-            
-            // Add optimistic new assets (deduplicate)
-            optimisticNewAssets.forEach((asset, id) => {
-              if (!allRowsMap.has(id)) {
-                allRowsMap.set(id, asset);
-              }
-            });
-            
-            // Convert to array, maintain order (based on allRowsSource order)
-            const allRows: AssetRow[] = [];
-            const processedIds = new Set<string>();
-            
-            // First add in allRowsSource order
-            allRowsSource.forEach(row => {
-              if (!deletedAssetIds.has(row.id) && !processedIds.has(row.id)) {
-                const rowToAdd = allRowsMap.get(row.id);
-                if (rowToAdd) {
-                  allRows.push(rowToAdd);
-                  processedIds.add(row.id);
-                }
-              }
-            });
-            
-            // Then add optimistic new assets (not in allRowsSource)
-            optimisticNewAssets.forEach((asset, id) => {
-              if (!processedIds.has(id)) {
-                allRows.push(asset);
-                processedIds.add(id);
-              }
-            });
-            
-            return allRows;
-          })()
-            .map((row, index) => {
+          {resolvedRows.map((row, index) => {
             // Normal display row
             const isRowHovered = hoveredRowId === row.id;
             const isRowSelected = selectedRowIds.has(row.id);
