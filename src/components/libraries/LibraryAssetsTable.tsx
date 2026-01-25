@@ -35,6 +35,7 @@ import { useReferenceModal } from './hooks/useReferenceModal';
 import { useOptimisticCleanup } from './hooks/useOptimisticCleanup';
 import { useAddRow } from './hooks/useAddRow';
 import { useClickOutsideAutoSave } from './hooks/useClickOutsideAutoSave';
+import { useTableMenuPosition } from './hooks/useTableMenuPosition';
 import { ReferenceField } from './components/ReferenceField';
 import { CellPresenceAvatars } from './components/CellPresenceAvatars';
 import { TableToast } from './components/TableToast';
@@ -415,7 +416,6 @@ export function LibraryAssetsTable({
 
   // Ref for table container to detect clicks outside
   const tableContainerRef = useRef<HTMLDivElement>(null);
-  const batchEditMenuOriginalPositionRef = useRef<{ x: number; y: number; scrollY: number } | null>(null);
 
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const contextMenuRowIdRef = useRef<string | null>(null);
@@ -911,138 +911,34 @@ export function LibraryAssetsTable({
     rows,
   });
 
-  // Close batch edit menu when clicking outside
-  useEffect(() => {
-    if (!batchEditMenuVisible) return;
-    
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.batchEditMenu')) {
-        setBatchEditMenuVisible(false);
-        setBatchEditMenuPosition(null);
-        batchEditMenuOriginalPositionRef.current = null;
-      }
-    };
-    
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setBatchEditMenuVisible(false);
-        setBatchEditMenuPosition(null);
-        batchEditMenuOriginalPositionRef.current = null;
-      }
-    };
-    
-    document.addEventListener('mousedown', handleClickOutside);
-    document.addEventListener('keydown', handleEscape);
-    
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [batchEditMenuVisible]);
-
-  // Clear original position ref when menu is closed
-  useEffect(() => {
-    if (!batchEditMenuVisible) {
-      batchEditMenuOriginalPositionRef.current = null;
-    }
-  }, [batchEditMenuVisible]);
-
-  // Helper function to get current scroll position from scrollable container
-  const getCurrentScrollY = useCallback(() => {
-    const tableContainer = tableContainerRef.current;
-    if (!tableContainer) {
-      return window.scrollY || window.pageYOffset || 0;
-    }
-
-    // Check if tableContainer itself is scrollable
-    const containerStyle = window.getComputedStyle(tableContainer);
-    const hasOverflow = containerStyle.overflow === 'auto' || containerStyle.overflow === 'scroll' || 
-                       containerStyle.overflowY === 'auto' || containerStyle.overflowY === 'scroll';
-    
-    if (hasOverflow && tableContainer.scrollHeight > tableContainer.clientHeight) {
-      return tableContainer.scrollTop;
-    }
-
-    // Check parent elements for scrollable container
-    let element: HTMLElement | null = tableContainer.parentElement;
-    while (element && element !== document.body) {
-      const style = window.getComputedStyle(element);
-      const hasOverflow = style.overflow === 'auto' || style.overflow === 'scroll' || 
-                         style.overflowY === 'auto' || style.overflowY === 'scroll';
-      
-      if (hasOverflow && element.scrollHeight > element.clientHeight) {
-        return element.scrollTop;
-      }
-      
-      element = element.parentElement;
-    }
-
-    // Fallback to window scroll
-    return window.scrollY || window.pageYOffset || 0;
-  }, []);
-
-  // Update batch edit menu position on scroll
-  useEffect(() => {
-    if (!batchEditMenuVisible || !batchEditMenuOriginalPositionRef.current) return;
-
-    const updateMenuPosition = () => {
-      const originalPos = batchEditMenuOriginalPositionRef.current;
-      if (!originalPos) return;
-
-      const currentScrollY = getCurrentScrollY();
-      const initialScrollY = originalPos.scrollY || 0;
-      
-      // Calculate scroll delta (positive when scrolling down)
-      const scrollDelta = currentScrollY - initialScrollY;
-      
-      // Debug log (can be removed later)
-      // console.log('Scroll update:', { currentScrollY, initialScrollY, scrollDelta, newY: originalPos.y - scrollDelta });
-      
-      // For fixed positioning, when table scrolls down, menu should move up relative to viewport
-      // So we subtract the scroll delta from the original Y position
-      const newY = originalPos.y - scrollDelta;
-      
-      setBatchEditMenuPosition({
-        x: originalPos.x,
-        y: newY,
-      });
-    };
-
-    // Listen to scroll events on multiple possible containers
-    const tableContainer = tableContainerRef.current;
-    const scrollElements: (HTMLElement | Window)[] = [];
-    
-    // Add table container and its scrollable parents
-    if (tableContainer) {
-      scrollElements.push(tableContainer);
-      let element: HTMLElement | null = tableContainer.parentElement;
-      while (element && element !== document.body) {
-        const style = window.getComputedStyle(element);
-        const hasOverflow = style.overflow === 'auto' || style.overflow === 'scroll' || 
-                           style.overflowY === 'auto' || style.overflowY === 'scroll';
-        if (hasOverflow) {
-          scrollElements.push(element);
-        }
-        element = element.parentElement;
-      }
-    }
-    
-    // Always listen to window scroll
-    scrollElements.push(window);
-    
-    // Add event listeners
-    scrollElements.forEach(element => {
-      element.addEventListener('scroll', updateMenuPosition, true);
-    });
-    
-    return () => {
-      // Remove event listeners
-      scrollElements.forEach(element => {
-        element.removeEventListener('scroll', updateMenuPosition, true);
-      });
-    };
-  }, [batchEditMenuVisible]);
+  const {
+    getCurrentScrollY,
+    adjustMenuPosition,
+    getCutBorderClasses,
+    getCopyBorderClasses,
+    batchEditMenuOriginalPositionRef,
+  } = useTableMenuPosition({
+    tableContainerRef,
+    batchEditMenuVisible,
+    setBatchEditMenuVisible,
+    setBatchEditMenuPosition,
+    cutSelectionBounds,
+    copySelectionBounds,
+    cutCells,
+    copyCells,
+    orderedProperties,
+    getAllRowsForCellSelection,
+    borderClassNames: {
+      cutBorderTop: styles.cutBorderTop,
+      cutBorderBottom: styles.cutBorderBottom,
+      cutBorderLeft: styles.cutBorderLeft,
+      cutBorderRight: styles.cutBorderRight,
+      copyBorderTop: styles.copyBorderTop,
+      copyBorderBottom: styles.copyBorderBottom,
+      copyBorderLeft: styles.copyBorderLeft,
+      copyBorderRight: styles.copyBorderRight,
+    },
+  });
 
   // Handle right-click context menu
   const handleRowContextMenu = (e: React.MouseEvent, row: AssetRow) => {
@@ -1129,79 +1025,6 @@ export function LibraryAssetsTable({
     setBatchEditMenuVisible(true);
     setBatchEditMenuPosition(menuPos);
   };
-
-  // Helper function to adjust context menu position
-  // Menu appears directly at right-click position and expands downward
-  // User can scroll the table if menu is cut off at bottom
-  const adjustMenuPosition = useCallback((x: number, y: number, menuHeight: number = 400): { x: number; y: number } => {
-    const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 0;
-    const padding = 10; // Padding from window edges
-    
-    // Use Y position directly - menu appears at right-click location and expands downward
-    // If menu is cut off at bottom, user can scroll the table to see it
-    const adjustedY = y;
-    
-    // Only adjust X position if menu would be cut off at right edge
-    let adjustedX = x;
-    const menuWidth = 180; // minWidth from batchEditMenu style
-    if (x + menuWidth > windowWidth - padding) {
-      adjustedX = Math.max(padding, windowWidth - menuWidth - padding);
-    }
-    
-    return { x: adjustedX, y: adjustedY };
-  }, []);
-
-  // Helper function to check if a cell is on the border of cut selection
-  const getCutBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
-    if (!cutSelectionBounds || !cutCells.has(`${rowId}-${orderedProperties[propertyIndex].key}` as CellKey)) {
-      return '';
-    }
-    
-    const allRowsForSelection = getAllRowsForCellSelection();
-    const rowIndex = allRowsForSelection.findIndex(r => r.id === rowId);
-    
-    if (rowIndex === -1) return '';
-    
-    const { minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex } = cutSelectionBounds;
-    const isTop = rowIndex === minRowIndex;
-    const isBottom = rowIndex === maxRowIndex;
-    const isLeft = propertyIndex === minPropertyIndex;
-    const isRight = propertyIndex === maxPropertyIndex;
-    
-    const classes: string[] = [];
-    if (isTop) classes.push(styles.cutBorderTop);
-    if (isBottom) classes.push(styles.cutBorderBottom);
-    if (isLeft) classes.push(styles.cutBorderLeft);
-    if (isRight) classes.push(styles.cutBorderRight);
-    
-    return classes.join(' ');
-  }, [cutSelectionBounds, cutCells, orderedProperties, getAllRowsForCellSelection]);
-
-  // Helper function to check if a cell is on the border of copy selection
-  const getCopyBorderClasses = useCallback((rowId: string, propertyIndex: number): string => {
-    if (!copySelectionBounds || !copyCells.has(`${rowId}-${orderedProperties[propertyIndex].key}` as CellKey)) {
-      return '';
-    }
-    
-    const allRowsForSelection = getAllRowsForCellSelection();
-    const rowIndex = allRowsForSelection.findIndex(r => r.id === rowId);
-    
-    if (rowIndex === -1) return '';
-    
-    const { minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex } = copySelectionBounds;
-    const isTop = rowIndex === minRowIndex;
-    const isBottom = rowIndex === maxRowIndex;
-    const isLeft = propertyIndex === minPropertyIndex;
-    const isRight = propertyIndex === maxPropertyIndex;
-    
-    const classes: string[] = [];
-    if (isTop) classes.push(styles.copyBorderTop);
-    if (isBottom) classes.push(styles.copyBorderBottom);
-    if (isLeft) classes.push(styles.copyBorderLeft);
-    if (isRight) classes.push(styles.copyBorderRight);
-    
-    return classes.join(' ');
-  }, [copySelectionBounds, copyCells, orderedProperties, getAllRowsForCellSelection]);
 
   // Cut/Copy/Paste operations are now handled by useClipboardOperations hook
   // The functions (handleCut, handleCopy, handlePaste) are available from the hook above
