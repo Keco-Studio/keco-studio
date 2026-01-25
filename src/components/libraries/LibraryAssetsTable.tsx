@@ -37,6 +37,7 @@ import { useOptimisticCleanup } from './hooks/useOptimisticCleanup';
 import { useAddRow } from './hooks/useAddRow';
 import { ReferenceField } from './ReferenceField';
 import { CellPresenceAvatars } from './CellPresenceAvatars';
+import { TableToast } from './TableToast';
 import { getAssetAvatarColor, getAssetAvatarText } from './utils/libraryAssetUtils';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
 import libraryAssetTable5Icon from '@/app/assets/images/LibraryAssetTable5.svg';
@@ -3443,31 +3444,7 @@ export function LibraryAssetsTable({
       </div>,
       document.body
     )}
-    {/* Toast Message */}
-    {toastMessage && (typeof document !== 'undefined') && createPortal(
-      <div
-        className={styles.toastMessage}
-        style={{
-          position: 'fixed',
-          bottom: '24px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          zIndex: 10000,
-          backgroundColor: '#111827',
-          color: '#ffffff',
-          padding: '12px 24px',
-          borderRadius: '8px',
-          boxShadow: '0 4px 16px rgba(0, 0, 0, 0.2)',
-          fontSize: '14px',
-          fontWeight: 500,
-          whiteSpace: 'nowrap',
-          pointerEvents: 'none',
-        }}
-      >
-        {toastMessage}
-      </div>,
-      document.body
-    )}
+    <TableToast message={toastMessage} />
     {/* Delete Confirmation Modal */}
     <DeleteAssetModal
       open={deleteConfirmVisible}
