@@ -42,9 +42,9 @@ import { TableToast } from './components/TableToast';
 import { RowContextMenu } from './components/RowContextMenu';
 import { BatchEditMenu } from './components/BatchEditMenu';
 import { AssetCardPanel } from './components/AssetCardPanel';
+import { TableHeader } from './components/TableHeader';
+import { EmptyState } from './components/EmptyState';
 import assetTableIcon from '@/app/assets/images/AssetTableIcon.svg';
-import noassetIcon1 from '@/app/assets/images/NoassetIcon1.svg';
-import noassetIcon2 from '@/app/assets/images/NoassetIcon2.svg';
 import libraryAssetTableAddIcon from '@/app/assets/images/LibraryAssetTableAddIcon.svg';
 import libraryAssetTableSelectIcon from '@/app/assets/images/LibraryAssetTableSelectIcon.svg';
 import batchEditAddIcon from '@/app/assets/images/BatchEditAddIcon.svg';
@@ -400,31 +400,24 @@ export function LibraryAssetsTable({
       const next = new Map(prev);
       next.delete(cellKey);
       return next;
-    });
-    
+    });  
     message.success('Kept your changes', 2);
   }, []);
-
   // Note: handleAcceptRemoteChanges will be defined after useCellEditing hook
-
   useOptimisticCleanup({
     rows,
     optimisticNewAssets,
     setOptimisticEditUpdates,
     setOptimisticNewAssets,
   });
-
   // Ref for table container to detect clicks outside
   const tableContainerRef = useRef<HTMLDivElement>(null);
-
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const contextMenuRowIdRef = useRef<string | null>(null);
-
   // Router for navigation
   const router = useRouter();
   const params = useParams();
   const supabase = useSupabase();
-
   const {
     hoveredAssetId,
     setHoveredAssetId,
@@ -437,20 +430,10 @@ export function LibraryAssetsTable({
     handleAssetCardMouseLeave,
     avatarRefs,
   } = useAssetHover(supabase);
-
   const hasSections = sections.length > 0;
-
   const userRole = useUserRole(params?.projectId as string | undefined, supabase);
-
   const {
-    isAddingRow,
-    setIsAddingRow,
-    newRowData,
-    setNewRowData,
-    handleSaveNewAsset,
-    handleCancelAdding,
-    handleInputChange,
-    handleMediaFileChange,
+    isAddingRow,setIsAddingRow,newRowData,setNewRowData,handleSaveNewAsset,handleCancelAdding,handleInputChange,handleMediaFileChange,
   } = useAddRow({
     properties,
     library,
@@ -463,7 +446,6 @@ export function LibraryAssetsTable({
     currentUser,
     broadcastAssetCreate: enableRealtime && currentUser ? broadcastAssetCreate : undefined,
   });
-
   // Cell editing hook (must be after userRole and useAddRow)
   const cellEditing = useCellEditing({
     properties,
@@ -478,7 +460,6 @@ export function LibraryAssetsTable({
     presenceTracking,
     handleCellFocus,
   });
-
   // Extract cell editing state and handlers
   const {
     editingCell,
@@ -495,19 +476,15 @@ export function LibraryAssetsTable({
     handleCancelEditing,
     validateValueByType,
   } = cellEditing;
-
   // Conflict resolution handlers (must be after useCellEditing hook)
   const handleAcceptRemoteChanges = useCallback((assetId: string, propertyKey: string) => {
     const cellKey = `${assetId}-${propertyKey}`;
     const conflict = conflictedCells.get(cellKey);
-    
     if (!conflict) return;
-    
     // Apply remote value to editing cell if it's currently being edited
     if (editingCell?.rowId === assetId && editingCell?.propertyKey === propertyKey) {
       setEditingCellValue(String(conflict.remoteValue));
     }
-    
     // Remove conflict state
     setConflictedCells(prev => {
       const next = new Map(prev);
@@ -516,7 +493,6 @@ export function LibraryAssetsTable({
     });
     message.info(`Accepted changes from ${conflict.userName}`, 2);
   }, [conflictedCells, editingCell, setEditingCellValue]);
-
   const {
     referenceModalOpen,
     referenceModalProperty,
@@ -538,10 +514,8 @@ export function LibraryAssetsTable({
     supabase,
     setOptimisticEditUpdates,
   });
-  
   const hasProperties = properties.length > 0;
   const hasRows = rows.length > 0;
-
   // Helper function to broadcast cell updates
   const broadcastCellUpdateIfEnabled = useCallback(async (
     assetId: string,
@@ -557,7 +531,6 @@ export function LibraryAssetsTable({
       }
     }
   }, [enableRealtime, currentUser, broadcastCellUpdate]);
-
   useClickOutsideAutoSave({
     tableContainerRef,
     isAddingRow,
@@ -582,19 +555,16 @@ export function LibraryAssetsTable({
     setOptimisticEditUpdates,
     presenceTracking,
   });
-
   // Handle input change for editing cell
   const handleEditCellValueChange = (value: string) => {
     setEditingCellValue(value);
   };
-
   // Handle media file change for editing cell (with immediate save)
   const handleEditMediaFileChange = (rowId: string, propertyKey: string, value: MediaFileMetadata | null) => {
     // Prevent editing if user is a viewer
     if (userRole === 'viewer') {
       return;
     }
-    
     // For media files, we need to save immediately when changed
     if (!onUpdateAsset) return;
     
@@ -1125,36 +1095,8 @@ export function LibraryAssetsTable({
   }, [contextMenuRowId]);
 
   if (!hasProperties) {
-    return (
-      <div className={styles.tableContainer}>
-        <div className={styles.emptyState}>
-          <Image
-            src={noassetIcon1}
-            alt=""
-            width={72}
-            height={72}
-            className={styles.emptyStateIcon}
-          />
-          <p className={styles.emptyStateText}>
-            There is no any asset here. You need to create an asset firstly.
-          </p>
-          {userRole === 'admin' && (
-            <button className={styles.predefineButton} onClick={handlePredefineClick}>
-              <Image
-                src={noassetIcon2}
-                alt=""
-                width={24}
-                height={24}
-                className={styles.predefineButtonIcon}
-              />
-              <span>Predefine</span>
-            </button>
-          )}
-        </div>
-      </div>
-    );
+    return <EmptyState userRole={userRole} onPredefineClick={handlePredefineClick} />;
   }
-
 
   // Calculate total columns: # + properties (no actions column)
   const totalColumns = 1 + orderedProperties.length;
@@ -1177,46 +1119,7 @@ export function LibraryAssetsTable({
       )} */}
       <div className={styles.tableContainer} ref={tableContainerRef}>
         <table className={styles.table}>
-        <thead>
-          {/* First row: Section headers (Basic Info, Visual Info, etc.) */}
-          <tr className={styles.headerRowTop}>
-            <th
-              scope="col"
-              className={`${styles.headerCell} ${styles.numberColumnHeader}`}
-            >
-            </th>
-            {groups.map((group) => (
-              <th
-                key={group.section.id}
-                scope="col"
-                colSpan={group.properties.length}
-                className={`${styles.headerCell} ${styles.sectionHeaderCell}`}
-              >
-                {group.section.name}
-              </th>
-            ))}
-          </tr>
-          {/* Second row: # and property headers (name, skill, clod, etc.) */}
-          <tr className={styles.headerRowBottom}>
-            <th
-              scope="col"
-              className={`${styles.headerCell} ${styles.numberColumnHeader}`}
-            >
-              #
-            </th>
-            {groups.map((group) =>
-              group.properties.map((property) => (
-                <th
-                  key={property.id}
-                  scope="col"
-                  className={`${styles.headerCell} ${styles.propertyHeaderCell}`}
-                >
-                  {property.name}
-                </th>
-              ))
-            )}
-          </tr>
-        </thead>
+        <TableHeader groups={groups} />
         <tbody className={styles.body}>
           {(() => {
             // Combine real rows with optimistic new assets and apply optimistic edit updates
