@@ -42,7 +42,7 @@ export function CreateVersionModal({
       return;
     }
     
-    // Validate name for disallowed characters (emoji, HTML tags, special symbols)
+    // Validate name for disallowed characters (emoji, HTML tags, special symbols, URLs)
     const validationError = validateName(trimmed);
     if (validationError) {
       setError(validationError);
