@@ -84,68 +84,48 @@ jobs:
         # Get the JSON output and debug it
         echo "📋 Getting Supabase status as JSON..."
         STATUS_JSON=$(supabase status --output json)
-        echo "Raw JSON output:"
-        echo "$STATUS_JSON" | head -20
         
-        # Try to extract keys with better error handling
-        ANON_KEY=$(echo "$STATUS_JSON" | jq -r '.anon_key // empty')
-        SERVICE_KEY=$(echo "$STATUS_JSON" | jq -r '.service_role_key // empty')
+        # Extract keys using correct field names from Supabase CLI JSON output
+        # Note: Sensitive values may be masked as "***" in JSON, so we'll use text output as fallback
+        ANON_KEY=$(echo "$STATUS_JSON" | jq -r '.PUBLISHABLE_KEY // empty')
+        SERVICE_KEY=$(echo "$STATUS_JSON" | jq -r '.SERVICE_ROLE_KEY // .SECRET_KEY // empty')
         
-        # If jq failed or keys are missing, try alternative methods
-        if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "empty" ]; then
-          echo "⚠️  ANON_KEY not found in JSON, trying alternative methods..."
-          
-          # Method 1: Try alternative field names in JSON
-          ANON_KEY=$(echo "$STATUS_JSON" | jq -r '.["anon_key"] // .APIKeys.anon // .anonKey // empty')
-          
-          # Method 2: Try to extract from supabase status text output
-          if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "empty" ]; then
-            echo "⚠️  Trying to extract from text output..."
-            STATUS_TEXT=$(supabase status)
-            ANON_KEY=$(echo "$STATUS_TEXT" | grep -i "anon key" | head -1 | sed -n 's/.*anon[[:space:]]*key[[:space:]]*:[[:space:]]*\([^[:space:]]*\).*/\1/p' | tr -d '"')
-          fi
-          
-          # Method 3: Try to read from .env file if it exists
-          if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ]; then
-            if [ -f ".env.local" ]; then
-              echo "⚠️  Trying to read from .env.local..."
-              ANON_KEY=$(grep "^NEXT_PUBLIC_SUPABASE_ANON_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d "'")
-            fi
-          fi
-          
-          if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ]; then
-            echo "❌ Error: ANON_KEY is empty or null after all attempts"
-            echo "Full JSON output for debugging:"
-            echo "$STATUS_JSON"
-            echo ""
-            echo "Full status text output:"
-            supabase status
-            exit 1
-          fi
+        # If keys are masked (show as "***") or missing, extract from text output
+        if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "empty" ] || [ "$ANON_KEY" == "***" ]; then
+          echo "⚠️  PUBLISHABLE_KEY is masked or missing, extracting from text output..."
+          STATUS_TEXT=$(supabase status)
+          # Extract Publishable key from text output (format: "│ Publishable │ sb_publishable_... │")
+          ANON_KEY=$(echo "$STATUS_TEXT" | grep -i "Publishable" | sed -n 's/.*│[[:space:]]*Publishable[[:space:]]*│[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
         fi
         
-        if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ] || [ "$SERVICE_KEY" == "empty" ]; then
-          echo "⚠️  SERVICE_ROLE_KEY not found in JSON, trying alternative methods..."
-          
-          # Method 1: Try alternative field names in JSON
-          SERVICE_KEY=$(echo "$STATUS_JSON" | jq -r '.["service_role_key"] // .APIKeys.service_role // .serviceRoleKey // empty')
-          
-          # Method 2: Try to extract from supabase status text output
-          if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ] || [ "$SERVICE_KEY" == "empty" ]; then
-            echo "⚠️  Trying to extract from text output..."
+        if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ] || [ "$SERVICE_KEY" == "empty" ] || [ "$SERVICE_KEY" == "***" ]; then
+          echo "⚠️  SERVICE_ROLE_KEY is masked or missing, extracting from text output..."
+          if [ -z "$STATUS_TEXT" ]; then
             STATUS_TEXT=$(supabase status)
-            SERVICE_KEY=$(echo "$STATUS_TEXT" | grep -i "service.*role.*key" | head -1 | sed -n 's/.*service[[:space:]]*role[[:space:]]*key[[:space:]]*:[[:space:]]*\([^[:space:]]*\).*/\1/p' | tr -d '"')
           fi
-          
-          if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ]; then
-            echo "❌ Error: SERVICE_ROLE_KEY is empty or null after all attempts"
-            echo "Full JSON output for debugging:"
-            echo "$STATUS_JSON"
-            echo ""
-            echo "Full status text output:"
-            supabase status
-            exit 1
-          fi
+          # Extract Secret key from text output (format: "│ Secret      │ sb_secret_... │")
+          SERVICE_KEY=$(echo "$STATUS_TEXT" | grep -i "Secret" | grep -v "JWT" | sed -n 's/.*│[[:space:]]*Secret[[:space:]]*│[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
+        fi
+        
+        # Final validation
+        if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "empty" ] || [ "$ANON_KEY" == "***" ]; then
+          echo "❌ Error: ANON_KEY (PUBLISHABLE_KEY) is empty, null, or masked"
+          echo "JSON output:"
+          echo "$STATUS_JSON" | jq '.'
+          echo ""
+          echo "Text output:"
+          echo "$STATUS_TEXT"
+          exit 1
+        fi
+        
+        if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ] || [ "$SERVICE_KEY" == "empty" ] || [ "$SERVICE_KEY" == "***" ]; then
+          echo "❌ Error: SERVICE_ROLE_KEY is empty, null, or masked"
+          echo "JSON output:"
+          echo "$STATUS_JSON" | jq '.'
+          echo ""
+          echo "Text output:"
+          echo "$STATUS_TEXT"
+          exit 1
         fi
         
         # Set environment variables for all subsequent steps
