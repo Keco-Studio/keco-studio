@@ -831,7 +831,9 @@ export function useClipboardOperations({
       setIsSaving(true);
       try {
         // Group updates by rowId for efficiency
-        const updatesByRow = new Map<string, Record<string, any>>();
+        // Track both propertyValues and name field updates separately
+        const updatesByRow = new Map<string, { propertyValues: Record<string, any>; name?: string | null }>();
+        const nameFieldKey = orderedProperties[0]?.key;
         
         // 对齐 batch fill：从 base 构建 propertyValues 再合并粘贴值，避免合并逻辑导致 float 小数丢失
         updatesToApply.forEach(({ rowId, propertyKey, value }) => {
@@ -839,17 +841,32 @@ export function useClipboardOperations({
             const baseRow = dataManager.getRowBaseValue(rowId);
             const row = allRowsForSelection.find(r => r.id === rowId);
             if (baseRow) {
-              updatesByRow.set(rowId, { ...baseRow.propertyValues });
+              updatesByRow.set(rowId, { 
+                propertyValues: { ...baseRow.propertyValues },
+                name: baseRow.name
+              });
             } else if (row) {
-              updatesByRow.set(rowId, { ...row.propertyValues });
+              updatesByRow.set(rowId, { 
+                propertyValues: { ...row.propertyValues },
+                name: row.name
+              });
             } else {
-              updatesByRow.set(rowId, {});
+              updatesByRow.set(rowId, { propertyValues: {} });
             }
           }
           // Update with new value
           const rowUpdates = updatesByRow.get(rowId);
           if (rowUpdates) {
-            rowUpdates[propertyKey] = value;
+            // Check if this is the name field (first property)
+            if (propertyKey === nameFieldKey) {
+              // Update name field separately
+              rowUpdates.name = value !== null ? String(value) : 'Untitled';
+              // Also update propertyValues for consistency
+              rowUpdates.propertyValues[propertyKey] = value;
+            } else {
+              // Update property value
+              rowUpdates.propertyValues[propertyKey] = value;
+            }
           }
         });
         
@@ -861,17 +878,20 @@ export function useClipboardOperations({
         
         // Batch update Yjs first (reverse order update to avoid index changes)
         const rowsToUpdate: Array<{ rowId: string; index: number; row: AssetRow }> = [];
-        for (const [rowId, propertyValues] of updatesByRow.entries()) {
+        for (const [rowId, rowData] of updatesByRow.entries()) {
           const row = allRowsForSelection.find(r => r.id === rowId);
           if (row) {
             const rowIndex = rowIndexMap.get(rowId);
             if (rowIndex !== undefined) {
+              // Use updated name if name field was pasted, otherwise use existing row.name
+              const updatedName = rowData.name !== undefined ? rowData.name : (row.name || 'Untitled');
               rowsToUpdate.push({
                 rowId,
                 index: rowIndex,
                 row: {
                   ...row,
-                  propertyValues: propertyValues
+                  name: updatedName,
+                  propertyValues: rowData.propertyValues
                 }
               });
             }
@@ -885,11 +905,14 @@ export function useClipboardOperations({
           yRows.insert(index, [row]);
         });
         
-        //
+        // Update database with correct name value
         const updatePromises = Array.from(updatesByRow.entries())
-          .map(([rowId, propertyValues]) => {
+          .map(([rowId, rowData]) => {
             const row = allRowsForSelection.find(r => r.id === rowId);
-            return row ? onUpdateAsset(rowId, row.name || 'Untitled', propertyValues) : Promise.resolve();
+            if (!row) return Promise.resolve();
+            // Use updated name if name field was pasted, otherwise use existing row.name
+            const updatedName = rowData.name !== undefined ? rowData.name : (row.name || 'Untitled');
+            return onUpdateAsset(rowId, updatedName, rowData.propertyValues);
           });
         await Promise.all(updatePromises);
       } catch (error) {

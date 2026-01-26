@@ -2138,7 +2138,7 @@ export function LibraryAssetsTable({
                               title={typeValidationError}
                               open={true}
                               placement="bottom"
-                              overlayStyle={{ fontSize: '12px' }}
+                              styles={{ root: { fontSize: '12px' } }}
                             >
                               <div
                                 ref={typeValidationErrorRef}
