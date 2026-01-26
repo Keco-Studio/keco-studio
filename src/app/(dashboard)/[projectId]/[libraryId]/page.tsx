@@ -102,7 +102,7 @@ export default function LibraryPage() {
   } = usePresenceTracking({
     libraryId: libraryId,
     userId: userProfile?.id || '',
-    userName: userProfile?.full_name || userProfile?.username || 'Anonymous',
+    userName: userProfile?.username || userProfile?.full_name || userProfile?.email || 'Anonymous',
     userEmail: userProfile?.email || '',
     avatarColor: userAvatarColor,
     onPresenceJoin: handlePresenceJoin,
@@ -629,7 +629,7 @@ export default function LibraryPage() {
           libraryDescription={library.description}
           projectId={projectId}
           currentUserId={userProfile.id}
-          currentUserName={userProfile.full_name || userProfile.username || 'You'}
+          currentUserName={userProfile.username || userProfile.full_name || userProfile.email || 'You'}
           currentUserEmail={userProfile.email || ''}
           currentUserAvatarColor={userAvatarColor}
           userRole={userRole}
@@ -670,7 +670,7 @@ export default function LibraryPage() {
                 userProfile
                   ? {
                       id: userProfile.id,
-                      name: userProfile.full_name || userProfile.username || 'Anonymous',
+                      name: userProfile.username || userProfile.full_name || userProfile.email || 'Anonymous',
                       email: userProfile.email,
                       avatarColor: userAvatarColor,
                     }

@@ -138,11 +138,12 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 🔧 DEV MODE: Check if we should skip email and add directly
-    const isDevelopment = process.env.NODE_ENV === 'development';
+    // 🔧 AUTO-ACCEPT MODE: Check if we should skip email and add directly
+    // Set SKIP_INVITATION_EMAIL=true in environment variables to auto-accept invitations
     const skipEmail = process.env.SKIP_INVITATION_EMAIL === 'true';
     
-    if (isDevelopment && skipEmail) {
+    if (skipEmail) {
+      console.log('[API /invitations] Auto-accept mode enabled - adding collaborator directly');
       
       // Add user directly as collaborator
       const { error: addError } = await supabase
@@ -164,9 +165,12 @@ export async function POST(request: NextRequest) {
         }, { status: 500 });
       }
       
+      const recipientName = recipientProfile.username || recipientProfile.full_name || recipientEmail;
+      
       return NextResponse.json({
         success: true,
-        message: `${recipientProfile.username || recipientEmail} added as ${role} (dev mode - no email sent)`,
+        autoAccepted: true,
+        message: `${recipientName} added as ${role}`,
       });
     }
 
