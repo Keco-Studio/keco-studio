@@ -348,7 +348,12 @@ export function useCellSelection({
             return;
           }
           if (endRowIndex > startRowIndex) {
-            await fillDown(startRowId, endRowId, startPropertyKey);
+            isFillingCellsRef.current = false;
+            document.body.style.userSelect = '';
+            document.body.style.cursor = '';
+            document.body.classList.remove('filling-cells');
+            setFillDragStartCell(null);
+            void fillDown(startRowId, endRowId, startPropertyKey);
           } else {
             setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
           }
