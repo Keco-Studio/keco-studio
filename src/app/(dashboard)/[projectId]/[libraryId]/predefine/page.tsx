@@ -6,6 +6,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { useParams } from 'next/navigation';
 import { Tabs, Button, App, ConfigProvider, Input, Tooltip } from 'antd';
 import type { TabsProps } from 'antd/es/tabs';
+import type { InputRef } from 'antd/es/input';
 import Image from 'next/image';
 import predefineLabelAddIcon from '@/app/assets/images/predefineLabelAddIcon.svg';
 import predefineLabelDelIcon from '@/app/assets/images/predefineLabelDelIcon.svg';
@@ -65,6 +66,10 @@ function PredefinePageContent() {
   const [editingTabId, setEditingTabId] = useState<string | null>(null);
   // Track new section name when creating
   const [newSectionName, setNewSectionName] = useState('');
+  // Ref for new section tab name input to auto-focus
+  const newSectionInputRef = useRef<InputRef>(null);
+  // Flag to prevent immediate blur after auto-focus
+  const isAutoFocusing = useRef(false);
 
   const activeSection = useMemo(
     () => sections.find((s) => s.id === activeSectionId) || null,
@@ -123,6 +128,7 @@ function PredefinePageContent() {
         if (autoEnteredCreationMode.current && isCreatingNewSection) {
           setIsCreatingNewSection(false);
           setNewSectionName(''); // Clear section name when exiting creation mode
+          setEditingTabId(null); // Clear editing state when exiting creation mode
           autoEnteredCreationMode.current = false;
         }
         if (!activeSectionId || !sections.find((s) => s.id === activeSectionId)) {
@@ -143,8 +149,44 @@ function PredefinePageContent() {
   const cancelCreatingNewSection = useCallback(() => {
     setIsCreatingNewSection(false);
     setNewSectionName('');
+    setEditingTabId(null); // Clear editing state when canceling
     setErrors([]);
   }, []);
+
+  // Auto-enter edit mode for new section tab name
+  useEffect(() => {
+    if (isCreatingNewSection) {
+      // First set editing state, then focus the input after it's rendered
+      setEditingTabId(NEW_SECTION_TAB_KEY);
+      
+      // Set flag to prevent immediate blur
+      isAutoFocusing.current = true;
+      
+      // Use multiple animation frames to ensure the input is fully rendered
+      const focusTimer = setTimeout(() => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            if (newSectionInputRef.current) {
+              newSectionInputRef.current.focus();
+              // Also select all text so user can immediately start typing
+              newSectionInputRef.current.select();
+            }
+          });
+        });
+      }, 100);
+      
+      // Clear the auto-focusing flag after a longer delay to prevent accidental blur
+      const flagTimer = setTimeout(() => {
+        isAutoFocusing.current = false;
+      }, 1000);
+      
+      return () => {
+        clearTimeout(focusTimer);
+        clearTimeout(flagTimer);
+        isAutoFocusing.current = false;
+      };
+    }
+  }, [isCreatingNewSection]);
 
   const handleAddField = (sectionId: string, fieldData: Omit<FieldConfig, 'id'>) => {
     const field: FieldConfig = {
@@ -412,6 +454,7 @@ function PredefinePageContent() {
         setLoadingAfterSave(true);
         setIsCreatingNewSection(false);
         setNewSectionName(''); // Clear new section name
+        setEditingTabId(null); // Clear editing state after saving
         const loadedSections = await reloadSections();
         if (loadedSections && loadedSections.length > 0) {
           setActiveSectionId(loadedSections[loadedSections.length - 1].id);
@@ -747,13 +790,17 @@ function PredefinePageContent() {
       label: (
         <div
           onClick={(e) => {
-            e.stopPropagation();
-            setEditingTabId(NEW_SECTION_TAB_KEY);
+            // Only allow setting edit mode when not already editing
+            if (editingTabId !== NEW_SECTION_TAB_KEY) {
+              e.stopPropagation();
+              setEditingTabId(NEW_SECTION_TAB_KEY);
+            }
           }}
           style={{ display: 'inline-block' }}
         >
           {editingTabId === NEW_SECTION_TAB_KEY ? (
             <Input
+              ref={newSectionInputRef}
               autoFocus
               value={newSectionName}
               onChange={(e) => {
@@ -766,13 +813,28 @@ function PredefinePageContent() {
                   e.stopPropagation();
                 }
               }}
-              onBlur={() => {
-                setEditingTabId(null);
+              onBlur={(e) => {
+                // Ignore blur during auto-focusing period
+                if (!isAutoFocusing.current) {
+                  setEditingTabId(null);
+                }
               }}
               onPressEnter={() => {
+                // Always allow Enter to exit editing
+                isAutoFocusing.current = false;
                 setEditingTabId(null);
               }}
-              onClick={(e) => e.stopPropagation()}
+              onFocus={(e) => {
+                // Select all text when focused
+                e.target.select();
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Ensure input stays focused when clicked
+                if (e.currentTarget) {
+                  e.currentTarget.focus();
+                }
+              }}
               onMouseDown={(e) => e.stopPropagation()}
               className={styles.tabNameInput}
               style={{ 

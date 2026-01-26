@@ -1351,7 +1351,7 @@ export function LibraryAssetsTable({
                           <MediaFileUpload
                             value={mediaValue || null}
                             onChange={(value) => handleEditMediaFileChange(row.id, property.key, value)}
-                            disabled={isSaving}
+                            disabled={isSaving || userRole === 'viewer'}
                             fieldType={property.dataType}
                             onFocus={() => handleCellFocus(row.id, property.key)}
                             onBlur={handleCellBlur}
@@ -2265,7 +2265,7 @@ export function LibraryAssetsTable({
                       <MediaFileUpload
                         value={mediaValue || null}
                         onChange={(value) => handleMediaFileChange(property.key, value)}
-                        disabled={isSaving}
+                        disabled={isSaving || userRole === 'viewer'}
                         fieldType={property.dataType}
                       />
                     </td>

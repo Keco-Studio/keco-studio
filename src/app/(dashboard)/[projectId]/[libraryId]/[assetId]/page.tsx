@@ -584,7 +584,7 @@ export default function AssetPage() {
         
         const currentUserPresence: PresenceState = {
           userId: userProfile.id,
-          userName: userProfile.full_name || userProfile.username || userProfile.email,
+          userName: userProfile.username || userProfile.full_name || userProfile.email,
           userEmail: userProfile.email,
           avatarColor: getUserAvatarColor(userProfile.id),
           activeCell: { assetId: asset.id, propertyKey: fieldId },

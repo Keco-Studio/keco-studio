@@ -38,7 +38,7 @@ export function PresenceProvider({ children, libraryId }: PresenceProviderProps)
   } = usePresenceTracking({
     libraryId: libraryId || '',
     userId: userProfile?.id || '',
-    userName: userProfile?.full_name || userProfile?.username || 'Anonymous',
+    userName: userProfile?.username || userProfile?.full_name || userProfile?.email || 'Anonymous',
     userEmail: userProfile?.email || '',
     avatarColor: userAvatarColor,
     onPresenceJoin: () => {},

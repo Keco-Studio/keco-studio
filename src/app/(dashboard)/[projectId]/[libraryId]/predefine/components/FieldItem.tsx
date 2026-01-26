@@ -321,6 +321,7 @@ export function FieldItem({
         <div className={styles.inputWrapper}>
           <Input
             value={localLabel}
+            placeholder="Type label for property..."
             className={styles.labelInput}
             onChange={handleLabelChange}
             onCompositionStart={handleCompositionStart}
