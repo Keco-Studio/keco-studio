@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { createLibrary, checkLibraryNameExists } from '@/lib/services/libraryService';
+import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
 import closeIcon from '@/app/assets/images/closeIcon32.svg';
 import styles from './NewLibraryModal.module.css';
@@ -33,6 +34,13 @@ export function NewLibraryModal({ open, projectId, folderId, onClose, onCreated 
     const trimmed = name.trim();
     if (!trimmed) {
       setError('Library name is required');
+      return;
+    }
+    
+    // Validate name for disallowed characters (emoji, HTML tags, special symbols)
+    const validationError = validateName(trimmed);
+    if (validationError) {
+      setError(validationError);
       return;
     }
     

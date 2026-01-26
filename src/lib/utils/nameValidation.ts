@@ -8,6 +8,48 @@ export function validateName(name: string): string | null {
     return null; // Empty names are handled by other validation
   }
 
+  // Detect URLs - check for URL protocols (http://, https://, ftp://, file://, etc.)
+  // This pattern matches common URL schemes followed by ://
+  const urlProtocolRegex = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//;
+  if (urlProtocolRegex.test(name)) {
+    return 'URLs, emojis, HTML tags or special characters (!@#$%) are not allowed';
+  }
+
+  // Detect URLs without protocol but with common URL patterns
+  // Check for patterns like localhost:port, 127.0.0.1:port, or 0.0.0.0:port
+  const urlPatternRegex = /(localhost|127\.0\.0\.1|0\.0\.0\.0):\d+/i;
+  if (urlPatternRegex.test(name)) {
+    return 'URLs, emojis, HTML tags or special characters (!@#$%) are not allowed';
+  }
+
+  // Detect UUID patterns that might be part of URLs (e.g., /uuid/uuid or uuid/uuid)
+  // UUID format: 8-4-4-4-12 hexadecimal digits separated by hyphens
+  const uuidPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+  const uuidMatches = name.match(new RegExp(uuidPattern.source, 'gi'));
+  // If name contains multiple UUIDs separated by slashes, it's likely a URL path
+  if (uuidMatches && uuidMatches.length >= 2 && name.includes('/')) {
+    return 'URLs, emojis, HTML tags or special characters (!@#$%) are not allowed';
+  }
+
+  // Detect URL paths that start with / and contain UUIDs
+  // This catches patterns like /uuid/uuid or /uuid/path/uuid
+  if (name.startsWith('/') && uuidMatches && uuidMatches.length >= 1) {
+    return 'URLs, emojis, HTML tags or special characters (!@#$%) are not allowed';
+  }
+
+  // Detect patterns that look like URLs: domain.com/path or subdomain.domain.com/path
+  // This checks for domain patterns followed by a path
+  const domainWithPathRegex = /^([a-zA-Z0-9]([a-zA-Z0-9-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}\/[^\s]*$/;
+  if (domainWithPathRegex.test(name)) {
+    return 'URLs, emojis, HTML tags or special characters (!@#$%) are not allowed';
+  }
+
+  // Detect patterns like "hostname:port/path" (without protocol)
+  const hostPortPathRegex = /^[a-zA-Z0-9.-]+:\d+\/[^\s]*$/;
+  if (hostPortPathRegex.test(name)) {
+    return 'URLs, emojis, HTML tags or special characters (!@#$%) are not allowed';
+  }
+
   // Detect emojis (including various emoji ranges)
   // Check common emoji Unicode ranges
   const emojiRanges = [
@@ -25,7 +67,7 @@ export function validateName(name: string): string | null {
   
   for (const regex of emojiRanges) {
     if (regex.test(name)) {
-      return 'No emojis, HTML tags or !@#$% allowed';
+      return 'URLs, emojis, HTML tags or special characters (!@#$%) are not allowed';
     }
   }
   
@@ -43,7 +85,7 @@ export function validateName(name: string): string | null {
         const falsePositives = /^[0-9A-Za-z]$/;
         const realEmojis = matches.filter(m => !falsePositives.test(m));
         if (realEmojis.length > 0) {
-          return 'No emojis, HTML tags or !@#$% allowed';
+          return 'URLs, emojis, HTML tags or special characters (!@#$%) are not allowed';
         }
       }
     }
@@ -54,13 +96,13 @@ export function validateName(name: string): string | null {
   // Detect HTML tags (check content between < and >)
   const htmlTagRegex = /<[^>]*>/g;
   if (htmlTagRegex.test(name)) {
-    return 'No emojis, HTML tags or !@#$% allowed';
+    return 'URLs, emojis, HTML tags or special characters (!@#$%) are not allowed';
   }
 
   // Detect special characters !@#$%
   const specialCharsRegex = /[!@#$%]/;
   if (specialCharsRegex.test(name)) {
-    return 'No emojis, HTML tags or !@#$% allowed';
+    return 'URLs, emojis, HTML tags or special characters (!@#$%) are not allowed';
   }
 
   return null;

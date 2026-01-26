@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { createFolder } from '@/lib/services/folderService';
+import { validateName } from '@/lib/utils/nameValidation';
 import styles from './NewFolderModal.module.css';
 
 type NewFolderModalProps = {
@@ -31,6 +32,14 @@ export function NewFolderModal({ open, projectId, onClose, onCreated }: NewFolde
       setError('Folder name is required');
       return;
     }
+    
+    // Validate name for disallowed characters (emoji, HTML tags, special symbols)
+    const validationError = validateName(trimmed);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    
     setSubmitting(true);
     setError(null);
     try {
