@@ -227,6 +227,10 @@ export function useClipboardOperations({
           ? (baseRow.name ?? baseRow.propertyValues?.[propertyKey] ?? null)
           : (baseRow.propertyValues?.[propertyKey] ?? null);
         value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
+        // Name 字段：base 为 null 时回退到 row.name，避免 paste 出现 "Untitled"（base 滞后于乐观更新）
+        if (isNameField && value === null && row.name && row.name !== 'Untitled') {
+          value = row.name;
+        }
       } else {
         value = getCellValue(row, propertyKey, foundProperty, isNameField);
       }
@@ -498,6 +502,10 @@ export function useClipboardOperations({
           ? (baseRow.name ?? baseRow.propertyValues?.[propertyKey] ?? null)
           : (baseRow.propertyValues?.[propertyKey] ?? null);
         value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
+        // Name 字段：base 为 null 时回退到 row.name，避免 paste 出现 "Untitled"（base 滞后于乐观更新）
+        if (isNameField && value === null && row.name && row.name !== 'Untitled') {
+          value = row.name;
+        }
       } else {
         value = getCellValue(row, propertyKey, foundProperty, isNameField);
       }
@@ -765,6 +773,12 @@ export function useClipboardOperations({
     
     const rowsToCreate = Array.from(rowsToCreateByIndex.values());
     
+    // Close menu and show toast immediately so UI feels responsive (async work continues in background)
+    setBatchEditMenuVisible(false);
+    setBatchEditMenuPosition(null);
+    setToastMessage('Content pasted');
+    setTimeout(() => setToastMessage(null), 2000);
+    
     // Create new rows if needed (create them first before updating existing rows)
     if (rowsToCreate.length > 0 && onSaveAsset && library) {
       setIsSaving(true);
@@ -952,16 +966,6 @@ export function useClipboardOperations({
     // Clear selected cells and rows after paste operation
     setSelectedCells(new Set());
     setSelectedRowIds(new Set());
-    
-    // Show toast message
-    setToastMessage('Content pasted');
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 2000);
-    
-    // Close menu
-    setBatchEditMenuVisible(false);
-    setBatchEditMenuPosition(null);
   }, [
     dataManager,
     selectedCells,

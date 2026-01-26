@@ -12,6 +12,7 @@ import { createPortal } from 'react-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { editVersion } from '@/lib/services/versionService';
+import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
 import closeIcon from '@/app/assets/images/closeIcon32.svg';
 import styles from './EditVersionModal.module.css';
@@ -68,6 +69,14 @@ export function EditVersionModal({
       setError('Version name is required');
       return;
     }
+    
+    // Validate name for disallowed characters (emoji, HTML tags, special symbols, URLs)
+    const validationError = validateName(trimmed);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    
     setError(null);
     editVersionMutation.mutate(trimmed);
   };

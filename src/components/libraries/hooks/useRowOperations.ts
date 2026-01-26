@@ -138,13 +138,12 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
     const numRowsToInsert = sortedRowIds.length;
     const firstRowId = sortedRowIds[0];
+    closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
     setIsSaving(true);
 
     try {
       const targetRowIndex = allRows.findIndex((r) => r.id === firstRowId);
       if (targetRowIndex === -1) {
-        setBatchEditMenuVisible(false);
-        setBatchEditMenuPosition(null);
         setIsSaving(false);
         return;
       }
@@ -157,8 +156,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
           .single();
 
         if (queryError) {
-          setBatchEditMenuVisible(false);
-          setBatchEditMenuPosition(null);
           setIsSaving(false);
           setToastMessage('Failed to insert rows above');
           setTimeout(() => setToastMessage(null), 2000);
@@ -314,14 +311,13 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
     const numRowsToInsert = sortedRowIds.length;
     const lastRowId = sortedRowIds[sortedRowIds.length - 1];
+    closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
     setIsSaving(true);
 
     try {
       const allRows2 = yRows.toArray();
       const targetRowIndex = allRows2.findIndex((r) => r.id === lastRowId);
       if (targetRowIndex === -1) {
-        setBatchEditMenuVisible(false);
-        setBatchEditMenuPosition(null);
         setIsSaving(false);
         return;
       }
@@ -334,8 +330,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
           .single();
 
         if (queryError) {
-          setBatchEditMenuVisible(false);
-          setBatchEditMenuPosition(null);
           setIsSaving(false);
           setToastMessage('Failed to insert rows below');
           setTimeout(() => setToastMessage(null), 2000);
