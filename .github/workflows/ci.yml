@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]  # PR 创建、更新、重新打开时触发
+  push:
+    branches:
+      - main  # 只有 push 到 main 分支才触发（包括 merge）
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        # GitHub 会自动使用 merge commit 来测试 PR，模拟 merge 后的状态
+        with:
+          fetch-depth: 0
+      
+      - name: 设置 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: 安装依赖
+        run: npm ci
+      
+      - name: 构建项目
+        env:
+          # 从 GitHub Secrets 读取 Supabase 环境变量
+          # 这些变量在构建时是必需的，因为代码在模块加载时就会检查
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          # SUPABASE_SERVICE_ROLE_KEY 在某些 API 路由中可能需要
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run build
+      
+      - name: 构建成功 ✅
+        run: echo "构建检查通过！可以安全合并到 main"
