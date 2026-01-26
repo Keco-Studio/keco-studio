@@ -1584,6 +1584,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     window.dispatchEvent(new CustomEvent('libraryCreated', {
       detail: { folderId: createdFolderId, libraryId, projectId: currentIds.projectId }
     }));
+    
+    // If currently viewing a library page, navigate to the newly created library
+    if (currentIds.isLibraryPage && currentIds.projectId) {
+      router.push(`/${currentIds.projectId}/${libraryId}`);
+    }
   };
 
   const handleFolderCreated = async () => {

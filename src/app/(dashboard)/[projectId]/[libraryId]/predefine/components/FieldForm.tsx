@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Input, Button, Select } from 'antd';
 import Image from 'next/image';
 import type { FieldConfig, FieldType } from '../types';
@@ -233,6 +233,23 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
     return option?.label ?? '';
   };
 
+  // Memoize prefix to prevent DOM structure changes when Input is focused
+  // Always render a container to maintain stable DOM structure
+  const dataTypeInputPrefix = useMemo(() => {
+    if (dataTypeSelected && field.dataType) {
+      return (
+        <Image
+          src={getFieldTypeIcon(field.dataType)}
+          alt={field.dataType}
+          width={16}
+          height={16}
+        />
+      );
+    }
+    // Return empty span to maintain DOM structure stability
+    return <span style={{ display: 'inline-block', width: 16, height: 16 }} />;
+  }, [dataTypeSelected, field.dataType]);
+
   const handleAddOption = () => {
     const currentOptions = field.enumOptions ?? [];
     setField((p) => ({
@@ -314,16 +331,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
           className={styles.dataTypeInput}
           disabled={disabled}
           status={validationError?.dataTypeInvalid ? 'error' : undefined}
-          prefix={
-            dataTypeSelected && field.dataType ? (
-              <Image
-                src={getFieldTypeIcon(field.dataType)}
-                alt={field.dataType}
-                width={16}
-                height={16}
-              />
-            ) : undefined
-            }
+          prefix={dataTypeInputPrefix}
         />
         {showSlashMenu && (
           <div ref={slashMenuRef} className={styles.slashMenu}>

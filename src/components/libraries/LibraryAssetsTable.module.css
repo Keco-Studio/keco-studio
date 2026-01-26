@@ -816,6 +816,11 @@ td.cellCopy.copyBorderRight:hover {
   background: #f9fafb;
 }
 
+/* Remove cell borders in add row to show as a blank row, but keep numberCell border for alignment */
+.addRow .cell {
+  border-right: none;
+}
+
 .addButton {
   background: none;
   border: none;

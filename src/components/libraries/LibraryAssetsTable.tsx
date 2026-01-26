@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Input, Select, Button, Avatar, Tooltip, Checkbox, Dropdown, Modal, Switch, message } from 'antd';
+import { Input, Select, Button, Avatar, Tooltip, Checkbox, Dropdown, Modal, Switch, App } from 'antd';
 import Image from 'next/image';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -101,6 +101,9 @@ export function LibraryAssetsTable({
   enableRealtime = false,
   presenceTracking,
 }: LibraryAssetsTableProps) {
+  // Get message API from App context to support dynamic theme
+  const { message } = App.useApp();
+  
   // Yjs integration - unified data source to resolve row ordering issues
   const { yRows } = useYjs();
   const { allRowsSource } = useYjsSync(rows, yRows);
@@ -848,6 +851,8 @@ export function LibraryAssetsTable({
     isCutOperation,
     cutCells,
     copyCells,
+    cutSelectionBounds,
+    copySelectionBounds,
   });
 
   const {
@@ -2541,4 +2546,14 @@ export function LibraryAssetsTable({
     </>
   );
 }
-export default LibraryAssetsTable;
+
+// Wrapper component to provide App context for message API
+function LibraryAssetsTableWrapper(props: LibraryAssetsTableProps) {
+  return (
+    <App>
+      <LibraryAssetsTable {...props} />
+    </App>
+  );
+}
+
+export default LibraryAssetsTableWrapper;
