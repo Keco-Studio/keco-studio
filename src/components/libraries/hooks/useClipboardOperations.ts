@@ -42,6 +42,8 @@ export function useClipboardOperations({
   isCutOperation,
   cutCells,
   copyCells,
+  cutSelectionBounds,
+  copySelectionBounds,
 }: {
   dataManager: DataManager;
   orderedProperties: PropertyConfig[];
@@ -83,6 +85,22 @@ export function useClipboardOperations({
   isCutOperation: boolean;
   cutCells: Set<CellKey>;
   copyCells: Set<CellKey>;
+  cutSelectionBounds: {
+    minRowIndex: number;
+    maxRowIndex: number;
+    minPropertyIndex: number;
+    maxPropertyIndex: number;
+    rowIds: string[];
+    propertyKeys: string[];
+  } | null;
+  copySelectionBounds: {
+    minRowIndex: number;
+    maxRowIndex: number;
+    minPropertyIndex: number;
+    maxPropertyIndex: number;
+    rowIds: string[];
+    propertyKeys: string[];
+  } | null;
 }) {
   /**
    * Parse cellKey to extract rowId and propertyKey
@@ -709,6 +727,35 @@ export function useClipboardOperations({
       rowsToCreateByIndex.set(targetRowIndex, { name: 'Untitled', propertyValues: {} });
     }
     
+    // Get source property keys from selection bounds to check type compatibility
+    const sourceSelectionBounds = isCutOperation ? cutSelectionBounds : copySelectionBounds;
+    const sourcePropertyKeys = sourceSelectionBounds?.propertyKeys || [];
+    
+    // Track type mismatch errors
+    let hasTypeMismatch = false;
+    
+    // Helper function to check if source and target types are compatible
+    const isTypeCompatible = (sourceType: string | null | undefined, targetType: string): boolean => {
+      if (!sourceType || !['string', 'int', 'float'].includes(sourceType)) {
+        return false; // Unknown or unsupported source type
+      }
+      
+      // Type compatibility rules:
+      // - string -> string: ✅
+      // - int -> int: ✅
+      // - float -> float: ✅
+      // - int -> float: ❌ (not allowed)
+      // - float -> int: ❌ (loses precision)
+      // - string -> int/float: ❌
+      // - int/float -> string: ❌
+      
+      if (sourceType === targetType) {
+        return true; // Same type, always compatible
+      }
+      
+      return false; // All other combinations are incompatible
+    };
+    
     // Iterate through clipboard data and map to target cells
     clipboardData.forEach((clipboardRow, clipboardRowIndex) => {
       clipboardRow.forEach((cellValue, clipboardColIndex) => {
@@ -725,6 +772,20 @@ export function useClipboardOperations({
         // Check if data type is supported (string, int, float)
         if (!targetProperty.dataType || !['string', 'int', 'float'].includes(targetProperty.dataType)) {
           return; // Skip unsupported types
+        }
+        
+        // Check type compatibility if we have source property information
+        if (sourcePropertyKeys.length > 0 && clipboardColIndex < sourcePropertyKeys.length) {
+          const sourcePropertyKey = sourcePropertyKeys[clipboardColIndex];
+          const sourceProperty = orderedProperties.find(p => p.key === sourcePropertyKey);
+          
+          if (sourceProperty && sourceProperty.dataType) {
+            const isCompatible = isTypeCompatible(sourceProperty.dataType, targetProperty.dataType);
+            if (!isCompatible) {
+              hasTypeMismatch = true;
+              return; // Skip this cell due to type mismatch
+            }
+          }
         }
         
         // Convert value to appropriate type (string, int, float)
@@ -770,6 +831,15 @@ export function useClipboardOperations({
         }
       });
     });
+    
+    // Show type mismatch error if any cells were skipped
+    if (hasTypeMismatch) {
+      setBatchEditMenuVisible(false);
+      setBatchEditMenuPosition(null);
+      setToastMessage('type mismatch');
+      setTimeout(() => setToastMessage(null), 2000);
+      return; // Don't proceed with paste if there are type mismatches
+    }
     
     const rowsToCreate = Array.from(rowsToCreateByIndex.values());
     
@@ -995,6 +1065,8 @@ export function useClipboardOperations({
     isCutOperation,
     cutCells,
     copyCells,
+    cutSelectionBounds,
+    copySelectionBounds,
   ]);
 
   return {

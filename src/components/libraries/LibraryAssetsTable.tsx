@@ -848,6 +848,8 @@ export function LibraryAssetsTable({
     isCutOperation,
     cutCells,
     copyCells,
+    cutSelectionBounds,
+    copySelectionBounds,
   });
 
   const {
