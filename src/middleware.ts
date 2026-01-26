@@ -77,10 +77,10 @@ export async function middleware(request: NextRequest) {
       });
     }
   } else {
-    // Clear session cookies if no user
-    response.cookies.delete('sb-session');
-    response.cookies.delete('sb-access-token');
-    response.cookies.delete('sb-refresh-token');
+    // Do NOT clear sb-session / sb-access-token when no user from default Supabase cookies.
+    // Client-side OAuth uses hybrid adapter which stores session in sb-session cookie.
+    // If we clear it here, refresh will wipe the session and force logout.
+    // Only clear on explicit signOut (handled by client).
   }
 
   return response;
