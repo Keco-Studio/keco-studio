@@ -68,24 +68,84 @@ jobs:
       run: |
         supabase db reset
         echo "✅ Database reset completed with fresh seed data"
+        # Verify Supabase is still running after reset
+        echo "🔍 Verifying Supabase is still running after reset..."
+        supabase status
     
     # Set Supabase environment variables from local instance
     # CRITICAL: These must be set before Playwright starts webServer
     - name: Set Supabase environment variables
       id: set-env
       run: |
-        # Get environment variables from local Supabase instance
-        ANON_KEY=$(supabase status --output json | jq -r '.anon_key')
-        SERVICE_KEY=$(supabase status --output json | jq -r '.service_role_key')
+        # First, verify Supabase is running
+        echo "🔍 Checking Supabase status..."
+        supabase status
         
-        # Verify keys are not empty
-        if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ]; then
-          echo "❌ Error: ANON_KEY is empty or null"
-          exit 1
+        # Get the JSON output and debug it
+        echo "📋 Getting Supabase status as JSON..."
+        STATUS_JSON=$(supabase status --output json)
+        echo "Raw JSON output:"
+        echo "$STATUS_JSON" | head -20
+        
+        # Try to extract keys with better error handling
+        ANON_KEY=$(echo "$STATUS_JSON" | jq -r '.anon_key // empty')
+        SERVICE_KEY=$(echo "$STATUS_JSON" | jq -r '.service_role_key // empty')
+        
+        # If jq failed or keys are missing, try alternative methods
+        if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "empty" ]; then
+          echo "⚠️  ANON_KEY not found in JSON, trying alternative methods..."
+          
+          # Method 1: Try alternative field names in JSON
+          ANON_KEY=$(echo "$STATUS_JSON" | jq -r '.["anon_key"] // .APIKeys.anon // .anonKey // empty')
+          
+          # Method 2: Try to extract from supabase status text output
+          if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "empty" ]; then
+            echo "⚠️  Trying to extract from text output..."
+            STATUS_TEXT=$(supabase status)
+            ANON_KEY=$(echo "$STATUS_TEXT" | grep -i "anon key" | head -1 | sed -n 's/.*anon[[:space:]]*key[[:space:]]*:[[:space:]]*\([^[:space:]]*\).*/\1/p' | tr -d '"')
+          fi
+          
+          # Method 3: Try to read from .env file if it exists
+          if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ]; then
+            if [ -f ".env.local" ]; then
+              echo "⚠️  Trying to read from .env.local..."
+              ANON_KEY=$(grep "^NEXT_PUBLIC_SUPABASE_ANON_KEY=" .env.local | cut -d '=' -f2 | tr -d '"' | tr -d "'")
+            fi
+          fi
+          
+          if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ]; then
+            echo "❌ Error: ANON_KEY is empty or null after all attempts"
+            echo "Full JSON output for debugging:"
+            echo "$STATUS_JSON"
+            echo ""
+            echo "Full status text output:"
+            supabase status
+            exit 1
+          fi
         fi
-        if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ]; then
-          echo "❌ Error: SERVICE_ROLE_KEY is empty or null"
-          exit 1
+        
+        if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ] || [ "$SERVICE_KEY" == "empty" ]; then
+          echo "⚠️  SERVICE_ROLE_KEY not found in JSON, trying alternative methods..."
+          
+          # Method 1: Try alternative field names in JSON
+          SERVICE_KEY=$(echo "$STATUS_JSON" | jq -r '.["service_role_key"] // .APIKeys.service_role // .serviceRoleKey // empty')
+          
+          # Method 2: Try to extract from supabase status text output
+          if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ] || [ "$SERVICE_KEY" == "empty" ]; then
+            echo "⚠️  Trying to extract from text output..."
+            STATUS_TEXT=$(supabase status)
+            SERVICE_KEY=$(echo "$STATUS_TEXT" | grep -i "service.*role.*key" | head -1 | sed -n 's/.*service[[:space:]]*role[[:space:]]*key[[:space:]]*:[[:space:]]*\([^[:space:]]*\).*/\1/p' | tr -d '"')
+          fi
+          
+          if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ]; then
+            echo "❌ Error: SERVICE_ROLE_KEY is empty or null after all attempts"
+            echo "Full JSON output for debugging:"
+            echo "$STATUS_JSON"
+            echo ""
+            echo "Full status text output:"
+            supabase status
+            exit 1
+          fi
         fi
         
         # Set environment variables for all subsequent steps
@@ -99,6 +159,7 @@ jobs:
         echo "✅ Environment variables set successfully"
         echo "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321"
         echo "NEXT_PUBLIC_SUPABASE_ANON_KEY length: ${#ANON_KEY}"
+        echo "SUPABASE_SERVICE_ROLE_KEY length: ${#SERVICE_KEY}"
     
     # Verify Supabase is ready and environment variables are set
     - name: Verify Supabase status and environment
