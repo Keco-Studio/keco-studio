@@ -15,7 +15,8 @@ jobs:
     runs-on: ubuntu-latest
     
     # Only run in team repository and when PR is merged
-    if: github.repository == 'Caerulean-ai/keco-studio' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
+    # DISABLED: Commented out to prevent workflow from running
+    if: false && github.repository == 'Caerulean-ai/keco-studio' && (github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true))
 
     permissions:
       contents: read

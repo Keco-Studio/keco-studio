@@ -16,10 +16,11 @@ jobs:
         shardIndex: [1, 2, 3, 4]
         shardTotal: [4]
     env:
-      # Local Supabase configuration - will be set after Supabase starts
+      # Local Supabase configuration
+      # URL is known, but ANON_KEY will be set from local Supabase instance after it starts
       NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: '' # Will be set after supabase start
-      SUPABASE_SERVICE_ROLE_KEY: '' # Will be set after supabase start
+      # Note: NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY 
+      # will be set in the "Set Supabase environment variables" step
     
     steps:
     - uses: actions/checkout@v4
@@ -45,6 +46,21 @@ jobs:
       run: |
         supabase start
         echo "✅ Supabase started successfully"
+        # Wait a moment for all services to be fully ready
+        sleep 3
+        # Verify Supabase API is responding
+        for i in {1..10}; do
+          if curl -f -s http://127.0.0.1:54321/rest/v1/ > /dev/null 2>&1; then
+            echo "✅ Supabase API is responding"
+            break
+          fi
+          if [ $i -eq 10 ]; then
+            echo "❌ Warning: Supabase API not responding after 10 attempts"
+          else
+            echo "Waiting for Supabase API... (attempt $i/10)"
+            sleep 2
+          fi
+        done
     
     # Reset database to ensure clean state with fresh seed data
     # This is important for test consistency across runs
@@ -52,19 +68,94 @@ jobs:
       run: |
         supabase db reset
         echo "✅ Database reset completed with fresh seed data"
+        # Verify Supabase is still running after reset
+        echo "🔍 Verifying Supabase is still running after reset..."
+        supabase status
     
     # Set Supabase environment variables from local instance
+    # CRITICAL: These must be set before Playwright starts webServer
     - name: Set Supabase environment variables
+      id: set-env
       run: |
-        echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$(supabase status --output json | jq -r '.anon_key')" >> $GITHUB_ENV
-        echo "SUPABASE_SERVICE_ROLE_KEY=$(supabase status --output json | jq -r '.service_role_key')" >> $GITHUB_ENV
-        echo "📝 Environment variables set"
+        # First, verify Supabase is running
+        echo "🔍 Checking Supabase status..."
+        supabase status
+        
+        # Get the JSON output and debug it
+        echo "📋 Getting Supabase status as JSON..."
+        STATUS_JSON=$(supabase status --output json)
+        
+        # Extract keys using correct field names from Supabase CLI JSON output
+        # Note: Sensitive values may be masked as "***" in JSON, so we'll use text output as fallback
+        ANON_KEY=$(echo "$STATUS_JSON" | jq -r '.PUBLISHABLE_KEY // empty')
+        SERVICE_KEY=$(echo "$STATUS_JSON" | jq -r '.SERVICE_ROLE_KEY // .SECRET_KEY // empty')
+        
+        # If keys are masked (show as "***") or missing, extract from text output
+        if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "empty" ] || [ "$ANON_KEY" == "***" ]; then
+          echo "⚠️  PUBLISHABLE_KEY is masked or missing, extracting from text output..."
+          STATUS_TEXT=$(supabase status)
+          # Extract Publishable key from text output (format: "│ Publishable │ sb_publishable_... │")
+          ANON_KEY=$(echo "$STATUS_TEXT" | grep -i "Publishable" | sed -n 's/.*│[[:space:]]*Publishable[[:space:]]*│[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
+        fi
+        
+        if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ] || [ "$SERVICE_KEY" == "empty" ] || [ "$SERVICE_KEY" == "***" ]; then
+          echo "⚠️  SERVICE_ROLE_KEY is masked or missing, extracting from text output..."
+          if [ -z "$STATUS_TEXT" ]; then
+            STATUS_TEXT=$(supabase status)
+          fi
+          # Extract Secret key from text output (format: "│ Secret      │ sb_secret_... │")
+          SERVICE_KEY=$(echo "$STATUS_TEXT" | grep -i "Secret" | grep -v "JWT" | sed -n 's/.*│[[:space:]]*Secret[[:space:]]*│[[:space:]]*\([^[:space:]]*\).*/\1/p' | head -1)
+        fi
+        
+        # Final validation
+        if [ -z "$ANON_KEY" ] || [ "$ANON_KEY" == "null" ] || [ "$ANON_KEY" == "empty" ] || [ "$ANON_KEY" == "***" ]; then
+          echo "❌ Error: ANON_KEY (PUBLISHABLE_KEY) is empty, null, or masked"
+          echo "JSON output:"
+          echo "$STATUS_JSON" | jq '.'
+          echo ""
+          echo "Text output:"
+          echo "$STATUS_TEXT"
+          exit 1
+        fi
+        
+        if [ -z "$SERVICE_KEY" ] || [ "$SERVICE_KEY" == "null" ] || [ "$SERVICE_KEY" == "empty" ] || [ "$SERVICE_KEY" == "***" ]; then
+          echo "❌ Error: SERVICE_ROLE_KEY is empty, null, or masked"
+          echo "JSON output:"
+          echo "$STATUS_JSON" | jq '.'
+          echo ""
+          echo "Text output:"
+          echo "$STATUS_TEXT"
+          exit 1
+        fi
+        
+        # Set environment variables for all subsequent steps
+        echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY" >> $GITHUB_ENV
+        echo "SUPABASE_SERVICE_ROLE_KEY=$SERVICE_KEY" >> $GITHUB_ENV
+        
+        # Also export for current step (for verification)
+        export NEXT_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY
+        export SUPABASE_SERVICE_ROLE_KEY=$SERVICE_KEY
+        
+        echo "✅ Environment variables set successfully"
+        echo "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321"
+        echo "NEXT_PUBLIC_SUPABASE_ANON_KEY length: ${#ANON_KEY}"
+        echo "SUPABASE_SERVICE_ROLE_KEY length: ${#SERVICE_KEY}"
     
-    # Verify Supabase is ready
-    - name: Verify Supabase status
+    # Verify Supabase is ready and environment variables are set
+    - name: Verify Supabase status and environment
       run: |
         supabase status
         echo "✅ Supabase is ready"
+        echo "Verifying environment variables..."
+        if [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then
+          echo "❌ Error: NEXT_PUBLIC_SUPABASE_ANON_KEY is not set"
+          exit 1
+        fi
+        if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+          echo "❌ Error: NEXT_PUBLIC_SUPABASE_URL is not set"
+          exit 1
+        fi
+        echo "✅ All required environment variables are set"
     
     # Cache Playwright browsers - significantly speeds up workflow
     - name: Get Playwright version
@@ -92,8 +183,24 @@ jobs:
     # No need to run seed:api script for local Supabase
     
     # Run tests with sharding for parallel execution
+    # Environment variables set via $GITHUB_ENV in previous steps are automatically available
     - name: Run Playwright tests (shard ${{ matrix.shardIndex }}/${{ matrix.shardTotal }})
-      run: npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
+      run: |
+        # Verify environment variables are available before running tests
+        echo "Verifying environment variables before test run..."
+        if [ -z "$NEXT_PUBLIC_SUPABASE_ANON_KEY" ]; then
+          echo "❌ Error: NEXT_PUBLIC_SUPABASE_ANON_KEY is missing"
+          exit 1
+        fi
+        if [ -z "$NEXT_PUBLIC_SUPABASE_URL" ]; then
+          echo "❌ Error: NEXT_PUBLIC_SUPABASE_URL is missing"
+          exit 1
+        fi
+        echo "✅ Environment variables verified:"
+        echo "  NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL"
+        echo "  NEXT_PUBLIC_SUPABASE_ANON_KEY length: ${#NEXT_PUBLIC_SUPABASE_ANON_KEY}"
+        echo "Starting Playwright tests..."
+        npx playwright test --shard=${{ matrix.shardIndex }}/${{ matrix.shardTotal }}
       continue-on-error: false
     
     # Stop Supabase after tests
