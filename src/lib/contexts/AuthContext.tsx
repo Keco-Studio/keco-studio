@@ -129,7 +129,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let mounted = true;
-    let isInitialMount = true;
+    let initializationComplete = false;
 
     setIsLoading(true);
     setIsAuthenticated(false);
@@ -166,6 +166,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } finally {
         if (mounted) {
           setIsLoading(false);
+          initializationComplete = true;
         }
       }
     };
@@ -175,6 +176,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
+
+      // If initialization is not complete yet, let initializeAuth handle it
+      if (!initializationComplete && event === 'INITIAL_SESSION') {
+        return;
+      }
 
       try {
         const prevUserId = currentUserId.current;
@@ -187,10 +193,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (currentUserId.current !== null && currentUserId.current !== newUserId) {
             await clearAllCaches();
           }
-
-          if (currentUserId.current !== newUserId) {
-            currentUserId.current = null;
-          }
+          
           currentUserId.current = newUserId;
           await fetchUserProfile(newUserId);
         } else {
@@ -210,9 +213,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setUserProfile(null);
         currentUserId.current = null;
       } finally {
-        if (mounted && isInitialMount) {
+        // Ensure loading is false after any auth state change
+        if (mounted) {
           setIsLoading(false);
-          isInitialMount = false;
         }
       }
     });
