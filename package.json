@@ -42,6 +42,9 @@
   },
   "scripts": {
     "dev": "next dev",
+    "dev:vercel": "vercel dev",
+    "dev:vercel:prod": "vercel dev --prod",
+    "dev:tunnel": "next dev & ngrok http 3000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
