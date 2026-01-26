@@ -4,6 +4,8 @@ import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { z } from 'zod';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useParams } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import { Tabs, Button, App, ConfigProvider, Input, Tooltip } from 'antd';
 import type { TabsProps } from 'antd/es/tabs';
 import type { InputRef } from 'antd/es/input';
@@ -31,6 +33,7 @@ const NEW_SECTION_TAB_KEY = '__new_section__';
 function PredefinePageContent() {
   const { message } = App.useApp();
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const params = useParams();
   const libraryId = params?.libraryId as string | undefined;
 
@@ -442,6 +445,21 @@ function PredefinePageContent() {
       await saveSchemaIncremental(supabase, libraryId, finalSections);
 
       message.success('Saved successfully, loading...');
+      
+      // Invalidate React Query cache to ensure LibraryPage gets fresh data
+      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+      
+      // Refetch to ensure data is updated immediately
+      await queryClient.refetchQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+      await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+      await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+      
+      // Notify LibraryPage to refresh schema and assets (for backward compatibility)
+      window.dispatchEvent(new CustomEvent('schemaUpdated', {
+        detail: { libraryId }
+      }));
 
       // Clear pending fields and temp section names after successful save
       const emptyMap = new Map();
@@ -545,6 +563,21 @@ function PredefinePageContent() {
       // Invalidate cache before reloading to ensure fresh data
       const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
       globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+
+      // Invalidate React Query cache to ensure LibraryPage gets fresh data
+      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+      
+      // Refetch to ensure data is updated immediately
+      await queryClient.refetchQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+      await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+      await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+
+      // Notify LibraryPage to refresh schema and assets (for backward compatibility)
+      window.dispatchEvent(new CustomEvent('schemaUpdated', {
+        detail: { libraryId }
+      }));
 
       // Reload to sync with database
       const loadedSections = await reloadSections();

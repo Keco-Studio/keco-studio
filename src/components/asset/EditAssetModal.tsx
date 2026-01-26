@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { updateAsset } from '@/lib/services/libraryAssetsService';
+import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import styles from '../folders/NewFolderModal.module.css';
 
 type EditAssetModalProps = {
@@ -15,9 +15,9 @@ type EditAssetModalProps = {
 
 export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetModalProps) {
   const supabase = useSupabase();
+  const updateName = useUpdateEntityName();
   const [name, setName] = useState('');
   const [libraryId, setLibraryId] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -65,7 +65,6 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
       return;
     }
     
-    setSubmitting(true);
     setError(null);
     
     try {
@@ -104,44 +103,16 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
         propertyValues[nameFieldId] = trimmed;
       }
       
-      // Update the asset (both name and propertyValues)
-      await updateAsset(supabase, assetId, trimmed, propertyValues);
+      // Use cache mutation hook for optimistic update
+      await updateName.mutateAsync({
+        id: assetId,
+        name: trimmed,
+        propertyValues,
+        entityType: 'asset',
+        libraryId: verifiedLibraryId
+      });
       
-      // Verify the update was successful by querying the database
-      const { data: updatedAsset, error: verifyError } = await supabase
-        .from('library_assets')
-        .select('id, name, library_id')
-        .eq('id', assetId)
-        .single();
-      
-      if (verifyError) {
-        console.error('Failed to verify asset update:', verifyError);
-        throw new Error('Failed to verify asset update');
-      }
-      
-      if (!updatedAsset) {
-        throw new Error('Asset not found after update');
-      }
-      
-      // Dispatch event to notify other components to refresh cache
-      // Include libraryId so Sidebar can refresh the correct library's assets
-      if (verifiedLibraryId) {
-        const eventDetail = { assetId, libraryId: verifiedLibraryId };
-        const event = new CustomEvent('assetUpdated', { 
-          detail: eventDetail,
-          bubbles: true,
-          cancelable: true
-        });
-        
-        // Dispatch on window
-        window.dispatchEvent(event);
-        
-        // Also dispatch on document to ensure it reaches all listeners
-        if (typeof document !== 'undefined') {
-          document.dispatchEvent(event);
-        }
-      }
-      
+      // Event is dispatched automatically by the hook
       if (onUpdated) {
         onUpdated();
       }
@@ -149,8 +120,6 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
     } catch (e: any) {
       console.error('Asset update error:', e);
       setError(e?.message || 'Failed to update asset');
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -177,7 +146,7 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Enter asset name"
-                disabled={submitting}
+                disabled={updateName.isPending}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleSubmit();
@@ -192,16 +161,16 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
               <button 
                 className={`${styles.button} ${styles.secondary}`} 
                 onClick={onClose}
-                disabled={submitting}
+                disabled={updateName.isPending}
               >
                 Cancel
               </button>
               <button
                 className={`${styles.button} ${styles.primary}`}
                 onClick={handleSubmit}
-                disabled={submitting || loading}
+                disabled={updateName.isPending || loading}
               >
-                {submitting ? 'Saving...' : 'Save'}
+                {updateName.isPending ? 'Saving...' : 'Save'}
               </button>
             </div>
           </>

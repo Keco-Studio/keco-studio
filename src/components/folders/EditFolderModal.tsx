@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { updateFolder, getFolder, Folder } from '@/lib/services/folderService';
+import { getFolder, Folder } from '@/lib/services/folderService';
+import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
 import styles from './NewFolderModal.module.css';
 
@@ -16,8 +17,8 @@ type EditFolderModalProps = {
 
 export function EditFolderModal({ open, folderId, onClose, onUpdated }: EditFolderModalProps) {
   const supabase = useSupabase();
+  const updateName = useUpdateEntityName();
   const [name, setName] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -64,17 +65,17 @@ export function EditFolderModal({ open, folderId, onClose, onUpdated }: EditFold
       return;
     }
     
-    setSubmitting(true);
     setError(null);
     
     try {
-      await updateFolder(supabase, folderId, {
+      // Use cache mutation hook for optimistic update
+      await updateName.mutateAsync({
+        id: folderId,
         name: trimmed,
+        entityType: 'folder'
       });
       
-      // Dispatch event to notify other components to refresh cache
-      window.dispatchEvent(new CustomEvent('folderUpdated', { detail: { folderId } }));
-      
+      // Event is dispatched automatically by the hook
       if (onUpdated) {
         onUpdated();
       }
@@ -82,8 +83,6 @@ export function EditFolderModal({ open, folderId, onClose, onUpdated }: EditFold
     } catch (e: any) {
       console.error('Folder update error:', e);
       setError(e?.message || 'Failed to update folder');
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -110,7 +109,7 @@ export function EditFolderModal({ open, folderId, onClose, onUpdated }: EditFold
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="Enter folder name"
-                disabled={submitting}
+                disabled={updateName.isPending}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     handleSubmit();
@@ -125,16 +124,16 @@ export function EditFolderModal({ open, folderId, onClose, onUpdated }: EditFold
               <button 
                 className={`${styles.button} ${styles.secondary}`} 
                 onClick={onClose}
-                disabled={submitting}
+                disabled={updateName.isPending}
               >
                 Cancel
               </button>
               <button
                 className={`${styles.button} ${styles.primary}`}
                 onClick={handleSubmit}
-                disabled={submitting || loading}
+                disabled={updateName.isPending || loading}
               >
-                {submitting ? 'Saving...' : 'Save'}
+                {updateName.isPending ? 'Saving...' : 'Save'}
               </button>
             </div>
           </>

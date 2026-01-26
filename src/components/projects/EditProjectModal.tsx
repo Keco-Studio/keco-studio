@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { updateProject, getProject, Project } from '@/lib/services/projectService';
+import { getProject, Project } from '@/lib/services/projectService';
+import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
 import projectIcon from '@/app/assets/images/projectIcon52.svg';
@@ -19,9 +20,9 @@ type EditProjectModalProps = {
 
 export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditProjectModalProps) {
   const supabase = useSupabase();
+  const updateName = useUpdateEntityName();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -69,18 +70,18 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
       return;
     }
     
-    setSubmitting(true);
     setError(null);
     
     try {
-      await updateProject(supabase, projectId, {
+      // Use cache mutation hook for optimistic update
+      await updateName.mutateAsync({
+        id: projectId,
         name: trimmed,
         description,
+        entityType: 'project'
       });
       
-      // Dispatch event to notify other components to refresh cache
-      window.dispatchEvent(new CustomEvent('projectUpdated', { detail: { projectId } }));
-      
+      // Event is dispatched automatically by the hook
       if (onUpdated) {
         onUpdated();
       }
@@ -88,8 +89,6 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
     } catch (e: any) {
       console.error('Project update error:', e);
       setError(e?.message || 'Failed to update project');
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -123,7 +122,7 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter project name"
-                  disabled={submitting}
+                  disabled={updateName.isPending}
                 />
               </div>
             </div>
@@ -145,7 +144,7 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
                     }
                   }}
                   maxLength={250}
-                  disabled={submitting}
+                  disabled={updateName.isPending}
                 />
               </div>
             </div>
@@ -155,9 +154,9 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
               <button
                 className={`${styles.button} ${styles.primary}`}
                 onClick={handleSubmit}
-                disabled={submitting || loading}
+                disabled={updateName.isPending || loading}
               >
-                {submitting ? 'Saving...' : 'Save'}
+                {updateName.isPending ? 'Saving...' : 'Save'}
               </button>
             </div>
           </>

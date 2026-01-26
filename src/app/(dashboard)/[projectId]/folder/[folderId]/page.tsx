@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, usePathname } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import { getFolder, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
@@ -24,13 +26,10 @@ export default function FolderPage() {
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const projectId = params.projectId as string;
   const folderId = params.folderId as string;
   
-  const [folder, setFolder] = useState<Folder | null>(null);
-  const [libraries, setLibraries] = useState<Library[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showEditLibraryModal, setShowEditLibraryModal] = useState(false);
@@ -38,35 +37,21 @@ export default function FolderPage() {
   const [assetCounts, setAssetCounts] = useState<Record<string, number>>({});
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
 
-  const fetchData = useCallback(async () => {
-    if (!projectId || !folderId) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const [folderData, librariesData] = await Promise.all([
-        getFolder(supabase, folderId),
-        listLibraries(supabase, projectId, folderId),
-      ]);
-      
-      if (!folderData) {
-        setError('Folder not found');
-        return;
-      }
-      
-      setFolder(folderData);
-      setLibraries(librariesData);
-    } catch (e: any) {
-      setError(e?.message || 'Failed to load folder');
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId, folderId, supabase]);
+  // Use React Query for data fetching
+  const { data: folder, isLoading: folderLoading, error: folderError } = useQuery({
+    queryKey: queryKeys.folder(folderId),
+    queryFn: () => getFolder(supabase, folderId),
+    enabled: !!folderId,
+  });
 
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+  const { data: libraries = [], isLoading: librariesLoading } = useQuery({
+    queryKey: queryKeys.folderLibraries(folderId),
+    queryFn: () => listLibraries(supabase, projectId, folderId),
+    enabled: !!projectId && !!folderId,
+  });
+
+  const loading = folderLoading || librariesLoading;
+  const error = folderError ? (folderError as any)?.message || 'Failed to load folder' : null;
 
   // Fetch user role in current project
   useEffect(() => {
@@ -100,37 +85,34 @@ export default function FolderPage() {
     fetchAssetCounts();
   }, [libraries, supabase]);
 
-  // Listen for library creation/deletion events and folder updates to refresh the list
+  // Optimized: Listen for library and folder events with targeted cache invalidation
   useEffect(() => {
     const handleLibraryCreated = (event: CustomEvent) => {
       const createdFolderId = event.detail?.folderId;
-      // Only refresh if the library was created in the current folder
+      // Only invalidate if the library was created in the current folder
       if (createdFolderId === folderId) {
-        fetchData();
+        queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
       }
     };
 
     const handleLibraryDeleted = (event: CustomEvent) => {
       const deletedFolderId = event.detail?.folderId;
-      // Only refresh if the library was deleted from the current folder
+      // Only invalidate if the library was deleted from the current folder
       if (deletedFolderId === folderId) {
-        fetchData();
+        queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
       }
     };
 
     const handleLibraryUpdated = (event: CustomEvent) => {
-      // Refresh data when any library is updated
-      // We need to check if the updated library belongs to the current folder
-      // Since we don't have folderId in the event detail, we'll refresh all libraries
-      // The fetchData will only fetch libraries for the current folder
-      fetchData();
+      // Invalidate libraries list to refresh the updated library
+      queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
     };
 
     const handleFolderUpdated = (event: CustomEvent) => {
       const updatedFolderId = event.detail?.folderId;
-      // Refresh if the current folder was updated
+      // Invalidate if the current folder was updated
       if (updatedFolderId === folderId) {
-        fetchData();
+        queryClient.invalidateQueries({ queryKey: queryKeys.folder(folderId) });
       }
     };
 
@@ -145,7 +127,7 @@ export default function FolderPage() {
       window.removeEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
       window.removeEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
     };
-  }, [folderId, fetchData]);
+  }, [folderId, queryClient]);
 
   const handleLibraryClick = (libraryId: string) => {
     router.push(`/${projectId}/${libraryId}`);
@@ -206,9 +188,8 @@ export default function FolderPage() {
         if (window.confirm('Delete this library?')) {
           try {
             await deleteLibrary(supabase, libraryId);
-            fetchData(); // Refresh data
             
-            // Dispatch event to notify Sidebar
+            // Dispatch event to notify other components - event handler will invalidate cache
             window.dispatchEvent(new CustomEvent('libraryDeleted', {
               detail: { folderId, libraryId, projectId }
             }));
@@ -234,8 +215,7 @@ export default function FolderPage() {
 
   const handleLibraryCreated = (libraryId: string) => {
     setShowLibraryModal(false);
-    fetchData();
-    // Dispatch event to notify Sidebar
+    // Dispatch event to notify other components - event handler will invalidate cache
     window.dispatchEvent(new CustomEvent('libraryCreated', {
       detail: { folderId, libraryId }
     }));
@@ -363,8 +343,7 @@ export default function FolderPage() {
             setEditingLibraryId(null);
           }}
           onUpdated={() => {
-            fetchData(); // Refresh data
-            // Dispatch event to notify Sidebar
+            // Dispatch event to notify other components - event handler will invalidate cache
             window.dispatchEvent(new CustomEvent('libraryUpdated', {
               detail: { libraryId: editingLibraryId, projectId }
             }));

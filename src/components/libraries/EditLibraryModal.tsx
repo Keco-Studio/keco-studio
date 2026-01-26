@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { updateLibrary, getLibrary, Library } from '@/lib/services/libraryService';
+import { getLibrary, Library } from '@/lib/services/libraryService';
+import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
 import closeIcon from '@/app/assets/images/closeIcon32.svg';
@@ -18,9 +19,9 @@ type EditLibraryModalProps = {
 
 export function EditLibraryModal({ open, libraryId, onClose, onUpdated }: EditLibraryModalProps) {
   const supabase = useSupabase();
+  const updateName = useUpdateEntityName();
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -68,18 +69,18 @@ export function EditLibraryModal({ open, libraryId, onClose, onUpdated }: EditLi
       return;
     }
     
-    setSubmitting(true);
     setError(null);
     
     try {
-      await updateLibrary(supabase, libraryId, {
+      // Use cache mutation hook for optimistic update
+      await updateName.mutateAsync({
+        id: libraryId,
         name: trimmed,
         description,
+        entityType: 'library'
       });
       
-      // Dispatch event to notify other components to refresh cache
-      window.dispatchEvent(new CustomEvent('libraryUpdated', { detail: { libraryId } }));
-      
+      // Event is dispatched automatically by the hook
       if (onUpdated) {
         onUpdated();
       }
@@ -87,8 +88,6 @@ export function EditLibraryModal({ open, libraryId, onClose, onUpdated }: EditLi
     } catch (e: any) {
       console.error('Library update error:', e);
       setError(e?.message || 'Failed to update library');
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -119,7 +118,7 @@ export function EditLibraryModal({ open, libraryId, onClose, onUpdated }: EditLi
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Enter library name"
-                  disabled={submitting}
+                  disabled={updateName.isPending}
                 />
               </div>
             </div>
@@ -141,7 +140,7 @@ export function EditLibraryModal({ open, libraryId, onClose, onUpdated }: EditLi
                     }
                   }}
                   maxLength={250}
-                  disabled={submitting}
+                  disabled={updateName.isPending}
                 />
               </div>
             </div>
@@ -151,9 +150,9 @@ export function EditLibraryModal({ open, libraryId, onClose, onUpdated }: EditLi
               <button
                 className={`${styles.button} ${styles.primary}`}
                 onClick={handleSubmit}
-                disabled={submitting || loading}
+                disabled={updateName.isPending || loading}
               >
-                {submitting ? 'Saving...' : 'Save'}
+                {updateName.isPending ? 'Saving...' : 'Save'}
               </button>
             </div>
           </>

@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { ConfigProvider, Tabs, Switch, Tooltip } from 'antd';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import { getLibrary, Library } from '@/lib/services/libraryService';
 import { getFieldTypeIcon } from '../predefine/utils';
 import { usePresence } from '@/lib/contexts/PresenceContext';
@@ -66,6 +68,7 @@ export default function AssetPage() {
   const params = useParams();
   const supabase = useSupabase();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
   const projectId = params.projectId as string;
   const libraryId = params.libraryId as string;
@@ -710,6 +713,13 @@ export default function AssetPage() {
 
         setValues({});
         setNavigating(true);
+
+        // Invalidate React Query cache to ensure LibraryPage gets fresh data
+        await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+        
+        // Also refetch to ensure data is updated before navigation
+        await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
 
         // Dispatch event to notify Sidebar to refresh assets
         window.dispatchEvent(new CustomEvent('assetCreated', {

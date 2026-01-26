@@ -24,6 +24,7 @@ import { Tree, Tooltip } from "antd";
 import { DataNode, EventDataNode } from "antd/es/tree";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSupabase } from "@/lib/SupabaseContext";
+import { queryKeys } from "@/lib/utils/queryKeys";
 import { NewProjectModal } from "@/components/projects/NewProjectModal";
 import { EditProjectModal } from "@/components/projects/EditProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
@@ -786,6 +787,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const cacheKey = `assets:list:${libraryId}`;
       globalRequestCache.invalidate(cacheKey);
       
+      // Invalidate React Query cache to ensure LibraryPage gets fresh data
+      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+      
+      // Refetch to ensure data is updated immediately
+      await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+      await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+      
       // Notify that asset was deleted
       window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
       await fetchAssets(libraryId);
@@ -1476,6 +1485,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   const cacheKey = `assets:list:${libraryId}`;
                   globalRequestCache.invalidate(cacheKey);
                   
+                  // Invalidate React Query cache to ensure LibraryPage gets fresh data
+                  await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+                  await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+                  
+                  // Refetch to ensure data is updated immediately
+                  await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+                  await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+                  
                   await fetchAssets(libraryId);
                   window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
                   // Check if currently viewing this asset, if so navigate to library page
@@ -1632,10 +1649,24 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setShowLibraryModal(true);
   };
 
+  const handleLogoClick = () => {
+    // Navigate to first project if available, otherwise go to projects list
+    if (projects.length > 0) {
+      const firstProject = projects[0];
+      router.push(`/${firstProject.id}`);
+    } else {
+      router.push('/projects');
+    }
+  };
+
   return (
     <aside className={`${styles.sidebar} ${!isSidebarVisible ? styles.sidebarHidden : ''}`}>
       <div className={styles.header}>
-        <div className={styles.headerLogo}>
+        <div 
+          className={styles.headerLogo}
+          onClick={handleLogoClick}
+          style={{ cursor: 'pointer' }}
+        >
           <Image src={loginProductIcon} alt="Keco Studio" width={32} height={32} />
           <div className={styles.headerBrand}>
             <div className={styles.brandName}>Keco Studio</div>
