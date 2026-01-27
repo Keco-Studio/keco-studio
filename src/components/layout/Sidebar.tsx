@@ -1584,6 +1584,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Dispatch event to notify other components (ProjectsPage) to refresh their caches
     window.dispatchEvent(new CustomEvent('projectCreated'));
     
+    // Always navigate to the newly created project
     if (projectId) {
       router.push(`/${projectId}`);
       // React Query will automatically fetch folders and libraries when currentIds.projectId changes
@@ -1602,21 +1603,26 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       detail: { folderId: createdFolderId, libraryId, projectId: currentIds.projectId }
     }));
     
-    // If currently viewing a library page, navigate to the newly created library
-    if (currentIds.isLibraryPage && currentIds.projectId) {
+    // Always navigate to the newly created library if we have a projectId
+    if (currentIds.projectId) {
       router.push(`/${currentIds.projectId}/${libraryId}`);
     }
   };
 
-  const handleFolderCreated = async () => {
+  const handleFolderCreated = async (folderId: string) => {
     setShowFolderModal(false);
     setSelectedFolderId(null); // Clear selection after creation
     
     // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
     // All components (Sidebar, ProjectPage) will listen to this event and refresh their respective caches
     window.dispatchEvent(new CustomEvent('folderCreated', {
-      detail: { projectId: currentIds.projectId }
+      detail: { projectId: currentIds.projectId, folderId }
     }));
+    
+    // Always navigate to the newly created folder if we have a projectId
+    if (currentIds.projectId && folderId) {
+      router.push(`/${currentIds.projectId}/folder/${folderId}`);
+    }
   };
 
   const handleAddButtonClick = (e: React.MouseEvent<HTMLButtonElement>) => {
