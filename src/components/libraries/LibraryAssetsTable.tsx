@@ -11,15 +11,12 @@ import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
 import { DeleteAssetModal, ClearContentsModal, DeleteRowModal } from './LibraryAssetsTableModals';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { useYjs } from '@/contexts/YjsContext';
 import { 
   type MediaFileMetadata,
   isImageFile,
   getFileIcon 
 } from '@/lib/services/mediaFileUploadService';
-import { useRealtimeSubscription } from '@/lib/hooks/useRealtimeSubscription';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
-import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent } from '@/lib/types/collaboration';
 import { ConnectionStatusIndicator } from '@/components/collaboration/ConnectionStatusIndicator';
 import { StackedAvatars, getFirstUserColor } from '@/components/collaboration/StackedAvatars';
 import { useTableDataManager } from './hooks/useTableDataManager';
@@ -28,7 +25,6 @@ import { useClipboardOperations } from './hooks/useClipboardOperations';
 import { useCellEditing } from './hooks/useCellEditing';
 import { useCellSelection, type CellKey } from './hooks/useCellSelection';
 import { useUserRole } from './hooks/useUserRole';
-import { useYjsSync } from './hooks/useYjsSync';
 import { useAssetHover } from './hooks/useAssetHover';
 import { useRowOperations } from './hooks/useRowOperations';
 import { useReferenceModal } from './hooks/useReferenceModal';
@@ -106,21 +102,26 @@ export function LibraryAssetsTable({
   // Get message API from App context to support dynamic theme
   const { message } = App.useApp();
   
-  // Yjs integration - unified data source to resolve row ordering issues
-  const { yRows } = useYjs();
-  const { allRowsSource } = useYjsSync(rows, yRows);
+  // Use props.rows directly (from LibraryDataContext via adapter)
+  // No need for separate Yjs sync - LibraryDataContext handles everything
+  const allRowsSource = rows;
+  
+  // Create a yRows mock object for hooks compatibility (no actual Yjs operations)
+  // LibraryDataContext handles all data persistence
+  const yRowsMock = useMemo(() => ({
+    length: allRowsSource.length,
+    toArray: () => allRowsSource,
+    insert: () => {}, // No-op: LibraryDataContext handles creation
+    delete: () => {}, // No-op: LibraryDataContext handles deletion
+  }), [allRowsSource]);
 
   const [isSaving, setIsSaving] = useState(false);
   
   // Track current user's focused cell (for collaboration presence)
   const [currentFocusedCell, setCurrentFocusedCell] = useState<{ assetId: string; propertyKey: string } | null>(null);
   
-  // Realtime collaboration state: track remote edits from other users
-  const [realtimeEditedCells, setRealtimeEditedCells] = useState<Map<string, { value: any; timestamp: number }>>(new Map());
-  
-  // Conflict resolution state: track cells with conflicts
-  // Format: { cellKey: { remoteValue, localValue, userName, timestamp } }
-  const [conflictedCells, setConflictedCells] = useState<Map<string, { remoteValue: any; localValue: any; userName: string; timestamp: number }>>(new Map());
+  // ✅ Realtime updates now come automatically through props.rows from LibraryDataContext
+  // No need to track realtime edited cells separately
   
   // Optimistic update state for boolean fields: track pending boolean updates
   // Format: { rowId-propertyKey: booleanValue }
@@ -198,148 +199,18 @@ export function LibraryAssetsTable({
   });
 
   // Realtime collaboration: event handlers
-  const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
-    const cellKey = `${event.assetId}-${event.propertyKey}`;
-    
-    // Update the cell with remote data
-    setRealtimeEditedCells(prev => {
-      const next = new Map(prev);
-      next.set(cellKey, { value: event.newValue, timestamp: event.timestamp });
-      return next;
-    });
-
-    // Clear the realtime edited state after a short delay
-    setTimeout(() => {
-      setRealtimeEditedCells(prev => {
-        const next = new Map(prev);
-        next.delete(cellKey);
-        return next;
-      });
-    }, 300);
-  }, []);
-
-  const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
-    // Only show notification if it's from another user, not the current user
-    if (currentUser && event.userId && event.userId !== currentUser.id) {
-      message.info(`${event.userName} added "${event.assetName}"`);
-    }
-    
-    // If position information is provided, insert the asset at the correct position in Yjs
-    if (event.insertAfterRowId || event.insertBeforeRowId) {
-      const allRows = yRows.toArray();
-      let insertIndex = -1;
-      
-      if (event.insertAfterRowId) {
-        // Insert below the target row
-        const targetIndex = allRows.findIndex(r => r.id === event.insertAfterRowId);
-        if (targetIndex >= 0) {
-          insertIndex = targetIndex + 1;
-        }
-      } else if (event.insertBeforeRowId) {
-        // Insert above the target row
-        const targetIndex = allRows.findIndex(r => r.id === event.insertBeforeRowId);
-        if (targetIndex >= 0) {
-          insertIndex = targetIndex;
-        }
-      }
-      
-      // If we found a valid position, create an optimistic asset and insert it
-      if (insertIndex >= 0 && library) {
-        const optimisticAsset: AssetRow = {
-          id: event.assetId,
-          libraryId: library.id,
-          name: event.assetName,
-          propertyValues: event.propertyValues,
-        };
-        
-        // Insert into Yjs at the correct position
-        yRows.insert(insertIndex, [optimisticAsset]);
-        
-        // Also add to optimisticNewAssets for display
-        setOptimisticNewAssets(prev => {
-          const newMap = new Map(prev);
-          newMap.set(event.assetId, optimisticAsset);
-          return newMap;
-        });
-      }
-    }
-    
-    // The parent will refresh and show the new asset automatically
-    // due to database subscription or polling
-  }, [yRows, library, setOptimisticNewAssets, currentUser]);
-
-  const handleAssetDeleteEvent = useCallback((event: AssetDeleteEvent) => {
-    // Show a notification that an asset was deleted
-    message.warning(`${event.userName} deleted "${event.assetName}"`);
-    
-    // Optimistically hide the deleted asset
-    setDeletedAssetIds(prev => {
-      const next = new Set(prev);
-      next.add(event.assetId);
-      return next;
-    });
-  }, []);
-
-  const handleConflictEvent = useCallback((event: CellUpdateEvent, localValue: any) => {
-    const cellKey = `${event.assetId}-${event.propertyKey}`;
-    
-    // Track the conflict
-    setConflictedCells(prev => {
-      const next = new Map(prev);
-      next.set(cellKey, {
-        remoteValue: event.newValue,
-        localValue,
-        userName: event.userName,
-        timestamp: event.timestamp,
-      });
-      return next;
-    });
-    
-    // Show conflict notification
-    message.warning(
-      `Cell updated by ${event.userName}. Choose to keep your changes or accept theirs.`,
-      5
-    );
-  }, []);
-
-  // Initialize realtime subscription if enabled
-  const realtimeConfig = enableRealtime && currentUser && library ? {
-    libraryId: library.id,
-    currentUserId: currentUser.id,
-    currentUserName: currentUser.name,
-    currentUserEmail: currentUser.email,
-    avatarColor: currentUser.avatarColor || getUserAvatarColor(currentUser.id),
-    onCellUpdate: handleCellUpdateEvent,
-    onAssetCreate: handleAssetCreateEvent,
-    onAssetDelete: handleAssetDeleteEvent,
-    onConflict: handleConflictEvent,
-  } : null;
-
-  const realtimeSubscription = useRealtimeSubscription(
-    realtimeConfig || {
-      libraryId: '',
-      currentUserId: '',
-      currentUserName: '',
-      currentUserEmail: '',
-      avatarColor: '',
-      onCellUpdate: () => {},
-      onAssetCreate: () => {},
-      onAssetDelete: () => {},
-      onConflict: () => {},
-    }
-  );
-
-  const {
-    connectionStatus,
-    broadcastCellUpdate,
-    broadcastAssetCreate,
-    broadcastAssetDelete,
-  } = enableRealtime && currentUser ? realtimeSubscription : {
-    connectionStatus: 'disconnected' as const,
-    broadcastCellUpdate: async () => {},
-    broadcastAssetCreate: async () => {},
-    broadcastAssetDelete: async () => {},
-  };
+  // ✅ Realtime collaboration is now handled by LibraryDataContext
+  // No need for separate subscription here - data updates come through props.rows
+  // which are sourced from LibraryDataContext's yAssets
+  
+  // Connection status is always 'connected' since we use LibraryDataContext
+  const connectionStatus = 'connected' as const;
+  
+  // These broadcast functions are no longer needed here
+  // The parent (Adapter) will handle all broadcasting through LibraryDataContext
+  const broadcastCellUpdate = async () => {};
+  const broadcastAssetCreate = async () => {};
+  const broadcastAssetDelete = async () => {};
 
   // Presence tracking helpers
   const handleCellFocus = useCallback((assetId: string, propertyKey: string) => {
@@ -401,19 +272,8 @@ export function LibraryAssetsTable({
     return users;
   }, [presenceTracking, currentUser, currentFocusedCell]);
 
-  // Conflict resolution handlers
-  const handleKeepLocalChanges = useCallback((assetId: string, propertyKey: string) => {
-    const cellKey = `${assetId}-${propertyKey}`;
-    
-    // Remove conflict state (keep local value)
-    setConflictedCells(prev => {
-      const next = new Map(prev);
-      next.delete(cellKey);
-      return next;
-    });  
-    message.success('Kept your changes', 2);
-  }, []);
-  // Note: handleAcceptRemoteChanges will be defined after useCellEditing hook
+  // ✅ Conflict resolution is now handled automatically by LibraryDataContext
+  // Remote changes win by default (last-write-wins)
   useOptimisticCleanup({
     rows,
     optimisticNewAssets,
@@ -469,7 +329,7 @@ export function LibraryAssetsTable({
     library,
     onSaveAsset,
     userRole,
-    yRows,
+    yRows: yRowsMock,
     setOptimisticNewAssets,
     setIsSaving,
     enableRealtime,
@@ -480,7 +340,7 @@ export function LibraryAssetsTable({
   const cellEditing = useCellEditing({
     properties,
     rows,
-    yRows,
+    yRows: yRowsMock,
     onUpdateAsset,
     userRole,
     isAddingRow,
@@ -506,23 +366,6 @@ export function LibraryAssetsTable({
     handleCancelEditing,
     validateValueByType,
   } = cellEditing;
-  // Conflict resolution handlers (must be after useCellEditing hook)
-  const handleAcceptRemoteChanges = useCallback((assetId: string, propertyKey: string) => {
-    const cellKey = `${assetId}-${propertyKey}`;
-    const conflict = conflictedCells.get(cellKey);
-    if (!conflict) return;
-    // Apply remote value to editing cell if it's currently being edited
-    if (editingCell?.rowId === assetId && editingCell?.propertyKey === propertyKey) {
-      setEditingCellValue(String(conflict.remoteValue));
-    }
-    // Remove conflict state
-    setConflictedCells(prev => {
-      const next = new Map(prev);
-      next.delete(cellKey);
-      return next;
-    });
-    message.info(`Accepted changes from ${conflict.userName}`, 2);
-  }, [conflictedCells, editingCell, setEditingCellValue]);
   const {
     referenceModalOpen,
     referenceModalProperty,
@@ -534,7 +377,7 @@ export function LibraryAssetsTable({
   } = useReferenceModal({
     setNewRowData,
     allRowsSource,
-    yRows,
+    yRows: yRowsMock,
     onUpdateAsset,
     rows,
     newRowData,
@@ -546,21 +389,17 @@ export function LibraryAssetsTable({
   });
   const hasProperties = properties.length > 0;
   const hasRows = rows.length > 0;
-  // Helper function to broadcast cell updates
+  
+  // ✅ Broadcasting is now handled automatically by LibraryDataContext
+  // No need for explicit broadcast calls - updates propagate through Yjs
   const broadcastCellUpdateIfEnabled = useCallback(async (
     assetId: string,
     propertyKey: string,
     newValue: any,
     oldValue?: any
   ) => {
-    if (enableRealtime && currentUser) {
-      try {
-        await broadcastCellUpdate(assetId, propertyKey, newValue, oldValue);
-      } catch (error) {
-        console.error('Failed to broadcast cell update:', error);
-      }
-    }
-  }, [enableRealtime, currentUser, broadcastCellUpdate]);
+    // No-op: LibraryDataContext handles broadcasting
+  }, []);
   useClickOutsideAutoSave({
     tableContainerRef,
     isAddingRow,
@@ -581,7 +420,7 @@ export function LibraryAssetsTable({
     setCurrentFocusedCell,
     onUpdateAsset,
     rows,
-    yRows,
+    yRows: yRowsMock,
     setOptimisticEditUpdates,
     presenceTracking,
   });
@@ -610,25 +449,8 @@ export function LibraryAssetsTable({
         [propertyKey]: value
       };
       
-      // Get asset name
-      const assetName = foundRow.name || 'Untitled';
-      
-      // Immediately update Yjs (optimistic update)
-      const allRows = yRows.toArray();
-      const rowIndex = allRows.findIndex(r => r.id === rowId);
-      
-      if (rowIndex >= 0) {
-        const existingRow = allRows[rowIndex];
-        const updatedRow = {
-          ...existingRow,
-          name: String(assetName),
-          propertyValues: updatedPropertyValues
-        };
-        
-        // Update Yjs
-        yRows.delete(rowIndex, 1);
-        yRows.insert(rowIndex, [updatedRow]);
-      }
+    // Get asset name
+    const assetName = foundRow.name || 'Untitled';
 
       // Apply optimistic update
       setOptimisticEditUpdates(prev => {
@@ -674,23 +496,6 @@ export function LibraryAssetsTable({
     
     // Get asset name
     const assetName = row.name || 'Untitled';
-    
-    // Immediately update Yjs (optimistic update)
-    const allRows = yRows.toArray();
-    const rowIndex = allRows.findIndex(r => r.id === rowId);
-    
-    if (rowIndex >= 0) {
-      const existingRow = allRows[rowIndex];
-      const updatedRow = {
-        ...existingRow,
-        name: String(assetName),
-        propertyValues: updatedPropertyValues
-      };
-      
-      // Update Yjs
-      yRows.delete(rowIndex, 1);
-      yRows.insert(rowIndex, [updatedRow]);
-    }
 
     // Apply optimistic update
     setOptimisticEditUpdates(prev => {
@@ -849,7 +654,7 @@ export function LibraryAssetsTable({
     onSaveAsset,
     onUpdateAsset,
     library,
-    yRows,
+    yRows: yRowsMock,
     setSelectedCells,
     setSelectedRowIds,
     setCutCells,
@@ -885,7 +690,7 @@ export function LibraryAssetsTable({
     supabase,
     orderedProperties,
     getAllRowsForCellSelection,
-    yRows,
+    yRows: yRowsMock,
     selectedCells,
     selectedRowIds,
     selectedCellsRef,

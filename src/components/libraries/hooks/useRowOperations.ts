@@ -1,10 +1,15 @@
 import { useCallback } from 'react';
-import type * as Y from 'yjs';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { CellKey } from './useCellSelection';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-type YArrayAssetRow = Y.Array<AssetRow>;
+// Compatible interface for yRows (supports both Y.Array and mock objects)
+interface YRowsLike {
+  length: number;
+  toArray: () => AssetRow[];
+  insert: (index: number, content: AssetRow[]) => void;
+  delete: (index: number, length: number) => void;
+}
 
 export type UseRowOperationsParams = {
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
@@ -14,7 +19,7 @@ export type UseRowOperationsParams = {
   supabase: SupabaseClient | null;
   orderedProperties: PropertyConfig[];
   getAllRowsForCellSelection: () => AssetRow[];
-  yRows: YArrayAssetRow;
+  yRows: YRowsLike;
   selectedCells: Set<CellKey>;
   selectedRowIds: Set<string>;
   selectedCellsRef: React.MutableRefObject<Set<CellKey>>;

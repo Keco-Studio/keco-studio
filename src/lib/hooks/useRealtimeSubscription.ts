@@ -99,8 +99,17 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   const handleCellUpdateEvent = useCallback((payload: any) => {
     const event = payload.payload as CellUpdateEvent;
 
+    console.log('[useRealtimeSubscription] 📥 Cell update received:', {
+      assetId: event.assetId,
+      propertyKey: event.propertyKey,
+      fromUserId: event.userId,
+      currentUserId,
+      isOwnBroadcast: event.userId === currentUserId,
+    });
+
     // Ignore our own broadcasts
     if (event.userId === currentUserId) {
+      console.log('[useRealtimeSubscription] ⏭️ Ignoring own broadcast');
       return;
     }
 
@@ -108,11 +117,15 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     if (optimistic && optimistic.timestamp < event.timestamp) {
       // Conflict detected: remote update is newer than our optimistic update
+      console.log('[useRealtimeSubscription] ⚠️ Conflict detected, remote wins');
       onConflict(event, optimistic.newValue);
       removeOptimisticUpdate(event.assetId, event.propertyKey);
     } else if (!optimistic) {
       // No conflict, apply the update
+      console.log('[useRealtimeSubscription] ✅ Applying remote update');
       onCellUpdate(event);
+    } else {
+      console.log('[useRealtimeSubscription] ⏭️ Ignoring old remote update (our optimistic is newer)');
     }
     // If optimistic.timestamp >= event.timestamp, ignore (our update is newer)
   }, [currentUserId, getOptimisticUpdate, onCellUpdate, onConflict, removeOptimisticUpdate]);
@@ -207,6 +220,13 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           type: 'broadcast',
           event: 'cell:update',
           payload: event,
+        });
+        
+        console.log('[useRealtimeSubscription] 📤 Cell update broadcasted:', {
+          assetId,
+          propertyKey,
+          userId: currentUserId,
+          libraryId: event.assetId.split('-')[0], // First part of UUID
         });
 
         // Track this broadcast to prevent processing our own database update
@@ -342,9 +362,15 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
    */
   useEffect(() => {
     if (!libraryId || !supabase) {
+      console.log('[useRealtimeSubscription] ❌ Not initializing - missing libraryId or supabase', {
+        hasLibraryId: !!libraryId,
+        hasSupabase: !!supabase,
+      });
       return;
     }
 
+    console.log('[useRealtimeSubscription] 🚀 Initializing for library:', libraryId);
+    
     const channelName = `library:${libraryId}:edits`;
     setConnectionStatus('connecting');
 
@@ -514,10 +540,13 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     // Subscribe to the channel
     channel.subscribe((status) => {
+      console.log('[useRealtimeSubscription] 📡 Subscription status:', status, 'for library:', libraryId);
       if (status === 'SUBSCRIBED') {
         setConnectionStatus('connected');
+        console.log('[useRealtimeSubscription] ✅ CONNECTED to edits channel for library:', libraryId);
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         setConnectionStatus('disconnected');
+        console.log('[useRealtimeSubscription] ❌ DISCONNECTED from edits channel for library:', libraryId);
       }
     });
 
