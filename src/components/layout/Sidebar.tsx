@@ -113,7 +113,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const avatarInitial = displayName.charAt(0).toUpperCase();
   const [avatarError, setAvatarError] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
-  const [predefinePressedId, setPredefinePressedId] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   // Close user menu when clicking outside
@@ -992,7 +991,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
                 </div>
                 <div className={styles.itemActions}>
-                  {userRole === 'admin' && (
+              {userRole === 'admin' && (
                     <Tooltip
                       title="Predefine asset here"
                       placement="top"
@@ -1002,12 +1001,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                         className={styles.iconButton}
                         aria-label="Library sections"
                         onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
-                        onMouseDown={(e) => { e.stopPropagation(); setPredefinePressedId(lib.id); }}
-                        onMouseUp={() => setPredefinePressedId(null)}
-                        onMouseLeave={() => setPredefinePressedId(null)}
                       >
                         <Image
-                          src={predefinePressedId === lib.id ? PredefineNewClick : PredefineNewIcon}
+                      src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
                           alt="Predefine"
                           width={22}
                           height={22}
@@ -1174,12 +1170,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     className={styles.iconButton}
                     aria-label="Library sections"
                     onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
-                    onMouseDown={(e) => { e.stopPropagation(); setPredefinePressedId(lib.id); }}
-                    onMouseUp={() => setPredefinePressedId(null)}
-                    onMouseLeave={() => setPredefinePressedId(null)}
                   >
                     <Image
-                      src={predefinePressedId === lib.id ? PredefineNewClick : PredefineNewIcon}
+                      src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
                       alt="Predefine"
                       width={22}
                       height={22}
@@ -1258,7 +1251,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     });
     
     return result;
-  }, [folders, libraries, assets, currentIds.projectId, currentIds.libraryId, currentIds.isLibraryPage, currentIds.assetId, currentIds.isPredefinePage, handleLibraryPredefineClick, router, userRole, predefinePressedId]);
+  }, [folders, libraries, assets, currentIds.projectId, currentIds.libraryId, currentIds.isLibraryPage, currentIds.assetId, currentIds.isPredefinePage, handleLibraryPredefineClick, router, userRole]);
 
   const selectedKey = useMemo(() => {
     const keys: string[] = [];
