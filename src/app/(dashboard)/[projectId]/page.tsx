@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, usePathname } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import { getProject, Project } from '@/lib/services/projectService';
 import { listFolders, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
@@ -31,14 +33,9 @@ export default function ProjectPage() {
   const router = useRouter();
   const pathname = usePathname();
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const projectId = params.projectId as string;
     
-  const [project, setProject] = useState<Project | null>(null);
-  const [folders, setFolders] = useState<Folder[]>([]);
-  const [libraries, setLibraries] = useState<Library[]>([]);
-  const [folderLibraries, setFolderLibraries] = useState<Record<string, Library[]>>({});
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
@@ -51,66 +48,65 @@ export default function ProjectPage() {
   const [createButtonRef, setCreateButtonRef] = useState<HTMLButtonElement | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null); 
 
-  const fetchData = useCallback(async () => {
-    if (!projectId) return;
-    
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const [projectData, foldersData, librariesData] = await Promise.all([
-        getProject(supabase, projectId),
-        listFolders(supabase, projectId),
-        listLibraries(supabase, projectId, null), // Get only root libraries (folder_id is null)
-      ]);
-      
-      if (!projectData) {
-        // Project not found - redirect immediately without showing error
+  // Use React Query for data fetching
+  const { data: project, isLoading: projectLoading, error: projectError } = useQuery({
+    queryKey: queryKeys.project(projectId),
+    queryFn: async () => {
+      const data = await getProject(supabase, projectId);
+      if (!data) {
         window.location.replace('/projects');
-        return;
+        return null;
       }
-            
-      // Fetch libraries for each folder
+      return data;
+    },
+    enabled: !!projectId,
+  });
+
+  const { data: folders = [], isLoading: foldersLoading } = useQuery({
+    queryKey: queryKeys.projectFolders(projectId),
+    queryFn: () => listFolders(supabase, projectId),
+    enabled: !!projectId,
+  });
+
+  const { data: libraries = [], isLoading: librariesLoading } = useQuery({
+    queryKey: queryKeys.projectLibraries(projectId),
+    queryFn: () => listLibraries(supabase, projectId, null),
+    enabled: !!projectId,
+  });
+
+  // Fetch all folder libraries in one query to avoid hooks violation
+  const [folderLibraries, setFolderLibraries] = useState<Record<string, Library[]>>({});
+  
+  useEffect(() => {
+    const fetchFolderLibraries = async () => {
+      if (!projectId || folders.length === 0) return;
+      
       const folderLibrariesMap: Record<string, Library[]> = {};
       await Promise.all(
-        foldersData.map(async (folder) => {
+        folders.map(async (folder) => {
           const libs = await listLibraries(supabase, projectId, folder.id);
           folderLibrariesMap[folder.id] = libs;
         })
       );
-      
-      setProject(projectData);
-      setFolders(foldersData);
-      setLibraries(librariesData);
       setFolderLibraries(folderLibrariesMap);
-      setLoading(false);
-    } catch (e: any) {
-      // If it's an authorization error, redirect immediately without showing error
-      // This provides better UX and security (no flash of error message)
-      if (e instanceof AuthorizationError || e?.name === 'AuthorizationError' || 
-          e?.message?.includes('Unauthorized')) {
-        // Use window.location for immediate redirect to prevent any flash of content
-        window.location.replace('/projects');
-        return;
-      }
-      
-      // For "not found" errors, also redirect (due to RLS, this means unauthorized)
-      // But we keep it generic to avoid information leakage
-      if (e?.message?.includes('not found')) {
-        // Use window.location for immediate redirect
-        window.location.replace('/projects');
-        return;
-      }
-      
-      // For other unexpected errors, show error message
-      setError(e?.message || 'Failed to load project');
-      setLoading(false);
-    }
-  }, [projectId, supabase]);
+    };
+    
+    fetchFolderLibraries();
+  }, [projectId, folders, supabase]);
 
+  const loading = projectLoading || foldersLoading || librariesLoading;
+  const error = projectError ? (projectError as any)?.message || 'Failed to load project' : null;
+
+  // Handle authorization errors
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (projectError) {
+      const err = projectError as any;
+      if (err instanceof AuthorizationError || err?.name === 'AuthorizationError' || 
+          err?.message?.includes('Unauthorized') || err?.message?.includes('not found')) {
+        window.location.replace('/projects');
+      }
+    }
+  }, [projectError]);
 
   // Fetch user role in current project
   useEffect(() => {
@@ -132,57 +128,94 @@ export default function ProjectPage() {
     fetchUserRole();
   }, [projectId, supabase]);
 
-  // Listen for folder and library creation/deletion events to refresh the list
+  // Optimized event handlers with targeted cache invalidation
   useEffect(() => {
     const handleFolderCreated = (event: CustomEvent) => {
-      // 只刷新当前项目的数据，避免重复请求
       const eventProjectId = event.detail?.projectId;
       if (!eventProjectId || eventProjectId === projectId) {
-        fetchData();
+        // Only invalidate folders list, not everything
+        queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(projectId) });
       }
     };
 
     const handleFolderDeleted = (event: CustomEvent) => {
       const deletedProjectId = event.detail?.projectId;
-      // Only refresh if the folder was deleted from current project
       if (deletedProjectId === projectId) {
-        fetchData();
+        // Invalidate folders list
+        queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(projectId) });
       }
     };
 
     const handleFolderUpdated = (event: CustomEvent) => {
-      // Refresh data when any folder is updated in the current project
-      // We refresh all folders to ensure the updated folder name is reflected
-      fetchData();
+      const folderId = event.detail?.folderId;
+      // Only invalidate the specific folder, not all folders
+      if (folderId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.folder(folderId) });
+      }
+      // Also invalidate folders list to update the name
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(projectId) });
     };
 
-    const handleLibraryCreated = (event: CustomEvent) => {
-      // 只刷新当前项目的数据，避免重复请求
+    const handleLibraryCreated = async (event: CustomEvent) => {
       const eventProjectId = event.detail?.projectId;
+      const folderId = event.detail?.folderId;
       if (!eventProjectId || eventProjectId === projectId) {
-        fetchData();
+        // Invalidate appropriate libraries list
+        if (folderId) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
+          // Also refresh folderLibraries state for the specific folder
+          const libs = await listLibraries(supabase, projectId, folderId);
+          setFolderLibraries(prev => ({ ...prev, [folderId]: libs }));
+        } else {
+          queryClient.invalidateQueries({ queryKey: queryKeys.projectLibraries(projectId) });
+        }
       }
     };
 
-    const handleLibraryDeleted = (event: CustomEvent) => {
+    const handleLibraryDeleted = async (event: CustomEvent) => {
       const deletedProjectId = event.detail?.projectId;
-      // Refresh data if the library was deleted from current project
+      const folderId = event.detail?.folderId;
       if (deletedProjectId === projectId) {
-        fetchData();
+        // Invalidate appropriate libraries list
+        if (folderId) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
+          // Also refresh folderLibraries state for the specific folder
+          const libs = await listLibraries(supabase, projectId, folderId);
+          setFolderLibraries(prev => ({ ...prev, [folderId]: libs }));
+        } else {
+          queryClient.invalidateQueries({ queryKey: queryKeys.projectLibraries(projectId) });
+        }
       }
     };
 
-    const handleLibraryUpdated = (event: CustomEvent) => {
-      // Refresh data when any library is updated in the current project
-      // We refresh all libraries to ensure the updated library name is reflected in FolderCard
-      fetchData();
+    const handleLibraryUpdated = async (event: CustomEvent) => {
+      const libraryId = event.detail?.libraryId;
+      // Only invalidate the specific library
+      if (libraryId) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.library(libraryId) });
+      }
+      // Also invalidate libraries lists to update the name
+      queryClient.invalidateQueries({ queryKey: queryKeys.projectLibraries(projectId) });
+      // Invalidate all folder libraries to catch any folder-based libraries
+      folders.forEach(folder => {
+        queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folder.id) });
+      });
+      // Refresh folderLibraries state to update names
+      const folderLibrariesMap: Record<string, Library[]> = {};
+      await Promise.all(
+        folders.map(async (folder) => {
+          const libs = await listLibraries(supabase, projectId, folder.id);
+          folderLibrariesMap[folder.id] = libs;
+        })
+      );
+      setFolderLibraries(folderLibrariesMap);
     };
 
     const handleProjectUpdated = (event: CustomEvent) => {
-      // Refresh data when the project is updated to reflect the new project name in LibraryToolbar
       const updatedProjectId = event.detail?.projectId;
       if (updatedProjectId === projectId) {
-        fetchData();
+        // Only invalidate project data, not folders or libraries
+        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
       }
     };
 
@@ -203,7 +236,7 @@ export default function ProjectPage() {
       window.removeEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
       window.removeEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
     };
-  }, [fetchData, projectId]);
+  }, [queryClient, projectId, folders]);
 
   
   useEffect(() => {
@@ -290,7 +323,13 @@ export default function ProjectPage() {
             const deletedFolderId = libraryToDelete?.folder_id || null;
             
             await deleteLibrary(supabase, libraryId);
-            fetchData(); // Refresh data
+            
+            // Invalidate appropriate cache
+            if (deletedFolderId) {
+              queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(deletedFolderId) });
+            } else {
+              queryClient.invalidateQueries({ queryKey: queryKeys.projectLibraries(projectId) });
+            }
             
             // Dispatch event to notify Sidebar
             window.dispatchEvent(new CustomEvent('libraryDeleted', {
@@ -322,7 +361,11 @@ export default function ProjectPage() {
         if (window.confirm('Delete this folder? All libraries under it will be removed.')) {
           try {
             await deleteFolder(supabase, folderId);
-            fetchData(); // Refresh data
+            
+            // Invalidate folders list
+            queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(projectId) });
+            // Also invalidate the folder libraries
+            queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
             
             // Dispatch event to notify Sidebar
             window.dispatchEvent(new CustomEvent('folderDeleted', {
@@ -535,11 +578,8 @@ export default function ProjectPage() {
             setEditingLibraryId(null);
           }}
           onUpdated={() => {
-            fetchData(); // Refresh data
-            // Dispatch event to notify Sidebar
-            window.dispatchEvent(new CustomEvent('libraryUpdated', {
-              detail: { libraryId: editingLibraryId, projectId }
-            }));
+            // No need to manually invalidate - the hook already does this
+            // Event is also dispatched automatically by useUpdateEntityName hook
           }}
         />
       )}
@@ -558,11 +598,8 @@ export default function ProjectPage() {
             setEditingFolderId(null);
           }}
           onUpdated={() => {
-            fetchData(); // Refresh data
-            // Dispatch event to notify Sidebar
-            window.dispatchEvent(new CustomEvent('folderUpdated', {
-              detail: { folderId: editingFolderId, projectId }
-            }));
+            // No need to manually invalidate - the hook already does this
+            // Event is also dispatched automatically by useUpdateEntityName hook
           }}
         />
       )}

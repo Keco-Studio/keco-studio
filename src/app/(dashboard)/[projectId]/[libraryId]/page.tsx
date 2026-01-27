@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Tooltip, message } from 'antd';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import { getProject, Project } from '@/lib/services/projectService';
 import { getLibrary, Library } from '@/lib/services/libraryService';
 import LibraryAssetsTable from '@/components/libraries/LibraryAssetsTable';
@@ -48,13 +50,10 @@ type FieldDef = {
 export default function LibraryPage() {
   const params = useParams();
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const projectId = params.projectId as string;
   const libraryId = params.libraryId as string;
   
-  const [project, setProject] = useState<Project | null>(null);
-  const [library, setLibrary] = useState<Library | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
   const [fieldDefs, setFieldDefs] = useState<FieldDef[]>([]);
   const [assetName, setAssetName] = useState('');
@@ -70,11 +69,46 @@ export default function LibraryPage() {
   const [versions, setVersions] = useState<LibraryVersion[]>([]);
   const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
 
-  // Phase 2: state for Library assets table view (placeholder data, wired via service layer)
-  const [librarySummary, setLibrarySummary] = useState<LibrarySummary | null>(null);
-  const [tableSections, setTableSections] = useState<SectionConfig[]>([]);
-  const [tableProperties, setTableProperties] = useState<PropertyConfig[]>([]);
-  const [assetRows, setAssetRows] = useState<AssetRow[]>([]);
+  // Use React Query for data fetching
+  const { data: project, isLoading: projectLoading, error: projectError } = useQuery({
+    queryKey: queryKeys.project(projectId),
+    queryFn: () => getProject(supabase, projectId),
+    enabled: !!projectId,
+  });
+
+  const { data: library, isLoading: libraryLoading, error: libraryError } = useQuery({
+    queryKey: queryKeys.library(libraryId),
+    queryFn: () => getLibrary(supabase, libraryId, projectId),
+    enabled: !!libraryId && !!projectId,
+  });
+
+  const { data: librarySummary, isLoading: summaryLoading } = useQuery({
+    queryKey: queryKeys.librarySummary(libraryId),
+    queryFn: () => getLibrarySummary(supabase, libraryId),
+    enabled: !!libraryId,
+  });
+
+  const { data: librarySchema, isLoading: schemaLoading } = useQuery({
+    queryKey: queryKeys.librarySchema(libraryId),
+    queryFn: () => getLibrarySchema(supabase, libraryId),
+    enabled: !!libraryId,
+  });
+
+  const { data: currentAssetRows = [], isLoading: assetsLoading } = useQuery({
+    queryKey: queryKeys.libraryAssets(libraryId),
+    queryFn: () => getLibraryAssetsWithProperties(supabase, libraryId),
+    enabled: !!libraryId && (!selectedVersionId || selectedVersionId === '__current__'),
+  });
+
+  // State to hold version-specific asset rows (overrides currentAssetRows when viewing history)
+  const [versionAssetRows, setVersionAssetRows] = useState<AssetRow[] | null>(null);
+  const assetRows = versionAssetRows !== null ? versionAssetRows : currentAssetRows;
+
+  const tableSections = librarySchema?.sections || [];
+  const tableProperties = librarySchema?.properties || [];
+  const loading = projectLoading || libraryLoading || summaryLoading || schemaLoading || assetsLoading;
+  const error = projectError ? (projectError as any)?.message || 'Project not found' :
+                libraryError ? (libraryError as any)?.message || 'Library not found' : null;
 
   // Presence tracking for real-time collaboration
   const userAvatarColor = useMemo(() => {
@@ -133,6 +167,13 @@ export default function LibraryPage() {
     setFieldDefs((data as FieldDef[]) || []);
   }, [supabase, libraryId]);
 
+  // Load field definitions (for legacy form)
+  useEffect(() => {
+    if (libraryId) {
+      fetchDefinitions();
+    }
+  }, [libraryId, fetchDefinitions]);
+
   // Fetch user role for this project
   useEffect(() => {
     const fetchUserRole = async () => {
@@ -173,76 +214,15 @@ export default function LibraryPage() {
     fetchUserRole();
   }, [projectId, userProfile?.id, supabase]);
 
+  // Optimized: Listen for library updates and use targeted cache invalidation
   useEffect(() => {
-    const fetchData = async () => {
-      if (!projectId || !libraryId) return;
-      
-      setLoading(true);
-      setError(null);
-      
-      try {
-        const [projectData, libraryData] = await Promise.all([
-          getProject(supabase, projectId),
-          getLibrary(supabase, libraryId, projectId),
-        ]);
-        
-        if (!projectData) {
-          setError('Project not found');
-          return;
-        }
-        
-        if (!libraryData) {
-          setError('Library not found');
-          return;
-        }
-        
-        setProject(projectData);
-        setLibrary(libraryData);
-
-        // Existing form: keep definitions loading for now
-        await fetchDefinitions();
-
-        // Phase 2: wire Library assets table using placeholder service implementations.
-        const [summary, schema, rows] = await Promise.all([
-          getLibrarySummary(supabase, libraryId),
-          getLibrarySchema(supabase, libraryId),
-          getLibraryAssetsWithProperties(supabase, libraryId),
-        ]);
-
-        setLibrarySummary(summary);
-        setTableSections(schema.sections);
-        setTableProperties(schema.properties);
-        setAssetRows(rows);
-      } catch (e: any) {
-        setError(e?.message || 'Failed to load library');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [projectId, libraryId, supabase, fetchDefinitions]);
-
-  // Listen for library updates to refresh library name
-  useEffect(() => {
-    const handleLibraryUpdated = async (event: Event) => {
+    const handleLibraryUpdated = (event: Event) => {
       const customEvent = event as CustomEvent<{ libraryId: string }>;
-      // Only refresh if the event is for this library
+      // Only invalidate if the event is for this library
       if (customEvent.detail?.libraryId === libraryId) {
-        try {
-          // Refresh library data
-          const libraryData = await getLibrary(supabase, libraryId, projectId);
-          if (libraryData) {
-            setLibrary(libraryData);
-          }
-          // Also refresh library summary for the table
-          const summary = await getLibrarySummary(supabase, libraryId);
-          if (summary) {
-            setLibrarySummary(summary);
-          }
-        } catch (e: any) {
-          console.error('Failed to refresh library:', e);
-        }
+        // Targeted cache invalidation - only refetch what changed
+        queryClient.invalidateQueries({ queryKey: queryKeys.library(libraryId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
       }
     };
 
@@ -251,43 +231,53 @@ export default function LibraryPage() {
     return () => {
       window.removeEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
     };
-  }, [libraryId, projectId, supabase]);
+  }, [libraryId, queryClient]);
 
-  // Listen for asset changes (created/updated/deleted) from Sidebar or other sources
+  // Optimized: Listen for asset changes and use targeted cache invalidation
   useEffect(() => {
-    const handleAssetChange = async (event: Event) => {
+    const handleAssetChange = (event: Event) => {
       // Don't refresh if viewing a historical version
       if (selectedVersionId && selectedVersionId !== '__current__') {
         return;
       }
       
       const customEvent = event as CustomEvent<{ libraryId: string; assetId?: string }>;
-      // Only refresh if the event is for this library
+      // Only invalidate if the event is for this library
       if (customEvent.detail?.libraryId === libraryId) {
-        try {
-          // Force refresh by directly querying the database
-          // Use a small delay to ensure database transaction is committed
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          // Query directly from database to bypass any caching
-          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-          setAssetRows(rows);
-        } catch (e: any) {
-          console.error('Failed to refresh assets:', e);
-        }
+        // Targeted cache invalidation - React Query will handle the refetch
+        queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
       }
     };
 
-    window.addEventListener('assetCreated', handleAssetChange);
-    window.addEventListener('assetUpdated', handleAssetChange);
-    window.addEventListener('assetDeleted', handleAssetChange);
+    const handleSchemaChange = (event: Event) => {
+      // Don't refresh if viewing a historical version
+      if (selectedVersionId && selectedVersionId !== '__current__') {
+        return;
+      }
+      
+      const customEvent = event as CustomEvent<{ libraryId: string }>;
+      // Only invalidate if the event is for this library
+      if (customEvent.detail?.libraryId === libraryId) {
+        // Schema changed - need to refresh schema, assets, and summary
+        queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+        queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+      }
+    };
+
+    window.addEventListener('assetCreated', handleAssetChange as EventListener);
+    window.addEventListener('assetUpdated', handleAssetChange as EventListener);
+    window.addEventListener('assetDeleted', handleAssetChange as EventListener);
+    window.addEventListener('schemaUpdated', handleSchemaChange as EventListener);
 
     return () => {
-      window.removeEventListener('assetCreated', handleAssetChange);
-      window.removeEventListener('assetUpdated', handleAssetChange);
-      window.removeEventListener('assetDeleted', handleAssetChange);
+      window.removeEventListener('assetCreated', handleAssetChange as EventListener);
+      window.removeEventListener('assetUpdated', handleAssetChange as EventListener);
+      window.removeEventListener('assetDeleted', handleAssetChange as EventListener);
+      window.removeEventListener('schemaUpdated', handleSchemaChange as EventListener);
     };
-  }, [libraryId, supabase, selectedVersionId]);
+  }, [libraryId, selectedVersionId, queryClient]);
 
   // Load versions when version control is opened
   useEffect(() => {
@@ -305,52 +295,41 @@ export default function LibraryPage() {
     loadVersions();
   }, [isVersionControlOpen, libraryId, supabase]);
 
-  // Handle version selection - load data from snapshot or current database
+  // Handle version selection - load data from snapshot or use current React Query data
   useEffect(() => {
     if (!libraryId) return;
 
     const loadVersionData = async () => {
       try {
-        // If no version selected or current version selected, load latest data from database
+        // If no version selected or current version selected, use React Query data
         if (!selectedVersionId || selectedVersionId === '__current__') {
-          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-          setAssetRows(rows);
+          setVersionAssetRows(null); // Clear version-specific data to use current data
           return;
         }
 
         // If versions haven't been loaded yet, wait for them
         if (versions.length === 0) {
-          // Try to load versions first
           try {
             const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
             setVersions(loadedVersions);
-            // Continue with the loaded versions
             const selectedVersion = loadedVersions.find(v => v.id === selectedVersionId);
             if (!selectedVersion || !selectedVersion.snapshotData) {
               console.warn('Selected version not found or has no snapshot data');
-              // Fallback to current data
-              const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-              setAssetRows(rows);
+              setVersionAssetRows(null);
               return;
             }
 
             // Extract assets from snapshot data
             const snapshotAssets = selectedVersion.snapshotData?.assets;
             if (snapshotAssets && Array.isArray(snapshotAssets)) {
-              // Convert snapshot assets to AssetRow format
-              // The snapshot assets should already be in AssetRow format from createLibrarySnapshot
-              setAssetRows(snapshotAssets);
+              setVersionAssetRows(snapshotAssets);
             } else {
               console.warn('Snapshot data does not contain valid assets array');
-              // Fallback to current data
-              const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-              setAssetRows(rows);
+              setVersionAssetRows(null);
             }
           } catch (loadError) {
             console.error('Failed to load versions:', loadError);
-            // Fallback to current data
-            const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-            setAssetRows(rows);
+            setVersionAssetRows(null);
           }
           return;
         }
@@ -359,33 +338,21 @@ export default function LibraryPage() {
         const selectedVersion = versions.find(v => v.id === selectedVersionId);
         if (!selectedVersion || !selectedVersion.snapshotData) {
           console.warn('Selected version not found or has no snapshot data');
-          // Fallback to current data
-          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-          setAssetRows(rows);
+          setVersionAssetRows(null);
           return;
         }
 
         // Extract assets from snapshot data
         const snapshotAssets = selectedVersion.snapshotData?.assets;
         if (snapshotAssets && Array.isArray(snapshotAssets)) {
-          // Convert snapshot assets to AssetRow format
-          // The snapshot assets should already be in AssetRow format from createLibrarySnapshot
-          setAssetRows(snapshotAssets);
+          setVersionAssetRows(snapshotAssets);
         } else {
           console.warn('Snapshot data does not contain valid assets array');
-          // Fallback to current data
-          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-          setAssetRows(rows);
+          setVersionAssetRows(null);
         }
       } catch (e: any) {
         console.error('Failed to load version data:', e);
-        // On error, fallback to current data
-        try {
-          const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-          setAssetRows(rows);
-        } catch (fallbackError) {
-          console.error('Failed to load fallback data:', fallbackError);
-        }
+        setVersionAssetRows(null);
       }
     };
 
@@ -414,16 +381,10 @@ export default function LibraryPage() {
           table: 'library_assets',
           filter: `library_id=eq.${libraryId}`,
         },
-        async (payload) => {
+        (payload) => {
           console.log('[Library Page] Asset change detected:', payload);
-          
-          // Refresh asset rows
-          try {
-            const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-            setAssetRows(rows);
-          } catch (e: any) {
-            console.error('Failed to refresh assets after DB change:', e);
-          }
+          // Use cache invalidation instead of manual refetch
+          queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
         }
       )
       .subscribe();
@@ -438,17 +399,10 @@ export default function LibraryPage() {
           schema: 'public',
           table: 'library_asset_values',
         },
-        async (payload) => {
+        (payload) => {
           console.log('[Library Page] Asset value change detected:', payload);
-          
-          // Check if this change is for an asset in this library
-          // Refresh asset rows to get latest data
-          try {
-            const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-            setAssetRows(rows);
-          } catch (e: any) {
-            console.error('Failed to refresh assets after value change:', e);
-          }
+          // Use cache invalidation instead of manual refetch
+          queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
         }
       )
       .subscribe();
@@ -459,7 +413,7 @@ export default function LibraryPage() {
       supabase.removeChannel(assetsChannel);
       supabase.removeChannel(valuesChannel);
     };
-  }, [libraryId, supabase, isAuthenticated, selectedVersionId]);
+  }, [libraryId, supabase, isAuthenticated, selectedVersionId, queryClient]);
 
   const handleValueChange = (fieldId: string, value: any) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -568,30 +522,21 @@ export default function LibraryPage() {
   // Callback for saving new asset from table
   const handleSaveAssetFromTable = async (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => {
     await createAsset(supabase, libraryId, assetName, propertyValues, options);
-    // Refresh asset rows
-    const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-    setAssetRows(rows);
-    // Notify Sidebar to refresh assets for this library
+    // Notify components to refresh - event handler will invalidate cache
     window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
   };
 
   // Callback for updating asset from table
   const handleUpdateAssetFromTable = async (assetId: string, assetName: string, propertyValues: Record<string, any>) => {
     await updateAsset(supabase, assetId, assetName, propertyValues);
-    // Refresh asset rows
-    const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-    setAssetRows(rows);
-    // Notify other components (including other browser tabs/users) to refresh
+    // Notify components to refresh - event handler will invalidate cache
     window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { assetId, libraryId } }));
   };
 
   // Callback for deleting asset from table
   const handleDeleteAssetFromTable = async (assetId: string) => {
     await deleteAsset(supabase, assetId);
-    // Refresh asset rows
-    const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-    setAssetRows(rows);
-    // Notify Sidebar to refresh assets for this library
+    // Notify components to refresh - event handler will invalidate cache
     window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
   };
 
@@ -692,17 +637,9 @@ export default function LibraryPage() {
             isOpen={isVersionControlOpen}
             onClose={() => {
               setIsVersionControlOpen(false);
-              // Clear selection and reload latest data from database
+              // Clear selection to use current React Query data
               setSelectedVersionId(null);
-              const reloadLatestData = async () => {
-                try {
-                  const rows = await getLibraryAssetsWithProperties(supabase, libraryId);
-                  setAssetRows(rows);
-                } catch (e: any) {
-                  console.error('Failed to reload latest data:', e);
-                }
-              };
-              reloadLatestData();
+              setVersionAssetRows(null);
             }}
             selectedVersionId={selectedVersionId}
             highlightedVersionId={highlightedVersionId}
@@ -724,28 +661,22 @@ export default function LibraryPage() {
                 setRestoreToastMessage(null);
               }, 2000);
               
-              // Reload versions and latest data after restore
-              // The restore has already applied the data to the database, so we just need to reload
+              // Reload versions and invalidate cache to refetch latest data
               try {
-                const [loadedVersions, rows] = await Promise.all([
-                  getVersionsByLibrary(supabase, libraryId),
-                  getLibraryAssetsWithProperties(supabase, libraryId),
-                ]);
+                const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
                 setVersions(loadedVersions);
                 
-                // Notify Sidebar to refresh assets for this library
+                // Notify components to refresh - event handler will invalidate cache
                 window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { libraryId } }));
                 
                 // Highlight the restored version for 1.5 seconds
                 setHighlightedVersionId(restoredVersionId);
                 
-                // After highlight animation, load the current data (which is now the restored version)
-                setTimeout(async () => {
+                // After highlight animation, clear version selection to show current data
+                setTimeout(() => {
                   setHighlightedVersionId(null);
-                  
-                  // The database now contains the restored data, so load it as current version
-                  setAssetRows(rows);
-                  setSelectedVersionId(null); // Clear selection to show current version
+                  setSelectedVersionId(null);
+                  setVersionAssetRows(null);
                 }, 1500); // 1.5 seconds for highlight animation
               } catch (e: any) {
                 console.error('Failed to reload data after restore:', e);
