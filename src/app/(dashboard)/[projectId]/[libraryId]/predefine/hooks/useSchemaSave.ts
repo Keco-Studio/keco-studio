@@ -6,7 +6,7 @@ interface FieldDefinitionRow {
   library_id: string;
   section: string;
   label: string;
-  data_type: string;
+  data_type: string | null; // Allow null for flexible field types
   enum_options: string[] | null;
   reference_libraries: string[] | null;
   required: boolean;
@@ -38,7 +38,7 @@ export async function saveSchemaIncremental(
   });
 
   // Build maps for new definitions
-  const newMap = new Map<string, { section: string; label: string; data_type: string; enum_options: string[] | null; reference_libraries: string[] | null; required: boolean; order_index: number }>();
+  const newMap = new Map<string, { section: string; label: string; data_type: string | null; enum_options: string[] | null; reference_libraries: string[] | null; required: boolean; order_index: number }>();
   const sectionsToKeep = new Set<string>();
 
   sectionsToSave.forEach((section, sectionIdx) => {
@@ -48,7 +48,7 @@ export async function saveSchemaIncremental(
       newMap.set(key, {
         section: section.name,
         label: field.label,
-        data_type: field.dataType,
+        data_type: field.dataType ?? null, // Convert undefined to null for database
         enum_options: field.dataType === 'enum' ? field.enumOptions ?? [] : null,
         reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
         required: field.required,

@@ -56,18 +56,33 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
     onFieldChangeRef.current = onFieldChange;
   }, [onFieldChange]);
 
-  // Notify parent of field changes
+  // Listen for reset event from parent (when user clicks add button)
+  useEffect(() => {
+    const handleReset = () => {
+      // Reset form to initial empty state
+      setField({
+        label: '',
+        dataType: undefined,
+        required: false,
+        enumOptions: [],
+        referenceLibraries: [],
+      });
+      setDataTypeSelected(false);
+      setShowSlashMenu(false);
+      setShowConfigMenu(false);
+    };
+
+    window.addEventListener('fieldform-reset', handleReset as EventListener);
+    return () => {
+      window.removeEventListener('fieldform-reset', handleReset as EventListener);
+    };
+  }, []);
+
+  // Notify parent of field changes (always notify, even if empty)
   useEffect(() => {
     if (onFieldChangeRef.current) {
-      // Pass field if it has any content (label OR dataType)
-      const hasLabel = field.label && field.label.trim();
-      const hasDataType = !!field.dataType;
-      
-      if (hasLabel || hasDataType) {
-        onFieldChangeRef.current(field);
-      } else {
-        onFieldChangeRef.current(null);
-      }
+      // Always pass the field, even if completely empty
+      onFieldChangeRef.current(field);
     } else {
       console.warn('[FieldForm] onFieldChangeRef.current is undefined! Cannot notify parent.');
     }

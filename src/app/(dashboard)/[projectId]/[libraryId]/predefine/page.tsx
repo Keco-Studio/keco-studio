@@ -47,21 +47,18 @@ function PredefinePageContent() {
   const [isCreatingNewSection, setIsCreatingNewSection] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
-  const [loadingAfterSave, setLoadingAfterSave] = useState(false);
   // Track pending field for each section (field in FieldForm that hasn't been submitted yet)
   const [pendingFields, setPendingFields] = useState<Map<string, Omit<FieldConfig, 'id'> | null>>(new Map());
   // Use ref to store latest pendingFields for synchronous access in saveSchema
   const pendingFieldsRef = useRef<Map<string, Omit<FieldConfig, 'id'> | null>>(new Map());
+  // Flag to prevent auto-save during reload/save operations
+  const isSavingOrReloading = useRef(false);
   // Track temporary section name edits (only applied on save)
   const [tempSectionNames, setTempSectionNames] = useState<Map<string, string>>(new Map());
   // Track if we've already checked for auto-enter new section mode (to avoid re-triggering)
   const autoEnterChecked = useRef(false);
   // Track if we auto-entered creation mode due to empty sections (to handle slow loading)
   const autoEnteredCreationMode = useRef(false);
-  // Track invalid fields for validation UI (show red border)
-  const [invalidFields, setInvalidFields] = useState<Set<string>>(new Set());
-  // Track invalid pending fields (in FieldForm) - Map<sectionId, { labelInvalid, dataTypeInvalid }>
-  const [invalidPendingFields, setInvalidPendingFields] = useState<Map<string, { labelInvalid: boolean; dataTypeInvalid: boolean }>>(new Map());
   // Ref for tabs container to calculate add button position
   const tabsContainerRef = useRef<HTMLDivElement>(null);
   const [addButtonLeft, setAddButtonLeft] = useState<number>(0);
@@ -73,6 +70,8 @@ function PredefinePageContent() {
   const newSectionInputRef = useRef<InputRef>(null);
   // Flag to prevent immediate blur after auto-focus
   const isAutoFocusing = useRef(false);
+  // Track auto-save timer to debounce saves
+  const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const activeSection = useMemo(
     () => sections.find((s) => s.id === activeSectionId) || null,
@@ -194,19 +193,23 @@ function PredefinePageContent() {
   const handleAddField = (sectionId: string, fieldData: Omit<FieldConfig, 'id'>) => {
     const field: FieldConfig = {
       id: uid(),
-      ...fieldData,
+      label: fieldData.label || '',
+      dataType: fieldData.dataType, // Allow undefined dataType
+      required: fieldData.required,
+      ...(fieldData.enumOptions && { enumOptions: fieldData.enumOptions }),
+      ...(fieldData.referenceLibraries && { referenceLibraries: fieldData.referenceLibraries }),
     };
 
-    setSections((prev) =>
-      prev.map((s) =>
-        s.id === sectionId
-          ? {
-              ...s,
-              fields: [...s.fields, field],
-            }
-          : s
-      )
+    const updatedSections = sections.map((s) =>
+      s.id === sectionId
+        ? {
+            ...s,
+            fields: [...s.fields, field],
+          }
+        : s
     );
+    
+    setSections(updatedSections);
     setActiveSectionId(sectionId);
     setErrors([]);
     
@@ -218,6 +221,19 @@ function PredefinePageContent() {
       return newMap;
     });
     pendingFieldsRef.current.delete(sectionId);
+    
+    // Trigger FieldForm reset by dispatching a custom event
+    window.dispatchEvent(new CustomEvent('fieldform-reset', { detail: { sectionId } }));
+    
+    // Auto-save after adding field (without reloading)
+    // Skip if currently saving or reloading
+    if (!isSavingOrReloading.current) {
+      setTimeout(() => {
+        if (!isSavingOrReloading.current) {
+          saveSchema(updatedSections, false); // false = don't reload after save
+        }
+      }, 300);
+    }
   };
 
   const handleChangeField = (
@@ -225,34 +241,69 @@ function PredefinePageContent() {
     fieldId: string,
     fieldData: Omit<FieldConfig, 'id'>
   ) => {
-    setSections((prev) =>
-      prev.map((s) =>
-        s.id === sectionId
-          ? {
-              ...s,
-              fields: s.fields.map((f) => (f.id === fieldId ? { ...f, ...fieldData } : f)),
-            }
-          : s
-      )
+    const updatedSections = sections.map((s) =>
+      s.id === sectionId
+        ? {
+            ...s,
+            fields: s.fields.map((f) => (f.id === fieldId ? { 
+              ...f, 
+              ...fieldData,
+              label: fieldData.label !== undefined ? fieldData.label : f.label,
+              dataType: fieldData.dataType !== undefined ? fieldData.dataType : f.dataType,
+            } : f)),
+          }
+        : s
     );
+    
+    setSections(updatedSections);
     setErrors([]);
+    
+    // Auto-save after changing field (without reloading)
+    // Skip if currently saving or reloading
+    if (!isSavingOrReloading.current) {
+      setTimeout(() => {
+        if (!isSavingOrReloading.current) {
+          saveSchema(updatedSections, false); // false = don't reload after save
+        }
+      }, 300);
+    }
   };
 
   const handleDeleteField = (sectionId: string, fieldId: string) => {
-    setSections((prev) =>
-      prev.map((s) =>
-        s.id === sectionId ? { ...s, fields: s.fields.filter((f) => f.id !== fieldId) } : s
-      )
+    const updatedSections = sections.map((s) =>
+      s.id === sectionId ? { ...s, fields: s.fields.filter((f) => f.id !== fieldId) } : s
     );
+    
+    setSections(updatedSections);
+    
+    // Auto-save after deleting field (without reloading)
+    // Skip if currently saving or reloading
+    if (!isSavingOrReloading.current) {
+      setTimeout(() => {
+        if (!isSavingOrReloading.current) {
+          saveSchema(updatedSections, false); // false = don't reload after save
+        }
+      }, 300);
+    }
   };
 
   const handleReorderFields = (sectionId: string, newFieldOrder: FieldConfig[]) => {
-    setSections((prev) =>
-      prev.map((s) =>
-        s.id === sectionId ? { ...s, fields: newFieldOrder } : s
-      )
+    const updatedSections = sections.map((s) =>
+      s.id === sectionId ? { ...s, fields: newFieldOrder } : s
     );
+    
+    setSections(updatedSections);
     setErrors([]);
+    
+    // Auto-save after reordering fields (without reloading)
+    // Skip if currently saving or reloading
+    if (!isSavingOrReloading.current) {
+      setTimeout(() => {
+        if (!isSavingOrReloading.current) {
+          saveSchema(updatedSections, false); // false = don't reload after save
+        }
+      }, 300);
+    }
   };
 
   const handleSaveNewSection = async (newSection: { name: string; fields: FieldConfig[] }) => {
@@ -261,69 +312,28 @@ function PredefinePageContent() {
       return;
     }
 
-    // Validate section name
-    const trimmedName = newSection.name.trim();
-    if (!trimmedName) {
-      const errorMessage = 'Section name is required';
-      setErrors([errorMessage]);
-      message.error(errorMessage);
-      return;
-    }
+    const trimmedName = newSection.name.trim() || 'Untitled Section';
 
-    // Check for duplicate section name
-    const duplicateSection = sections.find(
-      (s) => s.name.toLowerCase() === trimmedName.toLowerCase()
-    );
-    if (duplicateSection) {
-      const errorMessage = `Section name "${trimmedName}" already exists. Please use a different name.`;
-      setErrors([errorMessage]);
-      message.error(errorMessage);
-      return;
-    }
-
-    // Validate: check for empty labels or missing data types
-    let hasInvalidFields = false;
-    newSection.fields.forEach((field) => {
-      if (!field.label || !field.label.trim() || !field.dataType) {
-        hasInvalidFields = true;
-      }
-    });
-
-    if (hasInvalidFields) {
-      const errorMessage = 'Please complete all fields: Label text and Data type are required for each field';
-      setErrors([errorMessage]);
-      message.error(errorMessage);
-      return;
-    }
-
-    // Validate new section with schema (only complete fields)
-    const parsed = sectionSchema.safeParse({
-      name: trimmedName,
-      fields: newSection.fields.map((f) => ({
-        label: f.label,
-        dataType: f.dataType!,
-        required: f.required,
-        enumOptions: f.enumOptions,
-        referenceLibraries: f.referenceLibraries,
-      })),
-    });
-
-    if (!parsed.success) {
-      const errorMessages = parsed.error.issues.map((i) => i.message);
-      setErrors(errorMessages);
-      message.error('Validation failed: ' + errorMessages.join(', '));
-      return;
-    }
-
-    // Combine with existing sections
-    const allSections = [...sections, { id: uid(), ...newSection }];
+    // Combine with existing sections (allow undefined dataType)
+    const allSections = [...sections, { id: uid(), name: trimmedName, fields: newSection.fields }];
     await saveSchema(allSections);
   };
 
-  const saveSchema = useCallback(async (sectionsToSave: SectionConfig[] = sections) => {
+  const saveSchema = useCallback(async (sectionsToSave: SectionConfig[] = sections, shouldReload: boolean = true) => {
     if (!libraryId) {
       message.error('Missing libraryId, cannot save');
       return;
+    }
+
+    // Prevent concurrent saves or auto-saves during save/reload
+    if (isSavingOrReloading.current) {
+      return;
+    }
+
+    // Clear any pending auto-save timers
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+      autoSaveTimerRef.current = null;
     }
 
     // Check if there are any pending fields and add them to their respective sections
@@ -337,114 +347,34 @@ function PredefinePageContent() {
       
       // Apply temp section name if exists
       if (tempName !== undefined) {
-        updatedSection.name = tempName;
+        updatedSection.name = tempName || 'Untitled Section';
       }
       
-      // Add pending field if exists and has label
-      if (pendingField && pendingField.label.trim()) {
-        updatedSection.fields = [...updatedSection.fields, { id: uid(), ...pendingField }];
+      // Add pending field if exists (even if completely empty)
+      if (pendingField) {
+        const newField = {
+          id: uid(),
+          label: pendingField.label || '',
+          dataType: pendingField.dataType, // Allow undefined
+          required: pendingField.required,
+          ...(pendingField.enumOptions && { enumOptions: pendingField.enumOptions }),
+          ...(pendingField.referenceLibraries && { referenceLibraries: pendingField.referenceLibraries }),
+        };
+        updatedSection.fields = [...updatedSection.fields, newField];
       }
       
       return updatedSection;
     });
 
-    // Check for duplicate section names
-    const sectionNames = new Map<string, string[]>(); // Map<lowercase name, [original names]>
-    finalSections.forEach((section) => {
-      const lowerName = section.name.toLowerCase();
-      if (!sectionNames.has(lowerName)) {
-        sectionNames.set(lowerName, []);
-      }
-      sectionNames.get(lowerName)!.push(section.name);
-    });
-    
-    const duplicates = Array.from(sectionNames.entries())
-      .filter(([_, names]) => names.length > 1)
-      .map(([_, names]) => names[0]);
-    
-    if (duplicates.length > 0) {
-      const errorMessage = `Duplicate section name${duplicates.length > 1 ? 's' : ''}: "${duplicates.join('", "')}". Each section must have a unique name.`;
-      setErrors([errorMessage]);
-      message.error(errorMessage);
-      return;
-    }
+    // Use finalSections directly (allow undefined dataType)
+    const sectionsWithDefaults = finalSections;
 
-    // Validate: check for empty labels or missing data types
-    let hasInvalidFields = false;
-    const newInvalidFields = new Set<string>();
-    const newInvalidPendingFields = new Map<string, { labelInvalid: boolean; dataTypeInvalid: boolean }>();
-    
-    finalSections.forEach((section) => {
-      section.fields.forEach((field) => {
-        if (!field.label || !field.label.trim() || !field.dataType) {
-          hasInvalidFields = true;
-          newInvalidFields.add(field.id);
-        }
-      });
-      
-      // Check pending field for this section
-      const pendingField = pendingFieldsRef.current.get(section.id);
-      if (pendingField) {
-        // If pending field exists and has any content (label OR dataType), both must be filled
-        const hasLabel = pendingField.label && pendingField.label.trim();
-        const hasDataType = !!pendingField.dataType;
-        
-        if (hasLabel || hasDataType) {
-          // User has started filling the field, validate both are complete
-          const labelInvalid = !hasLabel;
-          const dataTypeInvalid = !hasDataType;
-          if (labelInvalid || dataTypeInvalid) {
-            hasInvalidFields = true;
-            newInvalidPendingFields.set(section.id, { labelInvalid, dataTypeInvalid });
-          }
-        }
-      }
-    });
-
-    if (hasInvalidFields) {
-      const errorMessage = 'Please complete all fields: Label text and Data type are required for each field';
-      setErrors([errorMessage]);
-      setInvalidFields(newInvalidFields);
-      setInvalidPendingFields(newInvalidPendingFields);
-      message.error(errorMessage);
-      return;
-    }
-    
-    // Clear validation errors if all fields are valid
-    setInvalidFields(new Set());
-    setInvalidPendingFields(new Map());
-
-    // Validate all sections with schema (only validate fields that have both label and dataType)
-    // Filter out incomplete fields before validation to avoid zod errors
-    const sectionsForValidation = finalSections.map((s) => ({
-      name: s.name,
-      fields: s.fields
-        .filter((f) => f.label && f.label.trim() && f.dataType) // Only validate complete fields
-        .map((f) => ({
-          label: f.label,
-          dataType: f.dataType!,
-          required: f.required,
-          enumOptions: f.enumOptions,
-          referenceLibraries: f.referenceLibraries,
-        })),
-    }));
-
-    const parsed = z.array(sectionSchema).safeParse(sectionsForValidation);
-
-    if (!parsed.success) {
-      const errorMessages = parsed.error.issues.map((i) => i.message);
-      setErrors(errorMessages);
-      // Don't show message.error here as we already show the error in the UI
-      return;
-    }
-
+    isSavingOrReloading.current = true;
     setSaving(true);
     setErrors([]);
     try {
       // Use incremental update to preserve field IDs and asset data
-      await saveSchemaIncremental(supabase, libraryId, finalSections);
-
-      message.success('Saved successfully, loading...');
+      await saveSchemaIncremental(supabase, libraryId, sectionsWithDefaults);
       
       // Invalidate React Query cache to ensure LibraryPage gets fresh data
       await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
@@ -467,28 +397,40 @@ function PredefinePageContent() {
       pendingFieldsRef.current = emptyMap;
       setTempSectionNames(new Map());
 
+      // Show success message in top-right corner
+      message.success('Saved successfully', 1);
+      
       // If creating new section, exit creation mode and reload sections
       if (isCreatingNewSection) {
-        setLoadingAfterSave(true);
         setIsCreatingNewSection(false);
         setNewSectionName(''); // Clear new section name
         setEditingTabId(null); // Clear editing state after saving
         const loadedSections = await reloadSections();
+        // Keep the newly created section active (last one in the list)
         if (loadedSections && loadedSections.length > 0) {
           setActiveSectionId(loadedSections[loadedSections.length - 1].id);
         }
-        setLoadingAfterSave(false);
+      } else if (shouldReload) {
+        // Only reload if explicitly requested (e.g., after deleting section)
+        const currentActiveId = activeSectionId;
+        const loadedSections = await reloadSections();
+        // Restore the active section ID if it still exists
+        if (currentActiveId && loadedSections?.find(s => s.id === currentActiveId)) {
+          setActiveSectionId(currentActiveId);
+        }
       } else {
-        // Reload to sync with database
-        setLoadingAfterSave(true);
-        await reloadSections();
-        setLoadingAfterSave(false);
+        // No reload needed - just update local state
+        // The sections are already updated via setSections in the handlers
       }
     } catch (e: any) {
       message.error(e?.message || 'Failed to save');
       setErrors([e?.message || 'Failed to save']);
     } finally {
       setSaving(false);
+      // Reset flag after a brief delay to ensure all updates are complete
+      setTimeout(() => {
+        isSavingOrReloading.current = false;
+      }, 500);
     }
   }, [sections, libraryId, isCreatingNewSection, reloadSections, supabase, tempSectionNames]);
 
@@ -502,31 +444,6 @@ function PredefinePageContent() {
       );
     }
   }, [isCreatingNewSection, activeSectionId]);
-
-  // Listen to top bar "Save" button for Predefine
-  useEffect(() => {
-    const handler = () => {
-      // If we are creating a new section, trigger NewSectionForm save
-      // Otherwise, trigger schema save for existing sections
-      if (isCreatingNewSection) {
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('predefine-save-new-section'));
-        }
-      } else {
-        void saveSchema();
-      }
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('predefine-save', handler);
-    }
-
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('predefine-save', handler);
-      }
-    };
-  }, [isCreatingNewSection, saveSchema]);
 
   const handleDeleteSection = useCallback(async (sectionId: string) => {
     if (!libraryId) {
@@ -720,6 +637,21 @@ function PredefinePageContent() {
                 newMap.set(section.id, newName);
                 return newMap;
               });
+              
+              // Auto-save after section name change
+              // Skip if currently saving or reloading
+              if (isSavingOrReloading.current) {
+                return;
+              }
+              
+              if (autoSaveTimerRef.current) {
+                clearTimeout(autoSaveTimerRef.current);
+              }
+              autoSaveTimerRef.current = setTimeout(() => {
+                if (!isSavingOrReloading.current) {
+                  void saveSchema(sections, false); // false = don't reload after save
+                }
+              }, 500);
             }}
             onKeyDown={(e) => {
               // Allow space key and other normal input keys
@@ -760,55 +692,42 @@ function PredefinePageContent() {
           fields={section.fields}
           onChangeField={(fieldId, data) => {
             handleChangeField(section.id, fieldId, data);
-            // Clear validation error for this field when user edits it
-            if (invalidFields.has(fieldId)) {
-              setInvalidFields((prev) => {
-                const newSet = new Set(prev);
-                newSet.delete(fieldId);
-                return newSet;
-              });
-            }
           }}
           onDeleteField={(fieldId) => handleDeleteField(section.id, fieldId)}
           onReorderFields={(newOrder) => handleReorderFields(section.id, newOrder)}
           disabled={saving}
           isFirstSection={sectionIndex === 0}
-          invalidFields={invalidFields}
+          invalidFields={new Set()}
         />
         <FieldForm
           onSubmit={(data) => handleAddField(section.id, data)}
           disabled={saving}
           onFieldChange={(field) => {
+            // Always update pending field (even if empty)
             setPendingFields((prev) => {
               const newMap = new Map(prev);
-              // Only update if field is not null
-              // This prevents useEffect from overwriting manually set values with null
-              if (field !== null) {
-                newMap.set(section.id, field);
-                // Update ref synchronously to ensure saveSchema can access latest value
-                pendingFieldsRef.current = newMap;
-              } else {
-                // Only clear if there's no existing field with data
-                const existing = prev.get(section.id);
-                if (!existing || !existing.label.trim()) {
-                  newMap.delete(section.id);
-                  pendingFieldsRef.current = newMap;
-                }
-                // If existing field has data, don't clear it (ignore null from useEffect)
-              }
+              newMap.set(section.id, field);
+              // Update ref synchronously to ensure saveSchema can access latest value
+              pendingFieldsRef.current = newMap;
               return newMap;
             });
             
-            // Clear validation error for this pending field when user edits it
-            if (invalidPendingFields.has(section.id)) {
-              setInvalidPendingFields((prev) => {
-                const newMap = new Map(prev);
-                newMap.delete(section.id);
-                return newMap;
-              });
+            // Debounced auto-save when pending field changes
+            // Skip if currently saving or reloading
+            if (isSavingOrReloading.current) {
+              return;
             }
+            
+            if (autoSaveTimerRef.current) {
+              clearTimeout(autoSaveTimerRef.current);
+            }
+            autoSaveTimerRef.current = setTimeout(() => {
+              if (!isSavingOrReloading.current) {
+                void saveSchema(sections, false); // false = don't reload after save
+              }
+            }, 800);
           }}
-          validationError={invalidPendingFields.get(section.id)}
+          validationError={undefined}
         />
       </div>
     ),
@@ -838,7 +757,8 @@ function PredefinePageContent() {
               value={newSectionName}
               onChange={(e) => {
                 e.stopPropagation();
-                setNewSectionName(e.target.value);
+                const newName = e.target.value;
+                setNewSectionName(newName);
               }}
               onKeyDown={(e) => {
                 // Allow space key and other normal input keys
@@ -931,12 +851,6 @@ function PredefinePageContent() {
             </div>
           )}
 
-          {loadingAfterSave && (
-            <div className={styles.loadingAfterSave}>
-              Section saved, loading results...
-            </div>
-          )}
-
           <>
             <div className={styles.tabsContainer} ref={tabsContainerRef}>
               {(sections.length > 0 || isCreatingNewSection) && (
@@ -991,7 +905,7 @@ export default function PredefinePage() {
         },
       }}
     >
-      <App>
+      <App message={{ top: 20, maxCount: 1 }}>
         <PredefinePageContent />
       </App>
     </ConfigProvider>
