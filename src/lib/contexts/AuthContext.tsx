@@ -88,6 +88,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Reset currentUserId to allow retry
           currentUserId.current = null;
         } else {
+          // Only log non-PGRST116 errors (PGRST116 = no rows returned, which is expected for new users)
+          console.error('Failed to fetch profile:', error);
           // Reset currentUserId to allow retry
           currentUserId.current = null;
         }
@@ -194,6 +196,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             await clearAllCaches();
           }
           
+          // Set currentUserId to null first when user changes, then set to new value
+          // This ensures all dependent code can properly detect user switch
+          if (currentUserId.current !== newUserId) {
+            currentUserId.current = null;
+          }
           currentUserId.current = newUserId;
           await fetchUserProfile(newUserId);
         } else {

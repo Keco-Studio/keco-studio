@@ -217,8 +217,10 @@ export function LibraryAssetsTable({
   }, []);
 
   const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
-    // Show a notification that a new asset was created
-    message.info(`${event.userName} added "${event.assetName}"`);
+    // Only show notification if it's from another user, not the current user
+    if (currentUser && event.userId && event.userId !== currentUser.id) {
+      message.info(`${event.userName} added "${event.assetName}"`);
+    }
     
     // If position information is provided, insert the asset at the correct position in Yjs
     if (event.insertAfterRowId || event.insertBeforeRowId) {
@@ -262,7 +264,7 @@ export function LibraryAssetsTable({
     
     // The parent will refresh and show the new asset automatically
     // due to database subscription or polling
-  }, [yRows, library, setOptimisticNewAssets]);
+  }, [yRows, library, setOptimisticNewAssets, currentUser]);
 
   const handleAssetDeleteEvent = useCallback((event: AssetDeleteEvent) => {
     // Show a notification that an asset was deleted
@@ -2412,11 +2414,43 @@ export function LibraryAssetsTable({
                 })}
             </tr>
           ) : (userRole === 'admin' || userRole === 'editor') ? (
-            <tr className={styles.addRow}>
-              <td className={styles.numberCell}>
+            <tr 
+              className={styles.addRow}
+              onClick={(e) => {
+                // Only trigger if clicking on empty cells (not on numberCell which has its own handler)
+                const target = e.target as HTMLElement;
+                const isClickOnNumberCell = target.closest(`.${styles.numberCell}`);
+                const isClickOnButton = target.closest(`.${styles.addButton}`);
+                
+                // If clicking on empty cells (not numberCell), trigger add
+                if (!isClickOnNumberCell && !isClickOnButton && target.tagName === 'TD') {
+                  // Prevent adding if editing a cell
+                  if (editingCell) {
+                    alert('Please finish editing the current cell first.');
+                    return;
+                  }
+                  setIsAddingRow(true);
+                }
+              }}
+              style={{ cursor: 'pointer' }}
+            >
+              <td 
+                className={styles.numberCell}
+                onClick={() => {
+                  // Prevent adding if editing a cell
+                  if (editingCell) {
+                    alert('Please finish editing the current cell first.');
+                    return;
+                  }
+                  setIsAddingRow(true);
+                }}
+                style={{ cursor: 'pointer' }}
+              >
                 <button
                   className={styles.addButton}
-                  onClick={() => {
+                  onClick={(e) => {
+                    // Stop propagation to prevent double trigger from td onClick
+                    e.stopPropagation();
                     // Prevent adding if editing a cell
                     if (editingCell) {
                       alert('Please finish editing the current cell first.');
