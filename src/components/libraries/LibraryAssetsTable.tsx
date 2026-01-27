@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Input, Select, Button, Avatar, Tooltip, Checkbox, Dropdown, Modal, Switch, App } from 'antd';
+import { Input, Select, Button, Avatar, Checkbox, Dropdown, Modal, Switch, App } from 'antd';
 import Image from 'next/image';
 import { useRouter, useParams } from 'next/navigation';
 import {
@@ -40,6 +40,7 @@ import { useClipboardShortcuts } from './hooks/useClipboardShortcuts';
 import { useResolvedRows } from './hooks/useResolvedRows';
 import { useCloseOnDocumentClick } from './hooks/useCloseOnDocumentClick';
 import { ReferenceField } from './components/ReferenceField';
+import { CellEditor } from './components/CellEditor';
 import { CellPresenceAvatars } from './components/CellPresenceAvatars';
 import { TableToast } from './components/TableToast';
 import { RowContextMenu } from './components/RowContextMenu';
@@ -1885,285 +1886,20 @@ export function LibraryAssetsTable({
                       }}
                     >
                       {isCellEditing ? (
-                        // Cell is being edited: use contentEditable for direct cell editing
-                        <div style={{ position: 'relative', width: '100%' }}>
-                          <span
-                            ref={editingCellRef}
-                            contentEditable
-                            suppressContentEditableWarning
-                            onFocus={() => {
-                              // Update presence tracking when input gains focus
-                              if (editingCell) {
-                                handleCellFocus(editingCell.rowId, editingCell.propertyKey);
-                              }
-                            }}
-                            onBlur={(e) => {
-                              if (!isComposingRef.current) {
-                                const newValue = e.currentTarget.textContent || '';
-                                setEditingCellValue(newValue);
-                                handleSaveEditedCell();
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && !isComposingRef.current) {
-                                e.preventDefault();
-                                const newValue = e.currentTarget.textContent || '';
-                                setEditingCellValue(newValue);
-                                handleSaveEditedCell();
-                              } else if (e.key === 'Escape') {
-                                e.preventDefault();
-                                handleCancelEditing();
-                              }
-                            }}
-                            onPaste={(e) => {
-                              // 强制使用 text/plain，避免浏览器粘贴 HTML 导致 float 的小数部分丢失（如 12.5 变成 12）
-                              e.preventDefault();
-                              const raw = e.clipboardData?.getData('text/plain') || '';
-                              const text = raw.split(/\t|\n/)[0] ?? '';
-                              const el = e.currentTarget;
-                              const sel = window.getSelection();
-                              const range = document.createRange();
-                              range.selectNodeContents(el);
-                              sel?.removeAllRanges();
-                              sel?.addRange(range);
-                              document.execCommand('insertText', false, text);
-                            }}
-                            onInput={(e) => {
-                            // Only update state when not composing (for IME input)
-                            if (!isComposingRef.current) {
-                              let newValue = e.currentTarget.textContent || '';
-                              
-                              // Validate int type: only allow integers
-                              if (property.dataType === 'int' && newValue !== '') {
-                                // Check if contains decimal point - show error immediately
-                                if (newValue.includes('.')) {
-                                  setTypeValidationError('type mismatch');
-                                  // Remove decimal point and everything after it
-                                  const intValue = newValue.split('.')[0];
-                                  const selection = window.getSelection();
-                                  const range = selection?.getRangeAt(0);
-                                  const cursorPosition = range?.startOffset || 0;
-                                  
-                                  e.currentTarget.textContent = intValue;
-                                  
-                                  // Restore cursor position
-                                  if (range && selection) {
-                                    try {
-                                      const newRange = document.createRange();
-                                      const textNode = e.currentTarget.firstChild;
-                                      if (textNode) {
-                                        const newPosition = Math.min(cursorPosition, intValue.length);
-                                        newRange.setStart(textNode, newPosition);
-                                        newRange.setEnd(textNode, newPosition);
-                                        selection.removeAllRanges();
-                                        selection.addRange(newRange);
-                                      }
-                                    } catch (err) {
-                                      // Ignore cursor restoration errors
-                                    }
-                                  }
-                                  newValue = intValue;
-                                } else {
-                                  // Clear error if no decimal point
-                                  setTypeValidationError(null);
-                                }
-                                
-                                // Remove any non-digit characters except minus sign at the start
-                                // Allow: digits, minus sign only at the beginning
-                                const cleaned = newValue.replace(/[^\d-]/g, '');
-                                // Ensure minus sign is only at the start
-                                const intValue = cleaned.startsWith('-') 
-                                  ? '-' + cleaned.slice(1).replace(/-/g, '')
-                                  : cleaned.replace(/-/g, '');
-                                
-                                // Validate format: optional minus followed by digits
-                                if (!/^-?\d*$/.test(intValue)) {
-                                  // Restore previous valid value
-                                  e.currentTarget.textContent = editingCellValue;
-                                  return;
-                                }
-                                
-                                // Only update if value changed
-                                if (intValue !== newValue) {
-                                  const selection = window.getSelection();
-                                  const range = selection?.getRangeAt(0);
-                                  const cursorPosition = range?.startOffset || 0;
-                                  
-                                  e.currentTarget.textContent = intValue;
-                                  
-                                  // Restore cursor position
-                                  if (range && selection) {
-                                    try {
-                                      const newRange = document.createRange();
-                                      const textNode = e.currentTarget.firstChild;
-                                      if (textNode) {
-                                        const newPosition = Math.min(cursorPosition, intValue.length);
-                                        newRange.setStart(textNode, newPosition);
-                                        newRange.setEnd(textNode, newPosition);
-                                        selection.removeAllRanges();
-                                        selection.addRange(newRange);
-                                      }
-                                    } catch (err) {
-                                      // Ignore cursor restoration errors
-                                    }
-                                  }
-                                }
-                                
-                                newValue = intValue;
-                              }
-                              // Validate float type: must contain decimal point
-                              else if (property.dataType === 'float' && newValue !== '') {
-                                // Clear error initially
-                                setTypeValidationError(null);
-                                
-                                // Allow digits, one decimal point, and optional minus sign
-                                // Remove invalid characters but keep valid float format
-                                const cleaned = newValue.replace(/[^\d.-]/g, '');
-                                // Ensure minus sign is only at the start
-                                const floatValue = cleaned.startsWith('-') 
-                                  ? '-' + cleaned.slice(1).replace(/-/g, '')
-                                  : cleaned.replace(/-/g, '');
-                                // Ensure only one decimal point
-                                const parts = floatValue.split('.');
-                                const finalValue = parts.length > 2 
-                                  ? parts[0] + '.' + parts.slice(1).join('')
-                                  : floatValue;
-                                
-                                if (!/^-?\d*\.?\d*$/.test(finalValue)) {
-                                  // Restore previous valid value
-                                  e.currentTarget.textContent = editingCellValue;
-                                  return;
-                                }
-                                
-                                // Only update if value changed
-                                if (finalValue !== newValue) {
-                                  const selection = window.getSelection();
-                                  const range = selection?.getRangeAt(0);
-                                  const cursorPosition = range?.startOffset || 0;
-                                  
-                                  e.currentTarget.textContent = finalValue;
-                                  
-                                  // Restore cursor position
-                                  if (range && selection) {
-                                    try {
-                                      const newRange = document.createRange();
-                                      const textNode = e.currentTarget.firstChild;
-                                      if (textNode) {
-                                        const newPosition = Math.min(cursorPosition, finalValue.length);
-                                        newRange.setStart(textNode, newPosition);
-                                        newRange.setEnd(textNode, newPosition);
-                                        selection.removeAllRanges();
-                                        selection.addRange(newRange);
-                                      }
-                                    } catch (err) {
-                                      // Ignore cursor restoration errors
-                                    }
-                                  }
-                                }
-                                
-                                newValue = finalValue;
-                              } else {
-                                // Clear error for other types
-                                setTypeValidationError(null);
-                              }
-                              
-                              setEditingCellValue(newValue);
-                            }
-                          }}
-                          onCompositionStart={() => {
-                            isComposingRef.current = true;
-                          }}
-                          onCompositionEnd={(e) => {
-                            isComposingRef.current = false;
-                            let newValue = e.currentTarget.textContent || '';
-                            
-                            // Validate int type: only allow integers
-                            if (property.dataType === 'int' && newValue !== '') {
-                              // Check if contains decimal point - show error
-                              if (newValue.includes('.')) {
-                                setTypeValidationError('type mismatch');
-                                const intValue = newValue.split('.')[0];
-                                e.currentTarget.textContent = intValue;
-                                newValue = intValue;
-                              } else {
-                                setTypeValidationError(null);
-                              }
-                              
-                              // Remove any non-digit characters except minus sign at the start
-                              const cleaned = newValue.replace(/[^\d-]/g, '');
-                              const intValue = cleaned.startsWith('-') 
-                                ? '-' + cleaned.slice(1).replace(/-/g, '')
-                                : cleaned.replace(/-/g, '');
-                              
-                              if (!/^-?\d*$/.test(intValue)) {
-                                e.currentTarget.textContent = editingCellValue;
-                                return;
-                              }
-                              
-                              if (intValue !== newValue) {
-                                e.currentTarget.textContent = intValue;
-                              }
-                              newValue = intValue;
-                            }
-                            // Validate float type: must contain decimal point
-                            else if (property.dataType === 'float' && newValue !== '') {
-                              setTypeValidationError(null); // Clear error initially
-                              
-                              const cleaned = newValue.replace(/[^\d.-]/g, '');
-                              const floatValue = cleaned.startsWith('-') 
-                                ? '-' + cleaned.slice(1).replace(/-/g, '')
-                                : cleaned.replace(/-/g, '');
-                              const parts = floatValue.split('.');
-                              const finalValue = parts.length > 2 
-                                ? parts[0] + '.' + parts.slice(1).join('')
-                                : floatValue;
-                              
-                              if (!/^-?\d*\.?\d*$/.test(finalValue)) {
-                                e.currentTarget.textContent = editingCellValue;
-                                return;
-                              }
-                              
-                              if (finalValue !== newValue) {
-                                e.currentTarget.textContent = finalValue;
-                              }
-                              newValue = finalValue;
-                            } else {
-                              setTypeValidationError(null);
-                            }
-                            
-                            setEditingCellValue(newValue);
-                          }}
-                            style={{
-                              outline: 'none',
-                              minHeight: '1em',
-                              display: 'block',
-                              width: '100%'
-                            }}
-                          />
-                          {typeValidationError && (
-                            <Tooltip 
-                              title={typeValidationError}
-                              open={true}
-                              placement="bottom"
-                              styles={{ root: { fontSize: '12px' } }}
-                            >
-                              <div
-                                ref={typeValidationErrorRef}
-                                style={{
-                                  position: 'absolute',
-                                  top: 0,
-                                  right: 0,
-                                  width: '8px',
-                                  height: '8px',
-                                  backgroundColor: '#ff4d4f',
-                                  borderRadius: '50%',
-                                  zIndex: 1001,
-                                  pointerEvents: 'none'
-                                }}
-                              />
-                            </Tooltip>
-                          )}
-                        </div>
+                        <CellEditor
+                          property={property}
+                          editingCell={editingCell}
+                          editingCellRef={editingCellRef}
+                          editingCellValue={editingCellValue}
+                          isComposingRef={isComposingRef}
+                          typeValidationError={typeValidationError}
+                          typeValidationErrorRef={typeValidationErrorRef}
+                          setEditingCellValue={setEditingCellValue}
+                          setTypeValidationError={setTypeValidationError}
+                          handleSaveEditedCell={handleSaveEditedCell}
+                          handleCancelEditing={handleCancelEditing}
+                          handleCellFocus={handleCellFocus}
+                        />
                       ) : (
                         <>
                           {isNameField ? (
@@ -2404,6 +2140,12 @@ export function LibraryAssetsTable({
                           value = finalValue;
                         }
                         handleInputChange(property.key, value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Delete') {
+                          e.preventDefault();
+                          handleInputChange(property.key, '');
+                        }
                       }}
                       placeholder=""
                       className={styles.editInput}

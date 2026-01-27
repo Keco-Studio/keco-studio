@@ -283,9 +283,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     return users;
   }, [currentIds.libraryId, presenceUsersArray]);
 
-  // Use React Query to fetch projects list
-  // queryKey: ['projects'] is the unique cache identifier
-  // queryFn: data fetching function, React Query will automatically cache the result
+  // Use React Query to fetch projects list; queryKey shared with Projects page.
+  // Pass userProfile?.id when available to skip getCurrentUserId/getUser(), avoiding slow auth on first login.
   const {
     data: projects = [],
     isLoading: loadingProjects,
@@ -293,15 +292,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     refetch: refetchProjects,
   } = useQuery({
     queryKey: ['projects'],
-    queryFn: () => listProjects(supabase),
-    // Data is considered fresh for 2 minutes, won't refetch (reduces duplicate requests)
+    queryFn: () => listProjects(supabase, userProfile?.id),
+    enabled: true,
     staleTime: 2 * 60 * 1000,
-    // Don't refetch if data is in cache and not expired
     refetchOnMount: false,
-    // Don't auto-refresh when switching tabs
     refetchOnWindowFocus: false,
-    // Enable request deduplication: requests with the same queryKey will be automatically deduplicated
-    queryKeyHashFn: undefined, // Use default hash function
   });
 
   // Use React Query to fetch folders and libraries

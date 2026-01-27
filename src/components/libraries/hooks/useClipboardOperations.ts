@@ -237,20 +237,22 @@ export function useClipboardOperations({
       const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
       const isNameField = propertyIndex === 0;
       
-      // 对齐 batch fill：从 base 取源值，保留原始类型（如 float 12.5），避免 getRowsWithOptimisticUpdates 合并导致的小数丢失
-      const baseRow = dataManager.getRowBaseValue(rowId);
       let value: string | number | null;
-      if (baseRow) {
-        const raw = isNameField
-          ? (baseRow.name ?? baseRow.propertyValues?.[propertyKey] ?? null)
-          : (baseRow.propertyValues?.[propertyKey] ?? null);
-        value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
-        // Name 字段：base 为 null 时回退到 row.name，避免 paste 出现 "Untitled"（base 滞后于乐观更新）
-        if (isNameField && value === null && row.name && row.name !== 'Untitled') {
-          value = row.name;
-        }
+      // Name 与表格展示完全一致：表格在 name 为空且 row.name 为 "Untitled" 时显示空白（LibraryAssetsTable 1793–1802）
+      if (isNameField) {
+        const raw = row.propertyValues?.[propertyKey];
+        const hasRaw = raw !== null && raw !== undefined && raw !== '';
+        const displayStr = hasRaw ? String(raw) : ((row.name && row.name !== 'Untitled') ? row.name : null);
+        value = displayStr;
       } else {
-        value = getCellValue(row, propertyKey, foundProperty, isNameField);
+        // 非 name：对齐 batch fill，从 base 取源值，保留原始类型
+        const baseRow = dataManager.getRowBaseValue(rowId);
+        if (baseRow) {
+          const raw = baseRow.propertyValues?.[propertyKey] ?? null;
+          value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
+        } else {
+          value = getCellValue(row, propertyKey, foundProperty, false);
+        }
       }
       
       if (!cellsByRow.has(rowId)) {
@@ -512,20 +514,22 @@ export function useClipboardOperations({
       const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
       const isNameField = propertyIndex === 0;
       
-      // 对齐 batch fill：从 base 取源值，保留原始类型（如 float 12.5），避免 getRowsWithOptimisticUpdates 合并导致的小数丢失
-      const baseRow = dataManager.getRowBaseValue(rowId);
       let value: string | number | null;
-      if (baseRow) {
-        const raw = isNameField
-          ? (baseRow.name ?? baseRow.propertyValues?.[propertyKey] ?? null)
-          : (baseRow.propertyValues?.[propertyKey] ?? null);
-        value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
-        // Name 字段：base 为 null 时回退到 row.name，避免 paste 出现 "Untitled"（base 滞后于乐观更新）
-        if (isNameField && value === null && row.name && row.name !== 'Untitled') {
-          value = row.name;
-        }
+      // Name 与表格展示完全一致：表格在 name 为空且 row.name 为 "Untitled" 时显示空白（LibraryAssetsTable 1793–1802）
+      if (isNameField) {
+        const raw = row.propertyValues?.[propertyKey];
+        const hasRaw = raw !== null && raw !== undefined && raw !== '';
+        const displayStr = hasRaw ? String(raw) : ((row.name && row.name !== 'Untitled') ? row.name : null);
+        value = displayStr;
       } else {
-        value = getCellValue(row, propertyKey, foundProperty, isNameField);
+        // 非 name：对齐 batch fill，从 base 取源值，保留原始类型
+        const baseRow = dataManager.getRowBaseValue(rowId);
+        if (baseRow) {
+          const raw = baseRow.propertyValues?.[propertyKey] ?? null;
+          value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
+        } else {
+          value = getCellValue(row, propertyKey, foundProperty, false);
+        }
       }
       
       if (!cellsByRow.has(rowId)) {
@@ -769,13 +773,15 @@ export function useClipboardOperations({
         
         const targetProperty = orderedProperties[targetPropertyIndex];
         
-        // Check if data type is supported (string, int, float)
-        if (!targetProperty.dataType || !['string', 'int', 'float'].includes(targetProperty.dataType)) {
-          return; // Skip unsupported types
+        const isNameField = targetPropertyIndex === 0;
+        const supported = ['string', 'int', 'float'] as const;
+        const typeSupported = targetProperty.dataType && supported.includes(targetProperty.dataType as any);
+        if (!typeSupported && !isNameField) {
+          return; // Skip unsupported types; name field (first column) always allowed
         }
         
-        // Check type compatibility if we have source property information
-        if (sourcePropertyKeys.length > 0 && clipboardColIndex < sourcePropertyKeys.length) {
+        // Check type compatibility if we have source property information (skip for name field)
+        if (!isNameField && sourcePropertyKeys.length > 0 && clipboardColIndex < sourcePropertyKeys.length) {
           const sourcePropertyKey = sourcePropertyKeys[clipboardColIndex];
           const sourceProperty = orderedProperties.find(p => p.key === sourcePropertyKey);
           
@@ -788,14 +794,15 @@ export function useClipboardOperations({
           }
         }
         
-        // Convert value to appropriate type (string, int, float)
+        // Convert value to appropriate type (string, int, float). Name field always as string.
         let convertedValue: string | number | null = null;
         if (cellValue !== null && cellValue !== undefined && cellValue !== '') {
-          if (targetProperty.dataType === 'int') {
+          if (isNameField) {
+            convertedValue = String(cellValue);
+          } else if (targetProperty.dataType === 'int') {
             const numValue = parseInt(String(cellValue), 10);
             convertedValue = isNaN(numValue) ? null : numValue;
           } else if (targetProperty.dataType === 'float') {
-            // Preserve number as-is to avoid losing decimals (e.g. 12.3 from cut/copy)
             if (typeof cellValue === 'number' && !isNaN(cellValue)) {
               convertedValue = cellValue;
             } else {
@@ -814,7 +821,7 @@ export function useClipboardOperations({
           if (newRowData) {
             // For name field (propertyIndex === 0), set it as the name field, not in propertyValues
             if (targetPropertyIndex === 0) {
-              newRowData.name = convertedValue !== null ? String(convertedValue) : 'Untitled';
+              newRowData.name = (convertedValue !== null && convertedValue !== '') ? String(convertedValue) : '';
             } else {
               newRowData.propertyValues[targetProperty.key] = convertedValue;
             }
@@ -841,7 +848,19 @@ export function useClipboardOperations({
       return; // Don't proceed with paste if there are type mismatches
     }
     
-    const rowsToCreate = Array.from(rowsToCreateByIndex.values());
+    // Build rowsToCreate in explicit target order and clone data to avoid reference reuse.
+    // Ensures correct mapping: clipboard row (startRowIndex + i) -> new row i when expanding at end.
+    const rowsToCreate: Array<{ name: string; propertyValues: Record<string, any> }> = [];
+    for (let i = 0; i < rowsNeeded; i++) {
+      const targetRowIndex = allRowsForSelection.length + i;
+      const data = rowsToCreateByIndex.get(targetRowIndex);
+      if (data) {
+        rowsToCreate.push({
+          name: data.name,
+          propertyValues: { ...data.propertyValues },
+        });
+      }
+    }
     
     // Close menu and show toast immediately so UI feels responsive (async work continues in background)
     setBatchEditMenuVisible(false);
@@ -849,68 +868,8 @@ export function useClipboardOperations({
     setToastMessage('Content pasted');
     setTimeout(() => setToastMessage(null), 2000);
     
-    // Create new rows if needed (create them first before updating existing rows)
-    if (rowsToCreate.length > 0 && onSaveAsset && library) {
-      setIsSaving(true);
-      try {
-        // Create rows sequentially with optimistic updates
-        const createdTempIds: string[] = [];
-        for (let i = 0; i < rowsToCreate.length; i++) {
-          const rowData = rowsToCreate[i];
-          const assetName = rowData.name || '';
-          
-          // Create optimistic asset row with temporary ID
-          const tempId = `temp-paste-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          createdTempIds.push(tempId);
-          
-          const optimisticAsset: AssetRow = {
-            id: tempId,
-            libraryId: library.id,
-            name: assetName,
-            propertyValues: { ...rowData.propertyValues },
-          };
-
-          // Optimistically add the asset to Yjs immediately (resolve row ordering issues)
-          yRows.insert(yRows.length, [optimisticAsset]);
-          
-          // Also add to optimisticNewAssets for compatibility
-          setOptimisticNewAssets(prev => {
-            const newMap = new Map(prev);
-            newMap.set(tempId, optimisticAsset);
-            return newMap;
-          });
-          
-          await onSaveAsset(assetName, rowData.propertyValues);
-        }
-        // Wait a bit for parent to refresh and match optimistic assets with real ones
-        await new Promise(resolve => setTimeout(resolve, 500));
-        // Clean up optimistic assets after parent refresh (they should be replaced by real assets)
-        setTimeout(() => {
-          createdTempIds.forEach(tempId => {
-            setOptimisticNewAssets(prev => {
-              if (prev.has(tempId)) {
-                const newMap = new Map(prev);
-                newMap.delete(tempId);
-                return newMap;
-              }
-              return prev;
-            });
-          });
-        }, 2000);
-      } catch (error) {
-        console.error('Failed to create rows for paste:', error);
-        setIsSaving(false);
-        setBatchEditMenuVisible(false);
-        setBatchEditMenuPosition(null);
-        setToastMessage('Failed to paste: could not create new rows');
-        setTimeout(() => setToastMessage(null), 2000);
-        return;
-      } finally {
-        setIsSaving(false);
-      }
-    }
-    
-    // Apply updates to existing rows
+    // Apply updates to existing rows first (paste-start row), then create new rows.
+    // This avoids the paste-start cell appearing to "fill last" after expansion.
     if (updatesToApply.length > 0 && onUpdateAsset) {
       setIsSaving(true);
       try {
@@ -943,8 +902,8 @@ export function useClipboardOperations({
           if (rowUpdates) {
             // Check if this is the name field (first property)
             if (propertyKey === nameFieldKey) {
-              // Update name field separately
-              rowUpdates.name = value !== null ? String(value) : 'Untitled';
+              // Update name field separately（空值保持空白，不写 "Untitled"）
+              rowUpdates.name = (value !== null && value !== '') ? String(value) : '';
               // Also update propertyValues for consistency
               rowUpdates.propertyValues[propertyKey] = value;
             } else {
@@ -967,8 +926,8 @@ export function useClipboardOperations({
           if (row) {
             const rowIndex = rowIndexMap.get(rowId);
             if (rowIndex !== undefined) {
-              // Use updated name if name field was pasted, otherwise use existing row.name
-              const updatedName = rowData.name !== undefined ? rowData.name : (row.name || 'Untitled');
+              // Use updated name if name field was pasted, otherwise use existing row.name（空名保持 ''，不写 "Untitled"）
+              const updatedName = rowData.name !== undefined ? rowData.name : (row.name ?? '');
               rowsToUpdate.push({
                 rowId,
                 index: rowIndex,
@@ -989,13 +948,13 @@ export function useClipboardOperations({
           yRows.insert(index, [row]);
         });
         
-        // Update database with correct name value
+        // Update database only for real asset IDs (skip temp IDs from optimistic new rows)
         const updatePromises = Array.from(updatesByRow.entries())
+          .filter(([rowId]) => !rowId.startsWith('temp-'))
           .map(([rowId, rowData]) => {
             const row = allRowsForSelection.find(r => r.id === rowId);
             if (!row) return Promise.resolve();
-            // Use updated name if name field was pasted, otherwise use existing row.name
-            const updatedName = rowData.name !== undefined ? rowData.name : (row.name || 'Untitled');
+            const updatedName = rowData.name !== undefined ? rowData.name : (row.name ?? '');
             return onUpdateAsset(rowId, updatedName, rowData.propertyValues);
           });
         await Promise.all(updatePromises);
@@ -1005,6 +964,56 @@ export function useClipboardOperations({
         setBatchEditMenuVisible(false);
         setBatchEditMenuPosition(null);
         setToastMessage('Failed to paste: could not update cells');
+        setTimeout(() => setToastMessage(null), 2000);
+        return;
+      } finally {
+        setIsSaving(false);
+      }
+    }
+    
+    // Create new rows if needed (after updating existing rows)
+    if (rowsToCreate.length > 0 && onSaveAsset && library) {
+      setIsSaving(true);
+      try {
+        const createdTempIds: string[] = [];
+        for (let i = 0; i < rowsToCreate.length; i++) {
+          const rowData = rowsToCreate[i];
+          const assetName = rowData.name || '';
+          const tempId = `temp-paste-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
+          createdTempIds.push(tempId);
+          const optimisticAsset: AssetRow = {
+            id: tempId,
+            libraryId: library.id,
+            name: assetName,
+            propertyValues: { ...rowData.propertyValues },
+          };
+          yRows.insert(yRows.length, [optimisticAsset]);
+          setOptimisticNewAssets(prev => {
+            const newMap = new Map(prev);
+            newMap.set(tempId, optimisticAsset);
+            return newMap;
+          });
+          await onSaveAsset(assetName, rowData.propertyValues);
+        }
+        await new Promise(resolve => setTimeout(resolve, 500));
+        setTimeout(() => {
+          createdTempIds.forEach(tempId => {
+            setOptimisticNewAssets(prev => {
+              if (prev.has(tempId)) {
+                const newMap = new Map(prev);
+                newMap.delete(tempId);
+                return newMap;
+              }
+              return prev;
+            });
+          });
+        }, 2000);
+      } catch (error) {
+        console.error('Failed to create rows for paste:', error);
+        setIsSaving(false);
+        setBatchEditMenuVisible(false);
+        setBatchEditMenuPosition(null);
+        setToastMessage('Failed to paste: could not create new rows');
         setTimeout(() => setToastMessage(null), 2000);
         return;
       } finally {

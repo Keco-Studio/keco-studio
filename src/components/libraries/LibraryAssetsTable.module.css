@@ -78,6 +78,10 @@
   background: rgba(255, 0, 94, 0.15);
 }
 
+.sectionHeaderCellDivider {
+  border-right: 1px solid #e2e8f0;
+}
+
 .propertyHeaderCell {
   font-size: 13px;
   font-weight: 600;
@@ -737,9 +741,9 @@ td.cellCopy.copyBorderRight:hover {
   background: transparent;
 }
 
+/* No placeholder for contentEditable - use Del to clear */
 .cell [contenteditable="true"]:empty:before {
-  content: attr(data-placeholder);
-  color: #cbd5e1;
+  content: none;
 }
 
 /* Enum/Select field styles */

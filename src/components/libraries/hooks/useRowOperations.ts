@@ -577,11 +577,19 @@ export function useRowOperations(params: UseRowOperationsParams) {
       return;
     }
 
-    if (!onDeleteAsset) {
+    if (rowsToDelete.size === 0) {
       setDeleteRowConfirmVisible(false);
       return;
     }
-    if (rowsToDelete.size === 0) {
+
+    const tempIds = new Set<string>();
+    const realIds = new Set<string>();
+    rowsToDelete.forEach((id) => {
+      if (id.startsWith('temp-')) tempIds.add(id);
+      else realIds.add(id);
+    });
+
+    if (realIds.size > 0 && !onDeleteAsset) {
       setDeleteRowConfirmVisible(false);
       return;
     }
@@ -590,10 +598,34 @@ export function useRowOperations(params: UseRowOperationsParams) {
     const failedRowIds: string[] = [];
 
     try {
-      for (const rowId of rowsToDelete) {
+      // Delete temp rows (e.g. from paste auto-expand): remove from Yjs + optimisticNewAssets only
+      if (tempIds.size > 0) {
+        const allRows = yRows.toArray();
+        const indicesToRemove: number[] = [];
+        tempIds.forEach((tid) => {
+          const idx = allRows.findIndex((r) => r.id === tid);
+          if (idx >= 0) indicesToRemove.push(idx);
+        });
+        indicesToRemove.sort((a, b) => b - a);
+        indicesToRemove.forEach((idx) => {
+          try {
+            yRows.delete(idx, 1);
+          } catch (e) {
+            console.warn('Failed to remove temp row from Yjs:', e);
+          }
+        });
+        setOptimisticNewAssets((prev) => {
+          const next = new Map(prev);
+          tempIds.forEach((tid) => next.delete(tid));
+          return next;
+        });
+      }
+
+      // Delete real rows via API
+      for (const rowId of realIds) {
         setDeletedAssetIds((prev) => new Set(prev).add(rowId));
         try {
-          await onDeleteAsset(rowId);
+          await onDeleteAsset!(rowId);
         } catch (err: any) {
           if (err?.name === 'AuthorizationError' && err?.message === 'Asset not found') continue;
           console.error(`Failed to delete asset ${rowId}:`, err);
@@ -605,12 +637,24 @@ export function useRowOperations(params: UseRowOperationsParams) {
           });
         }
       }
+
+      const allDeleted = new Set([...tempIds, ...realIds]);
       if (failedRowIds.length === 0) {
-        setSelectedCells(new Set());
-        setSelectedRowIds(new Set());
+        setSelectedCells((prev) => {
+          const next = new Set(prev);
+          allDeleted.forEach((rowId) => {
+            orderedProperties.forEach((p) => next.delete(`${rowId}-${p.key}` as CellKey));
+          });
+          return next;
+        });
+        setSelectedRowIds((prev) => {
+          const next = new Set(prev);
+          allDeleted.forEach((id) => next.delete(id));
+          return next;
+        });
       }
       setTimeout(() => {
-        rowsToDelete.forEach((rowId) => {
+        realIds.forEach((rowId) => {
           if (!failedRowIds.includes(rowId)) {
             setDeletedAssetIds((prev) => {
               const next = new Set(prev);
@@ -625,7 +669,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
       }
     } catch (e) {
       console.error('Failed to delete rows:', e);
-      rowsToDelete.forEach((rowId) => {
+      realIds.forEach((rowId) => {
         if (!failedRowIds.includes(rowId)) {
           setDeletedAssetIds((prev) => {
             const next = new Set(prev);
@@ -641,6 +685,8 @@ export function useRowOperations(params: UseRowOperationsParams) {
     orderedProperties,
     getAllRowsForCellSelection,
     onDeleteAsset,
+    yRows,
+    setOptimisticNewAssets,
     setDeleteRowConfirmVisible,
     setDeletedAssetIds,
     setSelectedCells,
@@ -648,16 +694,37 @@ export function useRowOperations(params: UseRowOperationsParams) {
   ]);
 
   const handleDeleteAsset = useCallback(async () => {
-    if (!deletingAssetId || !onDeleteAsset) return;
+    if (!deletingAssetId) return;
     const assetIdToDelete = deletingAssetId;
+    const isTemp = assetIdToDelete.startsWith('temp-');
     const asset = rows.find((r) => r.id === assetIdToDelete);
     const assetName = asset?.name || 'Untitled';
 
-    setDeletedAssetIds((prev) => new Set(prev).add(assetIdToDelete));
     setDeleteConfirmVisible(false);
     setDeletingAssetId(null);
     setContextMenuRowId(null);
     setContextMenuPosition(null);
+
+    if (isTemp) {
+      const allRows = yRows.toArray();
+      const idx = allRows.findIndex((r) => r.id === assetIdToDelete);
+      if (idx >= 0) {
+        try {
+          yRows.delete(idx, 1);
+        } catch (e) {
+          console.warn('Failed to remove temp row from Yjs:', e);
+        }
+      }
+      setOptimisticNewAssets((prev) => {
+        const next = new Map(prev);
+        next.delete(assetIdToDelete);
+        return next;
+      });
+      return;
+    }
+
+    if (!onDeleteAsset) return;
+    setDeletedAssetIds((prev) => new Set(prev).add(assetIdToDelete));
 
     try {
       await onDeleteAsset(assetIdToDelete);
@@ -684,6 +751,8 @@ export function useRowOperations(params: UseRowOperationsParams) {
     deletingAssetId,
     onDeleteAsset,
     rows,
+    yRows,
+    setOptimisticNewAssets,
     setDeletedAssetIds,
     setDeleteConfirmVisible,
     setDeletingAssetId,

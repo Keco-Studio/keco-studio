@@ -148,21 +148,23 @@ export async function createProject(
   };
 }
 
-export async function listProjects(supabase: SupabaseClient): Promise<Project[]> {
-  // 
-  const userId = await getCurrentUserId(supabase);
-  
-  // Use request cache to prevent duplicate requests
+export async function listProjects(
+  supabase: SupabaseClient,
+  /** When provided (e.g. from AuthContext), skips getCurrentUserId; avoids slow/hanging getUser() on first login. */
+  userId?: string
+): Promise<Project[]> {
+  const resolvedUserId = userId ?? (await getCurrentUserId(supabase));
+
   const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  const cacheKey = `projects:list:${userId}`;
-  
+  const cacheKey = `projects:list:${resolvedUserId}`;
+
   return globalRequestCache.fetch(cacheKey, async () => {
     // Fetch projects where user is owner OR collaborator
     // Method 1: Get owned projects
     const { data: ownedProjects, error: ownedError } = await supabase
       .from('projects')
       .select('*')
-      .eq('owner_id', userId)
+      .eq('owner_id', resolvedUserId)
       .order('created_at', { ascending: true });
 
     if (ownedError) {
@@ -174,7 +176,7 @@ export async function listProjects(supabase: SupabaseClient): Promise<Project[]>
     const { data: collaboratorRecords, error: collaboratorError } = await supabase
       .from('project_collaborators')
       .select('project_id')
-      .eq('user_id', userId)
+      .eq('user_id', resolvedUserId)
       .not('accepted_at', 'is', null);
 
     if (collaboratorError) {

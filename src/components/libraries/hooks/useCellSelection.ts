@@ -72,6 +72,7 @@ export function useCellSelection({
 
   // Selection bounds for multiple cell selection border rendering
   const [selectionBounds, setSelectionBounds] = useState<SelectionBounds | null>(null);
+  const prevSelectionBoundsRef = useRef<SelectionBounds | null>(null);
 
   // Handle row selection toggle
   const handleRowSelectionToggle = useCallback((rowId: string, e?: React.MouseEvent | MouseEvent) => {
@@ -405,10 +406,15 @@ export function useCellSelection({
     }
   }, [dragStartCell, dragCurrentCell, getAllRowsForCellSelection, orderedProperties]);
 
-  // Calculate selection bounds when selectedCells changes
+  // Calculate selection bounds when selectedCells changes.
+  // Only call setSelectionBounds when bounds actually change to avoid "Maximum update depth exceeded"
+  // (e.g. when deps like getAllRowsForCellSelection or orderedProperties change every render).
   useEffect(() => {
     if (selectedCells.size <= 1) {
-      setSelectionBounds(null);
+      if (prevSelectionBoundsRef.current !== null) {
+        prevSelectionBoundsRef.current = null;
+        setSelectionBounds(null);
+      }
       return;
     }
     const allRowsForSelection = getAllRowsForCellSelection();
@@ -439,9 +445,23 @@ export function useCellSelection({
       minPropertyIndex !== Infinity &&
       maxPropertyIndex !== -Infinity
     ) {
-      setSelectionBounds({ minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex });
+      const next = { minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex };
+      const prev = prevSelectionBoundsRef.current;
+      if (
+        !prev ||
+        prev.minRowIndex !== next.minRowIndex ||
+        prev.maxRowIndex !== next.maxRowIndex ||
+        prev.minPropertyIndex !== next.minPropertyIndex ||
+        prev.maxPropertyIndex !== next.maxPropertyIndex
+      ) {
+        prevSelectionBoundsRef.current = next;
+        setSelectionBounds(next);
+      }
     } else {
-      setSelectionBounds(null);
+      if (prevSelectionBoundsRef.current !== null) {
+        prevSelectionBoundsRef.current = null;
+        setSelectionBounds(null);
+      }
     }
   }, [selectedCells, getAllRowsForCellSelection, orderedProperties]);
 

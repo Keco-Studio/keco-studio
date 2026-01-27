@@ -3,10 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { useAuth } from '@/lib/contexts/AuthContext';
 import { listProjects, Project } from '@/lib/services/projectService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NewProjectModal } from '@/components/projects/NewProjectModal';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
+import { globalRequestCache } from '@/lib/hooks/useRequestCache';
 import projectEmptyIcon from '@/app/assets/images/projectEmptyIcon.svg';
 import plusHorizontal from '@/app/assets/images/plusHorizontal.svg';
 import plusVertical from '@/app/assets/images/plusVertical.svg';
@@ -17,19 +19,21 @@ export default function ProjectsPage() {
   const supabase = useSupabase();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { userProfile } = useAuth();
   const { setShowCreateProjectBreadcrumb } = useNavigation();
   const [showModal, setShowModal] = useState(false);
 
-  // Use React Query to fetch projects list, sharing the same cache with Sidebar
-  // This ensures data synchronization between both components after project deletion
+  // When userProfile.id is available, pass it to skip getCurrentUserId/getUser(), avoiding slow
+  // auth round-trip on first login. Otherwise fall back to getCurrentUserId.
   const {
     data: projects = [],
     isLoading: loading,
     error: projectsError,
   } = useQuery({
     queryKey: ['projects'],
-    queryFn: () => listProjects(supabase),
-    staleTime: 2 * 60 * 1000, // Keep consistent with Sidebar
+    queryFn: () => listProjects(supabase, userProfile?.id),
+    enabled: true,
+    staleTime: 2 * 60 * 1000,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
@@ -73,28 +77,18 @@ export default function ProjectsPage() {
   }, [router]);
 
   useEffect(() => {
-    // Show create project breadcrumb when there are no projects
-    setShowCreateProjectBreadcrumb(!loading && projects.length === 0);
+    const ready = !loading && !projectsError;
+    setShowCreateProjectBreadcrumb(ready && projects.length === 0);
     return () => {
       setShowCreateProjectBreadcrumb(false);
     };
-  }, [loading, projects.length, setShowCreateProjectBreadcrumb]);
+  }, [loading, projectsError, projects.length, setShowCreateProjectBreadcrumb]);
 
   const handleCreated = async (projectId: string) => {
-    // Refresh React Query cache
     queryClient.invalidateQueries({ queryKey: ['projects'] });
-    
-    // Also invalidate globalRequestCache for projects list
-    const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-    const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-    try {
-      const userId = await getCurrentUserId(supabase);
-      globalRequestCache.invalidate(`projects:list:${userId}`);
-    } catch (err) {
-      console.warn('Failed to get userId for cache invalidation, clearing all project cache', err);
+    if (userProfile?.id) {
+      globalRequestCache.invalidate(`projects:list:${userProfile.id}`);
     }
-    
-    // Dispatch event to notify Sidebar to refresh
     window.dispatchEvent(new CustomEvent('projectCreated'));
     router.push(`/${projectId}`);
   };
@@ -103,12 +97,18 @@ export default function ProjectsPage() {
     router.push(`/${id}`);
   };
 
+  const showEmpty = !loading && !projectsError && projects.length === 0;
+
   return (
     <div className={styles.container}>
       {loading && <div>Loading projects...</div>}
-      {projectsError && <div className={styles.error}>{(projectsError as any)?.message || 'Failed to load projects'}</div>}
+      {projectsError && (
+        <div className={styles.error}>
+          {(projectsError as any)?.message || 'Failed to load projects'}
+        </div>
+      )}
 
-      {!loading && projects.length === 0 && (
+      {showEmpty && (
         <div className={styles.emptyStateWrapper}>
           <div className={styles.emptyStateContainer}>
             <div className={styles.emptyIcon}>
