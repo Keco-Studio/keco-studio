@@ -737,9 +737,9 @@ td.cellCopy.copyBorderRight:hover {
   background: transparent;
 }
 
+/* No placeholder for contentEditable - use Del to clear */
 .cell [contenteditable="true"]:empty:before {
-  content: attr(data-placeholder);
-  color: #cbd5e1;
+  content: none;
 }
 
 /* Enum/Select field styles */

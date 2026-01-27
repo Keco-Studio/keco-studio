@@ -1913,6 +1913,18 @@ export function LibraryAssetsTable({
                               } else if (e.key === 'Escape') {
                                 e.preventDefault();
                                 handleCancelEditing();
+                              } else if (e.key === 'Delete' && !isComposingRef.current) {
+                                e.preventDefault();
+                                const el = e.currentTarget;
+                                el.textContent = '';
+                                setEditingCellValue('');
+                                setTypeValidationError(null);
+                                const sel = window.getSelection();
+                                const range = document.createRange();
+                                range.selectNodeContents(el);
+                                range.collapse(true);
+                                sel?.removeAllRanges();
+                                sel?.addRange(range);
                               }
                             }}
                             onPaste={(e) => {
@@ -2404,6 +2416,12 @@ export function LibraryAssetsTable({
                           value = finalValue;
                         }
                         handleInputChange(property.key, value);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Delete') {
+                          e.preventDefault();
+                          handleInputChange(property.key, '');
+                        }
                       }}
                       placeholder=""
                       className={styles.editInput}
