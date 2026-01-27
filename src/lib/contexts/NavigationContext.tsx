@@ -106,6 +106,116 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     currentUserIdRef.current = newUserId;
   }, [isAuthenticated, userProfile, currentProjectId, currentLibraryId, currentAssetId, router]);
 
+  // Listen to entity update events to refresh names
+  useEffect(() => {
+    const handleProjectUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ projectId?: string }>;
+      if (!customEvent.detail?.projectId || !currentProjectId) return;
+      if (customEvent.detail.projectId === currentProjectId) {
+        // Clear cache for this project
+        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+        const cacheKey = `project:name:${currentProjectId}`;
+        globalRequestCache.invalidate(cacheKey);
+        
+        // Re-fetch project name immediately
+        try {
+          const { data, error } = await supabase
+            .from('projects')
+            .select('name')
+            .eq('id', currentProjectId)
+            .single();
+          
+          if (!error && data) {
+            setProjectName(data.name ?? null);
+          }
+        } catch (error) {
+          console.error('Error refreshing project name:', error);
+        }
+      }
+    };
+
+    const handleLibraryUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ libraryId?: string }>;
+      if (!customEvent.detail?.libraryId || !currentLibraryId) return;
+      if (customEvent.detail.libraryId === currentLibraryId) {
+        // Clear cache for this library
+        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+        const cacheKey = `library:info:${currentLibraryId}`;
+        globalRequestCache.invalidate(cacheKey);
+        
+        // Re-fetch library name immediately
+        try {
+          const { data, error } = await supabase
+            .from('libraries')
+            .select('name, folder_id')
+            .eq('id', currentLibraryId)
+            .single();
+          
+          if (!error && data) {
+            setLibraryName(data.name ?? null);
+            setLibraryFolderId(data.folder_id ?? null);
+          }
+        } catch (error) {
+          console.error('Error refreshing library name:', error);
+        }
+      }
+    };
+
+    const handleFolderUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ folderId?: string }>;
+      if (!customEvent.detail?.folderId || !currentFolderId) return;
+      if (customEvent.detail.folderId === currentFolderId) {
+        // Re-fetch folder name immediately
+        try {
+          const { data, error } = await supabase
+            .from('folders')
+            .select('name')
+            .eq('id', currentFolderId)
+            .single();
+          
+          if (!error && data) {
+            setFolderName(data.name ?? null);
+          }
+        } catch (error) {
+          console.error('Error refreshing folder name:', error);
+        }
+      }
+    };
+
+    const handleAssetUpdated = async (event: Event) => {
+      const customEvent = event as CustomEvent<{ assetId?: string }>;
+      if (!customEvent.detail?.assetId || !currentAssetId) return;
+      if (customEvent.detail.assetId === currentAssetId) {
+        // Re-fetch asset name immediately
+        try {
+          const { data, error } = await supabase
+            .from('library_assets')
+            .select('name')
+            .eq('id', currentAssetId)
+            .single();
+          
+          if (!error && data) {
+            setAssetName(data.name ?? null);
+          }
+        } catch (error) {
+          console.error('Error refreshing asset name:', error);
+        }
+      }
+    };
+
+    window.addEventListener('projectUpdated', handleProjectUpdated as EventListener);
+    window.addEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
+    window.addEventListener('folderUpdated', handleFolderUpdated as EventListener);
+    window.addEventListener('assetUpdated', handleAssetUpdated as EventListener);
+
+    return () => {
+      window.removeEventListener('projectUpdated', handleProjectUpdated as EventListener);
+      window.removeEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
+      window.removeEventListener('folderUpdated', handleFolderUpdated as EventListener);
+      window.removeEventListener('assetUpdated', handleAssetUpdated as EventListener);
+    };
+  }, [currentProjectId, currentLibraryId, currentFolderId, currentAssetId, supabase]);
+
   useEffect(() => {
     let mounted = true;
     const fetchNames = async () => {
