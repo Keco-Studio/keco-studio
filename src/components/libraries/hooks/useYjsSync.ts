@@ -108,21 +108,23 @@ export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: Asset
 
       if (rowsToAdd.length > 0) {
         const currentYjsRows = yRows.toArray();
-        const insertTempRows: Array<{ index: number; id: string }> = [];
+        const placeholderTempRows: Array<{ index: number; id: string }> = [];
         currentYjsRows.forEach((row: AssetRow, index: number) => {
-          if (row.id.startsWith('temp-insert-')) insertTempRows.push({ index, id: row.id });
+          if (row.id.startsWith('temp-insert-') || row.id.startsWith('temp-paste-')) {
+            placeholderTempRows.push({ index, id: row.id });
+          }
         });
-        insertTempRows.sort((a, b) => a.index - b.index);
+        placeholderTempRows.sort((a, b) => a.index - b.index);
 
-        const rowsToReplace = rowsToAdd.slice(0, Math.min(insertTempRows.length, rowsToAdd.length));
+        const rowsToReplace = rowsToAdd.slice(0, Math.min(placeholderTempRows.length, rowsToAdd.length));
         for (let i = rowsToReplace.length - 1; i >= 0; i--) {
           const newRow = rowsToReplace[i];
-          const tempRow = insertTempRows[i];
+          const tempRow = placeholderTempRows[i];
           yRows.delete(tempRow.index, 1);
           yRows.insert(tempRow.index, [newRow]);
         }
 
-        const remainingRows = rowsToAdd.slice(insertTempRows.length);
+        const remainingRows = rowsToAdd.slice(placeholderTempRows.length);
         if (remainingRows.length > 0) yRows.insert(yRows.length, remainingRows);
       }
 
