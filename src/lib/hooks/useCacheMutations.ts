@@ -20,6 +20,7 @@ import {
   createAsset,
   deleteAsset,
 } from '@/lib/services/libraryAssetsService';
+import type { Collaborator } from '@/lib/types/collaboration';
 
 /**
  * Update Entity Name Hook Parameters
@@ -355,6 +356,209 @@ export function useRemoveEntityFromList() {
         }
       }));
     }
+  });
+}
+
+/**
+ * Update Collaborator Role Hook Parameters
+ */
+interface UpdateCollaboratorRoleParams {
+  collaboratorId: string;
+  projectId: string;
+  newRole: 'admin' | 'editor' | 'viewer';
+}
+
+/**
+ * Hook for updating collaborator role with optimistic update.
+ * 
+ * Features:
+ * - Instant UI feedback (optimistic)
+ * - Automatic rollback on error
+ * - Updates collaborators list cache
+ * - Dispatches event for backward compatibility
+ * 
+ * Usage:
+ *   const updateRole = useUpdateCollaboratorRole();
+ *   updateRole.mutate({ collaboratorId, projectId, newRole: 'editor' });
+ */
+export function useUpdateCollaboratorRole() {
+  const queryClient = useQueryClient();
+  const supabase = useSupabase();
+  
+  return useMutation({
+    mutationFn: async ({ collaboratorId, newRole }: UpdateCollaboratorRoleParams) => {
+      // Get session for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('You must be logged in');
+      }
+      
+      // Call API route with authorization header
+      const response = await fetch(`/api/collaborators/${collaboratorId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ newRole }),
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to update role');
+      }
+      
+      return result;
+    },
+    
+    // OPTIMISTIC UPDATE: Before mutation starts
+    onMutate: async ({ collaboratorId, projectId, newRole }) => {
+      const collabKey = queryKeys.projectCollaborators(projectId);
+      
+      // Cancel any outgoing refetches (prevent race conditions)
+      await queryClient.cancelQueries({ queryKey: collabKey });
+      
+      // Snapshot previous value for rollback
+      const previousCollaborators = queryClient.getQueryData<Collaborator[]>(collabKey);
+      
+      // Optimistically update collaborator role in list
+      queryClient.setQueryData<Collaborator[]>(collabKey, (old) => {
+        if (!old) return old;
+        return old.map((collab) => 
+          collab.id === collaboratorId 
+            ? { ...collab, role: newRole }
+            : collab
+        );
+      });
+      
+      // Return context for potential rollback
+      return { previousCollaborators, collabKey, collaboratorId, projectId };
+    },
+    
+    // ON ERROR: Rollback optimistic update
+    onError: (err, variables, context) => {
+      if (!context) return;
+      
+      // Restore previous value
+      if (context.previousCollaborators) {
+        queryClient.setQueryData(context.collabKey, context.previousCollaborators);
+      }
+      
+      console.error('Failed to update collaborator role:', err);
+    },
+    
+    // ON SUCCESS: Dispatch event for backward compatibility
+    onSuccess: (data, variables, context) => {
+      if (!context) return;
+      
+      // Dispatch custom event for components still using event listeners
+      window.dispatchEvent(new CustomEvent('collaboratorUpdated', {
+        detail: { 
+          collaboratorId: context.collaboratorId,
+          projectId: context.projectId 
+        }
+      }));
+    },
+  });
+}
+
+/**
+ * Remove Collaborator Hook Parameters
+ */
+interface RemoveCollaboratorParams {
+  collaboratorId: string;
+  projectId: string;
+}
+
+/**
+ * Hook for removing collaborator with optimistic update.
+ * 
+ * Features:
+ * - Instant UI feedback (optimistic)
+ * - Automatic rollback on error
+ * - Updates collaborators list cache
+ * - Dispatches event for backward compatibility
+ * 
+ * Usage:
+ *   const removeCollaborator = useRemoveCollaborator();
+ *   removeCollaborator.mutate({ collaboratorId, projectId });
+ */
+export function useRemoveCollaborator() {
+  const queryClient = useQueryClient();
+  const supabase = useSupabase();
+  
+  return useMutation({
+    mutationFn: async ({ collaboratorId }: RemoveCollaboratorParams) => {
+      // Get session for authorization
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      if (!session) {
+        throw new Error('You must be logged in');
+      }
+      
+      // Call API route with authorization header
+      const response = await fetch(`/api/collaborators/${collaboratorId}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
+
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to remove collaborator');
+      }
+      
+      return result;
+    },
+    
+    // OPTIMISTIC UPDATE: Before mutation starts
+    onMutate: async ({ collaboratorId, projectId }) => {
+      const collabKey = queryKeys.projectCollaborators(projectId);
+      
+      // Cancel any outgoing refetches (prevent race conditions)
+      await queryClient.cancelQueries({ queryKey: collabKey });
+      
+      // Snapshot previous value for rollback
+      const previousCollaborators = queryClient.getQueryData<Collaborator[]>(collabKey);
+      
+      // Optimistically remove collaborator from list
+      queryClient.setQueryData<Collaborator[]>(collabKey, (old) => {
+        if (!old) return old;
+        return old.filter((collab) => collab.id !== collaboratorId);
+      });
+      
+      // Return context for potential rollback
+      return { previousCollaborators, collabKey, collaboratorId, projectId };
+    },
+    
+    // ON ERROR: Rollback optimistic update
+    onError: (err, variables, context) => {
+      if (!context) return;
+      
+      // Restore previous value
+      if (context.previousCollaborators) {
+        queryClient.setQueryData(context.collabKey, context.previousCollaborators);
+      }
+      
+      console.error('Failed to remove collaborator:', err);
+    },
+    
+    // ON SUCCESS: Dispatch event for backward compatibility
+    onSuccess: (data, variables, context) => {
+      if (!context) return;
+      
+      // Dispatch custom event for components still using event listeners
+      window.dispatchEvent(new CustomEvent('collaboratorRemoved', {
+        detail: { 
+          collaboratorId: context.collaboratorId,
+          projectId: context.projectId 
+        }
+      }));
+    },
   });
 }
 

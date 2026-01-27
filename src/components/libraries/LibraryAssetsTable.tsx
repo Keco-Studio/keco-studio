@@ -53,6 +53,7 @@ import libraryAssetTableAddIcon from '@/app/assets/images/LibraryAssetTableAddIc
 import libraryAssetTableSelectIcon from '@/app/assets/images/LibraryAssetTableSelectIcon.svg';
 import batchEditAddIcon from '@/app/assets/images/BatchEditAddIcon.svg';
 import tableAssetDetailIcon from '@/app/assets/images/TableAssetDetailIcon.svg';
+import collaborationViewNumIcon from '@/app/assets/images/collaborationViewNumIcon.svg';
 import styles from './LibraryAssetsTable.module.css';
 
 export type LibraryAssetsTableProps = {
@@ -449,6 +450,18 @@ export function LibraryAssetsTable({
   } = useAssetHover(supabase);
   const hasSections = sections.length > 0;
   const userRole = useUserRole(params?.projectId as string | undefined, supabase);
+  
+  // Viewer notification banner state (session-only, resets on library change or page refresh)
+  const [isViewerBannerDismissed, setIsViewerBannerDismissed] = useState(false);
+  
+  const handleDismissViewerBanner = useCallback(() => {
+    setIsViewerBannerDismissed(true);
+  }, []);
+  
+  // Reset banner when library changes or component mounts
+  useEffect(() => {
+    setIsViewerBannerDismissed(false);
+  }, [library?.id]);
   const {
     isAddingRow,setIsAddingRow,newRowData,setNewRowData,handleSaveNewAsset,handleCancelAdding,handleInputChange,handleMediaFileChange,
   } = useAddRow({
@@ -2319,6 +2332,27 @@ export function LibraryAssetsTable({
         setDeleteRowConfirmVisible(false);
       }}
     />
+    
+    {/* Viewer notification banner */}
+    {userRole === 'viewer' && !isViewerBannerDismissed && (
+      <div className={styles.viewerBanner}>
+        <Image
+          src={collaborationViewNumIcon}
+          alt="View"
+          width={20}
+          height={20}
+          className={styles.viewerBannerIcon}
+        />
+        <span className={styles.viewerBannerText}>You can only view this library.</span>
+        <button
+          className={styles.viewerBannerClose}
+          onClick={handleDismissViewerBanner}
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+    )}
     </>
   );
 }

@@ -303,29 +303,6 @@ export function LibraryHeader({
             >
               Share
           </button>
-          {userRole === 'admin' && (
-            <button
-              className={styles.adminRoleLabel}
-              >
-                {getRoleText(userRole)}
-            </button>
-          )}
-          {userRole === 'editor' && (
-            <button
-              className={styles.editorRoleLabel}
-              >
-                <Image src={libraryHeadEditIcon} alt="Editing" width={16} height={16} />
-                {getRoleText(userRole)}
-            </button>
-          )}
-          {userRole === 'viewer' && (
-            <button
-              className={styles.viewerRoleLabel}
-              >
-                <Image src={libraryHeadViewIcon} alt="Viewing" width={16} height={16} />
-                {getRoleText(userRole)}
-            </button>
-          )}
         </div>
 
         {/* More Options Icon */}

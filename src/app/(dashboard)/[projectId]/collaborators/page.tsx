@@ -13,9 +13,11 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import Image from 'next/image';
 import CollaboratorsList from '@/components/collaboration/CollaboratorsList';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
@@ -32,6 +34,7 @@ export default function CollaboratorsPage() {
   const params = useParams();
   const router = useRouter();
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const projectId = params.projectId as string;
   
   const [loading, setLoading] = useState(true);
@@ -284,6 +287,11 @@ export default function CollaboratorsPage() {
         });
         
         setCollaborators(allCollaborators);
+        // Also update React Query cache for real-time updates
+        queryClient.setQueryData(
+          queryKeys.projectCollaborators(projectId),
+          allCollaborators
+        );
         setLoading(false);
         return allCollaborators; // Return the new data
       } catch (err: any) {
@@ -298,7 +306,7 @@ export default function CollaboratorsPage() {
       setLoading(false);
       return [];
     }
-  }, [projectId, supabase, router]);
+  }, [projectId, supabase, router, queryClient]);
   
   // Initial data fetch
   useEffect(() => {
@@ -307,6 +315,31 @@ export default function CollaboratorsPage() {
     }
   }, [projectId, fetchData]);
   
+  // Read from React Query cache for real-time updates
+  // Provide queryFn (required by React Query) - it will only run if cache is empty
+  const { data: cachedCollaborators } = useQuery<Collaborator[]>({
+    queryKey: queryKeys.projectCollaborators(projectId),
+    queryFn: async () => collaborators, // Fallback to state if cache is empty
+    initialData: collaborators, // Use current state as initial data
+    staleTime: Infinity, // Don't refetch automatically
+    refetchOnMount: false, // Don't refetch on mount
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+  });
+  
+  // Use cached data if available (updated by mutations), otherwise use state
+  const displayCollaborators = cachedCollaborators || collaborators;
+  
+  // Calculate role counts - ONLY include accepted collaborators (exclude pending invites)
+  // Must be before any conditional returns to follow Rules of Hooks
+  const acceptedCollaborators = useMemo(
+    () => displayCollaborators.filter(c => c.acceptedAt !== null),
+    [displayCollaborators]
+  );
+  
+  const adminCount = acceptedCollaborators.filter(c => c.role === 'admin').length;
+  const editorCount = acceptedCollaborators.filter(c => c.role === 'editor').length;
+  const viewerCount = acceptedCollaborators.filter(c => c.role === 'viewer').length;
+  
   if (loading) {
     return (
       <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -314,11 +347,6 @@ export default function CollaboratorsPage() {
       </div>
     );
   }
-  
-  // Calculate role counts
-  const adminCount = collaborators.filter(c => c.role === 'admin').length;
-  const editorCount = collaborators.filter(c => c.role === 'editor').length;
-  const viewerCount = collaborators.filter(c => c.role === 'viewer').length;
 
   return (
     <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -529,7 +557,7 @@ export default function CollaboratorsPage() {
       {userRole && currentUserId ? (
         <CollaboratorsList
           projectId={projectId}
-          collaborators={collaborators}
+          collaborators={displayCollaborators}
           currentUserId={currentUserId}
           currentUserRole={userRole}
           onUpdate={fetchData}
