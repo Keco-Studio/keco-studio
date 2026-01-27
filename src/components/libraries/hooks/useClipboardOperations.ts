@@ -237,20 +237,22 @@ export function useClipboardOperations({
       const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
       const isNameField = propertyIndex === 0;
       
-      // 对齐 batch fill：从 base 取源值，保留原始类型（如 float 12.5），避免 getRowsWithOptimisticUpdates 合并导致的小数丢失
-      const baseRow = dataManager.getRowBaseValue(rowId);
       let value: string | number | null;
-      if (baseRow) {
-        const raw = isNameField
-          ? (baseRow.name ?? baseRow.propertyValues?.[propertyKey] ?? null)
-          : (baseRow.propertyValues?.[propertyKey] ?? null);
-        value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
-        // Name 字段：base 为 null 时回退到 row.name，避免 paste 出现 "Untitled"（base 滞后于乐观更新）
-        if (isNameField && value === null && row.name && row.name !== 'Untitled') {
-          value = row.name;
-        }
+      // Name 与表格展示完全一致：表格在 name 为空且 row.name 为 "Untitled" 时显示空白（LibraryAssetsTable 1793–1802）
+      if (isNameField) {
+        const raw = row.propertyValues?.[propertyKey];
+        const hasRaw = raw !== null && raw !== undefined && raw !== '';
+        const displayStr = hasRaw ? String(raw) : ((row.name && row.name !== 'Untitled') ? row.name : null);
+        value = displayStr;
       } else {
-        value = getCellValue(row, propertyKey, foundProperty, isNameField);
+        // 非 name：对齐 batch fill，从 base 取源值，保留原始类型
+        const baseRow = dataManager.getRowBaseValue(rowId);
+        if (baseRow) {
+          const raw = baseRow.propertyValues?.[propertyKey] ?? null;
+          value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
+        } else {
+          value = getCellValue(row, propertyKey, foundProperty, false);
+        }
       }
       
       if (!cellsByRow.has(rowId)) {
@@ -512,20 +514,22 @@ export function useClipboardOperations({
       const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
       const isNameField = propertyIndex === 0;
       
-      // 对齐 batch fill：从 base 取源值，保留原始类型（如 float 12.5），避免 getRowsWithOptimisticUpdates 合并导致的小数丢失
-      const baseRow = dataManager.getRowBaseValue(rowId);
       let value: string | number | null;
-      if (baseRow) {
-        const raw = isNameField
-          ? (baseRow.name ?? baseRow.propertyValues?.[propertyKey] ?? null)
-          : (baseRow.propertyValues?.[propertyKey] ?? null);
-        value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
-        // Name 字段：base 为 null 时回退到 row.name，避免 paste 出现 "Untitled"（base 滞后于乐观更新）
-        if (isNameField && value === null && row.name && row.name !== 'Untitled') {
-          value = row.name;
-        }
+      // Name 与表格展示完全一致：表格在 name 为空且 row.name 为 "Untitled" 时显示空白（LibraryAssetsTable 1793–1802）
+      if (isNameField) {
+        const raw = row.propertyValues?.[propertyKey];
+        const hasRaw = raw !== null && raw !== undefined && raw !== '';
+        const displayStr = hasRaw ? String(raw) : ((row.name && row.name !== 'Untitled') ? row.name : null);
+        value = displayStr;
       } else {
-        value = getCellValue(row, propertyKey, foundProperty, isNameField);
+        // 非 name：对齐 batch fill，从 base 取源值，保留原始类型
+        const baseRow = dataManager.getRowBaseValue(rowId);
+        if (baseRow) {
+          const raw = baseRow.propertyValues?.[propertyKey] ?? null;
+          value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
+        } else {
+          value = getCellValue(row, propertyKey, foundProperty, false);
+        }
       }
       
       if (!cellsByRow.has(rowId)) {
@@ -817,7 +821,7 @@ export function useClipboardOperations({
           if (newRowData) {
             // For name field (propertyIndex === 0), set it as the name field, not in propertyValues
             if (targetPropertyIndex === 0) {
-              newRowData.name = convertedValue !== null ? String(convertedValue) : 'Untitled';
+              newRowData.name = (convertedValue !== null && convertedValue !== '') ? String(convertedValue) : '';
             } else {
               newRowData.propertyValues[targetProperty.key] = convertedValue;
             }
@@ -898,8 +902,8 @@ export function useClipboardOperations({
           if (rowUpdates) {
             // Check if this is the name field (first property)
             if (propertyKey === nameFieldKey) {
-              // Update name field separately
-              rowUpdates.name = value !== null ? String(value) : 'Untitled';
+              // Update name field separately（空值保持空白，不写 "Untitled"）
+              rowUpdates.name = (value !== null && value !== '') ? String(value) : '';
               // Also update propertyValues for consistency
               rowUpdates.propertyValues[propertyKey] = value;
             } else {
@@ -922,8 +926,8 @@ export function useClipboardOperations({
           if (row) {
             const rowIndex = rowIndexMap.get(rowId);
             if (rowIndex !== undefined) {
-              // Use updated name if name field was pasted, otherwise use existing row.name
-              const updatedName = rowData.name !== undefined ? rowData.name : (row.name || 'Untitled');
+              // Use updated name if name field was pasted, otherwise use existing row.name（空名保持 ''，不写 "Untitled"）
+              const updatedName = rowData.name !== undefined ? rowData.name : (row.name ?? '');
               rowsToUpdate.push({
                 rowId,
                 index: rowIndex,
@@ -950,7 +954,7 @@ export function useClipboardOperations({
           .map(([rowId, rowData]) => {
             const row = allRowsForSelection.find(r => r.id === rowId);
             if (!row) return Promise.resolve();
-            const updatedName = rowData.name !== undefined ? rowData.name : (row.name || 'Untitled');
+            const updatedName = rowData.name !== undefined ? rowData.name : (row.name ?? '');
             return onUpdateAsset(rowId, updatedName, rowData.propertyValues);
           });
         await Promise.all(updatePromises);
