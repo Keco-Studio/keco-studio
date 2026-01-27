@@ -18,12 +18,12 @@ export function TableHeader({ groups }: TableHeaderProps) {
     <thead>
       <tr className={styles.headerRowTop}>
         <th scope="col" className={`${styles.headerCell} ${styles.numberColumnHeader}`} />
-        {groups.map((group) => (
+        {groups.map((group, index) => (
           <th
             key={group.section.id}
             scope="col"
             colSpan={group.properties.length}
-            className={`${styles.headerCell} ${styles.sectionHeaderCell}`}
+            className={`${styles.headerCell} ${styles.sectionHeaderCell} ${index < groups.length - 1 ? styles.sectionHeaderCellDivider : ''}`}
           >
             {group.section.name}
           </th>

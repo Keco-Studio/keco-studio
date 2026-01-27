@@ -78,6 +78,10 @@
   background: rgba(255, 0, 94, 0.15);
 }
 
+.sectionHeaderCellDivider {
+  border-right: 1px solid #e2e8f0;
+}
+
 .propertyHeaderCell {
   font-size: 13px;
   font-weight: 600;
