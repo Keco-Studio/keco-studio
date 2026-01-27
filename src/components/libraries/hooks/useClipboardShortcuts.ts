@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 /**
- * useClipboardShortcuts - 全局 Ctrl/Cmd + X / C / V 监听，触发 Cut/Copy/Paste
+ * useClipboardShortcuts - 全局 Ctrl/Cmd + X / C / V 监听，以及 Delete 清空选区
  * 在编辑单元格、input/textarea/select、modal 内时不触发。
  */
 export function useClipboardShortcuts({
@@ -12,6 +12,7 @@ export function useClipboardShortcuts({
   onCut,
   onCopy,
   onPaste,
+  onClearContents,
 }: {
   editingCell: unknown;
   selectedCells: Set<unknown>;
@@ -20,6 +21,7 @@ export function useClipboardShortcuts({
   onCut: () => void;
   onCopy: () => void;
   onPaste: () => void;
+  onClearContents?: () => void;
 }) {
   useEffect(() => {
     const isMac =
@@ -45,19 +47,27 @@ export function useClipboardShortcuts({
 
       if (isEditing || isInput) return;
 
+      const hasSelection = selectedCells.size > 0 || selectedRowIds.size > 0;
+      if (e.key === 'Delete' && hasSelection && onClearContents) {
+        e.preventDefault();
+        e.stopPropagation();
+        onClearContents();
+        return;
+      }
+
       const mod = isMac ? e.metaKey : e.ctrlKey;
       if (!mod) return;
 
       if (e.key === 'x' || e.key === 'X') {
         e.preventDefault();
         e.stopPropagation();
-        if (selectedCells.size > 0 || selectedRowIds.size > 0) onCut();
+        if (hasSelection) onCut();
         return;
       }
       if (e.key === 'c' || e.key === 'C') {
         e.preventDefault();
         e.stopPropagation();
-        if (selectedCells.size > 0 || selectedRowIds.size > 0) onCopy();
+        if (hasSelection) onCopy();
         return;
       }
       if (e.key === 'v' || e.key === 'V') {
@@ -77,5 +87,6 @@ export function useClipboardShortcuts({
     onCut,
     onCopy,
     onPaste,
+    onClearContents,
   ]);
 }

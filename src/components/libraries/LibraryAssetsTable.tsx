@@ -1023,6 +1023,7 @@ export function LibraryAssetsTable({
     onCut: handleCut,
     onCopy: handleCopy,
     onPaste: handlePaste,
+    onClearContents: handleClearContents,
   });
 
   const closeRowContextMenu = useCallback(() => {

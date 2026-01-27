@@ -5,6 +5,8 @@
   flex-direction: column;
   gap: 10px;
   padding-top: 24px;
+  /* 底部预留空间，给最后一个版本的操作面板使用，避免被视口底部遮挡 */
+  padding-bottom: 120px;
   position: relative;
 }
 

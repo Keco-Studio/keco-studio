@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Tooltip, message } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -68,6 +68,7 @@ export default function LibraryPage() {
   const [restoreToastMessage, setRestoreToastMessage] = useState<string | null>(null);
   const [versions, setVersions] = useState<LibraryVersion[]>([]);
   const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
+  const hasInitializedBlankRowsRef = useRef(false);
 
   // Use React Query for data fetching
   const { data: project, isLoading: projectLoading, error: projectError } = useQuery({
@@ -109,6 +110,57 @@ export default function LibraryPage() {
   const loading = projectLoading || libraryLoading || summaryLoading || schemaLoading || assetsLoading;
   const error = projectError ? (projectError as any)?.message || 'Project not found' :
                 libraryError ? (libraryError as any)?.message || 'Library not found' : null;
+
+  // 当库已经有 schema 但还没有任何资产时，自动创建 3 行空白数据
+  useEffect(() => {
+    // 只处理当前版本视图，并且避免重复初始化
+    if (!libraryId) return;
+    if (selectedVersionId && selectedVersionId !== '__current__') return;
+    if (assetsLoading) return;
+    if (assetRows.length > 0) return;
+    if (hasInitializedBlankRowsRef.current) return;
+    // 没有字段定义时不需要创建空行
+    if (!librarySchema || !tableProperties || tableProperties.length === 0) return;
+    // 仅管理员 / 编辑者可以创建
+    if (userRole === 'viewer') return;
+
+    const initBlankRows = async () => {
+      try {
+        hasInitializedBlankRowsRef.current = true;
+        const now = Date.now();
+
+        // 创建三条空资产记录，name 为空字符串，propertyValues 为空对象
+        for (let i = 0; i < 3; i++) {
+          await createAsset(
+            supabase,
+            libraryId,
+            '',
+            {},
+            { createdAt: new Date(now + i) }
+          );
+        }
+
+        // 触发现有资产监听逻辑进行缓存失效和刷新
+        window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
+      } catch (e) {
+        // 初始化失败时允许之后再次尝试
+        console.error('Failed to initialize blank asset rows', e);
+        hasInitializedBlankRowsRef.current = false;
+      }
+    };
+
+    void initBlankRows();
+  }, [
+    assetRows.length,
+    assetsLoading,
+    createAsset,
+    libraryId,
+    librarySchema,
+    selectedVersionId,
+    supabase,
+    tableProperties,
+    userRole,
+  ]);
 
   // Presence tracking for real-time collaboration
   const userAvatarColor = useMemo(() => {

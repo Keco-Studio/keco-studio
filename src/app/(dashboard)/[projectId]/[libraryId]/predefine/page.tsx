@@ -3,7 +3,7 @@
 import { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { z } from 'zod';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { Tabs, Button, App, ConfigProvider, Input, Tooltip } from 'antd';
@@ -27,6 +27,7 @@ import styles from './page.module.css';
 import sectionHeaderStyles from './components/SectionHeader.module.css';
 import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
 import predefineExpandIcon from '@/app/assets/images/predefineExpandIcon.svg';
+import PredefineBackIcon from '@/app/assets/images/PredefineBackIcon.svg';
 
 const NEW_SECTION_TAB_KEY = '__new_section__';
 
@@ -34,7 +35,9 @@ function PredefinePageContent() {
   const { message } = App.useApp();
   const supabase = useSupabase();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const params = useParams();
+  const projectId = params?.projectId as string | undefined;
   const libraryId = params?.libraryId as string | undefined;
 
   const { sections, setSections, loading: sectionsLoading, reload: reloadSections } = useSchemaData({
@@ -73,6 +76,8 @@ function PredefinePageContent() {
   const newSectionInputRef = useRef<InputRef>(null);
   // Flag to prevent immediate blur after auto-focus
   const isAutoFocusing = useRef(false);
+  // Track if user saved schema this session → back goes to library table, else router.back()
+  const hasSavedThisSessionRef = useRef(false);
 
   const activeSection = useMemo(
     () => sections.find((s) => s.id === activeSectionId) || null,
@@ -445,7 +450,8 @@ function PredefinePageContent() {
       await saveSchemaIncremental(supabase, libraryId, finalSections);
 
       message.success('Saved successfully, loading...');
-      
+      hasSavedThisSessionRef.current = true;
+
       // Invalidate React Query cache to ensure LibraryPage gets fresh data
       await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
@@ -899,27 +905,51 @@ function PredefinePageContent() {
     <div className={styles.container}>
         <div className={styles.contentWrapper}>
           <div className={styles.header}>
-            <div>
-              {loadingLibrary ? (
-                <h1 className={styles.title}>
-                  Loading...
-                </h1>
-              ) : (
-                <>
-                  <h1 className={styles.title}>
-                    {`Predefine ${library?.name ?? ''} Library`}
-                  </h1>
-                  {library?.description && (
-                    <Tooltip title={library.description.length > 50 ? library.description : undefined}>
-                      <p className={styles.subtitle}>
-                        {library.description.length > 50
-                          ? `${library.description.slice(0, 50)}...`
-                          : library.description}
-                      </p>
-                    </Tooltip>
-                  )}
-                </>
+            <div className={styles.headerTitleRow}>
+              {projectId && libraryId && (
+                <button
+                  type="button"
+                  className={styles.backButton}
+                  onClick={() => {
+                    if (hasSavedThisSessionRef.current) {
+                      router.push(`/${projectId}/${libraryId}`);
+                    } else {
+                      router.back();
+                    }
+                  }}
+                  title="Back to library"
+                  aria-label="Back to library"
+                >
+                  <Image
+                    src={PredefineBackIcon}
+                    alt="Back"
+                    width={24}
+                    height={24}
+                  />
+                </button>
               )}
+              <div>
+                {loadingLibrary ? (
+                  <h1 className={styles.title}>
+                    Loading...
+                  </h1>
+                ) : (
+                  <>
+                    <h1 className={styles.title}>
+                      {`Predefine ${library?.name ?? ''} Library`}
+                    </h1>
+                    {library?.description && (
+                      <Tooltip title={library.description.length > 50 ? library.description : undefined}>
+                        <p className={styles.subtitle}>
+                          {library.description.length > 50
+                            ? `${library.description.slice(0, 50)}...`
+                            : library.description}
+                        </p>
+                      </Tooltip>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
 
