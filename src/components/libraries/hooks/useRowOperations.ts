@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import type * as Y from 'yjs';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { CellKey } from './useCellSelection';
@@ -9,7 +9,11 @@ type YArrayAssetRow = Y.Array<AssetRow>;
 export type UseRowOperationsParams = {
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
+  /** Batch update: all updates then one dispatch → one invalidate, avoids 先消失后恢复再消失 + 其他列恢复 */
+  onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
+  /** Batch delete: Supabase .delete().in(), one round-trip */
+  onDeleteAssets?: (assetIds: string[]) => Promise<void>;
   library: { id: string } | null;
   supabase: SupabaseClient | null;
   orderedProperties: PropertyConfig[];
@@ -63,7 +67,9 @@ export function useRowOperations(params: UseRowOperationsParams) {
   const {
     onSaveAsset,
     onUpdateAsset,
+    onUpdateAssets,
     onDeleteAsset,
+    onDeleteAssets,
     library,
     supabase,
     orderedProperties,
@@ -95,6 +101,22 @@ export function useRowOperations(params: UseRowOperationsParams) {
     deletingAssetId,
     rows,
   } = params;
+
+  // Remove from deletedAssetIds only when rows (from refetch) no longer contain that id
+  useEffect(() => {
+    const rowIds = new Set(rows.map((r) => r.id));
+    setDeletedAssetIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      prev.forEach((id) => {
+        if (!rowIds.has(id)) {
+          next.delete(id);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [rows, setDeletedAssetIds]);
 
   const handleInsertRowAbove = useCallback(async () => {
     if (!onSaveAsset || !library) {
@@ -504,30 +526,53 @@ export function useRowOperations(params: UseRowOperationsParams) {
       const newMap = new Map(prev);
       for (const [rowId, rowData] of cellsByRow.entries()) {
         const row = allRowsForSelection.find((r) => r.id === rowId);
-        if (row) {
-          const originalName = row.name || 'Untitled';
-          newMap.set(rowId, { name: originalName, propertyValues: { ...rowData.propertyValues } });
+        if (!row) continue;
+        const existing = prev.get(rowId);
+        const displayName =
+          rowData.assetName !== null && rowData.assetName !== undefined
+            ? rowData.assetName
+            : (existing?.name ?? row.name ?? 'Untitled');
+        // Only overlay cleared keys onto existing optimistic (or row). Replacing with full
+        // rowData.propertyValues could overwrite other columns if row was ever stale/partial,
+        // causing "其他列也清空，过一会又恢复".
+        const clearedDelta: Record<string, any> = {};
+        for (const [k, v] of Object.entries(rowData.propertyValues)) {
+          if (row.propertyValues[k] !== v) clearedDelta[k] = v;
         }
+        const baseForMerge = existing?.propertyValues ?? row.propertyValues ?? {};
+        newMap.set(rowId, {
+          name: displayName,
+          propertyValues: { ...baseForMerge, ...clearedDelta },
+        });
       }
       return newMap;
     });
 
     setIsSaving(true);
     try {
-      for (const [rowId, rowData] of cellsByRow.entries()) {
-        const row = allRowsForSelection.find((r) => r.id === rowId);
-        if (row) {
+      const entries = Array.from(cellsByRow.entries()).filter(([rowId]) =>
+        allRowsForSelection.some((r) => r.id === rowId)
+      );
+      const useBatch = entries.length > 1 && !!onUpdateAssets;
+
+      if (useBatch) {
+        const updates = entries.map(([rowId, rowData]) => {
+          const row = allRowsForSelection.find((r) => r.id === rowId)!;
           const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
-          await onUpdateAsset(rowId, assetName, rowData.propertyValues);
-        }
-      }
-      setTimeout(() => {
-        setOptimisticEditUpdates((prev) => {
-          const newMap = new Map(prev);
-          for (const rowId of cellsByRow.keys()) newMap.delete(rowId);
-          return newMap;
+          return { assetId: rowId, assetName, propertyValues: rowData.propertyValues };
         });
-      }, 500);
+        await onUpdateAssets!(updates);
+      } else {
+        await Promise.all(
+          entries.map(([rowId, rowData]) => {
+            const row = allRowsForSelection.find((r) => r.id === rowId);
+            if (!row) return Promise.resolve();
+            const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
+            return onUpdateAsset!(rowId, assetName, rowData.propertyValues);
+          })
+        );
+      }
+      // Rely on useOptimisticCleanup when rows match; no setTimeout clear to avoid 先消失后恢复再消失
       setSelectedCells(new Set());
       setSelectedRowIds(new Set());
     } catch (e) {
@@ -546,6 +591,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     orderedProperties,
     getAllRowsForCellSelection,
     onUpdateAsset,
+    onUpdateAssets,
     setSelectedCells,
     setSelectedRowIds,
     setClearContentsConfirmVisible,
@@ -589,7 +635,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
       else realIds.add(id);
     });
 
-    if (realIds.size > 0 && !onDeleteAsset) {
+    if (realIds.size > 0 && !onDeleteAsset && !onDeleteAssets) {
       setDeleteRowConfirmVisible(false);
       return;
     }
@@ -621,18 +667,47 @@ export function useRowOperations(params: UseRowOperationsParams) {
         });
       }
 
-      // Delete real rows via API
-      for (const rowId of realIds) {
-        setDeletedAssetIds((prev) => new Set(prev).add(rowId));
+      // Optimistically hide all rows to delete (single update)
+      setDeletedAssetIds((prev) => {
+        const next = new Set(prev);
+        realIds.forEach((id) => next.add(id));
+        return next;
+      });
+
+      const realIdsArr = Array.from(realIds);
+      const useBatch = realIdsArr.length > 1 && !!onDeleteAssets;
+
+      if (useBatch) {
         try {
-          await onDeleteAsset!(rowId);
+          await onDeleteAssets!(realIdsArr);
         } catch (err: any) {
-          if (err?.name === 'AuthorizationError' && err?.message === 'Asset not found') continue;
-          console.error(`Failed to delete asset ${rowId}:`, err);
-          failedRowIds.push(rowId);
+          if (err?.name !== 'AuthorizationError' || err?.message !== 'Asset not found') {
+            console.error('Batch delete failed:', err);
+            failedRowIds.push(...realIdsArr);
+            setDeletedAssetIds((prev) => {
+              const next = new Set(prev);
+              realIdsArr.forEach((id) => next.delete(id));
+              return next;
+            });
+          }
+        }
+      } else {
+        const results = await Promise.allSettled(
+          realIdsArr.map((rowId) => onDeleteAsset!(rowId))
+        );
+        results.forEach((r, i) => {
+          if (r.status === 'rejected') {
+            const rowId = realIdsArr[i];
+            const err = r.reason;
+            if (err?.name === 'AuthorizationError' && err?.message === 'Asset not found') return;
+            console.error(`Failed to delete asset ${rowId}:`, err);
+            failedRowIds.push(rowId);
+          }
+        });
+        if (failedRowIds.length > 0) {
           setDeletedAssetIds((prev) => {
             const next = new Set(prev);
-            next.delete(rowId);
+            failedRowIds.forEach((id) => next.delete(id));
             return next;
           });
         }
@@ -653,30 +728,18 @@ export function useRowOperations(params: UseRowOperationsParams) {
           return next;
         });
       }
-      setTimeout(() => {
-        realIds.forEach((rowId) => {
-          if (!failedRowIds.includes(rowId)) {
-            setDeletedAssetIds((prev) => {
-              const next = new Set(prev);
-              next.delete(rowId);
-              return next;
-            });
-          }
-        });
-      }, 100);
+      // deletedAssetIds cleaned by useEffect when row not in rows (no fixed timeout)
       if (failedRowIds.length > 0) {
         alert(`Failed to delete ${failedRowIds.length} row(s). Please try again.`);
       }
     } catch (e) {
       console.error('Failed to delete rows:', e);
-      realIds.forEach((rowId) => {
-        if (!failedRowIds.includes(rowId)) {
-          setDeletedAssetIds((prev) => {
-            const next = new Set(prev);
-            next.delete(rowId);
-            return next;
-          });
-        }
+      setDeletedAssetIds((prev) => {
+        const next = new Set(prev);
+        realIds.forEach((id) => {
+          if (!failedRowIds.includes(id)) next.delete(id);
+        });
+        return next;
       });
     }
   }, [
@@ -685,6 +748,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     orderedProperties,
     getAllRowsForCellSelection,
     onDeleteAsset,
+    onDeleteAssets,
     yRows,
     setOptimisticNewAssets,
     setDeleteRowConfirmVisible,
@@ -731,13 +795,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
       if (enableRealtime && currentUser) {
         await broadcastAssetDelete(assetIdToDelete, assetName);
       }
-      setTimeout(() => {
-        setDeletedAssetIds((prev) => {
-          const next = new Set(prev);
-          next.delete(assetIdToDelete);
-          return next;
-        });
-      }, 100);
+      // deletedAssetIds cleaned by useEffect when row not in rows (no fixed timeout)
     } catch (e) {
       console.error('Failed to delete asset:', e);
       setDeletedAssetIds((prev) => {

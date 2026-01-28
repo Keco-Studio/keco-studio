@@ -111,12 +111,12 @@ export function useBatchFill({
         // CRITICAL FIX: Use base data source to avoid copying old optimistic updates from other columns
         const baseRow = dataManager.getRowBaseValue(rowId);
         if (baseRow) {
-          // Create new optimistic update with only the target property changed
-          // Start from base row propertyValues to avoid including stale optimistic updates
+          // Create new optimistic update with ONLY the target property changed.
+          // IMPORTANT: Do NOT store a full row snapshot here, otherwise later cleanup/removal
+          // can cause other columns to flicker or revert.
           mergedOptimisticUpdates.set(rowId, {
             name: baseRow.name,
             propertyValues: {
-              ...baseRow.propertyValues,
               [propertyKey]: value
             }
           });
@@ -207,35 +207,9 @@ export function useBatchFill({
       updates.push(
         onUpdateAsset(rowId, rowName, propertyValues)
           .then(() => {
-            // Clear optimistic update after successful save (with delay to allow parent refresh)
-            // CRITICAL: Only remove the filled property from optimistic update
-            // Other columns' optimistic updates should remain until they are explicitly saved
-            setTimeout(() => {
-              setOptimisticEditUpdates(prev => {
-                const newMap = new Map(prev);
-                const currentUpdate = newMap.get(rowId);
-                if (currentUpdate) {
-                  // Check if this property was filled by us
-                  if (currentUpdate.propertyValues[propertyKey] === fillValue) {
-                    // Remove only this property from optimistic update
-                    const updatedPropertyValues = { ...currentUpdate.propertyValues };
-                    delete updatedPropertyValues[propertyKey];
-                    
-                    if (Object.keys(updatedPropertyValues).length > 0) {
-                      // Keep other optimistic updates (e.g., other columns)
-                      newMap.set(rowId, {
-                        name: currentUpdate.name,
-                        propertyValues: updatedPropertyValues
-                      });
-                    } else {
-                      // No more optimistic updates for this row
-                      newMap.delete(rowId);
-                    }
-                  }
-                }
-                return newMap;
-              });
-            }, 500);
+            // Do NOT remove optimistic here.
+            // Removing it before the parent refresh lands causes: filled value appears -> disappears -> reappears.
+            // We rely on useOptimisticCleanup to clear optimistic only when rows truly match.
           })
           .catch(error => {
             console.error(`Failed to fill cell ${rowId}-${propertyKey}:`, error);

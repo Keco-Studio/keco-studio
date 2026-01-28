@@ -418,6 +418,34 @@ export async function verifyAssetDeletionPermission(
   }
 }
 
+/** Batch: verify delete permission for same-library assets (one permission check). */
+export async function verifyAssetsDeletionPermission(
+  supabase: SupabaseClient,
+  assetIds: string[],
+  userId?: string
+): Promise<void> {
+  if (assetIds.length === 0) return;
+  const currentUserId = userId || await getCurrentUserId(supabase);
+  const { data: assets, error } = await supabase
+    .from('library_assets')
+    .select('id, library_id')
+    .in('id', assetIds);
+  if (error || !assets?.length) throw new AuthorizationError('Assets not found');
+  if (assets.length !== assetIds.length) throw new AuthorizationError('Some assets not found');
+  const libraryId = assets[0].library_id;
+  if (!assets.every((a) => a.library_id === libraryId))
+    throw new AuthorizationError('All assets must be in the same library');
+  const { data: library, error: libErr } = await supabase
+    .from('libraries')
+    .select('project_id')
+    .eq('id', libraryId)
+    .single();
+  if (libErr || !library) throw new AuthorizationError('Library not found');
+  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  if (role !== 'admin' && role !== 'editor')
+    throw new AuthorizationError('Only admin and editor users can delete assets');
+}
+
 /**
  * Verify that the user has admin permission to create a library
  * Only owner or admin collaborators can create libraries
