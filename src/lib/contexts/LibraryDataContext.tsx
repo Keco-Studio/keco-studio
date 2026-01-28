@@ -214,7 +214,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
             const yPropertyValues = new Y.Map();
             const values = valuesByAsset.get(asset.id) || {};
             Object.entries(values).forEach(([fieldId, value]) => {
-              yPropertyValues.set(fieldId, value);
+              // For complex objects, use deep copy to avoid reference issues
+              let valueForYjs = value;
+              if (value !== null && typeof value === 'object') {
+                valueForYjs = JSON.parse(JSON.stringify(value));
+              }
+              yPropertyValues.set(fieldId, valueForYjs);
             });
             yAsset.set('propertyValues', yPropertyValues);
             
@@ -235,6 +240,14 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   
   // Realtime collaboration event handlers
   const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
+    console.log('[LibraryDataContext] handleCellUpdateEvent received:', { 
+      assetId: event.assetId, 
+      propertyKey: event.propertyKey, 
+      newValue: event.newValue,
+      newValueType: typeof event.newValue,
+      userId: event.userId 
+    });
+    
     // Update Yjs (which will trigger React state update)
     const yAsset = yAssets.get(event.assetId);
     if (!yAsset) {
@@ -250,14 +263,25 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     
     // Only update if value actually changed to avoid unnecessary re-renders
     const currentValue = yPropertyValues.get(event.propertyKey);
+    console.log('[LibraryDataContext] Current Yjs value:', currentValue, 'currentValueType:', typeof currentValue);
+    
     if (JSON.stringify(currentValue) === JSON.stringify(event.newValue)) {
+      console.log('[LibraryDataContext] Values are equal, skipping update');
       return;
+    }
+    
+    // For complex objects (like image/file metadata), create a deep copy to ensure proper synchronization
+    let valueForYjs = event.newValue;
+    if (event.newValue !== null && typeof event.newValue === 'object') {
+      valueForYjs = JSON.parse(JSON.stringify(event.newValue));
+      console.log('[LibraryDataContext] Created deep copy for Yjs from broadcast:', valueForYjs);
     }
     
     // Update the nested Y.Map (this will trigger observeDeep)
     yDoc.transact(() => {
-      yPropertyValues.set(event.propertyKey, event.newValue);
+      yPropertyValues.set(event.propertyKey, valueForYjs);
     });
+    console.log('[LibraryDataContext] ✅ Updated Yjs from broadcast');
   }, [yAssets, yDoc]);
   
   const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
@@ -268,7 +292,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     // Create Y.Map for propertyValues
     const yPropertyValues = new Y.Map();
     Object.entries(event.propertyValues).forEach(([fieldId, value]) => {
-      yPropertyValues.set(fieldId, value);
+      // For complex objects (like image/file metadata), create a deep copy
+      let valueForYjs = value;
+      if (value !== null && typeof value === 'object') {
+        valueForYjs = JSON.parse(JSON.stringify(value));
+      }
+      yPropertyValues.set(fieldId, valueForYjs);
     });
     yAsset.set('propertyValues', yPropertyValues);
     
@@ -350,6 +379,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     value: any,
     options?: { skipBroadcast?: boolean }
   ) => {
+    console.log('[LibraryDataContext] updateAssetField called:', { assetId, fieldId, value, valueType: typeof value });
+    
     // 1. Optimistic update in Yjs
     const yAsset = yAssets.get(assetId);
     if (!yAsset) {
@@ -362,29 +393,50 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     }
     
     const oldValue = yPropertyValues.get(fieldId);
+    console.log('[LibraryDataContext] oldValue:', oldValue, 'oldValueType:', typeof oldValue);
+    
+    // For complex objects (like image/file metadata), create a deep copy to avoid reference issues
+    // This ensures proper synchronization across clients
+    let valueForYjs = value;
+    if (value !== null && typeof value === 'object') {
+      // Deep clone the object to break any references
+      valueForYjs = JSON.parse(JSON.stringify(value));
+      console.log('[LibraryDataContext] Created deep copy for Yjs:', valueForYjs);
+    }
     
     // Update the nested Y.Map (this will trigger observeDeep)
     yDoc.transact(() => {
-      yPropertyValues.set(fieldId, value);
+      yPropertyValues.set(fieldId, valueForYjs);
     });
+    console.log('[LibraryDataContext] ✅ Updated Yjs');
     
     // 2. Save to database
     try {
-      const { error } = await supabase
+      // Supabase jsonb column can handle objects directly, no need to stringify
+      console.log('[LibraryDataContext] Saving to database...', { asset_id: assetId, field_id: fieldId, value_json: value });
+      const { data, error } = await supabase
         .from('library_asset_values')
         .upsert({
           asset_id: assetId,
           field_id: fieldId,
-          value_json: value,
+          value_json: value, // Pass the original value, Supabase handles serialization
         }, {
           onConflict: 'asset_id,field_id',
-        });
+        })
+        .select(); // Add select to get the saved data
       
       if (error) throw error;
+      console.log('[LibraryDataContext] ✅ Database save successful, returned data:', data);
         
       // 3. Broadcast update (unless explicitly skipped)
+      // Add a small delay to ensure database transaction is fully committed
+      // This is especially important for INSERT operations (null -> object transitions)
       if (!options?.skipBroadcast && realtimeConfig) {
-        await broadcastCellUpdate(assetId, fieldId, value, oldValue);
+        console.log('[LibraryDataContext] Broadcasting update...');
+        // Wait 100ms to ensure database transaction is committed
+        await new Promise(resolve => setTimeout(resolve, 100));
+        await broadcastCellUpdate(assetId, fieldId, valueForYjs, oldValue);
+        console.log('[LibraryDataContext] ✅ Broadcast complete');
       }
     } catch (error) {
       console.error('[LibraryDataContext] ❌ Error in updateAssetField:', error);
@@ -477,7 +529,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     // Create Y.Map for propertyValues
     const yPropertyValues = new Y.Map();
     Object.entries(propertyValues).forEach(([fieldId, value]) => {
-      yPropertyValues.set(fieldId, value);
+      // For complex objects, use deep copy to avoid reference issues
+      let valueForYjs = value;
+      if (value !== null && typeof value === 'object') {
+        valueForYjs = JSON.parse(JSON.stringify(value));
+      }
+      yPropertyValues.set(fieldId, valueForYjs);
     });
     yAsset.set('propertyValues', yPropertyValues);
     

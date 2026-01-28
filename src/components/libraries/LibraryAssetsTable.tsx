@@ -214,16 +214,16 @@ export function LibraryAssetsTable({
 
   // Presence tracking helpers
   const handleCellFocus = useCallback((assetId: string, propertyKey: string) => {
-    console.log('[LibraryAssetsTable] handleCellFocus called:', { assetId, propertyKey, currentUser: currentUser?.id });
+    // console.log('[LibraryAssetsTable] handleCellFocus called:', { assetId, propertyKey, currentUser: currentUser?.id });
     // Update local state for current user's focused cell
     setCurrentFocusedCell({ assetId, propertyKey });
     
     // Update presence tracking
     if (presenceTracking) {
-      console.log('[LibraryAssetsTable] Calling presenceTracking.updateActiveCell');
+      // console.log('[LibraryAssetsTable] Calling presenceTracking.updateActiveCell');
       presenceTracking.updateActiveCell(assetId, propertyKey);
     } else {
-      console.warn('[LibraryAssetsTable] presenceTracking is not available');
+      // console.warn('[LibraryAssetsTable] presenceTracking is not available');
     }
   }, [presenceTracking, currentUser]);
 
@@ -239,11 +239,11 @@ export function LibraryAssetsTable({
 
   const getUsersEditingCell = useCallback((assetId: string, propertyKey: string) => {
     if (!presenceTracking) {
-      console.warn('[LibraryAssetsTable] getUsersEditingCell: presenceTracking not available');
+      // console.warn('[LibraryAssetsTable] getUsersEditingCell: presenceTracking not available');
       return [];
     }
     let users = presenceTracking.getUsersEditingCell(assetId, propertyKey);
-    console.log('[LibraryAssetsTable] getUsersEditingCell:', { assetId, propertyKey, usersFromPresenceTracking: users.length, currentFocusedCell });
+    // console.log('[LibraryAssetsTable] getUsersEditingCell:', { assetId, propertyKey, usersFromPresenceTracking: users.length, currentFocusedCell });
     
     // If current user is focused on this specific cell, make sure they're included
     if (currentUser && currentFocusedCell && 
@@ -251,9 +251,9 @@ export function LibraryAssetsTable({
         currentFocusedCell.propertyKey === propertyKey) {
       // Check if current user is already in the list
       const hasCurrentUser = users.some(u => u.userId === currentUser.id);
-      console.log('[LibraryAssetsTable] Current user is focused on this cell, hasCurrentUser:', hasCurrentUser);
+      // console.log('[LibraryAssetsTable] Current user is focused on this cell, hasCurrentUser:', hasCurrentUser);
       if (!hasCurrentUser) {
-        console.log('[LibraryAssetsTable] Adding current user to the list');
+        // console.log('[LibraryAssetsTable] Adding current user to the list');
         // Add current user to the list
         // Use a slightly earlier timestamp if this is the first user (empty list)
         // This ensures the first user to enter keeps their position
@@ -279,7 +279,7 @@ export function LibraryAssetsTable({
       }
     }
     
-    console.log('[LibraryAssetsTable] Final users list:', users.length, users.map(u => ({ id: u.userId, name: u.userName })));
+    // console.log('[LibraryAssetsTable] Final users list:', users.length, users.map(u => ({ id: u.userId, name: u.userName })));
     return users;
   }, [presenceTracking, currentUser, currentFocusedCell]);
 
@@ -1247,22 +1247,16 @@ export function LibraryAssetsTable({
                           // Trigger focus when clicking anywhere on the cell (single-click to edit)
                           handleCellFocus(row.id, property.key);
                           
-                          // Prevent cell selection when clicking on MediaFileUpload component
-                          const target = e.target as HTMLElement;
-                          if (target.closest(`.${styles.mediaFileUploadContainer}`) || 
-                              target.closest('button') ||
-                              target.closest('input')) {
-                            return;
-                          }
+                          // Always allow cell selection, even when clicking on MediaFileUpload component
+                          // This fixes the issue where users need to click twice to highlight the cell
                           handleCellClick(row.id, property.key, e);
                         }}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => {
-                          // Prevent fill drag when clicking on MediaFileUpload component
+                          // Only prevent fill drag when clicking on interactive elements (buttons, inputs)
+                          // to allow users to interact with the upload component
                           const target = e.target as HTMLElement;
-                          if (target.closest(`.${styles.mediaFileUploadContainer}`) || 
-                              target.closest('button') ||
-                              target.closest('input')) {
+                          if (target.closest('button') || target.closest('input[type="file"]')) {
                             return;
                           }
                           handleCellFillDragStart(row.id, property.key, e);

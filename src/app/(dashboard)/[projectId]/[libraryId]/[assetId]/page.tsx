@@ -1141,6 +1141,11 @@ export default function AssetPage() {
                                         <div
                                           className={`${styles.customComponentWrapper} ${isBeingEdited ? styles.customComponentWrapperEditing : ''}`}
                                           style={borderColor ? { borderColor } : undefined}
+                                          onClick={() => {
+                                            if (mode !== 'view') {
+                                              handleFieldFocus(f.id);
+                                            }
+                                          }}
                                           onFocus={() => handleFieldFocus(f.id)}
                                           onBlur={handleFieldBlur}
                                           tabIndex={0}
