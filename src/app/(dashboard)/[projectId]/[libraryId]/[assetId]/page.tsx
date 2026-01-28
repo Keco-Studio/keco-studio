@@ -600,11 +600,8 @@ export default function AssetPage() {
     
     if (isNewAsset) {
       // Create new asset using context
-      const nameValue = assetName.trim();
-      if (!nameValue) {
-        setSaveError('Asset name is required (please fill in the "name" field)');
-        return;
-      }
+      const nameValue = assetName.trim() || 'Untitled';
+      // No validation error - allow creating assets without name field
 
       setSaving(true);
       try {

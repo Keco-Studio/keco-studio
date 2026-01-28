@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Input } from 'antd';
 import Image from 'next/image';
 import type { FieldConfig } from '../types';
@@ -25,20 +25,8 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
   const [fields, setFields] = useState<FieldConfig[]>([]);
   const [errors, setErrors] = useState<string[]>([]);
   const [pendingField, setPendingField] = useState<Omit<FieldConfig, 'id'> | null>(null);
-
-  // If this is the first section, automatically add mandatory name field on initialization
-  useEffect(() => {
-    if (isFirstSection && fields.length === 0) {
-      const nameField: FieldConfig = {
-        id: uid(),
-        label: 'name',
-        dataType: 'string',
-        required: true,
-      };
-      setFields([nameField]);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isFirstSection]);
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pendingFieldRef = useRef<Omit<FieldConfig, 'id'> | null>(null);
 
   const handleAddField = (fieldData: Omit<FieldConfig, 'id'>) => {
     // Allow adding fields (allow undefined dataType)
@@ -54,9 +42,9 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
     setFields(updatedFields);
     setErrors([]);
     
-    // Auto-save after adding field
+    // Auto-save after adding field (without reload to avoid flickering)
     setTimeout(() => {
-      void onSave({ name: sectionName, fields: updatedFields });
+      void onSave({ name: sectionName, fields: updatedFields }, false);
     }, 300);
   };
 
@@ -64,29 +52,13 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
     const updatedFields = fields.filter((f) => f.id !== fieldId);
     setFields(updatedFields);
     
-    // Auto-save after deleting field
+    // Auto-save after deleting field (without reload to avoid flickering)
     setTimeout(() => {
-      void onSave({ name: sectionName, fields: updatedFields });
+      void onSave({ name: sectionName, fields: updatedFields }, false);
     }, 300);
   };
 
   const handleChangeField = (fieldId: string, fieldData: Omit<FieldConfig, 'id'>) => {
-    // If this is the mandatory name field of the first section, don't allow modifying label and dataType
-    if (isFirstSection) {
-      const field = fields.find((f) => f.id === fieldId);
-      if (field && field.label === 'name' && field.dataType === 'string') {
-        // Only allow modifying required property, don't allow modifying label and dataType
-        const updatedFields = fields.map((f) => (f.id === fieldId ? { ...f, required: fieldData.required } : f));
-        setFields(updatedFields);
-        setErrors([]);
-        // Auto-save after changing field
-        setTimeout(() => {
-          void onSave({ name: sectionName, fields: updatedFields });
-        }, 300);
-        return;
-      }
-    }
-
     // Allow updating field (allow undefined dataType)
     const updatedFields = fields.map((f) => (f.id === fieldId ? { 
       ...f, 
@@ -97,9 +69,9 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
     setFields(updatedFields);
     setErrors([]);
     
-    // Auto-save after changing field
+    // Auto-save after changing field (without reload to avoid flickering)
     setTimeout(() => {
-      void onSave({ name: sectionName, fields: updatedFields });
+      void onSave({ name: sectionName, fields: updatedFields }, false);
     }, 300);
   };
 
@@ -107,9 +79,9 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
     setFields(newOrder);
     setErrors([]);
     
-    // Auto-save after reordering fields
+    // Auto-save after reordering fields (without reload to avoid flickering)
     setTimeout(() => {
-      void onSave({ name: sectionName, fields: newOrder });
+      void onSave({ name: sectionName, fields: newOrder }, false);
     }, 300);
   };
 
@@ -139,6 +111,48 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
           disabled={saving}
           onFieldChange={(field) => {
             setPendingField(field);
+            // Update ref synchronously for onFieldBlur to access latest value
+            pendingFieldRef.current = field;
+          }}
+          onFieldBlur={() => {
+            // Auto-save when field loses focus (including pending field if it has content)
+            // Clear any existing timer
+            if (saveTimerRef.current) {
+              clearTimeout(saveTimerRef.current);
+            }
+            
+            saveTimerRef.current = setTimeout(() => {
+              const currentPendingField = pendingFieldRef.current;
+              
+              // If pending field has any content, add it to fields before saving
+              if (currentPendingField && (currentPendingField.label?.trim() || currentPendingField.dataType)) {
+                const newField: FieldConfig = {
+                  id: uid(),
+                  label: currentPendingField.label || '',
+                  dataType: currentPendingField.dataType,
+                  required: currentPendingField.required,
+                  ...(currentPendingField.enumOptions && { enumOptions: currentPendingField.enumOptions }),
+                  ...(currentPendingField.referenceLibraries && { referenceLibraries: currentPendingField.referenceLibraries }),
+                };
+                
+                // Use functional update to get latest fields
+                setFields((prevFields) => {
+                  const updatedFields = [...prevFields, newField];
+                  // Save with updated fields
+                  void onSave({ name: sectionName, fields: updatedFields });
+                  return updatedFields;
+                });
+                
+                // Clear pending field
+                setPendingField(null);
+                pendingFieldRef.current = null;
+                // Trigger reset event to clear FieldForm
+                window.dispatchEvent(new CustomEvent('fieldform-reset'));
+              } else {
+                // No pending field content, just save current fields
+                void onSave({ name: sectionName, fields });
+              }
+            }, 300);
           }}
           validationError={undefined}
         />

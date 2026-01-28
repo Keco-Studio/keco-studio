@@ -492,7 +492,8 @@ export function useRowOperations(params: UseRowOperationsParams) {
           }
           const rowData = cellsByRow.get(rowId)!;
           const prop = orderedProperties[propertyIndex];
-          const isNameField = propertyIndex === 0;
+          // Name field is identified by label='name' and dataType='string', not by position
+          const isNameField = prop && prop.name === 'name' && prop.dataType === 'string';
           if (isNameField) {
             rowData.assetName = '';
             rowData.propertyValues[propertyKey] = null;

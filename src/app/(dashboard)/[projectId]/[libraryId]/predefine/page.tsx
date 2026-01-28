@@ -313,6 +313,16 @@ function PredefinePageContent() {
     }
 
     const trimmedName = newSection.name.trim() || 'Untitled Section';
+    
+    // Check for duplicate section name
+    const isDuplicate = sections.some((s) => 
+      s.name.toLowerCase() === trimmedName.toLowerCase()
+    );
+    
+    if (isDuplicate) {
+      message.error(`Section name "${trimmedName}" already exists. Please choose a different name.`);
+      return;
+    }
 
     // Combine with existing sections (allow undefined dataType)
     const allSections = [...sections, { id: uid(), name: trimmedName, fields: newSection.fields }];
@@ -334,6 +344,23 @@ function PredefinePageContent() {
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
       autoSaveTimerRef.current = null;
+    }
+    
+    // Check for duplicate section names before saving
+    const sectionNames = new Set<string>();
+    const duplicates = new Set<string>();
+    sectionsToSave.forEach((section) => {
+      const trimmedName = section.name.trim().toLowerCase();
+      if (sectionNames.has(trimmedName)) {
+        duplicates.add(section.name.trim());
+      }
+      sectionNames.add(trimmedName);
+    });
+    
+    if (duplicates.size > 0) {
+      const duplicateList = Array.from(duplicates).join(', ');
+      message.error(`Cannot save: Duplicate section names detected: ${duplicateList}. Please rename them.`);
+      return;
     }
 
     // Check if there are any pending fields and add them to their respective sections
@@ -397,8 +424,6 @@ function PredefinePageContent() {
       pendingFieldsRef.current = emptyMap;
       setTempSectionNames(new Map());
 
-      // Show success message in top-right corner
-      message.success('Saved successfully', 1);
       
       // If creating new section, exit creation mode and reload sections
       if (isCreatingNewSection) {
@@ -632,13 +657,33 @@ function PredefinePageContent() {
             onChange={(e) => {
               e.stopPropagation();
               const newName = e.target.value;
+              
+              // Check for duplicate section names (excluding current section)
+              const isDuplicate = sections.some((s) => 
+                s.id !== section.id && 
+                s.name.toLowerCase() === newName.trim().toLowerCase()
+              );
+              
+              if (isDuplicate && newName.trim()) {
+                message.warning(`Section name "${newName.trim()}" already exists. Please choose a different name.`);
+              }
+              
               setTempSectionNames((prev) => {
                 const newMap = new Map(prev);
                 newMap.set(section.id, newName);
                 return newMap;
               });
+            }}
+            onKeyDown={(e) => {
+              // Allow space key and other normal input keys
+              if (e.key === ' ' || e.key === 'Enter') {
+                e.stopPropagation();
+              }
+            }}
+            onBlur={() => {
+              setEditingTabId(null);
               
-              // Auto-save after section name change
+              // Auto-save after section name loses focus
               // Skip if currently saving or reloading
               if (isSavingOrReloading.current) {
                 return;
@@ -651,19 +696,25 @@ function PredefinePageContent() {
                 if (!isSavingOrReloading.current) {
                   void saveSchema(sections, false); // false = don't reload after save
                 }
-              }, 500);
-            }}
-            onKeyDown={(e) => {
-              // Allow space key and other normal input keys
-              if (e.key === ' ' || e.key === 'Enter') {
-                e.stopPropagation();
-              }
-            }}
-            onBlur={() => {
-              setEditingTabId(null);
+              }, 300);
             }}
             onPressEnter={() => {
               setEditingTabId(null);
+              
+              // Auto-save after pressing Enter
+              // Skip if currently saving or reloading
+              if (isSavingOrReloading.current) {
+                return;
+              }
+              
+              if (autoSaveTimerRef.current) {
+                clearTimeout(autoSaveTimerRef.current);
+              }
+              autoSaveTimerRef.current = setTimeout(() => {
+                if (!isSavingOrReloading.current) {
+                  void saveSchema(sections, false); // false = don't reload after save
+                }
+              }, 300);
             }}
             onClick={(e) => e.stopPropagation()}
             onMouseDown={(e) => e.stopPropagation()}
@@ -711,8 +762,9 @@ function PredefinePageContent() {
               pendingFieldsRef.current = newMap;
               return newMap;
             });
-            
-            // Debounced auto-save when pending field changes
+          }}
+          onFieldBlur={() => {
+            // Auto-save when field loses focus
             // Skip if currently saving or reloading
             if (isSavingOrReloading.current) {
               return;
@@ -725,7 +777,7 @@ function PredefinePageContent() {
               if (!isSavingOrReloading.current) {
                 void saveSchema(sections, false); // false = don't reload after save
               }
-            }, 800);
+            }, 300);
           }}
           validationError={undefined}
         />
@@ -758,6 +810,16 @@ function PredefinePageContent() {
               onChange={(e) => {
                 e.stopPropagation();
                 const newName = e.target.value;
+                
+                // Check for duplicate section names
+                const isDuplicate = sections.some((s) => 
+                  s.name.toLowerCase() === newName.trim().toLowerCase()
+                );
+                
+                if (isDuplicate && newName.trim()) {
+                  message.warning(`Section name "${newName.trim()}" already exists. Please choose a different name.`);
+                }
+                
                 setNewSectionName(newName);
               }}
               onKeyDown={(e) => {
@@ -770,6 +832,10 @@ function PredefinePageContent() {
                 // Ignore blur during auto-focusing period
                 if (!isAutoFocusing.current) {
                   setEditingTabId(null);
+                  
+                  // Auto-save new section name after losing focus
+                  // Note: The section hasn't been created yet, so we don't trigger saveSchema here
+                  // The name will be saved when the section is actually created (when user adds first field or clicks save)
                 }
               }}
               onPressEnter={() => {

@@ -98,7 +98,9 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
         });
 
         if (hasData && onSaveAsset && library) {
-          const assetName = newRowData[properties[0]?.id] ?? newRowData[properties[0]?.key] ?? 'Untitled';
+          // Find the name field (identified by label='name' and dataType='string')
+          const nameField = properties.find(p => p.name === 'name' && p.dataType === 'string');
+          const assetName = nameField ? (newRowData[nameField.id] ?? newRowData[nameField.key] ?? 'Untitled') : 'Untitled';
           const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
           const optimisticAsset: AssetRow = {
             id: tempId,

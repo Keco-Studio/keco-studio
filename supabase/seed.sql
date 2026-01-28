@@ -241,8 +241,8 @@ happy_path_breed_library as (
 happy_path_breed_field_def as (
   -- Add field definitions for Breed Template
   -- Section: "Basic Information"
-  -- Note: First field is always "Name" (auto-created, label='name', data_type='string')
-  -- Then: Field "Origin" (string)
+  -- Fields: "name" (string, required) and "Origin" (string, optional)
+  -- Note: The "name" field is optional in schema design, but included here for demonstration
   insert into public.library_field_definitions (library_id, label, data_type, section, order_index, required)
   select 
     l.id,
@@ -262,7 +262,7 @@ happy_path_breed_asset as (
 ),
 happy_path_breed_asset_values as (
   -- Insert field values for the breed asset
-  -- Name: 'Black Goat Breed' (for the mandatory name field)
+  -- Name: 'Black Goat Breed' (for the name field)
   -- Origin: 'African Highlands'
   insert into public.library_asset_values (asset_id, field_id, value_json)
   select 

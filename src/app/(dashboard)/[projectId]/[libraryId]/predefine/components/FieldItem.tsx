@@ -97,22 +97,17 @@ export function FieldItem({
   };
 
   const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    // If this is the mandatory name field, don't allow modifying label
-    if (isMandatoryNameField) {
-      return;
-    }
-    
     const newValue = e.target.value;
     setLocalLabel(newValue);
-    
-    // Only update parent if not composing (to avoid interrupting IME input)
-    if (!isComposing) {
-      const { id, ...rest } = field;
-      onChangeField(field.id, {
-        ...rest,
-        label: newValue,
-      });
-    }
+  };
+  
+  const handleLabelBlur = () => {
+    // Only update parent on blur (not during typing)
+    const { id, ...rest } = field;
+    onChangeField(field.id, {
+      ...rest,
+      label: localLabel,
+    });
   };
 
   const handleCompositionStart = () => {
@@ -121,22 +116,12 @@ export function FieldItem({
 
   const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
     setIsComposing(false);
-    // Update parent with the final composed value
-    if (!isMandatoryNameField) {
-      const { id, ...rest } = field;
-      onChangeField(field.id, {
-        ...rest,
-        label: (e.target as HTMLInputElement).value,
-      });
-    }
+    // Update local state with the final composed value
+    const newValue = (e.target as HTMLInputElement).value;
+    setLocalLabel(newValue);
   };
 
   const handleSlashMenuSelect = (dataType: FieldType) => {
-    // If this is the mandatory name field, don't allow modifying type
-    if (isMandatoryNameField) {
-      setShowSlashMenu(false);
-      return;
-    }
     const { id, ...rest } = field;
     onChangeField(field.id, {
       ...rest,
@@ -152,10 +137,6 @@ export function FieldItem({
   };
 
   const handleDataTypeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // If this is the mandatory name field, don't allow opening slash menu
-    if (isMandatoryNameField) {
-      return;
-    }
     if (e.key === '/') {
       e.preventDefault();
       setShowSlashMenu(true);
@@ -175,15 +156,15 @@ export function FieldItem({
     const newOptions = [...localOptions];
     newOptions[index] = value;
     setLocalOptions(newOptions);
-    
-    // Only update parent if not composing (to avoid interrupting IME input)
-    if (composingOptionIndex !== index) {
-      const { id, ...rest } = field;
-      onChangeField(field.id, {
-        ...rest,
-        enumOptions: newOptions,
-      });
-    }
+  };
+  
+  const handleOptionBlur = () => {
+    // Update parent with the current options when input loses focus
+    const { id, ...rest } = field;
+    onChangeField(field.id, {
+      ...rest,
+      enumOptions: localOptions,
+    });
   };
 
   const handleOptionCompositionStart = (index: number) => {
@@ -192,14 +173,10 @@ export function FieldItem({
 
   const handleOptionCompositionEnd = (index: number, value: string) => {
     setComposingOptionIndex(null);
-    // Update parent with the final composed value
-    const { id, ...rest } = field;
+    // Update local state with the final composed value
     const newOptions = [...localOptions];
     newOptions[index] = value;
-    onChangeField(field.id, {
-      ...rest,
-      enumOptions: newOptions,
-    });
+    setLocalOptions(newOptions);
   };
 
   const handleRemoveOption = (index: number) => {
@@ -324,9 +301,10 @@ export function FieldItem({
             placeholder="Type label for property..."
             className={styles.labelInput}
             onChange={handleLabelChange}
+            onBlur={handleLabelBlur}
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
-            disabled={disabled || isMandatoryNameField}
+            disabled={disabled}
             status={hasValidationError && (!field.label || !field.label.trim()) ? 'error' : undefined}
           />
         </div>
@@ -338,17 +316,17 @@ export function FieldItem({
             readOnly
             onKeyDown={handleDataTypeKeyDown}
             onClick={() => {
-              if (!disabled && !isMandatoryNameField) {
+              if (!disabled) {
                 setShowSlashMenu(true);
               }
             }}
             onFocus={() => {
-              if (!disabled && !isMandatoryNameField) {
+              if (!disabled) {
                 setShowSlashMenu(true);
               }
             }}
             className={styles.dataTypeInput}
-            disabled={disabled || isMandatoryNameField}
+            disabled={disabled}
             status={hasValidationError && !field.dataType ? 'error' : undefined}
             prefix={
               field.dataType ? (
@@ -361,27 +339,25 @@ export function FieldItem({
               ) : undefined
             }
             suffix={
-              !isMandatoryNameField && (
-                <button
-                  type="button"
-                  className={styles.typeSwitchButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!disabled) {
-                      setShowSlashMenu(true);
-                    }
-                  }}
-                  disabled={disabled}
-                  title="Choose type"
-                >
-                  <Image
-                    src={predefineTypeSwitchIcon}
-                    alt="Switch type"
-                    width={16}
-                    height={16}
-                  />
-                </button>
-              )
+              <button
+                type="button"
+                className={styles.typeSwitchButton}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!disabled) {
+                    setShowSlashMenu(true);
+                  }
+                }}
+                disabled={disabled}
+                title="Choose type"
+              >
+                <Image
+                  src={predefineTypeSwitchIcon}
+                  alt="Switch type"
+                  width={16}
+                  height={16}
+                />
+              </button>
             }
           />
           {showSlashMenu && (
@@ -447,6 +423,7 @@ export function FieldItem({
                         <Input
                           value={option}
                           onChange={(e) => handleOptionChange(index, e.target.value)}
+                          onBlur={handleOptionBlur}
                           onCompositionStart={() => handleOptionCompositionStart(index)}
                           onCompositionEnd={(e) => handleOptionCompositionEnd(index, (e.target as HTMLInputElement).value)}
                           placeholder="enter new option here"
@@ -500,7 +477,7 @@ export function FieldItem({
             )}
           </div>
         )}
-        {!isFirst && !isMandatoryNameField && (
+        {!isFirst && (
           <Button
             type="text"
             size="small"

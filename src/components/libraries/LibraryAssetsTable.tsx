@@ -1027,8 +1027,8 @@ export function LibraryAssetsTable({
                   )}
                 </td>
                 {orderedProperties.map((property, propertyIndex) => {
-                  // Check if this is the first property (name field)
-                  const isNameField = propertyIndex === 0;
+                  // Check if this is the name field (identified by label='name' and dataType='string')
+                  const isNameField = property.name === 'name' && property.dataType === 'string';
                   
                   // Check if this is a reference type field
                   if (property.dataType === 'reference' && property.referenceLibraries) {

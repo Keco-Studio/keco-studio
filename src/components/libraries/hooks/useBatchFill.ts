@@ -137,9 +137,10 @@ export function useBatchFill({
       propertyValues: Record<string, any> 
     }>();
     
-    // Check if we're filling the name field (first property)
-    const isFillingNameField = orderedProperties[0]?.key === propertyKey;
-    const nameFieldKey = orderedProperties[0]?.key;
+    // Check if we're filling the name field (identified by label='name' and dataType='string')
+    const nameFieldProperty = orderedProperties.find(p => p.name === 'name' && p.dataType === 'string');
+    const isFillingNameField = nameFieldProperty?.key === propertyKey;
+    const nameFieldKey = nameFieldProperty?.key;
     
     fillUpdates.forEach(({ rowId, propertyKey, value }) => {
       // CRITICAL FIX: Get base row data using dataManager (ensures we get fresh base data)

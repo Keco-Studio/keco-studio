@@ -83,7 +83,7 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
         verifiedLibraryId = assetData.library_id;
       }
       
-      // Get field definitions to find the name field
+      // Get field definitions to find the name field (if it exists)
       const { data: fieldDefs, error: fieldDefsError } = await supabase
         .from('library_field_definitions')
         .select('id, label, data_type')
@@ -96,12 +96,13 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
         console.warn('Failed to get field definitions:', fieldDefsError);
       }
       
-      // Build propertyValues with name field update
+      // Build propertyValues with name field update (only if name field exists)
       const propertyValues: Record<string, any> = {};
       if (fieldDefs && fieldDefs.length > 0) {
         const nameFieldId = fieldDefs[0].id;
         propertyValues[nameFieldId] = trimmed;
       }
+      // If no name field exists, we only update the asset.name column directly
       
       // Use cache mutation hook for optimistic update
       await updateName.mutateAsync({
