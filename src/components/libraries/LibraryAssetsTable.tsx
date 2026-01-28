@@ -214,14 +214,18 @@ export function LibraryAssetsTable({
 
   // Presence tracking helpers
   const handleCellFocus = useCallback((assetId: string, propertyKey: string) => {
+    console.log('[LibraryAssetsTable] handleCellFocus called:', { assetId, propertyKey, currentUser: currentUser?.id });
     // Update local state for current user's focused cell
     setCurrentFocusedCell({ assetId, propertyKey });
     
     // Update presence tracking
     if (presenceTracking) {
+      console.log('[LibraryAssetsTable] Calling presenceTracking.updateActiveCell');
       presenceTracking.updateActiveCell(assetId, propertyKey);
+    } else {
+      console.warn('[LibraryAssetsTable] presenceTracking is not available');
     }
-  }, [presenceTracking]);
+  }, [presenceTracking, currentUser]);
 
   const handleCellBlur = useCallback(() => {
     // Clear local state for current user's focused cell
@@ -234,8 +238,12 @@ export function LibraryAssetsTable({
   }, [presenceTracking]);
 
   const getUsersEditingCell = useCallback((assetId: string, propertyKey: string) => {
-    if (!presenceTracking) return [];
+    if (!presenceTracking) {
+      console.warn('[LibraryAssetsTable] getUsersEditingCell: presenceTracking not available');
+      return [];
+    }
     let users = presenceTracking.getUsersEditingCell(assetId, propertyKey);
+    console.log('[LibraryAssetsTable] getUsersEditingCell:', { assetId, propertyKey, usersFromPresenceTracking: users.length, currentFocusedCell });
     
     // If current user is focused on this specific cell, make sure they're included
     if (currentUser && currentFocusedCell && 
@@ -243,7 +251,9 @@ export function LibraryAssetsTable({
         currentFocusedCell.propertyKey === propertyKey) {
       // Check if current user is already in the list
       const hasCurrentUser = users.some(u => u.userId === currentUser.id);
+      console.log('[LibraryAssetsTable] Current user is focused on this cell, hasCurrentUser:', hasCurrentUser);
       if (!hasCurrentUser) {
+        console.log('[LibraryAssetsTable] Adding current user to the list');
         // Add current user to the list
         // Use a slightly earlier timestamp if this is the first user (empty list)
         // This ensures the first user to enter keeps their position
@@ -269,6 +279,7 @@ export function LibraryAssetsTable({
       }
     }
     
+    console.log('[LibraryAssetsTable] Final users list:', users.length, users.map(u => ({ id: u.userId, name: u.userName })));
     return users;
   }, [presenceTracking, currentUser, currentFocusedCell]);
 
@@ -462,29 +473,58 @@ export function LibraryAssetsTable({
         return newMap;
       });
 
-      // Save immediately for media files
-      setIsSaving(true);
-      onUpdateAsset(rowId, assetName, updatedPropertyValues)
-        .then(() => {
-          setTimeout(() => {
+    // Save immediately for media files
+    setIsSaving(true);
+    onUpdateAsset(rowId, assetName, updatedPropertyValues)
+      .then(() => {
+        // Wait for parent component to update rows prop
+        // Check multiple times if the value has been updated before removing optimistic value
+        const checkAndRemoveOptimistic = (attempts = 0) => {
+          if (attempts >= 10) {
+            // After 10 attempts (1 second), force remove optimistic value
             setOptimisticEditUpdates(prev => {
               const newMap = new Map(prev);
               newMap.delete(rowId);
               return newMap;
             });
-          }, 500);
-        })
-        .catch((error) => {
-          console.error('Failed to update media file:', error);
-          setOptimisticEditUpdates(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(rowId);
-            return newMap;
-          });
-        })
-        .finally(() => {
-          setIsSaving(false);
+            return;
+          }
+          
+          // Check if the actual row value matches the new value
+          const currentRow = rows.find(r => r.id === rowId);
+          if (currentRow) {
+            const currentValue = currentRow.propertyValues[propertyKey];
+            
+            // Compare the values (both could be objects or null)
+            if (JSON.stringify(currentValue) === JSON.stringify(value)) {
+              // Value has been updated, safe to remove optimistic value
+              setOptimisticEditUpdates(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(rowId);
+                return newMap;
+              });
+              return;
+            }
+          }
+          
+          // Value not updated yet, check again after a short delay
+          setTimeout(() => checkAndRemoveOptimistic(attempts + 1), 100);
+        };
+        
+        // Start checking after a short delay
+        setTimeout(() => checkAndRemoveOptimistic(0), 50);
+      })
+      .catch((error) => {
+        console.error('Failed to update media file:', error);
+        setOptimisticEditUpdates(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(rowId);
+          return newMap;
         });
+      })
+      .finally(() => {
+        setIsSaving(false);
+      });
       return;
     }
     
@@ -511,13 +551,42 @@ export function LibraryAssetsTable({
     setIsSaving(true);
     onUpdateAsset(rowId, assetName, updatedPropertyValues)
       .then(() => {
-        setTimeout(() => {
-          setOptimisticEditUpdates(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(rowId);
-            return newMap;
-          });
-        }, 500);
+        // Wait for parent component to update rows prop
+        // Check multiple times if the value has been updated before removing optimistic value
+        const checkAndRemoveOptimistic = (attempts = 0) => {
+          if (attempts >= 10) {
+            // After 10 attempts (1 second), force remove optimistic value
+            setOptimisticEditUpdates(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(rowId);
+              return newMap;
+            });
+            return;
+          }
+          
+          // Check if the actual row value matches the new value
+          const currentRow = rows.find(r => r.id === rowId);
+          if (currentRow) {
+            const currentValue = currentRow.propertyValues[propertyKey];
+            
+            // Compare the values (both could be objects or null)
+            if (JSON.stringify(currentValue) === JSON.stringify(value)) {
+              // Value has been updated, safe to remove optimistic value
+              setOptimisticEditUpdates(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(rowId);
+                return newMap;
+              });
+              return;
+            }
+          }
+          
+          // Value not updated yet, check again after a short delay
+          setTimeout(() => checkAndRemoveOptimistic(attempts + 1), 100);
+        };
+        
+        // Start checking after a short delay
+        setTimeout(() => checkAndRemoveOptimistic(0), 50);
       })
       .catch((error) => {
         console.error('Failed to update media file:', error);
@@ -849,6 +918,49 @@ export function LibraryAssetsTable({
   }, []);
   useCloseOnDocumentClick(!!contextMenuRowId, closeRowContextMenu);
 
+  // Add global click listener to clear focus state when clicking outside
+  useEffect(() => {
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Don't clear focus if clicking inside table
+      if (tableContainerRef.current?.contains(target)) {
+        return;
+      }
+      
+      // Don't clear focus if clicking on modals, dropdowns, or interactive components
+      if (
+        target.closest('[role="dialog"]') ||
+        target.closest('.ant-modal') ||
+        target.closest('.ant-modal-root') ||
+        target.closest('.ant-modal-mask') ||
+        target.closest('.ant-modal-wrap') ||
+        target.closest('.ant-select-dropdown') ||
+        target.closest('.ant-switch') ||
+        target.closest('[class*="modal"]') ||
+        target.closest('[class*="Modal"]') ||
+        target.closest('[class*="dropdown"]') ||
+        target.closest('[class*="Dropdown"]') ||
+        target.closest('input[type="file"]') ||
+        target.closest('button') ||
+        target.closest('[role="combobox"]') ||
+        target.closest('[class*="mediaFileUpload"]')
+      ) {
+        return;
+      }
+      
+      // Clear focus state
+      if (currentFocusedCell) {
+        handleCellBlur();
+      }
+    };
+    
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+    };
+  }, [currentFocusedCell, handleCellBlur]);
+
   if (!hasProperties) {
     return <EmptyState userRole={userRole} onPredefineClick={handlePredefineClick} />;
   }
@@ -971,8 +1083,11 @@ export function LibraryAssetsTable({
                         data-property-key={property.key}
                         className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
-                        onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
-                        onClick={(e) => handleCellClick(row.id, property.key, e)}
+                        onClick={(e) => {
+                          // Trigger focus when clicking on reference cell
+                          handleCellFocus(row.id, property.key);
+                          handleCellClick(row.id, property.key, e);
+                        }}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
                         onMouseEnter={(e) => {
@@ -1021,6 +1136,8 @@ export function LibraryAssetsTable({
                             onAvatarMouseEnter={handleAvatarMouseEnter}
                             onAvatarMouseLeave={handleAvatarMouseLeave}
                             onOpenReferenceModal={handleOpenReferenceModal}
+                            onFocus={() => handleCellFocus(row.id, property.key)}
+                            onBlur={handleCellBlur}
                           />
                           {/* Show detail icon when cell is selected - positioned on the right */}
                           {isCellSelected && (
@@ -1124,9 +1241,12 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
-                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                        className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
+                        style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
                         onClick={(e) => {
+                          // Trigger focus when clicking anywhere on the cell (single-click to edit)
+                          handleCellFocus(row.id, property.key);
+                          
                           // Prevent cell selection when clicking on MediaFileUpload component
                           const target = e.target as HTMLElement;
                           if (target.closest(`.${styles.mediaFileUploadContainer}`) || 
@@ -1256,8 +1376,13 @@ export function LibraryAssetsTable({
                         data-property-key={property.key}
                         className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
-                        onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
-                        onClick={(e) => handleCellClick(row.id, property.key, e)}
+                        onClick={(e) => {
+                          // Trigger focus when clicking on boolean cell (single-click to edit)
+                          if (userRole !== 'viewer') {
+                            handleCellFocus(row.id, property.key);
+                          }
+                          handleCellClick(row.id, property.key, e);
+                        }}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
                         onMouseMove={(e) => {
@@ -1295,15 +1420,11 @@ export function LibraryAssetsTable({
                                 return;
                               }
                               
-                              // Update presence tracking when user starts editing
-                              handleCellFocus(row.id, property.key);
-                              
-                              // Clear presence after a short delay to ensure other users see the highlight
+                              // Keep focus during the change to show editing state
+                              // Blur after change is complete and propagated
                               setTimeout(() => {
-                                if (presenceTracking) {
-                                  presenceTracking.updateActiveCell(null, null);
-                                }
-                              }, 1000); // 1 second delay
+                                handleCellBlur();
+                              }, 1000); // Delay to let other users see the change
                               
                               // Optimistic update: immediately update UI
                               setOptimisticBooleanValues(prev => ({
@@ -1457,8 +1578,13 @@ export function LibraryAssetsTable({
                         data-property-key={property.key}
                         className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
-                        onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
-                        onClick={(e) => handleCellClick(row.id, property.key, e)}
+                        onClick={(e) => {
+                          // Trigger focus when clicking on enum cell (single-click to edit)
+                          if (userRole !== 'viewer') {
+                            handleCellFocus(row.id, property.key);
+                          }
+                          handleCellClick(row.id, property.key, e);
+                        }}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
                         onMouseMove={(e) => {
@@ -1498,14 +1624,20 @@ export function LibraryAssetsTable({
                                 return;
                               }
                               
+                              // Trigger focus when opening dropdown to show editing state
+                              if (open) {
+                                handleCellFocus(row.id, property.key);
+                              } else {
+                                // Delay blur when closing dropdown to let other users see the change
+                                setTimeout(() => {
+                                  handleCellBlur();
+                                }, 1000);
+                              }
+                              
                               setOpenEnumSelects(prev => ({
                                 ...prev,
                                 [enumSelectKey]: open
                               }));
-                              // Update presence tracking when dropdown opens
-                              if (open) {
-                                handleCellFocus(row.id, property.key);
-                              }
                             }}
                             onChange={async (newValue) => {
                               // Prevent editing if user is a viewer
@@ -1514,13 +1646,6 @@ export function LibraryAssetsTable({
                               }
                               
                               const stringValue = newValue || '';
-                              
-                              // Clear presence after a short delay to ensure other users see the highlight
-                              setTimeout(() => {
-                                if (presenceTracking) {
-                                  presenceTracking.updateActiveCell(null, null);
-                                }
-                              }, 1000); // 1 second delay
                               
                               // Optimistic update: immediately update UI
                               setOptimisticEnumValues(prev => ({
@@ -1541,13 +1666,48 @@ export function LibraryAssetsTable({
                                   // Broadcast cell update if realtime is enabled
                                   await broadcastCellUpdateIfEnabled(row.id, property.key, stringValue, oldValue);
                                   
-                                  // Remove optimistic value after successful update
-                                  // The component will re-render with new props from parent
-                                  setOptimisticEnumValues(prev => {
-                                    const next = { ...prev };
-                                    delete next[enumSelectKey];
-                                    return next;
-                                  });
+                                  // Wait for parent component to update rows prop
+                                  // Check multiple times if the value has been updated before removing optimistic value
+                                  const checkAndRemoveOptimistic = (attempts = 0) => {
+                                    if (attempts >= 10) {
+                                      // After 10 attempts (1 second), force remove optimistic value
+                                      setOptimisticEnumValues(prev => {
+                                        if (enumSelectKey in prev) {
+                                          const next = { ...prev };
+                                          delete next[enumSelectKey];
+                                          return next;
+                                        }
+                                        return prev;
+                                      });
+                                      return;
+                                    }
+                                    
+                                    // Check if the actual row value matches the new value
+                                    // This means the parent component has updated the rows prop
+                                    const currentRow = rows.find(r => r.id === row.id);
+                                    if (currentRow) {
+                                      const currentValue = currentRow.propertyValues[property.key];
+                                      
+                                      if (String(currentValue || '') === stringValue) {
+                                        // Value has been updated, safe to remove optimistic value
+                                        setOptimisticEnumValues(prev => {
+                                          if (enumSelectKey in prev) {
+                                            const next = { ...prev };
+                                            delete next[enumSelectKey];
+                                            return next;
+                                          }
+                                          return prev;
+                                        });
+                                        return;
+                                      }
+                                    }
+                                    
+                                    // Value not updated yet, check again after a short delay
+                                    setTimeout(() => checkAndRemoveOptimistic(attempts + 1), 100);
+                                  };
+                                  
+                                  // Start checking after a short delay
+                                  setTimeout(() => checkAndRemoveOptimistic(0), 50);
                                 } catch (error) {
                                   // On error, revert optimistic update
                                   setOptimisticEnumValues(prev => {
@@ -1559,7 +1719,7 @@ export function LibraryAssetsTable({
                                 }
                               }
                               
-                              // Close dropdown
+                              // Close dropdown (blur will be triggered by onOpenChange)
                               setOpenEnumSelects(prev => ({
                                 ...prev,
                                 [enumSelectKey]: false

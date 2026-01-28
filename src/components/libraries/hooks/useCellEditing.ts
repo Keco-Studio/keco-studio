@@ -263,14 +263,15 @@ export function useCellEditing({
       return;
     }
     
-    // Don't allow double-click editing for option, reference, and boolean types
+    // Don't allow double-click editing for option, reference, boolean, image, and file types
+    // These types have their own single-click interaction patterns
     if (property.dataType === 'enum' || 
         (property.dataType === 'reference' && property.referenceLibraries) || 
-        property.dataType === 'boolean') {
+        property.dataType === 'boolean' ||
+        property.dataType === 'image' ||
+        property.dataType === 'file') {
       return;
     }
-    
-    // Image and file types will use MediaFileUpload component for editing
     
     // If already editing this cell, do nothing
     if (editingCell?.rowId === row.id && editingCell?.propertyKey === property.key) {

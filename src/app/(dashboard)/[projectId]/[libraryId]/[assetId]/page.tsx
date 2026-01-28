@@ -779,6 +779,56 @@ export default function AssetPage() {
     initialValuesLoadedRef.current = false;
   }, [assetId]);
 
+  // Add global click listener to clear focus state when clicking outside
+  useEffect(() => {
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Don't clear focus if clicking on form elements or their children
+      if (
+        target.closest('[class*="fieldControl"]') ||
+        target.closest('[class*="booleanToggle"]') ||
+        target.closest('[class*="fieldSelect"]') ||
+        target.closest('[class*="fieldInput"]') ||
+        target.closest('[class*="customComponent"]')
+      ) {
+        return;
+      }
+      
+      // Don't clear focus if clicking on modals, dropdowns, or interactive components
+      if (
+        target.closest('[role="dialog"]') ||
+        target.closest('.ant-modal') ||
+        target.closest('.ant-modal-root') ||
+        target.closest('.ant-modal-mask') ||
+        target.closest('.ant-modal-wrap') ||
+        target.closest('.ant-select-dropdown') ||
+        target.closest('.ant-switch') ||
+        target.closest('[class*="modal"]') ||
+        target.closest('[class*="Modal"]') ||
+        target.closest('[class*="dropdown"]') ||
+        target.closest('[class*="Dropdown"]') ||
+        target.closest('input[type="file"]') ||
+        target.closest('button') ||
+        target.closest('[role="combobox"]') ||
+        target.closest('[class*="mediaFileUpload"]') ||
+        target.closest('[class*="MediaFileUpload"]')
+      ) {
+        return;
+      }
+      
+      // Clear focus state
+      if (currentFocusedField) {
+        handleFieldBlur();
+      }
+    };
+    
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+    };
+  }, [currentFocusedField, handleFieldBlur]);
+
   // Listen to TopBar Create Asset button click for new assets
   useEffect(() => {
     if (!isNewAsset) return;
@@ -952,8 +1002,11 @@ export default function AssetPage() {
                                         <div 
                                           className={`${styles.booleanToggleWrapper} ${isBeingEdited ? styles.booleanToggleWrapperEditing : ''}`}
                                           style={borderColor ? { borderColor } : undefined}
-                                          onFocus={() => handleFieldFocus(f.id)}
-                                          onBlur={handleFieldBlur}
+                                          onClick={() => {
+                                            if (mode !== 'view') {
+                                              handleFieldFocus(f.id);
+                                            }
+                                          }}
                                           tabIndex={0}
                                         >
                                           <div className={styles.booleanToggle}>
@@ -962,7 +1015,13 @@ export default function AssetPage() {
                                               disabled={mode === 'view'}
                                               onChange={
                                                 mode !== 'view'
-                                                  ? (checked) => handleValueChange(f.id, checked)
+                                                  ? (checked) => {
+                                                      handleValueChange(f.id, checked);
+                                                      // Blur after a short delay to ensure other users see the change
+                                                      setTimeout(() => {
+                                                        handleFieldBlur();
+                                                      }, 1000);
+                                                    }
                                                   : undefined
                                               }
                                             />
@@ -1011,17 +1070,25 @@ export default function AssetPage() {
                           <select
                             value={value ?? ''}
                                           disabled={mode === 'view'}
+                                          onClick={() => {
+                                            if (mode !== 'view') {
+                                              handleFieldFocus(f.id);
+                                            }
+                                          }}
                                           onChange={
                                             mode !== 'view'
-                                              ? (e) =>
+                                              ? (e) => {
                                                   handleValueChange(
                                                     f.id,
                                                     e.target.value === '' ? null : e.target.value
-                                                  )
+                                                  );
+                                                  // Blur after a short delay to ensure other users see the change
+                                                  setTimeout(() => {
+                                                    handleFieldBlur();
+                                                  }, 1000);
+                                                }
                                               : undefined
                                           }
-                                          onFocus={() => handleFieldFocus(f.id)}
-                                          onBlur={handleFieldBlur}
                                           className={`${styles.fieldSelect} ${isBeingEdited ? styles.fieldInputEditing : ''} ${isRealtimeEdited ? styles.fieldRealtimeEdited : ''} ${
                                             mode === 'view' ? styles.disabledInput : ''
                                           }`}
@@ -1125,8 +1192,6 @@ export default function AssetPage() {
                                         <div
                                           className={`${styles.customComponentWrapper} ${isBeingEdited ? styles.customComponentWrapperEditing : ''}`}
                                           style={borderColor ? { borderColor } : undefined}
-                                          onFocus={() => handleFieldFocus(f.id)}
-                                          onBlur={handleFieldBlur}
                                           tabIndex={0}
                                         >
                                           <AssetReferenceSelector
@@ -1134,6 +1199,8 @@ export default function AssetPage() {
                                             onChange={(newValue) => handleValueChange(f.id, newValue)}
                                             referenceLibraries={f.reference_libraries ?? []}
                                             disabled={mode === 'view'}
+                                            onFocus={() => handleFieldFocus(f.id)}
+                                            onBlur={handleFieldBlur}
                                           />
                                         </div>
                                         <FieldPresenceAvatars users={editingUsers} />

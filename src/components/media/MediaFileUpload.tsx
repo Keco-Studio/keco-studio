@@ -71,14 +71,18 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
       setUploadProgress('Upload complete!');
       setTimeout(() => {
         setUploadProgress('');
-        // Trigger blur callback after upload completes
+      }, 1000);
+      // Delay blur to allow other users to see the change
+      setTimeout(() => {
         onBlur?.();
       }, 2000);
     } catch (e: any) {
       setError(e?.message || 'Upload failed');
       setUploadProgress('');
-      // Trigger blur callback on error
-      onBlur?.();
+      // Delay blur even on error to show the error state
+      setTimeout(() => {
+        onBlur?.();
+      }, 1500);
     } finally {
       setUploading(false);
       // Reset file input

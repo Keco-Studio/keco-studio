@@ -20,6 +20,8 @@ export type ReferenceFieldProps = {
   onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
   onAvatarMouseLeave: () => void;
   onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
+  onFocus?: () => void;
+  onBlur?: () => void;
 };
 
 export const ReferenceField = React.memo<ReferenceFieldProps>(function ReferenceField({
@@ -32,6 +34,8 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
   onAvatarMouseEnter,
   onAvatarMouseLeave,
   onOpenReferenceModal,
+  onFocus,
+  onBlur,
 }) {
   const hasValue = assetId != null && assetId.trim() !== '';
   const assetName = hasValue ? (assetNamesCache[assetId] ?? assetId) : '';
@@ -54,6 +58,8 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
     if (isCellSelected) {
       e.stopPropagation();
       e.preventDefault();
+      // Call onFocus when opening reference modal
+      onFocus?.();
       onOpenReferenceModal(property, assetId, rowId);
     }
   };

@@ -34,6 +34,8 @@ interface AssetReferenceSelectorProps {
   onChange?: (value: string | null) => void;
   referenceLibraries?: string[]; // library IDs that can be referenced
   disabled?: boolean;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 export function AssetReferenceSelector({
@@ -41,6 +43,8 @@ export function AssetReferenceSelector({
   onChange,
   referenceLibraries = [],
   disabled = false,
+  onFocus,
+  onBlur,
 }: AssetReferenceSelectorProps) {
   const supabase = useSupabase();
   const router = useRouter();
@@ -178,6 +182,10 @@ export function AssetReferenceSelector({
     setSearchText('');
     setHoveredAsset(null);
     setHoveredAssetDetails(null);
+    // Delay blur to allow other users to see the change
+    setTimeout(() => {
+      onBlur?.();
+    }, 1000);
   };
 
   const handleClear = () => {
@@ -185,6 +193,10 @@ export function AssetReferenceSelector({
     onChange?.(null);
     setExpandedAssetDetails(null);
     setShowExpandedInfo(false);
+    // Delay blur to allow other users to see the change
+    setTimeout(() => {
+      onBlur?.();
+    }, 1000);
   };
 
   const handleAssetHover = async (asset: Asset, event: React.MouseEvent) => {
@@ -310,7 +322,12 @@ export function AssetReferenceSelector({
                 alt="" 
                 width={16} 
                 height={16} 
-                onClick={() => !disabled && setShowDropdown(true)}
+                onClick={() => {
+                  if (!disabled) {
+                    onFocus?.();
+                    setShowDropdown(true);
+                  }
+                }}
                 style={{ cursor: disabled ? 'not-allowed' : 'pointer' }}
               />
               {selectedAsset ? (
@@ -350,7 +367,13 @@ export function AssetReferenceSelector({
             <span className={styles.dropdownHeaderText}>APPLY REFERENCE</span>
             <button
               className={styles.closeButton}
-              onClick={() => setShowDropdown(false)}
+              onClick={() => {
+                setShowDropdown(false);
+                // Trigger blur when closing without selection
+                setTimeout(() => {
+                  onBlur?.();
+                }, 100);
+              }}
             >
               ×
             </button>
