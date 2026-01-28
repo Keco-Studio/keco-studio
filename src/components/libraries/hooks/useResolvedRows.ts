@@ -26,7 +26,9 @@ export function useResolvedRows({
       .forEach((row) => {
         const assetRow = row as AssetRow;
         const opt = optimisticEditUpdates.get(assetRow.id);
-        if (opt && opt.name === assetRow.name) {
+        // Always overlay when optimistic exists. Requiring opt.name === assetRow.name caused
+        // "清空导致其他列恢复": Clear name → opt.name='' vs assetRow.name=old → no overlay → whole row falls back to base.
+        if (opt) {
           allRowsMap.set(assetRow.id, {
             ...assetRow,
             name: opt.name,

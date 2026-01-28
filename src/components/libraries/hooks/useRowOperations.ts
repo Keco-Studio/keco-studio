@@ -526,10 +526,24 @@ export function useRowOperations(params: UseRowOperationsParams) {
       const newMap = new Map(prev);
       for (const [rowId, rowData] of cellsByRow.entries()) {
         const row = allRowsForSelection.find((r) => r.id === rowId);
-        if (row) {
-          const originalName = row.name || 'Untitled';
-          newMap.set(rowId, { name: originalName, propertyValues: { ...rowData.propertyValues } });
+        if (!row) continue;
+        const existing = prev.get(rowId);
+        const displayName =
+          rowData.assetName !== null && rowData.assetName !== undefined
+            ? rowData.assetName
+            : (existing?.name ?? row.name ?? 'Untitled');
+        // Only overlay cleared keys onto existing optimistic (or row). Replacing with full
+        // rowData.propertyValues could overwrite other columns if row was ever stale/partial,
+        // causing "其他列也清空，过一会又恢复".
+        const clearedDelta: Record<string, any> = {};
+        for (const [k, v] of Object.entries(rowData.propertyValues)) {
+          if (row.propertyValues[k] !== v) clearedDelta[k] = v;
         }
+        const baseForMerge = existing?.propertyValues ?? row.propertyValues ?? {};
+        newMap.set(rowId, {
+          name: displayName,
+          propertyValues: { ...baseForMerge, ...clearedDelta },
+        });
       }
       return newMap;
     });
