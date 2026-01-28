@@ -33,7 +33,9 @@
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 100;
-  min-width: 200px;
+  width: 220px;
+  min-width: 220px;
+  max-width: 220px;
   overflow: hidden;
 }
 
