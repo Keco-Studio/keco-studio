@@ -80,7 +80,7 @@ export function useReferenceModal(params: UseReferenceModalParams) {
     loadAssetNames();
   }, [rows, newRowData, properties, editingCell, isAddingRow, supabase]);
 
-  // Listen for assetUpdated to refresh cache and clear optimistic updates
+  // Refresh asset name cache only; do NOT clear optimistic here (useOptimisticCleanup clears when rows match)
   useEffect(() => {
     const handleAssetUpdated = async (event: Event) => {
       const ev = event as CustomEvent<{ assetId: string; libraryId?: string }>;
@@ -93,11 +93,6 @@ export function useReferenceModal(params: UseReferenceModalParams) {
           .single();
         if (!error && data) {
           setAssetNamesCache((prev) => ({ ...prev, [data.id]: data.name }));
-          setOptimisticEditUpdates((prev) => {
-            const next = new Map(prev);
-            if (next.has(ev.detail!.assetId)) next.delete(ev.detail!.assetId);
-            return next;
-          });
         }
       } catch (e) {
         console.error('Failed to refresh asset name:', e);
@@ -105,7 +100,7 @@ export function useReferenceModal(params: UseReferenceModalParams) {
     };
     window.addEventListener('assetUpdated', handleAssetUpdated as EventListener);
     return () => window.removeEventListener('assetUpdated', handleAssetUpdated as EventListener);
-  }, [supabase, setOptimisticEditUpdates]);
+  }, [supabase]);
 
   const handleOpenReferenceModal = useCallback((property: PropertyConfig, currentValue: string | null, rowId: string) => {
     setReferenceModalProperty(property);

@@ -23,6 +23,7 @@ import {
   createAsset,
   updateAsset,
   deleteAsset,
+  deleteAssets,
 } from '@/lib/services/libraryAssetsService';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
@@ -578,17 +579,29 @@ export default function LibraryPage() {
     window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
   };
 
-  // Callback for updating asset from table
+  // Single update (each completion dispatches → N invalidates)
   const handleUpdateAssetFromTable = async (assetId: string, assetName: string, propertyValues: Record<string, any>) => {
     await updateAsset(supabase, assetId, assetName, propertyValues);
-    // Notify components to refresh - event handler will invalidate cache
     window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { assetId, libraryId } }));
   };
 
-  // Callback for deleting asset from table
+  // Batch update: all updates then one dispatch → one invalidate, avoids 先消失后恢复再消失 + 其他列恢复
+  const handleUpdateAssetsFromTable = async (
+    updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
+  ) => {
+    await Promise.all(updates.map((u) => updateAsset(supabase, u.assetId, u.assetName, u.propertyValues)));
+    window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { libraryId } }));
+  };
+
+  // Single delete
   const handleDeleteAssetFromTable = async (assetId: string) => {
     await deleteAsset(supabase, assetId);
-    // Notify components to refresh - event handler will invalidate cache
+    window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
+  };
+
+  // Batch delete: Supabase .delete().in(), one round-trip
+  const handleDeleteAssetsFromTable = async (assetIds: string[]) => {
+    await deleteAssets(supabase, assetIds);
     window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
   };
 
@@ -662,7 +675,9 @@ export default function LibraryPage() {
               rows={assetRows}
               onSaveAsset={handleSaveAssetFromTable}
               onUpdateAsset={handleUpdateAssetFromTable}
+              onUpdateAssets={handleUpdateAssetsFromTable}
               onDeleteAsset={handleDeleteAssetFromTable}
+              onDeleteAssets={handleDeleteAssetsFromTable}
               currentUser={
                 userProfile
                   ? {

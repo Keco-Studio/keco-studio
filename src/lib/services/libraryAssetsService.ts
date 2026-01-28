@@ -10,6 +10,7 @@ import {
   verifyLibraryAccess,
   verifyAssetAccess,
   verifyAssetDeletionPermission,
+  verifyAssetsDeletionPermission,
   verifyAssetCreationPermission,
   verifyAssetUpdatePermission,
 } from './authorizationService';
@@ -353,17 +354,29 @@ export async function deleteAsset(
   supabase: SupabaseClient,
   assetId: string
 ): Promise<void> {
-  // verify deletion permission (admin and editor can delete)
   await verifyAssetDeletionPermission(supabase, assetId);
-  
-  // delete asset (cascade delete will handle associated values)
   const { error } = await supabase
     .from('library_assets')
     .delete()
     .eq('id', assetId);
+  if (error) throw error;
+}
 
-  if (error) {
-    throw error;
+/** Batch delete (Supabase .delete().in()). One permission check, one round-trip. */
+export async function deleteAssets(
+  supabase: SupabaseClient,
+  assetIds: string[]
+): Promise<void> {
+  if (assetIds.length === 0) return;
+  if (assetIds.length === 1) {
+    await deleteAsset(supabase, assetIds[0]);
+    return;
   }
+  await verifyAssetsDeletionPermission(supabase, assetIds);
+  const { error } = await supabase
+    .from('library_assets')
+    .delete()
+    .in('id', assetIds);
+  if (error) throw error;
 }
 
