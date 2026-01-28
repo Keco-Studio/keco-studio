@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
@@ -109,6 +109,18 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       return getUsersEditingField(assetId, propertyKey);
     },
   }), [setActiveField, getUsersEditingField]);
+  
+  // Set presence when viewing library table
+  useEffect(() => {
+    // Use a special marker to indicate "viewing library table"
+    // This helps other users see who's currently viewing the library
+    setActiveField(null, '__viewing_library__');
+    
+    return () => {
+      // Clear presence when leaving the library table
+      setActiveField(null, null);
+    };
+  }, [setActiveField]);
   
   return (
     <LibraryAssetsTable

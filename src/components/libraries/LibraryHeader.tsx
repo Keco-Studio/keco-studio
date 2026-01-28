@@ -55,6 +55,7 @@ export function LibraryHeader({
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const membersPanelRef = useRef<HTMLDivElement>(null);
+  const hasInitializedPresence = useRef(false);
 
   // Get role display text
   const getRoleText = (role: CollaboratorRole): string => {
@@ -71,21 +72,20 @@ export function LibraryHeader({
   };
 
   // Sort presence users: current user first, then by last activity
-  // Make sure current user is always included
   const sortedPresenceUsers = useMemo(() => {
-    const users = [...presenceUsers];
+    let users = [...presenceUsers];
     
     // Check if current user is in the list
     const hasCurrentUser = users.some(u => u.userId === currentUserId);
     
-    // If current user is not in the list, add them
+    // Always add current user to ensure they see themselves
     if (!hasCurrentUser) {
-      users.unshift({
+      users.push({
         userId: currentUserId,
         userName: currentUserName,
         userEmail: currentUserEmail,
         avatarColor: currentUserAvatarColor,
-        activeCell: null,
+        activeCell: { assetId: null, propertyKey: '__viewing_library__' },
         cursorPosition: null,
         lastActivity: new Date().toISOString(),
         connectionStatus: 'online' as const,
@@ -102,26 +102,25 @@ export function LibraryHeader({
     });
   }, [presenceUsers, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor]);
 
-  // Get users for avatar display (max 3)
+  // Get users for avatar display (max 2)
+  // Memoized more aggressively to avoid flickering
   const displayUsers = useMemo(() => {
     const result = [];
     
-    // Always show current user first
-    let currentUser = sortedPresenceUsers.find(u => u.userId === currentUserId);
+    // Find current user in sorted list
+    const currentUserInList = sortedPresenceUsers.find(u => u.userId === currentUserId);
     
-    // If current user is not in presenceUsers, create a placeholder
-    if (!currentUser) {
-      currentUser = {
-        userId: currentUserId,
-        userName: currentUserName,
-        userEmail: currentUserEmail,
-        avatarColor: currentUserAvatarColor,
-        activeCell: null,
-        cursorPosition: null,
-        lastActivity: new Date().toISOString(),
-        connectionStatus: 'online' as const,
-      };
-    }
+    // Use existing user object if available, otherwise create stable placeholder
+    const currentUser = currentUserInList || {
+      userId: currentUserId,
+      userName: currentUserName,
+      userEmail: currentUserEmail,
+      avatarColor: currentUserAvatarColor,
+      activeCell: null,
+      cursorPosition: null,
+      lastActivity: new Date().toISOString(),
+      connectionStatus: 'online' as const,
+    };
     
     result.push(currentUser);
     

@@ -104,7 +104,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Sync Yjs Map to React state
   useEffect(() => {
     const updateAssetsFromYjs = () => {
-      console.log('[LibraryDataContext] 🔄 Syncing Yjs to React state...');
       const newAssets = new Map<string, AssetRow>();
       
       yAssets.forEach((yAsset, assetId) => {
@@ -132,31 +131,24 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         });
       });
       
-      console.log('[LibraryDataContext] 📦 Updated assets count:', newAssets.size);
       
       if (isMountedRef.current) {
         setAssets(newAssets);
-        console.log('[LibraryDataContext] ✅ React state updated');
       } else {
-        console.log('[LibraryDataContext] ⚠️ Component unmounted, skipping state update');
       }
     };
     
     // Initial sync
-    console.log('[LibraryDataContext] 🚀 Initial sync from Yjs');
     updateAssetsFromYjs();
     
     // Listen to Yjs changes (using observeDeep to catch nested Y.Map changes)
     const observer = () => {
-      console.log('[LibraryDataContext] 👀 Yjs observeDeep triggered!');
       updateAssetsFromYjs();
     };
     
     yAssets.observeDeep(observer);
-    console.log('[LibraryDataContext] 👂 Yjs observeDeep registered');
     
     return () => {
-      console.log('[LibraryDataContext] 🔌 Unregistering Yjs observeDeep');
       yAssets.unobserveDeep(observer);
     };
   }, [yAssets, libraryId]);
@@ -243,13 +235,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   
   // Realtime collaboration event handlers
   const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
-    console.log('[LibraryDataContext] 📥 handleCellUpdateEvent called:', {
-      assetId: event.assetId,
-      propertyKey: event.propertyKey,
-      newValue: event.newValue,
-      userId: event.userId,
-    });
-    
     // Update Yjs (which will trigger React state update)
     const yAsset = yAssets.get(event.assetId);
     if (!yAsset) {
@@ -266,16 +251,13 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     // Only update if value actually changed to avoid unnecessary re-renders
     const currentValue = yPropertyValues.get(event.propertyKey);
     if (JSON.stringify(currentValue) === JSON.stringify(event.newValue)) {
-      console.log('[LibraryDataContext] ⏭️ Value unchanged, skipping update for', event.propertyKey);
       return;
     }
     
     // Update the nested Y.Map (this will trigger observeDeep)
-    console.log('[LibraryDataContext] ✅ Updating Yjs nested Y.Map with new value');
     yDoc.transact(() => {
       yPropertyValues.set(event.propertyKey, event.newValue);
     });
-    console.log('[LibraryDataContext] ✅ Yjs update completed - should trigger observer');
   }, [yAssets, yDoc]);
   
   const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
@@ -311,18 +293,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Initialize realtime subscription
   const realtimeConfig = useMemo(() => {
     if (!userProfile || !libraryId) {
-      console.log('[LibraryDataContext] ⚠️ Realtime config is NULL', { 
-        hasUserProfile: !!userProfile, 
-        libraryId 
-      });
       return null;
     }
-    
-    console.log('[LibraryDataContext] ✅ Realtime config initialized', {
-      libraryId,
-      userId: userProfile.id,
-      userName: userProfile.username || userProfile.full_name || userProfile.email,
-    });
     
     return {
       libraryId,
@@ -359,17 +331,17 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       broadcastAssetDelete: async () => {},
     };
   
-  // Presence tracking
-  const presenceTracking = usePresenceTracking({
+  // Presence tracking - use useMemo to avoid recreating config on every render
+  const presenceConfig = useMemo(() => ({
     libraryId: libraryId || '',
     userId: userProfile?.id || '',
     userName: userProfile?.username || userProfile?.full_name || userProfile?.email || 'Anonymous',
     userEmail: userProfile?.email || '',
     avatarColor: userProfile ? getUserAvatarColor(userProfile.id) : '#999999',
-    onPresenceJoin: () => {},
-    onPresenceLeave: () => {},
     debugLabel: 'LibraryData',
-  });
+  }), [libraryId, userProfile]);
+  
+  const presenceTracking = usePresenceTracking(presenceConfig);
   
   // Data operations
   const updateAssetField = useCallback(async (
@@ -378,14 +350,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     value: any,
     options?: { skipBroadcast?: boolean }
   ) => {
-    console.log('[LibraryDataContext] 📝 updateAssetField called:', {
-      assetId,
-      fieldId,
-      value,
-      skipBroadcast: options?.skipBroadcast,
-      hasRealtimeConfig: !!realtimeConfig,
-    });
-    
     // 1. Optimistic update in Yjs
     const yAsset = yAssets.get(assetId);
     if (!yAsset) {
@@ -417,19 +381,10 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         });
       
       if (error) throw error;
-      
-      console.log('[LibraryDataContext] 💾 Database save successful');
-      
+        
       // 3. Broadcast update (unless explicitly skipped)
       if (!options?.skipBroadcast && realtimeConfig) {
-        console.log('[LibraryDataContext] 📡 Calling broadcastCellUpdate...');
         await broadcastCellUpdate(assetId, fieldId, value, oldValue);
-        console.log('[LibraryDataContext] ✅ Broadcast completed');
-      } else {
-        console.log('[LibraryDataContext] ⏭️ Broadcast skipped:', {
-          skipBroadcast: options?.skipBroadcast,
-          hasRealtimeConfig: !!realtimeConfig,
-        });
       }
     } catch (error) {
       console.error('[LibraryDataContext] ❌ Error in updateAssetField:', error);

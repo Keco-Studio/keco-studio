@@ -10,7 +10,6 @@ import { queryKeys } from '@/lib/utils/queryKeys';
 import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
 import { getLibrary, Library } from '@/lib/services/libraryService';
 import { getFieldTypeIcon } from '../predefine/utils';
-import { usePresence } from '@/lib/contexts/PresenceContext';
 import styles from './page.module.css';
 import Image from 'next/image';
 import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
@@ -130,11 +129,9 @@ export default function AssetPage() {
     const yAsset = yAssets.get(assetId);
     if (!yAsset) return;
     
-    console.log('[AssetPage] 👀 Setting up Yjs observeDeep for asset:', assetId);
     
     // Observe changes to the Yjs asset (including nested Y.Map changes)
     const observer = () => {
-      console.log('[AssetPage] 🔔 Yjs observeDeep triggered for asset:', assetId);
       
       const name = yAsset.get('name');
       const yPropertyValues = yAsset.get('propertyValues');
@@ -151,13 +148,11 @@ export default function AssetPage() {
         Object.assign(propertyValues, yPropertyValues);
       }
       
-      console.log('[AssetPage] 📦 Yjs data:', { name, propertyValuesKeys: Object.keys(propertyValues), propertyValuesType: typeof yPropertyValues.forEach });
       
       // Update asset name (only if not in view mode)
       if (mode !== 'view') {
         setAsset(prev => {
           if (prev && prev.name !== name) {
-            console.log('[AssetPage] ✏️ Updating asset name:', name);
             return { ...prev, name };
           }
           return prev;
@@ -172,20 +167,17 @@ export default function AssetPage() {
         Object.keys(propertyValues).forEach(fieldId => {
           // Skip the field user is currently editing to avoid overwriting their input
           if (currentFocusedField === fieldId) {
-            console.log('[AssetPage] ⏭️ Skipping update for focused field:', fieldId);
             return;
           }
           
           // Update all other fields
           if (JSON.stringify(prev[fieldId]) !== JSON.stringify(propertyValues[fieldId])) {
-            console.log('[AssetPage] 🔄 Updating field:', fieldId, 'from', prev[fieldId], 'to', propertyValues[fieldId]);
             newValues[fieldId] = propertyValues[fieldId];
             hasChanges = true;
           }
         });
         
         if (hasChanges) {
-          console.log('[AssetPage] ✅ React state updated with new values');
         }
         
         return hasChanges ? newValues : prev;
@@ -196,7 +188,6 @@ export default function AssetPage() {
     yAsset.observeDeep(observer);
     
     return () => {
-      console.log('[AssetPage] 🧹 Cleaning up Yjs observer for asset:', assetId);
       yAsset.unobserveDeep(observer);
     };
   }, [isNewAsset, assetId, yAssets, mode, currentFocusedField]);
@@ -211,22 +202,29 @@ export default function AssetPage() {
 
   // No longer need separate realtime subscription - using LibraryDataContext
 
-  // Set presence to indicate user is viewing this asset (when not editing any field)
+  // Set presence when entering/leaving the asset page
+  // Presence will be updated to specific fields by handleFieldFocus when editing
+  // and restored to viewing state by handleFieldBlur when done editing
+  // Use ref to avoid re-running effect when setActiveField reference changes
+  const setActiveFieldRef = useRef(setActiveField);
+  
   useEffect(() => {
-    if (!isNewAsset && asset) {
-      if (!currentFocusedField) {
-        // Use a special propertyKey to indicate "viewing" (not editing)
-        setActiveField(asset.id, '__viewing__');
-      }
-    }
-  }, [asset, isNewAsset, setActiveField, currentFocusedField]);
-
-  // Cleanup: clear presence when component unmounts or asset changes
-  useEffect(() => {
-    return () => {
-      setActiveField(null, null);
-    };
+    setActiveFieldRef.current = setActiveField;
   }, [setActiveField]);
+  
+  useEffect(() => {
+    // Set presence immediately when entering asset page
+    if (!isNewAsset && assetId) {
+      setActiveFieldRef.current(assetId, '__viewing__');
+    }
+    
+    // Cleanup: clear presence when leaving the asset page or switching assets
+    return () => {
+      if (!isNewAsset && assetId) {
+        setActiveFieldRef.current(null, null);
+      }
+    };
+  }, [assetId, isNewAsset]); // 移除 setActiveField 依赖
 
   const sections = useMemo(() => {
     const map: Record<string, FieldDef[]> = {};
@@ -508,20 +506,19 @@ export default function AssetPage() {
   }, [setActiveField, asset, isNewAsset]);
 
   // Get users editing a specific field (including current user if they're editing it)
+  // More stable version to avoid flickering
   const getFieldEditingUsers = useCallback((fieldId: string) => {
     if (!asset) return [];
     let editingUsers = getUsersEditingField(asset.id, fieldId);
     
     // If current user is editing this field, ensure they're in the list
+    // But be more conservative to avoid flickering
     if (currentFocusedField === fieldId && userProfile) {
       const hasCurrentUser = editingUsers.some(u => u.userId === userProfile.id);
+      
+      // Only add if truly missing (not just delayed)
       if (!hasCurrentUser) {
-        // Use a slightly earlier timestamp if this is the first user (empty list)
-        // This ensures the first user to enter keeps their position
-        const timestamp = editingUsers.length === 0 
-          ? new Date(Date.now() - 1000).toISOString() // 1 second earlier if first
-          : new Date().toISOString();
-        
+        // Use stable timestamp to avoid re-sorting on every render
         const currentUserPresence: PresenceState = {
           userId: userProfile.id,
           userName: userProfile.username || userProfile.full_name || userProfile.email,
@@ -529,12 +526,12 @@ export default function AssetPage() {
           avatarColor: getUserAvatarColor(userProfile.id),
           activeCell: { assetId: asset.id, propertyKey: fieldId },
           cursorPosition: null,
-          lastActivity: timestamp,
+          lastActivity: new Date().toISOString(),
           connectionStatus: 'online',
         };
         editingUsers.push(currentUserPresence);
         
-        // Re-sort to ensure consistent ordering
+        // Re-sort to ensure consistent ordering (first to arrive first)
         editingUsers.sort((a, b) => {
           return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
         });

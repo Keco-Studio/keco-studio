@@ -24,8 +24,6 @@ export type PresenceConfig = {
   userName: string;
   userEmail: string;
   avatarColor: string;
-  onPresenceJoin?: (user: PresenceState) => void;
-  onPresenceLeave?: (userId: string, userName: string) => void;
   debugLabel?: string; // Optional label for debugging
 };
 
@@ -48,8 +46,6 @@ export function usePresenceTracking(config: PresenceConfig) {
     userName,
     userEmail,
     avatarColor,
-    onPresenceJoin,
-    onPresenceLeave,
     debugLabel = 'Unknown',
   } = config;
 
@@ -60,16 +56,6 @@ export function usePresenceTracking(config: PresenceConfig) {
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const activeCellRef = useRef<{ assetId: string; propertyKey: string } | null>(null);
   const cursorPositionRef = useRef<{ row: number; col: number } | null>(null);
-  
-  // Store callbacks in refs to always use latest version without triggering re-subscription
-  const onPresenceJoinRef = useRef(onPresenceJoin);
-  const onPresenceLeaveRef = useRef(onPresenceLeave);
-  
-  // Update refs when callbacks change
-  useEffect(() => {
-    onPresenceJoinRef.current = onPresenceJoin;
-    onPresenceLeaveRef.current = onPresenceLeave;
-  }, [onPresenceJoin, onPresenceLeave]);
 
   /**
    * Update active cell being edited by current user
@@ -77,13 +63,6 @@ export function usePresenceTracking(config: PresenceConfig) {
   const updateActiveCell = useCallback(async (assetId: string | null, propertyKey: string | null) => {
     const newActiveCell = assetId && propertyKey ? { assetId, propertyKey } : null;
     activeCellRef.current = newActiveCell;
-
-    console.log('[Presence] 🔄 Updating active cell:', {
-      userName,
-      assetId: assetId || 'null',
-      propertyKey: propertyKey || 'null',
-      isTracking,
-    });
 
     // Update presence state
     if (channelRef.current && isTracking) {
@@ -98,29 +77,10 @@ export function usePresenceTracking(config: PresenceConfig) {
         connectionStatus: 'online' as const,
       };
       
-      // Track the update
+      // Track the update - Supabase will automatically broadcast to other clients
       await channelRef.current.track(presenceState);
-      
-      // Send broadcast to immediately notify other users
-      // This ensures faster sync than waiting for the presence sync event
-      await channelRef.current.send({
-        type: 'broadcast',
-        event: 'presence_update',
-        payload: {
-          userId,
-          userName,
-          activeCell: newActiveCell,
-          timestamp: new Date().toISOString(),
-        },
-      });
-      
-      console.log('[Presence] ✅ Active cell tracked and broadcasted:', {
-        userName,
-        assetId: assetId || 'null',
-        propertyKey: propertyKey || 'null',
-      });
     }
-  }, [userId, userName, userEmail, avatarColor, isTracking, libraryId]);
+  }, [userId, userName, userEmail, avatarColor, isTracking]);
 
   /**
    * Update cursor position (throttled to 10 updates/second maximum)
@@ -157,16 +117,13 @@ export function usePresenceTracking(config: PresenceConfig) {
    */
   useEffect(() => {
     if (!libraryId || !supabase || !userId) {
-      console.log(`[Presence] ⚠️ Skip tracking - libraryId: ${libraryId}, userId: ${userId}`);
       return;
     }
 
-    console.log(`[Presence:${debugLabel}] 🚀 Initializing tracking for library: ${libraryId.slice(0, 8)}, user: ${userName}`);
 
     // Create the presence channel
     // Note: Multiple components can subscribe to the same channel
     const channelName = `library:${libraryId}:presence`;
-    console.log(`[Presence:${debugLabel}] 📝 Creating channel: ${channelName}`);
     
     const channel = supabase.channel(channelName, {
       config: {
@@ -177,7 +134,6 @@ export function usePresenceTracking(config: PresenceConfig) {
     });
 
     channelRef.current = channel;
-    console.log(`[Presence:${debugLabel}] 📝 Channel created, now subscribing...`);
 
     // Define presence sync handler inline to avoid dependency issues
     const syncHandler = () => {
@@ -198,39 +154,37 @@ export function usePresenceTracking(config: PresenceConfig) {
         }
       });
 
-      console.log(`[Presence] 🔄 Sync for ${userName} in library ${libraryId}: ${newPresenceUsers.size} other user(s)`);
-
-      // Update presence users and check for joins/leaves
+      // Only update if there are actual changes to avoid infinite loops
       setPresenceUsers((prevPresenceUsers) => {
-        // Check for new joins
-        newPresenceUsers.forEach((presence, presenceUserId) => {
-          if (!prevPresenceUsers.has(presenceUserId)) {
-            console.log(`[Presence] ➕ ${presence.userName} joined (asset: ${presence.activeCell?.assetId?.slice(0, 8) || 'none'})`);
-            // New user joined - use ref to get latest callback
-            if (onPresenceJoinRef.current) {
-              onPresenceJoinRef.current(presence);
-            }
-          } else {
-            // Check if activeCell changed
-            const prev = prevPresenceUsers.get(presenceUserId);
-            if (prev && prev.activeCell?.assetId !== presence.activeCell?.assetId) {
-              console.log(`[Presence] 🔄 ${presence.userName} switched asset: ${prev.activeCell?.assetId?.slice(0, 8) || 'none'} -> ${presence.activeCell?.assetId?.slice(0, 8) || 'none'}`);
-            }
+        // Check if the maps are identical
+        if (prevPresenceUsers.size !== newPresenceUsers.size) {
+          return newPresenceUsers;
+        }
+        
+        // Check if all entries are the same (compare key fields only, ignore lastActivity timestamp)
+        let hasChanges = false;
+        for (const [key, value] of newPresenceUsers.entries()) {
+          const prevValue = prevPresenceUsers.get(key);
+          if (!prevValue) {
+            hasChanges = true;
+            break;
           }
-        });
-
-        // Check for leaves
-        prevPresenceUsers.forEach((presence, presenceUserId) => {
-          if (!newPresenceUsers.has(presenceUserId)) {
-            console.log(`[Presence] ➖ ${presence.userName} left`);
-            // User left - use ref to get latest callback
-            if (onPresenceLeaveRef.current) {
-              onPresenceLeaveRef.current(presenceUserId, presence.userName);
-            }
+          
+          // Compare only key fields that affect UI (ignore lastActivity to prevent flicker)
+          if (
+            prevValue.userId !== value.userId ||
+            prevValue.userName !== value.userName ||
+            prevValue.connectionStatus !== value.connectionStatus ||
+            JSON.stringify(prevValue.activeCell) !== JSON.stringify(value.activeCell) ||
+            JSON.stringify(prevValue.cursorPosition) !== JSON.stringify(value.cursorPosition)
+          ) {
+            hasChanges = true;
+            break;
           }
-        });
-
-        return newPresenceUsers;
+        }
+        
+        // Only return new Map if there are changes
+        return hasChanges ? newPresenceUsers : prevPresenceUsers;
       });
     };
 
@@ -238,19 +192,10 @@ export function usePresenceTracking(config: PresenceConfig) {
     channel
       .on('presence', { event: 'sync' }, syncHandler)
       .on('presence', { event: 'join' }, syncHandler)
-      .on('presence', { event: 'leave' }, syncHandler)
-      // Listen for broadcast events as a backup mechanism
-      .on('broadcast', { event: 'presence_update' }, ({ payload }) => {
-        console.log('[Presence] Received broadcast update:', payload);
-        // Trigger sync to update local state
-        syncHandler();
-      });
+      .on('presence', { event: 'leave' }, syncHandler);
 
     // Subscribe and track initial presence
-    console.log(`[Presence:${debugLabel}] 🔌 Calling channel.subscribe() for ${userName}...`);
     channel.subscribe(async (status) => {
-      console.log(`[Presence:${debugLabel}] 📡 ${userName} subscription callback triggered, status:`, status);
-
       if (status === 'SUBSCRIBED') {
         // Track initial presence
         await channel.track({
@@ -265,22 +210,16 @@ export function usePresenceTracking(config: PresenceConfig) {
         });
 
         setIsTracking(true);
-        console.log(`[Presence:${debugLabel}] ✅ isTracking set to TRUE for ${userName}`);
         
-        // Force an immediate sync to get current presence state
-        // This ensures we see other users right after joining
+        // Trigger a single delayed sync to catch other users
         setTimeout(() => {
           syncHandler();
-        }, 100);
-        
-        console.log(`[Presence:${debugLabel}] ✅ ${userName} joined library ${libraryId}`);
+        }, 500);
       }
     });
 
     // Cleanup on unmount
     return () => {
-      console.log(`[Presence:${debugLabel}] 🚪 ${userName} leaving library ${libraryId}, cleaning up channel`);
-
       // Clear heartbeat interval
       if (heartbeatIntervalRef.current) {
         clearInterval(heartbeatIntervalRef.current);

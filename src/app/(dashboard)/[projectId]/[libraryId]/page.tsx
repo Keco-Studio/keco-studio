@@ -25,8 +25,7 @@ import {
   deleteAsset,
 } from '@/lib/services/libraryAssetsService';
 import { useAuth } from '@/lib/contexts/AuthContext';
-import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
-import { PresenceIndicators } from '@/components/collaboration/PresenceIndicators';
+import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
 import { VersionControlSidebar } from '@/components/version-control/VersionControlSidebar';
@@ -112,38 +111,12 @@ export default function LibraryPage() {
   const error = projectError ? (projectError as any)?.message || 'Project not found' :
                 libraryError ? (libraryError as any)?.message || 'Library not found' : null;
 
-  // Presence tracking for real-time collaboration
+  // Get presence data from LibraryDataContext (single source of truth)
+  const { presenceUsers } = useLibraryData();
+  
   const userAvatarColor = useMemo(() => {
     return userProfile?.id ? getUserAvatarColor(userProfile.id) : '#999999';
   }, [userProfile?.id]);
-
-  // Presence join/leave event handlers
-  const handlePresenceJoin = useCallback((user: PresenceState) => {
-    message.success(`${user.userName} joined the library`, 2);
-  }, []);
-
-  const handlePresenceLeave = useCallback((userId: string, userName: string) => {
-    message.info(`${userName} left the library`, 2);
-  }, []);
-
-  // Initialize presence tracking
-  const {
-    isTracking,
-    presenceUsers,
-    activeUserCount,
-    updateActiveCell,
-    updateCursorPosition,
-    getUsersEditingCell,
-    getActiveUsers,
-  } = usePresenceTracking({
-    libraryId: libraryId,
-    userId: userProfile?.id || '',
-    userName: userProfile?.username || userProfile?.full_name || userProfile?.email || 'Anonymous',
-    userEmail: userProfile?.email || '',
-    avatarColor: userAvatarColor,
-    onPresenceJoin: handlePresenceJoin,
-    onPresenceLeave: handlePresenceLeave,
-  });
 
   const sections = useMemo(() => {
     const map: Record<string, FieldDef[]> = {};

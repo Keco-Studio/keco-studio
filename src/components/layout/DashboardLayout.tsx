@@ -7,7 +7,8 @@ import AuthForm from '@/components/authform/AuthForm';
 import styles from './DashboardLayout.module.css';
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { usePathname } from 'next/navigation';
-import { PresenceProvider } from '@/lib/contexts/PresenceContext';
+// REMOVED: PresenceProvider causes duplicate subscriptions with LibraryDataProvider
+// import { PresenceProvider } from '@/lib/contexts/PresenceContext';
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
@@ -67,17 +68,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   }
 
   return (
-    <PresenceProvider libraryId={currentLibraryId}>
-      <div className={styles.dashboard}>
-        <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
-        <div className={styles.main}>
-          <TopBar />
-          <div className={styles.content}>
-            {children}
-          </div>
+    <div className={styles.dashboard}>
+      <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
+      <div className={styles.main}>
+        <TopBar />
+        <div className={styles.content}>
+          {children}
         </div>
       </div>
-    </PresenceProvider>
+    </div>
   );
 }
 

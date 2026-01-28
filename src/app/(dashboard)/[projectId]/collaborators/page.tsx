@@ -195,8 +195,6 @@ export default function CollaboratorsPage() {
         
         // Query pending invitations and convert them to Collaborator format
         let pendingInvitesAsCollaborators: any[] = [];
-        console.log('[CollaboratorsPage] Current userRole:', userRole);
-        console.log('[CollaboratorsPage] Checking for pending invitations...');
         
         // Query pending invitations for all users (not just admin)
         const { data: inviteData, error: inviteError } = await supabase
@@ -219,7 +217,6 @@ export default function CollaboratorsPage() {
           .is('accepted_at', null)
           .order('sent_at', { ascending: false });
         
-        console.log('[CollaboratorsPage] Pending invitations query result:', { inviteData, inviteError });
         
         if (!inviteError && inviteData) {
           // For each pending invitation, try to find the user profile by email
@@ -236,7 +233,6 @@ export default function CollaboratorsPage() {
             (profilesData || []).map(p => [p.email.toLowerCase(), p])
           );
           
-          console.log('[CollaboratorsPage] Found profiles for pending invites:', emailToProfile.size);
           
           // Convert pending invitations to Collaborator format
           pendingInvitesAsCollaborators = inviteData.map((invite: any) => {
@@ -271,11 +267,9 @@ export default function CollaboratorsPage() {
             });
           }
         
-        console.log('[CollaboratorsPage] Pending invites as collaborators:', pendingInvitesAsCollaborators);
         
         // Combine accepted collaborators and pending invitations
         const allCollaborators = [...transformedCollaborators, ...pendingInvitesAsCollaborators];
-        console.log('[CollaboratorsPage] Total collaborators (including pending):', allCollaborators.length);
         
         // Sort collaborators: current user first, then others
         allCollaborators.sort((a, b) => {
@@ -593,12 +587,9 @@ export default function CollaboratorsPage() {
                 c.userEmail.toLowerCase() === invitedEmail.toLowerCase()
               );
               if (newCollaborator) {
-                console.log('[CollaboratorsPage] Found newly invited user:', newCollaborator);
                 // Highlight the newly invited user
                 setHighlightUserId(newCollaborator.userId);
               } else {
-                console.log('[CollaboratorsPage] Could not find newly invited user with email:', invitedEmail);
-                console.log('[CollaboratorsPage] Updated collaborators:', updatedCollaborators);
               }
             }
           }}
