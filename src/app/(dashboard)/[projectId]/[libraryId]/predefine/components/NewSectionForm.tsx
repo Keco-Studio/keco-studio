@@ -44,7 +44,7 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
     
     // Auto-save after adding field (without reload to avoid flickering)
     setTimeout(() => {
-      void onSave({ name: sectionName, fields: updatedFields }, false);
+      void onSave({ name: sectionName, fields: updatedFields });
     }, 300);
   };
 
@@ -54,7 +54,7 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
     
     // Auto-save after deleting field (without reload to avoid flickering)
     setTimeout(() => {
-      void onSave({ name: sectionName, fields: updatedFields }, false);
+      void onSave({ name: sectionName, fields: updatedFields });
     }, 300);
   };
 
@@ -71,7 +71,7 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
     
     // Auto-save after changing field (without reload to avoid flickering)
     setTimeout(() => {
-      void onSave({ name: sectionName, fields: updatedFields }, false);
+      void onSave({ name: sectionName, fields: updatedFields });
     }, 300);
   };
 
@@ -81,7 +81,7 @@ export function NewSectionForm({ onCancel, onSave, saving, isFirstSection = fals
     
     // Auto-save after reordering fields (without reload to avoid flickering)
     setTimeout(() => {
-      void onSave({ name: sectionName, fields: newOrder }, false);
+      void onSave({ name: sectionName, fields: newOrder });
     }, 300);
   };
 

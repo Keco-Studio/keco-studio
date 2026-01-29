@@ -313,18 +313,9 @@ function PredefinePageContent() {
     }
 
     const trimmedName = newSection.name.trim() || 'Untitled Section';
-    
-    // Check for duplicate section name
-    const isDuplicate = sections.some((s) => 
-      s.name.toLowerCase() === trimmedName.toLowerCase()
-    );
-    
-    if (isDuplicate) {
-      message.error(`Section name "${trimmedName}" already exists. Please choose a different name.`);
-      return;
-    }
 
     // Combine with existing sections (allow undefined dataType)
+    // Note: Section names can be duplicate since section_id is the unique identifier
     const allSections = [...sections, { id: uid(), name: trimmedName, fields: newSection.fields }];
     await saveSchema(allSections);
   };
@@ -346,23 +337,6 @@ function PredefinePageContent() {
       autoSaveTimerRef.current = null;
     }
     
-    // Check for duplicate section names before saving
-    const sectionNames = new Set<string>();
-    const duplicates = new Set<string>();
-    sectionsToSave.forEach((section) => {
-      const trimmedName = section.name.trim().toLowerCase();
-      if (sectionNames.has(trimmedName)) {
-        duplicates.add(section.name.trim());
-      }
-      sectionNames.add(trimmedName);
-    });
-    
-    if (duplicates.size > 0) {
-      const duplicateList = Array.from(duplicates).join(', ');
-      message.error(`Cannot save: Duplicate section names detected: ${duplicateList}. Please rename them.`);
-      return;
-    }
-
     // Check if there are any pending fields and add them to their respective sections
     // Also apply temporary section name changes
     // Use ref to get latest pendingFields value to avoid stale closure issue
@@ -490,13 +464,14 @@ function PredefinePageContent() {
     setSaving(true);
     setErrors([]);
     try {
-      // Delete all field definitions for this section
+      // Delete all field definitions for this section using section_id (not section name)
+      // This ensures only the specific section is deleted, even if there are duplicate names
       // This will cascade delete asset values due to foreign key constraint
       const { error: delError } = await supabase
         .from('library_field_definitions')
         .delete()
         .eq('library_id', libraryId)
-        .eq('section', sectionToDelete.name);
+        .eq('section_id', sectionId);
 
       if (delError) throw delError;
 
@@ -658,16 +633,8 @@ function PredefinePageContent() {
               e.stopPropagation();
               const newName = e.target.value;
               
-              // Check for duplicate section names (excluding current section)
-              const isDuplicate = sections.some((s) => 
-                s.id !== section.id && 
-                s.name.toLowerCase() === newName.trim().toLowerCase()
-              );
-              
-              if (isDuplicate && newName.trim()) {
-                message.warning(`Section name "${newName.trim()}" already exists. Please choose a different name.`);
-              }
-              
+              // Always update the value (even during composition)
+              // Note: Section names can be duplicate since section_id is the unique identifier
               setTempSectionNames((prev) => {
                 const newMap = new Map(prev);
                 newMap.set(section.id, newName);
@@ -811,15 +778,8 @@ function PredefinePageContent() {
                 e.stopPropagation();
                 const newName = e.target.value;
                 
-                // Check for duplicate section names
-                const isDuplicate = sections.some((s) => 
-                  s.name.toLowerCase() === newName.trim().toLowerCase()
-                );
-                
-                if (isDuplicate && newName.trim()) {
-                  message.warning(`Section name "${newName.trim()}" already exists. Please choose a different name.`);
-                }
-                
+                // Always update the value (even during composition)
+                // Note: Section names can be duplicate since section_id is the unique identifier
                 setNewSectionName(newName);
               }}
               onKeyDown={(e) => {

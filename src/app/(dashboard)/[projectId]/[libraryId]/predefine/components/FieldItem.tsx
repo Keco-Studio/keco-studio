@@ -50,6 +50,7 @@ export function FieldItem({
   // Track IME composition state to handle Chinese/Japanese/Korean input properly
   const [isComposing, setIsComposing] = useState(false);
   const [localLabel, setLocalLabel] = useState(field.label);
+  const [isEditing, setIsEditing] = useState(false);
   const [composingOptionIndex, setComposingOptionIndex] = useState<number | null>(null);
   const [localOptions, setLocalOptions] = useState(field.enumOptions ?? []);
   
@@ -78,11 +79,12 @@ export function FieldItem({
   };
 
   // Sync external field.label changes to local state
+  // Only update if user is not actively editing to avoid overwriting their input
   useEffect(() => {
-    if (!isComposing) {
+    if (!isComposing && !isEditing) {
       setLocalLabel(field.label);
     }
-  }, [field.label, isComposing]);
+  }, [field.label, isComposing, isEditing]);
 
   // Sync external field.enumOptions changes to local state
   useEffect(() => {
@@ -99,9 +101,15 @@ export function FieldItem({
   const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setLocalLabel(newValue);
+    setIsEditing(true);
+  };
+  
+  const handleLabelFocus = () => {
+    setIsEditing(true);
   };
   
   const handleLabelBlur = () => {
+    setIsEditing(false);
     // Only update parent on blur (not during typing)
     const { id, ...rest } = field;
     onChangeField(field.id, {
@@ -301,6 +309,7 @@ export function FieldItem({
             placeholder="Type label for property..."
             className={styles.labelInput}
             onChange={handleLabelChange}
+            onFocus={handleLabelFocus}
             onBlur={handleLabelBlur}
             onCompositionStart={handleCompositionStart}
             onCompositionEnd={handleCompositionEnd}
@@ -477,17 +486,15 @@ export function FieldItem({
             )}
           </div>
         )}
-        {!isFirst && (
-          <Button
-            type="text"
-            size="small"
-            icon={<Image src={predefineLabelDelIcon} alt="Delete" width={20} height={20} />}
-            onClick={() => onDelete(field.id)}
-            className={styles.deleteButton}
-            title="Delete property"
-            disabled={disabled}
-          />
-        )}
+        <Button
+          type="text"
+          size="small"
+          icon={<Image src={predefineLabelDelIcon} alt="Delete" width={20} height={20} />}
+          onClick={() => onDelete(field.id)}
+          className={styles.deleteButton}
+          title="Delete property"
+          disabled={disabled}
+        />
       </div>
     </div>
   );

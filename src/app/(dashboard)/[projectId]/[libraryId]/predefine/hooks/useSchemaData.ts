@@ -51,6 +51,7 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
 
       const rows = (data || []) as {
         id: string;
+        section_id: string;
         section: string;
         label: string;
         data_type: FieldType;
@@ -60,27 +61,30 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
         order_index: number;
       }[];
 
-      // Group by section name and track minimum order_index for each section
+      // Group by section_id (stable identifier) and track minimum order_index for each section
       const sectionMap = new Map<string, { section: SectionConfig; minOrderIndex: number }>();
 
       rows.forEach((row) => {
+        const sectionId = row.section_id;
         const sectionName = row.section;
-        if (!sectionMap.has(sectionName)) {
-          sectionMap.set(sectionName, {
+        if (!sectionMap.has(sectionId)) {
+          sectionMap.set(sectionId, {
             section: {
-              id: uid(),
+              id: sectionId, // Use section_id from database as the stable ID
               name: sectionName,
               fields: [],
             },
             minOrderIndex: row.order_index,
           });
         } else {
-          const grouped = sectionMap.get(sectionName)!;
+          const grouped = sectionMap.get(sectionId)!;
+          // Update section name in case it was changed
+          grouped.section.name = sectionName;
           if (row.order_index < grouped.minOrderIndex) {
             grouped.minOrderIndex = row.order_index;
           }
         }
-        const grouped = sectionMap.get(sectionName)!;
+        const grouped = sectionMap.get(sectionId)!;
         
         // Migrate legacy 'media' type to 'image' for backward compatibility
         let dataType = row.data_type;

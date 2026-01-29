@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 interface FieldDefinitionRow {
   id: string;
   library_id: string;
+  section_id: string;
   section: string;
   label: string;
   data_type: string | null; // Allow null for flexible field types
@@ -33,20 +34,23 @@ export async function saveSchemaIncremental(
   const existing = (existingRows || []) as FieldDefinitionRow[];
   const existingMap = new Map<string, FieldDefinitionRow>();
   existing.forEach((row) => {
-    const key = `${row.section}|${row.label}`;
+    // Use section_id + label as key for matching (stable across section name changes)
+    const key = `${row.section_id}|${row.label}`;
     existingMap.set(key, row);
   });
 
   // Build maps for new definitions
-  const newMap = new Map<string, { section: string; label: string; data_type: string | null; enum_options: string[] | null; reference_libraries: string[] | null; required: boolean; order_index: number }>();
+  const newMap = new Map<string, { section_id: string; section: string; label: string; data_type: string | null; enum_options: string[] | null; reference_libraries: string[] | null; required: boolean; order_index: number }>();
   const sectionsToKeep = new Set<string>();
 
   sectionsToSave.forEach((section, sectionIdx) => {
-    sectionsToKeep.add(section.name);
+    sectionsToKeep.add(section.id); // Use section.id instead of section.name
     section.fields.forEach((field, fieldIdx) => {
-      const key = `${section.name}|${field.label}`;
+      // Use section.id + label as key (stable identifier)
+      const key = `${section.id}|${field.label}`;
       newMap.set(key, {
-        section: section.name,
+        section_id: section.id, // Store section ID
+        section: section.name, // Store section name for display
         label: field.label,
         data_type: field.dataType ?? null, // Convert undefined to null for database
         enum_options: field.dataType === 'enum' ? field.enumOptions ?? [] : null,
@@ -64,12 +68,13 @@ export async function saveSchemaIncremental(
 
   // Check existing fields
   existing.forEach((row) => {
-    const key = `${row.section}|${row.label}`;
+    const key = `${row.section_id}|${row.label}`;
     const newDef = newMap.get(key);
 
     if (newDef) {
-      // Field exists, check if needs update
+      // Field exists, check if needs update (including section name changes)
       if (
+        row.section !== newDef.section ||
         row.data_type !== newDef.data_type ||
         JSON.stringify(row.enum_options) !== JSON.stringify(newDef.enum_options) ||
         JSON.stringify(row.reference_libraries) !== JSON.stringify(newDef.reference_libraries) ||
@@ -78,6 +83,7 @@ export async function saveSchemaIncremental(
       ) {
         toUpdate.push({
           ...row,
+          section: newDef.section, // Update section name if changed
           data_type: newDef.data_type,
           enum_options: newDef.enum_options,
           reference_libraries: newDef.reference_libraries,
@@ -97,6 +103,7 @@ export async function saveSchemaIncremental(
   newMap.forEach((def) => {
     toInsert.push({
       library_id: libraryId,
+      section_id: def.section_id, // Include section_id
       section: def.section,
       label: def.label,
       data_type: def.data_type,
@@ -121,6 +128,7 @@ export async function saveSchemaIncremental(
     const { error: updateError } = await supabase
       .from('library_field_definitions')
       .update({
+        section: row.section, // Update section name if changed
         data_type: row.data_type,
         enum_options: row.enum_options,
         reference_libraries: row.reference_libraries,

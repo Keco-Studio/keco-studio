@@ -243,12 +243,13 @@ happy_path_breed_field_def as (
   -- Section: "Basic Information"
   -- Fields: "name" (string, required) and "Origin" (string, optional)
   -- Note: The "name" field is optional in schema design, but included here for demonstration
-  insert into public.library_field_definitions (library_id, label, data_type, section, order_index, required)
+  insert into public.library_field_definitions (library_id, section_id, section, label, data_type, order_index, required)
   select 
     l.id,
+    md5(l.id::text || '::' || 'Basic Information'),  -- Generate stable section_id
+    'Basic Information',
     unnest(array['name', 'Origin']),
     unnest(array['string', 'string']),
-    'Basic Information',
     unnest(array[0, 1]),
     unnest(array[true, false])
   from happy_path_breed_library l
@@ -331,12 +332,13 @@ fileupload_field_definitions as (
   -- Add field definitions with image and file types
   -- Section: "Media"
   -- Fields: name (auto, string), thumbnail (image), document (file), description (string)
-  insert into public.library_field_definitions (library_id, label, data_type, section, order_index, required)
+  insert into public.library_field_definitions (library_id, section_id, section, label, data_type, order_index, required)
   select 
     l.id,
+    md5(l.id::text || '::' || 'Media'),  -- Generate stable section_id
+    'Media',
     unnest(array['name', 'thumbnail', 'document', 'description']),
     unnest(array['string', 'image', 'file', 'string']),
-    'Media',
     unnest(array[0, 1, 2, 3]),
     unnest(array[true, false, false, false])
   from fileupload_library l
