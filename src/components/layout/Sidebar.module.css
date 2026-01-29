@@ -466,7 +466,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 15px;
+  width: 18px;
   flex-shrink: 0;
   cursor: pointer;
   line-height: 1;
@@ -494,6 +494,39 @@
   justify-content: center;
   line-height: 1;
   font-size: 12px;
+}
+
+/* Folder switcher: two icons; show expand icon when whole row (incl. switcher) is hovered */
+.folderSwitcherIcons {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.folderSwitcherBase,
+.folderSwitcherHover {
+  display: block;
+  transition: opacity 0.15s ease;
+}
+
+.folderSwitcherHover {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tree :global(.ant-tree-treenode:hover) .folderSwitcherIcons .folderSwitcherBase {
+  opacity: 0;
+}
+
+.tree :global(.ant-tree-treenode:hover) .folderSwitcherIcons .folderSwitcherHover {
+  opacity: 1;
 }
 
 .item {
@@ -739,6 +772,34 @@
   min-width: max-content !important;
   width: auto !important;
   display: inline-block !important; /* Ensure text renders as a single unit */
+}
+
+/* Folder row: show add-library icon when whole row is hovered or when folder is selected */
+.tree :global(.ant-tree-treenode:hover) [data-folder-row] .folderAddLibButton,
+.tree :global(.ant-tree-treenode-selected) [data-folder-row] .folderAddLibButton,
+[data-folder-row]:focus-within .folderAddLibButton {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.folderAddLibButton {
+  background: transparent;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.folderAddLibButton:hover {
+  background-color: rgba(100, 116, 139, 0.1);
 }
 
 /* Predefine page special view */

@@ -6,9 +6,11 @@ import loginProductIcon from "@/app/assets/images/loginProductIcon.svg";
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
 import PredefineNewIcon from "@/app/assets/images/PredefineNewIcon.svg";
 import PredefineNewClick from "@/app/assets/images/PredefineNewClick.svg";
+import FolderOpenIcon from "@/app/assets/images/FolderOpenIcon.svg";
+import FolderCloseIcon from "@/app/assets/images/FolderCloseIcon.svg";
 import folderExpandIcon from "@/app/assets/images/folderExpandIcon.svg";
 import folderCollapseIcon from "@/app/assets/images/folderCollapseIcon.svg";
-import folderIcon from "@/app/assets/images/folderIcon.svg";
+import FolderAddLibIcon from "@/app/assets/images/FolderAddLibIcon.svg";
 import plusHorizontal from "@/app/assets/images/plusHorizontal.svg";
 import plusVertical from "@/app/assets/images/plusVertical.svg";
 import createProjectIcon from "@/app/assets/images/createProjectIcon.svg";
@@ -831,49 +833,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       if (process.env.NODE_ENV === 'development') {
       }
       
-      // Create button node for "Create new library" - only for admin
-      const createButtonNode: DataNode | null = userRole === 'admin' ? {
-        title: (
-          <button
-            className={styles.createButton}
-            data-testid="sidebar-create-library-button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!currentIds.projectId) {
-                setError('Please select a project first');
-                return;
-              }
-              setSelectedFolderId(folder.id);
-              setShowLibraryModal(true);
-            }}
-          >
-            <span className={styles.createButtonText}>
-              <span className={styles.plusIcon}>
-                <Image
-                  src={plusHorizontal}
-                  alt=""
-                  width={17}
-                  height={2}
-                  className={styles.plusHorizontal}
-                />
-                <Image
-                  src={plusVertical}
-                  alt=""
-                  width={2}
-                  height={17}
-                  className={styles.plusVertical}
-                />
-              </span>
-             Create new library
-            </span>
-          </button>
-        ),
-        key: `folder-create-${folder.id}`,
-        isLeaf: true,
-      } : null;
-      
       const children: DataNode[] = [
-        ...(createButtonNode ? [createButtonNode] : []), // Only add if admin
         ...folderLibraries.map((lib) => {
           const libProjectId = lib.project_id;
           // Show selected state when on library page OR when viewing an asset in this library
@@ -1011,20 +971,33 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       return {
         title: (
           <div 
-            className={styles.itemRow}
+            className={`${styles.itemRow} ${styles.folderRow}`}
+            data-folder-row
             onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
           >
             <div className={styles.itemMain}>
-              <Image
-                src={folderIcon}
-                alt="Folder"
-                width={24}
-                height={18}
-                className={styles.itemIcon}
-              />
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={folder.name}>{truncateText(folder.name, 20)}</span>
             </div>
             <div className={styles.itemActions}>
+              {userRole === 'admin' && (
+                <button
+                  type="button"
+                  className={styles.folderAddLibButton}
+                  aria-label="Create new library"
+                  title="Create new library"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!currentIds.projectId) {
+                      setError('Please select a project first');
+                      return;
+                    }
+                    setSelectedFolderId(folder.id);
+                    setShowLibraryModal(true);
+                  }}
+                >
+                  <Image src={FolderAddLibIcon} alt="" width={24} height={24} />
+                </button>
+              )}
             </div>
           </div>
         ),
@@ -1208,12 +1181,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const onSelect = async (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
-    if (key.startsWith('folder-create-')) {
-      // Handle create button click - button's onClick will handle this
-      // This is just a fallback in case onSelect is called
-      const folderId = key.replace('folder-create-', '');
-      setSelectedFolderId(folderId);
-    } else if (key.startsWith('add-asset-')) {
+    if (key.startsWith('add-asset-')) {
       // Handle create asset button click - button's onClick will handle this
       // This is just a fallback in case onSelect is called
       const libraryId = key.replace('add-asset-', '');
@@ -1283,17 +1251,58 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Folders don't need to fetch anything on expand/collapse
   };
 
-  // Custom expand/collapse icon
-  const switcherIcon = ({ expanded }: { expanded: boolean }) => {
-    return (
-      <Image
-        src={expanded ? folderExpandIcon : folderCollapseIcon}
-        alt={expanded ? "Expand" : "Collapse"}
-        width={expanded ? 14 : 8}
-        height={expanded ? 8 : 14}
-        style={{ display: 'block' }}
-      />
-    );
+  const switcherIcon = (node: any) => {
+    const { expanded, isLeaf, data } = node || {};
+    const key = (data?.key ?? node?.key) as string | undefined;
+
+    if (isLeaf || !key) return null;
+
+    if (key.startsWith('folder-')) {
+      if (!expanded) {
+        return (
+          <Image
+            src={FolderCloseIcon}
+            alt="Closed folder"
+            width={24}
+            height={24}
+            style={{ display: 'block' }}
+          />
+        );
+      }
+      // Expanded: use two icons + CSS so treenode:hover (whole row incl. switcher) shows expand icon
+      return (
+        <div className={styles.folderSwitcherIcons}>
+          <Image
+            src={FolderOpenIcon}
+            alt="Open folder"
+            width={24}
+            height={24}
+            className={styles.folderSwitcherBase}
+          />
+          <Image
+            src={folderExpandIcon}
+            alt="Expand"
+            width={14}
+            height={8}
+            className={styles.folderSwitcherHover}
+          />
+        </div>
+      );
+    }
+
+    if (key.startsWith('library-')) {
+      return (
+        <Image
+          src={expanded ? folderExpandIcon : folderCollapseIcon}
+          alt={expanded ? "Expand library" : "Collapse library"}
+          width={expanded ? 14 : 8}
+          height={expanded ? 8 : 14}
+          style={{ display: 'block' }}
+        />
+      );
+    }
+
+    return null; // no switcher for other node types
   };
 
   // Context menu handlers
@@ -1872,7 +1881,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       libraries.length === 0 && (
                         <div className={styles.sidebarEmptyState}>
                           <Image
-                            src={folderIcon}
+                            src={FolderCloseIcon}
                             alt="No folders or libraries"
                             width={22}
                             height={18}

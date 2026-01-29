@@ -146,39 +146,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const { data: { session }, error } = await supabase.auth.getSession();
         
         if (mounted) {
-          // Invalid/expired refresh token: clear invalid session and treat as logged out
-          const isRefreshTokenError =
-            error &&
-            (error.message?.includes('Refresh Token') ||
-              error.message?.includes('refresh_token') ||
-              (error as { name?: string }).name === 'AuthApiError');
-          if (isRefreshTokenError) {
-            await supabase.auth.signOut({ scope: 'local' });
-            setIsAuthenticated(false);
-            setUserProfile(null);
-            currentUserId.current = null;
-          } else if (session?.user && !error) {
-            // Session exists, set authenticated state immediately
+        
+          if (session?.user && !error) {
             setIsAuthenticated(true);
             currentUserId.current = session.user.id;
-            await fetchUserProfile(session.user.id);
+            // delete await
+            void fetchUserProfile(session.user.id);
           } else {
-            // No session, ensure we're in unauthenticated state
             setIsAuthenticated(false);
             setUserProfile(null);
             currentUserId.current = null;
           }
         }
       } catch (err) {
-        // Invalid refresh token etc.: clear and treat as logged out, avoid noisy console
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('Refresh Token') || msg.includes('refresh_token')) {
-          try {
-            await supabase.auth.signOut({ scope: 'local' });
-          } catch (_) {}
-        } else {
-          console.error('Failed to initialize auth session:', err);
-        }
+        console.error('Failed to initialize auth session:', err);
         if (mounted) {
           setIsAuthenticated(false);
           setUserProfile(null);
@@ -221,7 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             currentUserId.current = null;
           }
           currentUserId.current = newUserId;
-          await fetchUserProfile(newUserId);
+          void fetchUserProfile(newUserId);
         } else {
           // User signed out or no session
           // Clear caches if there was a previous user
@@ -234,14 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           currentUserId.current = null;
         }
       } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes('Refresh Token') || msg.includes('refresh_token')) {
-          try {
-            await supabase.auth.signOut({ scope: 'local' });
-          } catch (_) {}
-        } else {
-          console.error('Auth state change failed:', err);
-        }
+        console.error('Auth state change failed:', err);
         setIsAuthenticated(false);
         setUserProfile(null);
         currentUserId.current = null;
