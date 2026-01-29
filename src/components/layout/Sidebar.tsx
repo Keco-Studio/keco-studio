@@ -1046,6 +1046,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         title: (
           <div 
             className={`${styles.itemRow} ${styles.folderRow}`}
+            data-folder-row
             onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
           >
             <div className={styles.itemMain}>
@@ -1324,29 +1325,46 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Folders don't need to fetch anything on expand/collapse
   };
 
-  // Custom expand/collapse icon
-  // Folder 使用自定义 FolderOpen/Close 图标，Library 使用原来的箭头图标，其它节点不显示
   const switcherIcon = (node: any) => {
     const { expanded, isLeaf, data } = node || {};
     const key = (data?.key ?? node?.key) as string | undefined;
 
-    // 叶子节点（asset / create 按钮）不展示 switcher
     if (isLeaf || !key) return null;
 
     if (key.startsWith('folder-')) {
+      if (!expanded) {
+        return (
+          <Image
+            src={FolderCloseIcon}
+            alt="Closed folder"
+            width={24}
+            height={24}
+            style={{ display: 'block' }}
+          />
+        );
+      }
+      // Expanded: use two icons + CSS so treenode:hover (whole row incl. switcher) shows expand icon
       return (
-        <Image
-          src={expanded ? FolderOpenIcon : FolderCloseIcon}
-          alt={expanded ? "Open folder" : "Closed folder"}
-          width={24}
-          height={24}
-          style={{ display: 'block' }}
-        />
+        <div className={styles.folderSwitcherIcons}>
+          <Image
+            src={FolderOpenIcon}
+            alt="Open folder"
+            width={24}
+            height={24}
+            className={styles.folderSwitcherBase}
+          />
+          <Image
+            src={folderExpandIcon}
+            alt="Expand"
+            width={14}
+            height={8}
+            className={styles.folderSwitcherHover}
+          />
+        </div>
       );
     }
 
     if (key.startsWith('library-')) {
-      // Library 使用原来的收起/展开箭头图标
       return (
         <Image
           src={expanded ? folderExpandIcon : folderCollapseIcon}
@@ -1358,7 +1376,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       );
     }
 
-    return null; // 其它类型节点不显示 switcher
+    return null; // no switcher for other node types
   };
 
   // Context menu handlers
