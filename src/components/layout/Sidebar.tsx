@@ -440,6 +440,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           filter: `project_id=eq.${currentIds.projectId}`,
         },
         async (payload) => {
+          console.log('[Sidebar] 🔥 LIBRARIES CHANGE DETECTED:', {
+            eventType: payload.eventType,
+            table: payload.table,
+            schema: payload.schema,
+            new: payload.new,
+            old: payload.old,
+            commit_timestamp: payload.commit_timestamp,
+          });
+          
           // CRITICAL: Must invalidate globalRequestCache first!
           // Otherwise listLibraries() will return cached data even when React Query refetches
           const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
@@ -450,29 +459,35 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             globalRequestCache.invalidate(`library:info:${payload.new.id}`);
             globalRequestCache.invalidate(`library:${payload.new.id}`);
           }
+          console.log('[Sidebar] ✅ globalRequestCache invalidated for libraries');
           
           // Step 1: Invalidate React Query cache to mark data as stale
           await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+          console.log('[Sidebar] ✅ React Query cache invalidated');
           
           // Step 2: Force refetch to get fresh data from database
           await queryClient.refetchQueries({ 
             queryKey: ['folders-libraries', currentIds.projectId],
             type: 'active', // Only refetch active queries
           });
+          console.log('[Sidebar] ✅ Force refetch completed for folders-libraries');
           
           // Step 3: Dispatch events for other components to react
           if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
             window.dispatchEvent(new CustomEvent('libraryUpdated', {
               detail: { libraryId: payload.new.id, projectId: currentIds.projectId }
             }));
+            console.log('[Sidebar] ✅ libraryUpdated event dispatched');
           } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
             window.dispatchEvent(new CustomEvent('libraryDeleted', {
               detail: { libraryId: payload.old.id, projectId: currentIds.projectId }
             }));
+            console.log('[Sidebar] ✅ libraryDeleted event dispatched');
           } else if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
             window.dispatchEvent(new CustomEvent('libraryCreated', {
               detail: { libraryId: payload.new.id, projectId: currentIds.projectId }
             }));
+            console.log('[Sidebar] ✅ libraryCreated event dispatched');
           }
         }
       )
@@ -510,6 +525,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           filter: `project_id=eq.${currentIds.projectId}`,
         },
         async (payload) => {
+          console.log('[Sidebar] 🔥 FOLDERS CHANGE DETECTED:', {
+            eventType: payload.eventType,
+            table: payload.table,
+            schema: payload.schema,
+            new: payload.new,
+            old: payload.old,
+            commit_timestamp: payload.commit_timestamp,
+          });
+          
           // CRITICAL: Must invalidate globalRequestCache first!
           // Otherwise listFolders() will return cached data even when React Query refetches
           const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
@@ -519,29 +543,35 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           if (payload.new && 'id' in payload.new) {
             globalRequestCache.invalidate(`folder:${payload.new.id}`);
           }
+          console.log('[Sidebar] ✅ globalRequestCache invalidated for folders');
           
           // Step 1: Invalidate React Query cache to mark data as stale
           await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+          console.log('[Sidebar] ✅ React Query cache invalidated');
           
           // Step 2: Force refetch to get fresh data from database
           await queryClient.refetchQueries({ 
             queryKey: ['folders-libraries', currentIds.projectId],
             type: 'active', // Only refetch active queries
           });
+          console.log('[Sidebar] ✅ Force refetch completed for folders-libraries');
           
           // Step 3: Dispatch events for other components to react
           if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
             window.dispatchEvent(new CustomEvent('folderUpdated', {
               detail: { folderId: payload.new.id, projectId: currentIds.projectId }
             }));
+            console.log('[Sidebar] ✅ folderUpdated event dispatched');
           } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
             window.dispatchEvent(new CustomEvent('folderDeleted', {
               detail: { folderId: payload.old.id, projectId: currentIds.projectId }
             }));
+            console.log('[Sidebar] ✅ folderDeleted event dispatched');
           } else if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
             window.dispatchEvent(new CustomEvent('folderCreated', {
               detail: { folderId: payload.new.id, projectId: currentIds.projectId }
             }));
+            console.log('[Sidebar] ✅ folderCreated event dispatched');
           }
         }
       )
