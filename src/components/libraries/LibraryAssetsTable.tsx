@@ -63,7 +63,9 @@ export type LibraryAssetsTableProps = {
   rows: AssetRow[];
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
+  onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
+  onDeleteAssets?: (assetIds: string[]) => Promise<void>;
   // Real-time collaboration props
   currentUser?: {
     id: string;
@@ -94,7 +96,9 @@ export function LibraryAssetsTable({
   rows,
   onSaveAsset,
   onUpdateAsset,
+  onUpdateAssets,
   onDeleteAsset,
+  onDeleteAssets,
   currentUser = null,
   enableRealtime = false,
   presenceTracking,
@@ -754,7 +758,9 @@ export function LibraryAssetsTable({
   } = useRowOperations({
     onSaveAsset,
     onUpdateAsset,
+    onUpdateAssets,
     onDeleteAsset,
+    onDeleteAssets,
     library,
     supabase,
     orderedProperties,
@@ -910,6 +916,7 @@ export function LibraryAssetsTable({
     onCut: handleCut,
     onCopy: handleCopy,
     onPaste: handlePaste,
+    onClearContents: handleClearContents,
   });
 
   const closeRowContextMenu = useCallback(() => {

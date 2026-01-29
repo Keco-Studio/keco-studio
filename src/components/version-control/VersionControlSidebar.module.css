@@ -2,8 +2,10 @@
 /* Based on Figma design */
 
 .sidebar {
-  width: 400px;
-  min-width: 400px;
+  /* Narrower + responsive to avoid squeezing the table on smaller screens */
+  width: clamp(280px, 24vw, 340px);
+  min-width: 280px;
+  max-width: 340px;
   height: 100%;
   max-height: calc(100vh - 200px); /* Adjust based on header height */
   background: rgba(255, 255, 255, 0.15);
@@ -13,6 +15,14 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: 280px;
+    min-width: 280px;
+    max-width: 280px;
+  }
 }
 
 .header {

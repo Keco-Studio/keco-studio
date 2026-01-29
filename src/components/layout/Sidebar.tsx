@@ -4,6 +4,8 @@ import projectIcon from "@/app/assets/images/projectIcon.svg";
 import libraryBookIcon from "@/app/assets/images/LibraryBookIcon.svg";
 import loginProductIcon from "@/app/assets/images/loginProductIcon.svg";
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
+import PredefineNewIcon from "@/app/assets/images/PredefineNewIcon.svg";
+import PredefineNewClick from "@/app/assets/images/PredefineNewClick.svg";
 import folderExpandIcon from "@/app/assets/images/folderExpandIcon.svg";
 import folderCollapseIcon from "@/app/assets/images/folderCollapseIcon.svg";
 import folderIcon from "@/app/assets/images/folderIcon.svg";
@@ -875,8 +877,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         ...folderLibraries.map((lib) => {
           const libProjectId = lib.project_id;
           // Show selected state when on library page OR when viewing an asset in this library
-          const isCurrentLibrary = currentIds.libraryId === lib.id && (currentIds.isLibraryPage || !!currentIds.assetId);
-          // Show icons only when viewing an asset (not on library page)
+          const isCurrentLibrary = currentIds.libraryId === lib.id && (currentIds.isLibraryPage || !!currentIds.assetId || currentIds.isPredefinePage);
+          // Show icons only when viewing an asset (not on library page or predefine)
           const showAssetPageIcons = currentIds.libraryId === lib.id && !!currentIds.assetId;
           return {
             title: (
@@ -915,7 +917,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
                 </div>
                 <div className={styles.itemActions}>
-                  {userRole === 'admin' && (
+              {userRole === 'admin' && (
                     <Tooltip
                       title="Predefine asset here"
                       placement="top"
@@ -927,7 +929,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                         onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
                       >
                         <Image
-                          src={showAssetPageIcons ? sidebarFolderIcon4 : predefineSettingIcon}
+                      src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
                           alt="Predefine"
                           width={22}
                           height={22}
@@ -1044,8 +1046,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     rootLibraries.forEach((lib) => {
       const libProjectId = lib.project_id;
       // Show selected state when on library page OR when viewing an asset in this library
-      const isCurrentLibrary = currentIds.libraryId === lib.id && (currentIds.isLibraryPage || !!currentIds.assetId);
-      // Show icons only when viewing an asset (not on library page)
+      const isCurrentLibrary = currentIds.libraryId === lib.id && (currentIds.isLibraryPage || !!currentIds.assetId || currentIds.isPredefinePage);
+      // Show icons only when viewing an asset (not on library page or predefine)
       const showAssetPageIcons = currentIds.libraryId === lib.id && !!currentIds.assetId;
       result.push({
         title: (
@@ -1096,7 +1098,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
                   >
                     <Image
-                      src={showAssetPageIcons ? sidebarFolderIcon4 : predefineSettingIcon}
+                      src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
                       alt="Predefine"
                       width={22}
                       height={22}
@@ -1175,7 +1177,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     });
     
     return result;
-  }, [folders, libraries, assets, currentIds.projectId, currentIds.libraryId, currentIds.isLibraryPage, currentIds.assetId, handleLibraryPredefineClick, router, userRole]);
+  }, [folders, libraries, assets, currentIds.projectId, currentIds.libraryId, currentIds.isLibraryPage, currentIds.assetId, currentIds.isPredefinePage, handleLibraryPredefineClick, router, userRole]);
 
   const selectedKey = useMemo(() => {
     const keys: string[] = [];
@@ -1195,11 +1197,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       } else if (currentIds.isLibraryPage) {
         // Library: /[projectId]/[libraryId]
         keys.push(`library-${currentIds.libraryId}`);
+      } else if (currentIds.isPredefinePage) {
+        // Predefine: /[projectId]/[libraryId]/predefine — keep tree, highlight library
+        keys.push(`library-${currentIds.libraryId}`);
       }
     }
     
     return keys;
-  }, [pathname, currentIds.folderId, currentIds.libraryId, currentIds.assetId, currentIds.isLibraryPage]);
+  }, [pathname, currentIds.folderId, currentIds.libraryId, currentIds.assetId, currentIds.isLibraryPage, currentIds.isPredefinePage]);
 
   const onSelect = async (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
@@ -1618,7 +1623,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       </div>
 
       <div className={styles.content}>
-        {!currentIds.isPredefinePage && !currentIds.assetId && (
+        {!currentIds.assetId && (
           <>
             <div className={styles.sectionTitle}>
               <span>Projects</span>
@@ -1704,7 +1709,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           projects.length > 0 &&
           projects.some((p) => p.id === currentIds.projectId) && (
             <>
-              {!currentIds.isPredefinePage && !currentIds.assetId && (
+              {!currentIds.assetId && (
                 <div className={styles.sectionTitle}>
                   <span>Libraries</span>
                   {userRole === 'admin' && (
@@ -1725,46 +1730,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 </div>
               )}
               <div className={styles.sectionList}>
-                {currentIds.isPredefinePage && currentIds.libraryId ? (
-                  // Predefine page: Show special view with close button
-                  (() => {
-                    const currentLibrary = libraries.find(lib => lib.id === currentIds.libraryId);
-                    const libraryName = currentLibrary?.name || 'Library';
-                    return (
-                      <div className={styles.predefineItem}>
-                        <button
-                          className={`${styles.iconButton} ${styles.predefineCloseButton}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (currentIds.projectId && currentIds.libraryId) {
-                              router.push(`/${currentIds.projectId}/${currentIds.libraryId}`);
-                            }
-                          }}
-                          title="Back to library"
-                        >
-                          <Image
-                            src={sidebarFolderIcon3}
-                            alt="Close"
-                            width={24}
-                            height={24}
-                          />
-                        </button>
-                        <div className={styles.predefineItemMain}>
-                          <Image
-                            src={sidebarFolderIcon}
-                            alt="Library"
-                            width={24}
-                            height={24}
-                          />
-                          <span className={styles.itemText} style={{ fontWeight: 500 }} title={libraryName}>
-                            Predefine {libraryName} Library
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })()
-                ) : currentIds.assetId && currentIds.libraryId ? (
-                  // Asset page: Show library with assets list
+                {currentIds.assetId && currentIds.libraryId ? (
+                  // Asset page only: Show library with assets list
                   (() => {
                     const currentLibrary = libraries.find(lib => lib.id === currentIds.libraryId);
                     const libraryName = currentLibrary?.name || 'Library';

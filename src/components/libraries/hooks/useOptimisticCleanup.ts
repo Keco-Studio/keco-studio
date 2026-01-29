@@ -156,21 +156,8 @@ export function useOptimisticCleanup({
       });
     }
 
-    setOptimisticEditUpdates((prev) => {
-      if (prev.size === 0) return prev;
-
-      const newMap = new Map(prev);
-      let hasChanges = false;
-
-      for (const [assetId, optimisticUpdate] of newMap.entries()) {
-        const row = rows.find((r) => r.id === assetId);
-        if (row && row.name !== optimisticUpdate.name) {
-          newMap.delete(assetId);
-          hasChanges = true;
-        }
-      }
-
-      return hasChanges ? newMap : prev;
-    });
+    // Removed: "if row.name !== optimisticUpdate.name then delete optimistic"
+    // That caused 清空 name 列后 refetch 的 row.name='' 与 optimistic.name 旧值不等 → 整行乐观被删 → 其他列回退到 base（其他列恢复）.
+    // Cleanup now only happens in the first pass when optimistic fully matches row (allMatch).
   }, [rows, rowsSignature, optimisticNewAssets.size, setOptimisticEditUpdates, setOptimisticNewAssets]);
 }

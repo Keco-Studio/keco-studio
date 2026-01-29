@@ -695,8 +695,31 @@ export function useClipboardOperations({
     
     const allRowsForSelection = getAllRowsForCellSelection();
     
-    // Find the first selected cell as the paste starting point
-    const firstSelectedCell = Array.from(cellsToUse)[0] as CellKey;
+    // Find the TOP-LEFT selected cell as the paste starting point.
+    // IMPORTANT: Set iteration order is not stable, and using the "first" element can make
+    // paste appear to start from a lower row/col, which looks like "第一行最后才被 paste 上".
+    let firstSelectedCell: CellKey | null = null;
+    let bestRowIndex = Number.POSITIVE_INFINITY;
+    let bestPropertyIndex = Number.POSITIVE_INFINITY;
+
+    cellsToUse.forEach((cellKey) => {
+      const { rowId, propertyKey, property } = parseCellKey(cellKey);
+      if (!rowId || !propertyKey || !property) return;
+      const rowIndex = allRowsForSelection.findIndex((r) => r.id === rowId);
+      if (rowIndex < 0) return;
+      const propertyIndex = orderedProperties.findIndex((p) => p.key === propertyKey);
+      if (propertyIndex < 0) return;
+
+      if (
+        rowIndex < bestRowIndex ||
+        (rowIndex === bestRowIndex && propertyIndex < bestPropertyIndex)
+      ) {
+        bestRowIndex = rowIndex;
+        bestPropertyIndex = propertyIndex;
+        firstSelectedCell = cellKey as CellKey;
+      }
+    });
+
     if (!firstSelectedCell) {
       return;
     }
@@ -944,8 +967,10 @@ export function useClipboardOperations({
           }
         }
         
-        // Update Yjs in reverse order (from back to front, avoid index change impact)
-        rowsToUpdate.sort((a, b) => b.index - a.index);
+        // Update Yjs in ASC order so the top row appears first.
+        // Deleting+inserting at the same index keeps array length stable, so ascending order is safe
+        // and avoids the UX where the "first row" seems to paste last.
+        rowsToUpdate.sort((a, b) => a.index - b.index);
         rowsToUpdate.forEach(({ index, row }) => {
           yRows.delete(index, 1);
           yRows.insert(index, [row]);
@@ -978,39 +1003,38 @@ export function useClipboardOperations({
     if (rowsToCreate.length > 0 && onSaveAsset && library) {
       setIsSaving(true);
       try {
-        const createdTempIds: string[] = [];
+        // Create optimistic rows in one shot (stable order), and persist in parallel (much faster).
+        const now = Date.now();
+        const optimisticAssets: AssetRow[] = [];
+        const savePromises: Array<Promise<void>> = [];
+
         for (let i = 0; i < rowsToCreate.length; i++) {
           const rowData = rowsToCreate[i];
           const assetName = rowData.name || '';
-          const tempId = `temp-paste-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          createdTempIds.push(tempId);
+          const tempId = `temp-paste-${now}-${i}-${Math.random().toString(36).substr(2, 9)}`;
           const optimisticAsset: AssetRow = {
             id: tempId,
             libraryId: library.id,
             name: assetName,
             propertyValues: { ...rowData.propertyValues },
           };
-          yRows.insert(yRows.length, [optimisticAsset]);
-          setOptimisticNewAssets(prev => {
-            const newMap = new Map(prev);
-            newMap.set(tempId, optimisticAsset);
-            return newMap;
-          });
-          await onSaveAsset(assetName, rowData.propertyValues);
+          optimisticAssets.push(optimisticAsset);
+          savePromises.push(onSaveAsset(assetName, rowData.propertyValues));
         }
-        await new Promise(resolve => setTimeout(resolve, 500));
-        setTimeout(() => {
-          createdTempIds.forEach(tempId => {
-            setOptimisticNewAssets(prev => {
-              if (prev.has(tempId)) {
-                const newMap = new Map(prev);
-                newMap.delete(tempId);
-                return newMap;
-              }
-              return prev;
-            });
-          });
-        }, 2000);
+
+        // Insert all optimistic assets at once to preserve visual order.
+        yRows.insert(yRows.length, optimisticAssets);
+
+        // Add optimistic assets with a single state update.
+        setOptimisticNewAssets((prev) => {
+          const next = new Map(prev);
+          optimisticAssets.forEach((a) => next.set(a.id, a));
+          return next;
+        });
+
+        // Persist in parallel. Cleanup of optimisticNewAssets is handled by useOptimisticCleanup
+        // when the real rows arrive (avoids flicker / timing issues).
+        await Promise.all(savePromises);
       } catch (error) {
         console.error('Failed to create rows for paste:', error);
         setIsSaving(false);

@@ -106,8 +106,9 @@ export function useTableDataManager({
         const assetRow = row as AssetRow;
         const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
         
-        // Apply optimistic updates (if they exist and name matches)
-        if (optimisticUpdate && optimisticUpdate.name === assetRow.name) {
+        // Always overlay optimistic when present. Requiring name match caused
+        // "清空某列导致其他列恢复" when clearing name column (base refetched as '' but optimistic.name stayed old).
+        if (optimisticUpdate) {
           allRowsMap.set(assetRow.id, {
             ...assetRow,
             name: optimisticUpdate.name,

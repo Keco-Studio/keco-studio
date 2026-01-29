@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { Tooltip, message } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -23,6 +23,7 @@ import {
   createAsset,
   updateAsset,
   deleteAsset,
+  deleteAssets,
 } from '@/lib/services/libraryAssetsService';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
@@ -66,6 +67,7 @@ export default function LibraryPage() {
   const [restoreToastMessage, setRestoreToastMessage] = useState<string | null>(null);
   const [versions, setVersions] = useState<LibraryVersion[]>([]);
   const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
+  const hasInitializedBlankRowsRef = useRef(false);
 
   // Use React Query for data fetching
   const { data: project, isLoading: projectLoading, error: projectError } = useQuery({
@@ -114,6 +116,58 @@ export default function LibraryPage() {
   // Get presence data from LibraryDataContext (single source of truth)
   const { presenceUsers } = useLibraryData();
   
+  // 当库已经有 schema 但还没有任何资产时，自动创建 3 行空白数据
+  useEffect(() => {
+    // 只处理当前版本视图，并且避免重复初始化
+    if (!libraryId) return;
+    if (selectedVersionId && selectedVersionId !== '__current__') return;
+    if (assetsLoading) return;
+    if (assetRows.length > 0) return;
+    if (hasInitializedBlankRowsRef.current) return;
+    // 没有字段定义时不需要创建空行
+    if (!librarySchema || !tableProperties || tableProperties.length === 0) return;
+    // 仅管理员 / 编辑者可以创建
+    if (userRole === 'viewer') return;
+
+    const initBlankRows = async () => {
+      try {
+        hasInitializedBlankRowsRef.current = true;
+        const now = Date.now();
+
+        // 创建三条空资产记录，name 为空字符串，propertyValues 为空对象
+        for (let i = 0; i < 3; i++) {
+          await createAsset(
+            supabase,
+            libraryId,
+            '',
+            {},
+            { createdAt: new Date(now + i) }
+          );
+        }
+
+        // 触发现有资产监听逻辑进行缓存失效和刷新
+        window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
+      } catch (e) {
+        // 初始化失败时允许之后再次尝试
+        console.error('Failed to initialize blank asset rows', e);
+        hasInitializedBlankRowsRef.current = false;
+      }
+    };
+
+    void initBlankRows();
+  }, [
+    assetRows.length,
+    assetsLoading,
+    createAsset,
+    libraryId,
+    librarySchema,
+    selectedVersionId,
+    supabase,
+    tableProperties,
+    userRole,
+  ]);
+
+  // Presence tracking for real-time collaboration
   const userAvatarColor = useMemo(() => {
     return userProfile?.id ? getUserAvatarColor(userProfile.id) : '#999999';
   }, [userProfile?.id]);
@@ -448,17 +502,29 @@ export default function LibraryPage() {
     window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
   };
 
-  // Callback for updating asset from table
+  // Single update (each completion dispatches → N invalidates)
   const handleUpdateAssetFromTable = async (assetId: string, assetName: string, propertyValues: Record<string, any>) => {
     await updateAsset(supabase, assetId, assetName, propertyValues);
-    // Notify components to refresh - event handler will invalidate cache
     window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { assetId, libraryId } }));
   };
 
-  // Callback for deleting asset from table
+  // Batch update: all updates then one dispatch → one invalidate, avoids 先消失后恢复再消失 + 其他列恢复
+  const handleUpdateAssetsFromTable = async (
+    updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
+  ) => {
+    await Promise.all(updates.map((u) => updateAsset(supabase, u.assetId, u.assetName, u.propertyValues)));
+    window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { libraryId } }));
+  };
+
+  // Single delete
   const handleDeleteAssetFromTable = async (assetId: string) => {
     await deleteAsset(supabase, assetId);
-    // Notify components to refresh - event handler will invalidate cache
+    window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
+  };
+
+  // Batch delete: Supabase .delete().in(), one round-trip
+  const handleDeleteAssetsFromTable = async (assetIds: string[]) => {
+    await deleteAssets(supabase, assetIds);
     window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
   };
 
