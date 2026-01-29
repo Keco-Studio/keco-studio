@@ -741,6 +741,33 @@
   display: inline-block !important; /* Ensure text renders as a single unit */
 }
 
+/* Folder row: show add-library icon only on row hover */
+.folderRow:hover .folderAddLibButton,
+.folderRow:focus-within .folderAddLibButton {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.folderAddLibButton {
+  background: transparent;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.folderAddLibButton:hover {
+  background-color: rgba(100, 116, 139, 0.1);
+}
+
 /* Predefine page special view */
 .predefineItem {
   padding: 8px 12px;

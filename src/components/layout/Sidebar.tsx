@@ -9,6 +9,7 @@ import PredefineNewClick from "@/app/assets/images/PredefineNewClick.svg";
 import folderExpandIcon from "@/app/assets/images/folderExpandIcon.svg";
 import folderCollapseIcon from "@/app/assets/images/folderCollapseIcon.svg";
 import folderIcon from "@/app/assets/images/folderIcon.svg";
+import FolderAddLibIcon from "@/app/assets/images/FolderAddLibIcon.svg";
 import plusHorizontal from "@/app/assets/images/plusHorizontal.svg";
 import plusVertical from "@/app/assets/images/plusVertical.svg";
 import createProjectIcon from "@/app/assets/images/createProjectIcon.svg";
@@ -905,49 +906,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         // });
       }
       
-      // Create button node for "Create new library" - only for admin
-      const createButtonNode: DataNode | null = userRole === 'admin' ? {
-        title: (
-          <button
-            className={styles.createButton}
-            data-testid="sidebar-create-library-button"
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!currentIds.projectId) {
-                setError('Please select a project first');
-                return;
-              }
-              setSelectedFolderId(folder.id);
-              setShowLibraryModal(true);
-            }}
-          >
-            <span className={styles.createButtonText}>
-              <span className={styles.plusIcon}>
-                <Image
-                  src={plusHorizontal}
-                  alt=""
-                  width={17}
-                  height={2}
-                  className={styles.plusHorizontal}
-                />
-                <Image
-                  src={plusVertical}
-                  alt=""
-                  width={2}
-                  height={17}
-                  className={styles.plusVertical}
-                />
-              </span>
-             Create new library
-            </span>
-          </button>
-        ),
-        key: `folder-create-${folder.id}`,
-        isLeaf: true,
-      } : null;
-      
       const children: DataNode[] = [
-        ...(createButtonNode ? [createButtonNode] : []), // Only add if admin
         ...folderLibraries.map((lib) => {
           const libProjectId = lib.project_id;
           // Show selected state when on library page OR when viewing an asset in this library
@@ -1085,7 +1044,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       return {
         title: (
           <div 
-            className={styles.itemRow}
+            className={`${styles.itemRow} ${styles.folderRow}`}
             onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
           >
             <div className={styles.itemMain}>
@@ -1099,6 +1058,25 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={folder.name}>{truncateText(folder.name, 20)}</span>
             </div>
             <div className={styles.itemActions}>
+              {userRole === 'admin' && (
+                <button
+                  type="button"
+                  className={styles.folderAddLibButton}
+                  aria-label="Create new library"
+                  title="Create new library"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!currentIds.projectId) {
+                      setError('Please select a project first');
+                      return;
+                    }
+                    setSelectedFolderId(folder.id);
+                    setShowLibraryModal(true);
+                  }}
+                >
+                  <Image src={FolderAddLibIcon} alt="" width={24} height={24} />
+                </button>
+              )}
             </div>
           </div>
         ),
@@ -1282,12 +1260,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const onSelect = async (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
-    if (key.startsWith('folder-create-')) {
-      // Handle create button click - button's onClick will handle this
-      // This is just a fallback in case onSelect is called
-      const folderId = key.replace('folder-create-', '');
-      setSelectedFolderId(folderId);
-    } else if (key.startsWith('add-asset-')) {
+    if (key.startsWith('add-asset-')) {
       // Handle create asset button click - button's onClick will handle this
       // This is just a fallback in case onSelect is called
       const libraryId = key.replace('add-asset-', '');
