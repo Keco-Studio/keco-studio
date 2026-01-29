@@ -115,26 +115,34 @@ export default function LibraryPage() {
 
   // Get presence data from LibraryDataContext (single source of truth)
   const { presenceUsers } = useLibraryData();
-  
-  // 当库已经有 schema 但还没有任何资产时，自动创建 3 行空白数据
+
   useEffect(() => {
-    // 只处理当前版本视图，并且避免重复初始化
     if (!libraryId) return;
     if (selectedVersionId && selectedVersionId !== '__current__') return;
     if (assetsLoading) return;
     if (assetRows.length > 0) return;
     if (hasInitializedBlankRowsRef.current) return;
-    // 没有字段定义时不需要创建空行
     if (!librarySchema || !tableProperties || tableProperties.length === 0) return;
-    // 仅管理员 / 编辑者可以创建
     if (userRole === 'viewer') return;
 
     const initBlankRows = async () => {
       try {
+        const { count, error } = await supabase
+          .from('library_assets')
+          .select('id', { count: 'exact', head: true })
+          .eq('library_id', libraryId);
+
+        if (error) {
+          console.error('Failed to check existing assets before initializing blank rows', error);
+          return;
+        }
+        if ((count ?? 0) > 0) {
+          hasInitializedBlankRowsRef.current = true;
+          return;
+        }
+
         hasInitializedBlankRowsRef.current = true;
         const now = Date.now();
-
-        // 创建三条空资产记录，name 为空字符串，propertyValues 为空对象
         for (let i = 0; i < 3; i++) {
           await createAsset(
             supabase,
@@ -145,10 +153,8 @@ export default function LibraryPage() {
           );
         }
 
-        // 触发现有资产监听逻辑进行缓存失效和刷新
         window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
       } catch (e) {
-        // 初始化失败时允许之后再次尝试
         console.error('Failed to initialize blank asset rows', e);
         hasInitializedBlankRowsRef.current = false;
       }
