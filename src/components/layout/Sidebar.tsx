@@ -6,9 +6,10 @@ import loginProductIcon from "@/app/assets/images/loginProductIcon.svg";
 import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
 import PredefineNewIcon from "@/app/assets/images/PredefineNewIcon.svg";
 import PredefineNewClick from "@/app/assets/images/PredefineNewClick.svg";
+import FolderOpenIcon from "@/app/assets/images/FolderOpenIcon.svg";
+import FolderCloseIcon from "@/app/assets/images/FolderCloseIcon.svg";
 import folderExpandIcon from "@/app/assets/images/folderExpandIcon.svg";
 import folderCollapseIcon from "@/app/assets/images/folderCollapseIcon.svg";
-import folderIcon from "@/app/assets/images/folderIcon.svg";
 import FolderAddLibIcon from "@/app/assets/images/FolderAddLibIcon.svg";
 import plusHorizontal from "@/app/assets/images/plusHorizontal.svg";
 import plusVertical from "@/app/assets/images/plusVertical.svg";
@@ -1048,13 +1049,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
           >
             <div className={styles.itemMain}>
-              <Image
-                src={folderIcon}
-                alt="Folder"
-                width={24}
-                height={18}
-                className={styles.itemIcon}
-              />
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={folder.name}>{truncateText(folder.name, 20)}</span>
             </div>
             <div className={styles.itemActions}>
@@ -1331,16 +1325,40 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   // Custom expand/collapse icon
-  const switcherIcon = ({ expanded }: { expanded: boolean }) => {
-    return (
-      <Image
-        src={expanded ? folderExpandIcon : folderCollapseIcon}
-        alt={expanded ? "Expand" : "Collapse"}
-        width={expanded ? 14 : 8}
-        height={expanded ? 8 : 14}
-        style={{ display: 'block' }}
-      />
-    );
+  // Folder 使用自定义 FolderOpen/Close 图标，Library 使用原来的箭头图标，其它节点不显示
+  const switcherIcon = (node: any) => {
+    const { expanded, isLeaf, data } = node || {};
+    const key = (data?.key ?? node?.key) as string | undefined;
+
+    // 叶子节点（asset / create 按钮）不展示 switcher
+    if (isLeaf || !key) return null;
+
+    if (key.startsWith('folder-')) {
+      return (
+        <Image
+          src={expanded ? FolderOpenIcon : FolderCloseIcon}
+          alt={expanded ? "Open folder" : "Closed folder"}
+          width={24}
+          height={24}
+          style={{ display: 'block' }}
+        />
+      );
+    }
+
+    if (key.startsWith('library-')) {
+      // Library 使用原来的收起/展开箭头图标
+      return (
+        <Image
+          src={expanded ? folderExpandIcon : folderCollapseIcon}
+          alt={expanded ? "Expand library" : "Collapse library"}
+          width={expanded ? 14 : 8}
+          height={expanded ? 8 : 14}
+          style={{ display: 'block' }}
+        />
+      );
+    }
+
+    return null; // 其它类型节点不显示 switcher
   };
 
   // Context menu handlers
@@ -1981,7 +1999,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       libraries.length === 0 && (
                         <div className={styles.sidebarEmptyState}>
                           <Image
-                            src={folderIcon}
+                            src={FolderCloseIcon}
                             alt="No folders or libraries"
                             width={22}
                             height={18}
