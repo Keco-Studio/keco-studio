@@ -54,6 +54,7 @@ export function AssetHeader({
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const membersPanelRef = useRef<HTMLDivElement>(null);
+  const hasInitializedPresence = useRef(false);
 
   // Get role display text
   const getRoleText = (role: CollaboratorRole): string => {
@@ -71,23 +72,18 @@ export function AssetHeader({
 
   // Filter presence users to only show those viewing/editing this specific asset
   const assetPresenceUsers = useMemo(() => {
-    return presenceUsers.filter(user => {
+    const filtered = presenceUsers.filter(user => {
       // Check if user is viewing or editing this asset
       return user.activeCell?.assetId === assetId;
     });
-  }, [presenceUsers, assetId]);
-
-  // Sort presence users: current user first, then by last activity
-  // Make sure current user is always included
-  const sortedPresenceUsers = useMemo(() => {
-    const users = [...assetPresenceUsers];
     
     // Check if current user is in the list
-    const hasCurrentUser = users.some(u => u.userId === currentUserId);
+    const hasCurrentUser = filtered.some(u => u.userId === currentUserId);
     
-    // If current user is not in the list, add them
+    // Always add current user to ensure they see themselves
+    // This is a UI-only addition and doesn't affect the underlying presence system
     if (!hasCurrentUser) {
-      users.unshift({
+      filtered.push({
         userId: currentUserId,
         userName: currentUserName,
         userEmail: currentUserEmail,
@@ -99,7 +95,13 @@ export function AssetHeader({
       });
     }
     
-    return users.sort((a, b) => {
+    return filtered;
+  }, [presenceUsers, assetId, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor]);
+
+  // Sort presence users: current user first, then by last activity
+  const sortedPresenceUsers = useMemo(() => {
+    // assetPresenceUsers already includes current user
+    return [...assetPresenceUsers].sort((a, b) => {
       // Current user always first
       if (a.userId === currentUserId) return -1;
       if (b.userId === currentUserId) return 1;
@@ -107,28 +109,27 @@ export function AssetHeader({
       // Then sort by last activity (most recent first)
       return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
     });
-  }, [assetPresenceUsers, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor, assetId]);
+  }, [assetPresenceUsers, currentUserId]);
 
   // Get users for avatar display (max 2)
+  // Memoized more aggressively to avoid flickering
   const displayUsers = useMemo(() => {
     const result = [];
     
-    // Always show current user first
-    let currentUser = sortedPresenceUsers.find(u => u.userId === currentUserId);
+    // Find current user in sorted list
+    const currentUserInList = sortedPresenceUsers.find(u => u.userId === currentUserId);
     
-    // If current user is not in presenceUsers, create a placeholder
-    if (!currentUser) {
-      currentUser = {
-        userId: currentUserId,
-        userName: currentUserName,
-        userEmail: currentUserEmail,
-        avatarColor: currentUserAvatarColor,
-        activeCell: { assetId, propertyKey: '__viewing__' },
-        cursorPosition: null,
-        lastActivity: new Date().toISOString(),
-        connectionStatus: 'online' as const,
-      };
-    }
+    // Use existing user object if available, otherwise create stable placeholder
+    const currentUser = currentUserInList || {
+      userId: currentUserId,
+      userName: currentUserName,
+      userEmail: currentUserEmail,
+      avatarColor: currentUserAvatarColor,
+      activeCell: { assetId, propertyKey: '__viewing__' },
+      cursorPosition: null,
+      lastActivity: new Date().toISOString(),
+      connectionStatus: 'online' as const,
+    };
     
     result.push(currentUser);
     
@@ -301,7 +302,7 @@ export function AssetHeader({
           >
             Share
           </button>
-          {userRole === 'admin' && (
+          {/* {userRole === 'admin' && (
             <button className={styles.adminRoleLabel}>
               {getRoleText(userRole)}
             </button>
@@ -317,7 +318,7 @@ export function AssetHeader({
               <Image src={libraryHeadViewIcon} alt="Viewing" width={16} height={16} />
               {getRoleText(userRole)}
             </button>
-          )}
+          )} */}
         </div>
 
         {/* More Options Icon (no Version Control) */}

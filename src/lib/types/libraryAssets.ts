@@ -31,6 +31,7 @@ export type AssetRow = {
   slug?: string | null;
   figmaNodeId?: string | null;
   propertyValues: Record<string, string | number | boolean | null>;
+  created_at?: string; // ISO timestamp for ordering assets
 };
 
 

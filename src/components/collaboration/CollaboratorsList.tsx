@@ -13,9 +13,12 @@
 
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { useUpdateCollaboratorRole, useRemoveCollaborator } from '@/lib/hooks/useCacheMutations';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import type { Collaborator } from '@/lib/types/collaboration';
 import styles from './CollaboratorsList.module.css';
 import collaborationDeleteIcon from '@/app/assets/images/collaborationDeleteIcon.svg';
@@ -38,23 +41,35 @@ export default function CollaboratorsList({
   highlightUserId = null,
 }: CollaboratorsListProps) {
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
+  
+  // Cache mutation hooks
+  const updateRole = useUpdateCollaboratorRole();
+  const removeCollaborator = useRemoveCollaborator();
+  
+  // Track if we're performing a local mutation to avoid unnecessary refetches
+  const isLocalMutation = useRef(false);
+  
+  // Use React Query to read from cache
+  // The cache will be updated by our mutation hooks
+  const { data: cachedCollaborators } = useQuery<Collaborator[]>({
+    queryKey: queryKeys.projectCollaborators(projectId),
+    queryFn: async () => initialCollaborators,
+    initialData: initialCollaborators,
+    staleTime: Infinity, // Don't automatically refetch, rely on parent for initial data
+  });
+  
+  // Use cached data if available, otherwise fall back to prop
+  const collaborators = cachedCollaborators || initialCollaborators;
   
   // State management
-  const [collaborators, setCollaborators] = useState<Collaborator[]>(initialCollaborators);
-  const [optimisticUpdates, setOptimisticUpdates] = useState<Map<string, { role?: string; removing?: boolean }>>(new Map());
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
-  const [loadingActions, setLoadingActions] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [highlightedUserId, setHighlightedUserId] = useState<string | null>(highlightUserId);
   
   // Computed values
   const isAdmin = currentUserRole === 'admin';
   const canManage = isAdmin;
-  
-  // Update collaborators when prop changes
-  useEffect(() => {
-    setCollaborators(initialCollaborators);
-  }, [initialCollaborators]);
   
   // Handle highlight animation
   useEffect(() => {
@@ -68,10 +83,9 @@ export default function CollaboratorsList({
     }
   }, [highlightUserId]);
   
-  // Real-time subscription for database changes
+  // Real-time subscription for database changes (from other users)
   useEffect(() => {
     if (!projectId) return;
-    
     
     const channel = supabase
       .channel(`project:${projectId}:collaborators`)
@@ -84,8 +98,13 @@ export default function CollaboratorsList({
           filter: `project_id=eq.${projectId}`,
         },
         (payload) => {
+          // Skip if this is our own mutation (already updated via optimistic update)
+          if (isLocalMutation.current) {
+            isLocalMutation.current = false;
+            return;
+          }
           
-          // Refresh collaborators list when changes occur
+          // For changes from other users, call onUpdate to refresh data
           if (onUpdate) {
             onUpdate();
           }
@@ -99,91 +118,29 @@ export default function CollaboratorsList({
     };
   }, [projectId, supabase, onUpdate]);
   
-  // Get effective role for a collaborator (with optimistic updates)
-  const getEffectiveRole = (collaboratorId: string, actualRole: string): string => {
-    const optimistic = optimisticUpdates.get(collaboratorId);
-    return optimistic?.role || actualRole;
-  };
-  
-  // Check if collaborator is being removed (optimistically)
-  const isBeingRemoved = (collaboratorId: string): boolean => {
-    const optimistic = optimisticUpdates.get(collaboratorId);
-    return optimistic?.removing || false;
-  };
-  
   // Handle role change
-  const handleRoleChange = async (collaboratorId: string, newRole: 'admin' | 'editor' | 'viewer', currentRole: string) => {
+  const handleRoleChange = (collaboratorId: string, newRole: 'admin' | 'editor' | 'viewer', currentRole: string) => {
     if (!canManage) return;
     if (newRole === currentRole) return;
     
     // Clear any previous errors
     setError(null);
     
-    // Add loading state
-    setLoadingActions(prev => new Set(prev).add(collaboratorId));
+    // Mark as local mutation to skip real-time subscription update
+    isLocalMutation.current = true;
     
-    // Apply optimistic update
-    setOptimisticUpdates(prev => new Map(prev).set(collaboratorId, { role: newRole }));
-    
-    try {
-      
-      // Get session for authorization
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      if (!session) {
-        throw new Error('You must be logged in');
-      }
-      
-      // Call API route with authorization header
-      const response = await fetch(`/api/collaborators/${collaboratorId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({ newRole }),
-      });
-
-      const result = await response.json();
-      
-      if (!response.ok || !result.success) {
-        // Rollback optimistic update on error
-        console.error('[CollaboratorsList] Role update failed:', result.error);
-        setOptimisticUpdates(prev => {
-          const next = new Map(prev);
-          next.delete(collaboratorId);
-          return next;
-        });
-        setError(result.error || 'Failed to update role');
-      } else {
-        // Clear optimistic update after success
-        setOptimisticUpdates(prev => {
-          const next = new Map(prev);
-          next.delete(collaboratorId);
-          return next;
-        });
-        
-        // Trigger parent refresh
-        if (onUpdate) {
-          onUpdate();
+    // Use cache mutation hook for optimistic update
+    updateRole.mutate(
+      { collaboratorId, projectId, newRole },
+      {
+        onError: (err: any) => {
+          // Display error to user
+          setError(err.message || 'Failed to update role');
+          // Reset flag on error
+          isLocalMutation.current = false;
         }
       }
-    } catch (err: any) {
-      console.error('[CollaboratorsList] Error updating role:', err);
-      // Rollback optimistic update
-      setOptimisticUpdates(prev => {
-        const next = new Map(prev);
-        next.delete(collaboratorId);
-        return next;
-      });
-      setError(err.message || 'Failed to update role');
-    } finally {
-      setLoadingActions(prev => {
-        const next = new Set(prev);
-        next.delete(collaboratorId);
-        return next;
-      });
-    }
+    );
   };
   
   // Handle delete button click - show modal
@@ -193,66 +150,27 @@ export default function CollaboratorsList({
   };
   
   // Handle collaborator removal (called from modal)
-  const handleRemoveCollaborator = async (collaboratorId: string, userName: string) => {
+  const handleRemoveCollaborator = (collaboratorId: string, userName: string) => {
     if (!canManage) return;
     
     setError(null);
     setConfirmingDelete(null);
-    setLoadingActions(prev => new Set(prev).add(collaboratorId));
     
-    // Apply optimistic update
-    setOptimisticUpdates(prev => new Map(prev).set(collaboratorId, { removing: true }));
+    // Mark as local mutation to skip real-time subscription update
+    isLocalMutation.current = true;
     
-    try {
-      
-      // Get session for authorization
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        throw new Error('You must be logged in');
-      }
-      
-      // Call API route with authorization header
-      const response = await fetch(`/api/collaborators/${collaboratorId}`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
-
-      const result = await response.json();
-      
-      if (!response.ok || !result.success) {
-        // Rollback optimistic update on error
-        console.error('[CollaboratorsList] Remove failed:', result.error);
-        setOptimisticUpdates(prev => {
-          const next = new Map(prev);
-          next.delete(collaboratorId);
-          return next;
-        });
-        setError(result.error || 'Failed to remove collaborator');
-      } else {
-        // Keep optimistic update until parent refreshes
-        // The real-time subscription will trigger onUpdate()
-        if (onUpdate) {
-          onUpdate();
+    // Use cache mutation hook for optimistic update
+    removeCollaborator.mutate(
+      { collaboratorId, projectId },
+      {
+        onError: (err: any) => {
+          // Display error to user
+          setError(err.message || 'Failed to remove collaborator');
+          // Reset flag on error
+          isLocalMutation.current = false;
         }
       }
-    } catch (err: any) {
-      console.error('[CollaboratorsList] Error removing collaborator:', err);
-      // Rollback optimistic update
-      setOptimisticUpdates(prev => {
-        const next = new Map(prev);
-        next.delete(collaboratorId);
-        return next;
-      });
-      setError(err.message || 'Failed to remove collaborator');
-    } finally {
-      setLoadingActions(prev => {
-        const next = new Set(prev);
-        next.delete(collaboratorId);
-        return next;
-      });
-    }
+    );
   };
   
   // Cancel delete confirmation
@@ -324,17 +242,11 @@ export default function CollaboratorsList({
       {/* Collaborators list */}
       <div className={styles.list}>
         {collaborators.map((collab) => {
-          const effectiveRole = getEffectiveRole(collab.id, collab.role);
-          const isRemoving = isBeingRemoved(collab.id);
-          const isLoading = loadingActions.has(collab.id);
+          const isLoading = updateRole.isPending || removeCollaborator.isPending;
           const isSelf = isCurrentUser(collab.userId);
           const isConfirmingDelete = confirmingDelete === collab.id;
           const displayName = getDisplayName(collab);
           const email = getEmail(collab);
-          
-          if (isRemoving) {
-            return null; // Hide removed items optimistically
-          }
           
           // Check if this user should be highlighted
           const shouldHighlight = highlightedUserId === collab.userId;
@@ -377,7 +289,7 @@ export default function CollaboratorsList({
                 {canManage && !isSelf ? (
                   <select
                     className={styles.roleSelect}
-                    value={effectiveRole}
+                    value={collab.role}
                     onChange={(e) => handleRoleChange(collab.id, e.target.value as any, collab.role)}
                     disabled={isLoading}
                   >
@@ -387,7 +299,7 @@ export default function CollaboratorsList({
                   </select>
                 ) : (
                   <div className={styles.roleText}>
-                    {effectiveRole.charAt(0).toUpperCase() + effectiveRole.slice(1)}
+                    {collab.role.charAt(0).toUpperCase() + collab.role.slice(1)}
                   </div>
                 )}
               </div>
@@ -448,7 +360,7 @@ export default function CollaboratorsList({
               <button
                 className={styles.modalCancelButton}
                 onClick={handleCancelDelete}
-                disabled={loadingActions.has(collaboratorToDelete.id)}
+                disabled={removeCollaborator.isPending}
               >
                 Cancel
               </button>
@@ -458,9 +370,9 @@ export default function CollaboratorsList({
                   collaboratorToDelete.id,
                   getDisplayName(collaboratorToDelete)
                 )}
-                disabled={loadingActions.has(collaboratorToDelete.id)}
+                disabled={removeCollaborator.isPending}
               >
-                {loadingActions.has(collaboratorToDelete.id) ? 'Removing...' : 'Remove'}
+                {removeCollaborator.isPending ? 'Removing...' : 'Remove'}
               </button>
             </div>
           </div>

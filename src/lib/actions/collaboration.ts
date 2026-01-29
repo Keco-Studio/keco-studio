@@ -162,11 +162,11 @@ export async function getProjectCollaboratorsAction(
     const supabase = await createClient();
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
-    console.log('[getProjectCollaboratorsAction] Auth check:', {
-      hasUser: !!user,
-      userId: user?.id,
-      authError: authError?.message,
-    });
+    // console.log('[getProjectCollaboratorsAction] Auth check:', {
+    //   hasUser: !!user,
+    //   userId: user?.id,
+    //   authError: authError?.message,
+    // });
     
     if (authError || !user) {
       console.error('[getProjectCollaboratorsAction] Not authenticated:', authError);
@@ -180,7 +180,7 @@ export async function getProjectCollaboratorsAction(
     // 2. Check user has access to project
     const { role } = await getUserProjectRole(supabase, projectId, user.id);
     
-    console.log('[getProjectCollaboratorsAction] User role:', { userId: user.id, projectId, role });
+    // console.log('[getProjectCollaboratorsAction] User role:', { userId: user.id, projectId, role });
     
     if (!role) {
       console.warn('[getProjectCollaboratorsAction] User has no role in project');
@@ -194,10 +194,10 @@ export async function getProjectCollaboratorsAction(
     // 3. Get collaborators via service
     const result = await getProjectCollaborators(supabase, projectId, user.id);
     
-    console.log('[getProjectCollaboratorsAction] Success:', {
-      collaboratorsCount: result.collaborators.length,
-      pendingCount: result.pendingInvitations.length,
-    });
+    // console.log('[getProjectCollaboratorsAction] Success:', {
+    //   collaboratorsCount: result.collaborators.length,
+    //   pendingCount: result.pendingInvitations.length,
+    // });
     
     return result;
   } catch (error) {

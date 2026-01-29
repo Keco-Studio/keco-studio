@@ -13,9 +13,11 @@
 
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import Image from 'next/image';
 import CollaboratorsList from '@/components/collaboration/CollaboratorsList';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
@@ -32,6 +34,7 @@ export default function CollaboratorsPage() {
   const params = useParams();
   const router = useRouter();
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const projectId = params.projectId as string;
   
   const [loading, setLoading] = useState(true);
@@ -192,8 +195,6 @@ export default function CollaboratorsPage() {
         
         // Query pending invitations and convert them to Collaborator format
         let pendingInvitesAsCollaborators: any[] = [];
-        console.log('[CollaboratorsPage] Current userRole:', userRole);
-        console.log('[CollaboratorsPage] Checking for pending invitations...');
         
         // Query pending invitations for all users (not just admin)
         const { data: inviteData, error: inviteError } = await supabase
@@ -216,7 +217,6 @@ export default function CollaboratorsPage() {
           .is('accepted_at', null)
           .order('sent_at', { ascending: false });
         
-        console.log('[CollaboratorsPage] Pending invitations query result:', { inviteData, inviteError });
         
         if (!inviteError && inviteData) {
           // For each pending invitation, try to find the user profile by email
@@ -233,7 +233,6 @@ export default function CollaboratorsPage() {
             (profilesData || []).map(p => [p.email.toLowerCase(), p])
           );
           
-          console.log('[CollaboratorsPage] Found profiles for pending invites:', emailToProfile.size);
           
           // Convert pending invitations to Collaborator format
           pendingInvitesAsCollaborators = inviteData.map((invite: any) => {
@@ -268,11 +267,9 @@ export default function CollaboratorsPage() {
             });
           }
         
-        console.log('[CollaboratorsPage] Pending invites as collaborators:', pendingInvitesAsCollaborators);
         
         // Combine accepted collaborators and pending invitations
         const allCollaborators = [...transformedCollaborators, ...pendingInvitesAsCollaborators];
-        console.log('[CollaboratorsPage] Total collaborators (including pending):', allCollaborators.length);
         
         // Sort collaborators: current user first, then others
         allCollaborators.sort((a, b) => {
@@ -284,6 +281,11 @@ export default function CollaboratorsPage() {
         });
         
         setCollaborators(allCollaborators);
+        // Also update React Query cache for real-time updates
+        queryClient.setQueryData(
+          queryKeys.projectCollaborators(projectId),
+          allCollaborators
+        );
         setLoading(false);
         return allCollaborators; // Return the new data
       } catch (err: any) {
@@ -298,7 +300,7 @@ export default function CollaboratorsPage() {
       setLoading(false);
       return [];
     }
-  }, [projectId, supabase, router]);
+  }, [projectId, supabase, router, queryClient]);
   
   // Initial data fetch
   useEffect(() => {
@@ -307,6 +309,31 @@ export default function CollaboratorsPage() {
     }
   }, [projectId, fetchData]);
   
+  // Read from React Query cache for real-time updates
+  // Provide queryFn (required by React Query) - it will only run if cache is empty
+  const { data: cachedCollaborators } = useQuery<Collaborator[]>({
+    queryKey: queryKeys.projectCollaborators(projectId),
+    queryFn: async () => collaborators, // Fallback to state if cache is empty
+    initialData: collaborators, // Use current state as initial data
+    staleTime: Infinity, // Don't refetch automatically
+    refetchOnMount: false, // Don't refetch on mount
+    refetchOnWindowFocus: false, // Don't refetch on window focus
+  });
+  
+  // Use cached data if available (updated by mutations), otherwise use state
+  const displayCollaborators = cachedCollaborators || collaborators;
+  
+  // Calculate role counts - ONLY include accepted collaborators (exclude pending invites)
+  // Must be before any conditional returns to follow Rules of Hooks
+  const acceptedCollaborators = useMemo(
+    () => displayCollaborators.filter(c => c.acceptedAt !== null),
+    [displayCollaborators]
+  );
+  
+  const adminCount = acceptedCollaborators.filter(c => c.role === 'admin').length;
+  const editorCount = acceptedCollaborators.filter(c => c.role === 'editor').length;
+  const viewerCount = acceptedCollaborators.filter(c => c.role === 'viewer').length;
+  
   if (loading) {
     return (
       <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -314,11 +341,6 @@ export default function CollaboratorsPage() {
       </div>
     );
   }
-  
-  // Calculate role counts
-  const adminCount = collaborators.filter(c => c.role === 'admin').length;
-  const editorCount = collaborators.filter(c => c.role === 'editor').length;
-  const viewerCount = collaborators.filter(c => c.role === 'viewer').length;
 
   return (
     <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
@@ -529,7 +551,7 @@ export default function CollaboratorsPage() {
       {userRole && currentUserId ? (
         <CollaboratorsList
           projectId={projectId}
-          collaborators={collaborators}
+          collaborators={displayCollaborators}
           currentUserId={currentUserId}
           currentUserRole={userRole}
           onUpdate={fetchData}
@@ -565,12 +587,9 @@ export default function CollaboratorsPage() {
                 c.userEmail.toLowerCase() === invitedEmail.toLowerCase()
               );
               if (newCollaborator) {
-                console.log('[CollaboratorsPage] Found newly invited user:', newCollaborator);
                 // Highlight the newly invited user
                 setHighlightUserId(newCollaborator.userId);
               } else {
-                console.log('[CollaboratorsPage] Could not find newly invited user with email:', invitedEmail);
-                console.log('[CollaboratorsPage] Updated collaborators:', updatedCollaborators);
               }
             }
           }}

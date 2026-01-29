@@ -7,9 +7,9 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { queryKeys } from '@/lib/utils/queryKeys';
+import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
 import { getLibrary, Library } from '@/lib/services/libraryService';
 import { getFieldTypeIcon } from '../predefine/utils';
-import { usePresence } from '@/lib/contexts/PresenceContext';
 import styles from './page.module.css';
 import Image from 'next/image';
 import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
@@ -20,8 +20,7 @@ import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { AssetReferenceSelector } from '@/components/asset/AssetReferenceSelector';
 import { FieldPresenceAvatars } from '@/components/collaboration/FieldPresenceAvatars';
-import { useRealtimeSubscription } from '@/lib/hooks/useRealtimeSubscription';
-import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState } from '@/lib/types/collaboration';
+import type { PresenceState } from '@/lib/types/collaboration';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import { ConnectionStatusIndicator } from '@/components/collaboration/ConnectionStatusIndicator';
 import { AssetHeader } from '@/components/asset/AssetHeader';
@@ -74,6 +73,20 @@ export default function AssetPage() {
   const libraryId = params.libraryId as string;
   const assetId = params.assetId as string;
   
+  // Use unified data context
+  const {
+    getAsset,
+    updateAssetField,
+    updateAssetName,
+    createAsset: createAssetFromContext,
+    getUsersEditingField,
+    setActiveField,
+    connectionStatus,
+    presenceUsers,
+    yAssets,
+    yDoc,
+  } = useLibraryData();
+  
   // Check if this is a new asset creation
   const isNewAsset = assetId === 'new';
 
@@ -99,7 +112,7 @@ export default function AssetPage() {
   const broadcastCellUpdateRef = useRef<((assetId: string, propertyKey: string, newValue: any, oldValue?: any) => Promise<void>) | null>(null);
   const assetRef = useRef<AssetRow | null>(null);
   
-  // Realtime collaboration state
+  // Realtime collaboration state (field highlighting)
   const [realtimeEditedFields, setRealtimeEditedFields] = useState<Map<string, { value: any; timestamp: number }>>(new Map());
   
   // User role state (for permission control)
@@ -107,170 +120,111 @@ export default function AssetPage() {
 
   // Presence tracking state
   const [currentFocusedField, setCurrentFocusedField] = useState<string | null>(null);
+  
+  // Subscribe to asset changes from context (for realtime updates)
+  // Use Yjs observeDeep to catch nested Y.Map changes
+  useEffect(() => {
+    if (isNewAsset || !assetId) return;
+    
+    const yAsset = yAssets.get(assetId);
+    if (!yAsset) return;
+    
+    
+    // Observe changes to the Yjs asset (including nested Y.Map changes)
+    const observer = () => {
+      
+      const name = yAsset.get('name');
+      const yPropertyValues = yAsset.get('propertyValues');
+      
+      // Convert Y.Map to plain object
+      const propertyValues: Record<string, any> = {};
+      if (yPropertyValues && typeof yPropertyValues.forEach === 'function') {
+        // It's a Y.Map
+        yPropertyValues.forEach((value: any, key: string) => {
+          propertyValues[key] = value;
+        });
+      } else if (yPropertyValues && typeof yPropertyValues === 'object') {
+        // Fallback for plain objects (shouldn't happen with new structure)
+        Object.assign(propertyValues, yPropertyValues);
+      }
+      
+      
+      // Update asset name (only if not in view mode)
+      if (mode !== 'view') {
+        setAsset(prev => {
+          if (prev && prev.name !== name) {
+            return { ...prev, name };
+          }
+          return prev;
+        });
+      }
+      
+      // Update property values (selectively - skip currently focused field)
+      setValues(prev => {
+        const newValues = { ...prev };
+        let hasChanges = false;
+        
+        Object.keys(propertyValues).forEach(fieldId => {
+          // Skip the field user is currently editing to avoid overwriting their input
+          if (currentFocusedField === fieldId) {
+            return;
+          }
+          
+          // Update all other fields
+          if (JSON.stringify(prev[fieldId]) !== JSON.stringify(propertyValues[fieldId])) {
+            newValues[fieldId] = propertyValues[fieldId];
+            hasChanges = true;
+          }
+        });
+        
+        if (hasChanges) {
+        }
+        
+        return hasChanges ? newValues : prev;
+      });
+    };
+    
+    // Use observeDeep to catch nested Y.Map changes
+    yAsset.observeDeep(observer);
+    
+    return () => {
+      yAsset.unobserveDeep(observer);
+    };
+  }, [isNewAsset, assetId, yAssets, mode, currentFocusedField]);
 
-  // Get presence from global context (shared with Sidebar)
-  const {
-    updateActiveCell,
-    getUsersEditingCell,
-    isTracking,
-    presenceUsers,
-  } = usePresence();
+  // Presence tracking is now handled by LibraryDataContext
+  // getUsersEditingField and setActiveField are available from context
 
   // Keep assetRef updated (to avoid recreating callbacks when asset changes)
   useEffect(() => {
     assetRef.current = asset;
   }, [asset]);
 
-  // Handle realtime cell updates from other users
-  const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
-    const currentAsset = assetRef.current;
+  // No longer need separate realtime subscription - using LibraryDataContext
 
-    // Only process updates for the current asset
-    if (!currentAsset || event.assetId !== currentAsset.id) {
-      return;
-    }
-
-    // Check if value actually changed (to prevent infinite loops from database subscriptions)
-    setValues(prev => {
-      const currentValue = prev[event.propertyKey];
-      const newValue = event.newValue;
-      
-      // Compare values using JSON.stringify to handle objects/arrays
-      const currentValueStr = JSON.stringify(currentValue);
-      const newValueStr = JSON.stringify(newValue);
-      
-      if (currentValueStr === newValueStr) {
-        return prev; // No change, return previous state
-      }
-
-      // Track this as a realtime edited field (for visual feedback)
-      setRealtimeEditedFields(prevFields => {
-        const next = new Map(prevFields);
-        next.set(event.propertyKey, { value: newValue, timestamp: event.timestamp });
-        return next;
-      });
-
-      // Clear the realtime edited state after a short delay
-      setTimeout(() => {
-        setRealtimeEditedFields(prevFields => {
-          const next = new Map(prevFields);
-          next.delete(event.propertyKey);
-          return next;
-        });
-      }, 2000);
-
-      // Return updated values
-      return {
-        ...prev,
-        [event.propertyKey]: newValue,
-      };
-    });
-  }, []);
-
-  // Handle asset creation events (not relevant for this page, but required by hook)
-  const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
-    // Not used in AssetPage
-  }, []);
-
-  // Handle asset deletion events
-  const handleAssetDeleteEvent = useCallback((event: AssetDeleteEvent) => {
-    const currentAsset = assetRef.current;
-    // If this asset was deleted by another user, redirect to library page
-    if (currentAsset && event.assetId === currentAsset.id) {
-      router.push(`/${projectId}/${libraryId}`);
-    }
-  }, [projectId, libraryId, router]);
-
-  // Handle conflicts (when both users edit the same field)
-  const handleConflictEvent = useCallback((event: CellUpdateEvent, localValue: any) => {
-    // For now, remote value wins (you can add a conflict resolution UI later)
-    setValues(prev => ({
-      ...prev,
-      [event.propertyKey]: event.newValue,
-    }));
-  }, []);
-
-  // Configure realtime subscription (use useMemo to prevent unnecessary re-initialization)
-  const realtimeConfig = useMemo(() => {
-    if (!libraryId || isNewAsset || !asset || !userProfile) {
-      return null;
-    }
-
-    return {
-      libraryId: libraryId,
-      currentUserId: userProfile.id,
-      currentUserName: userProfile.username || userProfile.full_name || userProfile.email,
-      currentUserEmail: userProfile.email,
-      avatarColor: getUserAvatarColor(userProfile.id),
-      onCellUpdate: handleCellUpdateEvent,
-      onAssetCreate: handleAssetCreateEvent,
-      onAssetDelete: handleAssetDeleteEvent,
-      onConflict: handleConflictEvent,
-    };
-  }, [
-    libraryId, 
-    isNewAsset, 
-    asset?.id,
-    userProfile?.id,
-    userProfile?.username,
-    userProfile?.full_name,
-    userProfile?.email,
-    handleCellUpdateEvent,
-    handleAssetCreateEvent,
-    handleAssetDeleteEvent,
-    handleConflictEvent,
-  ]);
-
-  // Initialize realtime subscription
-  const realtimeSubscription = useRealtimeSubscription(
-    realtimeConfig || {
-      libraryId: '',
-      currentUserId: '',
-      currentUserName: '',
-      currentUserEmail: '',
-      avatarColor: '',
-      onCellUpdate: () => {},
-      onAssetCreate: () => {},
-      onAssetDelete: () => {},
-      onConflict: () => {},
-    }
-  );
-
-  const {
-    connectionStatus,
-    broadcastCellUpdate,
-  } = realtimeConfig ? realtimeSubscription : {
-    connectionStatus: 'disconnected' as const,
-    broadcastCellUpdate: async () => {},
-  };
-
-  // Keep broadcastCellUpdateRef updated with the latest function
+  // Set presence when entering/leaving the asset page
+  // Presence will be updated to specific fields by handleFieldFocus when editing
+  // and restored to viewing state by handleFieldBlur when done editing
+  // Use ref to avoid re-running effect when setActiveField reference changes
+  const setActiveFieldRef = useRef(setActiveField);
+  
   useEffect(() => {
-    broadcastCellUpdateRef.current = broadcastCellUpdate;
-  }, [broadcastCellUpdate]);
-
-  // Set presence to indicate user is viewing this asset (when not editing any field)
+    setActiveFieldRef.current = setActiveField;
+  }, [setActiveField]);
+  
   useEffect(() => {
-    if (!isNewAsset && asset && updateActiveCell) {
-      // Always try to set viewing state when conditions are met
-      // Even if isTracking is temporarily false, it will retry when isTracking becomes true
-      if (isTracking) {
-        if (!currentFocusedField) {
-          // Use a special propertyKey to indicate "viewing" (not editing)
-          updateActiveCell(asset.id, '__viewing__');
-        }
-      }
+    // Set presence immediately when entering asset page
+    if (!isNewAsset && assetId) {
+      setActiveFieldRef.current(assetId, '__viewing__');
     }
-  }, [asset, isNewAsset, updateActiveCell, currentFocusedField, isTracking]);
-
-  // Cleanup: clear presence when component unmounts or asset changes
-  useEffect(() => {
+    
+    // Cleanup: clear presence when leaving the asset page or switching assets
     return () => {
-      if (updateActiveCell) {
-        updateActiveCell(null, null);
+      if (!isNewAsset && assetId) {
+        setActiveFieldRef.current(null, null);
       }
     };
-  }, [updateActiveCell]);
+  }, [assetId, isNewAsset]); // 移除 setActiveField 依赖
 
   const sections = useMemo(() => {
     const map: Record<string, FieldDef[]> = {};
@@ -389,24 +343,15 @@ export default function AssetPage() {
           }));
           setFieldDefs(migratedDefs);
         } else {
-          // Load field definitions, asset, and values
-          const [{ data: defs, error: defErr }, { data: assetRow, error: assetErr }, { data: vals, error: valErr }] =
-            await Promise.all([
-              supabase
-                .from('library_field_definitions')
-                .select('*')
-                .eq('library_id', libraryId)
-                .order('section', { ascending: true })
-                .order('order_index', { ascending: true }),
-              supabase.from('library_assets').select('id,name,library_id').eq('id', assetId).single(),
-              supabase.from('library_asset_values').select('field_id,value_json').eq('asset_id', assetId),
-            ]);
+          // Load field definitions, get asset from context
+          const { data: defs, error: defErr } = await supabase
+            .from('library_field_definitions')
+            .select('*')
+            .eq('library_id', libraryId)
+            .order('section', { ascending: true })
+            .order('order_index', { ascending: true });
 
           if (defErr) throw defErr;
-          if (assetErr) throw assetErr;
-          if (!assetRow) throw new Error('Asset not found');
-          if (assetRow.library_id !== libraryId) throw new Error('Asset not in this library');
-          if (valErr) throw valErr;
 
           // Migrate legacy 'media' type to 'image' for backward compatibility
           const fieldDefs = (defs as FieldDef[]) || [];
@@ -415,32 +360,22 @@ export default function AssetPage() {
             data_type: def.data_type === 'media' as any ? 'image' : def.data_type
           }));
           setFieldDefs(migratedDefs);
-          setAsset(assetRow as AssetRow);
           
-          // Create a map of field IDs to field definitions for easier lookup
-          const fieldDefMap = new Map(migratedDefs.map(f => [f.id, f]));
+          // Get asset from context
+          const assetFromContext = getAsset(assetId);
+          if (!assetFromContext) {
+            throw new Error('Asset not found');
+          }
           
-          const valueMap: Record<string, any> = {};
-          (vals as ValueRow[] | null)?.forEach((v) => {
-            let parsedValue = v.value_json;
-            const fieldDef = fieldDefMap.get(v.field_id);
-            
-            // Parse JSON strings for image/file/reference fields
-            if (fieldDef && (fieldDef.data_type === 'image' || fieldDef.data_type === 'file' || fieldDef.data_type === 'reference')) {
-              if (typeof parsedValue === 'string' && parsedValue.trim() !== '') {
-                try {
-                  parsedValue = JSON.parse(parsedValue);
-                } catch {
-                  // If parsing fails, keep the original value (might be legacy format)
-                }
-              }
-            }
-            
-            valueMap[v.field_id] = parsedValue;
-          });
-          setValues(valueMap);
-          // Store initial values for change detection in realtime updates
-          previousValuesRef.current = { ...valueMap };
+          // Set asset and values from context
+          setAsset({
+            id: assetFromContext.id,
+            name: assetFromContext.name,
+            library_id: assetFromContext.libraryId,
+          } as AssetRow);
+          
+          setValues(assetFromContext.propertyValues);
+          previousValuesRef.current = { ...assetFromContext.propertyValues };
         }
       } catch (e: any) {
         setError(e?.message || (isNewAsset ? 'Failed to load library' : 'Failed to load asset'));
@@ -450,7 +385,7 @@ export default function AssetPage() {
     };
     
     load();
-  }, [assetId, libraryId, projectId, supabase, isNewAsset]);
+  }, [assetId, libraryId, projectId, supabase, isNewAsset, getAsset]);
 
   // Notify TopBar about current mode
   useEffect(() => {
@@ -554,37 +489,36 @@ export default function AssetPage() {
   // Handle field focus for presence tracking
   const handleFieldFocus = useCallback((fieldId: string) => {
     setCurrentFocusedField(fieldId);
-    if (updateActiveCell && asset) {
-      updateActiveCell(asset.id, fieldId);
+    if (asset) {
+      setActiveField(asset.id, fieldId);
     }
-  }, [updateActiveCell, asset]);
+  }, [setActiveField, asset]);
 
   // Handle field blur for presence tracking
   const handleFieldBlur = useCallback(() => {
     setCurrentFocusedField(null);
-    if (updateActiveCell && asset && !isNewAsset) {
+    if (asset && !isNewAsset) {
       // When blurring, set back to viewing state (not editing any field)
-      updateActiveCell(asset.id, '__viewing__');
-    } else if (updateActiveCell) {
-      updateActiveCell(null, null);
+      setActiveField(asset.id, '__viewing__');
+    } else {
+      setActiveField(null, null);
     }
-  }, [updateActiveCell, asset, isNewAsset]);
+  }, [setActiveField, asset, isNewAsset]);
 
   // Get users editing a specific field (including current user if they're editing it)
+  // More stable version to avoid flickering
   const getFieldEditingUsers = useCallback((fieldId: string) => {
-    if (!getUsersEditingCell || !asset) return [];
-    let editingUsers = getUsersEditingCell(asset.id, fieldId);
+    if (!asset) return [];
+    let editingUsers = getUsersEditingField(asset.id, fieldId);
     
     // If current user is editing this field, ensure they're in the list
+    // But be more conservative to avoid flickering
     if (currentFocusedField === fieldId && userProfile) {
       const hasCurrentUser = editingUsers.some(u => u.userId === userProfile.id);
+      
+      // Only add if truly missing (not just delayed)
       if (!hasCurrentUser) {
-        // Use a slightly earlier timestamp if this is the first user (empty list)
-        // This ensures the first user to enter keeps their position
-        const timestamp = editingUsers.length === 0 
-          ? new Date(Date.now() - 1000).toISOString() // 1 second earlier if first
-          : new Date().toISOString();
-        
+        // Use stable timestamp to avoid re-sorting on every render
         const currentUserPresence: PresenceState = {
           userId: userProfile.id,
           userName: userProfile.username || userProfile.full_name || userProfile.email,
@@ -592,12 +526,12 @@ export default function AssetPage() {
           avatarColor: getUserAvatarColor(userProfile.id),
           activeCell: { assetId: asset.id, propertyKey: fieldId },
           cursorPosition: null,
-          lastActivity: timestamp,
+          lastActivity: new Date().toISOString(),
           connectionStatus: 'online',
         };
         editingUsers.push(currentUserPresence);
         
-        // Re-sort to ensure consistent ordering
+        // Re-sort to ensure consistent ordering (first to arrive first)
         editingUsers.sort((a, b) => {
           return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
         });
@@ -605,7 +539,7 @@ export default function AssetPage() {
     }
     
     return editingUsers;
-  }, [getUsersEditingCell, asset, currentFocusedField, userProfile]);
+  }, [getUsersEditingField, asset, currentFocusedField, userProfile]);
 
   // Get the first user's color for border styling
   const getFirstUserColor = useCallback((users: any[]) => {
@@ -642,17 +576,13 @@ export default function AssetPage() {
           }
         }
       } else if (f.data_type === 'float') {
-        // Float type: must contain a decimal point (cannot be pure integer)
+        // Float type: must be a valid number (integer or decimal)
         const strValue = String(raw).trim();
         if (strValue !== '' && strValue !== '-' && strValue !== '.') {
-          if (!strValue.includes('.')) {
+          // Check if valid float (accepts both integers and decimals)
+          const floatValue = parseFloat(strValue);
+          if (isNaN(floatValue)) {
             validationErrors[f.id] = 'type mismatch';
-          } else {
-            // Check if valid float
-            const floatValue = parseFloat(strValue);
-            if (isNaN(floatValue)) {
-              validationErrors[f.id] = 'type mismatch';
-            }
           }
         }
       }
@@ -665,25 +595,15 @@ export default function AssetPage() {
     }
     
     if (isNewAsset) {
-      // Create new asset
-      const nameValue = assetName.trim();
-      if (!nameValue) {
-        setSaveError('Asset name is required (please fill in the "name" field)');
-        return;
-      }
+      // Create new asset using context
+      const nameValue = assetName.trim() || 'Untitled';
+      // No validation error - allow creating assets without name field
 
       setSaving(true);
       try {
-        const { data: newAsset, error: assetErr } = await supabase
-          .from('library_assets')
-          .insert({ library_id: libraryId, name: nameValue })
-          .select()
-          .single();
-        if (assetErr) throw assetErr;
-
-        const newAssetId = newAsset.id as string;
-
-        const payload = fieldDefs.map((f) => {
+        // Prepare property values
+        const propertyValues: Record<string, any> = {};
+        fieldDefs.forEach((f) => {
           const raw = values[f.id];
           let v: any = raw;
           if (f.data_type === 'int') {
@@ -701,25 +621,14 @@ export default function AssetPage() {
           } else {
             v = raw ?? null;
           }
-          return { asset_id: newAssetId, field_id: f.id, value_json: v };
+          propertyValues[f.id] = v;
         });
 
-        if (payload.length > 0) {
-          const { error: valErr } = await supabase
-            .from('library_asset_values')
-            .upsert(payload, { onConflict: 'asset_id,field_id' });
-          if (valErr) throw valErr;
-        }
+        // Create asset using context (handles database + Yjs + broadcast)
+        const newAssetId = await createAssetFromContext(nameValue, propertyValues);
 
         setValues({});
         setNavigating(true);
-
-        // Invalidate React Query cache to ensure LibraryPage gets fresh data
-        await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-        
-        // Also refetch to ensure data is updated before navigation
-        await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
 
         // Dispatch event to notify Sidebar to refresh assets
         window.dispatchEvent(new CustomEvent('assetCreated', {
@@ -736,7 +645,7 @@ export default function AssetPage() {
         setSaving(false);
       }
     } else {
-      // Update existing asset
+      // Update existing asset using context
       if (!asset) return;
       
       setSaving(true);
@@ -752,20 +661,19 @@ export default function AssetPage() {
           }
         }
         
-        // Update asset name if it changed
+        // Update asset name if it changed (using context)
         if (newAssetName !== asset.name) {
-          const { error: assetUpdateErr } = await supabase
-            .from('library_assets')
-            .update({ name: newAssetName })
-            .eq('id', asset.id);
-          if (assetUpdateErr) throw assetUpdateErr;
-          
+          await updateAssetName(asset.id, newAssetName);
           // Update local asset state
           setAsset({ ...asset, name: newAssetName });
         }
         
-        const payload = fieldDefs.map((f) => {
+        // Update changed fields using context (handles database + Yjs + broadcast)
+        for (const f of fieldDefs) {
           const raw = values[f.id];
+          const previousValue = previousValuesRef.current[f.id];
+          
+          // Prepare value based on type
           let v: any = raw;
           if (f.data_type === 'int') {
             v = raw === '' || raw === undefined ? null : parseInt(raw, 10);
@@ -782,35 +690,12 @@ export default function AssetPage() {
           } else {
             v = raw ?? null;
           }
-          return { asset_id: asset.id, field_id: f.id, value_json: v };
-        });
-
-        if (payload.length > 0) {
-          const { error: valErr } = await supabase
-            .from('library_asset_values')
-            .upsert(payload, { onConflict: 'asset_id,field_id' });
-          if (valErr) throw valErr;
-        }
-
-        // Broadcast realtime updates for changed fields
-        const broadcastFn = broadcastCellUpdateRef.current;
-
-        if (broadcastFn) {
-          for (const f of fieldDefs) {
-            const currentValue = values[f.id];
-            const previousValue = previousValuesRef.current[f.id];
-            
-            // Check if value changed
-            const hasChanged = JSON.stringify(currentValue) !== JSON.stringify(previousValue);
-            
-            if (hasChanged) {
-              // Broadcast the update to other users
-              try {
-                await broadcastFn(asset.id, f.id, currentValue, previousValue);
-              } catch (err) {
-                // Silently fail
-              }
-            }
+          
+          // Check if value changed
+          const hasChanged = JSON.stringify(v) !== JSON.stringify(previousValue);
+          
+          if (hasChanged) {
+            await updateAssetField(asset.id, f.id, v);
           }
         }
 
@@ -818,7 +703,6 @@ export default function AssetPage() {
         previousValuesRef.current = { ...values };
 
         // Dispatch event to notify Sidebar to refresh assets
-        // skipLocalRefresh: true to prevent re-fetching data in the same component (avoid auto-save loop)
         window.dispatchEvent(new CustomEvent('assetUpdated', {
           detail: { libraryId, assetId: asset.id, skipLocalRefresh: true }
         }));
@@ -828,7 +712,7 @@ export default function AssetPage() {
         setSaving(false);
       }
     }
-  }, [isNewAsset, assetName, supabase, libraryId, fieldDefs, values, asset, router, projectId]);
+  }, [isNewAsset, assetName, supabase, libraryId, fieldDefs, values, asset, router, projectId, createAssetFromContext, updateAssetName, updateAssetField]);
 
   // Keep handleSaveRef updated with the latest handleSave function
   useEffect(() => {
@@ -845,6 +729,17 @@ export default function AssetPage() {
     // Mark initial values as loaded after first render
     if (!initialValuesLoadedRef.current) {
       initialValuesLoadedRef.current = true;
+      previousValuesRef.current = { ...values };
+      return;
+    }
+
+    // Check if values actually changed (avoid saving on remote updates)
+    const hasLocalChanges = Object.keys(values).some(fieldId => {
+      return JSON.stringify(values[fieldId]) !== JSON.stringify(previousValuesRef.current[fieldId]);
+    });
+    
+    // Only trigger auto-save if there are actual local changes
+    if (!hasLocalChanges) {
       return;
     }
 
@@ -870,12 +765,62 @@ export default function AssetPage() {
         clearTimeout(autoSaveTimerRef.current);
       }
     };
-  }, [values, isNewAsset, asset, mode]); // 移除 handleSave 依赖
+  }, [values, isNewAsset, asset, mode]);
 
   // Reset initial values loaded flag when asset changes
   useEffect(() => {
     initialValuesLoadedRef.current = false;
   }, [assetId]);
+
+  // Add global click listener to clear focus state when clicking outside
+  useEffect(() => {
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Don't clear focus if clicking on form elements or their children
+      if (
+        target.closest('[class*="fieldControl"]') ||
+        target.closest('[class*="booleanToggle"]') ||
+        target.closest('[class*="fieldSelect"]') ||
+        target.closest('[class*="fieldInput"]') ||
+        target.closest('[class*="customComponent"]')
+      ) {
+        return;
+      }
+      
+      // Don't clear focus if clicking on modals, dropdowns, or interactive components
+      if (
+        target.closest('[role="dialog"]') ||
+        target.closest('.ant-modal') ||
+        target.closest('.ant-modal-root') ||
+        target.closest('.ant-modal-mask') ||
+        target.closest('.ant-modal-wrap') ||
+        target.closest('.ant-select-dropdown') ||
+        target.closest('.ant-switch') ||
+        target.closest('[class*="modal"]') ||
+        target.closest('[class*="Modal"]') ||
+        target.closest('[class*="dropdown"]') ||
+        target.closest('[class*="Dropdown"]') ||
+        target.closest('input[type="file"]') ||
+        target.closest('button') ||
+        target.closest('[role="combobox"]') ||
+        target.closest('[class*="mediaFileUpload"]') ||
+        target.closest('[class*="MediaFileUpload"]')
+      ) {
+        return;
+      }
+      
+      // Clear focus state
+      if (currentFocusedField) {
+        handleFieldBlur();
+      }
+    };
+    
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+    };
+  }, [currentFocusedField, handleFieldBlur]);
 
   // Listen to TopBar Create Asset button click for new assets
   useEffect(() => {
@@ -1050,8 +995,11 @@ export default function AssetPage() {
                                         <div 
                                           className={`${styles.booleanToggleWrapper} ${isBeingEdited ? styles.booleanToggleWrapperEditing : ''}`}
                                           style={borderColor ? { borderColor } : undefined}
-                                          onFocus={() => handleFieldFocus(f.id)}
-                                          onBlur={handleFieldBlur}
+                                          onClick={() => {
+                                            if (mode !== 'view') {
+                                              handleFieldFocus(f.id);
+                                            }
+                                          }}
                                           tabIndex={0}
                                         >
                                           <div className={styles.booleanToggle}>
@@ -1060,7 +1008,13 @@ export default function AssetPage() {
                                               disabled={mode === 'view'}
                                               onChange={
                                                 mode !== 'view'
-                                                  ? (checked) => handleValueChange(f.id, checked)
+                                                  ? (checked) => {
+                                                      handleValueChange(f.id, checked);
+                                                      // Blur after a short delay to ensure other users see the change
+                                                      setTimeout(() => {
+                                                        handleFieldBlur();
+                                                      }, 1000);
+                                                    }
                                                   : undefined
                                               }
                                             />
@@ -1109,17 +1063,25 @@ export default function AssetPage() {
                           <select
                             value={value ?? ''}
                                           disabled={mode === 'view'}
+                                          onClick={() => {
+                                            if (mode !== 'view') {
+                                              handleFieldFocus(f.id);
+                                            }
+                                          }}
                                           onChange={
                                             mode !== 'view'
-                                              ? (e) =>
+                                              ? (e) => {
                                                   handleValueChange(
                                                     f.id,
                                                     e.target.value === '' ? null : e.target.value
-                                                  )
+                                                  );
+                                                  // Blur after a short delay to ensure other users see the change
+                                                  setTimeout(() => {
+                                                    handleFieldBlur();
+                                                  }, 1000);
+                                                }
                                               : undefined
                                           }
-                                          onFocus={() => handleFieldFocus(f.id)}
-                                          onBlur={handleFieldBlur}
                                           className={`${styles.fieldSelect} ${isBeingEdited ? styles.fieldInputEditing : ''} ${isRealtimeEdited ? styles.fieldRealtimeEdited : ''} ${
                                             mode === 'view' ? styles.disabledInput : ''
                                           }`}
@@ -1172,6 +1134,11 @@ export default function AssetPage() {
                                         <div
                                           className={`${styles.customComponentWrapper} ${isBeingEdited ? styles.customComponentWrapperEditing : ''}`}
                                           style={borderColor ? { borderColor } : undefined}
+                                          onClick={() => {
+                                            if (mode !== 'view') {
+                                              handleFieldFocus(f.id);
+                                            }
+                                          }}
                                           onFocus={() => handleFieldFocus(f.id)}
                                           onBlur={handleFieldBlur}
                                           tabIndex={0}
@@ -1223,8 +1190,6 @@ export default function AssetPage() {
                                         <div
                                           className={`${styles.customComponentWrapper} ${isBeingEdited ? styles.customComponentWrapperEditing : ''}`}
                                           style={borderColor ? { borderColor } : undefined}
-                                          onFocus={() => handleFieldFocus(f.id)}
-                                          onBlur={handleFieldBlur}
                                           tabIndex={0}
                                         >
                                           <AssetReferenceSelector
@@ -1232,6 +1197,8 @@ export default function AssetPage() {
                                             onChange={(newValue) => handleValueChange(f.id, newValue)}
                                             referenceLibraries={f.reference_libraries ?? []}
                                             disabled={mode === 'view'}
+                                            onFocus={() => handleFieldFocus(f.id)}
+                                            onBlur={handleFieldBlur}
                                           />
                                         </div>
                                         <FieldPresenceAvatars users={editingUsers} />
@@ -1325,7 +1292,7 @@ export default function AssetPage() {
                                                   }
                                                   inputValue = intValue;
                                                 }
-                                                // Validate float type: must contain decimal point
+                                                // Validate float type: allow valid numbers (integer or decimal)
                                                 else if (f.data_type === 'float' && inputValue !== '') {
                                                   // Clear error initially
                                                   setFieldValidationErrors(prev => {

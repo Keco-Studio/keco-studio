@@ -41,8 +41,6 @@ import { listFolders, Folder, deleteFolder } from "@/lib/services/folderService"
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ContextMenu, ContextMenuAction } from "./ContextMenu";
-import { usePresence } from "@/lib/contexts/PresenceContext";
-import { Avatar } from "antd";
 import styles from "./Sidebar.module.css";
 
 type UserProfile = {
@@ -229,62 +227,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     return { projectId, libraryId, folderId, isPredefinePage, assetId, isLibraryPage };
   }, [pathname]);
 
-  // Get presence from global context (shared with Asset Page)
-  const { presenceUsers } = usePresence();
-
-  // Use presenceUsers directly without extra memoization
-  // usePresenceTracking already returns a memoized array
-  const presenceUsersArray = presenceUsers || [];
-
-  // Debug: Monitor presence changes with clearer logging
-  useEffect(() => {
-    // console.log(`[Sidebar] 📊 Current state:`, {
-    //   libraryId: currentIds.libraryId?.slice(0, 8) || 'none',
-    //   assetId: currentIds.assetId?.slice(0, 8) || 'none',
-    //   presenceCount: presenceUsersArray.length,
-    //   userName: userProfile?.full_name || userProfile?.username || 'unknown'
-    // });
-    
-    if (currentIds.libraryId && presenceUsersArray.length > 0) {
-      // console.log(`[Sidebar] 👥 Presence in library ${currentIds.libraryId.slice(0, 8)}:`, 
-      //   presenceUsersArray.map(u => ({
-      //     name: u.userName,
-      //     asset: u.activeCell?.assetId?.slice(0, 8) || 'none',
-      //     property: u.activeCell?.propertyKey || 'none'
-      //   }))
-      // );
-    }
-  }, [presenceUsersArray, currentIds.libraryId, currentIds.assetId, userProfile]);
-
-  // Helper function to get users viewing/editing a specific asset
-  // Use useCallback with presenceUsersArray as dependency to ensure updates trigger re-renders
-  const getUsersOnAsset = useCallback((assetId: string) => {
-    // Always show presence for any asset in the current library (not just when on asset page)
-    // This allows users to see who's viewing/editing assets even from the library list view
-    if (!currentIds.libraryId) {
-      // console.log('[Sidebar] ⚠️ getUsersOnAsset: No libraryId');
-      return [];
-    }
-    if (!presenceUsersArray || presenceUsersArray.length === 0) {
-      // console.log('[Sidebar] ⚠️ getUsersOnAsset: No presence users');
-      return [];
-    }
-    
-    // Filter users who have activeCell with this assetId
-    // Include both users editing a field (propertyKey !== '__viewing__') 
-    // and users just viewing (propertyKey === '__viewing__')
-    // Exclude current user (presenceUsers already excludes current user)
-    const users = presenceUsersArray.filter(user => {
-      return user?.activeCell?.assetId === assetId;
-    });
-    
-    // console.log(`[Sidebar] 🔍 getUsersOnAsset(${assetId.slice(0, 8)}): found ${users.length} user(s)`, 
-    //   users.map(u => ({ name: u.userName, cell: u.activeCell }))
-    // );
-    
-    return users;
-  }, [currentIds.libraryId, presenceUsersArray]);
-
   // Use React Query to fetch projects list; queryKey shared with Projects page.
   // Pass userProfile?.id when available to skip getCurrentUserId/getUser(), avoiding slow auth on first login.
   const {
@@ -459,7 +401,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           const roleResult = await roleResponse.json();
           setUserRole(roleResult.role || null);
           setIsProjectOwner(roleResult.isOwner || false);
-          // console.log('[Sidebar] User role:', roleResult.role, 'isOwner:', roleResult.isOwner);
         } else {
           setUserRole(null);
           setIsProjectOwner(false);
@@ -480,9 +421,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (currentIds.projectId && projects.length > 0 && !loadingProjects) {
       const currentProjectExists = projects.some(p => p.id === currentIds.projectId);
       if (!currentProjectExists) {
-        // console.log('[Sidebar] Current project not in list, refreshing projects...');
-        // console.log('[Sidebar] Current project ID:', currentIds.projectId);
-        // console.log('[Sidebar] Projects in list:', projects.map(p => p.id));
         
         // Clear globalRequestCache and refetch
         (async () => {
@@ -493,7 +431,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               // Clear projects list cache
               const projectsCacheKey = `projects:list:${user.id}`;
               globalRequestCache.invalidate(projectsCacheKey);
-              // console.log('[Sidebar] Cleared globalRequestCache for key:', projectsCacheKey);
               
               // Clear all caches for this project (important!)
               // This ensures fresh data and permissions
@@ -505,12 +442,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               ];
               cacheKeys.forEach(key => {
                 globalRequestCache.invalidate(key);
-                // console.log('[Sidebar] Cleared cache for key:', key);
               });
             }
             // Refetch projects list
             await refetchProjects();
-            // console.log('[Sidebar] Projects list refreshed');
           } catch (error) {
             console.error('[Sidebar] Error refreshing projects:', error);
           }
@@ -883,12 +818,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     
     // Debug: log libraries grouping
     if (process.env.NODE_ENV === 'development') {
-      // console.log('Libraries grouped by folder_id:', {
-      //   totalLibraries: projectLibraries.length,
-      //   librariesByFolderKeys: Array.from(librariesByFolder.keys()),
-      //   librariesByFolder: Object.fromEntries(librariesByFolder),
-      //   folders: projectFolders.map(f => ({ id: f.id, name: f.name }))
-      // });
+    
     }
     
     // Build folder node (simplified: no nested folders, all folders are root level)
@@ -899,10 +829,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       
       // Debug: log folder node building
       if (process.env.NODE_ENV === 'development') {
-        // console.log(`Building folder node: ${folder.name} (id: ${folder.id})`, {
-        //   folderLibraries: folderLibraries.length,
-        //   folderLibrariesNames: folderLibraries.map(l => l.name)
-        // });
       }
       
       // Create button node for "Create new library" - only for admin
@@ -1564,7 +1490,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   };
   const handleProjectCreated = async (projectId: string, defaultFolderId: string) => {
-    // console.log('Project created:', { projectId, defaultFolderId });
     setShowProjectModal(false);
     
     // Immediately invalidate React Query cache to refresh the sidebar
@@ -1896,17 +1821,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                             </span>
                           </button>
                         )}
-                        {/* Assets list - add data attribute to help with debugging */}
-                        <div 
-                          className={styles.assetList}
-                          data-presence-count={presenceUsersArray.length}
-                        >
+                        {/* Assets list */}
+                        <div className={styles.assetList}>
                           {libraryAssets.map((asset) => {
                             const isCurrentAsset = currentIds.assetId === asset.id;
-                            const usersOnAsset = getUsersOnAsset(asset.id);
-                            const maxVisibleAvatars = 2;
-                            const visibleUsers = usersOnAsset.slice(0, maxVisibleAvatars);
-                            const remainingCount = usersOnAsset.length - maxVisibleAvatars;
 
                             return (
                               <div
@@ -1924,60 +1842,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                                   <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
                                     {truncateText(asset.name && asset.name !== 'Untitled' ? asset.name : '', 15)}
                                   </span>
-                                </div>
-                                <div className={styles.itemActions}>
-                                  {usersOnAsset.length > 0 && (
-                                    <div className={styles.assetPresenceAvatars}>
-                                      {visibleUsers.map((user) => {
-                                        const userName = user.userName || 'Anonymous';
-                                        const userInitial = userName.charAt(0).toUpperCase();
-                                        // Check if user is editing (propertyKey !== '__viewing__') or just viewing
-                                        const isEditing = user.activeCell && user.activeCell.propertyKey !== '__viewing__';
-                                        const status = isEditing ? 'editing' : 'viewing';
-                                        return (
-                                          <Tooltip 
-                                            key={user.userId} 
-                                            title={`${userName} is ${status}`}
-                                            placement="top"
-                                          >
-                                            <Avatar
-                                              size={20}
-                                              style={{
-                                                backgroundColor: user.avatarColor,
-                                                fontSize: '10px',
-                                                fontWeight: 700,
-                                                marginLeft: '-4px',
-                                              }}
-                                            >
-                                              {userInitial}
-                                            </Avatar>
-                                          </Tooltip>
-                                        );
-                                      })}
-                                      {remainingCount > 0 && (
-                                        <Tooltip
-                                          title={usersOnAsset
-                                            .slice(maxVisibleAvatars)
-                                            .map((u) => u.userName)
-                                            .join(', ')}
-                                          placement="top"
-                                        >
-                                          <Avatar
-                                            size={20}
-                                            style={{
-                                              backgroundColor: '#f0f0f0',
-                                              color: '#666',
-                                              fontSize: '10px',
-                                              fontWeight: 700,
-                                              marginLeft: '-4px',
-                                            }}
-                                          >
-                                            +{remainingCount}
-                                          </Avatar>
-                                        </Tooltip>
-                                      )}
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             );

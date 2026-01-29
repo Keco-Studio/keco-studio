@@ -233,9 +233,8 @@ export function useClipboardOperations({
         return;
       }
       
-      // Get the property index to check if this is the name field
-      const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
-      const isNameField = propertyIndex === 0;
+      // Check if this is the name field (identified by label='name' and dataType='string')
+      const isNameField = foundProperty && foundProperty.name === 'name' && foundProperty.dataType === 'string';
       
       let value: string | number | null;
       // Name 与表格展示完全一致：表格在 name 为空且 row.name 为 "Untitled" 时显示空白（LibraryAssetsTable 1793–1802）
@@ -379,7 +378,9 @@ export function useClipboardOperations({
             const rowUpdates = cutCellsByRow.get(rowId);
             if (rowUpdates) {
               // Check if this is the name field (first property)
-              const isNameField = propertyIndex === 0;
+              const property = orderedProperties[propertyIndex];
+              // Name field is identified by label='name' and dataType='string', not by position
+              const isNameField = property && property.name === 'name' && property.dataType === 'string';
               
               if (isNameField) {
                 // Clear the name field by setting both assetName and propertyValues
@@ -510,9 +511,8 @@ export function useClipboardOperations({
         return;
       }
       
-      // Get the property index to check if this is the name field
-      const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
-      const isNameField = propertyIndex === 0;
+      // Check if this is the name field (identified by label='name' and dataType='string')
+      const isNameField = foundProperty && foundProperty.name === 'name' && foundProperty.dataType === 'string';
       
       let value: string | number | null;
       // Name 与表格展示完全一致：表格在 name 为空且 row.name 为 "Untitled" 时显示空白（LibraryAssetsTable 1793–1802）
@@ -796,11 +796,12 @@ export function useClipboardOperations({
         
         const targetProperty = orderedProperties[targetPropertyIndex];
         
-        const isNameField = targetPropertyIndex === 0;
+        // Name field is identified by label='name' and dataType='string', not by position
+        const isNameField = targetProperty && targetProperty.name === 'name' && targetProperty.dataType === 'string';
         const supported = ['string', 'int', 'float'] as const;
         const typeSupported = targetProperty.dataType && supported.includes(targetProperty.dataType as any);
         if (!typeSupported && !isNameField) {
-          return; // Skip unsupported types; name field (first column) always allowed
+          return; // Skip unsupported types; name field always allowed
         }
         
         // Check type compatibility if we have source property information (skip for name field)
@@ -899,7 +900,9 @@ export function useClipboardOperations({
         // Group updates by rowId for efficiency
         // Track both propertyValues and name field updates separately
         const updatesByRow = new Map<string, { propertyValues: Record<string, any>; name?: string | null }>();
-        const nameFieldKey = orderedProperties[0]?.key;
+        // Find the name field key (identified by label='name' and dataType='string')
+        const nameFieldProperty = orderedProperties.find(p => p.name === 'name' && p.dataType === 'string');
+        const nameFieldKey = nameFieldProperty?.key;
         
         // 对齐 batch fill：从 base 构建 propertyValues 再合并粘贴值，避免合并逻辑导致 float 小数丢失
         updatesToApply.forEach(({ rowId, propertyKey, value }) => {
@@ -923,8 +926,8 @@ export function useClipboardOperations({
           // Update with new value
           const rowUpdates = updatesByRow.get(rowId);
           if (rowUpdates) {
-            // Check if this is the name field (first property)
-            if (propertyKey === nameFieldKey) {
+            // Check if this is the name field (identified by matching the name field key)
+            if (nameFieldKey && propertyKey === nameFieldKey) {
               // Update name field separately（空值保持空白，不写 "Untitled"）
               rowUpdates.name = (value !== null && value !== '') ? String(value) : '';
               // Also update propertyValues for consistency

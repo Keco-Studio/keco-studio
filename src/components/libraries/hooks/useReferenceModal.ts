@@ -1,14 +1,19 @@
 import { useState, useEffect, useCallback } from 'react';
-import type * as Y from 'yjs';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-type YArrayAssetRow = Y.Array<AssetRow>;
+// Compatible interface for yRows (supports both Y.Array and mock objects)
+interface YRowsLike {
+  length: number;
+  toArray: () => AssetRow[];
+  insert: (index: number, content: AssetRow[]) => void;
+  delete: (index: number, length: number) => void;
+}
 
 export type UseReferenceModalParams = {
   setNewRowData: React.Dispatch<React.SetStateAction<Record<string, any>>>;
   allRowsSource: AssetRow[];
-  yRows: YArrayAssetRow;
+  yRows: YRowsLike;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   rows: AssetRow[];
   newRowData: Record<string, any>;

@@ -4,9 +4,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 interface FieldDefinitionRow {
   id: string;
   library_id: string;
+  section_id: string;
   section: string;
   label: string;
-  data_type: string;
+  data_type: string | null; // Allow null for flexible field types
   enum_options: string[] | null;
   reference_libraries: string[] | null;
   required: boolean;
@@ -33,51 +34,58 @@ export async function saveSchemaIncremental(
   const existing = (existingRows || []) as FieldDefinitionRow[];
   const existingMap = new Map<string, FieldDefinitionRow>();
   existing.forEach((row) => {
-    const key = `${row.section}|${row.label}`;
+    // Use section_id + order_index as key for matching (unique within a section)
+    const key = `${row.section_id}|${row.order_index}`;
     existingMap.set(key, row);
   });
 
   // Build maps for new definitions
-  const newMap = new Map<string, { section: string; label: string; data_type: string; enum_options: string[] | null; reference_libraries: string[] | null; required: boolean; order_index: number }>();
+  const newMap = new Map<string, { section_id: string; section: string; label: string; data_type: string | null; enum_options: string[] | null; reference_libraries: string[] | null; required: boolean; order_index: number }>();
   const sectionsToKeep = new Set<string>();
 
   sectionsToSave.forEach((section, sectionIdx) => {
-    sectionsToKeep.add(section.name);
+    sectionsToKeep.add(section.id); // Use section.id instead of section.name
     section.fields.forEach((field, fieldIdx) => {
-      const key = `${section.name}|${field.label}`;
+      // Use section_id + order_index as key (unique within a section)
+      const orderIndex = sectionIdx * 1000 + fieldIdx;
+      const key = `${section.id}|${orderIndex}`;
       newMap.set(key, {
-        section: section.name,
+        section_id: section.id, // Store section ID
+        section: section.name, // Store section name for display
         label: field.label,
-        data_type: field.dataType,
+        data_type: field.dataType ?? null, // Convert undefined to null for database
         enum_options: field.dataType === 'enum' ? field.enumOptions ?? [] : null,
         reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
         required: field.required,
-        order_index: sectionIdx * 1000 + fieldIdx,
+        order_index: orderIndex,
       });
     });
   });
 
   // Find fields to update, insert, and delete
   const toUpdate: FieldDefinitionRow[] = [];
-  const toInsert: Omit<FieldDefinitionRow, 'id'>[] = [];
+  const toInsert: Omit<FieldDefinitionRow, 'id'>[] = []; // Let database generate UUID for id
   const toDelete: string[] = [];
 
   // Check existing fields
   existing.forEach((row) => {
-    const key = `${row.section}|${row.label}`;
+    const key = `${row.section_id}|${row.order_index}`;
     const newDef = newMap.get(key);
 
     if (newDef) {
-      // Field exists, check if needs update
+      // Field exists at this position, check if needs update
       if (
+        row.section !== newDef.section ||
+        row.label !== newDef.label ||
         row.data_type !== newDef.data_type ||
         JSON.stringify(row.enum_options) !== JSON.stringify(newDef.enum_options) ||
         JSON.stringify(row.reference_libraries) !== JSON.stringify(newDef.reference_libraries) ||
-        row.required !== newDef.required ||
-        row.order_index !== newDef.order_index
+        row.required !== newDef.required
       ) {
         toUpdate.push({
           ...row,
+          section: newDef.section, // Update section name if changed
+          label: newDef.label, // Update label if changed
           data_type: newDef.data_type,
           enum_options: newDef.enum_options,
           reference_libraries: newDef.reference_libraries,
@@ -88,7 +96,7 @@ export async function saveSchemaIncremental(
       // Remove from newMap to mark as processed
       newMap.delete(key);
     } else {
-      // Field no longer exists in new schema
+      // Field no longer exists at this position (deleted or moved)
       toDelete.push(row.id);
     }
   });
@@ -97,6 +105,7 @@ export async function saveSchemaIncremental(
   newMap.forEach((def) => {
     toInsert.push({
       library_id: libraryId,
+      section_id: def.section_id, // Include section_id
       section: def.section,
       label: def.label,
       data_type: def.data_type,
@@ -121,6 +130,8 @@ export async function saveSchemaIncremental(
     const { error: updateError } = await supabase
       .from('library_field_definitions')
       .update({
+        section: row.section, // Update section name if changed
+        label: row.label, // Update label if changed
         data_type: row.data_type,
         enum_options: row.enum_options,
         reference_libraries: row.reference_libraries,

@@ -1531,3 +1531,56 @@ td.cellCopy.copyBorderRight:hover {
   gap: 8px;
   position: relative;
 }
+
+/* Viewer notification banner */
+.viewerBanner {
+  position: fixed;
+  bottom: 70px;
+  left: 58%;
+  transform: translateX(-50%);
+  width: 294px;
+  height: 46px;
+  background: #0B99FF14;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 12px;
+  gap: 8px;
+  z-index: 1000;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.viewerBannerIcon {
+  flex-shrink: 0;
+  width: 24px;
+  height: 20px;
+}
+
+.viewerBannerText {
+  flex: 1;
+  font-size: 16px;
+  color: #1f2937;
+  font-weight: 400;
+}
+
+.viewerBannerClose {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  font-size: 20px;
+  color: #6b7280;
+  cursor: pointer;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.viewerBannerClose:hover {
+  color: #1f2937;
+}

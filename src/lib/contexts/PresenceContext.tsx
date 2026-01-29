@@ -41,8 +41,6 @@ export function PresenceProvider({ children, libraryId }: PresenceProviderProps)
     userName: userProfile?.username || userProfile?.full_name || userProfile?.email || 'Anonymous',
     userEmail: userProfile?.email || '',
     avatarColor: userAvatarColor,
-    onPresenceJoin: () => {},
-    onPresenceLeave: () => {},
     debugLabel: 'GlobalProvider',
   });
 

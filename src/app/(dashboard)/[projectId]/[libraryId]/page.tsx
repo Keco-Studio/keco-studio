@@ -8,7 +8,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { getProject, Project } from '@/lib/services/projectService';
 import { getLibrary, Library } from '@/lib/services/libraryService';
-import LibraryAssetsTable from '@/components/libraries/LibraryAssetsTable';
+import { LibraryAssetsTableAdapter } from '@/components/libraries/LibraryAssetsTableAdapter';
 import { LibraryHeader } from '@/components/libraries/LibraryHeader';
 import {
   AssetRow,
@@ -26,11 +26,9 @@ import {
   deleteAssets,
 } from '@/lib/services/libraryAssetsService';
 import { useAuth } from '@/lib/contexts/AuthContext';
-import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
-import { PresenceIndicators } from '@/components/collaboration/PresenceIndicators';
+import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
-import { YjsProvider } from '@/contexts/YjsContext';
 import { VersionControlSidebar } from '@/components/version-control/VersionControlSidebar';
 import { getVersionsByLibrary } from '@/lib/services/versionService';
 import type { LibraryVersion } from '@/lib/types/version';
@@ -96,22 +94,28 @@ export default function LibraryPage() {
     enabled: !!libraryId,
   });
 
+  // LibraryDataContext is now the single source of truth for current assets
+  // Only use React Query for version history
   const { data: currentAssetRows = [], isLoading: assetsLoading } = useQuery({
     queryKey: queryKeys.libraryAssets(libraryId),
     queryFn: () => getLibraryAssetsWithProperties(supabase, libraryId),
-    enabled: !!libraryId && (!selectedVersionId || selectedVersionId === '__current__'),
+    enabled: false, // ← DISABLED: LibraryDataContext handles current assets
   });
 
-  // State to hold version-specific asset rows (overrides currentAssetRows when viewing history)
+  // State to hold version-specific asset rows (only for version history viewing)
   const [versionAssetRows, setVersionAssetRows] = useState<AssetRow[] | null>(null);
-  const assetRows = versionAssetRows !== null ? versionAssetRows : currentAssetRows;
+  const assetRows = versionAssetRows !== null ? versionAssetRows : [];
 
   const tableSections = librarySchema?.sections || [];
   const tableProperties = librarySchema?.properties || [];
-  const loading = projectLoading || libraryLoading || summaryLoading || schemaLoading || assetsLoading;
+  // Note: Asset loading is handled by LibraryDataContext (no need for assetsLoading here)
+  const loading = projectLoading || libraryLoading || summaryLoading || schemaLoading;
   const error = projectError ? (projectError as any)?.message || 'Project not found' :
                 libraryError ? (libraryError as any)?.message || 'Library not found' : null;
 
+  // Get presence data from LibraryDataContext (single source of truth)
+  const { presenceUsers } = useLibraryData();
+  
   // 当库已经有 schema 但还没有任何资产时，自动创建 3 行空白数据
   useEffect(() => {
     // 只处理当前版本视图，并且避免重复初始化
@@ -167,34 +171,6 @@ export default function LibraryPage() {
   const userAvatarColor = useMemo(() => {
     return userProfile?.id ? getUserAvatarColor(userProfile.id) : '#999999';
   }, [userProfile?.id]);
-
-  // Presence join/leave event handlers
-  const handlePresenceJoin = useCallback((user: PresenceState) => {
-    message.success(`${user.userName} joined the library`, 2);
-  }, []);
-
-  const handlePresenceLeave = useCallback((userId: string, userName: string) => {
-    message.info(`${userName} left the library`, 2);
-  }, []);
-
-  // Initialize presence tracking
-  const {
-    isTracking,
-    presenceUsers,
-    activeUserCount,
-    updateActiveCell,
-    updateCursorPosition,
-    getUsersEditingCell,
-    getActiveUsers,
-  } = usePresenceTracking({
-    libraryId: libraryId,
-    userId: userProfile?.id || '',
-    userName: userProfile?.username || userProfile?.full_name || userProfile?.email || 'Anonymous',
-    userEmail: userProfile?.email || '',
-    avatarColor: userAvatarColor,
-    onPresenceJoin: handlePresenceJoin,
-    onPresenceLeave: handlePresenceLeave,
-  });
 
   const sections = useMemo(() => {
     const map: Record<string, FieldDef[]> = {};
@@ -412,61 +388,8 @@ export default function LibraryPage() {
     loadVersionData();
   }, [selectedVersionId, versions, libraryId, supabase]);
 
-  // Listen to database changes for real-time sync across users
-  useEffect(() => {
-    if (!libraryId || !isAuthenticated) return;
-
-    // Skip real-time updates if viewing a historical version
-    if (selectedVersionId && selectedVersionId !== '__current__') {
-      return;
-    }
-
-    console.log(`[Library Page] Setting up database subscription for library: ${libraryId}`);
-
-    // Subscribe to changes in library_assets table
-    const assetsChannel = supabase
-      .channel(`library-assets:${libraryId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // Listen to INSERT, UPDATE, DELETE
-          schema: 'public',
-          table: 'library_assets',
-          filter: `library_id=eq.${libraryId}`,
-        },
-        (payload) => {
-          console.log('[Library Page] Asset change detected:', payload);
-          // Use cache invalidation instead of manual refetch
-          queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-        }
-      )
-      .subscribe();
-
-    // Also subscribe to changes in library_asset_values table for property updates
-    const valuesChannel = supabase
-      .channel(`library-asset-values:${libraryId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'library_asset_values',
-        },
-        (payload) => {
-          console.log('[Library Page] Asset value change detected:', payload);
-          // Use cache invalidation instead of manual refetch
-          queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-        }
-      )
-      .subscribe();
-
-    // Cleanup on unmount
-    return () => {
-      console.log(`[Library Page] Cleaning up database subscription for library: ${libraryId}`);
-      supabase.removeChannel(assetsChannel);
-      supabase.removeChannel(valuesChannel);
-    };
-  }, [libraryId, supabase, isAuthenticated, selectedVersionId, queryClient]);
+  // Real-time updates are now handled by LibraryDataContext (via useRealtimeSubscription)
+  // No need for separate postgres_changes subscription here
 
   const handleValueChange = (fieldId: string, value: any) => {
     setValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -655,46 +578,23 @@ export default function LibraryPage() {
             Later phases will replace placeholder service logic with real Supabase-backed data
             and upgrade the table to a two-level header that mirrors predefine + Figma. */}
         <div className={styles.tableContainer}>
-          <YjsProvider libraryId={libraryId}>
-            <LibraryAssetsTable
-              library={
-                librarySummary
-                  ? {
-                      id: librarySummary.id,
-                      name: librarySummary.name,
-                      description: librarySummary.description,
-                    }
-                  : {
-                      id: library.id,
-                      name: library.name,
-                      description: library.description,
-                    }
-              }
-              sections={tableSections}
-              properties={tableProperties}
-              rows={assetRows}
-              onSaveAsset={handleSaveAssetFromTable}
-              onUpdateAsset={handleUpdateAssetFromTable}
-              onUpdateAssets={handleUpdateAssetsFromTable}
-              onDeleteAsset={handleDeleteAssetFromTable}
-              onDeleteAssets={handleDeleteAssetsFromTable}
-              currentUser={
-                userProfile
-                  ? {
-                      id: userProfile.id,
-                      name: userProfile.username || userProfile.full_name || userProfile.email || 'Anonymous',
-                      email: userProfile.email,
-                      avatarColor: userAvatarColor,
-                    }
-                  : null
-              }
-              enableRealtime={isAuthenticated}
-              presenceTracking={{
-                updateActiveCell,
-                getUsersEditingCell,
-              }}
-            />
-          </YjsProvider>
+          <LibraryAssetsTableAdapter
+            library={
+              librarySummary
+                ? {
+                    id: librarySummary.id,
+                    name: librarySummary.name,
+                    description: librarySummary.description,
+                  }
+                : {
+                    id: library.id,
+                    name: library.name,
+                    description: library.description,
+                  }
+            }
+            sections={tableSections}
+            properties={tableProperties}
+          />
         </div>
 
         {/* Version Control Sidebar */}

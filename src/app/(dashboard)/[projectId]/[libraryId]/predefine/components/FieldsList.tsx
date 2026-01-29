@@ -92,9 +92,6 @@ export function FieldsList({ fields, onChangeField, onDeleteField, onReorderFiel
       >
         <div className={styles.fieldsList}>
           {localFields.map((field, index) => {
-            // If this is in the first section, and label is 'name', type is 'string', then it's a mandatory field (regardless of position)
-            const isMandatoryNameField = isFirstSection && field.label === 'name' && field.dataType === 'string';
-            
             return (
               <FieldItem
                 key={field.id}
@@ -103,7 +100,7 @@ export function FieldsList({ fields, onChangeField, onDeleteField, onReorderFiel
                 onDelete={onDeleteField}
                 isFirst={index === 0}
                 disabled={disabled}
-                isMandatoryNameField={isMandatoryNameField}
+                isMandatoryNameField={false}
                 isDraggable={!disabled}
                 hasValidationError={invalidFields?.has(field.id) ?? false}
               />

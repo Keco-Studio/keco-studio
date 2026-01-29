@@ -127,9 +127,10 @@ export function useCellEditing({
     const row = rows.find(r => r.id === rowId);
     if (!row) return;
     
-    // Get the property to determine if it's the name field (first property)
+    // Get the property to determine if it's the name field
     const property = properties.find(p => p.key === propertyKey);
-    const isNameField = property && properties[0]?.key === propertyKey;
+    // Name field is identified by label='name' and dataType='string', not by position
+    const isNameField = property && property.name === 'name' && property.dataType === 'string';
     
     // Validate value based on data type (only for non-name fields)
     if (!isNameField && property) {
@@ -263,14 +264,15 @@ export function useCellEditing({
       return;
     }
     
-    // Don't allow double-click editing for option, reference, and boolean types
+    // Don't allow double-click editing for option, reference, boolean, image, and file types
+    // These types have their own single-click interaction patterns
     if (property.dataType === 'enum' || 
         (property.dataType === 'reference' && property.referenceLibraries) || 
-        property.dataType === 'boolean') {
+        property.dataType === 'boolean' ||
+        property.dataType === 'image' ||
+        property.dataType === 'file') {
       return;
     }
-    
-    // Image and file types will use MediaFileUpload component for editing
     
     // If already editing this cell, do nothing
     if (editingCell?.rowId === row.id && editingCell?.propertyKey === property.key) {
@@ -282,7 +284,8 @@ export function useCellEditing({
     
     // Start editing this cell
     // For name field, fallback to row.name if propertyValues doesn't have it
-    const isNameField = property && properties[0]?.key === property.key;
+    // Name field is identified by label='name' and dataType='string', not by position
+    const isNameField = property && property.name === 'name' && property.dataType === 'string';
     let currentValue = row.propertyValues[property.key];
     if (isNameField && (currentValue === null || currentValue === undefined || currentValue === '')) {
       // Only use row.name as fallback if it's not 'Untitled' (for blank rows)

@@ -18,10 +18,11 @@ interface FieldFormProps {
   onCancel?: () => void;
   disabled?: boolean;
   onFieldChange?: (field: Omit<FieldConfig, 'id'> | null) => void;
+  onFieldBlur?: () => void;
   validationError?: { labelInvalid: boolean; dataTypeInvalid: boolean };
 }
 
-export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldChange, validationError }: FieldFormProps) {
+export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldChange, onFieldBlur, validationError }: FieldFormProps) {
   const supabase = useSupabase();
   const params = useParams();
   const projectId = params?.projectId as string | undefined;
@@ -43,6 +44,9 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
   
   // Whether data type has been selected via slash, used to control placeholder display
   const [dataTypeSelected, setDataTypeSelected] = useState(!!initialField);
+  // Track IME composition state for Chinese/Japanese/Korean input
+  const [isComposing, setIsComposing] = useState(false);
+  const [localLabel, setLocalLabel] = useState(field.label);
   const inputRef = useRef<any>(null);
   const dataTypeInputRef = useRef<any>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
@@ -55,19 +59,42 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
   useEffect(() => {
     onFieldChangeRef.current = onFieldChange;
   }, [onFieldChange]);
+  
+  // Sync external field.label changes to local state
+  useEffect(() => {
+    if (!isComposing) {
+      setLocalLabel(field.label);
+    }
+  }, [field.label, isComposing]);
 
-  // Notify parent of field changes
+  // Listen for reset event from parent (when user clicks add button)
+  useEffect(() => {
+    const handleReset = () => {
+      // Reset form to initial empty state
+      setField({
+        label: '',
+        dataType: undefined,
+        required: false,
+        enumOptions: [],
+        referenceLibraries: [],
+      });
+      setLocalLabel('');
+      setDataTypeSelected(false);
+      setShowSlashMenu(false);
+      setShowConfigMenu(false);
+    };
+
+    window.addEventListener('fieldform-reset', handleReset as EventListener);
+    return () => {
+      window.removeEventListener('fieldform-reset', handleReset as EventListener);
+    };
+  }, []);
+
+  // Notify parent of field changes (always notify, even if empty)
   useEffect(() => {
     if (onFieldChangeRef.current) {
-      // Pass field if it has any content (label OR dataType)
-      const hasLabel = field.label && field.label.trim();
-      const hasDataType = !!field.dataType;
-      
-      if (hasLabel || hasDataType) {
-        onFieldChangeRef.current(field);
-      } else {
-        onFieldChangeRef.current(null);
-      }
+      // Always pass the field, even if completely empty
+      onFieldChangeRef.current(field);
     } else {
       console.warn('[FieldForm] onFieldChangeRef.current is undefined! Cannot notify parent.');
     }
@@ -77,6 +104,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
   useEffect(() => {
     if (initialField) {
       setField(initialField);
+      setLocalLabel(initialField.label || '');
       setDataTypeSelected(true);
     } else {
       // Reset form when initialField becomes null/undefined
@@ -87,6 +115,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
         enumOptions: [],
         referenceLibraries: [],
       });
+      setLocalLabel('');
       setDataTypeSelected(false);
     }
   }, [initialField]);
@@ -205,6 +234,23 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
 
   const handleLabelChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
+    setLocalLabel(value);
+    
+    // Only update field if not composing (to avoid interrupting IME input)
+    if (!isComposing) {
+      setField((p) => ({ ...p, label: value }));
+    }
+  };
+  
+  const handleCompositionStart = () => {
+    setIsComposing(true);
+  };
+  
+  const handleCompositionEnd = (e: React.CompositionEvent<HTMLInputElement>) => {
+    setIsComposing(false);
+    // Update field with the final composed value
+    const value = (e.target as HTMLInputElement).value;
+    setLocalLabel(value);
     setField((p) => ({ ...p, label: value }));
   };
 
@@ -222,6 +268,11 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
         dataTypeInputRef.current.focus();
       }
     }, 0);
+    
+    // Trigger blur callback when data type is selected
+    if (onFieldBlur) {
+      onFieldBlur();
+    }
   };
 
   const handleDataTypeFocus = () => {
@@ -266,6 +317,13 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
       enumOptions: newOptions,
     }));
   };
+  
+  const handleOptionBlur = () => {
+    // Trigger blur callback when enum option loses focus
+    if (onFieldBlur) {
+      onFieldBlur();
+    }
+  };
 
   const handleRemoveOption = (index: number) => {
     const newOptions = [...(field.enumOptions ?? [])];
@@ -292,6 +350,11 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
       
       return newField;
     });
+    
+    // Trigger blur callback when reference libraries change
+    if (onFieldBlur) {
+      onFieldBlur();
+    }
   };
 
   const isEditing = !!initialField;
@@ -313,8 +376,15 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
         <Input
           ref={inputRef}
           placeholder="Type label for property..."
-          value={field.label}
+          value={localLabel}
           onChange={handleLabelChange}
+          onCompositionStart={handleCompositionStart}
+          onCompositionEnd={handleCompositionEnd}
+          onBlur={() => {
+            if (onFieldBlur) {
+              onFieldBlur();
+            }
+          }}
           className={styles.labelInput}
           onPressEnter={handleSubmit}
           disabled={disabled}
@@ -393,6 +463,7 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
                         <Input
                           value={option}
                           onChange={(e) => handleOptionChange(index, e.target.value)}
+                          onBlur={handleOptionBlur}
                           placeholder="enter new option here"
                           className={styles.optionInput}
                         />

@@ -166,15 +166,15 @@
 }
 
 .avatar {
-  width: 48px;
-  height: 48px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
   font-weight: 400;
-  font-size: 26px;
+  font-size: 24px;
   flex-shrink: 0;
   background-color: #94a3b8;
 }
@@ -227,16 +227,24 @@
 
 .roleSelect {
   padding: 6px 12px;
-  font-size: 13px;
-  font-weight: 500;
+  padding-right: 30px; /* Add space for custom dropdown icon (10px margin + 14px width + 12px padding) */
+  font-size: 16px;
+  font-weight: 400;
   border: 1px solid #d1d5db;
   border-radius: 6px;
   background-color: #ffffff;
+  background-image: url('@/app/assets/images/collaborationRoleSelectIcon.svg');
+  background-size: 14px 8px;
+  background-repeat: no-repeat;
+  background-position: right 10px center;
   color: #374151;
   cursor: pointer;
   transition: all 0.2s;
-  min-width: 100px;
+  min-width: 115px;
   text-align: left;
+  appearance: none; /* Remove default dropdown arrow */
+  -webkit-appearance: none;
+  -moz-appearance: none;
 }
 
 .roleSelect:hover:not(:disabled) {
@@ -506,10 +514,10 @@
     background-color: #ffffff;
   }
   25%, 75% {
-    background-color: #fef3c7;
+    background-color: #FF005E08; /* Lighter pink for smooth transition */
   }
   50% {
-    background-color: #fde68a;
+    background-color: #FF005E0F; /* Target highlight color */
   }
 }
 

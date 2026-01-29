@@ -11,15 +11,12 @@ import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
 import { DeleteAssetModal, ClearContentsModal, DeleteRowModal } from './LibraryAssetsTableModals';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { useYjs } from '@/contexts/YjsContext';
 import { 
   type MediaFileMetadata,
   isImageFile,
   getFileIcon 
 } from '@/lib/services/mediaFileUploadService';
-import { useRealtimeSubscription } from '@/lib/hooks/useRealtimeSubscription';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
-import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent } from '@/lib/types/collaboration';
 import { ConnectionStatusIndicator } from '@/components/collaboration/ConnectionStatusIndicator';
 import { StackedAvatars, getFirstUserColor } from '@/components/collaboration/StackedAvatars';
 import { useTableDataManager } from './hooks/useTableDataManager';
@@ -28,7 +25,6 @@ import { useClipboardOperations } from './hooks/useClipboardOperations';
 import { useCellEditing } from './hooks/useCellEditing';
 import { useCellSelection, type CellKey } from './hooks/useCellSelection';
 import { useUserRole } from './hooks/useUserRole';
-import { useYjsSync } from './hooks/useYjsSync';
 import { useAssetHover } from './hooks/useAssetHover';
 import { useRowOperations } from './hooks/useRowOperations';
 import { useReferenceModal } from './hooks/useReferenceModal';
@@ -53,6 +49,7 @@ import libraryAssetTableAddIcon from '@/app/assets/images/LibraryAssetTableAddIc
 import libraryAssetTableSelectIcon from '@/app/assets/images/LibraryAssetTableSelectIcon.svg';
 import batchEditAddIcon from '@/app/assets/images/BatchEditAddIcon.svg';
 import tableAssetDetailIcon from '@/app/assets/images/TableAssetDetailIcon.svg';
+import collaborationViewNumIcon from '@/app/assets/images/collaborationViewNumIcon.svg';
 import styles from './LibraryAssetsTable.module.css';
 
 export type LibraryAssetsTableProps = {
@@ -109,21 +106,26 @@ export function LibraryAssetsTable({
   // Get message API from App context to support dynamic theme
   const { message } = App.useApp();
   
-  // Yjs integration - unified data source to resolve row ordering issues
-  const { yRows } = useYjs();
-  const { allRowsSource } = useYjsSync(rows, yRows);
+  // Use props.rows directly (from LibraryDataContext via adapter)
+  // No need for separate Yjs sync - LibraryDataContext handles everything
+  const allRowsSource = rows;
+  
+  // Create a yRows mock object for hooks compatibility (no actual Yjs operations)
+  // LibraryDataContext handles all data persistence
+  const yRowsMock = useMemo(() => ({
+    length: allRowsSource.length,
+    toArray: () => allRowsSource,
+    insert: () => {}, // No-op: LibraryDataContext handles creation
+    delete: () => {}, // No-op: LibraryDataContext handles deletion
+  }), [allRowsSource]);
 
   const [isSaving, setIsSaving] = useState(false);
   
   // Track current user's focused cell (for collaboration presence)
   const [currentFocusedCell, setCurrentFocusedCell] = useState<{ assetId: string; propertyKey: string } | null>(null);
   
-  // Realtime collaboration state: track remote edits from other users
-  const [realtimeEditedCells, setRealtimeEditedCells] = useState<Map<string, { value: any; timestamp: number }>>(new Map());
-  
-  // Conflict resolution state: track cells with conflicts
-  // Format: { cellKey: { remoteValue, localValue, userName, timestamp } }
-  const [conflictedCells, setConflictedCells] = useState<Map<string, { remoteValue: any; localValue: any; userName: string; timestamp: number }>>(new Map());
+  // ✅ Realtime updates now come automatically through props.rows from LibraryDataContext
+  // No need to track realtime edited cells separately
   
   // Optimistic update state for boolean fields: track pending boolean updates
   // Format: { rowId-propertyKey: booleanValue }
@@ -201,159 +203,33 @@ export function LibraryAssetsTable({
   });
 
   // Realtime collaboration: event handlers
-  const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
-    const cellKey = `${event.assetId}-${event.propertyKey}`;
-    
-    // Update the cell with remote data
-    setRealtimeEditedCells(prev => {
-      const next = new Map(prev);
-      next.set(cellKey, { value: event.newValue, timestamp: event.timestamp });
-      return next;
-    });
-
-    // Clear the realtime edited state after a short delay
-    setTimeout(() => {
-      setRealtimeEditedCells(prev => {
-        const next = new Map(prev);
-        next.delete(cellKey);
-        return next;
-      });
-    }, 300);
-  }, []);
-
-  const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
-    // Only show notification if it's from another user, not the current user
-    if (currentUser && event.userId && event.userId !== currentUser.id) {
-      message.info(`${event.userName} added "${event.assetName}"`);
-    }
-    
-    // If position information is provided, insert the asset at the correct position in Yjs
-    if (event.insertAfterRowId || event.insertBeforeRowId) {
-      const allRows = yRows.toArray();
-      let insertIndex = -1;
-      
-      if (event.insertAfterRowId) {
-        // Insert below the target row
-        const targetIndex = allRows.findIndex(r => r.id === event.insertAfterRowId);
-        if (targetIndex >= 0) {
-          insertIndex = targetIndex + 1;
-        }
-      } else if (event.insertBeforeRowId) {
-        // Insert above the target row
-        const targetIndex = allRows.findIndex(r => r.id === event.insertBeforeRowId);
-        if (targetIndex >= 0) {
-          insertIndex = targetIndex;
-        }
-      }
-      
-      // If we found a valid position, create an optimistic asset and insert it
-      if (insertIndex >= 0 && library) {
-        const optimisticAsset: AssetRow = {
-          id: event.assetId,
-          libraryId: library.id,
-          name: event.assetName,
-          propertyValues: event.propertyValues,
-        };
-        
-        // Insert into Yjs at the correct position
-        yRows.insert(insertIndex, [optimisticAsset]);
-        
-        // Also add to optimisticNewAssets for display
-        setOptimisticNewAssets(prev => {
-          const newMap = new Map(prev);
-          newMap.set(event.assetId, optimisticAsset);
-          return newMap;
-        });
-      }
-    }
-    
-    // The parent will refresh and show the new asset automatically
-    // due to database subscription or polling
-  }, [yRows, library, setOptimisticNewAssets, currentUser]);
-
-  const handleAssetDeleteEvent = useCallback((event: AssetDeleteEvent) => {
-    // Show a notification that an asset was deleted
-    message.warning(`${event.userName} deleted "${event.assetName}"`);
-    
-    // Optimistically hide the deleted asset
-    setDeletedAssetIds(prev => {
-      const next = new Set(prev);
-      next.add(event.assetId);
-      return next;
-    });
-  }, []);
-
-  const handleConflictEvent = useCallback((event: CellUpdateEvent, localValue: any) => {
-    const cellKey = `${event.assetId}-${event.propertyKey}`;
-    
-    // Track the conflict
-    setConflictedCells(prev => {
-      const next = new Map(prev);
-      next.set(cellKey, {
-        remoteValue: event.newValue,
-        localValue,
-        userName: event.userName,
-        timestamp: event.timestamp,
-      });
-      return next;
-    });
-    
-    // Show conflict notification
-    message.warning(
-      `Cell updated by ${event.userName}. Choose to keep your changes or accept theirs.`,
-      5
-    );
-  }, []);
-
-  // Initialize realtime subscription if enabled
-  const realtimeConfig = enableRealtime && currentUser && library ? {
-    libraryId: library.id,
-    currentUserId: currentUser.id,
-    currentUserName: currentUser.name,
-    currentUserEmail: currentUser.email,
-    avatarColor: currentUser.avatarColor || getUserAvatarColor(currentUser.id),
-    onCellUpdate: handleCellUpdateEvent,
-    onAssetCreate: handleAssetCreateEvent,
-    onAssetDelete: handleAssetDeleteEvent,
-    onConflict: handleConflictEvent,
-  } : null;
-
-  const realtimeSubscription = useRealtimeSubscription(
-    realtimeConfig || {
-      libraryId: '',
-      currentUserId: '',
-      currentUserName: '',
-      currentUserEmail: '',
-      avatarColor: '',
-      onCellUpdate: () => {},
-      onAssetCreate: () => {},
-      onAssetDelete: () => {},
-      onConflict: () => {},
-    }
-  );
-
-  const {
-    connectionStatus,
-    broadcastCellUpdate,
-    broadcastAssetCreate,
-    broadcastAssetDelete,
-  } = enableRealtime && currentUser ? realtimeSubscription : {
-    connectionStatus: 'disconnected' as const,
-    broadcastCellUpdate: async () => {},
-    broadcastAssetCreate: async () => {},
-    broadcastAssetDelete: async () => {},
-  };
+  // ✅ Realtime collaboration is now handled by LibraryDataContext
+  // No need for separate subscription here - data updates come through props.rows
+  // which are sourced from LibraryDataContext's yAssets
+  
+  // Connection status is always 'connected' since we use LibraryDataContext
+  const connectionStatus = 'connected' as const;
+  
+  // These broadcast functions are no longer needed here
+  // The parent (Adapter) will handle all broadcasting through LibraryDataContext
+  const broadcastCellUpdate = async () => {};
+  const broadcastAssetCreate = async () => {};
+  const broadcastAssetDelete = async () => {};
 
   // Presence tracking helpers
   const handleCellFocus = useCallback((assetId: string, propertyKey: string) => {
+    // console.log('[LibraryAssetsTable] handleCellFocus called:', { assetId, propertyKey, currentUser: currentUser?.id });
     // Update local state for current user's focused cell
     setCurrentFocusedCell({ assetId, propertyKey });
     
     // Update presence tracking
     if (presenceTracking) {
+      // console.log('[LibraryAssetsTable] Calling presenceTracking.updateActiveCell');
       presenceTracking.updateActiveCell(assetId, propertyKey);
+    } else {
+      // console.warn('[LibraryAssetsTable] presenceTracking is not available');
     }
-  }, [presenceTracking]);
+  }, [presenceTracking, currentUser]);
 
   const handleCellBlur = useCallback(() => {
     // Clear local state for current user's focused cell
@@ -366,8 +242,12 @@ export function LibraryAssetsTable({
   }, [presenceTracking]);
 
   const getUsersEditingCell = useCallback((assetId: string, propertyKey: string) => {
-    if (!presenceTracking) return [];
+    if (!presenceTracking) {
+      // console.warn('[LibraryAssetsTable] getUsersEditingCell: presenceTracking not available');
+      return [];
+    }
     let users = presenceTracking.getUsersEditingCell(assetId, propertyKey);
+    // console.log('[LibraryAssetsTable] getUsersEditingCell:', { assetId, propertyKey, usersFromPresenceTracking: users.length, currentFocusedCell });
     
     // If current user is focused on this specific cell, make sure they're included
     if (currentUser && currentFocusedCell && 
@@ -375,7 +255,9 @@ export function LibraryAssetsTable({
         currentFocusedCell.propertyKey === propertyKey) {
       // Check if current user is already in the list
       const hasCurrentUser = users.some(u => u.userId === currentUser.id);
+      // console.log('[LibraryAssetsTable] Current user is focused on this cell, hasCurrentUser:', hasCurrentUser);
       if (!hasCurrentUser) {
+        // console.log('[LibraryAssetsTable] Adding current user to the list');
         // Add current user to the list
         // Use a slightly earlier timestamp if this is the first user (empty list)
         // This ensures the first user to enter keeps their position
@@ -401,22 +283,12 @@ export function LibraryAssetsTable({
       }
     }
     
+    // console.log('[LibraryAssetsTable] Final users list:', users.length, users.map(u => ({ id: u.userId, name: u.userName })));
     return users;
   }, [presenceTracking, currentUser, currentFocusedCell]);
 
-  // Conflict resolution handlers
-  const handleKeepLocalChanges = useCallback((assetId: string, propertyKey: string) => {
-    const cellKey = `${assetId}-${propertyKey}`;
-    
-    // Remove conflict state (keep local value)
-    setConflictedCells(prev => {
-      const next = new Map(prev);
-      next.delete(cellKey);
-      return next;
-    });  
-    message.success('Kept your changes', 2);
-  }, []);
-  // Note: handleAcceptRemoteChanges will be defined after useCellEditing hook
+  // ✅ Conflict resolution is now handled automatically by LibraryDataContext
+  // Remote changes win by default (last-write-wins)
   useOptimisticCleanup({
     rows,
     optimisticNewAssets,
@@ -453,6 +325,18 @@ export function LibraryAssetsTable({
   } = useAssetHover(supabase);
   const hasSections = sections.length > 0;
   const userRole = useUserRole(params?.projectId as string | undefined, supabase);
+  
+  // Viewer notification banner state (session-only, resets on library change or page refresh)
+  const [isViewerBannerDismissed, setIsViewerBannerDismissed] = useState(false);
+  
+  const handleDismissViewerBanner = useCallback(() => {
+    setIsViewerBannerDismissed(true);
+  }, []);
+  
+  // Reset banner when library changes or component mounts
+  useEffect(() => {
+    setIsViewerBannerDismissed(false);
+  }, [library?.id]);
   const {
     isAddingRow,setIsAddingRow,newRowData,setNewRowData,handleSaveNewAsset,handleCancelAdding,handleInputChange,handleMediaFileChange,
   } = useAddRow({
@@ -460,7 +344,7 @@ export function LibraryAssetsTable({
     library,
     onSaveAsset,
     userRole,
-    yRows,
+    yRows: yRowsMock,
     setOptimisticNewAssets,
     setIsSaving,
     enableRealtime,
@@ -471,7 +355,7 @@ export function LibraryAssetsTable({
   const cellEditing = useCellEditing({
     properties,
     rows,
-    yRows,
+    yRows: yRowsMock,
     onUpdateAsset,
     userRole,
     isAddingRow,
@@ -497,23 +381,6 @@ export function LibraryAssetsTable({
     handleCancelEditing,
     validateValueByType,
   } = cellEditing;
-  // Conflict resolution handlers (must be after useCellEditing hook)
-  const handleAcceptRemoteChanges = useCallback((assetId: string, propertyKey: string) => {
-    const cellKey = `${assetId}-${propertyKey}`;
-    const conflict = conflictedCells.get(cellKey);
-    if (!conflict) return;
-    // Apply remote value to editing cell if it's currently being edited
-    if (editingCell?.rowId === assetId && editingCell?.propertyKey === propertyKey) {
-      setEditingCellValue(String(conflict.remoteValue));
-    }
-    // Remove conflict state
-    setConflictedCells(prev => {
-      const next = new Map(prev);
-      next.delete(cellKey);
-      return next;
-    });
-    message.info(`Accepted changes from ${conflict.userName}`, 2);
-  }, [conflictedCells, editingCell, setEditingCellValue]);
   const {
     referenceModalOpen,
     referenceModalProperty,
@@ -525,7 +392,7 @@ export function LibraryAssetsTable({
   } = useReferenceModal({
     setNewRowData,
     allRowsSource,
-    yRows,
+    yRows: yRowsMock,
     onUpdateAsset,
     rows,
     newRowData,
@@ -537,21 +404,17 @@ export function LibraryAssetsTable({
   });
   const hasProperties = properties.length > 0;
   const hasRows = rows.length > 0;
-  // Helper function to broadcast cell updates
+  
+  // ✅ Broadcasting is now handled automatically by LibraryDataContext
+  // No need for explicit broadcast calls - updates propagate through Yjs
   const broadcastCellUpdateIfEnabled = useCallback(async (
     assetId: string,
     propertyKey: string,
     newValue: any,
     oldValue?: any
   ) => {
-    if (enableRealtime && currentUser) {
-      try {
-        await broadcastCellUpdate(assetId, propertyKey, newValue, oldValue);
-      } catch (error) {
-        console.error('Failed to broadcast cell update:', error);
-      }
-    }
-  }, [enableRealtime, currentUser, broadcastCellUpdate]);
+    // No-op: LibraryDataContext handles broadcasting
+  }, []);
   useClickOutsideAutoSave({
     tableContainerRef,
     isAddingRow,
@@ -572,7 +435,7 @@ export function LibraryAssetsTable({
     setCurrentFocusedCell,
     onUpdateAsset,
     rows,
-    yRows,
+    yRows: yRowsMock,
     setOptimisticEditUpdates,
     presenceTracking,
   });
@@ -601,25 +464,8 @@ export function LibraryAssetsTable({
         [propertyKey]: value
       };
       
-      // Get asset name
-      const assetName = foundRow.name || 'Untitled';
-      
-      // Immediately update Yjs (optimistic update)
-      const allRows = yRows.toArray();
-      const rowIndex = allRows.findIndex(r => r.id === rowId);
-      
-      if (rowIndex >= 0) {
-        const existingRow = allRows[rowIndex];
-        const updatedRow = {
-          ...existingRow,
-          name: String(assetName),
-          propertyValues: updatedPropertyValues
-        };
-        
-        // Update Yjs
-        yRows.delete(rowIndex, 1);
-        yRows.insert(rowIndex, [updatedRow]);
-      }
+    // Get asset name
+    const assetName = foundRow.name || 'Untitled';
 
       // Apply optimistic update
       setOptimisticEditUpdates(prev => {
@@ -631,29 +477,58 @@ export function LibraryAssetsTable({
         return newMap;
       });
 
-      // Save immediately for media files
-      setIsSaving(true);
-      onUpdateAsset(rowId, assetName, updatedPropertyValues)
-        .then(() => {
-          setTimeout(() => {
+    // Save immediately for media files
+    setIsSaving(true);
+    onUpdateAsset(rowId, assetName, updatedPropertyValues)
+      .then(() => {
+        // Wait for parent component to update rows prop
+        // Check multiple times if the value has been updated before removing optimistic value
+        const checkAndRemoveOptimistic = (attempts = 0) => {
+          if (attempts >= 10) {
+            // After 10 attempts (1 second), force remove optimistic value
             setOptimisticEditUpdates(prev => {
               const newMap = new Map(prev);
               newMap.delete(rowId);
               return newMap;
             });
-          }, 500);
-        })
-        .catch((error) => {
-          console.error('Failed to update media file:', error);
-          setOptimisticEditUpdates(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(rowId);
-            return newMap;
-          });
-        })
-        .finally(() => {
-          setIsSaving(false);
+            return;
+          }
+          
+          // Check if the actual row value matches the new value
+          const currentRow = rows.find(r => r.id === rowId);
+          if (currentRow) {
+            const currentValue = currentRow.propertyValues[propertyKey];
+            
+            // Compare the values (both could be objects or null)
+            if (JSON.stringify(currentValue) === JSON.stringify(value)) {
+              // Value has been updated, safe to remove optimistic value
+              setOptimisticEditUpdates(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(rowId);
+                return newMap;
+              });
+              return;
+            }
+          }
+          
+          // Value not updated yet, check again after a short delay
+          setTimeout(() => checkAndRemoveOptimistic(attempts + 1), 100);
+        };
+        
+        // Start checking after a short delay
+        setTimeout(() => checkAndRemoveOptimistic(0), 50);
+      })
+      .catch((error) => {
+        console.error('Failed to update media file:', error);
+        setOptimisticEditUpdates(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(rowId);
+          return newMap;
         });
+      })
+      .finally(() => {
+        setIsSaving(false);
+      });
       return;
     }
     
@@ -665,23 +540,6 @@ export function LibraryAssetsTable({
     
     // Get asset name
     const assetName = row.name || 'Untitled';
-    
-    // Immediately update Yjs (optimistic update)
-    const allRows = yRows.toArray();
-    const rowIndex = allRows.findIndex(r => r.id === rowId);
-    
-    if (rowIndex >= 0) {
-      const existingRow = allRows[rowIndex];
-      const updatedRow = {
-        ...existingRow,
-        name: String(assetName),
-        propertyValues: updatedPropertyValues
-      };
-      
-      // Update Yjs
-      yRows.delete(rowIndex, 1);
-      yRows.insert(rowIndex, [updatedRow]);
-    }
 
     // Apply optimistic update
     setOptimisticEditUpdates(prev => {
@@ -697,13 +555,42 @@ export function LibraryAssetsTable({
     setIsSaving(true);
     onUpdateAsset(rowId, assetName, updatedPropertyValues)
       .then(() => {
-        setTimeout(() => {
-          setOptimisticEditUpdates(prev => {
-            const newMap = new Map(prev);
-            newMap.delete(rowId);
-            return newMap;
-          });
-        }, 500);
+        // Wait for parent component to update rows prop
+        // Check multiple times if the value has been updated before removing optimistic value
+        const checkAndRemoveOptimistic = (attempts = 0) => {
+          if (attempts >= 10) {
+            // After 10 attempts (1 second), force remove optimistic value
+            setOptimisticEditUpdates(prev => {
+              const newMap = new Map(prev);
+              newMap.delete(rowId);
+              return newMap;
+            });
+            return;
+          }
+          
+          // Check if the actual row value matches the new value
+          const currentRow = rows.find(r => r.id === rowId);
+          if (currentRow) {
+            const currentValue = currentRow.propertyValues[propertyKey];
+            
+            // Compare the values (both could be objects or null)
+            if (JSON.stringify(currentValue) === JSON.stringify(value)) {
+              // Value has been updated, safe to remove optimistic value
+              setOptimisticEditUpdates(prev => {
+                const newMap = new Map(prev);
+                newMap.delete(rowId);
+                return newMap;
+              });
+              return;
+            }
+          }
+          
+          // Value not updated yet, check again after a short delay
+          setTimeout(() => checkAndRemoveOptimistic(attempts + 1), 100);
+        };
+        
+        // Start checking after a short delay
+        setTimeout(() => checkAndRemoveOptimistic(0), 50);
       })
       .catch((error) => {
         console.error('Failed to update media file:', error);
@@ -840,7 +727,7 @@ export function LibraryAssetsTable({
     onSaveAsset,
     onUpdateAsset,
     library,
-    yRows,
+    yRows: yRowsMock,
     setSelectedCells,
     setSelectedRowIds,
     setCutCells,
@@ -878,7 +765,7 @@ export function LibraryAssetsTable({
     supabase,
     orderedProperties,
     getAllRowsForCellSelection,
-    yRows,
+    yRows: yRowsMock,
     selectedCells,
     selectedRowIds,
     selectedCellsRef,
@@ -1038,6 +925,49 @@ export function LibraryAssetsTable({
   }, []);
   useCloseOnDocumentClick(!!contextMenuRowId, closeRowContextMenu);
 
+  // Add global click listener to clear focus state when clicking outside
+  useEffect(() => {
+    const handleDocumentClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      
+      // Don't clear focus if clicking inside table
+      if (tableContainerRef.current?.contains(target)) {
+        return;
+      }
+      
+      // Don't clear focus if clicking on modals, dropdowns, or interactive components
+      if (
+        target.closest('[role="dialog"]') ||
+        target.closest('.ant-modal') ||
+        target.closest('.ant-modal-root') ||
+        target.closest('.ant-modal-mask') ||
+        target.closest('.ant-modal-wrap') ||
+        target.closest('.ant-select-dropdown') ||
+        target.closest('.ant-switch') ||
+        target.closest('[class*="modal"]') ||
+        target.closest('[class*="Modal"]') ||
+        target.closest('[class*="dropdown"]') ||
+        target.closest('[class*="Dropdown"]') ||
+        target.closest('input[type="file"]') ||
+        target.closest('button') ||
+        target.closest('[role="combobox"]') ||
+        target.closest('[class*="mediaFileUpload"]')
+      ) {
+        return;
+      }
+      
+      // Clear focus state
+      if (currentFocusedCell) {
+        handleCellBlur();
+      }
+    };
+    
+    document.addEventListener('mousedown', handleDocumentClick);
+    return () => {
+      document.removeEventListener('mousedown', handleDocumentClick);
+    };
+  }, [currentFocusedCell, handleCellBlur]);
+
   if (!hasProperties) {
     return <EmptyState userRole={userRole} onPredefineClick={handlePredefineClick} />;
   }
@@ -1104,8 +1034,8 @@ export function LibraryAssetsTable({
                   )}
                 </td>
                 {orderedProperties.map((property, propertyIndex) => {
-                  // Check if this is the first property (name field)
-                  const isNameField = propertyIndex === 0;
+                  // Check if this is the name field (identified by label='name' and dataType='string')
+                  const isNameField = property.name === 'name' && property.dataType === 'string';
                   
                   // Check if this is a reference type field
                   if (property.dataType === 'reference' && property.referenceLibraries) {
@@ -1160,8 +1090,11 @@ export function LibraryAssetsTable({
                         data-property-key={property.key}
                         className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
-                        onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
-                        onClick={(e) => handleCellClick(row.id, property.key, e)}
+                        onClick={(e) => {
+                          // Trigger focus when clicking on reference cell
+                          handleCellFocus(row.id, property.key);
+                          handleCellClick(row.id, property.key, e);
+                        }}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
                         onMouseEnter={(e) => {
@@ -1210,6 +1143,8 @@ export function LibraryAssetsTable({
                             onAvatarMouseEnter={handleAvatarMouseEnter}
                             onAvatarMouseLeave={handleAvatarMouseLeave}
                             onOpenReferenceModal={handleOpenReferenceModal}
+                            onFocus={() => handleCellFocus(row.id, property.key)}
+                            onBlur={handleCellBlur}
                           />
                           {/* Show detail icon when cell is selected - positioned on the right */}
                           {isCellSelected && (
@@ -1313,25 +1248,22 @@ export function LibraryAssetsTable({
                       <td
                         key={property.id}
                         data-property-key={property.key}
-                        className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellWithPresence : ''} ${isSingleSelected ? styles.cellSelected : ''} ${isMultipleSelected ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
-                        style={borderColor ? { borderLeft: `3px solid ${borderColor}` } : undefined}
+                        className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
+                        style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
                         onClick={(e) => {
-                          // Prevent cell selection when clicking on MediaFileUpload component
-                          const target = e.target as HTMLElement;
-                          if (target.closest(`.${styles.mediaFileUploadContainer}`) || 
-                              target.closest('button') ||
-                              target.closest('input')) {
-                            return;
-                          }
+                          // Trigger focus when clicking anywhere on the cell (single-click to edit)
+                          handleCellFocus(row.id, property.key);
+                          
+                          // Always allow cell selection, even when clicking on MediaFileUpload component
+                          // This fixes the issue where users need to click twice to highlight the cell
                           handleCellClick(row.id, property.key, e);
                         }}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => {
-                          // Prevent fill drag when clicking on MediaFileUpload component
+                          // Only prevent fill drag when clicking on interactive elements (buttons, inputs)
+                          // to allow users to interact with the upload component
                           const target = e.target as HTMLElement;
-                          if (target.closest(`.${styles.mediaFileUploadContainer}`) || 
-                              target.closest('button') ||
-                              target.closest('input')) {
+                          if (target.closest('button') || target.closest('input[type="file"]')) {
                             return;
                           }
                           handleCellFillDragStart(row.id, property.key, e);
@@ -1445,8 +1377,13 @@ export function LibraryAssetsTable({
                         data-property-key={property.key}
                         className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
-                        onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
-                        onClick={(e) => handleCellClick(row.id, property.key, e)}
+                        onClick={(e) => {
+                          // Trigger focus when clicking on boolean cell (single-click to edit)
+                          if (userRole !== 'viewer') {
+                            handleCellFocus(row.id, property.key);
+                          }
+                          handleCellClick(row.id, property.key, e);
+                        }}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
                         onMouseMove={(e) => {
@@ -1484,15 +1421,11 @@ export function LibraryAssetsTable({
                                 return;
                               }
                               
-                              // Update presence tracking when user starts editing
-                              handleCellFocus(row.id, property.key);
-                              
-                              // Clear presence after a short delay to ensure other users see the highlight
+                              // Keep focus during the change to show editing state
+                              // Blur after change is complete and propagated
                               setTimeout(() => {
-                                if (presenceTracking) {
-                                  presenceTracking.updateActiveCell(null, null);
-                                }
-                              }, 1000); // 1 second delay
+                                handleCellBlur();
+                              }, 1000); // Delay to let other users see the change
                               
                               // Optimistic update: immediately update UI
                               setOptimisticBooleanValues(prev => ({
@@ -1646,8 +1579,13 @@ export function LibraryAssetsTable({
                         data-property-key={property.key}
                         className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
                         style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
-                        onDoubleClick={(e) => handleCellDoubleClick(row, property, e)}
-                        onClick={(e) => handleCellClick(row.id, property.key, e)}
+                        onClick={(e) => {
+                          // Trigger focus when clicking on enum cell (single-click to edit)
+                          if (userRole !== 'viewer') {
+                            handleCellFocus(row.id, property.key);
+                          }
+                          handleCellClick(row.id, property.key, e);
+                        }}
                         onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                         onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
                         onMouseMove={(e) => {
@@ -1687,14 +1625,20 @@ export function LibraryAssetsTable({
                                 return;
                               }
                               
+                              // Trigger focus when opening dropdown to show editing state
+                              if (open) {
+                                handleCellFocus(row.id, property.key);
+                              } else {
+                                // Delay blur when closing dropdown to let other users see the change
+                                setTimeout(() => {
+                                  handleCellBlur();
+                                }, 1000);
+                              }
+                              
                               setOpenEnumSelects(prev => ({
                                 ...prev,
                                 [enumSelectKey]: open
                               }));
-                              // Update presence tracking when dropdown opens
-                              if (open) {
-                                handleCellFocus(row.id, property.key);
-                              }
                             }}
                             onChange={async (newValue) => {
                               // Prevent editing if user is a viewer
@@ -1703,13 +1647,6 @@ export function LibraryAssetsTable({
                               }
                               
                               const stringValue = newValue || '';
-                              
-                              // Clear presence after a short delay to ensure other users see the highlight
-                              setTimeout(() => {
-                                if (presenceTracking) {
-                                  presenceTracking.updateActiveCell(null, null);
-                                }
-                              }, 1000); // 1 second delay
                               
                               // Optimistic update: immediately update UI
                               setOptimisticEnumValues(prev => ({
@@ -1730,13 +1667,48 @@ export function LibraryAssetsTable({
                                   // Broadcast cell update if realtime is enabled
                                   await broadcastCellUpdateIfEnabled(row.id, property.key, stringValue, oldValue);
                                   
-                                  // Remove optimistic value after successful update
-                                  // The component will re-render with new props from parent
-                                  setOptimisticEnumValues(prev => {
-                                    const next = { ...prev };
-                                    delete next[enumSelectKey];
-                                    return next;
-                                  });
+                                  // Wait for parent component to update rows prop
+                                  // Check multiple times if the value has been updated before removing optimistic value
+                                  const checkAndRemoveOptimistic = (attempts = 0) => {
+                                    if (attempts >= 10) {
+                                      // After 10 attempts (1 second), force remove optimistic value
+                                      setOptimisticEnumValues(prev => {
+                                        if (enumSelectKey in prev) {
+                                          const next = { ...prev };
+                                          delete next[enumSelectKey];
+                                          return next;
+                                        }
+                                        return prev;
+                                      });
+                                      return;
+                                    }
+                                    
+                                    // Check if the actual row value matches the new value
+                                    // This means the parent component has updated the rows prop
+                                    const currentRow = rows.find(r => r.id === row.id);
+                                    if (currentRow) {
+                                      const currentValue = currentRow.propertyValues[property.key];
+                                      
+                                      if (String(currentValue || '') === stringValue) {
+                                        // Value has been updated, safe to remove optimistic value
+                                        setOptimisticEnumValues(prev => {
+                                          if (enumSelectKey in prev) {
+                                            const next = { ...prev };
+                                            delete next[enumSelectKey];
+                                            return next;
+                                          }
+                                          return prev;
+                                        });
+                                        return;
+                                      }
+                                    }
+                                    
+                                    // Value not updated yet, check again after a short delay
+                                    setTimeout(() => checkAndRemoveOptimistic(attempts + 1), 100);
+                                  };
+                                  
+                                  // Start checking after a short delay
+                                  setTimeout(() => checkAndRemoveOptimistic(0), 50);
                                 } catch (error) {
                                   // On error, revert optimistic update
                                   setOptimisticEnumValues(prev => {
@@ -1748,7 +1720,7 @@ export function LibraryAssetsTable({
                                 }
                               }
                               
-                              // Close dropdown
+                              // Close dropdown (blur will be triggered by onOpenChange)
                               setOpenEnumSelects(prev => ({
                                 ...prev,
                                 [enumSelectKey]: false
@@ -1909,13 +1881,13 @@ export function LibraryAssetsTable({
                         />
                       ) : (
                         <>
-                          {isNameField ? (
-                            // Name field: show text + view detail button
+                          {propertyIndex === 0 ? (
+                            // First column: show text + view detail button
                             <div className={styles.cellContent}>
                               <span 
                                 className={styles.cellText}
                                 onDoubleClick={(e) => {
-                                  // Ensure double click on name field text triggers editing
+                                  // Ensure double click on first column text triggers editing
                                   handleCellDoubleClick(row, property, e);
                                 }}
                               >
@@ -2326,6 +2298,27 @@ export function LibraryAssetsTable({
         setDeleteRowConfirmVisible(false);
       }}
     />
+    
+    {/* Viewer notification banner */}
+    {userRole === 'viewer' && !isViewerBannerDismissed && (
+      <div className={styles.viewerBanner}>
+        <Image
+          src={collaborationViewNumIcon}
+          alt="View"
+          width={20}
+          height={20}
+          className={styles.viewerBannerIcon}
+        />
+        <span className={styles.viewerBannerText}>You can only view this library.</span>
+        <button
+          className={styles.viewerBannerClose}
+          onClick={handleDismissViewerBanner}
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </div>
+    )}
     </>
   );
 }

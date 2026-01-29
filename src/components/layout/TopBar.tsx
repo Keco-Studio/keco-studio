@@ -186,13 +186,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const isPredefine = pathname?.includes('/predefine');
   const isAssetDetail = !!currentAssetId;
 
-  const handlePredefineSave = () => {
-    // Let Predefine page handle actual save via a window event
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('predefine-save'));
-    }
-  };
-
   const handlePredefineCancelOrDelete = () => {
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('predefine-cancel-or-delete'));
@@ -248,15 +241,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               <Image src={topbarPredefinePublishIcon} alt="Cancel or Delete" width={16} height={16} />
             </span>
             <span>{isPredefineCreatingNewSection ? 'Cancel' : 'Delete Section'}</span>
-          </button>
-          <button
-            className={`${styles.topbarPillButton} ${styles.topbarPillPrimary}`}
-            onClick={handlePredefineSave}
-          >
-            <span className={styles.topbarPillIcon}>
-              <Image src={topbarPredefinePublishIcon} alt="Save" width={16} height={16} />
-            </span>
-            <span>Save</span>
           </button>
           <button
             className={styles.topbarPillButton}

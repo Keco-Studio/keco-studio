@@ -2,12 +2,20 @@ import { useState, useCallback } from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 
+// Compatible interface for yRows (supports both Y.Array and mock objects)
+interface YRowsLike {
+  length: number;
+  toArray: () => AssetRow[];
+  insert: (index: number, content: AssetRow[]) => void;
+  delete: (index: number, length: number) => void;
+}
+
 export type UseAddRowParams = {
   properties: PropertyConfig[];
   library: { id: string; name: string; description?: string | null } | null;
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
   userRole: 'admin' | 'editor' | 'viewer' | null;
-  yRows: { length: number; insert: (index: number, rows: AssetRow[]) => void; toArray: () => AssetRow[]; delete: (index: number, count: number) => void };
+  yRows: YRowsLike;
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
   setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
   enableRealtime?: boolean;

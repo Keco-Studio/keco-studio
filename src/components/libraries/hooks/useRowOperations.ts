@@ -4,7 +4,13 @@ import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { CellKey } from './useCellSelection';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-type YArrayAssetRow = Y.Array<AssetRow>;
+// Compatible interface for yRows (supports both Y.Array and mock objects)
+interface YRowsLike {
+  length: number;
+  toArray: () => AssetRow[];
+  insert: (index: number, content: AssetRow[]) => void;
+  delete: (index: number, length: number) => void;
+}
 
 export type UseRowOperationsParams = {
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
@@ -18,7 +24,7 @@ export type UseRowOperationsParams = {
   supabase: SupabaseClient | null;
   orderedProperties: PropertyConfig[];
   getAllRowsForCellSelection: () => AssetRow[];
-  yRows: YArrayAssetRow;
+  yRows: YRowsLike;
   selectedCells: Set<CellKey>;
   selectedRowIds: Set<string>;
   selectedCellsRef: React.MutableRefObject<Set<CellKey>>;
@@ -509,7 +515,8 @@ export function useRowOperations(params: UseRowOperationsParams) {
           }
           const rowData = cellsByRow.get(rowId)!;
           const prop = orderedProperties[propertyIndex];
-          const isNameField = propertyIndex === 0;
+          // Name field is identified by label='name' and dataType='string', not by position
+          const isNameField = prop && prop.name === 'name' && prop.dataType === 'string';
           if (isNameField) {
             rowData.assetName = '';
             rowData.propertyValues[propertyKey] = null;
