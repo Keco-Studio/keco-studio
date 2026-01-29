@@ -302,7 +302,7 @@ export function AssetHeader({
           >
             Share
           </button>
-          {userRole === 'admin' && (
+          {/* {userRole === 'admin' && (
             <button className={styles.adminRoleLabel}>
               {getRoleText(userRole)}
             </button>
@@ -318,7 +318,7 @@ export function AssetHeader({
               <Image src={libraryHeadViewIcon} alt="Viewing" width={16} height={16} />
               {getRoleText(userRole)}
             </button>
-          )}
+          )} */}
         </div>
 
         {/* More Options Icon (no Version Control) */}

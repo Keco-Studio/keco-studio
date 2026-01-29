@@ -225,14 +225,16 @@ function PredefinePageContent() {
     // Trigger FieldForm reset by dispatching a custom event
     window.dispatchEvent(new CustomEvent('fieldform-reset', { detail: { sectionId } }));
     
-    // Auto-save after adding field (without reloading)
+    // Auto-save immediately after adding field (important operation)
     // Skip if currently saving or reloading
     if (!isSavingOrReloading.current) {
-      setTimeout(() => {
-        if (!isSavingOrReloading.current) {
-          saveSchema(updatedSections, false); // false = don't reload after save
-        }
-      }, 300);
+      // Clear any pending auto-save timer
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      // Save immediately (no delay) to ensure data is persisted
+      void saveSchema(updatedSections, false); // false = don't reload after save
     }
   };
 
@@ -258,15 +260,16 @@ function PredefinePageContent() {
     setSections(updatedSections);
     setErrors([]);
     
-    // Auto-save after changing field (without reloading)
-    // Skip if currently saving or reloading
-    if (!isSavingOrReloading.current) {
-      setTimeout(() => {
-        if (!isSavingOrReloading.current) {
-          saveSchema(updatedSections, false); // false = don't reload after save
-        }
-      }, 300);
+    // Debounce auto-save after changing field
+    // Clear previous timer and set new one
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
     }
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (!isSavingOrReloading.current) {
+        void saveSchema(updatedSections, false); // false = don't reload after save
+      }
+    }, 500); // Increased to 500ms for debouncing
   };
 
   const handleDeleteField = (sectionId: string, fieldId: string) => {
@@ -276,14 +279,15 @@ function PredefinePageContent() {
     
     setSections(updatedSections);
     
-    // Auto-save after deleting field (without reloading)
-    // Skip if currently saving or reloading
+    // Auto-save immediately after deleting field (important operation)
     if (!isSavingOrReloading.current) {
-      setTimeout(() => {
-        if (!isSavingOrReloading.current) {
-          saveSchema(updatedSections, false); // false = don't reload after save
-        }
-      }, 300);
+      // Clear any pending auto-save timer
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+        autoSaveTimerRef.current = null;
+      }
+      // Save immediately to ensure data is persisted
+      void saveSchema(updatedSections, false); // false = don't reload after save
     }
   };
 
@@ -295,15 +299,15 @@ function PredefinePageContent() {
     setSections(updatedSections);
     setErrors([]);
     
-    // Auto-save after reordering fields (without reloading)
-    // Skip if currently saving or reloading
-    if (!isSavingOrReloading.current) {
-      setTimeout(() => {
-        if (!isSavingOrReloading.current) {
-          saveSchema(updatedSections, false); // false = don't reload after save
-        }
-      }, 300);
+    // Auto-save after reordering fields (debounced to allow multiple drag operations)
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
     }
+    autoSaveTimerRef.current = setTimeout(() => {
+      if (!isSavingOrReloading.current) {
+        void saveSchema(updatedSections, false); // false = don't reload after save
+      }
+    }, 800); // Longer delay for drag operations
   };
 
   const handleSaveNewSection = async (newSection: { name: string; fields: FieldConfig[] }) => {
@@ -535,6 +539,15 @@ function PredefinePageContent() {
       }
     };
   }, [isCreatingNewSection, activeSectionId, cancelCreatingNewSection, handleDeleteSection]);
+
+  // Cleanup auto-save timer on unmount
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, []);
 
   // Calculate add button position based on the rightmost tab
   useEffect(() => {

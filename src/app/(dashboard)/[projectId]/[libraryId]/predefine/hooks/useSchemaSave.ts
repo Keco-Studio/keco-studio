@@ -34,8 +34,8 @@ export async function saveSchemaIncremental(
   const existing = (existingRows || []) as FieldDefinitionRow[];
   const existingMap = new Map<string, FieldDefinitionRow>();
   existing.forEach((row) => {
-    // Use section_id + label as key for matching (stable across section name changes)
-    const key = `${row.section_id}|${row.label}`;
+    // Use section_id + order_index as key for matching (unique within a section)
+    const key = `${row.section_id}|${row.order_index}`;
     existingMap.set(key, row);
   });
 
@@ -46,8 +46,9 @@ export async function saveSchemaIncremental(
   sectionsToSave.forEach((section, sectionIdx) => {
     sectionsToKeep.add(section.id); // Use section.id instead of section.name
     section.fields.forEach((field, fieldIdx) => {
-      // Use section.id + label as key (stable identifier)
-      const key = `${section.id}|${field.label}`;
+      // Use section_id + order_index as key (unique within a section)
+      const orderIndex = sectionIdx * 1000 + fieldIdx;
+      const key = `${section.id}|${orderIndex}`;
       newMap.set(key, {
         section_id: section.id, // Store section ID
         section: section.name, // Store section name for display
@@ -56,34 +57,35 @@ export async function saveSchemaIncremental(
         enum_options: field.dataType === 'enum' ? field.enumOptions ?? [] : null,
         reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
         required: field.required,
-        order_index: sectionIdx * 1000 + fieldIdx,
+        order_index: orderIndex,
       });
     });
   });
 
   // Find fields to update, insert, and delete
   const toUpdate: FieldDefinitionRow[] = [];
-  const toInsert: Omit<FieldDefinitionRow, 'id'>[] = [];
+  const toInsert: Omit<FieldDefinitionRow, 'id'>[] = []; // Let database generate UUID for id
   const toDelete: string[] = [];
 
   // Check existing fields
   existing.forEach((row) => {
-    const key = `${row.section_id}|${row.label}`;
+    const key = `${row.section_id}|${row.order_index}`;
     const newDef = newMap.get(key);
 
     if (newDef) {
-      // Field exists, check if needs update (including section name changes)
+      // Field exists at this position, check if needs update
       if (
         row.section !== newDef.section ||
+        row.label !== newDef.label ||
         row.data_type !== newDef.data_type ||
         JSON.stringify(row.enum_options) !== JSON.stringify(newDef.enum_options) ||
         JSON.stringify(row.reference_libraries) !== JSON.stringify(newDef.reference_libraries) ||
-        row.required !== newDef.required ||
-        row.order_index !== newDef.order_index
+        row.required !== newDef.required
       ) {
         toUpdate.push({
           ...row,
           section: newDef.section, // Update section name if changed
+          label: newDef.label, // Update label if changed
           data_type: newDef.data_type,
           enum_options: newDef.enum_options,
           reference_libraries: newDef.reference_libraries,
@@ -94,7 +96,7 @@ export async function saveSchemaIncremental(
       // Remove from newMap to mark as processed
       newMap.delete(key);
     } else {
-      // Field no longer exists in new schema
+      // Field no longer exists at this position (deleted or moved)
       toDelete.push(row.id);
     }
   });
@@ -129,6 +131,7 @@ export async function saveSchemaIncremental(
       .from('library_field_definitions')
       .update({
         section: row.section, // Update section name if changed
+        label: row.label, // Update label if changed
         data_type: row.data_type,
         enum_options: row.enum_options,
         reference_libraries: row.reference_libraries,

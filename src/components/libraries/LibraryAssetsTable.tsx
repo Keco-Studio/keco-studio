@@ -1874,13 +1874,13 @@ export function LibraryAssetsTable({
                         />
                       ) : (
                         <>
-                          {isNameField ? (
-                            // Name field: show text + view detail button
+                          {propertyIndex === 0 ? (
+                            // First column: show text + view detail button
                             <div className={styles.cellContent}>
                               <span 
                                 className={styles.cellText}
                                 onDoubleClick={(e) => {
-                                  // Ensure double click on name field text triggers editing
+                                  // Ensure double click on first column text triggers editing
                                   handleCellDoubleClick(row, property, e);
                                 }}
                               >
