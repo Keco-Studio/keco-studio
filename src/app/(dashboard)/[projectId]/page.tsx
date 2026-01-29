@@ -211,11 +211,24 @@ export default function ProjectPage() {
       setFolderLibraries(folderLibrariesMap);
     };
 
-    const handleProjectUpdated = (event: CustomEvent) => {
+    const handleProjectUpdated = async (event: CustomEvent) => {
       const updatedProjectId = event.detail?.projectId;
       if (updatedProjectId === projectId) {
+        console.log('[ProjectPage] Project updated, refreshing data...');
+        
+        // CRITICAL: Must invalidate globalRequestCache first!
+        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+        globalRequestCache.invalidate(`project:${projectId}`);
+        globalRequestCache.invalidate(`project:name:${projectId}`);
+        console.log('[ProjectPage] ✅ globalRequestCache invalidated');
+        
         // Only invalidate project data, not folders or libraries
-        queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+        await queryClient.refetchQueries({ 
+          queryKey: queryKeys.project(projectId),
+          type: 'active',
+        });
+        console.log('[ProjectPage] ✅ Project data refreshed');
       }
     };
 

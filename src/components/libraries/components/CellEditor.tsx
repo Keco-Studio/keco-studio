@@ -42,6 +42,27 @@ export function CellEditor({
         ref={editingCellRef}
         contentEditable
         suppressContentEditableWarning
+        onMouseDown={(e) => {
+          // Check if text is currently fully selected
+          const selection = window.getSelection();
+          if (selection && selection.toString().length > 0) {
+            const element = e.currentTarget;
+            const fullText = element.textContent || '';
+            
+            // If all text is selected, clear selection and allow browser to position cursor
+            if (selection.toString() === fullText) {
+              e.preventDefault();
+              // Clear selection first
+              selection.removeAllRanges();
+              
+              // Calculate cursor position based on click location
+              const range = document.caretRangeFromPoint(e.clientX, e.clientY);
+              if (range) {
+                selection.addRange(range);
+              }
+            }
+          }
+        }}
         onFocus={() => {
           if (editingCell) {
             handleCellFocus(editingCell.rowId, editingCell.propertyKey);

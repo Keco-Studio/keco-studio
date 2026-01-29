@@ -251,22 +251,54 @@ export default function LibraryPage() {
 
   // Optimized: Listen for library updates and use targeted cache invalidation
   useEffect(() => {
-    const handleLibraryUpdated = (event: Event) => {
+    const handleLibraryUpdated = async (event: Event) => {
       const customEvent = event as CustomEvent<{ libraryId: string }>;
       // Only invalidate if the event is for this library
       if (customEvent.detail?.libraryId === libraryId) {
-        // Targeted cache invalidation - only refetch what changed
-        queryClient.invalidateQueries({ queryKey: queryKeys.library(libraryId) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+        console.log('[LibraryPage] Library updated, refreshing data...');
+        
+        // CRITICAL: Must invalidate globalRequestCache first!
+        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+        globalRequestCache.invalidate(`library:${libraryId}`);
+        globalRequestCache.invalidate(`library:info:${libraryId}`);
+        console.log('[LibraryPage] ✅ globalRequestCache invalidated');
+        
+        // Targeted cache invalidation and force refetch
+        await queryClient.invalidateQueries({ queryKey: queryKeys.library(libraryId) });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
+        
+        // Force refetch to get fresh data
+        await queryClient.refetchQueries({ 
+          queryKey: queryKeys.library(libraryId),
+          type: 'active',
+        });
+        console.log('[LibraryPage] ✅ Library data refreshed');
+      }
+    };
+
+    const handleLibraryDeleted = (event: Event) => {
+      const customEvent = event as CustomEvent<{ libraryId: string; projectId: string }>;
+      // If the deleted library is the one currently being viewed, navigate away
+      if (customEvent.detail?.libraryId === libraryId) {
+        console.log('[LibraryPage] ⚠️ Current library was deleted, navigating to project page...');
+        message.warning('This library has been deleted');
+        // Navigate to project page
+        if (projectId) {
+          window.location.href = `/${projectId}`;
+        } else {
+          window.location.href = '/projects';
+        }
       }
     };
 
     window.addEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
+    window.addEventListener('libraryDeleted', handleLibraryDeleted as EventListener);
 
     return () => {
       window.removeEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
+      window.removeEventListener('libraryDeleted', handleLibraryDeleted as EventListener);
     };
-  }, [libraryId, queryClient]);
+  }, [libraryId, projectId, queryClient]);
 
   // Optimized: Listen for asset changes and use targeted cache invalidation
   useEffect(() => {

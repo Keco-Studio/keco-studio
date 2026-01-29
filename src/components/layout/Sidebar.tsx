@@ -264,13 +264,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     },
     // Only query when projectId exists AND is a valid UUID (not "projects" string)
     enabled: !!currentIds.projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentIds.projectId || ''),
-    staleTime: 2 * 60 * 1000, // Data is considered fresh for 2 minutes, reduces duplicate requests
+    staleTime: 0, // Always consider data stale for real-time updates
     // Don't refetch if data is in cache and not expired
     refetchOnMount: false, // Use cache to avoid duplicate requests
     // Don't auto-refresh when switching tabs
     refetchOnWindowFocus: false,
-    // Use placeholder data to avoid flickering
-    placeholderData: (previousData) => previousData,
+    // REMOVED: placeholderData - it prevents UI updates from realtime changes
     // Enable request deduplication: requests with the same queryKey will be automatically deduplicated
     queryKeyHashFn: undefined, // Use default hash function
   });
@@ -327,6 +326,561 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       window.removeEventListener('authStateChanged' as any, handleAuthStateChanged as EventListener);
     };
   }, [queryClient]);
+
+  // Real-time collaboration: Subscribe to projects table changes
+  useEffect(() => {
+    if (!userProfile) {
+      console.log('[Sidebar] Skipping projects subscription - missing userProfile');
+      return;
+    }
+    
+    console.log('[Sidebar] Setting up projects subscription for user:', userProfile.id);
+    console.log('[Sidebar] 📡 Subscribing to ALL projects changes (no filter)');
+    console.log('[Sidebar] 💡 Note: If collaborators don\'t receive updates, check Supabase RLS policies');
+    
+    // Subscribe to projects table for real-time updates
+    // We listen to ALL projects (no filter) so collaborators can also receive updates
+    const projectsChannel = supabase
+      .channel(`projects:user:${userProfile.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'projects',
+          // No filter - listen to all projects, then check on client side
+        },
+        async (payload) => {
+          console.log('[Sidebar] 🔥 PROJECTS CHANGE DETECTED:', {
+            eventType: payload.eventType,
+            table: payload.table,
+            schema: payload.schema,
+            new: payload.new,
+            old: payload.old,
+            commit_timestamp: payload.commit_timestamp,
+          });
+          
+          // Get the project ID from the event
+          const projectId = (payload.new && 'id' in payload.new ? payload.new.id : null) || 
+                           (payload.old && 'id' in payload.old ? payload.old.id : null);
+          
+          // Check if this project is in the user's project list
+          const currentProjects = queryClient.getQueryData<Project[]>(['projects']) || [];
+          const isUserProject = currentProjects.some(p => p.id === projectId);
+          
+          // Only process events for projects the user has access to
+          if (!isUserProject && payload.eventType !== 'INSERT') {
+            console.log('[Sidebar] ℹ️ Ignoring project change for project not in user list:', projectId);
+            return;
+          }
+          
+          console.log('[Sidebar] ✅ Projects change detected:', payload);
+          console.log('[Sidebar] Event type:', payload.eventType);
+          console.log('[Sidebar] Project data:', payload.new || payload.old);
+          
+          // Invalidate globalRequestCache
+          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+          const { getCurrentUserId } = await import('@/lib/services/authorizationService');
+          
+          try {
+            const userId = await getCurrentUserId(supabase);
+            globalRequestCache.invalidate(`projects:list:${userId}`);
+            
+            // Also invalidate specific project cache
+            if (projectId) {
+              globalRequestCache.invalidate(`project:${projectId}`);
+              globalRequestCache.invalidate(`project:name:${projectId}`);
+            }
+          } catch (err) {
+            console.warn('[Sidebar] Error invalidating project cache:', err);
+          }
+          
+          console.log('[Sidebar] ✅ globalRequestCache invalidated for projects');
+          
+          // Invalidate React Query cache
+          await queryClient.invalidateQueries({ queryKey: ['projects'] });
+          await queryClient.refetchQueries({ 
+            queryKey: ['projects'],
+            type: 'active',
+          });
+          console.log('[Sidebar] ✅ Projects refetch completed');
+          
+          // Dispatch events for other components
+          if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
+            window.dispatchEvent(new CustomEvent('projectUpdated', {
+              detail: { projectId: payload.new.id }
+            }));
+            console.log('[Sidebar] ✅ projectUpdated event dispatched');
+          } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
+            // Immediately update the cache to remove the deleted project
+            queryClient.setQueryData<Project[]>(['projects'], (oldProjects) => {
+              if (!oldProjects) return [];
+              return oldProjects.filter(p => p.id !== payload.old.id);
+            });
+            console.log('[Sidebar] ✅ Project removed from cache:', payload.old.id);
+            
+            window.dispatchEvent(new CustomEvent('projectDeleted', {
+              detail: { projectId: payload.old.id }
+            }));
+            console.log('[Sidebar] ✅ projectDeleted event dispatched');
+            
+            // If the deleted project is currently being viewed, navigate away
+            if (currentIds.projectId === payload.old.id) {
+              router.push('/projects');
+            }
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Sidebar] ✅ Projects channel SUBSCRIBED successfully');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[Sidebar] ❌ Projects channel ERROR:', err);
+        } else if (status === 'TIMED_OUT') {
+          console.error('[Sidebar] ⏱️ Projects channel TIMED OUT');
+        } else {
+          console.log('[Sidebar] Projects channel status:', status);
+        }
+        if (err) {
+          console.error('[Sidebar] Projects channel subscription error:', err);
+        }
+      });
+
+    return () => {
+      console.log('[Sidebar] Cleaning up projects subscription');
+      supabase.removeChannel(projectsChannel);
+    };
+  }, [userProfile, supabase, queryClient, currentIds.projectId, router]);
+
+  // Real-time collaboration: Subscribe to libraries table changes
+  useEffect(() => {
+    if (!currentIds.projectId || !userProfile) {
+      console.log('[Sidebar] Skipping libraries subscription - missing projectId or userProfile', { 
+        projectId: currentIds.projectId, 
+        hasUserProfile: !!userProfile 
+      });
+      return;
+    }
+    
+    console.log('[Sidebar] Setting up libraries subscription for project:', currentIds.projectId);
+    
+    // Subscribe to libraries table for real-time updates
+    const librariesChannel = supabase
+      .channel(`libraries:project:${currentIds.projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'libraries',
+          filter: `project_id=eq.${currentIds.projectId}`,
+        },
+        async (payload) => {
+          console.log('[Sidebar] 🔥 LIBRARIES CHANGE DETECTED:', {
+            eventType: payload.eventType,
+            table: payload.table,
+            schema: payload.schema,
+            new: payload.new,
+            old: payload.old,
+            commit_timestamp: payload.commit_timestamp,
+          });
+          
+          // CRITICAL: Must invalidate globalRequestCache first!
+          // Otherwise listLibraries() will return cached data even when React Query refetches
+          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+          globalRequestCache.invalidate(`libraries:list:${currentIds.projectId}:all`);
+          
+          // Also invalidate individual library cache for NavigationContext
+          if (payload.new && 'id' in payload.new) {
+            globalRequestCache.invalidate(`library:info:${payload.new.id}`);
+            globalRequestCache.invalidate(`library:${payload.new.id}`);
+          }
+          console.log('[Sidebar] ✅ globalRequestCache invalidated for libraries');
+          
+          // Step 1: Invalidate React Query cache to mark data as stale
+          await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+          console.log('[Sidebar] ✅ React Query cache invalidated');
+          
+          // Step 2: Force refetch to get fresh data from database
+          await queryClient.refetchQueries({ 
+            queryKey: ['folders-libraries', currentIds.projectId],
+            type: 'active', // Only refetch active queries
+          });
+          console.log('[Sidebar] ✅ Force refetch completed for folders-libraries');
+          
+          // Step 3: Dispatch events for other components to react
+          if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
+            window.dispatchEvent(new CustomEvent('libraryUpdated', {
+              detail: { libraryId: payload.new.id, projectId: currentIds.projectId }
+            }));
+            console.log('[Sidebar] ✅ libraryUpdated event dispatched');
+          } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
+            window.dispatchEvent(new CustomEvent('libraryDeleted', {
+              detail: { libraryId: payload.old.id, projectId: currentIds.projectId }
+            }));
+            console.log('[Sidebar] ✅ libraryDeleted event dispatched');
+          } else if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
+            window.dispatchEvent(new CustomEvent('libraryCreated', {
+              detail: { libraryId: payload.new.id, projectId: currentIds.projectId }
+            }));
+            console.log('[Sidebar] ✅ libraryCreated event dispatched');
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Sidebar] ✅ Libraries channel SUBSCRIBED successfully');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[Sidebar] ❌ Libraries channel ERROR:', err);
+        } else if (status === 'TIMED_OUT') {
+          console.error('[Sidebar] ⏱️ Libraries channel TIMED OUT');
+        } else {
+          console.log('[Sidebar] Libraries channel status:', status);
+        }
+        if (err) {
+          console.error('[Sidebar] Libraries channel subscription error:', err);
+        }
+      });
+
+    return () => {
+      console.log('[Sidebar] Cleaning up libraries subscription');
+      supabase.removeChannel(librariesChannel);
+    };
+  }, [currentIds.projectId, userProfile, supabase, queryClient]);
+
+  // Real-time collaboration: Subscribe to folders table changes
+  useEffect(() => {
+    if (!currentIds.projectId || !userProfile) {
+      console.log('[Sidebar] Skipping folders subscription - missing projectId or userProfile');
+      return;
+    }
+    
+    console.log('[Sidebar] Setting up folders subscription for project:', currentIds.projectId);
+    
+    // Subscribe to folders table for real-time updates
+    const foldersChannel = supabase
+      .channel(`folders:project:${currentIds.projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'folders',
+          filter: `project_id=eq.${currentIds.projectId}`,
+        },
+        async (payload) => {
+          console.log('[Sidebar] 🔥 FOLDERS CHANGE DETECTED:', {
+            eventType: payload.eventType,
+            table: payload.table,
+            schema: payload.schema,
+            new: payload.new,
+            old: payload.old,
+            commit_timestamp: payload.commit_timestamp,
+          });
+          
+          // CRITICAL: Must invalidate globalRequestCache first!
+          // Otherwise listFolders() will return cached data even when React Query refetches
+          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+          globalRequestCache.invalidate(`folders:list:${currentIds.projectId}`);
+          
+          // Also invalidate individual folder cache
+          if (payload.new && 'id' in payload.new) {
+            globalRequestCache.invalidate(`folder:${payload.new.id}`);
+          }
+          console.log('[Sidebar] ✅ globalRequestCache invalidated for folders');
+          
+          // Step 1: Invalidate React Query cache to mark data as stale
+          await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+          console.log('[Sidebar] ✅ React Query cache invalidated');
+          
+          // Step 2: Force refetch to get fresh data from database
+          await queryClient.refetchQueries({ 
+            queryKey: ['folders-libraries', currentIds.projectId],
+            type: 'active', // Only refetch active queries
+          });
+          console.log('[Sidebar] ✅ Force refetch completed for folders-libraries');
+          
+          // Step 3: Dispatch events for other components to react
+          if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
+            window.dispatchEvent(new CustomEvent('folderUpdated', {
+              detail: { folderId: payload.new.id, projectId: currentIds.projectId }
+            }));
+            console.log('[Sidebar] ✅ folderUpdated event dispatched');
+          } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
+            window.dispatchEvent(new CustomEvent('folderDeleted', {
+              detail: { folderId: payload.old.id, projectId: currentIds.projectId }
+            }));
+            console.log('[Sidebar] ✅ folderDeleted event dispatched');
+          } else if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
+            window.dispatchEvent(new CustomEvent('folderCreated', {
+              detail: { folderId: payload.new.id, projectId: currentIds.projectId }
+            }));
+            console.log('[Sidebar] ✅ folderCreated event dispatched');
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Sidebar] ✅ Folders channel SUBSCRIBED successfully');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[Sidebar] ❌ Folders channel ERROR:', err);
+        } else if (status === 'TIMED_OUT') {
+          console.error('[Sidebar] ⏱️ Folders channel TIMED OUT');
+        } else {
+          console.log('[Sidebar] Folders channel status:', status);
+        }
+        if (err) {
+          console.error('[Sidebar] Folders channel subscription error:', err);
+        }
+      });
+
+    return () => {
+      console.log('[Sidebar] Cleaning up folders subscription');
+      supabase.removeChannel(foldersChannel);
+    };
+  }, [currentIds.projectId, userProfile, supabase, queryClient]);
+
+  // Real-time collaboration: Subscribe to project_collaborators table changes (for permission updates)
+  useEffect(() => {
+    if (!currentIds.projectId || !userProfile) {
+      console.log('[Sidebar] Skipping collaborators subscription - missing projectId or userProfile');
+      return;
+    }
+    
+    console.log('[Sidebar] Setting up collaborators subscription for project:', currentIds.projectId);
+    
+    // Subscribe to project_collaborators table for real-time permission updates
+    const collaboratorsChannel = supabase
+      .channel(`collaborators:project:${currentIds.projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: 'public',
+          table: 'project_collaborators',
+          filter: `project_id=eq.${currentIds.projectId}`,
+        },
+        async (payload) => {
+          console.log('[Sidebar] ✅ Collaborators change detected:', payload);
+          console.log('[Sidebar] Event type:', payload.eventType);
+          console.log('[Sidebar] Affected user (new):', payload.new);
+          console.log('[Sidebar] Affected user (old):', payload.old);
+          console.log('[Sidebar] Current user:', userProfile.id);
+          
+          // Handle DELETE event - collaborator was removed or project was deleted
+          // Note: We don't check user_id because REPLICA IDENTITY might not be FULL
+          // Instead, we check if current user still has access to the project
+          if (payload.eventType === 'DELETE') {
+            console.log('[Sidebar] 🚨 Collaborator record deleted, checking current user access...');
+            
+            // Check if current user still has access to this project
+            const { data: accessCheck } = await supabase
+              .from('project_collaborators')
+              .select('id')
+              .eq('project_id', currentIds.projectId)
+              .eq('user_id', userProfile.id)
+              .single();
+            
+            // Also check if project still exists
+            const { data: projectCheck } = await supabase
+              .from('projects')
+              .select('id, owner_id')
+              .eq('id', currentIds.projectId)
+              .single();
+            
+            // Determine if user still has access
+            const isOwner = projectCheck?.owner_id === userProfile.id;
+            const hasCollaboratorAccess = !!accessCheck;
+            const hasAccess = isOwner || hasCollaboratorAccess;
+            
+            if (!projectCheck) {
+              // Project was deleted
+              console.log('[Sidebar] 🗑️ Project was deleted, navigating to /projects');
+              
+              // Remove project from cache
+              queryClient.setQueryData<Project[]>(['projects'], (oldProjects) => {
+                if (!oldProjects) return [];
+                return oldProjects.filter(p => p.id !== currentIds.projectId);
+              });
+              
+              // Clear global cache
+              const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+              const { getCurrentUserId } = await import('@/lib/services/authorizationService');
+              try {
+                const userId = await getCurrentUserId(supabase);
+                globalRequestCache.invalidate(`projects:list:${userId}`);
+                globalRequestCache.invalidate(`project:${currentIds.projectId}`);
+              } catch (err) {
+                console.warn('[Sidebar] Failed to clear cache:', err);
+              }
+              
+              // Dispatch event
+              window.dispatchEvent(new CustomEvent('projectDeleted', {
+                detail: { projectId: currentIds.projectId }
+              }));
+              
+              // Navigate away
+              router.push('/projects');
+            } else if (!hasAccess) {
+              // User was removed from project (not owner and no collaborator access)
+              console.log('[Sidebar] 👤 Current user was removed from project');
+              
+              // Remove project from cache
+              queryClient.setQueryData<Project[]>(['projects'], (oldProjects) => {
+                if (!oldProjects) return [];
+                return oldProjects.filter(p => p.id !== currentIds.projectId);
+              });
+              
+              // Clear global cache
+              const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+              const { getCurrentUserId } = await import('@/lib/services/authorizationService');
+              try {
+                const userId = await getCurrentUserId(supabase);
+                globalRequestCache.invalidate(`projects:list:${userId}`);
+                globalRequestCache.invalidate(`project:${currentIds.projectId}`);
+              } catch (err) {
+                console.warn('[Sidebar] Failed to clear cache:', err);
+              }
+              
+              // Invalidate and refetch
+              queryClient.invalidateQueries({ queryKey: ['projects'] });
+              
+              // Navigate away
+              router.push('/projects');
+            } else {
+              // User still has access (might be owner or another collaborator was removed)
+              console.log('[Sidebar] ℹ️ Another collaborator was removed, user still has access');
+            }
+          }
+          
+          // Handle INSERT/UPDATE events - check if the change affects current user
+          if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') && 
+              payload.new && 'user_id' in payload.new && payload.new.user_id === userProfile.id) {
+            console.log('[Sidebar] 🔄 Current user\'s permission changed, refetching role...');
+            // Current user's permission changed, refetch role
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session) return;
+              
+              const roleResponse = await fetch(`/api/projects/${currentIds.projectId}/role`, {
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                },
+              });
+              
+              if (roleResponse.ok) {
+                const roleResult = await roleResponse.json();
+                console.log('[Sidebar] ✅ Role updated to:', roleResult.role);
+                setUserRole(roleResult.role || null);
+                setIsProjectOwner(roleResult.isOwner || false);
+              }
+            } catch (error) {
+              console.error('[Sidebar] Error refetching user role:', error);
+            }
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Sidebar] ✅ Collaborators channel SUBSCRIBED successfully');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[Sidebar] ❌ Collaborators channel ERROR:', err);
+        } else if (status === 'TIMED_OUT') {
+          console.error('[Sidebar] ⏱️ Collaborators channel TIMED OUT');
+        } else {
+          console.log('[Sidebar] Collaborators channel status:', status);
+        }
+        if (err) {
+          console.error('[Sidebar] Collaborators channel subscription error:', err);
+        }
+      });
+
+    return () => {
+      console.log('[Sidebar] Cleaning up collaborators subscription');
+      supabase.removeChannel(collaboratorsChannel);
+    };
+  }, [currentIds.projectId, userProfile, supabase, queryClient, router]);
+
+  // Real-time collaboration: Subscribe to predefine_properties changes (for predefine updates)
+  useEffect(() => {
+    if (!currentIds.projectId || !userProfile) {
+      console.log('[Sidebar] Skipping predefine subscription - missing projectId or userProfile');
+      return;
+    }
+    
+    console.log('[Sidebar] Setting up predefine_properties subscription for project:', currentIds.projectId);
+    
+    // Subscribe to predefine_properties for real-time predefine updates
+    // When properties are added/updated/deleted, other collaborators should see the changes
+    const predefineChannel = supabase
+      .channel(`predefine:project:${currentIds.projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'predefine_properties',
+        },
+        async (payload) => {
+          console.log('[Sidebar] 🔥 PREDEFINE PROPERTIES CHANGE DETECTED:', {
+            eventType: payload.eventType,
+            table: payload.table,
+            schema: payload.schema,
+            new: payload.new,
+            old: payload.old,
+            commit_timestamp: payload.commit_timestamp,
+          });
+          
+          // Check if this property belongs to a library in current project
+          // We'll refresh the libraries cache which will pick up property changes
+          if (payload.new && 'library_id' in payload.new) {
+            // CRITICAL: Must invalidate globalRequestCache first!
+            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+            globalRequestCache.invalidate(`libraries:list:${currentIds.projectId}:all`);
+            console.log('[Sidebar] ✅ globalRequestCache invalidated (predefine change)');
+            
+            // Invalidate and refetch to ensure UI updates
+            await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+            await queryClient.refetchQueries({ 
+              queryKey: ['folders-libraries', currentIds.projectId],
+              type: 'active',
+            });
+            console.log('[Sidebar] ✅ Force refetch completed for folders-libraries (predefine change)');
+          } else if (payload.old && 'library_id' in payload.old) {
+            // Handle DELETE events - CRITICAL: Must invalidate globalRequestCache first!
+            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+            globalRequestCache.invalidate(`libraries:list:${currentIds.projectId}:all`);
+            console.log('[Sidebar] ✅ globalRequestCache invalidated (predefine deleted)');
+            
+            await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+            await queryClient.refetchQueries({ 
+              queryKey: ['folders-libraries', currentIds.projectId],
+              type: 'active',
+            });
+            console.log('[Sidebar] ✅ Force refetch completed for folders-libraries (predefine deleted)');
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Sidebar] ✅ Predefine channel SUBSCRIBED successfully');
+        } else if (status === 'CHANNEL_ERROR') {
+          console.error('[Sidebar] ❌ Predefine channel ERROR:', err);
+        } else if (status === 'TIMED_OUT') {
+          console.error('[Sidebar] ⏱️ Predefine channel TIMED OUT');
+        } else {
+          console.log('[Sidebar] Predefine channel status:', status);
+        }
+        if (err) {
+          console.error('[Sidebar] Predefine channel subscription error:', err);
+        }
+      });
+
+    return () => {
+      console.log('[Sidebar] Cleaning up predefine subscription');
+      supabase.removeChannel(predefineChannel);
+    };
+  }, [currentIds.projectId, userProfile, supabase, queryClient]);
 
   // Listen to sidebar toggle event from TopBar
   useEffect(() => {
@@ -1475,8 +2029,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         return;
       }
 
-      // Success - refresh cache and navigate
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      // Success - immediately update the cache to remove the deleted project
+      // This prevents the auto-navigation logic from redirecting back to a project
+      queryClient.setQueryData<Project[]>(['projects'], (oldProjects) => {
+        if (!oldProjects) return [];
+        return oldProjects.filter(p => p.id !== projectId);
+      });
       
       // Clear globalRequestCache
       const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
@@ -1493,6 +2051,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       if (currentIds.projectId === projectId) {
         router.push('/projects');
       }
+      
+      // Invalidate queries to trigger a background refetch (but UI already updated via setQueryData)
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     } catch (err: any) {
       console.error('[Sidebar] Error deleting project:', err);
       setError(err?.message || 'Failed to delete project');
