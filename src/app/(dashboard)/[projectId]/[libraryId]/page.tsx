@@ -20,7 +20,6 @@ import {
   getLibraryAssetsWithProperties,
   getLibrarySchema,
   getLibrarySummary,
-  createAsset,
   updateAsset,
   deleteAsset,
   deleteAssets,
@@ -113,8 +112,8 @@ export default function LibraryPage() {
   const error = projectError ? (projectError as any)?.message || 'Project not found' :
                 libraryError ? (libraryError as any)?.message || 'Library not found' : null;
 
-  // Get presence data from LibraryDataContext (single source of truth)
-  const { presenceUsers } = useLibraryData();
+  // Get presence and asset operations from LibraryDataContext (single source of truth)
+  const { presenceUsers, createAsset: contextCreateAsset } = useLibraryData();
 
   useEffect(() => {
     if (!libraryId) return;
@@ -144,13 +143,7 @@ export default function LibraryPage() {
         hasInitializedBlankRowsRef.current = true;
         const now = Date.now();
         for (let i = 0; i < 3; i++) {
-          await createAsset(
-            supabase,
-            libraryId,
-            '',
-            {},
-            { createdAt: new Date(now + i) }
-          );
+          await contextCreateAsset('', {}, { createdAt: new Date(now + i) });
         }
 
         window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
@@ -164,7 +157,7 @@ export default function LibraryPage() {
   }, [
     assetRows.length,
     assetsLoading,
-    createAsset,
+    contextCreateAsset,
     libraryId,
     librarySchema,
     selectedVersionId,
@@ -446,7 +439,7 @@ export default function LibraryPage() {
     
     if (Object.keys(validationErrors).length > 0) {
       setFieldValidationErrors(validationErrors);
-      setSaveError('请修正类型错误后再保存');
+      setSaveError('Please correct the type error before saving.');
       return;
     }
     
