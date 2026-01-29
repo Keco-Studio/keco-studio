@@ -386,7 +386,6 @@ function PredefinePageContent() {
       // Use incremental update to preserve field IDs and asset data
       await saveSchemaIncremental(supabase, libraryId, sectionsWithDefaults);
       
-      message.success('Saved successfully, loading...');
       hasSavedThisSessionRef.current = true;
 
       // Invalidate React Query cache to ensure LibraryPage gets fresh data

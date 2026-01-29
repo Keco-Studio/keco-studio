@@ -97,36 +97,36 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
    * Handle incoming cell update events with conflict detection
    */
   const handleCellUpdateEvent = useCallback((payload: any) => {
-    console.log('[useRealtimeSubscription] 📨 Received broadcast message:', payload);
+    // console.log('[useRealtimeSubscription] 📨 Received broadcast message:', payload);
     const event = payload.payload as CellUpdateEvent;
-    console.log('[useRealtimeSubscription] Event details:', { 
-      eventUserId: event.userId, 
-      currentUserId, 
-      assetId: event.assetId, 
-      propertyKey: event.propertyKey,
-      newValue: event.newValue 
-    });
+    // console.log('[useRealtimeSubscription] Event details:', { 
+    //   eventUserId: event.userId, 
+    //   currentUserId, 
+    //   assetId: event.assetId, 
+    //   propertyKey: event.propertyKey,
+    //   newValue: event.newValue 
+    // });
 
     // Ignore our own broadcasts
     if (event.userId === currentUserId) {
-      console.log('[useRealtimeSubscription] 🚫 Ignoring own broadcast');
+      // console.log('[useRealtimeSubscription] 🚫 Ignoring own broadcast');
       return;
     }
 
-    console.log('[useRealtimeSubscription] ✅ Processing broadcast from another user');
+    // console.log('[useRealtimeSubscription] ✅ Processing broadcast from another user');
     const optimistic = getOptimisticUpdate(event.assetId, event.propertyKey);
 
     if (optimistic && optimistic.timestamp < event.timestamp) {
       // Conflict detected: remote update is newer than our optimistic update
-      console.log('[useRealtimeSubscription] ⚠️ Conflict detected, remote wins');
+      // console.log('[useRealtimeSubscription] ⚠️ Conflict detected, remote wins');
       onConflict(event, optimistic.newValue);
       removeOptimisticUpdate(event.assetId, event.propertyKey);
     } else if (!optimistic) {
       // No conflict, apply the update
-      console.log('[useRealtimeSubscription] ✅ No conflict, applying update');
+      // console.log('[useRealtimeSubscription] ✅ No conflict, applying update');
       onCellUpdate(event);
     } else {
-      console.log('[useRealtimeSubscription] ⏭️ Local update is newer, ignoring');
+      // console.log('[useRealtimeSubscription] ⏭️ Local update is newer, ignoring');
     }
     // If optimistic.timestamp >= event.timestamp, ignore (our update is newer)
   }, [currentUserId, getOptimisticUpdate, onCellUpdate, onConflict, removeOptimisticUpdate]);
@@ -169,12 +169,12 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     newValue: any,
     oldValue?: any
   ): Promise<void> => {
-    console.log('[useRealtimeSubscription] broadcastCellUpdate called:', { 
-      assetId, 
-      propertyKey, 
-      hasChannel: !!channelRef.current,
-      connectionStatus 
-    });
+    // console.log('[useRealtimeSubscription] broadcastCellUpdate called:', { 
+    //   assetId, 
+    //   propertyKey, 
+    //   hasChannel: !!channelRef.current,
+    //   connectionStatus 
+    // });
     
     if (!channelRef.current) {
       console.warn('[useRealtimeSubscription] ❌ Cannot broadcast: channel not initialized');
@@ -195,7 +195,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       timestamp,
     };
 
-    console.log('[useRealtimeSubscription] Created broadcast event:', event);
+    // console.log('[useRealtimeSubscription] Created broadcast event:', event);
 
     // Add to optimistic updates
     addOptimisticUpdate({
@@ -209,7 +209,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     // Clear existing debounce timer for this cell
     const existingTimer = broadcastDebounceRef.current.get(cellKey);
     if (existingTimer) {
-      console.log('[useRealtimeSubscription] Clearing existing debounce timer');
+      // console.log('[useRealtimeSubscription] Clearing existing debounce timer');
       clearTimeout(existingTimer);
     }
 
@@ -219,11 +219,11 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
                             (newValue.url || newValue.path || newValue.fileName);
     const debounceDelay = isComplexObject ? 0 : 500;
     
-    console.log('[useRealtimeSubscription] Setting up debounce timer:', debounceDelay, 'ms', 
-                isComplexObject ? '(complex object, no debounce)' : '(simple value, debounced)');
+    // console.log('[useRealtimeSubscription] Setting up debounce timer:', debounceDelay, 'ms', 
+                // isComplexObject ? '(complex object, no debounce)' : '(simple value, debounced)');
     
     const debounceTimer = setTimeout(async () => {
-      console.log('[useRealtimeSubscription] ⏰ Debounce timer fired, checking connection status:', connectionStatus);
+      // console.log('[useRealtimeSubscription] ⏰ Debounce timer fired, checking connection status:', connectionStatus);
       
       // For immediate broadcasts (debounceDelay=0), check if channel is still valid
       if (debounceDelay === 0 && !channelRef.current) {
@@ -242,18 +242,18 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           return;
         }
         
-        console.log('[useRealtimeSubscription] ✅ Connection status is connected, proceeding with broadcast');
+        // console.log('[useRealtimeSubscription] ✅ Connection status is connected, proceeding with broadcast');
 
         if (!channelRef.current) {
           return;
         }
 
-        console.log('[useRealtimeSubscription] 📤 Sending broadcast:', { 
-          type: 'broadcast',
-          event: 'cell:update',
-          payload: event,
-          channel: channelRef.current 
-        });
+        // console.log('[useRealtimeSubscription] 📤 Sending broadcast:', { 
+        //   type: 'broadcast',
+        //   event: 'cell:update',
+        //   payload: event,
+        //   channel: channelRef.current 
+        // });
         
         const sendResult = await channelRef.current.send({
           type: 'broadcast',
@@ -261,7 +261,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           payload: event,
         });
         
-        console.log('[useRealtimeSubscription] 📤 Broadcast send result:', sendResult);
+        // console.log('[useRealtimeSubscription] 📤 Broadcast send result:', sendResult);
         
         // Track this broadcast to prevent processing our own database update
         recentBroadcastsRef.current.set(cellKey, Date.now());
@@ -401,7 +401,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     
     const channelName = `library:${libraryId}:edits`;
-    console.log('[useRealtimeSubscription] 🔌 Creating channel:', channelName, 'for user:', currentUserId);
+    // console.log('[useRealtimeSubscription] 🔌 Creating channel:', channelName, 'for user:', currentUserId);
     setConnectionStatus('connecting');
 
     // Create the edit broadcast channel
@@ -414,18 +414,18 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     channelRef.current = channel;
 
     // Set up broadcast event listeners (for fast updates)
-    console.log('[useRealtimeSubscription] 📡 Setting up broadcast listeners');
+    // console.log('[useRealtimeSubscription] 📡 Setting up broadcast listeners');
     channel
       .on('broadcast', { event: 'cell:update' }, (payload) => {
-        console.log('[useRealtimeSubscription] 📨 Broadcast event received: cell:update', payload);
+        // console.log('[useRealtimeSubscription] 📨 Broadcast event received: cell:update', payload);
         handleCellUpdateEvent(payload);
       })
       .on('broadcast', { event: 'asset:create' }, (payload) => {
-        console.log('[useRealtimeSubscription] 📨 Broadcast event received: asset:create', payload);
+        // console.log('[useRealtimeSubscription] 📨 Broadcast event received: asset:create', payload);
         handleAssetCreateEvent(payload);
       })
       .on('broadcast', { event: 'asset:delete' }, (payload) => {
-        console.log('[useRealtimeSubscription] 📨 Broadcast event received: asset:delete', payload);
+        // console.log('[useRealtimeSubscription] 📨 Broadcast event received: asset:delete', payload);
         handleAssetDeleteEvent(payload);
       })
       // Add database subscription as backup (ensures updates even if broadcast fails)
@@ -438,7 +438,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           table: 'library_asset_values',
         },
         async (payload) => {
-          console.log('[useRealtimeSubscription] 💾 Database UPDATE event received:', payload);
+          // console.log('[useRealtimeSubscription] 💾 Database UPDATE event received:', payload);
           // Extract field_id and new value from the database update
           const newRecord = payload.new as any;
           const oldRecord = payload.old as any;
@@ -449,7 +449,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
             const recentBroadcastTime = recentBroadcastsRef.current.get(cellKey);
             
             if (recentBroadcastTime && Date.now() - recentBroadcastTime < 2000) {
-              console.log('[useRealtimeSubscription] ⏭️ Skipping own recent broadcast');
+              // console.log('[useRealtimeSubscription] ⏭️ Skipping own recent broadcast');
               return;
             }
             
@@ -463,7 +463,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
                 .single();
               
               if (!assetData || assetData.library_id !== libraryId) {
-                console.log('[useRealtimeSubscription] ⏭️ Asset not in our library');
+                // console.log('[useRealtimeSubscription] ⏭️ Asset not in our library');
                 return;
               }
               
@@ -472,11 +472,11 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
               const newValueStr = JSON.stringify(newRecord.value_json);
               
               if (oldValueStr === newValueStr) {
-                console.log('[useRealtimeSubscription] ⏭️ Value unchanged');
+                // console.log('[useRealtimeSubscription] ⏭️ Value unchanged');
                 return;
               }
               
-              console.log('[useRealtimeSubscription] ✅ Creating synthetic event from database UPDATE');
+              // console.log('[useRealtimeSubscription] ✅ Creating synthetic event from database UPDATE');
               // Create a synthetic CellUpdateEvent from database change
               // Note: We don't have userName/avatarColor from database, so use placeholder
               const syntheticEvent: CellUpdateEvent = {
@@ -507,7 +507,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           table: 'library_asset_values',
         },
         async (payload) => {
-          console.log('[useRealtimeSubscription] 💾 Database INSERT event received:', payload);
+          // console.log('[useRealtimeSubscription] 💾 Database INSERT event received:', payload);
           const newRecord = payload.new as any;
           
           if (newRecord && newRecord.asset_id && newRecord.field_id) {
@@ -516,7 +516,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
             const recentBroadcastTime = recentBroadcastsRef.current.get(cellKey);
             
             if (recentBroadcastTime && Date.now() - recentBroadcastTime < 2000) {
-              console.log('[useRealtimeSubscription] ⏭️ Skipping own recent broadcast');
+              // console.log('[useRealtimeSubscription] ⏭️ Skipping own recent broadcast');
               return;
             }
             
@@ -529,11 +529,11 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
                 .single();
               
               if (!assetData || assetData.library_id !== libraryId) {
-                console.log('[useRealtimeSubscription] ⏭️ Asset not in our library');
+                // console.log('[useRealtimeSubscription] ⏭️ Asset not in our library');
                 return;
               }
               
-              console.log('[useRealtimeSubscription] ✅ Creating synthetic event from database INSERT');
+              // console.log('[useRealtimeSubscription] ✅ Creating synthetic event from database INSERT');
               // Create a synthetic CellUpdateEvent from database INSERT
               const syntheticEvent: CellUpdateEvent = {
                 type: 'cell:update',
@@ -623,9 +623,9 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     // Handle system events for connection status
     channel.on('system', {}, (payload) => {
-      console.log('[useRealtimeSubscription] 📡 System event:', payload);
+      // console.log('[useRealtimeSubscription] 📡 System event:', payload);
       if (payload.status === 'SUBSCRIBED') {
-        console.log('[useRealtimeSubscription] ✅ Channel subscribed successfully');
+        // console.log('[useRealtimeSubscription] ✅ Channel subscribed successfully');
         setConnectionStatus('connected');
         processQueuedUpdates(); // Process any queued updates
       } else if (payload.status === 'CHANNEL_ERROR') {
@@ -637,7 +637,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           clearTimeout(reconnectTimeoutRef.current);
         }
         reconnectTimeoutRef.current = setTimeout(() => {
-          console.log('[useRealtimeSubscription] 🔄 Attempting to reconnect...');
+          // console.log('[useRealtimeSubscription] 🔄 Attempting to reconnect...');
           setConnectionStatus('reconnecting');
           channel.subscribe();
         }, 2000);
@@ -645,11 +645,11 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     });
 
     // Subscribe to the channel
-    console.log('[useRealtimeSubscription] 🚀 Subscribing to channel...');
+    // console.log('[useRealtimeSubscription] 🚀 Subscribing to channel...');
     channel.subscribe((status) => {
-      console.log('[useRealtimeSubscription] 📡 Subscribe callback status:', status);
+      // console.log('[useRealtimeSubscription] 📡 Subscribe callback status:', status);
       if (status === 'SUBSCRIBED') {
-        console.log('[useRealtimeSubscription] ✅ Successfully subscribed to channel');
+        // console.log('[useRealtimeSubscription] ✅ Successfully subscribed to channel');
         setConnectionStatus('connected');
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         setConnectionStatus('disconnected');

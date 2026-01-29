@@ -576,17 +576,13 @@ export default function AssetPage() {
           }
         }
       } else if (f.data_type === 'float') {
-        // Float type: must contain a decimal point (cannot be pure integer)
+        // Float type: must be a valid number (integer or decimal)
         const strValue = String(raw).trim();
         if (strValue !== '' && strValue !== '-' && strValue !== '.') {
-          if (!strValue.includes('.')) {
+          // Check if valid float (accepts both integers and decimals)
+          const floatValue = parseFloat(strValue);
+          if (isNaN(floatValue)) {
             validationErrors[f.id] = 'type mismatch';
-          } else {
-            // Check if valid float
-            const floatValue = parseFloat(strValue);
-            if (isNaN(floatValue)) {
-              validationErrors[f.id] = 'type mismatch';
-            }
           }
         }
       }
@@ -1296,7 +1292,7 @@ export default function AssetPage() {
                                                   }
                                                   inputValue = intValue;
                                                 }
-                                                // Validate float type: must contain decimal point
+                                                // Validate float type: allow valid numbers (integer or decimal)
                                                 else if (f.data_type === 'float' && inputValue !== '') {
                                                   // Clear error initially
                                                   setFieldValidationErrors(prev => {
