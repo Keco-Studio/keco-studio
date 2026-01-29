@@ -494,10 +494,9 @@ export default function LibraryPage() {
     }
   };
 
-  // Callback for saving new asset from table
+  // Callback for saving new asset from table (uses context so table updates immediately)
   const handleSaveAssetFromTable = async (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => {
-    await createAsset(supabase, libraryId, assetName, propertyValues, options);
-    // Notify components to refresh - event handler will invalidate cache
+    await contextCreateAsset(assetName, propertyValues, options);
     window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
   };
 

@@ -1008,6 +1008,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   />
                 </button>
               )}
+              <div className={styles.libraryIconContainer}>
+                <Image
+                  src={libraryBookIcon}
+                  alt="Library"
+                  width={24}
+                  height={24}
+                />
+              </div>
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={lib.name}>{truncateText(lib.name, 15)}</span>
             </div>
             <div className={styles.itemActions}>
@@ -1053,30 +1061,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           </div>
         ),
         key: `library-${lib.id}`,
-        isLeaf: false,
-        children: [
-          ...(assets[lib.id] || []).map<DataNode>((asset) => {
-            const isCurrentAsset = currentIds.assetId === asset.id;
-            return {
-              title: (
-                <div 
-                  className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
-                  onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
-                >
-                  <div className={styles.itemMain}>
-                    <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
-                      {truncateText(asset.name && asset.name !== 'Untitled' ? asset.name : '', 15)}
-                    </span>
-                  </div>
-                  <div className={styles.itemActions}>
-                  </div>
-                </div>
-              ),
-              key: `asset-${asset.id}`,
-              isLeaf: true,
-            };
-          }),
-        ],
+        isLeaf: true,
+        children: undefined,
       });
     });
     
@@ -1213,38 +1199,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       );
     }
 
-    if (key.startsWith('library-')) {
-      // Root-level libraries only (folder children are isLeaf, no switcher): use FolderOpen/FolderClose + hover expand icon
-      if (!expanded) {
-        return (
-          <Image
-            src={FolderCloseIcon}
-            alt="Closed"
-            width={24}
-            height={24}
-            style={{ display: 'block' }}
-          />
-        );
-      }
-      return (
-        <div className={styles.folderSwitcherIcons}>
-          <Image
-            src={FolderOpenIcon}
-            alt="Open"
-            width={24}
-            height={24}
-            className={styles.folderSwitcherBase}
-          />
-          <Image
-            src={folderExpandIcon}
-            alt="Expand"
-            width={14}
-            height={8}
-            className={styles.folderSwitcherHover}
-          />
-        </div>
-      );
-    }
+    // All libraries are leaf nodes (no expand) — no switcher
+    if (key.startsWith('library-')) return null;
 
     return null; // no switcher for other node types
   };
