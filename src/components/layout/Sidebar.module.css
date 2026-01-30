@@ -787,14 +787,6 @@
   pointer-events: auto;
 }
 
-/* Library row: show add-asset icon when whole row is hovered or when library is selected */
-.tree :global(.ant-tree-treenode:hover) [data-library-row] .libraryAddAssetButton,
-.tree :global(.ant-tree-treenode-selected) [data-library-row] .libraryAddAssetButton,
-[data-library-row]:focus-within .libraryAddAssetButton {
-  opacity: 1;
-  pointer-events: auto;
-}
-
 .folderAddLibButton {
   background: transparent;
   border: none;
@@ -812,26 +804,6 @@
 }
 
 .folderAddLibButton:hover {
-  background-color: rgba(100, 116, 139, 0.1);
-}
-
-.libraryAddAssetButton {
-  background: transparent;
-  border: none;
-  padding: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 24px;
-  height: 24px;
-  cursor: pointer;
-  border-radius: 6px;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
-}
-
-.libraryAddAssetButton:hover {
   background-color: rgba(100, 116, 139, 0.1);
 }
 

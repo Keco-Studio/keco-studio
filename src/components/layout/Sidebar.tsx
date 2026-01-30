@@ -1303,7 +1303,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             title: (
               <div 
                 className={`${styles.itemRow} ${styles.libraryRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
-                data-library-row
                 data-library-under-folder
                 onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
               >
@@ -1338,24 +1337,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
                 </div>
                 <div className={styles.itemActions}>
-                  {(userRole === 'admin' || userRole === 'editor') && (
-                    <button
-                      type="button"
-                      className={styles.libraryAddAssetButton}
-                      aria-label="Create new asset"
-                      title="Create new asset"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (!currentIds.projectId) {
-                          setError('Please select a project first');
-                          return;
-                        }
-                        router.push(`/${libProjectId}/${lib.id}/new`);
-                      }}
-                    >
-                      <Image src={FolderAddLibIcon} alt="" width={24} height={24} />
-                    </button>
-                  )}
               {userRole === 'admin' && (
                     <Tooltip
                       title="Predefine asset here"
@@ -1444,7 +1425,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         title: (
           <div 
             className={`${styles.itemRow} ${styles.libraryRow} ${styles.rootLibraryRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
-            data-library-row
             onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
           >
             <div className={styles.itemMain}>
@@ -1478,24 +1458,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={lib.name}>{truncateText(lib.name, 15)}</span>
             </div>
             <div className={styles.itemActions}>
-              {(userRole === 'admin' || userRole === 'editor') && (
-                <button
-                  type="button"
-                  className={styles.libraryAddAssetButton}
-                  aria-label="Create new asset"
-                  title="Create new asset"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!currentIds.projectId) {
-                      setError('Please select a project first');
-                      return;
-                    }
-                    router.push(`/${libProjectId}/${lib.id}/new`);
-                  }}
-                >
-                  <Image src={FolderAddLibIcon} alt="" width={24} height={24} />
-                </button>
-              )}
               {userRole === 'admin' && (
                 <Tooltip
                   title="Predefine asset here"
