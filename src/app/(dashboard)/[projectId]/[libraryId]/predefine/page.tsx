@@ -360,17 +360,24 @@ function PredefinePageContent() {
         updatedSection.name = tempName || 'Untitled Section';
       }
       
-      // Add pending field if exists (even if completely empty)
+      // Add pending field ONLY if it has actual content (label or dataType)
+      // This prevents saving empty fields when auto-saving other changes (like reordering)
       if (pendingField) {
-        const newField = {
-          id: uid(),
-          label: pendingField.label || '',
-          dataType: pendingField.dataType, // Allow undefined
-          required: pendingField.required,
-          ...(pendingField.enumOptions && { enumOptions: pendingField.enumOptions }),
-          ...(pendingField.referenceLibraries && { referenceLibraries: pendingField.referenceLibraries }),
-        };
-        updatedSection.fields = [...updatedSection.fields, newField];
+        const hasLabel = pendingField.label && pendingField.label.trim().length > 0;
+        const hasDataType = pendingField.dataType !== undefined && pendingField.dataType !== null;
+        
+        // Only add if field has at least label or dataType
+        if (hasLabel || hasDataType) {
+          const newField = {
+            id: uid(),
+            label: pendingField.label || '',
+            dataType: pendingField.dataType, // Allow undefined
+            required: pendingField.required,
+            ...(pendingField.enumOptions && { enumOptions: pendingField.enumOptions }),
+            ...(pendingField.referenceLibraries && { referenceLibraries: pendingField.referenceLibraries }),
+          };
+          updatedSection.fields = [...updatedSection.fields, newField];
+        }
       }
       
       return updatedSection;

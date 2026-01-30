@@ -299,8 +299,15 @@ export function FieldItem({
         {...attributes}
         {...listeners}
         style={{ cursor: isDraggable ? 'grab' : 'default' }}
+        onMouseDown={(e) => {
+          // Prevent text selection when starting to drag
+          // This works alongside dnd-kit's listeners
+          if (isDraggable) {
+            e.preventDefault();
+          }
+        }}
       >
-        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} draggable={false} />
       </div>
       <div className={styles.fieldInfo}>
         <div className={styles.inputWrapper}>

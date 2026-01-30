@@ -120,6 +120,87 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     fetchUserRole();
   }, [pathname, userProfile, supabase]);
 
+  // Real-time collaboration: Subscribe to collaborators table for permission updates
+  useEffect(() => {
+    // Extract projectId from pathname
+    const parts = pathname.split('/').filter(Boolean);
+    const projectId = parts[0] || null;
+    
+    // Check if projectId is a valid UUID
+    const isValidUUID = projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
+    
+    if (!isValidUUID || !userProfile) {
+      console.log('[TopBar] Skipping collaborators subscription - missing projectId or userProfile');
+      return;
+    }
+    
+    console.log('[TopBar] Setting up collaborators subscription for project:', projectId);
+    
+    // Subscribe to project_collaborators table for real-time permission updates
+    const collaboratorsChannel = supabase
+      .channel(`topbar-collaborators:project:${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'project_collaborators',
+          filter: `project_id=eq.${projectId}`,
+        },
+        async (payload) => {
+          console.log('[TopBar] ✅ Collaborators change detected:', payload);
+          console.log('[TopBar] Event type:', payload.eventType);
+          console.log('[TopBar] Affected user (new):', payload.new);
+          console.log('[TopBar] Affected user (old):', payload.old);
+          console.log('[TopBar] Current user:', userProfile.id);
+          
+          // Handle DELETE event - user access was removed or project was deleted
+          if (payload.eventType === 'DELETE' && payload.old && 'user_id' in payload.old) {
+            if (payload.old.user_id === userProfile.id) {
+              console.log('[TopBar] 🚨 Current user\'s collaborator record deleted');
+              // User access removed or project deleted - role becomes null
+              setUserRole(null);
+            }
+          }
+          
+          // Handle INSERT/UPDATE events - check if the change affects current user
+          if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') && 
+              payload.new && 'user_id' in payload.new && payload.new.user_id === userProfile.id) {
+            console.log('[TopBar] 🔄 Current user\'s permission changed, refetching role...');
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (!session) return;
+              
+              const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
+                headers: {
+                  'Authorization': `Bearer ${session.access_token}`,
+                },
+              });
+              
+              if (roleResponse.ok) {
+                const roleResult = await roleResponse.json();
+                console.log('[TopBar] ✅ Role updated to:', roleResult.role);
+                setUserRole(roleResult.role || null);
+              }
+            } catch (error) {
+              console.error('[TopBar] Error refetching user role:', error);
+            }
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        console.log('[TopBar] Collaborators channel subscription status:', status);
+        if (err) {
+          console.error('[TopBar] Collaborators channel subscription error:', err);
+        }
+      });
+
+    return () => {
+      console.log('[TopBar] Cleaning up collaborators subscription');
+      supabase.removeChannel(collaboratorsChannel);
+    };
+  }, [pathname, userProfile, supabase]);
+
   // Listen to asset page mode updates (for create/view/edit detection)
   useEffect(() => {
     const handler = (event: Event) => {
