@@ -366,7 +366,12 @@
 .tree :global(.ant-tree-treenode[data-node-key*="library-"]) .ant-tree-node-content-wrapper,
 .tree :global(.ant-tree-treenode[data-node-key*="asset-"]) .ant-tree-node-content-wrapper,
 .tree :global(.ant-tree-treenode[data-node-key*="folder-create-"]) .ant-tree-node-content-wrapper {
-  padding-left: calc(0.75rem + 12px); /* 继续减少使图标对齐 */
+  padding-left: calc(0.75rem + 12px);
+}
+
+/* Library under folder: align book icon with parent folder text start */
+.tree :global(.ant-tree-node-content-wrapper:has([data-library-under-folder])) {
+  padding-left: 12px;
 }
 
 
@@ -782,6 +787,14 @@
   pointer-events: auto;
 }
 
+/* Library row: show add-asset icon when whole row is hovered or when library is selected */
+.tree :global(.ant-tree-treenode:hover) [data-library-row] .libraryAddAssetButton,
+.tree :global(.ant-tree-treenode-selected) [data-library-row] .libraryAddAssetButton,
+[data-library-row]:focus-within .libraryAddAssetButton {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .folderAddLibButton {
   background: transparent;
   border: none;
@@ -800,6 +813,35 @@
 
 .folderAddLibButton:hover {
   background-color: rgba(100, 116, 139, 0.1);
+}
+
+.libraryAddAssetButton {
+  background: transparent;
+  border: none;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  border-radius: 6px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.libraryAddAssetButton:hover {
+  background-color: rgba(100, 116, 139, 0.1);
+}
+
+/* Root-level library: same font as folder when not selected */
+.rootLibraryRow .itemText {
+  color: #334155;
+}
+
+.tree :global(.ant-tree-treenode-selected) .rootLibraryRow .itemText {
+  color: #e11d48;
 }
 
 /* Predefine page special view */

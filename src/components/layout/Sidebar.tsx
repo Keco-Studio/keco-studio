@@ -1302,7 +1302,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           return {
             title: (
               <div 
-                className={`${styles.itemRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
+                className={`${styles.itemRow} ${styles.libraryRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
+                data-library-row
+                data-library-under-folder
                 onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
               >
                 <div className={styles.itemMain}>
@@ -1336,6 +1338,24 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
                 </div>
                 <div className={styles.itemActions}>
+                  {(userRole === 'admin' || userRole === 'editor') && (
+                    <button
+                      type="button"
+                      className={styles.libraryAddAssetButton}
+                      aria-label="Create new asset"
+                      title="Create new asset"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!currentIds.projectId) {
+                          setError('Please select a project first');
+                          return;
+                        }
+                        router.push(`/${libProjectId}/${lib.id}/new`);
+                      }}
+                    >
+                      <Image src={FolderAddLibIcon} alt="" width={24} height={24} />
+                    </button>
+                  )}
               {userRole === 'admin' && (
                     <Tooltip
                       title="Predefine asset here"
@@ -1360,69 +1380,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               </div>
             ),
             key: `library-${lib.id}`,
-            isLeaf: false, // Allow expand to show assets and create button
-            children: [
-              // Create new asset button - for admin and editor
-              ...((userRole === 'admin' || userRole === 'editor') ? [{
-                title: (
-                  <button
-                    className={styles.createButton}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (!currentIds.projectId) {
-                        setError('Please select a project first');
-                        return;
-                      }
-                      router.push(`/${libProjectId}/${lib.id}/new`);
-                    }}
-                  >
-                    <span className={styles.createButtonText}>
-                      <span className={styles.plusIcon}>
-                        <Image
-                          src={plusHorizontal}
-                          alt=""
-                          width={17}
-                          height={2}
-                          className={styles.plusHorizontal}
-                        />
-                        <Image
-                          src={plusVertical}
-                          alt=""
-                          width={2}
-                          height={17}
-                          className={styles.plusVertical}
-                        />
-                      </span>
-                      Add new asset
-                    </span>
-                  </button>
-                ),
-                key: `add-asset-${lib.id}`,
-                isLeaf: true,
-              }] : []),
-              // Existing assets
-              ...(assets[lib.id] || []).map<DataNode>((asset) => {
-                const isCurrentAsset = currentIds.assetId === asset.id;
-                return {
-                  title: (
-                    <div 
-                      className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
-                      onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
-                    >
-                      <div className={styles.itemMain}>
-                        <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
-                          {truncateText(asset.name && asset.name !== 'Untitled' ? asset.name : '', 15)}
-                        </span>
-                      </div>
-                      <div className={styles.itemActions}>
-                      </div>
-                    </div>
-                  ),
-                  key: `asset-${asset.id}`,
-                  isLeaf: true,
-                };
-              }),
-            ],
+            isLeaf: true,
+            children: undefined,
           };
         }),
       ];
@@ -1484,7 +1443,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       result.push({
         title: (
           <div 
-            className={`${styles.itemRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
+            className={`${styles.itemRow} ${styles.libraryRow} ${styles.rootLibraryRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
+            data-library-row
             onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
           >
             <div className={styles.itemMain}>
@@ -1515,9 +1475,27 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   height={24}
                 />
               </div>
-              <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
+              <span className={styles.itemText} style={{ fontWeight: 500 }} title={lib.name}>{truncateText(lib.name, 15)}</span>
             </div>
             <div className={styles.itemActions}>
+              {(userRole === 'admin' || userRole === 'editor') && (
+                <button
+                  type="button"
+                  className={styles.libraryAddAssetButton}
+                  aria-label="Create new asset"
+                  title="Create new asset"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (!currentIds.projectId) {
+                      setError('Please select a project first');
+                      return;
+                    }
+                    router.push(`/${libProjectId}/${lib.id}/new`);
+                  }}
+                >
+                  <Image src={FolderAddLibIcon} alt="" width={24} height={24} />
+                </button>
+              )}
               {userRole === 'admin' && (
                 <Tooltip
                   title="Predefine asset here"
@@ -1542,69 +1520,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           </div>
         ),
         key: `library-${lib.id}`,
-        isLeaf: false, // Allow expand to show assets and create button
-        children: [
-          // Create new asset button - for admin and editor
-          ...((userRole === 'admin' || userRole === 'editor') ? [{
-            title: (
-              <button
-                className={styles.createButton}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (!currentIds.projectId) {
-                    setError('Please select a project first');
-                    return;
-                  }
-                  router.push(`/${libProjectId}/${lib.id}/new`);
-                }}
-              >
-                <span className={styles.createButtonText}>
-                  <span className={styles.plusIcon}>
-                    <Image
-                      src={plusHorizontal}
-                      alt=""
-                      width={17}
-                      height={2}
-                      className={styles.plusHorizontal}
-                    />
-                    <Image
-                      src={plusVertical}
-                      alt=""
-                      width={2}
-                      height={17}
-                      className={styles.plusVertical}
-                    />
-                  </span>
-                  Add new asset
-                </span>
-              </button>
-            ),
-            key: `add-asset-${lib.id}`,
-            isLeaf: true,
-          }] : []),
-          // Existing assets
-          ...(assets[lib.id] || []).map<DataNode>((asset) => {
-            const isCurrentAsset = currentIds.assetId === asset.id;
-            return {
-              title: (
-                <div 
-                  className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
-                  onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
-                >
-                  <div className={styles.itemMain}>
-                    <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
-                      {truncateText(asset.name && asset.name !== 'Untitled' ? asset.name : '', 15)}
-                    </span>
-                  </div>
-                  <div className={styles.itemActions}>
-                  </div>
-                </div>
-              ),
-              key: `asset-${asset.id}`,
-              isLeaf: true,
-            };
-          }),
-        ],
+        isLeaf: true,
+        children: undefined,
       });
     });
     
@@ -1640,15 +1557,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const onSelect = async (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
-    if (key.startsWith('add-asset-')) {
-      // Handle create asset button click - button's onClick will handle this
-      // This is just a fallback in case onSelect is called
-      const libraryId = key.replace('add-asset-', '');
-      const lib = libraries.find((l) => l.id === libraryId);
-      if (lib && currentIds.projectId) {
-        router.push(`/${currentIds.projectId}/${libraryId}/new`);
-      }
-    } else if (key.startsWith('folder-')) {
+    if (key.startsWith('folder-')) {
       const id = key.replace('folder-', '');
       // Navigate to folder page
       if (currentIds.projectId) {
@@ -1749,17 +1658,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       );
     }
 
-    if (key.startsWith('library-')) {
-      return (
-        <Image
-          src={expanded ? folderExpandIcon : folderCollapseIcon}
-          alt={expanded ? "Expand library" : "Collapse library"}
-          width={expanded ? 14 : 8}
-          height={expanded ? 8 : 14}
-          style={{ display: 'block' }}
-        />
-      );
-    }
+    // All libraries are leaf nodes (no expand) — no switcher
+    if (key.startsWith('library-')) return null;
 
     return null; // no switcher for other node types
   };
