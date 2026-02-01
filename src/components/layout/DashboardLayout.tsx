@@ -3,10 +3,10 @@
 import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useNavigation } from '@/lib/contexts/NavigationContext';
 import AuthForm from '@/components/authform/AuthForm';
 import styles from './DashboardLayout.module.css';
-import { useEffect, useRef, useState, useMemo } from 'react';
-import { usePathname } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
 // REMOVED: PresenceProvider causes duplicate subscriptions with LibraryDataProvider
 // import { PresenceProvider } from '@/lib/contexts/PresenceContext';
 
@@ -16,21 +16,9 @@ type DashboardLayoutProps = {
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
   const { isAuthenticated, isLoading, userProfile, signOut } = useAuth();
-  const pathname = usePathname();
+  const { currentLibraryId } = useNavigation();
   const prevAuthenticatedRef = useRef<boolean | null>(null);
   const [showAuthForm, setShowAuthForm] = useState(true);
-
-  // Extract libraryId from URL for presence tracking
-  const currentLibraryId = useMemo(() => {
-    const parts = pathname.split("/").filter(Boolean);
-    // Handle /[projectId]/[libraryId] or /[projectId]/[libraryId]/[assetId] structure
-    const specialRoutes = ['folder', 'collaborators', 'settings', 'members', 'projects'];
-    
-    if (parts.length >= 2 && !specialRoutes.includes(parts[1])) {
-      return parts[1]; // This is the libraryId
-    }
-    return null;
-  }, [pathname]);
 
   useEffect(() => {
     if (isLoading) return;

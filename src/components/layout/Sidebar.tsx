@@ -27,6 +27,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { Tree, Tooltip } from "antd";
 import { DataNode, EventDataNode } from "antd/es/tree";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigation } from "@/lib/contexts/NavigationContext";
 import { useSupabase } from "@/lib/SupabaseContext";
 import { queryKeys } from "@/lib/utils/queryKeys";
 import { NewProjectModal } from "@/components/projects/NewProjectModal";
@@ -89,7 +90,26 @@ const truncateText = (text: string, maxWidth: number): string => {
 
 export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const router = useRouter();
-  const pathname = usePathname();
+  const pathname = usePathname(); // Only for pathname === '/projects' (auto-navigate)
+  const {
+    currentProjectId,
+    currentLibraryId,
+    currentFolderId,
+    currentAssetId,
+    isPredefinePage,
+    isLibraryPage,
+  } = useNavigation();
+  const currentIds = useMemo(
+    () => ({
+      projectId: currentProjectId,
+      libraryId: currentLibraryId,
+      folderId: currentFolderId,
+      assetId: currentAssetId,
+      isPredefinePage,
+      isLibraryPage,
+    }),
+    [currentProjectId, currentLibraryId, currentFolderId, currentAssetId, isPredefinePage, isLibraryPage]
+  );
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   
@@ -184,43 +204,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     type: 'project' | 'library' | 'folder' | 'asset';
     id: string;
   } | null>(null);
-
-  const currentIds = useMemo(() => {
-    const parts = pathname.split("/").filter(Boolean);
-    // Handle /[projectId]/[libraryId] or /[projectId]/folder/[folderId] or /[projectId]/[libraryId]/predefine structure
-    const projectId = parts[0] || null;
-    let libraryId: string | null = null;
-    let folderId: string | null = null;
-    let isPredefinePage = false;
-    let assetId: string | null = null;
-    let isLibraryPage = false; // True when on /[projectId]/[libraryId] (not predefine, not asset)
-    
-    // Special route segments that are not libraryIds
-    const specialRoutes = ['folder', 'collaborators', 'settings', 'members'];
-    
-    if (parts.length >= 2 && parts[1] === 'folder' && parts[2]) {
-      // URL format: /[projectId]/folder/[folderId]
-      folderId = parts[2];
-    } else if (parts.length >= 2 && specialRoutes.includes(parts[1])) {
-      // URL format: /[projectId]/collaborators or other special routes
-      // Don't treat these as libraryId
-      libraryId = null;
-    } else if (parts.length >= 3 && parts[2] === 'predefine') {
-      // URL format: /[projectId]/[libraryId]/predefine
-      libraryId = parts[1];
-      isPredefinePage = true;
-    } else if (parts.length >= 3) {
-      // URL format: /[projectId]/[libraryId]/[assetId] or /[projectId]/[libraryId]/new
-      libraryId = parts[1];
-      assetId = parts[2];
-    } else if (parts.length >= 2) {
-      // URL format: /[projectId]/[libraryId] - library page
-      libraryId = parts[1];
-      isLibraryPage = true;
-    }
-    
-    return { projectId, libraryId, folderId, isPredefinePage, assetId, isLibraryPage };
-  }, [pathname]);
 
   // Use React Query to fetch projects list; queryKey shared with Projects page.
   // Pass userProfile?.id when available to skip getCurrentUserId/getUser(), avoiding slow auth on first login.
@@ -908,18 +891,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [currentIds.projectId, projects, loadingProjects, refetchProjects, supabase]);
 
-  // Sync selectedFolderId from URL
+  // Sync selectedFolderId from URL (via NavigationContext)
   useEffect(() => {
     if (currentIds.folderId) {
       setSelectedFolderId(currentIds.folderId);
     } else {
-      // Only clear if we're not on a folder page
-      const parts = pathname.split("/").filter(Boolean);
-      if (parts.length < 3 || parts[1] !== 'folder') {
-        setSelectedFolderId(null);
-      }
+      setSelectedFolderId(null);
     }
-  }, [currentIds.folderId, pathname]);
+  }, [currentIds.folderId]);
 
   // Initialize expanded state: expand all folders by default when folder data is loaded
   // Only set default expansion on first load (when not initialized)
@@ -1185,17 +1164,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
       await fetchAssets(libraryId);
       
-      // Check if currently viewing this asset, if so navigate to library page
-      const parts = pathname.split("/").filter(Boolean);
-      // URL format: /[projectId]/[libraryId]/[assetId]
-      if (parts.length >= 3 && parts[2] === assetId && currentIds.projectId) {
+      // If currently viewing this asset, navigate to library page
+      if (currentIds.assetId === assetId && currentIds.projectId) {
         router.push(`/${currentIds.projectId}/${libraryId}`);
       }
     } catch (err) {
       console.error('Failed to delete asset', err);
       alert(err instanceof Error ? err.message : 'Failed to delete asset');
     }
-  }, [supabase, fetchAssets, pathname, currentIds.projectId, router]);
+  }, [supabase, fetchAssets, currentIds.projectId, currentIds.assetId, queryClient, router]);
 
   const handleLibraryDelete = useCallback(async (libraryId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1483,32 +1460,27 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     return result;
   }, [folders, libraries, assets, currentIds.projectId, currentIds.libraryId, currentIds.isLibraryPage, currentIds.assetId, currentIds.isPredefinePage, handleLibraryPredefineClick, router, userRole]);
 
+  // Only highlight the current item: folder when on folder page, library when on library/predefine/asset page (no parent folder highlight)
   const selectedKey = useMemo(() => {
     const keys: string[] = [];
-    
-    // Add selected folder from URL
-    if (currentIds.folderId) {
+
+    // Folder: only when we are on the folder page (URL has /folder/id), not when viewing a library inside a folder
+    if (currentIds.folderId && !currentIds.libraryId) {
       keys.push(`folder-${currentIds.folderId}`);
     }
-    
-    // Add selected library or asset
+
+    // Library or asset: highlight only library/asset, not parent folder
     if (currentIds.libraryId) {
       if (currentIds.assetId && currentIds.assetId !== 'new' && currentIds.assetId !== 'predefine') {
-        // Asset: /[projectId]/[libraryId]/[assetId]
         keys.push(`asset-${currentIds.assetId}`);
-        // Also select the library when viewing an asset
         keys.push(`library-${currentIds.libraryId}`);
-      } else if (currentIds.isLibraryPage) {
-        // Library: /[projectId]/[libraryId]
-        keys.push(`library-${currentIds.libraryId}`);
-      } else if (currentIds.isPredefinePage) {
-        // Predefine: /[projectId]/[libraryId]/predefine — keep tree, highlight library
+      } else if (currentIds.isLibraryPage || currentIds.isPredefinePage) {
         keys.push(`library-${currentIds.libraryId}`);
       }
     }
-    
+
     return keys;
-  }, [pathname, currentIds.folderId, currentIds.libraryId, currentIds.assetId, currentIds.isLibraryPage, currentIds.isPredefinePage]);
+  }, [currentIds.folderId, currentIds.libraryId, currentIds.assetId, currentIds.isLibraryPage, currentIds.isPredefinePage]);
 
   const onSelect = async (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
@@ -1744,9 +1716,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   
                   await fetchAssets(libraryId);
                   window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
-                  // Check if currently viewing this asset, if so navigate to library page
-                  const parts = pathname.split("/").filter(Boolean);
-                  if (parts.length >= 3 && parts[2] === contextMenu.id && currentIds.projectId) {
+                  // If currently viewing this asset, navigate to library page
+                  if (currentIds.assetId === contextMenu.id && currentIds.projectId) {
                     router.push(`/${currentIds.projectId}/${libraryId}`);
                   }
                 }
