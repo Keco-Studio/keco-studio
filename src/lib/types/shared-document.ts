@@ -31,12 +31,8 @@ export type SharedDocument = {
 };
 
 /**
- * User profile type for validation
+ * Re-export user types from centralized location
+ * @deprecated Import directly from '@/lib/types/user' instead
  */
-export type UserProfile = {
-  id: string;
-  email: string;
-  username?: string;
-  full_name?: string;
-};
+export type { UserProfile, UserProfileValidation, UserProfileDisplay, MinimalUserProfile } from './user';
 

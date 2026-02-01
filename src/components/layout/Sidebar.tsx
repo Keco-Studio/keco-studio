@@ -1,26 +1,26 @@
 'use client';
 
-import projectIcon from "@/app/assets/images/projectIcon.svg";
-import libraryBookIcon from "@/app/assets/images/LibraryBookIcon.svg";
-import loginProductIcon from "@/app/assets/images/loginProductIcon.svg";
-import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
-import PredefineNewIcon from "@/app/assets/images/PredefineNewIcon.svg";
-import PredefineNewClick from "@/app/assets/images/PredefineNewClick.svg";
-import FolderOpenIcon from "@/app/assets/images/FolderOpenIcon.svg";
-import FolderCloseIcon from "@/app/assets/images/FolderCloseIcon.svg";
-import folderExpandIcon from "@/app/assets/images/folderExpandIcon.svg";
-import folderCollapseIcon from "@/app/assets/images/folderCollapseIcon.svg";
-import FolderAddLibIcon from "@/app/assets/images/FolderAddLibIcon.svg";
-import plusHorizontal from "@/app/assets/images/plusHorizontal.svg";
-import plusVertical from "@/app/assets/images/plusVertical.svg";
-import createProjectIcon from "@/app/assets/images/createProjectIcon.svg";
-import addProjectIcon from "@/app/assets/images/addProjectIcon.svg";
-import searchIcon from "@/app/assets/images/searchIcon.svg";
-import projectRightIcon from "@/app/assets/images/ProjectRightIcon.svg";
-import sidebarFolderIcon from "@/app/assets/images/SidebarFloderIcon.svg";
-import sidebarFolderIcon3 from "@/app/assets/images/SidebarFloderIcon3.svg";
-import sidebarFolderIcon4 from "@/app/assets/images/SidebarFloderIcon4.svg";
-import sidebarFolderIcon5 from "@/app/assets/images/SidebarFolderInco5.svg";
+import projectIcon from "@/assets/images/projectIcon.svg";
+import libraryBookIcon from "@/assets/images/LibraryBookIcon.svg";
+import loginProductIcon from "@/assets/images/loginProductIcon.svg";
+import predefineSettingIcon from "@/assets/images/predefineSettingIcon.svg";
+import PredefineNewIcon from "@/assets/images/PredefineNewIcon.svg";
+import PredefineNewClick from "@/assets/images/PredefineNewClick.svg";
+import FolderOpenIcon from "@/assets/images/FolderOpenIcon.svg";
+import FolderCloseIcon from "@/assets/images/FolderCloseIcon.svg";
+import folderExpandIcon from "@/assets/images/folderExpandIcon.svg";
+import folderCollapseIcon from "@/assets/images/folderCollapseIcon.svg";
+import FolderAddLibIcon from "@/assets/images/FolderAddLibIcon.svg";
+import plusHorizontal from "@/assets/images/plusHorizontal.svg";
+import plusVertical from "@/assets/images/plusVertical.svg";
+import createProjectIcon from "@/assets/images/createProjectIcon.svg";
+import addProjectIcon from "@/assets/images/addProjectIcon.svg";
+import searchIcon from "@/assets/images/searchIcon.svg";
+import projectRightIcon from "@/assets/images/ProjectRightIcon.svg";
+import sidebarFolderIcon from "@/assets/images/SidebarFloderIcon.svg";
+import sidebarFolderIcon3 from "@/assets/images/SidebarFloderIcon3.svg";
+import sidebarFolderIcon4 from "@/assets/images/SidebarFloderIcon4.svg";
+import sidebarFolderIcon5 from "@/assets/images/SidebarFolderInco5.svg";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -43,18 +43,11 @@ import { listFolders, Folder, deleteFolder } from "@/lib/services/folderService"
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ContextMenu, ContextMenuAction } from "./ContextMenu";
+import type { UserProfileDisplay } from "@/lib/types/user";
 import styles from "./Sidebar.module.css";
 
-type UserProfile = {
-  id: string;
-  email: string;
-  username: string | null;
-  full_name: string | null;
-  avatar_url: string | null;
-};
-
 type SidebarProps = {
-  userProfile?: UserProfile | null;
+  userProfile?: UserProfileDisplay | null;
   onAuthRequest?: () => void;
 };
 

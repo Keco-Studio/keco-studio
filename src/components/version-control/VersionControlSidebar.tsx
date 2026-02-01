@@ -16,8 +16,8 @@ import { VersionList } from './VersionList';
 import { CreateVersionModal } from './CreateVersionModal';
 import styles from './VersionControlSidebar.module.css';
 import Image from 'next/image';
-import libraryAssetTableAddIcon from '@/app/assets/images/LibraryAssetTableAddIcon.svg';
-import closeIcon from '@/app/assets/images/VersionBoardClose.svg';
+import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
+import closeIcon from '@/assets/images/VersionBoardClose.svg';
 
 interface VersionControlSidebarProps {
   libraryId: string;

@@ -23,12 +23,12 @@ import CollaboratorsList from '@/components/collaboration/CollaboratorsList';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
 import type { Collaborator } from '@/lib/types/collaboration';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
-import collaborationReturnIcon from '@/app/assets/images/collaborationReturnIcon.svg';
-import collaborationAdminNumIcon from '@/app/assets/images/collaborationAdminNumIcon.svg';
-import collaborationEditNumIcon from '@/app/assets/images/collaborationEditNumIcon.svg';
-import collaborationViewNumIcon from '@/app/assets/images/collaborationViewNumIcon.svg';
-import searchIcon from '@/app/assets/images/searchIcon.svg';
-import libraryHeadMoreIcon from '@/app/assets/images/libraryHeadMoreIcon.svg';
+import collaborationReturnIcon from '@/assets/images/collaborationReturnIcon.svg';
+import collaborationAdminNumIcon from '@/assets/images/collaborationAdminNumIcon.svg';
+import collaborationEditNumIcon from '@/assets/images/collaborationEditNumIcon.svg';
+import collaborationViewNumIcon from '@/assets/images/collaborationViewNumIcon.svg';
+import searchIcon from '@/assets/images/searchIcon.svg';
+import libraryHeadMoreIcon from '@/assets/images/libraryHeadMoreIcon.svg';
 
 export default function CollaboratorsPage() {
   const params = useParams();

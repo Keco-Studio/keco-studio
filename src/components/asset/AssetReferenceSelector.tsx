@@ -6,15 +6,15 @@ import { SearchOutlined } from '@ant-design/icons';
 import Image from 'next/image';
 import { useRouter, useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
-import assetRefBookIcon from '@/app/assets/images/assetRefBookIcon.svg';
-import assetRefExpandIcon from '@/app/assets/images/assetRefExpandIcon.svg';
-import assetRefMenuGridIcon from '@/app/assets/images/assetRefMenuGridIcon.svg';
-import assetRefMenuLibIcon from '@/app/assets/images/assetRefMenuLibIcon.svg';
-import assetRefAssetMenuExpandIcon from '@/app/assets/images/assetRefAssetMenuExpandIcon.svg';
-import assetRefAssetInfoIcon from '@/app/assets/images/assetRefAssetInfoIcon.svg';
-import assetRefInputLeftIcon from '@/app/assets/images/assetRefInputLeftIcon.svg';
-import assetRefDetailLibExpandIcon from '@/app/assets/images/assetRefDetailLibExpandIcon.svg';
-import assetRefDetailLibIcon from '@/app/assets/images/assetRefDetailLibIcon.svg';
+import assetRefBookIcon from '@/assets/images/assetRefBookIcon.svg';
+import assetRefExpandIcon from '@/assets/images/assetRefExpandIcon.svg';
+import assetRefMenuGridIcon from '@/assets/images/assetRefMenuGridIcon.svg';
+import assetRefMenuLibIcon from '@/assets/images/assetRefMenuLibIcon.svg';
+import assetRefAssetMenuExpandIcon from '@/assets/images/assetRefAssetMenuExpandIcon.svg';
+import assetRefAssetInfoIcon from '@/assets/images/assetRefAssetInfoIcon.svg';
+import assetRefInputLeftIcon from '@/assets/images/assetRefInputLeftIcon.svg';
+import assetRefDetailLibExpandIcon from '@/assets/images/assetRefDetailLibExpandIcon.svg';
+import assetRefDetailLibIcon from '@/assets/images/assetRefDetailLibIcon.svg';
 import styles from './AssetReferenceSelector.module.css';
 
 type Asset = {

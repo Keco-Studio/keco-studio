@@ -14,9 +14,9 @@ import type { LibraryVersion } from '@/lib/types/version';
 import { VersionItemMenu } from './VersionItemMenu';
 import { RestoreButton } from './RestoreButton';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
-import visionItemIcon1 from '@/app/assets/images/VisionItemIcon1.svg';
-import visionItemIcon2 from '@/app/assets/images/ViisionItemIcon2.svg';
-import versionRestoreIcon from '@/app/assets/images/VersionRestoreIcon.svg';
+import visionItemIcon1 from '@/assets/images/VisionItemIcon1.svg';
+import visionItemIcon2 from '@/assets/images/ViisionItemIcon2.svg';
+import versionRestoreIcon from '@/assets/images/VersionRestoreIcon.svg';
 import styles from './VersionItem.module.css';
 
 interface VersionItemProps {

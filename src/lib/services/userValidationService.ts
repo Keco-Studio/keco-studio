@@ -4,7 +4,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { UserProfile } from '../types/shared-document';
+import type { UserProfileValidation } from '@/lib/types/user';
 
 /**
  * Validate user identifier (UUID or email)
@@ -13,7 +13,7 @@ import type { UserProfile } from '../types/shared-document';
 export async function validateUserIdentifier(
   supabase: SupabaseClient,
   identifier: string
-): Promise<UserProfile | null> {
+): Promise<UserProfileValidation | null> {
   // Try UUID first
   const { data: dataById, error: errorById } = await supabase
     .from('profiles')

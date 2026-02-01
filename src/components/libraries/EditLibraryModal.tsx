@@ -7,7 +7,7 @@ import { getLibrary, Library } from '@/lib/services/libraryService';
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
-import closeIcon from '@/app/assets/images/closeIcon32.svg';
+import closeIcon from '@/assets/images/closeIcon32.svg';
 import styles from './NewLibraryModal.module.css';
 
 type EditLibraryModalProps = {

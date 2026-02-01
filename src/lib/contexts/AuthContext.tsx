@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
+import type { UserProfile } from '@/lib/types/user';
 
 // Helper function to clear all caches
 async function clearAllCaches() {
@@ -15,16 +16,6 @@ async function clearAllCaches() {
     detail: { type: 'signOut' } 
   }));
 }
-
-type UserProfile = {
-  id: string;
-  email: string;
-  username: string | null;
-  full_name: string | null;
-  avatar_url: string | null;
-  created_at: string;
-  updated_at: string;
-};
 
 type AuthContextType = {
   isAuthenticated: boolean;

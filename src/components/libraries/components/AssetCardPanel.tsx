@@ -3,10 +3,10 @@
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
 import { Avatar, Spin } from 'antd';
-import { getAssetAvatarColor, getAssetAvatarText } from '../utils/libraryAssetUtils';
-import libraryAssetTable5Icon from '@/app/assets/images/LibraryAssetTable5.svg';
-import libraryAssetTable6Icon from '@/app/assets/images/LibraryAssetTable6.svg';
-import styles from '../LibraryAssetsTable.module.css';
+import { getAssetAvatarColor, getAssetAvatarText } from '@/components/libraries/utils/libraryAssetUtils';
+import libraryAssetTable5Icon from '@/assets/images/LibraryAssetTable5.svg';
+import libraryAssetTable6Icon from '@/assets/images/LibraryAssetTable6.svg';
+import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type AssetCardDetails = {
   name: string;

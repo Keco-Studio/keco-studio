@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import type { FieldConfig } from '../types';
+import type { FieldConfig } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/types';
 import { FieldItem } from './FieldItem';
 import styles from './FieldsList.module.css';
 import {

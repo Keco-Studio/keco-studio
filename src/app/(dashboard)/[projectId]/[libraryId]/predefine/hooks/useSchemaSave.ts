@@ -1,4 +1,4 @@
-import type { SectionConfig } from '../types';
+import type { SectionConfig } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 interface FieldDefinitionRow {

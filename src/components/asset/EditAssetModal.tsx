@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
-import styles from '../folders/NewFolderModal.module.css';
+import styles from '@/components/folders/NewFolderModal.module.css';
 
 type EditAssetModalProps = {
   open: boolean;

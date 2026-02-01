@@ -1,7 +1,7 @@
 'use client';
 
 import { createPortal } from 'react-dom';
-import styles from '../LibraryAssetsTable.module.css';
+import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type BatchEditMenuProps = {
   visible: boolean;

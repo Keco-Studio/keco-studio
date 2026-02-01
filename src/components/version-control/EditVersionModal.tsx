@@ -14,7 +14,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { editVersion } from '@/lib/services/versionService';
 import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
-import closeIcon from '@/app/assets/images/closeIcon32.svg';
+import closeIcon from '@/assets/images/closeIcon32.svg';
 import styles from './EditVersionModal.module.css';
 
 import type { LibraryVersion } from '@/lib/types/version';

@@ -2,9 +2,9 @@
 
 import React from 'react';
 import Image from 'next/image';
-import noassetIcon1 from '@/app/assets/images/NoassetIcon1.svg';
-import noassetIcon2 from '@/app/assets/images/NoassetIcon2.svg';
-import styles from '../LibraryAssetsTable.module.css';
+import noassetIcon1 from '@/assets/images/NoassetIcon1.svg';
+import noassetIcon2 from '@/assets/images/NoassetIcon2.svg';
+import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type EmptyStateProps = {
   userRole: 'admin' | 'editor' | 'viewer' | null;

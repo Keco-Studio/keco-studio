@@ -1,12 +1,12 @@
 import type { FieldType } from './types';
-import predefineTypeStrIcon from '@/app/assets/images/predefineTypeStrIcon.svg';
-import predefineTypeIntIcon from '@/app/assets/images/predefineTypeIntIcon.svg';
-import predefineTypeOptIcon from '@/app/assets/images/predefineTypeOptIcon.svg';
-import predefineTypeRefIcon from '@/app/assets/images/predefineTypeRefIcon.svg';
-import predefineTypeMediaIcon from '@/app/assets/images/predefineTypeMediaIcon.svg';
-import predefineTypeBoolenIcon from '@/app/assets/images/predefineTypeBoolenIcon.svg';
-import predefineTypeFloatIcon from '@/app/assets/images/predefineTypeFloatIcon.svg';
-import predefineTypeFileIcon from '@/app/assets/images/predefineTypeFileIcon.svg';
+import predefineTypeStrIcon from '@/assets/images/predefineTypeStrIcon.svg';
+import predefineTypeIntIcon from '@/assets/images/predefineTypeIntIcon.svg';
+import predefineTypeOptIcon from '@/assets/images/predefineTypeOptIcon.svg';
+import predefineTypeRefIcon from '@/assets/images/predefineTypeRefIcon.svg';
+import predefineTypeMediaIcon from '@/assets/images/predefineTypeMediaIcon.svg';
+import predefineTypeBoolenIcon from '@/assets/images/predefineTypeBoolenIcon.svg';
+import predefineTypeFloatIcon from '@/assets/images/predefineTypeFloatIcon.svg';
+import predefineTypeFileIcon from '@/assets/images/predefineTypeFileIcon.svg';
 
 export const getFieldTypeIcon = (dataType: FieldType) => {
   switch (dataType) {

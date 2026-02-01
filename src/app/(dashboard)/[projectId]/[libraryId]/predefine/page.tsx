@@ -10,9 +10,9 @@ import { Tabs, Button, App, ConfigProvider, Input, Tooltip } from 'antd';
 import type { TabsProps } from 'antd/es/tabs';
 import type { InputRef } from 'antd/es/input';
 import Image from 'next/image';
-import predefineLabelAddIcon from '@/app/assets/images/predefineLabelAddIcon.svg';
-import predefineLabelDelIcon from '@/app/assets/images/predefineLabelDelIcon.svg';
-import predefineAddSectionIcon from '@/app/assets/images/predefineAddSectionIcon.svg';
+import predefineLabelAddIcon from '@/assets/images/predefineLabelAddIcon.svg';
+import predefineLabelDelIcon from '@/assets/images/predefineLabelDelIcon.svg';
+import predefineAddSectionIcon from '@/assets/images/predefineAddSectionIcon.svg';
 import type { SectionConfig, FieldConfig } from './types';
 import type { Library } from '@/lib/services/libraryService';
 import { getLibrary } from '@/lib/services/libraryService';
@@ -25,9 +25,9 @@ import { FieldForm } from './components/FieldForm';
 import { NewSectionForm } from './components/NewSectionForm';
 import styles from './page.module.css';
 import sectionHeaderStyles from './components/SectionHeader.module.css';
-import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
-import predefineExpandIcon from '@/app/assets/images/predefineExpandIcon.svg';
-import PredefineBackIcon from '@/app/assets/images/PredefineBackIcon.svg';
+import predefineDragIcon from '@/assets/images/predefineDragIcon.svg';
+import predefineExpandIcon from '@/assets/images/predefineExpandIcon.svg';
+import PredefineBackIcon from '@/assets/images/PredefineBackIcon.svg';
 
 const NEW_SECTION_TAB_KEY = '__new_section__';
 

@@ -17,11 +17,11 @@ import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollab
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
 import styles from './LibraryHeader.module.css';
-import libraryHeadMoreIcon from '@/app/assets/images/libraryHeadMoreIcon.svg';
-import libraryHeadVersionControlIcon from '@/app/assets/images/libraryHeadVersionControlIcon.svg';
-import libraryHeadExpandCollaborators from '@/app/assets/images/libraryHeadExpandCollaborators.svg';
-import libraryHeadEditIcon from '@/app/assets/images/assetEditIcon.svg';
-import libraryHeadViewIcon from '@/app/assets/images/assetViewIcon.svg';
+import libraryHeadMoreIcon from '@/assets/images/libraryHeadMoreIcon.svg';
+import libraryHeadVersionControlIcon from '@/assets/images/libraryHeadVersionControlIcon.svg';
+import libraryHeadExpandCollaborators from '@/assets/images/libraryHeadExpandCollaborators.svg';
+import libraryHeadEditIcon from '@/assets/images/assetEditIcon.svg';
+import libraryHeadViewIcon from '@/assets/images/assetViewIcon.svg';
 
 interface LibraryHeaderProps {
   libraryId: string;

@@ -2,16 +2,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button, Input } from 'antd';
 import Image from 'next/image';
-import type { FieldConfig } from '../types';
-import { fieldSchema } from '../validation';
-import { uid } from '../types';
+import type { FieldConfig } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/types';
+import { fieldSchema } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/validation';
+import { uid } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/types';
 import { FieldsList } from './FieldsList';
 import { FieldForm } from './FieldForm';
-import predefineLabelAddIcon from '@/app/assets/images/predefineLabelAddIcon.svg';
-import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
+import predefineLabelAddIcon from '@/assets/images/predefineLabelAddIcon.svg';
+import predefineDragIcon from '@/assets/images/predefineDragIcon.svg';
 import styles from './NewSectionForm.module.css';
 import sectionHeaderStyles from './SectionHeader.module.css';
-import predefineExpandIcon from '@/app/assets/images/predefineExpandIcon.svg';
+import predefineExpandIcon from '@/assets/images/predefineExpandIcon.svg';
 
 interface NewSectionFormProps {
   onCancel?: () => void;

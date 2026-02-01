@@ -15,7 +15,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { duplicateVersionAsLibrary } from '@/lib/services/versionService';
 import { EditVersionModal } from './EditVersionModal';
 import { DeleteConfirmModal } from './DeleteConfirmModal';
-import versionItemMenuIcon from '@/app/assets/images/VersionItemMenuIcon.svg';
+import versionItemMenuIcon from '@/assets/images/VersionItemMenuIcon.svg';
 import styles from './VersionItemMenu.module.css';
 
 import type { LibraryVersion } from '@/lib/types/version';
