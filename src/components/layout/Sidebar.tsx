@@ -4,9 +4,7 @@ import projectIcon from "@/assets/images/projectIcon.svg";
 import libraryBookIcon from "@/assets/images/LibraryBookIcon.svg";
 import loginProductIcon from "@/assets/images/loginProductIcon.svg";
 import predefineSettingIcon from "@/assets/images/predefineSettingIcon.svg";
-import FolderOpenIcon from "@/assets/images/FolderOpenIcon.svg";
 import FolderCloseIcon from "@/assets/images/FolderCloseIcon.svg";
-import folderExpandIcon from "@/assets/images/folderExpandIcon.svg";
 import folderCollapseIcon from "@/assets/images/folderCollapseIcon.svg";
 import plusHorizontal from "@/assets/images/plusHorizontal.svg";
 import plusVertical from "@/assets/images/plusVertical.svg";
@@ -21,7 +19,7 @@ import sidebarFolderIcon5 from "@/assets/images/SidebarFolderInco5.svg";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Tree, Tooltip } from "antd";
+import { Tooltip } from "antd";
 import { EventDataNode } from "antd/es/tree";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@/lib/contexts/NavigationContext";
@@ -41,6 +39,8 @@ import { Folder, deleteFolder } from "@/lib/services/folderService";
 import { useSidebarProjects } from "./useSidebarProjects";
 import { useSidebarFoldersLibraries } from "./useSidebarFoldersLibraries";
 import { useSidebarModals } from "./useSidebarModals";
+import { useSidebarContextMenu } from "./useSidebarContextMenu";
+import { SidebarTreeView } from "./SidebarTreeView";
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ContextMenu, ContextMenuAction } from "./ContextMenu";
@@ -81,68 +81,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   
-  // Resolve display name: prefer username, then full_name, then email
-  const displayName = userProfile?.username || userProfile?.full_name || userProfile?.email || "Guest";
-  const isGuest = !userProfile;
-  
   // User role in current project
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
   const [isProjectOwner, setIsProjectOwner] = useState(false);
-  
-  // Resolve avatar: use avatar_url if valid, otherwise fallback to initial
-  const hasValidAvatar = userProfile?.avatar_url && userProfile.avatar_url.trim() !== "";
-  const avatarInitial = displayName.charAt(0).toUpperCase();
-  const [avatarError, setAvatarError] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
-  // Close user menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowMenu(false);
-      }
-    };
-
-    if (showMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showMenu]);
-
-  const handleLogout = async () => {
-    setShowMenu(false);
-    try {
-      await supabase.auth.signOut();
-      // Call parent callback to keep auth state in sync
-      if (onAuthRequest) {
-        onAuthRequest();
-      }
-      // Navigate to /projects after logout
-      router.push('/projects');
-    } catch (error) {
-      console.error('Logout failed', error);
-      // Even if sign-out fails, still notify parent to keep state consistent
-      if (onAuthRequest) {
-        onAuthRequest();
-      }
-      // Navigate to /projects even if logout fails
-      router.push('/projects');
-    }
-  };
-
-  const handleAuthNav = async () => {
-    setShowMenu(false);
-    if (onAuthRequest) {
-      onAuthRequest();
-      return;
-    }
-    // fallback: sign out and let caller react to auth state change
-    await supabase.auth.signOut();
-  };
 
   // data state - managed by React Query, no need for manual state
   const [assets, setAssets] = useState<Record<string, AssetRow[]>>({});
@@ -182,14 +123,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [error, setError] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
-  
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    type: 'project' | 'library' | 'folder' | 'asset';
-    id: string;
-  } | null>(null);
+
+  const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
 
   const {
     projects,
@@ -1245,61 +1180,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Folders don't need to fetch anything on expand/collapse
   };
 
-  const switcherIcon = (node: any) => {
-    const { expanded, isLeaf, data } = node || {};
-    const key = (data?.key ?? node?.key) as string | undefined;
-
-    if (isLeaf || !key) return null;
-
-    if (key.startsWith('folder-')) {
-      if (!expanded) {
-        return (
-          <Image
-            src={FolderCloseIcon}
-            alt="Closed folder"
-            width={24}
-            height={24}
-            style={{ display: 'block' }}
-          />
-        );
-      }
-      // Expanded: use two icons + CSS so treenode:hover (whole row incl. switcher) shows expand icon
-      return (
-        <div className={styles.folderSwitcherIcons}>
-          <Image
-            src={FolderOpenIcon}
-            alt="Open folder"
-            width={24}
-            height={24}
-            className={styles.folderSwitcherBase}
-          />
-          <Image
-            src={folderExpandIcon}
-            alt="Expand"
-            width={14}
-            height={8}
-            className={styles.folderSwitcherHover}
-          />
-        </div>
-      );
-    }
-
-    // All libraries are leaf nodes (no expand) — no switcher
-    if (key.startsWith('library-')) return null;
-
-    return null; // no switcher for other node types
-  };
-
   // Context menu handlers
   const handleContextMenu = (e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      type,
-      id,
-    });
+    openContextMenu(e.clientX, e.clientY, type, id);
   };
 
   const { treeData, selectedKeys } = useSidebarTree(
@@ -1322,7 +1207,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     
     // Handle collaborators action for projects
     if (action === 'collaborators' && contextMenu.type === 'project') {
-      setContextMenu(null);
+      closeContextMenu();
       router.push(`/${contextMenu.id}/collaborators`);
       return;
     }
@@ -1331,19 +1216,19 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (action === 'rename') {
       if (contextMenu.type === 'project') {
         openEditProject(contextMenu.id);
-        setContextMenu(null);
+        closeContextMenu();
         return;
       } else if (contextMenu.type === 'library') {
         openEditLibrary(contextMenu.id);
-        setContextMenu(null);
+        closeContextMenu();
         return;
       } else if (contextMenu.type === 'folder') {
         openEditFolder(contextMenu.id);
-        setContextMenu(null);
+        closeContextMenu();
         return;
       } else if (contextMenu.type === 'asset') {
         openEditAsset(contextMenu.id);
-        setContextMenu(null);
+        closeContextMenu();
         return;
       }
     }
@@ -1437,7 +1322,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       }
     }
     
-    setContextMenu(null);
+    closeContextMenu();
   };
 
   const handleProjectDelete = async (projectId: string, e: React.MouseEvent) => {
@@ -1864,19 +1749,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 ) : (
                   // Normal view: Show tree structure
                   <>
-                    <div className={styles.treeWrapper}>
-                      <Tree
-                        className={styles.tree}
-                        showIcon={false}
-                        treeData={treeData}
-                        selectedKeys={selectedKeys}
-                        onSelect={onSelect}
-                        onExpand={onExpand}
-                        switcherIcon={switcherIcon}
-                        expandedKeys={expandedKeys}
-                        motion={false}
-                      />
-                    </div>
+                    <SidebarTreeView
+                      treeData={treeData}
+                      selectedKeys={selectedKeys}
+                      expandedKeys={expandedKeys}
+                      onSelect={onSelect}
+                      onExpand={onExpand}
+                    />
                     {!loadingFolders &&
                       !loadingLibraries &&
                       folders.length === 0 &&
@@ -1979,7 +1858,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           x={contextMenu.x}
           y={contextMenu.y}
           type={contextMenu.type}
-          onClose={() => setContextMenu(null)}
+          onClose={closeContextMenu}
           onAction={handleContextMenuAction}
           userRole={userRole}
           isProjectOwner={isProjectOwner}
