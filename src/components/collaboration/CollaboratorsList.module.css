@@ -5,7 +5,7 @@
  * Uses CSS modules for scoped styling.
  */
 
-.container {
+ .container {
   width: 100%;
   background-color: #ffffff;
 }
@@ -166,15 +166,15 @@
 }
 
 .avatar {
-  width: 36px;
-  height: 36px;
+  width: 2.25rem;
+  height: 2.25rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   color: #ffffff;
   font-weight: 400;
-  font-size: 1.5rem;
+  font-size: 1.625rem;
   flex-shrink: 0;
   background-color: #94a3b8;
 }
@@ -565,12 +565,6 @@
     width: 100px;
   }
   
-  .avatar {
-    width: 2.5rem;
-    height: 2.5rem;
-    font-size: 1.25rem;
-  }
-  
   .userName {
     font-size: 0.875rem;
   }
@@ -615,12 +609,6 @@
   .itemRight {
     width: 100%;
     gap: 1.25rem;
-  }
-  
-  .avatar {
-    width: 36px;
-    height: 36px;
-    font-size: 1.125rem;
   }
   
   .userName {
