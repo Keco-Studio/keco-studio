@@ -1,32 +1,13 @@
 'use client';
 
-import projectIcon from "@/assets/images/projectIcon.svg";
-import libraryBookIcon from "@/assets/images/LibraryBookIcon.svg";
 import loginProductIcon from "@/assets/images/loginProductIcon.svg";
-import predefineSettingIcon from "@/assets/images/predefineSettingIcon.svg";
-import PredefineNewIcon from "@/assets/images/PredefineNewIcon.svg";
-import PredefineNewClick from "@/assets/images/PredefineNewClick.svg";
-import FolderOpenIcon from "@/assets/images/FolderOpenIcon.svg";
-import FolderCloseIcon from "@/assets/images/FolderCloseIcon.svg";
-import folderExpandIcon from "@/assets/images/folderExpandIcon.svg";
-import folderCollapseIcon from "@/assets/images/folderCollapseIcon.svg";
-import FolderAddLibIcon from "@/assets/images/FolderAddLibIcon.svg";
-import plusHorizontal from "@/assets/images/plusHorizontal.svg";
-import plusVertical from "@/assets/images/plusVertical.svg";
-import createProjectIcon from "@/assets/images/createProjectIcon.svg";
 import addProjectIcon from "@/assets/images/addProjectIcon.svg";
 import searchIcon from "@/assets/images/searchIcon.svg";
-import projectRightIcon from "@/assets/images/ProjectRightIcon.svg";
-import sidebarFolderIcon from "@/assets/images/SidebarFloderIcon.svg";
-import sidebarFolderIcon3 from "@/assets/images/SidebarFloderIcon3.svg";
-import sidebarFolderIcon4 from "@/assets/images/SidebarFloderIcon4.svg";
-import sidebarFolderIcon5 from "@/assets/images/SidebarFolderInco5.svg";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Tree, Tooltip } from "antd";
-import { DataNode, EventDataNode } from "antd/es/tree";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { EventDataNode } from "antd/es/tree";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@/lib/contexts/NavigationContext";
 import { useSupabase } from "@/lib/SupabaseContext";
 import { queryKeys } from "@/lib/utils/queryKeys";
@@ -38,54 +19,31 @@ import { NewFolderModal } from "@/components/folders/NewFolderModal";
 import { EditFolderModal } from "@/components/folders/EditFolderModal";
 import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
-import { listProjects, Project, deleteProject } from "@/lib/services/projectService";
-import { listLibraries, Library, deleteLibrary } from "@/lib/services/libraryService";
-import { listFolders, Folder, deleteFolder } from "@/lib/services/folderService";
+import { Project, deleteProject } from "@/lib/services/projectService";
+import { Library, deleteLibrary } from "@/lib/services/libraryService";
+import { Folder, deleteFolder } from "@/lib/services/folderService";
+import { useSidebarProjects } from "./hooks/useSidebarProjects";
+import { useSidebarFoldersLibraries } from "./hooks/useSidebarFoldersLibraries";
+import { useSidebarModals } from "./hooks/useSidebarModals";
+import { useSidebarContextMenu } from "./hooks/useSidebarContextMenu";
+import { SidebarTreeView } from "./components/SidebarTreeView";
+import { SidebarProjectsList } from "./components/SidebarProjectsList";
+import { SidebarLibrariesSection } from "./components/SidebarLibrariesSection";
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ContextMenu, ContextMenuAction } from "./ContextMenu";
+import { ContextMenu } from "./ContextMenu";
 import type { UserProfileDisplay } from "@/lib/types/user";
+import { useSidebarTree } from "./hooks/useSidebarTree";
+import { useSidebarAssets } from "./hooks/useSidebarAssets";
+import { useSidebarProjectRole } from "./hooks/useSidebarProjectRole";
+import { useSidebarWindowEvents } from "./hooks/useSidebarWindowEvents";
+import { useSidebarRealtime } from "./hooks/useSidebarRealtime";
+import { useSidebarContextMenuActions } from "./hooks/useSidebarContextMenuActions";
 import styles from "./Sidebar.module.css";
 
 type SidebarProps = {
   userProfile?: UserProfileDisplay | null;
   onAuthRequest?: () => void;
-};
-
-type AssetRow = { id: string; name: string; library_id: string };
-
-// Helper function to calculate character display width (Chinese = 2, English/Number = 1)
-const getCharWidth = (char: string): number => {
-  // Check if character is Chinese, Japanese, Korean, or other wide characters
-  const code = char.charCodeAt(0);
-  return (code >= 0x4E00 && code <= 0x9FFF) || // CJK Unified Ideographs
-         (code >= 0x3400 && code <= 0x4DBF) || // CJK Extension A
-         (code >= 0x20000 && code <= 0x2A6DF) || // CJK Extension B
-         (code >= 0x3040 && code <= 0x309F) || // Hiragana
-         (code >= 0x30A0 && code <= 0x30FF) || // Katakana
-         (code >= 0xAC00 && code <= 0xD7AF) ? 2 : 1; // Hangul
-};
-
-// Helper function to calculate total display width of a string
-const getStringWidth = (text: string): number => {
-  return text.split('').reduce((width, char) => width + getCharWidth(char), 0);
-};
-
-// Helper function to truncate text with ellipsis based on display width
-const truncateText = (text: string, maxWidth: number): string => {
-  let width = 0;
-  let result = '';
-  
-  for (const char of text) {
-    const charWidth = getCharWidth(char);
-    if (width + charWidth > maxWidth) {
-      return result + '...';
-    }
-    result += char;
-    width += charWidth;
-  }
-  
-  return result;
 };
 
 export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
@@ -113,150 +71,62 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   
-  // Resolve display name: prefer username, then full_name, then email
-  const displayName = userProfile?.username || userProfile?.full_name || userProfile?.email || "Guest";
-  const isGuest = !userProfile;
-  
-  // User role in current project
-  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
-  const [isProjectOwner, setIsProjectOwner] = useState(false);
-  
-  // Resolve avatar: use avatar_url if valid, otherwise fallback to initial
-  const hasValidAvatar = userProfile?.avatar_url && userProfile.avatar_url.trim() !== "";
-  const avatarInitial = displayName.charAt(0).toUpperCase();
-  const [avatarError, setAvatarError] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
+  const { userRole, isProjectOwner, refetchUserRole } = useSidebarProjectRole(currentIds.projectId, userProfile);
+  const { assets, fetchAssets } = useSidebarAssets(currentIds.libraryId);
 
-  // Close user menu when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setShowMenu(false);
-      }
-    };
+  const modals = useSidebarModals();
+  const {
+    showProjectModal,
+    showEditProjectModal,
+    editingProjectId,
+    showLibraryModal,
+    showEditLibraryModal,
+    editingLibraryId,
+    showFolderModal,
+    showEditFolderModal,
+    editingFolderId,
+    showEditAssetModal,
+    editingAssetId,
+    openNewProject,
+    closeProjectModal,
+    openEditProject,
+    closeEditProjectModal,
+    openNewLibrary,
+    closeLibraryModal,
+    openEditLibrary,
+    closeEditLibraryModal,
+    openNewFolder,
+    closeFolderModal,
+    openEditFolder,
+    closeEditFolderModal,
+    openEditAsset,
+    closeEditAssetModal,
+  } = modals;
 
-    if (showMenu) {
-      document.addEventListener("mousedown", handleClickOutside);
-    }
-
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [showMenu]);
-
-  const handleLogout = async () => {
-    setShowMenu(false);
-    try {
-      await supabase.auth.signOut();
-      // Call parent callback to keep auth state in sync
-      if (onAuthRequest) {
-        onAuthRequest();
-      }
-      // Navigate to /projects after logout
-      router.push('/projects');
-    } catch (error) {
-      console.error('Logout failed', error);
-      // Even if sign-out fails, still notify parent to keep state consistent
-      if (onAuthRequest) {
-        onAuthRequest();
-      }
-      // Navigate to /projects even if logout fails
-      router.push('/projects');
-    }
-  };
-
-  const handleAuthNav = async () => {
-    setShowMenu(false);
-    if (onAuthRequest) {
-      onAuthRequest();
-      return;
-    }
-    // fallback: sign out and let caller react to auth state change
-    await supabase.auth.signOut();
-  };
-
-  // data state - managed by React Query, no need for manual state
-  const [assets, setAssets] = useState<Record<string, AssetRow[]>>({});
-
-  const [showProjectModal, setShowProjectModal] = useState(false);
-  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
-  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [showLibraryModal, setShowLibraryModal] = useState(false);
-  const [showEditLibraryModal, setShowEditLibraryModal] = useState(false);
-  const [editingLibraryId, setEditingLibraryId] = useState<string | null>(null);
-  const [showFolderModal, setShowFolderModal] = useState(false);
-  const [showEditFolderModal, setShowEditFolderModal] = useState(false);
-  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
-  const [showEditAssetModal, setShowEditAssetModal] = useState(false);
-  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
-  
-  // Context menu state
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    type: 'project' | 'library' | 'folder' | 'asset';
-    id: string;
-  } | null>(null);
 
-  // Use React Query to fetch projects list; queryKey shared with Projects page.
-  // Pass userProfile?.id when available to skip getCurrentUserId/getUser(), avoiding slow auth on first login.
+  const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
+
   const {
-    data: projects = [],
+    projects,
     isLoading: loadingProjects,
     error: projectsError,
     refetch: refetchProjects,
-  } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => listProjects(supabase, userProfile?.id),
-    enabled: true,
-    staleTime: 2 * 60 * 1000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-  });
+  } = useSidebarProjects(userProfile?.id);
 
-  // Use React Query to fetch folders and libraries
-  // Only execute query when projectId exists and is a valid UUID
   const {
-    data: foldersAndLibraries,
+    folders,
+    libraries,
     isLoading: loadingFoldersAndLibraries,
-  } = useQuery({
-    queryKey: ['folders-libraries', currentIds.projectId],
-    queryFn: async () => {
-      if (!currentIds.projectId) {
-        return { folders: [], libraries: [] };
-      }
-      const [foldersData, librariesData] = await Promise.all([
-        listFolders(supabase, currentIds.projectId!),
-        listLibraries(supabase, currentIds.projectId!),
-      ]);
-      return { folders: foldersData, libraries: librariesData };
-    },
-    // Only query when projectId exists AND is a valid UUID (not "projects" string)
-    enabled: !!currentIds.projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentIds.projectId || ''),
-    staleTime: 0, // Always consider data stale for real-time updates
-    // Don't refetch if data is in cache and not expired
-    refetchOnMount: false, // Use cache to avoid duplicate requests
-    // Don't auto-refresh when switching tabs
-    refetchOnWindowFocus: false,
-    // REMOVED: placeholderData - it prevents UI updates from realtime changes
-    // Enable request deduplication: requests with the same queryKey will be automatically deduplicated
-    queryKeyHashFn: undefined, // Use default hash function
-  });
+  } = useSidebarFoldersLibraries(currentIds.projectId);
 
-  // For compatibility with existing code, set loading states separately
   const loadingFolders = loadingFoldersAndLibraries;
   const loadingLibraries = loadingFoldersAndLibraries;
-
-  // Extract data from React Query result
-  const folders = foldersAndLibraries?.folders || [];
-  const libraries = foldersAndLibraries?.libraries || [];
 
   // Handle errors
   useEffect(() => {
@@ -265,521 +135,18 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [projectsError]);
 
-  // Listen to projectCreated event to refresh Sidebar data when project is created from other pages
-  // Use React Query's invalidateQueries to refresh cache, React Query will automatically refetch data
-  useEffect(() => {
-    const handleProjectCreated = () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-    };
+  useSidebarWindowEvents(queryClient, currentIds.projectId, () =>
+    setIsSidebarVisible((prev) => !prev)
+  );
 
-    const handleProjectUpdated = (event: CustomEvent) => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-      // Also invalidate the specific project cache if projectId is provided
-      if (event.detail?.projectId) {
-        queryClient.invalidateQueries({ queryKey: ['project', event.detail.projectId] });
-      }
-    };
-
-    window.addEventListener('projectCreated' as any, handleProjectCreated as EventListener);
-    window.addEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
-    
-    return () => {
-      window.removeEventListener('projectCreated' as any, handleProjectCreated as EventListener);
-      window.removeEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
-    };
-  }, [queryClient]);
-
-  // Listen to authStateChanged event to clear React Query cache when user signs out or switches
-  useEffect(() => {
-    const handleAuthStateChanged = () => {
-      // Clear all React Query cache when auth state changes (sign out or user switch)
-      queryClient.clear();
-    };
-
-    window.addEventListener('authStateChanged' as any, handleAuthStateChanged as EventListener);
-    
-    return () => {
-      window.removeEventListener('authStateChanged' as any, handleAuthStateChanged as EventListener);
-    };
-  }, [queryClient]);
-
-  // Real-time collaboration: Subscribe to projects table changes
-  useEffect(() => {
-    if (!userProfile) {
-      return;
-    }
-    
-    // Subscribe to projects table for real-time updates
-    // We listen to ALL projects (no filter) so collaborators can also receive updates
-    const projectsChannel = supabase
-      .channel(`projects:user:${userProfile.id}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
-          schema: 'public',
-          table: 'projects',
-          // No filter - listen to all projects, then check on client side
-        },
-        async (payload) => {
-          // Get the project ID from the event
-          const projectId = (payload.new && 'id' in payload.new ? payload.new.id : null) || 
-                           (payload.old && 'id' in payload.old ? payload.old.id : null);
-          
-          // Check if this project is in the user's project list
-          const currentProjects = queryClient.getQueryData<Project[]>(['projects']) || [];
-          const isUserProject = currentProjects.some(p => p.id === projectId);
-          
-          // Only process events for projects the user has access to
-          if (!isUserProject && payload.eventType !== 'INSERT') {
-            return;
-          }
-          
-          // Invalidate globalRequestCache
-          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-          const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-          
-          try {
-            const userId = await getCurrentUserId(supabase);
-            globalRequestCache.invalidate(`projects:list:${userId}`);
-            
-            // Also invalidate specific project cache
-            if (projectId) {
-              globalRequestCache.invalidate(`project:${projectId}`);
-              globalRequestCache.invalidate(`project:name:${projectId}`);
-            }
-          } catch (err) {
-            console.warn('[Sidebar] Error invalidating project cache:', err);
-          }
-          
-          // Invalidate React Query cache
-          await queryClient.invalidateQueries({ queryKey: ['projects'] });
-          await queryClient.refetchQueries({ 
-            queryKey: ['projects'],
-            type: 'active',
-          });
-          
-          // Dispatch events for other components
-          if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
-            window.dispatchEvent(new CustomEvent('projectUpdated', {
-              detail: { projectId: payload.new.id }
-            }));
-          } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
-            // Immediately update the cache to remove the deleted project
-            queryClient.setQueryData<Project[]>(['projects'], (oldProjects) => {
-              if (!oldProjects) return [];
-              return oldProjects.filter(p => p.id !== payload.old.id);
-            });
-            
-            window.dispatchEvent(new CustomEvent('projectDeleted', {
-              detail: { projectId: payload.old.id }
-            }));
-            
-            // If the deleted project is currently being viewed, navigate away
-            if (currentIds.projectId === payload.old.id) {
-              router.push('/projects');
-            }
-          }
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR') {
-          if (err) {
-            console.error('[Sidebar] Projects channel ERROR:', err);
-          } else {
-            console.warn('[Sidebar] Projects channel error (Realtime may be disabled or connection limited).');
-          }
-        } else if (status === 'TIMED_OUT') {
-          console.error('[Sidebar] Projects channel TIMED OUT');
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(projectsChannel);
-    };
-  }, [userProfile, supabase, queryClient, currentIds.projectId, router]);
-
-  // Real-time collaboration: Subscribe to libraries table changes
-  useEffect(() => {
-    if (!currentIds.projectId || !userProfile) {
-      return;
-    }
-    
-    // Subscribe to libraries table for real-time updates
-    const librariesChannel = supabase
-      .channel(`libraries:project:${currentIds.projectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
-          schema: 'public',
-          table: 'libraries',
-          filter: `project_id=eq.${currentIds.projectId}`,
-        },
-        async (payload) => {
-          console.log('[Sidebar] 🔥 LIBRARIES CHANGE DETECTED:', {
-            eventType: payload.eventType,
-            table: payload.table,
-            schema: payload.schema,
-            new: payload.new,
-            old: payload.old,
-            commit_timestamp: payload.commit_timestamp,
-          });
-          
-          // CRITICAL: Must invalidate globalRequestCache first!
-          // Otherwise listLibraries() will return cached data even when React Query refetches
-          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-          globalRequestCache.invalidate(`libraries:list:${currentIds.projectId}:all`);
-          
-          // Also invalidate individual library cache for NavigationContext
-          if (payload.new && 'id' in payload.new) {
-            globalRequestCache.invalidate(`library:info:${payload.new.id}`);
-            globalRequestCache.invalidate(`library:${payload.new.id}`);
-          }
-          console.log('[Sidebar] ✅ globalRequestCache invalidated for libraries');
-          
-          // Step 1: Invalidate React Query cache to mark data as stale
-          await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-          console.log('[Sidebar] ✅ React Query cache invalidated');
-          
-          // Step 2: Force refetch to get fresh data from database
-          await queryClient.refetchQueries({ 
-            queryKey: ['folders-libraries', currentIds.projectId],
-            type: 'active', // Only refetch active queries
-          });
-          console.log('[Sidebar] ✅ Force refetch completed for folders-libraries');
-          
-          // Step 3: Dispatch events for other components to react
-          if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
-            window.dispatchEvent(new CustomEvent('libraryUpdated', {
-              detail: { libraryId: payload.new.id, projectId: currentIds.projectId }
-            }));
-            console.log('[Sidebar] ✅ libraryUpdated event dispatched');
-          } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
-            window.dispatchEvent(new CustomEvent('libraryDeleted', {
-              detail: { libraryId: payload.old.id, projectId: currentIds.projectId }
-            }));
-            console.log('[Sidebar] ✅ libraryDeleted event dispatched');
-          } else if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
-            window.dispatchEvent(new CustomEvent('libraryCreated', {
-              detail: { libraryId: payload.new.id, projectId: currentIds.projectId }
-            }));
-            console.log('[Sidebar] ✅ libraryCreated event dispatched');
-          }
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR') {
-          if (err) {
-            console.error('[Sidebar] Libraries channel ERROR:', err);
-          } else {
-            console.warn('[Sidebar] Libraries channel error (Realtime may be disabled or connection limited).');
-          }
-        } else if (status === 'TIMED_OUT') {
-          console.error('[Sidebar] Libraries channel TIMED OUT');
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(librariesChannel);
-    };
-  }, [currentIds.projectId, userProfile, supabase, queryClient]);
-
-  // Real-time collaboration: Subscribe to folders table changes
-  useEffect(() => {
-    if (!currentIds.projectId || !userProfile) {
-      return;
-    }
-    
-    // Subscribe to folders table for real-time updates
-    const foldersChannel = supabase
-      .channel(`folders:project:${currentIds.projectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
-          schema: 'public',
-          table: 'folders',
-          filter: `project_id=eq.${currentIds.projectId}`,
-        },
-        async (payload) => {
-          console.log('[Sidebar] 🔥 FOLDERS CHANGE DETECTED:', {
-            eventType: payload.eventType,
-            table: payload.table,
-            schema: payload.schema,
-            new: payload.new,
-            old: payload.old,
-            commit_timestamp: payload.commit_timestamp,
-          });
-          
-          // CRITICAL: Must invalidate globalRequestCache first!
-          // Otherwise listFolders() will return cached data even when React Query refetches
-          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-          globalRequestCache.invalidate(`folders:list:${currentIds.projectId}`);
-          
-          // Also invalidate individual folder cache
-          if (payload.new && 'id' in payload.new) {
-            globalRequestCache.invalidate(`folder:${payload.new.id}`);
-          }
-          console.log('[Sidebar] ✅ globalRequestCache invalidated for folders');
-          
-          // Step 1: Invalidate React Query cache to mark data as stale
-          await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-          console.log('[Sidebar] ✅ React Query cache invalidated');
-          
-          // Step 2: Force refetch to get fresh data from database
-          await queryClient.refetchQueries({ 
-            queryKey: ['folders-libraries', currentIds.projectId],
-            type: 'active', // Only refetch active queries
-          });
-          console.log('[Sidebar] ✅ Force refetch completed for folders-libraries');
-          
-          // Step 3: Dispatch events for other components to react
-          if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
-            window.dispatchEvent(new CustomEvent('folderUpdated', {
-              detail: { folderId: payload.new.id, projectId: currentIds.projectId }
-            }));
-            console.log('[Sidebar] ✅ folderUpdated event dispatched');
-          } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
-            window.dispatchEvent(new CustomEvent('folderDeleted', {
-              detail: { folderId: payload.old.id, projectId: currentIds.projectId }
-            }));
-            console.log('[Sidebar] ✅ folderDeleted event dispatched');
-          } else if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
-            window.dispatchEvent(new CustomEvent('folderCreated', {
-              detail: { folderId: payload.new.id, projectId: currentIds.projectId }
-            }));
-            console.log('[Sidebar] ✅ folderCreated event dispatched');
-          }
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR') {
-          if (err) {
-            console.error('[Sidebar] Folders channel ERROR:', err);
-          } else {
-            console.warn('[Sidebar] Folders channel error (Realtime may be disabled or connection limited).');
-          }
-        } else if (status === 'TIMED_OUT') {
-          console.error('[Sidebar] Folders channel TIMED OUT');
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(foldersChannel);
-    };
-  }, [currentIds.projectId, userProfile, supabase, queryClient]);
-
-  // Real-time collaboration: Subscribe to project_collaborators table changes (for permission updates)
-  useEffect(() => {
-    if (!currentIds.projectId || !userProfile) {
-      return;
-    }
-    
-    // Subscribe to project_collaborators table for real-time permission updates
-    const collaboratorsChannel = supabase
-      .channel(`collaborators:project:${currentIds.projectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // Listen to all events (INSERT, UPDATE, DELETE)
-          schema: 'public',
-          table: 'project_collaborators',
-          filter: `project_id=eq.${currentIds.projectId}`,
-        },
-        async (payload) => {
-          // Handle DELETE event - collaborator was removed or project was deleted
-          // Note: We don't check user_id because REPLICA IDENTITY might not be FULL
-          // Instead, we check if current user still has access to the project
-          if (payload.eventType === 'DELETE') {
-            // Check if current user still has access to this project
-            const { data: accessCheck } = await supabase
-              .from('project_collaborators')
-              .select('id')
-              .eq('project_id', currentIds.projectId)
-              .eq('user_id', userProfile.id)
-              .single();
-            
-            // Also check if project still exists
-            const { data: projectCheck } = await supabase
-              .from('projects')
-              .select('id, owner_id')
-              .eq('id', currentIds.projectId)
-              .single();
-            
-            // Determine if user still has access
-            const isOwner = projectCheck?.owner_id === userProfile.id;
-            const hasCollaboratorAccess = !!accessCheck;
-            const hasAccess = isOwner || hasCollaboratorAccess;
-            
-            if (!projectCheck) {
-              // Project was deleted
-              // Remove project from cache
-              queryClient.setQueryData<Project[]>(['projects'], (oldProjects) => {
-                if (!oldProjects) return [];
-                return oldProjects.filter(p => p.id !== currentIds.projectId);
-              });
-              
-              // Clear global cache
-              const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-              const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-              try {
-                const userId = await getCurrentUserId(supabase);
-                globalRequestCache.invalidate(`projects:list:${userId}`);
-                globalRequestCache.invalidate(`project:${currentIds.projectId}`);
-              } catch (err) {
-                console.warn('[Sidebar] Failed to clear cache:', err);
-              }
-              
-              // Dispatch event
-              window.dispatchEvent(new CustomEvent('projectDeleted', {
-                detail: { projectId: currentIds.projectId }
-              }));
-              
-              // Navigate away
-              router.push('/projects');
-            } else if (!hasAccess) {
-              // User was removed from project (not owner and no collaborator access)
-              // Remove project from cache
-              queryClient.setQueryData<Project[]>(['projects'], (oldProjects) => {
-                if (!oldProjects) return [];
-                return oldProjects.filter(p => p.id !== currentIds.projectId);
-              });
-              
-              // Clear global cache
-              const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-              const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-              try {
-                const userId = await getCurrentUserId(supabase);
-                globalRequestCache.invalidate(`projects:list:${userId}`);
-                globalRequestCache.invalidate(`project:${currentIds.projectId}`);
-              } catch (err) {
-                console.warn('[Sidebar] Failed to clear cache:', err);
-              }
-              
-              // Invalidate and refetch
-              queryClient.invalidateQueries({ queryKey: ['projects'] });
-              
-              // Navigate away
-              router.push('/projects');
-            }
-          }
-          
-          // Handle INSERT/UPDATE events - check if the change affects current user
-          if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') && 
-              payload.new && 'user_id' in payload.new && payload.new.user_id === userProfile.id) {
-            // Current user's permission changed, refetch role
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (!session) return;
-              
-              const roleResponse = await fetch(`/api/projects/${currentIds.projectId}/role`, {
-                headers: {
-                  'Authorization': `Bearer ${session.access_token}`,
-                },
-              });
-              
-              if (roleResponse.ok) {
-                const roleResult = await roleResponse.json();
-                setUserRole(roleResult.role || null);
-                setIsProjectOwner(roleResult.isOwner || false);
-              }
-            } catch (error) {
-              console.error('[Sidebar] Error refetching user role:', error);
-            }
-          }
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR') {
-          if (err) {
-            console.error('[Sidebar] Collaborators channel ERROR:', err);
-          } else {
-            console.warn('[Sidebar] Collaborators channel error (Realtime may be disabled or connection limited).');
-          }
-        } else if (status === 'TIMED_OUT') {
-          console.error('[Sidebar] Collaborators channel TIMED OUT');
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(collaboratorsChannel);
-    };
-  }, [currentIds.projectId, userProfile, supabase, queryClient, router]);
-
-  // Real-time collaboration: Subscribe to predefine_properties changes (for predefine updates)
-  useEffect(() => {
-    if (!currentIds.projectId || !userProfile) {
-      return;
-    }
-    
-    // Subscribe to predefine_properties for real-time predefine updates
-    // When properties are added/updated/deleted, other collaborators should see the changes
-    const predefineChannel = supabase
-      .channel(`predefine:project:${currentIds.projectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'predefine_properties',
-        },
-        async (payload) => {
-          // Check if this property belongs to a library in current project
-          // We'll refresh the libraries cache which will pick up property changes
-          if (payload.new && 'library_id' in payload.new) {
-            // CRITICAL: Must invalidate globalRequestCache first!
-            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-            globalRequestCache.invalidate(`libraries:list:${currentIds.projectId}:all`);
-            
-            // Invalidate and refetch to ensure UI updates
-            await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-            await queryClient.refetchQueries({ 
-              queryKey: ['folders-libraries', currentIds.projectId],
-              type: 'active',
-            });
-          } else if (payload.old && 'library_id' in payload.old) {
-            // Handle DELETE events - CRITICAL: Must invalidate globalRequestCache first!
-            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-            globalRequestCache.invalidate(`libraries:list:${currentIds.projectId}:all`);
-            
-            await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-            await queryClient.refetchQueries({ 
-              queryKey: ['folders-libraries', currentIds.projectId],
-              type: 'active',
-            });
-          }
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR') {
-          if (err) {
-            console.error('[Sidebar] Predefine channel ERROR:', err);
-          } else {
-            console.warn('[Sidebar] Predefine channel error (Realtime may be disabled or connection limited).');
-          }
-        } else if (status === 'TIMED_OUT') {
-          console.error('[Sidebar] Predefine channel TIMED OUT');
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(predefineChannel);
-    };
-  }, [currentIds.projectId, userProfile, supabase, queryClient]);
-
-  // Listen to sidebar toggle event from TopBar
-  useEffect(() => {
-    const handleSidebarToggle = () => {
-      setIsSidebarVisible(prev => !prev);
-    };
-
-    window.addEventListener('sidebar-toggle', handleSidebarToggle);
-    
-    return () => {
-      window.removeEventListener('sidebar-toggle', handleSidebarToggle);
-    };
-  }, []);
+  useSidebarRealtime({
+    supabase,
+    queryClient,
+    userProfile,
+    currentProjectId: currentIds.projectId,
+    router,
+    refetchUserRole,
+  });
 
   // Auto-navigate to first project on login if user has projects
   useEffect(() => {
@@ -810,52 +177,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       prevProjectIdRef.current = currentIds.projectId;
     }
   }, [currentIds.projectId]);
-
-  // Fetch user role in current project
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      // Check if projectId is a valid UUID (not "projects" or other route segments)
-      const isValidUUID = currentIds.projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentIds.projectId);
-      
-      if (!isValidUUID || !userProfile) {
-        setUserRole(null);
-        setIsProjectOwner(false);
-        return;
-      }
-      
-      try {
-        // Get session for authorization
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          setUserRole(null);
-          setIsProjectOwner(false);
-          return;
-        }
-        
-        // Call API to get user role
-        const roleResponse = await fetch(`/api/projects/${currentIds.projectId}/role`, {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        });
-        
-        if (roleResponse.ok) {
-          const roleResult = await roleResponse.json();
-          setUserRole(roleResult.role || null);
-          setIsProjectOwner(roleResult.isOwner || false);
-        } else {
-          setUserRole(null);
-          setIsProjectOwner(false);
-        }
-      } catch (error) {
-        console.error('[Sidebar] Error fetching user role:', error);
-        setUserRole(null);
-        setIsProjectOwner(false);
-      }
-    };
-    
-    fetchUserRole();
-  }, [currentIds.projectId, userProfile, supabase]);
 
   // Smart cache refresh: If user is viewing a project that's not in the sidebar,
   // it might mean they were just added as a collaborator. Refresh the projects list.
@@ -913,160 +234,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       hasInitializedExpandedKeys.current = true;
     }
   }, [folders]);
-
-  // Listen to library/folder created/deleted events to refresh Sidebar data when changed from other pages
-  // Use React Query's invalidateQueries to refresh cache
-  // Add debounce mechanism to avoid frequent invalidateQueries causing duplicate requests
-  const invalidateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  useEffect(() => {
-    const invalidateFoldersAndLibraries = (projectId: string | null) => {
-      if (!projectId) return;
-      
-      // Clear previous timer to implement debounce
-      if (invalidateTimeoutRef.current) {
-        clearTimeout(invalidateTimeoutRef.current);
-      }
-      
-      // Delay 100ms execution to avoid triggering multiple requests when quickly switching projects
-      invalidateTimeoutRef.current = setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['folders-libraries', projectId] });
-      }, 100);
-    };
-
-    const handleLibraryCreated = (event: CustomEvent) => {
-      // Get projectId from event detail, refresh cache if current project matches
-      const eventProjectId = event.detail?.projectId || currentIds.projectId;
-      if (eventProjectId === currentIds.projectId) {
-        invalidateFoldersAndLibraries(currentIds.projectId);
-      }
-    };
-
-    const handleFolderCreated = (event: CustomEvent) => {
-      // Get projectId from event detail, refresh cache if current project matches
-      const eventProjectId = event.detail?.projectId || currentIds.projectId;
-      if (eventProjectId === currentIds.projectId) {
-        invalidateFoldersAndLibraries(currentIds.projectId);
-      }
-    };
-
-    const handleLibraryDeleted = (event: CustomEvent) => {
-      // Refresh cache for the project where the library was deleted
-      const deletedProjectId = event.detail?.projectId;
-      if (currentIds.projectId && deletedProjectId === currentIds.projectId) {
-        invalidateFoldersAndLibraries(currentIds.projectId);
-      }
-    };
-
-    const handleLibraryUpdated = (event: CustomEvent) => {
-      // Refresh cache for the current project if we have one
-      // The library update will invalidate its own cache, but we need to refresh the list
-      if (currentIds.projectId) {
-        invalidateFoldersAndLibraries(currentIds.projectId);
-      }
-    };
-
-    const handleFolderDeleted = (event: CustomEvent) => {
-      // Refresh cache for the project where the folder was deleted
-      const deletedProjectId = event.detail?.projectId;
-      if (currentIds.projectId && deletedProjectId === currentIds.projectId) {
-        invalidateFoldersAndLibraries(currentIds.projectId);
-      }
-    };
-
-    const handleFolderUpdated = (event: CustomEvent) => {
-      // Refresh cache for the current project if we have one
-      // The folder update will invalidate its own cache, but we need to refresh the list
-      if (currentIds.projectId) {
-        invalidateFoldersAndLibraries(currentIds.projectId);
-      }
-    };
-
-    window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
-    window.addEventListener('folderCreated' as any, handleFolderCreated as EventListener);
-    window.addEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
-    window.addEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
-    window.addEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
-    window.addEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
-    
-    return () => {
-      // Clear timer
-      if (invalidateTimeoutRef.current) {
-        clearTimeout(invalidateTimeoutRef.current);
-      }
-      window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
-      window.removeEventListener('folderCreated' as any, handleFolderCreated as EventListener);
-      window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
-      window.removeEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
-      window.removeEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
-      window.removeEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
-    };
-  }, [currentIds.projectId, queryClient]);
-
-  const fetchingAssetsRef = useRef<Set<string>>(new Set());
-
-  const fetchAssets = useCallback(async (libraryId?: string | null) => {
-    if (!libraryId) return;
-    
-    // Prevent duplicate concurrent requests for the same library
-    if (fetchingAssetsRef.current.has(libraryId)) {
-      return;
-    }
-    
-    fetchingAssetsRef.current.add(libraryId);
-    try {
-      // Use cache to prevent duplicate requests
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const cacheKey = `assets:list:${libraryId}`;
-      
-      const data = await globalRequestCache.fetch(cacheKey, async () => {
-        const { data, error } = await supabase
-          .from('library_assets')
-          .select('id,name,library_id')
-          .eq('library_id', libraryId)
-          .order('created_at', { ascending: true });
-        if (error) throw error;
-        return (data as AssetRow[]) || [];
-      });
-      
-      setAssets((prev) => ({ ...prev, [libraryId]: data }));
-    } catch (err) {
-      console.error('Failed to load assets', err);
-    } finally {
-      fetchingAssetsRef.current.delete(libraryId);
-    }
-  }, [supabase]);
-
-  useEffect(() => {
-    if (currentIds.libraryId) {
-      fetchAssets(currentIds.libraryId);
-    }
-  }, [currentIds.libraryId, fetchAssets]);
-
-  // Listen for asset creation/update events to refresh the sidebar
-  useEffect(() => {
-    const handleAssetChange = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ libraryId: string }>;
-      if (customEvent.detail?.libraryId) {
-        // Clear cache before fetching to ensure fresh data
-        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-        const cacheKey = `assets:list:${customEvent.detail.libraryId}`;
-        globalRequestCache.invalidate(cacheKey);
-        fetchAssets(customEvent.detail.libraryId);
-      }
-    };
-
-    window.addEventListener('assetCreated', handleAssetChange);
-    window.addEventListener('assetUpdated', handleAssetChange);
-    window.addEventListener('assetDeleted', handleAssetChange);
-
-    return () => {
-      window.removeEventListener('assetCreated', handleAssetChange);
-      window.removeEventListener('assetUpdated', handleAssetChange);
-      window.removeEventListener('assetDeleted', handleAssetChange);
-    };
-  }, [fetchAssets]);
-
 
   // actions
   const handleProjectClick = async (projectId: string) => {
@@ -1232,261 +399,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [supabase, currentIds.projectId, currentIds.folderId, currentIds.libraryId, libraries, queryClient, router]);
 
-  const treeData: DataNode[] = useMemo(() => {
-    if (!currentIds.projectId) return [];
-    
-    // Filter folders and libraries for current project
-    const projectFolders = folders.filter((f) => f.project_id === currentIds.projectId);
-    const projectLibraries = libraries.filter((lib) => lib.project_id === currentIds.projectId);
-    
-    // Group libraries by folder_id
-    // Use string keys for Map to ensure proper matching
-    const librariesByFolder = new Map<string, Library[]>();
-    projectLibraries.forEach((lib) => {
-      // Convert null to empty string for root libraries, or use folder_id as string
-      // Ensure folder_id is converted to string (handle null case)
-      const folderId = lib.folder_id ? String(lib.folder_id) : '';
-      if (!librariesByFolder.has(folderId)) {
-        librariesByFolder.set(folderId, []);
-      }
-      librariesByFolder.get(folderId)!.push(lib);
-    });
-    
-    // Debug: log libraries grouping
-    if (process.env.NODE_ENV === 'development') {
-    
-    }
-    
-    // Build folder node (simplified: no nested folders, all folders are root level)
-    const buildFolderNode = (folder: Folder): DataNode => {
-      // Get libraries for this folder (folder.id is string, so it matches Map key)
-      // Ensure folder.id is converted to string for Map lookup
-      const folderLibraries = librariesByFolder.get(String(folder.id)) || [];
-      
-      // Debug: log folder node building
-      if (process.env.NODE_ENV === 'development') {
-      }
-      
-      const children: DataNode[] = [
-        ...folderLibraries.map((lib) => {
-          const libProjectId = lib.project_id;
-          // Show selected state when on library page OR when viewing an asset in this library
-          const isCurrentLibrary = currentIds.libraryId === lib.id && (currentIds.isLibraryPage || !!currentIds.assetId || currentIds.isPredefinePage);
-          // Show icons only when viewing an asset (not on library page or predefine)
-          const showAssetPageIcons = currentIds.libraryId === lib.id && !!currentIds.assetId;
-          return {
-            title: (
-              <div 
-                className={`${styles.itemRow} ${styles.libraryRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
-                data-library-under-folder
-                onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
-              >
-                <div className={styles.itemMain}>
-                  {showAssetPageIcons && (
-                    <button
-                      className={styles.libraryBackButton}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (currentIds.projectId) {
-                          router.push(`/${currentIds.projectId}`);
-                        }
-                      }}
-                      title="Back to tree view"
-                    >
-                      <Image
-                        src={sidebarFolderIcon3}
-                        alt="Back"
-                        width={24}
-                        height={24}
-                      />
-                    </button>
-                  )}
-                  <div className={styles.libraryIconContainer}>
-                    <Image
-                      src={libraryBookIcon}
-                      alt="Library"
-                      width={24}
-                      height={24}
-                    />
-                  </div>
-                  <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
-                </div>
-                <div className={styles.itemActions}>
-              {userRole === 'admin' && (
-                    <Tooltip
-                      title="Predefine asset here"
-                      placement="top"
-                      color="#8B5CF6"
-                    >
-                      <button
-                        className={styles.iconButton}
-                        aria-label="Library sections"
-                        onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
-                      >
-                        <Image
-                      src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
-                          alt="Predefine"
-                          width={22}
-                          height={22}
-                        />
-                      </button>
-                    </Tooltip>
-                  )}
-                </div>
-              </div>
-            ),
-            key: `library-${lib.id}`,
-            isLeaf: true,
-            children: undefined,
-          };
-        }),
-      ];
-      
-      return {
-        title: (
-          <div 
-            className={`${styles.itemRow} ${styles.folderRow}`}
-            data-folder-row
-            onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
-          >
-            <div className={styles.itemMain}>
-              <span className={styles.itemText} style={{ fontWeight: 500 }} title={folder.name}>{truncateText(folder.name, 20)}</span>
-            </div>
-            <div className={styles.itemActions}>
-              {userRole === 'admin' && (
-                <button
-                  type="button"
-                  className={styles.folderAddLibButton}
-                  aria-label="Create new library"
-                  title="Create new library"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!currentIds.projectId) {
-                      setError('Please select a project first');
-                      return;
-                    }
-                    setSelectedFolderId(folder.id);
-                    setShowLibraryModal(true);
-                  }}
-                >
-                  <Image src={FolderAddLibIcon} alt="" width={24} height={24} />
-                </button>
-              )}
-            </div>
-          </div>
-        ),
-        key: `folder-${folder.id}`,
-        isLeaf: children.length === 0, // Only show expand/collapse if has children
-        children: children.length > 0 ? children : undefined,
-      };
-    };
-    
-    const result: DataNode[] = [];
-    
-    // Add all folders (all folders are root level now, no nesting)
-    projectFolders.forEach((folder) => {
-      result.push(buildFolderNode(folder));
-    });
-    
-    // Add libraries without folder (folder_id is null, stored as empty string in Map)
-    const rootLibraries = librariesByFolder.get('') || [];
-    rootLibraries.forEach((lib) => {
-      const libProjectId = lib.project_id;
-      // Show selected state when on library page OR when viewing an asset in this library
-      const isCurrentLibrary = currentIds.libraryId === lib.id && (currentIds.isLibraryPage || !!currentIds.assetId || currentIds.isPredefinePage);
-      // Show icons only when viewing an asset (not on library page or predefine)
-      const showAssetPageIcons = currentIds.libraryId === lib.id && !!currentIds.assetId;
-      result.push({
-        title: (
-          <div 
-            className={`${styles.itemRow} ${styles.libraryRow} ${styles.rootLibraryRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
-            onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
-          >
-            <div className={styles.itemMain}>
-              {showAssetPageIcons && (
-                <button
-                  className={styles.libraryBackButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (currentIds.projectId) {
-                      router.push(`/${currentIds.projectId}`);
-                    }
-                  }}
-                  title="Back to tree view"
-                >
-                  <Image
-                    src={sidebarFolderIcon3}
-                    alt="Back"
-                    width={24}
-                    height={24}
-                  />
-                </button>
-              )}
-              <div className={styles.libraryIconContainer}>
-                <Image
-                  src={libraryBookIcon}
-                  alt="Library"
-                  width={24}
-                  height={24}
-                />
-              </div>
-              <span className={styles.itemText} style={{ fontWeight: 500 }} title={lib.name}>{truncateText(lib.name, 15)}</span>
-            </div>
-            <div className={styles.itemActions}>
-              {userRole === 'admin' && (
-                <Tooltip
-                  title="Predefine asset here"
-                  placement="top"
-                  color="#8B5CF6"
-                >
-                  <button
-                    className={styles.iconButton}
-                    aria-label="Library sections"
-                    onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
-                  >
-                    <Image
-                      src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
-                      alt="Predefine"
-                      width={22}
-                      height={22}
-                    />
-                  </button>
-                </Tooltip>
-              )}
-            </div>
-          </div>
-        ),
-        key: `library-${lib.id}`,
-        isLeaf: true,
-        children: undefined,
-      });
-    });
-    
-    return result;
-  }, [folders, libraries, assets, currentIds.projectId, currentIds.libraryId, currentIds.isLibraryPage, currentIds.assetId, currentIds.isPredefinePage, handleLibraryPredefineClick, router, userRole]);
-
-  // Only highlight the current item: folder when on folder page, library when on library/predefine/asset page (no parent folder highlight)
-  const selectedKey = useMemo(() => {
-    const keys: string[] = [];
-
-    // Folder: only when we are on the folder page (URL has /folder/id), not when viewing a library inside a folder
-    if (currentIds.folderId && !currentIds.libraryId) {
-      keys.push(`folder-${currentIds.folderId}`);
-    }
-
-    // Library or asset: highlight only library/asset, not parent folder
-    if (currentIds.libraryId) {
-      if (currentIds.assetId && currentIds.assetId !== 'new' && currentIds.assetId !== 'predefine') {
-        keys.push(`asset-${currentIds.assetId}`);
-        keys.push(`library-${currentIds.libraryId}`);
-      } else if (currentIds.isLibraryPage || currentIds.isPredefinePage) {
-        keys.push(`library-${currentIds.libraryId}`);
-      }
-    }
-
-    return keys;
-  }, [currentIds.folderId, currentIds.libraryId, currentIds.assetId, currentIds.isLibraryPage, currentIds.isPredefinePage]);
-
   const onSelect = async (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
     if (key.startsWith('folder-')) {
@@ -1551,189 +463,86 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Folders don't need to fetch anything on expand/collapse
   };
 
-  const switcherIcon = (node: any) => {
-    const { expanded, isLeaf, data } = node || {};
-    const key = (data?.key ?? node?.key) as string | undefined;
-
-    if (isLeaf || !key) return null;
-
-    if (key.startsWith('folder-')) {
-      if (!expanded) {
-        return (
-          <Image
-            src={FolderCloseIcon}
-            alt="Closed folder"
-            width={24}
-            height={24}
-            style={{ display: 'block' }}
-          />
-        );
-      }
-      // Expanded: use two icons + CSS so treenode:hover (whole row incl. switcher) shows expand icon
-      return (
-        <div className={styles.folderSwitcherIcons}>
-          <Image
-            src={FolderOpenIcon}
-            alt="Open folder"
-            width={24}
-            height={24}
-            className={styles.folderSwitcherBase}
-          />
-          <Image
-            src={folderExpandIcon}
-            alt="Expand"
-            width={14}
-            height={8}
-            className={styles.folderSwitcherHover}
-          />
-        </div>
-      );
-    }
-
-    // All libraries are leaf nodes (no expand) — no switcher
-    if (key.startsWith('library-')) return null;
-
-    return null; // no switcher for other node types
-  };
-
   // Context menu handlers
   const handleContextMenu = (e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
     e.preventDefault();
     e.stopPropagation();
-    setContextMenu({
-      x: e.clientX,
-      y: e.clientY,
-      type,
-      id,
-    });
+    openContextMenu(e.clientX, e.clientY, type, id);
   };
 
-  const handleContextMenuAction = (action: ContextMenuAction) => {
-    if (!contextMenu) return;
-    
-    // Handle collaborators action for projects
-    if (action === 'collaborators' && contextMenu.type === 'project') {
-      setContextMenu(null);
-      router.push(`/${contextMenu.id}/collaborators`);
-      return;
+  const { treeData, selectedKeys } = useSidebarTree(
+    currentIds,
+    folders,
+    libraries,
+    {
+      router,
+      userRole,
+      onContextMenu: handleContextMenu,
+      openNewLibrary,
+      setSelectedFolderId,
+      setError,
+      onLibraryPredefineClick: handleLibraryPredefineClick,
     }
-    
-    // Handle rename action (Project info / Library info / Folder rename)
-    if (action === 'rename') {
-      if (contextMenu.type === 'project') {
-        setEditingProjectId(contextMenu.id);
-        setShowEditProjectModal(true);
-        setContextMenu(null);
-        return;
-      } else if (contextMenu.type === 'library') {
-        setEditingLibraryId(contextMenu.id);
-        setShowEditLibraryModal(true);
-        setContextMenu(null);
-        return;
-      } else if (contextMenu.type === 'folder') {
-        setEditingFolderId(contextMenu.id);
-        setShowEditFolderModal(true);
-        setContextMenu(null);
-        return;
-      } else if (contextMenu.type === 'asset') {
-        setEditingAssetId(contextMenu.id);
-        setShowEditAssetModal(true);
-        setContextMenu(null);
-        return;
+  );
+
+  const handleProjectDeleteViaAPI = useCallback(
+    async (projectId: string) => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setError('You must be logged in to delete projects');
+          return;
+        }
+        const response = await fetch(`/api/projects/${projectId}/delete`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const result = await response.json();
+        if (!result.success) {
+          setError(result.error || 'Failed to delete project');
+          return;
+        }
+        queryClient.setQueryData<Project[]>(['projects'], (oldProjects) =>
+          oldProjects ? oldProjects.filter((p) => p.id !== projectId) : []
+        );
+        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+        const { getCurrentUserId } = await import('@/lib/services/authorizationService');
+        try {
+          const userId = await getCurrentUserId(supabase);
+          globalRequestCache.invalidate(`projects:list:${userId}`);
+          globalRequestCache.invalidate(`project:${projectId}`);
+        } catch (err) {
+          console.warn('Failed to clear cache:', err);
+        }
+        if (currentIds.projectId === projectId) {
+          router.push('/projects');
+        }
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+      } catch (err: unknown) {
+        console.error('[Sidebar] Error deleting project:', err);
+        setError(err instanceof Error ? err.message : 'Failed to delete project');
       }
-    }
-    
-    // Handle delete action
-    if (action === 'delete') {
-      if (contextMenu.type === 'project') {
-        if (window.confirm('Delete this project? All libraries under it will be removed.')) {
-          // Call API route to delete project (requires service role)
-          handleProjectDeleteViaAPI(contextMenu.id);
-        }
-      } else if (contextMenu.type === 'library') {
-        if (window.confirm('Delete this library?')) {
-          const libraryToDelete = libraries.find(lib => lib.id === contextMenu.id);
-          const deletedFolderId = libraryToDelete?.folder_id || null;
-          deleteLibrary(supabase, contextMenu.id).then(() => {
-            // Use React Query to refresh cache
-            if (currentIds.projectId) {
-              queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-            }
-            window.dispatchEvent(new CustomEvent('libraryDeleted', {
-              detail: { folderId: deletedFolderId, libraryId: contextMenu.id, projectId: currentIds.projectId }
-            }));
-            // If the deleted library is currently being viewed, navigate to project page
-            if (currentIds.libraryId === contextMenu.id && currentIds.projectId) {
-              router.push(`/${currentIds.projectId}`);
-            }
-          }).catch((err: any) => {
-            setError(err?.message || 'Failed to delete library');
-          });
-        }
-      } else if (contextMenu.type === 'folder') {
-        if (window.confirm('Delete this folder? All libraries and subfolders under it will be removed.')) {
-          // Check if any libraries under this folder are being viewed
-          const librariesInFolder = libraries.filter(lib => lib.folder_id === contextMenu.id);
-          const isViewingLibraryInFolder = librariesInFolder.some(lib => lib.id === currentIds.libraryId);
-          
-          deleteFolder(supabase, contextMenu.id).then(() => {
-            // Use React Query to refresh cache
-            if (currentIds.projectId) {
-              queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-            }
-            window.dispatchEvent(new CustomEvent('folderDeleted', {
-              detail: { folderId: contextMenu.id, projectId: currentIds.projectId }
-            }));
-            // If currently viewing the folder page or a library in this folder, navigate to project page
-            if ((currentIds.folderId === contextMenu.id || isViewingLibraryInFolder) && currentIds.projectId) {
-              router.push(`/${currentIds.projectId}`);
-            }
-          }).catch((err: any) => {
-            setError(err?.message || 'Failed to delete folder');
-          });
-        }
-      } else if (contextMenu.type === 'asset') {
-        if (window.confirm('Delete this asset?')) {
-          const libraryId = Object.keys(assets).find(libId => 
-            assets[libId].some(asset => asset.id === contextMenu.id)
-          );
-          if (libraryId) {
-            supabase
-              .from('library_assets')
-              .delete()
-              .eq('id', contextMenu.id)
-              .then(async (result) => {
-                if (result.error) {
-                  console.error('Failed to delete asset', result.error);
-                } else {
-                  // Clear cache before fetching to ensure fresh data
-                  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-                  const cacheKey = `assets:list:${libraryId}`;
-                  globalRequestCache.invalidate(cacheKey);
-                  
-                  // Invalidate React Query cache to ensure LibraryPage gets fresh data
-                  await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-                  await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-                  
-                  // Refetch to ensure data is updated immediately
-                  await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-                  await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-                  
-                  await fetchAssets(libraryId);
-                  window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
-                  // If currently viewing this asset, navigate to library page
-                  if (currentIds.assetId === contextMenu.id && currentIds.projectId) {
-                    router.push(`/${currentIds.projectId}/${libraryId}`);
-                  }
-                }
-              });
-          }
-        }
-      }
-    }
-    
-    setContextMenu(null);
-  };
+    },
+    [supabase, queryClient, currentIds.projectId, router, setError]
+  );
+
+  const { handleContextMenuAction } = useSidebarContextMenuActions({
+    contextMenu,
+    closeContextMenu,
+    router,
+    openEditProject,
+    openEditLibrary,
+    openEditFolder,
+    openEditAsset,
+    supabase,
+    queryClient,
+    currentIds,
+    libraries,
+    setError,
+    assets,
+    fetchAssets,
+    onProjectDeleteViaAPI: handleProjectDeleteViaAPI,
+  });
 
   const handleProjectDelete = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1741,62 +550,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     handleProjectDeleteViaAPI(projectId);
   };
 
-  const handleProjectDeleteViaAPI = async (projectId: string) => {
-    try {
-      // Get user session for API call
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setError('You must be logged in to delete projects');
-        return;
-      }
-
-      // Call API route to delete project
-      const response = await fetch(`/api/projects/${projectId}/delete`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        setError(result.error || 'Failed to delete project');
-        return;
-      }
-
-      // Success - immediately update the cache to remove the deleted project
-      // This prevents the auto-navigation logic from redirecting back to a project
-      queryClient.setQueryData<Project[]>(['projects'], (oldProjects) => {
-        if (!oldProjects) return [];
-        return oldProjects.filter(p => p.id !== projectId);
-      });
-      
-      // Clear globalRequestCache
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-      try {
-        const userId = await getCurrentUserId(supabase);
-        globalRequestCache.invalidate(`projects:list:${userId}`);
-        globalRequestCache.invalidate(`project:${projectId}`);
-      } catch (err) {
-        console.warn('Failed to clear cache:', err);
-      }
-
-      // Navigate away if viewing deleted project
-      if (currentIds.projectId === projectId) {
-        router.push('/projects');
-      }
-      
-      // Invalidate queries to trigger a background refetch (but UI already updated via setQueryData)
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-    } catch (err: any) {
-      console.error('[Sidebar] Error deleting project:', err);
-      setError(err?.message || 'Failed to delete project');
-    }
-  };
   const handleProjectCreated = async (projectId: string, defaultFolderId: string) => {
-    setShowProjectModal(false);
+    closeProjectModal();
     
     // Immediately invalidate React Query cache to refresh the sidebar
     queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -1824,7 +579,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   const handleLibraryCreated = async (libraryId: string) => {
-    setShowLibraryModal(false);
+    closeLibraryModal();
     const createdFolderId = selectedFolderId;
     setSelectedFolderId(null); // Clear selection after creation
     
@@ -1841,7 +596,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   const handleFolderCreated = async (folderId: string) => {
-    setShowFolderModal(false);
+    closeFolderModal();
     setSelectedFolderId(null); // Clear selection after creation
     
     // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
@@ -1873,7 +628,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       return;
     }
     // selectedFolderId is already set when button is clicked
-    setShowFolderModal(true);
+    openNewFolder();
   };
 
   const handleCreateLibrary = () => {
@@ -1883,7 +638,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       return;
     }
     // selectedFolderId is already set when button is clicked
-    setShowLibraryModal(true);
+    openNewLibrary();
   };
 
   const handleLogoClick = () => {
@@ -1930,275 +685,55 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       <div className={styles.content}>
         {!currentIds.assetId && (
-          <>
-            <div className={styles.sectionTitle}>
-              <span>Projects</span>
-              <button
-                className={styles.addButton}
-                onClick={() => setShowProjectModal(true)}
-                title="New Project"
-              >
-                <Image
-                  src={addProjectIcon}
-                  alt="Add project"
-                  width={24}
-                  height={24}
-                />
-              </button>
-            </div>
-            <div className={styles.projectsListContainer}>
-              {projects.map((project) => {
-                const isActive = currentIds.projectId === project.id;
-                return (
-                  <div
-                    key={project.id}
-                    className={`${styles.item} ${isActive ? styles.itemActive : styles.itemInactive}`}
-                    onClick={() => handleProjectClick(project.id)}
-                    onContextMenu={(e) => handleContextMenu(e, 'project', project.id)}
-                  >
-                    <Image
-                      src={projectIcon}
-                      alt="Project"
-                      width={20}
-                      height={20}
-                      className={styles.itemIcon}
-                    />
-                    <span className={styles.itemText} title={project.name}>
-                      {truncateText(project.name, 20)}
-                    </span>
-                    <span className={styles.itemActions}>
-                      {project.description && (
-                        <Tooltip
-                          title={project.description}
-                          placement="top"
-                          styles={{
-                            root: { maxWidth: '300px' }
-                          }}
-                        >
-                          <div
-                            className={styles.infoIconWrapper}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Image
-                              src={projectRightIcon}
-                              alt="Info"
-                              width={24}
-                              height={24}
-                            />
-                          </div>
-                        </Tooltip>
-                      )}
-                    </span>
-                  </div>
-                );
-              })}
-              {!loadingProjects && projects.length === 0 && (
-                <button
-                  className={styles.createProjectButton}
-                  onClick={() => setShowProjectModal(true)}
-                >
-                  <Image
-                    src={createProjectIcon}
-                    alt="Project"
-                    width={24}
-                    height={24}
-                    className={styles.itemIcon}
-                  />
-                  <span className={styles.itemText}>Create Project</span>
-                </button>
-              )}
-            </div>
-          </>
+          <SidebarProjectsList
+            projects={projects}
+            loadingProjects={loadingProjects}
+            currentProjectId={currentIds.projectId}
+            onOpenNewProject={openNewProject}
+            onProjectClick={handleProjectClick}
+            onContextMenu={handleContextMenu}
+          />
         )}
 
         {currentIds.projectId &&
           projects.length > 0 &&
           projects.some((p) => p.id === currentIds.projectId) && (
-            <>
-              {!currentIds.assetId && (
-                <div className={styles.sectionTitle}>
-                  <span>Libraries</span>
-                  {userRole === 'admin' && (
-                    <button
-                      ref={setAddButtonRef}
-                      className={styles.addButton}
-                      onClick={handleAddButtonClick}
-                      title="Add new folder or library"
-                    >
-                      <Image
-                        src={addProjectIcon}
-                        alt="Add library"
-                        width={24}
-                        height={24}
-                      />
-                    </button>
-                  )}
-                </div>
-              )}
-              <div className={styles.sectionList}>
-                {currentIds.assetId && currentIds.libraryId ? (
-                  // Asset page only: Show library with assets list
-                  (() => {
-                    const currentLibrary = libraries.find(lib => lib.id === currentIds.libraryId);
-                    const libraryName = currentLibrary?.name || 'Library';
-                    const libraryAssets = assets[currentIds.libraryId] || [];
-                    return (
-                      <>
-                        {/* Library item */}
-                        <div className={`${styles.itemRow} ${styles.libraryItemActiveWithPadding}`}>
-                          <div className={styles.itemMain}>
-                            <button
-                              className={styles.libraryBackButton}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (currentIds.projectId && currentIds.libraryId) {
-                                  router.push(`/${currentIds.projectId}/${currentIds.libraryId}`);
-                                }
-                              }}
-                              title="Back to library"
-                            >
-                              <Image
-                                src={sidebarFolderIcon3}
-                                alt="Back"
-                                width={24}
-                                height={24}
-                              />
-                            </button>
-                            <div className={styles.libraryIconContainer}>
-                              <Image
-                                src={libraryBookIcon}
-                                alt="Library"
-                                width={24}
-                                height={24}
-                              />
-                            </div>
-                            <span className={styles.itemText} title={libraryName}>{truncateText(libraryName, 15)}</span>
-                          </div>
-                          <div className={styles.itemActions}>
-                            {userRole === 'admin' && (
-                              <Tooltip
-                                title="Predefine asset here"
-                                placement="top"
-                                color="#8B5CF6"
-                              >
-                                <button
-                                  className={styles.iconButton}
-                                  aria-label="Library sections"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (currentIds.projectId && currentIds.libraryId) {
-                                      handleLibraryPredefineClick(currentIds.projectId, currentIds.libraryId, e);
-                                    }
-                                  }}
-                                >
-                                  <Image
-                                    src={sidebarFolderIcon4}
-                                    alt="Predefine"
-                                    width={22}
-                                    height={22}
-                                  />
-                                </button>
-                              </Tooltip>
-                            )}
-                          </div>
-                        </div>
-                        {/* Add new asset button - for admin and editor */}
-                        {(userRole === 'admin' || userRole === 'editor') && (
-                          <button
-                            className={`${styles.createButton} ${styles.createButtonAligned}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (currentIds.projectId && currentIds.libraryId) {
-                                // Navigate to new asset page
-                                // If library has no properties, the page will show predefine prompt (NoassetIcon1.svg)
-                                // If library has properties, the page will show the form to create new asset
-                                router.push(`/${currentIds.projectId}/${currentIds.libraryId}/new`);
-                              }
-                            }}
-                          >
-                            <span className={styles.createButtonText}>
-                              <Image
-                                src={sidebarFolderIcon5}
-                                alt="Add"
-                                width={24}
-                                height={24}
-                              />
-                              Add new asset
-                            </span>
-                          </button>
-                        )}
-                        {/* Assets list */}
-                        <div className={styles.assetList}>
-                          {libraryAssets.map((asset) => {
-                            const isCurrentAsset = currentIds.assetId === asset.id;
-
-                            return (
-                              <div
-                                key={asset.id}
-                                className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
-                                onClick={() => {
-                                  // All users can navigate to asset detail (viewer will see it in view mode)
-                                  if (currentIds.projectId && currentIds.libraryId) {
-                                    handleAssetClick(currentIds.projectId, currentIds.libraryId, asset.id);
-                                  }
-                                }}
-                                onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
-                              >
-                                <div className={styles.itemMain}>
-                                  <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
-                                    {truncateText(asset.name && asset.name !== 'Untitled' ? asset.name : '', 15)}
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </>
-                    );
-                  })()
-                ) : (
-                  // Normal view: Show tree structure
-                  <>
-                    <div className={styles.treeWrapper}>
-                      <Tree
-                        className={styles.tree}
-                        showIcon={false}
-                        treeData={treeData}
-                        selectedKeys={selectedKey}
-                        onSelect={onSelect}
-                        onExpand={onExpand}
-                        switcherIcon={switcherIcon}
-                        expandedKeys={expandedKeys}
-                        motion={false}
-                      />
-                    </div>
-                    {!loadingFolders &&
-                      !loadingLibraries &&
-                      folders.length === 0 &&
-                      libraries.length === 0 && (
-                        <div className={styles.sidebarEmptyState}>
-                          <Image
-                            src={FolderCloseIcon}
-                            alt="No folders or libraries"
-                            width={22}
-                            height={18}
-                            className={styles.emptyIcon}
-                          />
-                          <div className={styles.sidebarEmptyText}>
-                            No folder or library in this project yet.
-                          </div>
-                        </div>
-                      )}
-                  </>
-                )}
-              </div>
-            </>
+            <SidebarLibrariesSection
+              currentIds={currentIds}
+              libraries={libraries}
+              assets={assets}
+              userRole={userRole}
+              loadingFolders={loadingFolders}
+              loadingLibraries={loadingLibraries}
+              foldersLength={folders.length}
+              librariesLength={libraries.length}
+              treeData={treeData}
+              selectedKeys={selectedKeys}
+              expandedKeys={expandedKeys}
+              onSelect={onSelect}
+              onExpand={onExpand}
+              onBackToLibrary={() => {
+                if (currentIds.projectId && currentIds.libraryId) {
+                  router.push(`/${currentIds.projectId}/${currentIds.libraryId}`);
+                }
+              }}
+              onLibraryPredefineClick={handleLibraryPredefineClick}
+              onAddNewAsset={() => {
+                if (currentIds.projectId && currentIds.libraryId) {
+                  router.push(`/${currentIds.projectId}/${currentIds.libraryId}/new`);
+                }
+              }}
+              onAssetClick={handleAssetClick}
+              onContextMenu={handleContextMenu}
+              addButtonRef={setAddButtonRef}
+              onAddButtonClick={handleAddButtonClick}
+            />
           )}
       </div>
 
       <NewProjectModal
         open={showProjectModal}
-        onClose={() => setShowProjectModal(false)}
+        onClose={closeProjectModal}
         onCreated={handleProjectCreated}
       />
 
@@ -2206,10 +741,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         <EditProjectModal
           open={showEditProjectModal}
           projectId={editingProjectId}
-          onClose={() => {
-            setShowEditProjectModal(false);
-            setEditingProjectId(null);
-          }}
+          onClose={closeEditProjectModal}
           onUpdated={() => {
             // Cache will be invalidated by the projectUpdated event listener
           }}
@@ -2218,7 +750,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       <NewLibraryModal
         open={showLibraryModal}
-        onClose={() => setShowLibraryModal(false)}
+        onClose={closeLibraryModal}
         projectId={currentIds.projectId || ''}
         folderId={selectedFolderId}
         onCreated={handleLibraryCreated}
@@ -2228,10 +760,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         <EditLibraryModal
           open={showEditLibraryModal}
           libraryId={editingLibraryId}
-          onClose={() => {
-            setShowEditLibraryModal(false);
-            setEditingLibraryId(null);
-          }}
+          onClose={closeEditLibraryModal}
           onUpdated={() => {
             // Cache will be invalidated by the libraryUpdated event listener
           }}
@@ -2240,7 +769,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       <NewFolderModal
         open={showFolderModal}
-        onClose={() => setShowFolderModal(false)}
+        onClose={closeFolderModal}
         projectId={currentIds.projectId || ''}
         onCreated={handleFolderCreated}
       />
@@ -2249,10 +778,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         <EditFolderModal
           open={showEditFolderModal}
           folderId={editingFolderId}
-          onClose={() => {
-            setShowEditFolderModal(false);
-            setEditingFolderId(null);
-          }}
+          onClose={closeEditFolderModal}
           onUpdated={() => {
             // Cache will be invalidated by the folderUpdated event listener
           }}
@@ -2263,10 +789,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         <EditAssetModal
           open={showEditAssetModal}
           assetId={editingAssetId}
-          onClose={() => {
-            setShowEditAssetModal(false);
-            setEditingAssetId(null);
-          }}
+          onClose={closeEditAssetModal}
           onUpdated={() => {
             // Cache will be invalidated by the assetUpdated event listener
           }}
@@ -2286,7 +809,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           x={contextMenu.x}
           y={contextMenu.y}
           type={contextMenu.type}
-          onClose={() => setContextMenu(null)}
+          onClose={closeContextMenu}
           onAction={handleContextMenuAction}
           userRole={userRole}
           isProjectOwner={isProjectOwner}
