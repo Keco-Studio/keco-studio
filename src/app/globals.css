@@ -2,6 +2,46 @@
   color-scheme: light;
 }
 
+/*
+  响应式根字号配置
+  设计稿基准：2174px
+  基准字号：16px
+*/
+
+html {
+  font-size: 1rem; /* 2174px+ */
+}
+
+/* @media (max-width: 2173px) {
+  html {
+    font-size: 15px;
+  }
+} */
+
+@media (max-width: 1920px) {
+  html {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 1600px) {
+  html {
+    font-size: 0.875rem;
+  }
+}
+
+@media (max-width: 1366px) {
+  html {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 1280px) {
+  html {
+    font-size: 0.75rem;
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -13,8 +53,52 @@ body {
   font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
   background: #f8fafc;
   color: #0f172a;
+  font-size: 1rem;
 }
 
+/* 全局图标尺寸类 - 使用 rem 单位实现响应式 */
+.icon-16 {
+  width: 1rem !important;      /* 16px */
+  height: 1rem !important;
+}
 
+.icon-20 {
+  width: 1.25rem !important;   /* 20px */
+  height: 1.25rem !important;
+}
 
+.icon-22 {
+  width: 1.375rem !important;  /* 22px */
+  height: 1.375rem !important;
+}
 
+.icon-24 {
+  width: 1.5rem !important;    /* 24px */
+  height: 1.5rem !important;
+}
+
+.icon-32 {
+  width: 2rem !important;      /* 32px */
+  height: 2rem !important;
+}
+
+.icon-36 {
+  width: 2.25rem !important;   /* 36px */
+  height: 2.25rem !important;
+}
+
+.icon-48 {
+  width: 3rem !important;      /* 48px */
+  height: 3rem !important;
+}
+
+.icon-52 {
+  width: 3.25rem !important;   /* 52px */
+  height: 3.25rem !important;
+}
+
+/* 特殊尺寸：菜单图标 36x48 */
+.icon-menu {
+  width: 2.25rem !important;   /* 36px */
+  height: 3rem !important;     /* 48px */
+}

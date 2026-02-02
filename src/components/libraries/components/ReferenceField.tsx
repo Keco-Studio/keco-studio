@@ -97,7 +97,7 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
           alt=""
           width={16}
           height={16}
-          className={styles.referenceDiamondIcon}
+          className={`icon-16 ${styles.referenceDiamondIcon}`}
         />
         {hasValue && assetId ? (
           <>

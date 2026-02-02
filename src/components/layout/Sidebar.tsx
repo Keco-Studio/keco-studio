@@ -1293,20 +1293,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       }}
                       title="Back to tree view"
                     >
-                      <Image
-                        src={sidebarFolderIcon3}
+                      <Image src={sidebarFolderIcon3}
                         alt="Back"
-                        width={24}
-                        height={24}
+                        width={24} height={24} className="icon-24"
                       />
                     </button>
                   )}
                   <div className={styles.libraryIconContainer}>
-                    <Image
-                      src={libraryBookIcon}
+                    <Image src={libraryBookIcon}
                       alt="Library"
-                      width={24}
-                      height={24}
+                      width={24} height={24} className="icon-24"
                     />
                   </div>
                   <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
@@ -1323,11 +1319,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                         aria-label="Library sections"
                         onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
                       >
-                        <Image
-                      src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
+                        <Image src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
                           alt="Predefine"
-                          width={22}
-                          height={22}
+                          width={22} height={22} className="icon-22"
                         />
                       </button>
                     </Tooltip>
@@ -1369,7 +1363,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     setShowLibraryModal(true);
                   }}
                 >
-                  <Image src={FolderAddLibIcon} alt="" width={24} height={24} />
+                  <Image src={FolderAddLibIcon} alt="" width={24} height={24} className="icon-24" />
                 </button>
               )}
             </div>
@@ -1414,20 +1408,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   }}
                   title="Back to tree view"
                 >
-                  <Image
-                    src={sidebarFolderIcon3}
+                  <Image src={sidebarFolderIcon3}
                     alt="Back"
-                    width={24}
-                    height={24}
+                    width={24} height={24} className="icon-24"
                   />
                 </button>
               )}
               <div className={styles.libraryIconContainer}>
-                <Image
-                  src={libraryBookIcon}
+                <Image src={libraryBookIcon}
                   alt="Library"
-                  width={24}
-                  height={24}
+                  width={24} height={24} className="icon-24"
                 />
               </div>
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={lib.name}>{truncateText(lib.name, 15)}</span>
@@ -1444,11 +1434,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     aria-label="Library sections"
                     onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
                   >
-                    <Image
-                      src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
+                    <Image src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
                       alt="Predefine"
-                      width={22}
-                      height={22}
+                      width={22} height={22} className="icon-22"
                     />
                   </button>
                 </Tooltip>
@@ -1560,11 +1548,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (key.startsWith('folder-')) {
       if (!expanded) {
         return (
-          <Image
-            src={FolderCloseIcon}
+          <Image src={FolderCloseIcon}
             alt="Closed folder"
-            width={24}
-            height={24}
+            width={24} height={24} className="icon-24"
             style={{ display: 'block' }}
           />
         );
@@ -1577,7 +1563,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             alt="Open folder"
             width={24}
             height={24}
-            className={styles.folderSwitcherBase}
+            className={`icon-24 ${styles.folderSwitcherBase}`}
           />
           <Image
             src={folderExpandIcon}
@@ -1904,7 +1890,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           onClick={handleLogoClick}
           style={{ cursor: 'pointer' }}
         >
-          <Image src={loginProductIcon} alt="Keco Studio" width={32} height={32} />
+          <Image src={loginProductIcon} alt="Keco Studio" width={32} height={32} className="icon-32" />
           <div className={styles.headerBrand}>
             <div className={styles.brandName}>Keco Studio</div>
             <div className={styles.brandSlogan}>for game designers</div>
@@ -1919,7 +1905,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             alt="Search"
             width={24}
             height={24}
-            className={styles.searchIcon}
+            className={`icon-24 ${styles.searchIcon}`}
           />
           <input
             placeholder="Search for..."
@@ -1938,11 +1924,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                 onClick={() => setShowProjectModal(true)}
                 title="New Project"
               >
-                <Image
-                  src={addProjectIcon}
+                <Image src={addProjectIcon}
                   alt="Add project"
-                  width={24}
-                  height={24}
+                  width={24} height={24} className="icon-24"
                 />
               </button>
             </div>
@@ -1959,9 +1943,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     <Image
                       src={projectIcon}
                       alt="Project"
-                      width={20}
-                      height={20}
-                      className={styles.itemIcon}
+                      width={24}
+                      height={24}
+                      className={`icon-24 ${styles.itemIcon}`}
                     />
                     <span className={styles.itemText} title={project.name}>
                       {truncateText(project.name, 20)}
@@ -1979,11 +1963,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                             className={styles.infoIconWrapper}
                             onClick={(e) => e.stopPropagation()}
                           >
-                            <Image
-                              src={projectRightIcon}
+                            <Image src={projectRightIcon}
                               alt="Info"
-                              width={24}
-                              height={24}
+                              width={24} height={24} className="icon-24"
                             />
                           </div>
                         </Tooltip>
@@ -2002,7 +1984,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                     alt="Project"
                     width={24}
                     height={24}
-                    className={styles.itemIcon}
+                    className={`icon-24 ${styles.itemIcon}`}
                   />
                   <span className={styles.itemText}>Create Project</span>
                 </button>
@@ -2025,11 +2007,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                       onClick={handleAddButtonClick}
                       title="Add new folder or library"
                     >
-                      <Image
-                        src={addProjectIcon}
+                      <Image src={addProjectIcon}
                         alt="Add library"
-                        width={24}
-                        height={24}
+                        width={24} height={24} className="icon-24"
                       />
                     </button>
                   )}
@@ -2057,19 +2037,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                               }}
                               title="Back to library"
                             >
-                              <Image
-                                src={sidebarFolderIcon3}
+                              <Image src={sidebarFolderIcon3}
                                 alt="Back"
-                                width={24}
-                                height={24}
+                                width={24} height={24} className="icon-24"
                               />
                             </button>
                             <div className={styles.libraryIconContainer}>
-                              <Image
-                                src={libraryBookIcon}
+                              <Image src={libraryBookIcon}
                                 alt="Library"
-                                width={24}
-                                height={24}
+                                width={24} height={24} className="icon-24"
                               />
                             </div>
                             <span className={styles.itemText} title={libraryName}>{truncateText(libraryName, 15)}</span>
@@ -2091,11 +2067,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                                     }
                                   }}
                                 >
-                                  <Image
-                                    src={sidebarFolderIcon4}
+                                  <Image src={sidebarFolderIcon4}
                                     alt="Predefine"
-                                    width={22}
-                                    height={22}
+                                    width={22} height={22} className="icon-22"
                                   />
                                 </button>
                               </Tooltip>
@@ -2117,11 +2091,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                             }}
                           >
                             <span className={styles.createButtonText}>
-                              <Image
-                                src={sidebarFolderIcon5}
+                              <Image src={sidebarFolderIcon5}
                                 alt="Add"
-                                width={24}
-                                height={24}
+                                width={24} height={24} className="icon-24"
                               />
                               Add new asset
                             </span>

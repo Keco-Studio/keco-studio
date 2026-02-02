@@ -5,8 +5,8 @@
 }
 
 .menuButton {
-  width: 24px;
-  height: 24px;
+  width: 1.5rem;
+  height: 1.5rem;
   border: none;
   background: transparent;
   cursor: pointer;
@@ -15,7 +15,7 @@
   justify-content: center;
   padding: 0;
   color: #697077;
-  border-radius: 4px;
+  border-radius: 0.25rem;
   transition: background-color 0.2s, color 0.2s;
 }
 
@@ -30,7 +30,7 @@
   right: 0;
   background: white;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   z-index: 100;
   width: 220px;
@@ -46,12 +46,12 @@
 
 .menuItem {
   width: 100%;
-  padding: 12px 16px;
+  padding: 0.75rem 16px;
   text-align: left;
   border: none;
   background: white;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 0.875rem;
   color: #0f172a;
   transition: background-color 0.2s;
 }

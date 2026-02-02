@@ -314,7 +314,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             onClick={handlePredefineCancelOrDelete}
           >
             <span className={styles.topbarPillIcon}>
-              <Image src={topbarPredefinePublishIcon} alt="Cancel or Delete" width={16} height={16} />
+              <Image src={topbarPredefinePublishIcon} alt="Cancel or Delete" width={16} height={16} className="icon-16" />
             </span>
             <span>{isPredefineCreatingNewSection ? 'Cancel' : 'Delete Section'}</span>
           </button>
@@ -323,7 +323,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             onClick={handlePredefinePublish}
           >
             <span className={styles.topbarPillIcon}>
-              <Image src={topbarPredefinePublishIcon} alt="Publish" width={16} height={16} />
+              <Image src={topbarPredefinePublishIcon} alt="Publish" width={16} height={16} className="icon-16" />
             </span>
             <span>Publish</span>
           </button>
@@ -341,18 +341,18 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               onClick={handleCreateAsset}
             >
               <span className={styles.topbarPillIcon}>
-                <Image src={topbarPredefinePublishIcon} alt="Create" width={16} height={16} />
+                <Image src={topbarPredefinePublishIcon} alt="Create" width={16} height={16} className="icon-16" />
               </span>
               <span>Create Asset</span>
             </button>
             <button className={`${styles.button} ${styles.buttonText}`}>
-              <Image src={homeMorehorizontalIcon} alt="More" width={20} height={20} />
+              <Image src={homeMorehorizontalIcon} alt="More" width={20} height={20} className="icon-20" />
             </button>
             <button className={styles.button}>
-              <Image src={homeQuestionIcon} alt="Question" width={20} height={20} />
+              <Image src={homeQuestionIcon} alt="Question" width={20} height={20} className="icon-20" />
             </button>
             <button className={styles.button}>
-              <Image src={homeMessageIcon} alt="Message" width={20} height={20} />
+              <Image src={homeMessageIcon} alt="Message" width={20} height={20} className="icon-20" />
             </button>
           </>
         );
@@ -365,13 +365,13 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return (
       <>
         <button className={`${styles.button} ${styles.buttonText}`}>
-          <Image src={homeMorehorizontalIcon} alt="More" width={20} height={20} />
+          <Image src={homeMorehorizontalIcon} alt="More" width={20} height={20} className="icon-20" />
         </button>
         <button className={styles.button}>
-          <Image src={homeQuestionIcon} alt="Question" width={20} height={20} />
+          <Image src={homeQuestionIcon} alt="Question" width={20} height={20} className="icon-20" />
         </button>
         <button className={styles.button}>
-          <Image src={homeMessageIcon} alt="Message" width={20} height={20} />
+          <Image src={homeMessageIcon} alt="Message" width={20} height={20} className="icon-20" />
         </button>
       </>
     );
@@ -382,16 +382,14 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       <div className={styles.left}>
         {showCreateProjectBreadcrumb ? (
           <div className={styles.createProjectBreadcrumb}>
-            <Image src={menuIcon} alt="Menu" width={36} height={48} className={styles.menuIcon} />
+            <Image src={menuIcon} alt="Menu" width={36} height={48} className={`icon-menu ${styles.menuIcon}`} />
             <span className={styles.createProjectText}>Create Project</span>
           </div>
         ) : (
           <div className={styles.breadcrumb}>
-            <Image 
-              src={topBarBreadCrumbIcon} 
+            <Image src={topBarBreadCrumbIcon} 
               alt="Breadcrumb" 
-              width={20} 
-              height={20} 
+              width={24} height={24} className="icon-24" 
               style={{ marginRight: '5px', cursor: 'pointer' }} 
               onClick={handleSidebarToggle}
             />
@@ -428,12 +426,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           >
             {userProfile ? (
               <Avatar
-                size={36}
+                size={30}
                 style={{
                   backgroundColor: userAvatarColor,
                   borderRadius: '16px',
                   cursor: 'pointer',
-                  fontSize: '14px',
+                  fontSize: '21px',
                   fontWeight: 600,
                 }}
               >
@@ -441,7 +439,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               </Avatar>
             ) : (
               /* Fallback avatar icon for guests */
-              <Image src={homeDefaultUserIcon} alt="User" width={20} height={20} />
+              <Image src={homeDefaultUserIcon} alt="User" width={20} height={20} className="icon-20" />
             )}
           </button>
           {showUserMenu && (

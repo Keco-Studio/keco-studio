@@ -215,11 +215,9 @@ export const TextCell: React.FC<TextCellProps> = ({
                 }}
                 title={"View asset details (Ctrl/Cmd+Click for new tab)"}
               >
-                <Image
-                  src={assetTableIcon}
+                <Image src={assetTableIcon}
                   alt="View"
-                  width={20}
-                  height={20}
+                  width={20} height={20} className="icon-20"
                 />
               </button>
             </div>

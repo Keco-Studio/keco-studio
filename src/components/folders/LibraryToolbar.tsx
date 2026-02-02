@@ -138,7 +138,7 @@ export function LibraryToolbar({
           alt="Search"
           width={24}
           height={24}
-          className={styles.searchIcon}
+          className={`icon-24 ${styles.searchIcon}`}
         />
         <input
           type="text"
@@ -155,11 +155,9 @@ export function LibraryToolbar({
           onClick={handleListViewClick}
           aria-label="List view"
         >
-          <Image
-            src={listViewIcon}
+          <Image src={listViewIcon}
             alt="List view"
-            width={24}
-            height={24}
+            width={24} height={24} className="icon-24"
           />
         </button>
         <button
@@ -167,11 +165,9 @@ export function LibraryToolbar({
           onClick={handleGridViewClick}
           aria-label="Grid view"
         >
-          <Image
-            src={gridViewIcon}
+          <Image src={gridViewIcon}
             alt="Grid view"
-            width={24}
-            height={24}
+            width={24} height={24} className="icon-24"
           />
         </button>
       </div>

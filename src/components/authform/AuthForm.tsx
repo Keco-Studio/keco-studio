@@ -184,7 +184,7 @@ function AuthFormContent() {
       <header className={styles.header}>
         <div className={styles.headerLeft}>
           <div className={styles.headerLogo}>
-            <Image src={loginProductIcon} alt="Logo" width={32} height={32} />
+            <Image src={loginProductIcon} alt="Logo" width={32} height={32} className="icon-32" />
             <div className={styles.headerBrand}>
               <div className={styles.brandName}>Keco Studio</div>
               <div className={styles.brandSlogan}>for game designers</div>
@@ -193,13 +193,13 @@ function AuthFormContent() {
         </div>
         <div className={styles.headerRight}>
           <button className={styles.headerIconBtn} aria-label="Messages">
-            <Image src={loginMessageIcon} alt="Messages" width={20} height={20} />
+            <Image src={loginMessageIcon} alt="Messages" width={20} height={20} className="icon-20" />
           </button>
           <button className={styles.headerIconBtn} aria-label="Service">
-            <Image src={loginServiceIcon} alt="Service" width={20} height={20} />
+            <Image src={loginServiceIcon} alt="Service" width={20} height={20} className="icon-20" />
           </button>
           <button className={styles.headerIconBtn} aria-label="Question">
-            <Image src={loginQuestionIcon} alt="Question" width={20} height={20} />
+            <Image src={loginQuestionIcon} alt="Question" width={20} height={20} className="icon-20" />
           </button>
         </div>
       </header>
@@ -212,10 +212,10 @@ function AuthFormContent() {
             aria-label="Back"
             onClick={() => switchMode(isRegister ? "login" : "register")}
           >
-            <Image src={loginLeftArrowIcon} alt="Back" width={20} height={20} />
+            <Image src={loginLeftArrowIcon} alt="Back" width={20} height={20} className="icon-20" />
           </button>
           <div className={styles.logo}>
-            <Image src={loginProductIcon} alt="Logo" width={32} height={32} />
+            <Image src={loginProductIcon} alt="Logo" width={32} height={32} className="icon-32" />
           </div>
           <h1 className={styles.title}>
             {isRegister ? "REGISTER" : (

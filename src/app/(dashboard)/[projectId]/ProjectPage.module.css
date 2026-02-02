@@ -21,13 +21,13 @@
   padding: 3rem 2rem;
   text-align: center;
   background: #f8fafc;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   border: 1px solid #e2e8f0;
 }
 
 .emptyText {
   color: #64748b;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .grid {

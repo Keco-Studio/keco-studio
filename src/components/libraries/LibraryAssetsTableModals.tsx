@@ -62,11 +62,9 @@ export function ClearContentsModal({ open, onOk, onCancel }: ClearContentsModalP
       className={styles.confirmModal}
       wrapClassName={styles.confirmModalWrap}
       closeIcon={
-        <Image
-          src={batchEditingCloseIcon}
+        <Image src={batchEditingCloseIcon}
           alt="Close"
-          width={32}
-          height={32}
+          width={32} height={32} className="icon-32"
         />
       }
     >

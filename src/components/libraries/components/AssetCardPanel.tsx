@@ -99,9 +99,9 @@ export function AssetCardPanel({
                         onClick={() => onLibraryClick?.(details.libraryId)}
                         style={{ cursor: onLibraryClick ? 'pointer' : 'default' }}
                       >
-                        <Image src={libraryAssetTable5Icon} alt="" width={16} height={16} className={styles.assetCardLibraryIcon} />
+                        <Image src={libraryAssetTable5Icon} alt="" width={16} height={16} className={`icon-16 ${styles.assetCardLibraryIcon}`} />
                         <span className={styles.assetCardLibraryName}>{details.libraryName}</span>
-                        <Image src={libraryAssetTable6Icon} alt="" width={16} height={16} className={styles.assetCardLibraryArrow} />
+                        <Image src={libraryAssetTable6Icon} alt="" width={16} height={16} className={`icon-16 ${styles.assetCardLibraryArrow}`} />
                       </div>
                     </div>
                   </div>

@@ -167,7 +167,7 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
           disabled={disabled || uploading}
           className={styles.uploadButton}
         >
-          <Image src={assetFileUploadIcon} alt="" width={24} height={24} />
+          <Image src={assetFileUploadIcon} alt="" width={24} height={24} className="icon-24" />
           {uploading ? uploadProgress : uploadLabel}
         </button>
       )}
@@ -192,7 +192,7 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
               </div>
             ) : (
               <div className={styles.fileIconWrapper}>
-                <Image src={assetFileIcon} alt="" width={24} height={24} />
+                <Image src={assetFileIcon} alt="" width={24} height={24} className="icon-24" />
               </div>
             )}
             <span className={styles.uploadedFileName}>{value.fileName}</span>

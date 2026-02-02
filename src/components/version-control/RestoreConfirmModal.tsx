@@ -114,7 +114,7 @@ export function RestoreConfirmModal({
         <div className={styles.header}>
           <div className={styles.title}>Alert</div>
           <button className={styles.close} onClick={handleCancel} aria-label="Close">
-            <Image src={closeIcon} alt="Close" width={32} height={32} />
+            <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>
         </div>
 

@@ -936,7 +936,7 @@ export default function AssetPage() {
                         alt=""
                         width={24}
                         height={24}
-                        className={styles.predefineButtonIcon}
+                        className={`icon-24 ${styles.predefineButtonIcon}`}
                       />
                       <span>Predefine</span>
                     </button>
@@ -971,7 +971,7 @@ export default function AssetPage() {
                       return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
-                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
                                       </div>
                                       <div className={styles.fieldMeta}>
                                         <span className={styles.fieldLabel}>
@@ -986,7 +986,7 @@ export default function AssetPage() {
                                             alt=""
                                             width={16}
                                             height={16}
-                                            className={styles.dataTypeIcon}
+                                            className={`icon-16 ${styles.dataTypeIcon}`}
                                           />
                                           {DATA_TYPE_LABEL[f.data_type]}
                                         </div>
@@ -1039,7 +1039,7 @@ export default function AssetPage() {
                       return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
-                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
                                       </div>
                                       <div className={styles.fieldMeta}>
                                         <span className={styles.fieldLabel}>
@@ -1054,7 +1054,7 @@ export default function AssetPage() {
                                             alt=""
                                             width={16}
                                             height={16}
-                                            className={styles.dataTypeIcon}
+                                            className={`icon-16 ${styles.dataTypeIcon}`}
                                           />
                                           {DATA_TYPE_LABEL[f.data_type]}
                                         </div>
@@ -1110,7 +1110,7 @@ export default function AssetPage() {
                                   return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
-                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
                                       </div>
                                       <div className={styles.fieldMeta}>
                                         <span className={styles.fieldLabel}>
@@ -1125,7 +1125,7 @@ export default function AssetPage() {
                                             alt=""
                                             width={16}
                                             height={16}
-                                            className={styles.dataTypeIcon}
+                                            className={`icon-16 ${styles.dataTypeIcon}`}
                                           />
                                           {DATA_TYPE_LABEL[f.data_type]}
                                         </div>
@@ -1166,7 +1166,7 @@ export default function AssetPage() {
                                   return (
                                     <div key={f.id} className={styles.fieldRow}>
                                       <div className={styles.dragHandle}>
-                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
                                       </div>
                                       <div className={styles.fieldMeta}>
                                         <span className={styles.fieldLabel}>
@@ -1181,7 +1181,7 @@ export default function AssetPage() {
                                             alt=""
                                             width={16}
                                             height={16}
-                                            className={styles.dataTypeIcon}
+                                            className={`icon-16 ${styles.dataTypeIcon}`}
                                           />
                                           {DATA_TYPE_LABEL[f.data_type]}
                                         </div>
@@ -1230,7 +1230,7 @@ export default function AssetPage() {
                     return (
                                   <div key={f.id} className={styles.fieldRow}>
                                     <div className={styles.dragHandle}>
-                                      <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+                                      <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
                                     </div>
                                     <div className={styles.fieldMeta}>
                                       <span className={styles.fieldLabel}>
@@ -1245,7 +1245,7 @@ export default function AssetPage() {
                                           alt=""
                                           width={16}
                                           height={16}
-                                          className={styles.dataTypeIcon}
+                                          className={`icon-16 ${styles.dataTypeIcon}`}
                                         />
                                         {DATA_TYPE_LABEL[f.data_type]}
                                       </div>

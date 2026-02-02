@@ -1,16 +1,25 @@
 .card {
   background: white;
   border: 1px solid rgba(0, 0, 0, 0.18);
-  border-radius: 8px;
+  border-radius: 0.5rem;
   overflow: hidden;
   cursor: pointer;
   transition: border-color 0.2s, box-shadow 0.2s;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  padding: 20px 14px 12px;
-  height: 165px;
+  width: 100%;
+  max-width: 37.3125rem; /* 597px - 设计稿标准宽度，单列时限制 */
+  padding: 1.25rem 14px 12px;
+  height: 169px;
   box-sizing: border-box;
+}
+
+/* 多列布局时，移除 max-width 限制，让 card 填充整列 */
+@media (min-width: 1366px) {
+  .card {
+    max-width: none;
+  }
 }
 
 .card:hover {
@@ -28,35 +37,35 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 14px;
+  gap: 0.875rem;
 }
 
 .folderInfo {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 0.875rem;
   flex: 1;
   min-width: 0;
 }
 
 .folderIcon {
   flex-shrink: 0;
-  width: 24px;
-  height: 24px;
+  width: 1.5rem;
+  height: 1.5rem;
   border-radius: 5px;
 }
 
 .folderDetails {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0.25rem;
   flex: 1;
   min-width: 0;
 }
 
 .folderName {
   font-family: 'Roboto', sans-serif;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
   color: #21272A;
   line-height: normal;
@@ -76,15 +85,15 @@
 .actionButton {
   background: white;
   border: 1px solid #BCBCBC;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   padding: 0;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: background-color 0.2s, border-color 0.2s;
-  width: 32px;
-  height: 32px;
+  width: 2rem;
+  height: 2rem;
   flex-shrink: 0;
 }
 
@@ -100,15 +109,15 @@
 .librariesSection {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: 0.75rem;
   background: white;
 }
 
 .libraryTag {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
+  gap: 0.5rem;
+  padding: 0.625rem 12px;
   background: rgba(217, 217, 217, 0.25);
   border-radius: 7px;
   height: 35px;
@@ -118,9 +127,9 @@
 .emptyStateTextContainer {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   width: 100%;
-  padding: 10px 12px;
+  padding: 0.625rem 12px;
   background: rgba(217, 217, 217, 0.25);
   border-radius: 7px;
   height: 35px;
@@ -129,7 +138,7 @@
 
 .emptyStateText{
   font-family: 'Roboto', sans-serif;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
   color: #7D7D7D;
   line-height: normal;
@@ -140,13 +149,13 @@
 
 .libraryTagIcon {
   flex-shrink: 0;
-  width: 16px;
-  height: 16px;
+  width: 1rem;
+  height: 1rem;
 }
 
 .libraryTagName {
   font-family: 'Roboto', sans-serif;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
   color: #7D7D7D;
   line-height: normal;
@@ -159,15 +168,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 2px;
-  width: 16px;
-  height: 16px;
+  gap: 0.125rem;
+  width: 1rem;
+  height: 1rem;
   flex-shrink: 0;
 }
 
 .moreDot {
-  width: 3px;
-  height: 3px;
+  width: 0.1875rem;
+  height: 0.1875rem;
   background-color: #7D7D7D;
   border-radius: 50%;
 }

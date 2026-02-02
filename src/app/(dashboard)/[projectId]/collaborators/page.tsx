@@ -30,6 +30,7 @@ import collaborationEditNumIcon from '@/assets/images/collaborationEditNumIcon.s
 import collaborationViewNumIcon from '@/assets/images/collaborationViewNumIcon.svg';
 import searchIcon from '@/assets/images/searchIcon.svg';
 import libraryHeadMoreIcon from '@/assets/images/libraryHeadMoreIcon.svg';
+import styles from './page.module.css';
 
 export default function CollaboratorsPage() {
   const params = useParams();
@@ -337,93 +338,64 @@ export default function CollaboratorsPage() {
   
   if (loading) {
     return (
-      <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
-        <div style={{ fontSize: '16px', color: '#6b7280' }}>Loading collaborators...</div>
+      <div className={styles.loadingContainer}>
+        <div className={styles.loadingText}>Loading collaborators...</div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '24px', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className={styles.container}>
       {/* Page Header - All in one row */}
-      <div style={{ 
-        display: 'flex', 
-        alignItems: 'center', 
-        gap: '16px', 
-        marginBottom: '32px',
-        flexWrap: 'wrap'
-      }}>
+      <div className={styles.pageHeader}>
         {/* Return Button */}
         <button
           onClick={() => router.push(`/${projectId}`)}
-          style={{
-            padding: '0',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
+          className={styles.returnButton}
           aria-label="Return to project"
         >
-          <Image
-            src={collaborationReturnIcon}
+          <Image src={collaborationReturnIcon}
             alt="Return"
-            width={32}
-            height={32}
+            width={32} height={32} className="icon-32"
           />
         </button>
         
         {/* Title */}
-        <h1 style={{ 
-          fontSize: '28px', 
-          fontWeight: '700', 
-          margin: '0', 
-          color: '#111827',
-          flexShrink: 0,
-        }}>
+        <h1 className={styles.pageTitle}>
           Collaborators
         </h1>
         
         {/* Role Statistics */}
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginLeft: 'auto' }}>
+        <div className={styles.roleStats}>
           {/* Admin Count */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Image
-              src={collaborationAdminNumIcon}
+          <div className={styles.roleStatItem}>
+            <Image src={collaborationAdminNumIcon}
               alt="Admin"
-              width={24}
-              height={24}
+              width={24} height={24} className="icon-24"
             />
-            <span style={{ fontSize: '16px', fontWeight: '400', color: 'rgba(154, 26, 255, 1)' }}>
+            <span className={`${styles.roleStatCount} ${styles.adminCount}`}>
               {adminCount}
             </span>
           </div>
           
           {/* Editor Count */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Image
-              src={collaborationEditNumIcon}
+          <div className={styles.roleStatItem}>
+            <Image src={collaborationEditNumIcon}
               alt="Editor"
-              width={24}
-              height={24}
+              width={24} height={24} className="icon-24"
             />
-            <span style={{ fontSize: '16px', fontWeight: '400', color: 'rgba(6, 147, 249, 1)' }}>
+            <span className={`${styles.roleStatCount} ${styles.editorCount}`}>
               {editorCount}
             </span>
           </div>
           
           {/* Viewer Count */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <Image
-              src={collaborationViewNumIcon}
+          <div className={styles.roleStatItem}>
+            <Image src={collaborationViewNumIcon}
               alt="Viewer"
-              width={24}
-              height={24}
+              width={24} height={24} className="icon-24"
             />
-            <span style={{ fontSize: '16px', fontWeight: '400', color: 'rgba(26, 26, 26, 1)' }}>
+            <span className={`${styles.roleStatCount} ${styles.viewerCount}`}>
               {viewerCount}
             </span>
           </div>
@@ -433,117 +405,45 @@ export default function CollaboratorsPage() {
         {userRole && (
           <button
             onClick={() => setInviteModalOpen(true)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '10px 16px',
-              backgroundColor: '#FFB3D9',
-              color: '#000000',
-              border: 'none',
-              borderRadius: '8px',
-              fontSize: '14px',
-              fontWeight: '500',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              flexShrink: 0,
-            }}
-            onMouseOver={(e) => {
-              e.currentTarget.style.backgroundColor = '#FFA0CF';
-            }}
-            onMouseOut={(e) => {
-              e.currentTarget.style.backgroundColor = '#FFB3D9';
-            }}
+            className={styles.inviteButton}
           >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M8 3.33334V12.6667M3.33334 8H12.6667" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
             Invite
           </button>
         )}
         
         {/* More Options Icon */}
         <button
-          style={{
-            padding: '0',
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexShrink: 0,
-          }}
+          className={styles.moreButton}
           aria-label="More options"
         >
-          <Image
-            src={libraryHeadMoreIcon}
+          <Image src={libraryHeadMoreIcon}
             alt="More"
-            width={32}
-            height={32}
+            width={32} height={32} className="icon-32"
           />
         </button>
         
         {/* Search Box */}
-        <div style={{
-          position: 'relative',
-          width: '278px',
-          height: '32px',
-          display: 'flex',
-          alignItems: 'center',
-          flexShrink: 0,
-        }}>
+        <div className={styles.searchContainer}>
           <Image
             src={searchIcon}
             alt="Search"
             width={24}
             height={24}
-            style={{
-              position: 'absolute',
-              left: '12px',
-              top: '50%',
-              transform: 'translateY(-50%)',
-              pointerEvents: 'none',
-              zIndex: 1,
-            }}
+            className={`icon-24 ${styles.searchIcon}`}
           />
           <input
             type="text"
             placeholder="Search"
             value={searchValue}
             onChange={(e) => setSearchValue(e.target.value)}
-            style={{
-              width: '100%',
-              height: '32px',
-              padding: '0 12px 0 44px',
-              border: '1px solid #E5E5E5',
-              borderRadius: '6px',
-              fontSize: '14px',
-              outline: 'none',
-              transition: 'border-color 0.2s',
-              boxSizing: 'border-box',
-            }}
-            onFocus={(e) => {
-              e.currentTarget.style.borderColor = '#FF69B4';
-            }}
-            onBlur={(e) => {
-              e.currentTarget.style.borderColor = '#E5E5E5';
-            }}
+            className={styles.searchInput}
           />
         </div>
       </div>
       
       {/* Error Banner */}
       {error && (
-        <div style={{ 
-          padding: '16px', 
-          backgroundColor: '#fee2e2', 
-          color: '#991b1b', 
-          borderRadius: '8px',
-          border: '1px solid #fecaca',
-          marginBottom: '24px',
-          fontSize: '14px'
-        }}>
+        <div className={styles.errorBanner}>
           {error}
         </div>
       )}
@@ -559,14 +459,7 @@ export default function CollaboratorsPage() {
           highlightUserId={highlightUserId}
         />
       ) : (
-        <div style={{ 
-          padding: '24px', 
-          textAlign: 'center', 
-          color: '#6b7280',
-          backgroundColor: '#f9fafb',
-          borderRadius: '8px',
-          border: '1px solid #e5e7eb'
-        }}>
+        <div className={styles.emptyState}>
           Loading member information...
         </div>
       )}

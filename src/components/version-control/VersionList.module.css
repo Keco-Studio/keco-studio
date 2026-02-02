@@ -3,18 +3,18 @@
 .versionList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 24px;
+  gap: 0.625rem;
+  padding-top: 1.5rem;
   /* 底部预留空间，给最后一个版本的操作面板使用，避免被视口底部遮挡 */
   padding-bottom: 120px;
   position: relative;
 }
 
 .emptyState {
-  padding: 40px 20px;
+  padding: 2.5rem 20px;
   text-align: center;
   color: #697077;
-  font-size: 14px;
+  font-size: 0.875rem;
   line-height: 1.5;
 }
 

@@ -300,11 +300,9 @@ export function AssetReferenceModal({
         <div className={styles.header}>
           <div className={styles.title}>APPLY REFERENCE</div>
           <button className={styles.closeButton} onClick={handleCancel} aria-label="Close">
-            <Image
-              src={applyReference4Icon}
+            <Image src={applyReference4Icon}
               alt="Close"
-              width={24}
-              height={24}
+              width={24} height={24} className="icon-24"
             />
           </button>
         </div>
@@ -341,13 +339,13 @@ export function AssetReferenceModal({
                 {libraries.map((lib) => (
                   <Select.Option key={lib.id} value={lib.id}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Image src={assetRefMenuLibIcon} alt="" width={16} height={16} />
+                      <Image src={assetRefMenuLibIcon} alt="" width={16} height={16} className="icon-16" />
                       <span>{lib.name}</span>
                     </div>
                   </Select.Option>
                 ))}
               </Select>
-              <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} />
+              <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} className="icon-22" />
             </div>
           </div>
 
@@ -459,18 +457,14 @@ export function AssetReferenceModal({
                             }}
                             style={{ cursor: 'pointer' }}
                           >
-                            <Image
-                              src={assetRefDetailLibIcon}
+                            <Image src={assetRefDetailLibIcon}
                               alt=""
-                              width={20}
-                              height={20}
+                              width={20} height={20} className="icon-20"
                             />
                             <span className={styles.assetCardLibraryName}>{hoveredAssetDetails.libraryName}</span>
-                            <Image
-                              src={assetRefDetailLibExpandIcon}
+                            <Image src={assetRefDetailLibExpandIcon}
                               alt=""
-                              width={20}
-                              height={20}
+                              width={20} height={20} className="icon-20"
                             />
                           </div>
                         </div>

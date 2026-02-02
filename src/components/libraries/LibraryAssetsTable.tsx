@@ -1140,11 +1140,9 @@ export function LibraryAssetsTable({
                     }}
                     disabled={editingCell !== null}
                   >
-                    <Image
-                      src={libraryAssetTableAddIcon}
+                    <Image src={libraryAssetTableAddIcon}
                       alt="Add new asset"
-                      width={16}
-                      height={16}
+                      width={16} height={16} className="icon-16"
                     />
                   </button>
                 </td>
@@ -1263,7 +1261,7 @@ export function LibraryAssetsTable({
             alt="View"
             width={20}
             height={20}
-            className={styles.viewerBannerIcon}
+            className={`icon-20 ${styles.viewerBannerIcon}`}
           />
           <span className={styles.viewerBannerText}>You can only view this library.</span>
           <button

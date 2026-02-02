@@ -103,7 +103,7 @@ export function FolderCard({
                 alt="Library"
                 width={16}
                 height={16}
-                className={styles.libraryTagIcon}
+                className={`icon-16 ${styles.libraryTagIcon}`}
               />
               <span className={styles.libraryTagName} title={library.name}>{truncateText(library.name, 20)}</span>
             </div>
@@ -127,7 +127,7 @@ export function FolderCard({
                 alt="Library"
                 width={16}
                 height={16}
-                className={styles.libraryTagIcon}
+                className={`icon-16 ${styles.libraryTagIcon}`}
               />
               <span className={styles.emptyStateText}>There is no any libraries here...</span>
             </div>
@@ -141,7 +141,7 @@ export function FolderCard({
             alt="Folder"
             width={24}
             height={24}
-            className={styles.folderIcon}
+            className={`icon-24 ${styles.folderIcon}`}
           />
           <div className={styles.folderDetails}>
             <span className={styles.folderName}>{folder.name}</span>
@@ -153,11 +153,9 @@ export function FolderCard({
           onClick={handleMoreClick}
           aria-label="More options"
         >
-          <Image
-            src={projectPreviewFolderMoreIcon}
+          <Image src={projectPreviewFolderMoreIcon}
             alt="More"
-            width={16}
-            height={16}
+            width={16} height={16} className="icon-16"
           />
         </button>
       </div>

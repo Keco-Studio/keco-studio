@@ -120,11 +120,9 @@ export function VersionItemMenu({ version, libraryId, externalMenuPosition, onEx
             }}
             onContextMenu={handleContextMenu}
           >
-            <Image
-              src={versionItemMenuIcon}
+            <Image src={versionItemMenuIcon}
               alt="More options"
-              width={24}
-              height={24}
+              width={24} height={24} className="icon-24"
             />
           </button>
         </Tooltip>

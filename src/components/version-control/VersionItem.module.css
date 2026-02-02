@@ -4,10 +4,10 @@
 .versionItem {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 1rem;
   position: relative;
   padding: 0;
-  min-height: 48px;
+  min-height: 3rem;
   cursor: pointer;
   border-radius: 7px;
   transition: background-color 0.2s;
@@ -42,8 +42,8 @@
 }
 
 .versionIcon {
-  width: 48px;
-  height: 48px;
+  width: 3rem;
+  height: 3rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -63,8 +63,8 @@
 }
 
 .iconImage {
-  width: 48px;
-  height: 48px;
+  width: 3rem;
+  height: 3rem;
   object-fit: cover;
   border-radius: 50%;
   display: block;
@@ -72,7 +72,7 @@
 
 .connectionLine {
   position: absolute;
-  top: 24px;
+  top: 1.5rem;
   left: 50%;
   transform: translateX(-50%);
   width: 0;
@@ -83,7 +83,7 @@
 
 .lastConnectionLine {
   position: absolute;
-  top: 24px;
+  top: 1.5rem;
   left: 50%;
   transform: translateX(-50%);
   width: 0;
@@ -107,13 +107,13 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0.25rem;
   min-width: 0;
 }
 
 .versionName {
   font-family: 'Roboto', sans-serif;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
   line-height: 1.1;
   text-align: left;
@@ -123,7 +123,7 @@
   color: rgba(255, 108, 170, 1);
   font-family: 'Roboto', sans-serif;
   font-weight: 500;
-  font-size: 16px;
+  font-size: 1rem;
   line-height: 110%;
   letter-spacing: 0%;
 }
@@ -135,7 +135,7 @@
 .creatorInfo {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
 }
 
 .creatorAvatar {
@@ -144,7 +144,7 @@
 
 .creatorText {
   font-family: 'Roboto', sans-serif;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 400;
   line-height: 1.4;
   color: #697077;
@@ -152,7 +152,7 @@
 
 .currentVersionInfo {
   font-family: 'Roboto', sans-serif;
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 400;
   line-height: 1.4;
   color: #697077;
@@ -169,7 +169,7 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.2s;
