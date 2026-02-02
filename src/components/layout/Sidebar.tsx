@@ -1,25 +1,11 @@
 'use client';
 
-import projectIcon from "@/assets/images/projectIcon.svg";
-import libraryBookIcon from "@/assets/images/LibraryBookIcon.svg";
 import loginProductIcon from "@/assets/images/loginProductIcon.svg";
-import predefineSettingIcon from "@/assets/images/predefineSettingIcon.svg";
-import FolderCloseIcon from "@/assets/images/FolderCloseIcon.svg";
-import folderCollapseIcon from "@/assets/images/folderCollapseIcon.svg";
-import plusHorizontal from "@/assets/images/plusHorizontal.svg";
-import plusVertical from "@/assets/images/plusVertical.svg";
-import createProjectIcon from "@/assets/images/createProjectIcon.svg";
 import addProjectIcon from "@/assets/images/addProjectIcon.svg";
 import searchIcon from "@/assets/images/searchIcon.svg";
-import projectRightIcon from "@/assets/images/ProjectRightIcon.svg";
-import sidebarFolderIcon from "@/assets/images/SidebarFloderIcon.svg";
-import sidebarFolderIcon3 from "@/assets/images/SidebarFloderIcon3.svg";
-import sidebarFolderIcon4 from "@/assets/images/SidebarFloderIcon4.svg";
-import sidebarFolderIcon5 from "@/assets/images/SidebarFolderInco5.svg";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { Tooltip } from "antd";
 import { EventDataNode } from "antd/es/tree";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@/lib/contexts/NavigationContext";
@@ -41,20 +27,21 @@ import { useSidebarFoldersLibraries } from "./useSidebarFoldersLibraries";
 import { useSidebarModals } from "./useSidebarModals";
 import { useSidebarContextMenu } from "./useSidebarContextMenu";
 import { SidebarTreeView } from "./SidebarTreeView";
+import { SidebarProjectsList } from "./SidebarProjectsList";
+import { SidebarLibrariesSection } from "./SidebarLibrariesSection";
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ContextMenu, ContextMenuAction } from "./ContextMenu";
 import type { UserProfileDisplay } from "@/lib/types/user";
-import { truncateText } from "@/lib/utils/truncateText";
 import { useSidebarTree } from "./useSidebarTree";
+import { useSidebarAssets } from "./useSidebarAssets";
+import { useSidebarProjectRole } from "./useSidebarProjectRole";
 import styles from "./Sidebar.module.css";
 
 type SidebarProps = {
   userProfile?: UserProfileDisplay | null;
   onAuthRequest?: () => void;
 };
-
-type AssetRow = { id: string; name: string; library_id: string };
 
 export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const router = useRouter();
@@ -81,12 +68,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   
-  // User role in current project
-  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
-  const [isProjectOwner, setIsProjectOwner] = useState(false);
-
-  // data state - managed by React Query, no need for manual state
-  const [assets, setAssets] = useState<Record<string, AssetRow[]>>({});
+  const { userRole, isProjectOwner, refetchUserRole } = useSidebarProjectRole(currentIds.projectId, userProfile);
+  const { assets, fetchAssets } = useSidebarAssets(currentIds.libraryId);
 
   const modals = useSidebarModals();
   const {
@@ -550,27 +533,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           }
           
           // Handle INSERT/UPDATE events - check if the change affects current user
-          if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') && 
+          if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') &&
               payload.new && 'user_id' in payload.new && payload.new.user_id === userProfile.id) {
-            // Current user's permission changed, refetch role
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (!session) return;
-              
-              const roleResponse = await fetch(`/api/projects/${currentIds.projectId}/role`, {
-                headers: {
-                  'Authorization': `Bearer ${session.access_token}`,
-                },
-              });
-              
-              if (roleResponse.ok) {
-                const roleResult = await roleResponse.json();
-                setUserRole(roleResult.role || null);
-                setIsProjectOwner(roleResult.isOwner || false);
-              }
-            } catch (error) {
-              console.error('[Sidebar] Error refetching user role:', error);
-            }
+            refetchUserRole();
           }
         }
       )
@@ -589,7 +554,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     return () => {
       supabase.removeChannel(collaboratorsChannel);
     };
-  }, [currentIds.projectId, userProfile, supabase, queryClient, router]);
+  }, [currentIds.projectId, userProfile, supabase, queryClient, router, refetchUserRole]);
 
   // Real-time collaboration: Subscribe to predefine_properties changes (for predefine updates)
   useEffect(() => {
@@ -694,52 +659,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       prevProjectIdRef.current = currentIds.projectId;
     }
   }, [currentIds.projectId]);
-
-  // Fetch user role in current project
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      // Check if projectId is a valid UUID (not "projects" or other route segments)
-      const isValidUUID = currentIds.projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentIds.projectId);
-      
-      if (!isValidUUID || !userProfile) {
-        setUserRole(null);
-        setIsProjectOwner(false);
-        return;
-      }
-      
-      try {
-        // Get session for authorization
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          setUserRole(null);
-          setIsProjectOwner(false);
-          return;
-        }
-        
-        // Call API to get user role
-        const roleResponse = await fetch(`/api/projects/${currentIds.projectId}/role`, {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        });
-        
-        if (roleResponse.ok) {
-          const roleResult = await roleResponse.json();
-          setUserRole(roleResult.role || null);
-          setIsProjectOwner(roleResult.isOwner || false);
-        } else {
-          setUserRole(null);
-          setIsProjectOwner(false);
-        }
-      } catch (error) {
-        console.error('[Sidebar] Error fetching user role:', error);
-        setUserRole(null);
-        setIsProjectOwner(false);
-      }
-    };
-    
-    fetchUserRole();
-  }, [currentIds.projectId, userProfile, supabase]);
 
   // Smart cache refresh: If user is viewing a project that's not in the sidebar,
   // it might mean they were just added as a collaborator. Refresh the projects list.
@@ -886,71 +805,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       window.removeEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
     };
   }, [currentIds.projectId, queryClient]);
-
-  const fetchingAssetsRef = useRef<Set<string>>(new Set());
-
-  const fetchAssets = useCallback(async (libraryId?: string | null) => {
-    if (!libraryId) return;
-    
-    // Prevent duplicate concurrent requests for the same library
-    if (fetchingAssetsRef.current.has(libraryId)) {
-      return;
-    }
-    
-    fetchingAssetsRef.current.add(libraryId);
-    try {
-      // Use cache to prevent duplicate requests
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const cacheKey = `assets:list:${libraryId}`;
-      
-      const data = await globalRequestCache.fetch(cacheKey, async () => {
-        const { data, error } = await supabase
-          .from('library_assets')
-          .select('id,name,library_id')
-          .eq('library_id', libraryId)
-          .order('created_at', { ascending: true });
-        if (error) throw error;
-        return (data as AssetRow[]) || [];
-      });
-      
-      setAssets((prev) => ({ ...prev, [libraryId]: data }));
-    } catch (err) {
-      console.error('Failed to load assets', err);
-    } finally {
-      fetchingAssetsRef.current.delete(libraryId);
-    }
-  }, [supabase]);
-
-  useEffect(() => {
-    if (currentIds.libraryId) {
-      fetchAssets(currentIds.libraryId);
-    }
-  }, [currentIds.libraryId, fetchAssets]);
-
-  // Listen for asset creation/update events to refresh the sidebar
-  useEffect(() => {
-    const handleAssetChange = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ libraryId: string }>;
-      if (customEvent.detail?.libraryId) {
-        // Clear cache before fetching to ensure fresh data
-        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-        const cacheKey = `assets:list:${customEvent.detail.libraryId}`;
-        globalRequestCache.invalidate(cacheKey);
-        fetchAssets(customEvent.detail.libraryId);
-      }
-    };
-
-    window.addEventListener('assetCreated', handleAssetChange);
-    window.addEventListener('assetUpdated', handleAssetChange);
-    window.addEventListener('assetDeleted', handleAssetChange);
-
-    return () => {
-      window.removeEventListener('assetCreated', handleAssetChange);
-      window.removeEventListener('assetUpdated', handleAssetChange);
-      window.removeEventListener('assetDeleted', handleAssetChange);
-    };
-  }, [fetchAssets]);
-
 
   // actions
   const handleProjectClick = async (projectId: string) => {
@@ -1520,263 +1374,49 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       <div className={styles.content}>
         {!currentIds.assetId && (
-          <>
-            <div className={styles.sectionTitle}>
-              <span>Projects</span>
-              <button
-                className={styles.addButton}
-                onClick={() => openNewProject()}
-                title="New Project"
-              >
-                <Image
-                  src={addProjectIcon}
-                  alt="Add project"
-                  width={24}
-                  height={24}
-                />
-              </button>
-            </div>
-            <div className={styles.projectsListContainer}>
-              {projects.map((project) => {
-                const isActive = currentIds.projectId === project.id;
-                return (
-                  <div
-                    key={project.id}
-                    className={`${styles.item} ${isActive ? styles.itemActive : styles.itemInactive}`}
-                    onClick={() => handleProjectClick(project.id)}
-                    onContextMenu={(e) => handleContextMenu(e, 'project', project.id)}
-                  >
-                    <Image
-                      src={projectIcon}
-                      alt="Project"
-                      width={20}
-                      height={20}
-                      className={styles.itemIcon}
-                    />
-                    <span className={styles.itemText} title={project.name}>
-                      {truncateText(project.name, 20)}
-                    </span>
-                    <span className={styles.itemActions}>
-                      {project.description && (
-                        <Tooltip
-                          title={project.description}
-                          placement="top"
-                          styles={{
-                            root: { maxWidth: '300px' }
-                          }}
-                        >
-                          <div
-                            className={styles.infoIconWrapper}
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <Image
-                              src={projectRightIcon}
-                              alt="Info"
-                              width={24}
-                              height={24}
-                            />
-                          </div>
-                        </Tooltip>
-                      )}
-                    </span>
-                  </div>
-                );
-              })}
-              {!loadingProjects && projects.length === 0 && (
-                <button
-                  className={styles.createProjectButton}
-                  onClick={() => openNewProject()}
-                >
-                  <Image
-                    src={createProjectIcon}
-                    alt="Project"
-                    width={24}
-                    height={24}
-                    className={styles.itemIcon}
-                  />
-                  <span className={styles.itemText}>Create Project</span>
-                </button>
-              )}
-            </div>
-          </>
+          <SidebarProjectsList
+            projects={projects}
+            loadingProjects={loadingProjects}
+            currentProjectId={currentIds.projectId}
+            onOpenNewProject={openNewProject}
+            onProjectClick={handleProjectClick}
+            onContextMenu={handleContextMenu}
+          />
         )}
 
         {currentIds.projectId &&
           projects.length > 0 &&
           projects.some((p) => p.id === currentIds.projectId) && (
-            <>
-              {!currentIds.assetId && (
-                <div className={styles.sectionTitle}>
-                  <span>Libraries</span>
-                  {userRole === 'admin' && (
-                    <button
-                      ref={setAddButtonRef}
-                      className={styles.addButton}
-                      onClick={handleAddButtonClick}
-                      title="Add new folder or library"
-                    >
-                      <Image
-                        src={addProjectIcon}
-                        alt="Add library"
-                        width={24}
-                        height={24}
-                      />
-                    </button>
-                  )}
-                </div>
-              )}
-              <div className={styles.sectionList}>
-                {currentIds.assetId && currentIds.libraryId ? (
-                  // Asset page only: Show library with assets list
-                  (() => {
-                    const currentLibrary = libraries.find(lib => lib.id === currentIds.libraryId);
-                    const libraryName = currentLibrary?.name || 'Library';
-                    const libraryAssets = assets[currentIds.libraryId] || [];
-                    return (
-                      <>
-                        {/* Library item */}
-                        <div className={`${styles.itemRow} ${styles.libraryItemActiveWithPadding}`}>
-                          <div className={styles.itemMain}>
-                            <button
-                              className={styles.libraryBackButton}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (currentIds.projectId && currentIds.libraryId) {
-                                  router.push(`/${currentIds.projectId}/${currentIds.libraryId}`);
-                                }
-                              }}
-                              title="Back to library"
-                            >
-                              <Image
-                                src={sidebarFolderIcon3}
-                                alt="Back"
-                                width={24}
-                                height={24}
-                              />
-                            </button>
-                            <div className={styles.libraryIconContainer}>
-                              <Image
-                                src={libraryBookIcon}
-                                alt="Library"
-                                width={24}
-                                height={24}
-                              />
-                            </div>
-                            <span className={styles.itemText} title={libraryName}>{truncateText(libraryName, 15)}</span>
-                          </div>
-                          <div className={styles.itemActions}>
-                            {userRole === 'admin' && (
-                              <Tooltip
-                                title="Predefine asset here"
-                                placement="top"
-                                color="#8B5CF6"
-                              >
-                                <button
-                                  className={styles.iconButton}
-                                  aria-label="Library sections"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (currentIds.projectId && currentIds.libraryId) {
-                                      handleLibraryPredefineClick(currentIds.projectId, currentIds.libraryId, e);
-                                    }
-                                  }}
-                                >
-                                  <Image
-                                    src={sidebarFolderIcon4}
-                                    alt="Predefine"
-                                    width={22}
-                                    height={22}
-                                  />
-                                </button>
-                              </Tooltip>
-                            )}
-                          </div>
-                        </div>
-                        {/* Add new asset button - for admin and editor */}
-                        {(userRole === 'admin' || userRole === 'editor') && (
-                          <button
-                            className={`${styles.createButton} ${styles.createButtonAligned}`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (currentIds.projectId && currentIds.libraryId) {
-                                // Navigate to new asset page
-                                // If library has no properties, the page will show predefine prompt (NoassetIcon1.svg)
-                                // If library has properties, the page will show the form to create new asset
-                                router.push(`/${currentIds.projectId}/${currentIds.libraryId}/new`);
-                              }
-                            }}
-                          >
-                            <span className={styles.createButtonText}>
-                              <Image
-                                src={sidebarFolderIcon5}
-                                alt="Add"
-                                width={24}
-                                height={24}
-                              />
-                              Add new asset
-                            </span>
-                          </button>
-                        )}
-                        {/* Assets list */}
-                        <div className={styles.assetList}>
-                          {libraryAssets.map((asset) => {
-                            const isCurrentAsset = currentIds.assetId === asset.id;
-
-                            return (
-                              <div
-                                key={asset.id}
-                                className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
-                                onClick={() => {
-                                  // All users can navigate to asset detail (viewer will see it in view mode)
-                                  if (currentIds.projectId && currentIds.libraryId) {
-                                    handleAssetClick(currentIds.projectId, currentIds.libraryId, asset.id);
-                                  }
-                                }}
-                                onContextMenu={(e) => handleContextMenu(e, 'asset', asset.id)}
-                              >
-                                <div className={styles.itemMain}>
-                                  <span className={styles.itemText} title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}>
-                                    {truncateText(asset.name && asset.name !== 'Untitled' ? asset.name : '', 15)}
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </>
-                    );
-                  })()
-                ) : (
-                  // Normal view: Show tree structure
-                  <>
-                    <SidebarTreeView
-                      treeData={treeData}
-                      selectedKeys={selectedKeys}
-                      expandedKeys={expandedKeys}
-                      onSelect={onSelect}
-                      onExpand={onExpand}
-                    />
-                    {!loadingFolders &&
-                      !loadingLibraries &&
-                      folders.length === 0 &&
-                      libraries.length === 0 && (
-                        <div className={styles.sidebarEmptyState}>
-                          <Image
-                            src={FolderCloseIcon}
-                            alt="No folders or libraries"
-                            width={22}
-                            height={18}
-                            className={styles.emptyIcon}
-                          />
-                          <div className={styles.sidebarEmptyText}>
-                            No folder or library in this project yet.
-                          </div>
-                        </div>
-                      )}
-                  </>
-                )}
-              </div>
-            </>
+            <SidebarLibrariesSection
+              currentIds={currentIds}
+              libraries={libraries}
+              assets={assets}
+              userRole={userRole}
+              loadingFolders={loadingFolders}
+              loadingLibraries={loadingLibraries}
+              foldersLength={folders.length}
+              librariesLength={libraries.length}
+              treeData={treeData}
+              selectedKeys={selectedKeys}
+              expandedKeys={expandedKeys}
+              onSelect={onSelect}
+              onExpand={onExpand}
+              onBackToLibrary={() => {
+                if (currentIds.projectId && currentIds.libraryId) {
+                  router.push(`/${currentIds.projectId}/${currentIds.libraryId}`);
+                }
+              }}
+              onLibraryPredefineClick={handleLibraryPredefineClick}
+              onAddNewAsset={() => {
+                if (currentIds.projectId && currentIds.libraryId) {
+                  router.push(`/${currentIds.projectId}/${currentIds.libraryId}/new`);
+                }
+              }}
+              onAssetClick={handleAssetClick}
+              onContextMenu={handleContextMenu}
+              addButtonRef={setAddButtonRef}
+              onAddButtonClick={handleAddButtonClick}
+            />
           )}
       </div>
 
