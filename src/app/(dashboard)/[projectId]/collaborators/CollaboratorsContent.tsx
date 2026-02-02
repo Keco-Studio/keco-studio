@@ -14,6 +14,7 @@ import { useState } from 'react';
 import { Button, Table, Tag, Space, Popconfirm, Select, message, Empty } from 'antd';
 import { UserAddOutlined, MailOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
+import { showSuccessToast } from '@/lib/utils/toast';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { Collaborator, PendingInvitation, CollaboratorRole } from '@/lib/types/collaboration';
 import { canUserManageCollaborators } from '@/lib/types/collaboration';
@@ -125,9 +126,14 @@ export function CollaboratorsContent({
   };
   
   // Handle invitation success
-  const handleInviteSuccess = () => {
-    // Refresh page to get updated list
-    window.location.reload();
+  const handleInviteSuccess = (email: string, msg: string, autoAccepted: boolean) => {
+    // Show success message using custom toast
+    showSuccessToast(msg);
+    
+    // Refresh page to get updated list after a short delay
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
   };
   
   // Collaborators table columns
