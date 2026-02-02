@@ -384,12 +384,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       )
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') {
-          console.error('[Sidebar] Projects channel ERROR:', err);
+          if (err) {
+            console.error('[Sidebar] Projects channel ERROR:', err);
+          } else {
+            console.warn('[Sidebar] Projects channel error (Realtime may be disabled or connection limited).');
+          }
         } else if (status === 'TIMED_OUT') {
           console.error('[Sidebar] Projects channel TIMED OUT');
-        }
-        if (err) {
-          console.error('[Sidebar] Projects channel subscription error:', err);
         }
       });
 
@@ -469,12 +470,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       )
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') {
-          console.error('[Sidebar] Libraries channel ERROR:', err);
+          if (err) {
+            console.error('[Sidebar] Libraries channel ERROR:', err);
+          } else {
+            console.warn('[Sidebar] Libraries channel error (Realtime may be disabled or connection limited).');
+          }
         } else if (status === 'TIMED_OUT') {
           console.error('[Sidebar] Libraries channel TIMED OUT');
-        }
-        if (err) {
-          console.error('[Sidebar] Libraries channel subscription error:', err);
         }
       });
 
@@ -553,12 +555,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       )
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') {
-          console.error('[Sidebar] Folders channel ERROR:', err);
+          if (err) {
+            console.error('[Sidebar] Folders channel ERROR:', err);
+          } else {
+            console.warn('[Sidebar] Folders channel error (Realtime may be disabled or connection limited).');
+          }
         } else if (status === 'TIMED_OUT') {
           console.error('[Sidebar] Folders channel TIMED OUT');
-        }
-        if (err) {
-          console.error('[Sidebar] Folders channel subscription error:', err);
         }
       });
 
@@ -689,12 +692,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       )
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') {
-          console.error('[Sidebar] Collaborators channel ERROR:', err);
+          if (err) {
+            console.error('[Sidebar] Collaborators channel ERROR:', err);
+          } else {
+            console.warn('[Sidebar] Collaborators channel error (Realtime may be disabled or connection limited).');
+          }
         } else if (status === 'TIMED_OUT') {
           console.error('[Sidebar] Collaborators channel TIMED OUT');
-        }
-        if (err) {
-          console.error('[Sidebar] Collaborators channel subscription error:', err);
         }
       });
 
@@ -749,12 +753,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       )
       .subscribe((status, err) => {
         if (status === 'CHANNEL_ERROR') {
-          console.error('[Sidebar] Predefine channel ERROR:', err);
+          if (err) {
+            console.error('[Sidebar] Predefine channel ERROR:', err);
+          } else {
+            console.warn('[Sidebar] Predefine channel error (Realtime may be disabled or connection limited).');
+          }
         } else if (status === 'TIMED_OUT') {
           console.error('[Sidebar] Predefine channel TIMED OUT');
-        }
-        if (err) {
-          console.error('[Sidebar] Predefine channel subscription error:', err);
         }
       });
 
