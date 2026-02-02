@@ -22,22 +22,23 @@ import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { Project, deleteProject } from "@/lib/services/projectService";
 import { Library, deleteLibrary } from "@/lib/services/libraryService";
 import { Folder, deleteFolder } from "@/lib/services/folderService";
-import { useSidebarProjects } from "./useSidebarProjects";
-import { useSidebarFoldersLibraries } from "./useSidebarFoldersLibraries";
-import { useSidebarModals } from "./useSidebarModals";
-import { useSidebarContextMenu } from "./useSidebarContextMenu";
-import { SidebarTreeView } from "./SidebarTreeView";
-import { SidebarProjectsList } from "./SidebarProjectsList";
+import { useSidebarProjects } from "./hooks/useSidebarProjects";
+import { useSidebarFoldersLibraries } from "./hooks/useSidebarFoldersLibraries";
+import { useSidebarModals } from "./hooks/useSidebarModals";
+import { useSidebarContextMenu } from "./hooks/useSidebarContextMenu";
+import { SidebarTreeView } from "./components/SidebarTreeView";
+import { SidebarProjectsList } from "./components/SidebarProjectsList";
 import { SidebarLibrariesSection } from "./SidebarLibrariesSection";
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
-import { ContextMenu, ContextMenuAction } from "./ContextMenu";
+import { ContextMenu } from "./ContextMenu";
 import type { UserProfileDisplay } from "@/lib/types/user";
-import { useSidebarTree } from "./useSidebarTree";
-import { useSidebarAssets } from "./useSidebarAssets";
-import { useSidebarProjectRole } from "./useSidebarProjectRole";
-import { useSidebarWindowEvents } from "./useSidebarWindowEvents";
-import { useSidebarRealtime } from "./useSidebarRealtime";
+import { useSidebarTree } from "./hooks/useSidebarTree";
+import { useSidebarAssets } from "./hooks/useSidebarAssets";
+import { useSidebarProjectRole } from "./hooks/useSidebarProjectRole";
+import { useSidebarWindowEvents } from "./hooks/useSidebarWindowEvents";
+import { useSidebarRealtime } from "./hooks/useSidebarRealtime";
+import { useSidebarContextMenuActions } from "./hooks/useSidebarContextMenuActions";
 import styles from "./Sidebar.module.css";
 
 type SidebarProps = {
@@ -484,128 +485,64 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   );
 
-  const handleContextMenuAction = (action: ContextMenuAction) => {
-    if (!contextMenu) return;
-    
-    // Handle collaborators action for projects
-    if (action === 'collaborators' && contextMenu.type === 'project') {
-      closeContextMenu();
-      router.push(`/${contextMenu.id}/collaborators`);
-      return;
-    }
-    
-    // Handle rename action (Project info / Library info / Folder rename)
-    if (action === 'rename') {
-      if (contextMenu.type === 'project') {
-        openEditProject(contextMenu.id);
-        closeContextMenu();
-        return;
-      } else if (contextMenu.type === 'library') {
-        openEditLibrary(contextMenu.id);
-        closeContextMenu();
-        return;
-      } else if (contextMenu.type === 'folder') {
-        openEditFolder(contextMenu.id);
-        closeContextMenu();
-        return;
-      } else if (contextMenu.type === 'asset') {
-        openEditAsset(contextMenu.id);
-        closeContextMenu();
-        return;
+  const handleProjectDeleteViaAPI = useCallback(
+    async (projectId: string) => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          setError('You must be logged in to delete projects');
+          return;
+        }
+        const response = await fetch(`/api/projects/${projectId}/delete`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        const result = await response.json();
+        if (!result.success) {
+          setError(result.error || 'Failed to delete project');
+          return;
+        }
+        queryClient.setQueryData<Project[]>(['projects'], (oldProjects) =>
+          oldProjects ? oldProjects.filter((p) => p.id !== projectId) : []
+        );
+        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+        const { getCurrentUserId } = await import('@/lib/services/authorizationService');
+        try {
+          const userId = await getCurrentUserId(supabase);
+          globalRequestCache.invalidate(`projects:list:${userId}`);
+          globalRequestCache.invalidate(`project:${projectId}`);
+        } catch (err) {
+          console.warn('Failed to clear cache:', err);
+        }
+        if (currentIds.projectId === projectId) {
+          router.push('/projects');
+        }
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+      } catch (err: unknown) {
+        console.error('[Sidebar] Error deleting project:', err);
+        setError(err instanceof Error ? err.message : 'Failed to delete project');
       }
-    }
-    
-    // Handle delete action
-    if (action === 'delete') {
-      if (contextMenu.type === 'project') {
-        if (window.confirm('Delete this project? All libraries under it will be removed.')) {
-          // Call API route to delete project (requires service role)
-          handleProjectDeleteViaAPI(contextMenu.id);
-        }
-      } else if (contextMenu.type === 'library') {
-        if (window.confirm('Delete this library?')) {
-          const libraryToDelete = libraries.find(lib => lib.id === contextMenu.id);
-          const deletedFolderId = libraryToDelete?.folder_id || null;
-          deleteLibrary(supabase, contextMenu.id).then(() => {
-            // Use React Query to refresh cache
-            if (currentIds.projectId) {
-              queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-            }
-            window.dispatchEvent(new CustomEvent('libraryDeleted', {
-              detail: { folderId: deletedFolderId, libraryId: contextMenu.id, projectId: currentIds.projectId }
-            }));
-            // If the deleted library is currently being viewed, navigate to project page
-            if (currentIds.libraryId === contextMenu.id && currentIds.projectId) {
-              router.push(`/${currentIds.projectId}`);
-            }
-          }).catch((err: any) => {
-            setError(err?.message || 'Failed to delete library');
-          });
-        }
-      } else if (contextMenu.type === 'folder') {
-        if (window.confirm('Delete this folder? All libraries and subfolders under it will be removed.')) {
-          // Check if any libraries under this folder are being viewed
-          const librariesInFolder = libraries.filter(lib => lib.folder_id === contextMenu.id);
-          const isViewingLibraryInFolder = librariesInFolder.some(lib => lib.id === currentIds.libraryId);
-          
-          deleteFolder(supabase, contextMenu.id).then(() => {
-            // Use React Query to refresh cache
-            if (currentIds.projectId) {
-              queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-            }
-            window.dispatchEvent(new CustomEvent('folderDeleted', {
-              detail: { folderId: contextMenu.id, projectId: currentIds.projectId }
-            }));
-            // If currently viewing the folder page or a library in this folder, navigate to project page
-            if ((currentIds.folderId === contextMenu.id || isViewingLibraryInFolder) && currentIds.projectId) {
-              router.push(`/${currentIds.projectId}`);
-            }
-          }).catch((err: any) => {
-            setError(err?.message || 'Failed to delete folder');
-          });
-        }
-      } else if (contextMenu.type === 'asset') {
-        if (window.confirm('Delete this asset?')) {
-          const libraryId = Object.keys(assets).find(libId => 
-            assets[libId].some(asset => asset.id === contextMenu.id)
-          );
-          if (libraryId) {
-            supabase
-              .from('library_assets')
-              .delete()
-              .eq('id', contextMenu.id)
-              .then(async (result) => {
-                if (result.error) {
-                  console.error('Failed to delete asset', result.error);
-                } else {
-                  // Clear cache before fetching to ensure fresh data
-                  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-                  const cacheKey = `assets:list:${libraryId}`;
-                  globalRequestCache.invalidate(cacheKey);
-                  
-                  // Invalidate React Query cache to ensure LibraryPage gets fresh data
-                  await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-                  await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-                  
-                  // Refetch to ensure data is updated immediately
-                  await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-                  await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-                  
-                  await fetchAssets(libraryId);
-                  window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
-                  // If currently viewing this asset, navigate to library page
-                  if (currentIds.assetId === contextMenu.id && currentIds.projectId) {
-                    router.push(`/${currentIds.projectId}/${libraryId}`);
-                  }
-                }
-              });
-          }
-        }
-      }
-    }
-    
-    closeContextMenu();
-  };
+    },
+    [supabase, queryClient, currentIds.projectId, router, setError]
+  );
+
+  const { handleContextMenuAction } = useSidebarContextMenuActions({
+    contextMenu,
+    closeContextMenu,
+    router,
+    openEditProject,
+    openEditLibrary,
+    openEditFolder,
+    openEditAsset,
+    supabase,
+    queryClient,
+    currentIds,
+    libraries,
+    setError,
+    assets,
+    fetchAssets,
+    onProjectDeleteViaAPI: handleProjectDeleteViaAPI,
+  });
 
   const handleProjectDelete = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -613,60 +550,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     handleProjectDeleteViaAPI(projectId);
   };
 
-  const handleProjectDeleteViaAPI = async (projectId: string) => {
-    try {
-      // Get user session for API call
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        setError('You must be logged in to delete projects');
-        return;
-      }
-
-      // Call API route to delete project
-      const response = await fetch(`/api/projects/${projectId}/delete`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
-
-      const result = await response.json();
-
-      if (!result.success) {
-        setError(result.error || 'Failed to delete project');
-        return;
-      }
-
-      // Success - immediately update the cache to remove the deleted project
-      // This prevents the auto-navigation logic from redirecting back to a project
-      queryClient.setQueryData<Project[]>(['projects'], (oldProjects) => {
-        if (!oldProjects) return [];
-        return oldProjects.filter(p => p.id !== projectId);
-      });
-      
-      // Clear globalRequestCache
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-      try {
-        const userId = await getCurrentUserId(supabase);
-        globalRequestCache.invalidate(`projects:list:${userId}`);
-        globalRequestCache.invalidate(`project:${projectId}`);
-      } catch (err) {
-        console.warn('Failed to clear cache:', err);
-      }
-
-      // Navigate away if viewing deleted project
-      if (currentIds.projectId === projectId) {
-        router.push('/projects');
-      }
-      
-      // Invalidate queries to trigger a background refetch (but UI already updated via setQueryData)
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-    } catch (err: any) {
-      console.error('[Sidebar] Error deleting project:', err);
-      setError(err?.message || 'Failed to delete project');
-    }
-  };
   const handleProjectCreated = async (projectId: string, defaultFolderId: string) => {
     closeProjectModal();
     

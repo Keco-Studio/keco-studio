@@ -6,7 +6,7 @@ import type { DataNode, EventDataNode } from 'antd/es/tree';
 import FolderOpenIcon from '@/assets/images/FolderOpenIcon.svg';
 import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
-import styles from './Sidebar.module.css';
+import styles from '../Sidebar.module.css';
 
 export type SidebarTreeViewProps = {
   treeData: DataNode[];

@@ -12,7 +12,7 @@ import PredefineNewIcon from '@/assets/images/PredefineNewIcon.svg';
 import PredefineNewClick from '@/assets/images/PredefineNewClick.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
 import sidebarFolderIcon3 from '@/assets/images/SidebarFloderIcon3.svg';
-import styles from './Sidebar.module.css';
+import styles from '../Sidebar.module.css';
 
 export type SidebarCurrentIds = {
   projectId: string | null;
