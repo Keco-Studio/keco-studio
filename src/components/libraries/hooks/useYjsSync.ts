@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import type { AssetRow } from '@/lib/types/libraryAssets';
-import { useYjsRows } from '@/hooks/useYjsRows';
+import { useYjsRows } from '@/lib/hooks/useYjsRows';
 
 /**
  * useYjsSync - 将 props.rows 与 Yjs yRows 同步，并产出统一数据源 allRowsSource

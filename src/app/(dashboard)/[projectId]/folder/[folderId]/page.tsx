@@ -15,9 +15,9 @@ import { NewLibraryModal } from '@/components/libraries/NewLibraryModal';
 import { EditLibraryModal } from '@/components/libraries/EditLibraryModal';
 import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
-import libraryEmptyIcon from '@/app/assets/images/libraryEmptyIcon.svg';
-import plusHorizontal from '@/app/assets/images/plusHorizontal.svg';
-import plusVertical from '@/app/assets/images/plusVertical.svg';
+import libraryEmptyIcon from '@/assets/images/libraryEmptyIcon.svg';
+import plusHorizontal from '@/assets/images/plusHorizontal.svg';
+import plusVertical from '@/assets/images/plusVertical.svg';
 import Image from 'next/image';
 import styles from './FolderPage.module.css';
 

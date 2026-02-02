@@ -4,10 +4,10 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { Folder } from '@/lib/services/folderService';
 import { Library } from '@/lib/services/libraryService';
-import projectPreviewFolderIcon from "@/app/assets/images/projectPreviewFolderIcon.svg";
-import projectPreviewFolderMoreIcon from "@/app/assets/images/projectPreviewFolderMoreIcon.svg";
-import libraryIconImage from "@/app/assets/images/LibraryBookIcon.svg";
-import { ContextMenu, ContextMenuAction } from '../layout/ContextMenu';
+import projectPreviewFolderIcon from "@/assets/images/projectPreviewFolderIcon.svg";
+import projectPreviewFolderMoreIcon from "@/assets/images/projectPreviewFolderMoreIcon.svg";
+import libraryIconImage from "@/assets/images/LibraryBookIcon.svg";
+import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
 import styles from './FolderCard.module.css';
 
 // Helper function to calculate character display width (Chinese = 2, English/Number = 1)

@@ -9,7 +9,7 @@
 import React from 'react';
 import { Modal } from 'antd';
 import Image from 'next/image';
-import batchEditingCloseIcon from '@/app/assets/images/BatchEditingCloseIcon.svg';
+import batchEditingCloseIcon from '@/assets/images/BatchEditingCloseIcon.svg';
 import styles from './LibraryAssetsTable.module.css';
 
 interface DeleteAssetModalProps {

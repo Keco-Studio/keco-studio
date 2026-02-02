@@ -9,8 +9,8 @@
 import { useState } from 'react';
 import Image from 'next/image';
 import { RestoreConfirmModal } from './RestoreConfirmModal';
-import versionItemRestoreIcon from '@/app/assets/images/VersionItemRestoreIcon.svg';
-import versionItemAlert from '@/app/assets/images/VersionItemAlert.svg';
+import versionItemRestoreIcon from '@/assets/images/VersionItemRestoreIcon.svg';
+import versionItemAlert from '@/assets/images/VersionItemAlert.svg';
 import styles from './RestoreButton.module.css';
 
 import type { LibraryVersion } from '@/lib/types/version';

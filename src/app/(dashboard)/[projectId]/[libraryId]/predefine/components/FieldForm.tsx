@@ -2,11 +2,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { Input, Button, Select } from 'antd';
 import Image from 'next/image';
-import type { FieldConfig, FieldType } from '../types';
-import { FIELD_TYPE_OPTIONS, getFieldTypeIcon } from '../utils';
-import predefineLabelAddIcon from '@/app/assets/images/predefineLabelAddIcon.svg';
-import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
-import predefineLabelConfigIcon from '@/app/assets/images/predefineLabelConfigIcon.svg';
+import type { FieldConfig, FieldType } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/types';
+import { FIELD_TYPE_OPTIONS, getFieldTypeIcon } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
+import predefineLabelAddIcon from '@/assets/images/predefineLabelAddIcon.svg';
+import predefineDragIcon from '@/assets/images/predefineDragIcon.svg';
+import predefineLabelConfigIcon from '@/assets/images/predefineLabelConfigIcon.svg';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useParams } from 'next/navigation';
 import { listLibraries, type Library } from '@/lib/services/libraryService';

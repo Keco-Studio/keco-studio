@@ -6,11 +6,11 @@ import { Library } from '@/lib/services/libraryService';
 import { Folder } from '@/lib/services/folderService';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
-import libraryIcon48 from "@/app/assets/images/projectPreviewListLibraryIcon.svg";
-import folderIcon from "@/app/assets/images/projectPreviewListFolderIcon.svg";
-import settingsIcon18 from "@/app/assets/images/settingsIcon18.svg";
-import moreOptionsIcon from "@/app/assets/images/moreOptionsIcon.svg";
-import { ContextMenu, ContextMenuAction } from '../layout/ContextMenu';
+import libraryIcon48 from "@/assets/images/projectPreviewListLibraryIcon.svg";
+import folderIcon from "@/assets/images/projectPreviewListFolderIcon.svg";
+import settingsIcon18 from "@/assets/images/settingsIcon18.svg";
+import moreOptionsIcon from "@/assets/images/moreOptionsIcon.svg";
+import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
 import styles from './LibraryListView.module.css';
 
 type LibraryWithAssetCount = Library & {

@@ -2,12 +2,12 @@
 import { useRef, useState, useEffect } from 'react';
 import { Button, Input, Select } from 'antd';
 import Image from 'next/image';
-import type { FieldConfig, FieldType } from '../types';
-import { FIELD_TYPE_OPTIONS, getFieldTypeIcon } from '../utils';
-import predefineLabelDelIcon from '@/app/assets/images/predefineLabelDelIcon.svg';
-import predefineLabelConfigIcon from '@/app/assets/images/predefineLabelConfigIcon.svg';
-import predefineDragIcon from '@/app/assets/images/predefineDragIcon.svg';
-import predefineTypeSwitchIcon from '@/app/assets/images/predefineTypeSwitchIcon.svg';
+import type { FieldConfig, FieldType } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/types';
+import { FIELD_TYPE_OPTIONS, getFieldTypeIcon } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
+import predefineLabelDelIcon from '@/assets/images/predefineLabelDelIcon.svg';
+import predefineLabelConfigIcon from '@/assets/images/predefineLabelConfigIcon.svg';
+import predefineDragIcon from '@/assets/images/predefineDragIcon.svg';
+import predefineTypeSwitchIcon from '@/assets/images/predefineTypeSwitchIcon.svg';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useParams } from 'next/navigation';
 import { listLibraries, type Library } from '@/lib/services/libraryService';

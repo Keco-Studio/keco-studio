@@ -9,9 +9,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NewProjectModal } from '@/components/projects/NewProjectModal';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { globalRequestCache } from '@/lib/hooks/useRequestCache';
-import projectEmptyIcon from '@/app/assets/images/projectEmptyIcon.svg';
-import plusHorizontal from '@/app/assets/images/plusHorizontal.svg';
-import plusVertical from '@/app/assets/images/plusVertical.svg';
+import projectEmptyIcon from '@/assets/images/projectEmptyIcon.svg';
+import plusHorizontal from '@/assets/images/plusHorizontal.svg';
+import plusVertical from '@/assets/images/plusVertical.svg';
 import Image from 'next/image';
 import styles from './page.module.css';
 

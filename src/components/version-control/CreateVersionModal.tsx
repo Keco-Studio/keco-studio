@@ -7,7 +7,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { createVersion, checkVersionNameExists } from '@/lib/services/versionService';
 import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
-import closeIcon from '@/app/assets/images/closeIcon32.svg';
+import closeIcon from '@/assets/images/closeIcon32.svg';
 import styles from './CreateVersionModal.module.css';
 
 interface CreateVersionModalProps {

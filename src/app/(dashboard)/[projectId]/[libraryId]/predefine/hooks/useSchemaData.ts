@@ -1,7 +1,7 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
-import type { SectionConfig, FieldType } from '../types';
-import { uid } from '../types';
+import type { SectionConfig, FieldType } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/types';
+import { uid } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/types';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 interface UseSchemaDataProps {

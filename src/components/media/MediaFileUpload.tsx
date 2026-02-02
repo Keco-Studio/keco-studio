@@ -15,8 +15,8 @@ import {
   type MediaFileMetadata,
 } from '@/lib/services/mediaFileUploadService';
 import styles from './MediaFileUpload.module.css';
-import assetFileUploadIcon from '@/app/assets/images/assetFileUploadIcon.svg';
-import assetFileIcon from '@/app/assets/images/assetFileIcon.svg';
+import assetFileUploadIcon from '@/assets/images/assetFileUploadIcon.svg';
+import assetFileIcon from '@/assets/images/assetFileIcon.svg';
 
 interface MediaFileUploadProps {
   value?: MediaFileMetadata | null;

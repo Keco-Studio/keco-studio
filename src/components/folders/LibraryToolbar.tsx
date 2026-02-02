@@ -2,11 +2,11 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import plusHorizontal from "@/app/assets/images/plusHorizontal.svg";
-import plusVertical from "@/app/assets/images/plusVertical.svg";
-import searchIcon from "@/app/assets/images/searchIcon.svg";
-import listViewIcon from "@/app/assets/images/listViewIcon.svg";
-import gridViewIcon from "@/app/assets/images/gridViewIcon.svg";
+import plusHorizontal from "@/assets/images/plusHorizontal.svg";
+import plusVertical from "@/assets/images/plusVertical.svg";
+import searchIcon from "@/assets/images/searchIcon.svg";
+import listViewIcon from "@/assets/images/listViewIcon.svg";
+import gridViewIcon from "@/assets/images/gridViewIcon.svg";
 import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
 import styles from './LibraryToolbar.module.css';
 

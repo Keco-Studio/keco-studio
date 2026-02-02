@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 import Image from 'next/image';
-import menuDivider from '@/app/assets/images/menuDivider.svg';
+import menuDivider from '@/assets/images/menuDivider.svg';
 import styles from './LibraryCardMenu.module.css';
 
 type LibraryCardMenuProps = {

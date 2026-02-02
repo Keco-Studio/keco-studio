@@ -21,7 +21,7 @@ import { useUpdateCollaboratorRole, useRemoveCollaborator } from '@/lib/hooks/us
 import { queryKeys } from '@/lib/utils/queryKeys';
 import type { Collaborator } from '@/lib/types/collaboration';
 import styles from './CollaboratorsList.module.css';
-import collaborationDeleteIcon from '@/app/assets/images/collaborationDeleteIcon.svg';
+import collaborationDeleteIcon from '@/assets/images/collaborationDeleteIcon.svg';
 
 interface CollaboratorsListProps {
   projectId: string;

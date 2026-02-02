@@ -2,7 +2,7 @@
 
 import React from 'react';
 import type { SectionConfig, PropertyConfig } from '@/lib/types/libraryAssets';
-import styles from '../LibraryAssetsTable.module.css';
+import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type TableHeaderGroup = {
   section: SectionConfig;

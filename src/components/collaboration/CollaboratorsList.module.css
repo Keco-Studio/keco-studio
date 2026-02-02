@@ -233,7 +233,7 @@
   border: 1px solid #d1d5db;
   border-radius: 6px;
   background-color: #ffffff;
-  background-image: url('@/app/assets/images/collaborationRoleSelectIcon.svg');
+  background-image: url('@/assets/images/collaborationRoleSelectIcon.svg');
   background-size: 14px 8px;
   background-repeat: no-repeat;
   background-position: right 10px center;

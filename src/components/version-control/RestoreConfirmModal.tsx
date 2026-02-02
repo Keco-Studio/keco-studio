@@ -15,7 +15,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { restoreVersion, checkVersionNameExists } from '@/lib/services/versionService';
 import Image from 'next/image';
-import closeIcon from '@/app/assets/images/closeIcon32.svg';
+import closeIcon from '@/assets/images/closeIcon32.svg';
 import styles from './RestoreConfirmModal.module.css';
 
 import type { LibraryVersion } from '@/lib/types/version';

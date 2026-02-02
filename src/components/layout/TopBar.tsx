@@ -9,16 +9,16 @@ import { useRef, useState, useEffect, useMemo } from 'react';
 import { Avatar } from 'antd';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import styles from './TopBar.module.css';
-import homeMorehorizontalIcon from '@/app/assets/images/homeMorehorizontalIcon.svg';
-import homeQuestionIcon from '@/app/assets/images/homeQuestionIcon.svg';
-import homeMessageIcon from '@/app/assets/images/loginMessageIcon.svg';
-import homeDefaultUserIcon from '@/app/assets/images/homeDefaultUserIcon.svg';
-import topbarPredefinePublishIcon from '@/app/assets/images/topbarPredefinePublishIcon.svg';
-import assetViewIcon from '@/app/assets/images/assetViewIcon.svg';
-import assetEditIcon from '@/app/assets/images/assetEditIcon.svg';
-import assetShareIcon from '@/app/assets/images/assetShareIcon.svg';
-import topBarBreadCrumbIcon from '@/app/assets/images/topBarBreadCrumbIcon.svg';
-import menuIcon from '@/app/assets/images/menuIcon36.svg';
+import homeMorehorizontalIcon from '@/assets/images/homeMorehorizontalIcon.svg';
+import homeQuestionIcon from '@/assets/images/homeQuestionIcon.svg';
+import homeMessageIcon from '@/assets/images/loginMessageIcon.svg';
+import homeDefaultUserIcon from '@/assets/images/homeDefaultUserIcon.svg';
+import topbarPredefinePublishIcon from '@/assets/images/topbarPredefinePublishIcon.svg';
+import assetViewIcon from '@/assets/images/assetViewIcon.svg';
+import assetEditIcon from '@/assets/images/assetEditIcon.svg';
+import assetShareIcon from '@/assets/images/assetShareIcon.svg';
+import topBarBreadCrumbIcon from '@/assets/images/topBarBreadCrumbIcon.svg';
+import menuIcon from '@/assets/images/menuIcon36.svg';
 
 type TopBarProps = {
   breadcrumb?: string[];

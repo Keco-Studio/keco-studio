@@ -329,7 +329,7 @@
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
-  background-image: url('@/app/assets/images/assetOptionsExpandIcon.svg');
+  background-image: url('@/assets/images/assetOptionsExpandIcon.svg');
   background-repeat: no-repeat;
   background-position: right 5px center;
   background-size: 20px;

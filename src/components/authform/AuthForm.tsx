@@ -3,14 +3,14 @@
 import { FormEvent, useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import loginImg from "@/app/assets/images/loginImg.png";
+import loginImg from "@/assets/images/loginImg.png";
 import { useSupabase } from "@/lib/SupabaseContext";
 import styles from "./AuthForm.module.css";
-import loginMessageIcon from "@/app/assets/images/loginMessageIcon.svg";
-import loginProductIcon from "@/app/assets/images/loginProductIcon.svg";
-import loginQuestionIcon from "@/app/assets/images/loginQuestionIcon.svg";
-import loginServiceIcon from "@/app/assets/images/loginServiceIcon.svg";
-import loginLeftArrowIcon from "@/app/assets/images/loginArrowIcon.svg";
+import loginMessageIcon from "@/assets/images/loginMessageIcon.svg";
+import loginProductIcon from "@/assets/images/loginProductIcon.svg";
+import loginQuestionIcon from "@/assets/images/loginQuestionIcon.svg";
+import loginServiceIcon from "@/assets/images/loginServiceIcon.svg";
+import loginLeftArrowIcon from "@/assets/images/loginArrowIcon.svg";
 
 type Mode = "login" | "register";
 

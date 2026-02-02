@@ -6,7 +6,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { createLibrary, checkLibraryNameExists } from '@/lib/services/libraryService';
 import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
-import closeIcon from '@/app/assets/images/closeIcon32.svg';
+import closeIcon from '@/assets/images/closeIcon32.svg';
 import styles from './NewLibraryModal.module.css';
 
 type NewLibraryModalProps = {

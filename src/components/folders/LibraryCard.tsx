@@ -4,11 +4,11 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { Tooltip } from 'antd';
 import { Library } from '@/lib/services/libraryService';
-import libraryCardIcon from "@/app/assets/images/LibraryCardIcon.svg";
-import predefineSettingIcon from "@/app/assets/images/predefineSettingIcon.svg";
-import moreOptionsIcon from "@/app/assets/images/moreOptionsIcon.svg";
-import tableThumbnail from "@/app/assets/images/tableThumbnail.svg";
-import { ContextMenu, ContextMenuAction } from '../layout/ContextMenu';
+import libraryCardIcon from "@/assets/images/LibraryCardIcon.svg";
+import predefineSettingIcon from "@/assets/images/predefineSettingIcon.svg";
+import moreOptionsIcon from "@/assets/images/moreOptionsIcon.svg";
+import tableThumbnail from "@/assets/images/tableThumbnail.svg";
+import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
 import styles from './LibraryCard.module.css';
 
 type LibraryCardProps = {

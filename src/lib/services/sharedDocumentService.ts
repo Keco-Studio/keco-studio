@@ -5,7 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 // import type { JSONContent } from '@tiptap/core';
-import type { SharedDocument } from '../types/shared-document';
+import type { SharedDocument } from '@/lib/types/shared-document';
 
 /**
  * Get document by docId

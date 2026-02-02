@@ -7,8 +7,8 @@ import { getProject, Project } from '@/lib/services/projectService';
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
-import projectIcon from '@/app/assets/images/projectIcon52.svg';
-import closeIcon from '@/app/assets/images/closeIcon32.svg';
+import projectIcon from '@/assets/images/projectIcon52.svg';
+import closeIcon from '@/assets/images/closeIcon32.svg';
 import styles from './NewProjectModal.module.css';
 
 type EditProjectModalProps = {
