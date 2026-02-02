@@ -4,6 +4,7 @@ import { createContext, useContext, ReactNode, useEffect, useMemo, useState, use
 import { useParams, usePathname, useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from './AuthContext';
+import { parseRouteParams } from '@/lib/utils/routeParams';
 import {
   verifyProjectAccess,
   verifyLibraryAccess,
@@ -23,6 +24,8 @@ type NavigationContextType = {
   currentLibraryId: string | null;
   currentAssetId: string | null;
   currentFolderId: string | null;
+  isPredefinePage: boolean;
+  isLibraryPage: boolean;
   showCreateProjectBreadcrumb: boolean;
   setShowCreateProjectBreadcrumb: (show: boolean) => void;
 };
@@ -47,17 +50,18 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   // Track if this is the initial fetch to avoid redirects during initial load
   const isInitialFetchRef = useRef<boolean>(true);
 
-  const currentProjectId = useMemo(() => (params.projectId as string) || null, [params.projectId]);
-  const currentLibraryId = useMemo(() => (params.libraryId as string) || null, [params.libraryId]);
-  const currentAssetId = useMemo(() => (params.assetId as string) || null, [params.assetId]);
-  // Check if we're on a folder page
-  const currentFolderIdFromUrl = useMemo(() => {
-    // Check if URL path contains /folder/[folderId]
-    const folderMatch = pathname.match(/\/([^\/]+)\/folder\/([^\/]+)/);
-    return folderMatch ? folderMatch[2] : null;
-  }, [pathname]);
+  const routeParams = useMemo(
+    () =>
+      parseRouteParams(pathname, params as Record<string, string | string[] | undefined>),
+    [pathname, params]
+  );
 
-  // Determine current folder ID: from URL or from library's folder_id
+  const currentProjectId = routeParams.projectId;
+  const currentLibraryId = routeParams.libraryId;
+  const currentAssetId = routeParams.assetId;
+  const currentFolderIdFromUrl = routeParams.folderId;
+
+  // Current folder: from URL (routeParams) or from library's folder_id
   const currentFolderId = useMemo(() => {
     return currentFolderIdFromUrl || libraryFolderId;
   }, [currentFolderIdFromUrl, libraryFolderId]);
@@ -527,6 +531,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     currentLibraryId,
     currentAssetId,
     currentFolderId,
+    isPredefinePage: routeParams.isPredefinePage,
+    isLibraryPage: routeParams.isLibraryPage,
     showCreateProjectBreadcrumb,
     setShowCreateProjectBreadcrumb,
   };
