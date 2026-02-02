@@ -28,7 +28,7 @@ import { useSidebarModals } from "./hooks/useSidebarModals";
 import { useSidebarContextMenu } from "./hooks/useSidebarContextMenu";
 import { SidebarTreeView } from "./components/SidebarTreeView";
 import { SidebarProjectsList } from "./components/SidebarProjectsList";
-import { SidebarLibrariesSection } from "./SidebarLibrariesSection";
+import { SidebarLibrariesSection } from "./components/SidebarLibrariesSection";
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ContextMenu } from "./ContextMenu";

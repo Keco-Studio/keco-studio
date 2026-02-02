@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { Tooltip } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import type { Library } from '@/lib/services/libraryService';
-import type { SidebarAssetRow } from './hooks/useSidebarAssets';
+import type { SidebarAssetRow } from '../hooks/useSidebarAssets';
 import { truncateText } from '@/lib/utils/truncateText';
 import libraryBookIcon from '@/assets/images/LibraryBookIcon.svg';
 import addProjectIcon from '@/assets/images/addProjectIcon.svg';
@@ -12,8 +12,8 @@ import sidebarFolderIcon3 from '@/assets/images/SidebarFloderIcon3.svg';
 import sidebarFolderIcon4 from '@/assets/images/SidebarFloderIcon4.svg';
 import sidebarFolderIcon5 from '@/assets/images/SidebarFolderInco5.svg';
 import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
-import { SidebarTreeView } from './components/SidebarTreeView';
-import styles from './Sidebar.module.css';
+import { SidebarTreeView } from './SidebarTreeView';
+import styles from '../Sidebar.module.css';
 
 export type SidebarCurrentIds = {
   projectId: string | null;

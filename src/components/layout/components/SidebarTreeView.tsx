@@ -6,6 +6,7 @@ import type { DataNode, EventDataNode } from 'antd/es/tree';
 import FolderOpenIcon from '@/assets/images/FolderOpenIcon.svg';
 import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import folderExpandIcon from '@/assets/images/folderExpandIcon.svg';
+import folderCollapseIcon from '@/assets/images/folderCollapseIcon.svg';
 import styles from '../Sidebar.module.css';
 
 export type SidebarTreeViewProps = {
@@ -36,13 +37,22 @@ export function SidebarTreeView({
     if (key.startsWith('folder-')) {
       if (!expanded) {
         return (
-          <Image
-            src={FolderCloseIcon}
-            alt="Closed folder"
-            width={24}
-            height={24}
-            style={{ display: 'block' }}
-          />
+          <div className={styles.folderSwitcherIcons}>
+            <Image
+              src={FolderCloseIcon}
+              alt="Closed folder"
+              width={24}
+              height={24}
+              className={styles.folderSwitcherBase}
+            />
+            <Image
+              src={folderCollapseIcon}
+              alt="Collapse"
+              width={8}
+              height={14}
+              className={styles.folderSwitcherHover}
+            />
+          </div>
         );
       }
       return (

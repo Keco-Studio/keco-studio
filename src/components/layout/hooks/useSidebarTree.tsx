@@ -11,6 +11,7 @@ import libraryBookIcon from '@/assets/images/LibraryBookIcon.svg';
 import PredefineNewIcon from '@/assets/images/PredefineNewIcon.svg';
 import PredefineNewClick from '@/assets/images/PredefineNewClick.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
+import folderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import sidebarFolderIcon3 from '@/assets/images/SidebarFloderIcon3.svg';
 import styles from '../Sidebar.module.css';
 
@@ -133,6 +134,7 @@ export function useSidebarTree(
         };
       });
 
+      const hasNoLibraries = folderLibraries.length === 0;
       return {
         title: (
           <div
@@ -141,6 +143,11 @@ export function useSidebarTree(
             onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
           >
             <div className={styles.itemMain}>
+              {hasNoLibraries && (
+                <div className={styles.folderIconPlaceholder} aria-hidden>
+                  <Image src={folderCloseIcon} alt="" width={24} height={24} />
+                </div>
+              )}
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={folder.name}>
                 {truncateText(folder.name, 20)}
               </span>
