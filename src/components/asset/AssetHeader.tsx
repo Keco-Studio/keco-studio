@@ -16,6 +16,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { Avatar, Tooltip } from 'antd';
 import Image from 'next/image';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
+import { showSuccessToast } from '@/lib/utils/toast';
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
 import styles from './AssetHeader.module.css';
@@ -341,8 +342,9 @@ export function AssetHeader({
         userRole={userRole}
         open={showInviteModal}
         onClose={() => setShowInviteModal(false)}
-        onSuccess={() => {
-          // Handle success (e.g., refresh collaborators list)
+        onSuccess={(email: string, message: string, autoAccepted: boolean) => {
+          // Show success message using custom toast
+          showSuccessToast(message);
         }}
         title="Invite new collaborator"
       />

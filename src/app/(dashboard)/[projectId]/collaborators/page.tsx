@@ -21,6 +21,7 @@ import { queryKeys } from '@/lib/utils/queryKeys';
 import Image from 'next/image';
 import CollaboratorsList from '@/components/collaboration/CollaboratorsList';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
+import { showSuccessToast } from '@/lib/utils/toast';
 import type { Collaborator } from '@/lib/types/collaboration';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import collaborationReturnIcon from '@/assets/images/collaborationReturnIcon.svg';
@@ -578,7 +579,10 @@ export default function CollaboratorsPage() {
           userRole={userRole}
           open={inviteModalOpen}
           onClose={() => setInviteModalOpen(false)}
-          onSuccess={async (invitedEmail) => {
+          onSuccess={async (invitedEmail: string, message: string, autoAccepted: boolean) => {
+            // Show success message using custom toast
+            showSuccessToast(message);
+            
             // Refresh data and get the updated list
             const updatedCollaborators = await fetchData();
             // Find the newly invited user by email in the fresh data
@@ -589,7 +593,6 @@ export default function CollaboratorsPage() {
               if (newCollaborator) {
                 // Highlight the newly invited user
                 setHighlightUserId(newCollaborator.userId);
-              } else {
               }
             }
           }}

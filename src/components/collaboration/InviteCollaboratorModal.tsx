@@ -12,7 +12,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Modal, Form, Input, Select, Button, Alert, message } from 'antd';
+import { Modal, Form, Input, Select, Button, Alert } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
 import { canUserInviteWithRole } from '@/lib/types/collaboration';
@@ -24,7 +24,7 @@ interface InviteCollaboratorModalProps {
   userRole: CollaboratorRole;
   open: boolean;
   onClose: () => void;
-  onSuccess?: (invitedEmail?: string) => void;
+  onSuccess?: (invitedEmail: string, message: string, autoAccepted: boolean) => void;
   title?: string; // Custom modal title
 }
 
@@ -109,11 +109,12 @@ export function InviteCollaboratorModal({
 
       if (result.success) {
         const invitedEmail = email.trim().toLowerCase();
+        const successMessage = result.autoAccepted 
+          ? (result.message || 'Collaborator added successfully!')
+          : 'Invite sent';
         
-        // Show different message based on whether user was auto-accepted
+        // Clear caches and trigger events when user is auto-accepted
         if (result.autoAccepted) {
-          message.success(result.message || 'Collaborator added successfully!');
-          
           // Clear caches when user is auto-accepted as collaborator          
           // 1. Clear globalRequestCache for projects list
           try {
@@ -130,20 +131,15 @@ export function InviteCollaboratorModal({
           // 2. Dispatch event to trigger React Query cache refresh
           // This will refresh the inviter's Sidebar, but won't affect the invited user's browser
           window.dispatchEvent(new CustomEvent('projectCreated'));
-        } else {
-          // Show toast message before closing modal
-          message.success('Invite sent');
         }
         
         // Reset form and close modal
         form.resetFields();
         onClose();
         
-        // Call onSuccess callback after modal is closed
-        // Add a small delay to ensure state updates are processed
-        setTimeout(() => {
-          onSuccess?.(invitedEmail);
-        }, 100);
+        // Call onSuccess callback with message to display
+        // Pass message to parent component for display
+        onSuccess?.(invitedEmail, successMessage, result.autoAccepted);
       } else {
         setError(result.error || 'Failed to send invitation');
       }

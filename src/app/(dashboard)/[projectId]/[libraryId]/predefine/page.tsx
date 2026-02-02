@@ -410,12 +410,6 @@ function PredefinePageContent() {
         detail: { libraryId }
       }));
 
-      // Clear pending fields and temp section names after successful save
-      const emptyMap = new Map();
-      setPendingFields(emptyMap);
-      pendingFieldsRef.current = emptyMap;
-      setTempSectionNames(new Map());
-
       
       // If creating new section, exit creation mode and reload sections
       if (isCreatingNewSection) {
@@ -436,9 +430,17 @@ function PredefinePageContent() {
           setActiveSectionId(currentActiveId);
         }
       } else {
-        // No reload needed - just update local state
-        // The sections are already updated via setSections in the handlers
+        // No reload needed - update local state with the applied changes
+        // This ensures tempSectionNames and pendingFields changes are reflected in the UI
+        setSections(finalSections);
       }
+      
+      // Clear pending fields and temp section names after successful save
+      // Do this AFTER updating sections to avoid UI flickering
+      const emptyMap = new Map();
+      setPendingFields(emptyMap);
+      pendingFieldsRef.current = emptyMap;
+      setTempSectionNames(new Map());
     } catch (e: any) {
       message.error(e?.message || 'Failed to save');
       setErrors([e?.message || 'Failed to save']);
