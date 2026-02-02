@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -29,8 +29,13 @@ type AssetMode = 'view' | 'edit';
 
 export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowCreateProjectBreadcrumb }: TopBarProps) {
   const router = useRouter();
-  const pathname = usePathname();
-  const { breadcrumbs, currentAssetId, showCreateProjectBreadcrumb: contextShowCreateProjectBreadcrumb } = useNavigation();
+  const {
+    breadcrumbs,
+    currentAssetId,
+    currentProjectId,
+    isPredefinePage,
+    showCreateProjectBreadcrumb: contextShowCreateProjectBreadcrumb,
+  } = useNavigation();
   const showCreateProjectBreadcrumb = propShowCreateProjectBreadcrumb ?? contextShowCreateProjectBreadcrumb;
   const { userProfile, signOut } = useAuth();
   const supabase = useSupabase();
@@ -78,36 +83,30 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   // Fetch user role for current project
   useEffect(() => {
     const fetchUserRole = async () => {
-      // Extract projectId from pathname
-      const parts = pathname.split('/').filter(Boolean);
-      const projectId = parts[0] || null;
-      
-      // Check if projectId is a valid UUID (not "projects" or other route segments)
+      const projectId = currentProjectId;
       const isValidUUID = projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
-      
+
       if (!isValidUUID || !userProfile) {
         setUserRole(null);
         return;
       }
-      
+
       try {
-        // Get session for authorization
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
           setUserRole(null);
           return;
         }
-        
-        // Call API to get user role
+
         const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
           headers: {
             'Authorization': `Bearer ${session.access_token}`,
           },
         });
-        
+
         if (roleResponse.ok) {
           const roleResult = await roleResponse.json();
-          setUserRole(roleResult.role || null);
+          setUserRole(roleResult.role ?? null);
         } else {
           setUserRole(null);
         }
@@ -116,24 +115,20 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         setUserRole(null);
       }
     };
-    
+
     fetchUserRole();
-  }, [pathname, userProfile, supabase]);
+  }, [currentProjectId, userProfile, supabase]);
 
   // Real-time collaboration: Subscribe to collaborators table for permission updates
   useEffect(() => {
-    // Extract projectId from pathname
-    const parts = pathname.split('/').filter(Boolean);
-    const projectId = parts[0] || null;
-    
-    // Check if projectId is a valid UUID
+    const projectId = currentProjectId;
     const isValidUUID = projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
-    
+
     if (!isValidUUID || !userProfile) {
       console.log('[TopBar] Skipping collaborators subscription - missing projectId or userProfile');
       return;
     }
-    
+
     console.log('[TopBar] Setting up collaborators subscription for project:', projectId);
     
     // Subscribe to project_collaborators table for real-time permission updates
@@ -199,7 +194,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       console.log('[TopBar] Cleaning up collaborators subscription');
       supabase.removeChannel(collaboratorsChannel);
     };
-  }, [pathname, userProfile, supabase]);
+  }, [currentProjectId, userProfile, supabase]);
 
   // Listen to asset page mode updates (for create/view/edit detection)
   useEffect(() => {
@@ -264,7 +259,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     router.push('/projects');
   };
 
-  const isPredefine = pathname?.includes('/predefine');
+  const isPredefine = isPredefinePage;
   const isAssetDetail = !!currentAssetId;
 
   const handlePredefineCancelOrDelete = () => {

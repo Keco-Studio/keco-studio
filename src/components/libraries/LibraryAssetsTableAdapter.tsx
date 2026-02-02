@@ -20,9 +20,13 @@ import type { AssetRow } from '@/lib/types/libraryAssets';
 type AdapterProps = Omit<
   LibraryAssetsTableProps,
   'rows' | 'onSaveAsset' | 'onUpdateAsset' | 'onDeleteAsset' | 'currentUser' | 'enableRealtime' | 'presenceTracking'
->;
+> & {
+  /** When set (e.g. viewing a version snapshot), table shows these rows instead of context. */
+  overrideRows?: AssetRow[] | null;
+};
 
 export function LibraryAssetsTableAdapter(props: AdapterProps) {
+  const { overrideRows, ...restProps } = props;
   const params = useParams();
   const libraryId = params.libraryId as string;
   const { userProfile } = useAuth();
@@ -36,8 +40,8 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
     setActiveField,
   } = useLibraryData();
   
-  // Convert context data to LibraryAssetsTable props format
-  const rows = useMemo<AssetRow[]>(() => {
+  // Use override rows (e.g. version snapshot) when provided; otherwise context data
+  const rowsFromContext = useMemo<AssetRow[]>(() => {
     return allAssets.map(asset => ({
       id: asset.id,
       libraryId: asset.libraryId,
@@ -46,6 +50,8 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       created_at: asset.created_at,
     }));
   }, [allAssets]);
+
+  const rows = overrideRows !== undefined && overrideRows !== null ? overrideRows : rowsFromContext;
   
   // Adapt createAsset to onSaveAsset format
   const handleSaveAsset = useCallback(async (
@@ -124,7 +130,7 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   
   return (
     <LibraryAssetsTable
-      {...props}
+      {...restProps}
       rows={rows}
       onSaveAsset={handleSaveAsset}
       onUpdateAsset={handleUpdateAsset}

@@ -624,6 +624,7 @@ export default function LibraryPage() {
             }
             sections={tableSections}
             properties={tableProperties}
+            overrideRows={versionAssetRows}
           />
         </div>
 
