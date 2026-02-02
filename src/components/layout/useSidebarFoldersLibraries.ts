@@ -12,7 +12,7 @@ function isValidProjectId(projectId: string | null): boolean {
 }
 
 /**
- * 当前项目下的 folders + libraries 请求与缓存，供 Sidebar 使用。
+ * Fetches and caches folders + libraries for the current project in the Sidebar.
  */
 export function useSidebarFoldersLibraries(currentProjectId: string | null) {
   const supabase = useSupabase();

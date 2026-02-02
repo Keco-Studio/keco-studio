@@ -4,13 +4,10 @@ import projectIcon from "@/assets/images/projectIcon.svg";
 import libraryBookIcon from "@/assets/images/LibraryBookIcon.svg";
 import loginProductIcon from "@/assets/images/loginProductIcon.svg";
 import predefineSettingIcon from "@/assets/images/predefineSettingIcon.svg";
-import PredefineNewIcon from "@/assets/images/PredefineNewIcon.svg";
-import PredefineNewClick from "@/assets/images/PredefineNewClick.svg";
 import FolderOpenIcon from "@/assets/images/FolderOpenIcon.svg";
 import FolderCloseIcon from "@/assets/images/FolderCloseIcon.svg";
 import folderExpandIcon from "@/assets/images/folderExpandIcon.svg";
 import folderCollapseIcon from "@/assets/images/folderCollapseIcon.svg";
-import FolderAddLibIcon from "@/assets/images/FolderAddLibIcon.svg";
 import plusHorizontal from "@/assets/images/plusHorizontal.svg";
 import plusVertical from "@/assets/images/plusVertical.svg";
 import createProjectIcon from "@/assets/images/createProjectIcon.svg";
@@ -25,7 +22,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Tree, Tooltip } from "antd";
-import { DataNode, EventDataNode } from "antd/es/tree";
+import { EventDataNode } from "antd/es/tree";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@/lib/contexts/NavigationContext";
 import { useSupabase } from "@/lib/SupabaseContext";
@@ -43,10 +40,13 @@ import { Library, deleteLibrary } from "@/lib/services/libraryService";
 import { Folder, deleteFolder } from "@/lib/services/folderService";
 import { useSidebarProjects } from "./useSidebarProjects";
 import { useSidebarFoldersLibraries } from "./useSidebarFoldersLibraries";
+import { useSidebarModals } from "./useSidebarModals";
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ContextMenu, ContextMenuAction } from "./ContextMenu";
 import type { UserProfileDisplay } from "@/lib/types/user";
+import { truncateText } from "@/lib/utils/truncateText";
+import { useSidebarTree } from "./useSidebarTree";
 import styles from "./Sidebar.module.css";
 
 type SidebarProps = {
@@ -55,40 +55,6 @@ type SidebarProps = {
 };
 
 type AssetRow = { id: string; name: string; library_id: string };
-
-// Helper function to calculate character display width (Chinese = 2, English/Number = 1)
-const getCharWidth = (char: string): number => {
-  // Check if character is Chinese, Japanese, Korean, or other wide characters
-  const code = char.charCodeAt(0);
-  return (code >= 0x4E00 && code <= 0x9FFF) || // CJK Unified Ideographs
-         (code >= 0x3400 && code <= 0x4DBF) || // CJK Extension A
-         (code >= 0x20000 && code <= 0x2A6DF) || // CJK Extension B
-         (code >= 0x3040 && code <= 0x309F) || // Hiragana
-         (code >= 0x30A0 && code <= 0x30FF) || // Katakana
-         (code >= 0xAC00 && code <= 0xD7AF) ? 2 : 1; // Hangul
-};
-
-// Helper function to calculate total display width of a string
-const getStringWidth = (text: string): number => {
-  return text.split('').reduce((width, char) => width + getCharWidth(char), 0);
-};
-
-// Helper function to truncate text with ellipsis based on display width
-const truncateText = (text: string, maxWidth: number): string => {
-  let width = 0;
-  let result = '';
-  
-  for (const char of text) {
-    const charWidth = getCharWidth(char);
-    if (width + charWidth > maxWidth) {
-      return result + '...';
-    }
-    result += char;
-    width += charWidth;
-  }
-  
-  return result;
-};
 
 export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const router = useRouter();
@@ -181,17 +147,35 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   // data state - managed by React Query, no need for manual state
   const [assets, setAssets] = useState<Record<string, AssetRow[]>>({});
 
-  const [showProjectModal, setShowProjectModal] = useState(false);
-  const [showEditProjectModal, setShowEditProjectModal] = useState(false);
-  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
-  const [showLibraryModal, setShowLibraryModal] = useState(false);
-  const [showEditLibraryModal, setShowEditLibraryModal] = useState(false);
-  const [editingLibraryId, setEditingLibraryId] = useState<string | null>(null);
-  const [showFolderModal, setShowFolderModal] = useState(false);
-  const [showEditFolderModal, setShowEditFolderModal] = useState(false);
-  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
-  const [showEditAssetModal, setShowEditAssetModal] = useState(false);
-  const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
+  const modals = useSidebarModals();
+  const {
+    showProjectModal,
+    showEditProjectModal,
+    editingProjectId,
+    showLibraryModal,
+    showEditLibraryModal,
+    editingLibraryId,
+    showFolderModal,
+    showEditFolderModal,
+    editingFolderId,
+    showEditAssetModal,
+    editingAssetId,
+    openNewProject,
+    closeProjectModal,
+    openEditProject,
+    closeEditProjectModal,
+    openNewLibrary,
+    closeLibraryModal,
+    openEditLibrary,
+    closeEditLibraryModal,
+    openNewFolder,
+    closeFolderModal,
+    openEditFolder,
+    closeEditFolderModal,
+    openEditAsset,
+    closeEditAssetModal,
+  } = modals;
+
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
@@ -1197,261 +1181,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [supabase, currentIds.projectId, currentIds.folderId, currentIds.libraryId, libraries, queryClient, router]);
 
-  const treeData: DataNode[] = useMemo(() => {
-    if (!currentIds.projectId) return [];
-    
-    // Filter folders and libraries for current project
-    const projectFolders = folders.filter((f) => f.project_id === currentIds.projectId);
-    const projectLibraries = libraries.filter((lib) => lib.project_id === currentIds.projectId);
-    
-    // Group libraries by folder_id
-    // Use string keys for Map to ensure proper matching
-    const librariesByFolder = new Map<string, Library[]>();
-    projectLibraries.forEach((lib) => {
-      // Convert null to empty string for root libraries, or use folder_id as string
-      // Ensure folder_id is converted to string (handle null case)
-      const folderId = lib.folder_id ? String(lib.folder_id) : '';
-      if (!librariesByFolder.has(folderId)) {
-        librariesByFolder.set(folderId, []);
-      }
-      librariesByFolder.get(folderId)!.push(lib);
-    });
-    
-    // Debug: log libraries grouping
-    if (process.env.NODE_ENV === 'development') {
-    
-    }
-    
-    // Build folder node (simplified: no nested folders, all folders are root level)
-    const buildFolderNode = (folder: Folder): DataNode => {
-      // Get libraries for this folder (folder.id is string, so it matches Map key)
-      // Ensure folder.id is converted to string for Map lookup
-      const folderLibraries = librariesByFolder.get(String(folder.id)) || [];
-      
-      // Debug: log folder node building
-      if (process.env.NODE_ENV === 'development') {
-      }
-      
-      const children: DataNode[] = [
-        ...folderLibraries.map((lib) => {
-          const libProjectId = lib.project_id;
-          // Show selected state when on library page OR when viewing an asset in this library
-          const isCurrentLibrary = currentIds.libraryId === lib.id && (currentIds.isLibraryPage || !!currentIds.assetId || currentIds.isPredefinePage);
-          // Show icons only when viewing an asset (not on library page or predefine)
-          const showAssetPageIcons = currentIds.libraryId === lib.id && !!currentIds.assetId;
-          return {
-            title: (
-              <div 
-                className={`${styles.itemRow} ${styles.libraryRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
-                data-library-under-folder
-                onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
-              >
-                <div className={styles.itemMain}>
-                  {showAssetPageIcons && (
-                    <button
-                      className={styles.libraryBackButton}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (currentIds.projectId) {
-                          router.push(`/${currentIds.projectId}`);
-                        }
-                      }}
-                      title="Back to tree view"
-                    >
-                      <Image
-                        src={sidebarFolderIcon3}
-                        alt="Back"
-                        width={24}
-                        height={24}
-                      />
-                    </button>
-                  )}
-                  <div className={styles.libraryIconContainer}>
-                    <Image
-                      src={libraryBookIcon}
-                      alt="Library"
-                      width={24}
-                      height={24}
-                    />
-                  </div>
-                  <span className={styles.itemText} title={lib.name}>{truncateText(lib.name, 15)}</span>
-                </div>
-                <div className={styles.itemActions}>
-              {userRole === 'admin' && (
-                    <Tooltip
-                      title="Predefine asset here"
-                      placement="top"
-                      color="#8B5CF6"
-                    >
-                      <button
-                        className={styles.iconButton}
-                        aria-label="Library sections"
-                        onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
-                      >
-                        <Image
-                      src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
-                          alt="Predefine"
-                          width={22}
-                          height={22}
-                        />
-                      </button>
-                    </Tooltip>
-                  )}
-                </div>
-              </div>
-            ),
-            key: `library-${lib.id}`,
-            isLeaf: true,
-            children: undefined,
-          };
-        }),
-      ];
-      
-      return {
-        title: (
-          <div 
-            className={`${styles.itemRow} ${styles.folderRow}`}
-            data-folder-row
-            onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
-          >
-            <div className={styles.itemMain}>
-              <span className={styles.itemText} style={{ fontWeight: 500 }} title={folder.name}>{truncateText(folder.name, 20)}</span>
-            </div>
-            <div className={styles.itemActions}>
-              {userRole === 'admin' && (
-                <button
-                  type="button"
-                  className={styles.folderAddLibButton}
-                  aria-label="Create new library"
-                  title="Create new library"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (!currentIds.projectId) {
-                      setError('Please select a project first');
-                      return;
-                    }
-                    setSelectedFolderId(folder.id);
-                    setShowLibraryModal(true);
-                  }}
-                >
-                  <Image src={FolderAddLibIcon} alt="" width={24} height={24} />
-                </button>
-              )}
-            </div>
-          </div>
-        ),
-        key: `folder-${folder.id}`,
-        isLeaf: children.length === 0, // Only show expand/collapse if has children
-        children: children.length > 0 ? children : undefined,
-      };
-    };
-    
-    const result: DataNode[] = [];
-    
-    // Add all folders (all folders are root level now, no nesting)
-    projectFolders.forEach((folder) => {
-      result.push(buildFolderNode(folder));
-    });
-    
-    // Add libraries without folder (folder_id is null, stored as empty string in Map)
-    const rootLibraries = librariesByFolder.get('') || [];
-    rootLibraries.forEach((lib) => {
-      const libProjectId = lib.project_id;
-      // Show selected state when on library page OR when viewing an asset in this library
-      const isCurrentLibrary = currentIds.libraryId === lib.id && (currentIds.isLibraryPage || !!currentIds.assetId || currentIds.isPredefinePage);
-      // Show icons only when viewing an asset (not on library page or predefine)
-      const showAssetPageIcons = currentIds.libraryId === lib.id && !!currentIds.assetId;
-      result.push({
-        title: (
-          <div 
-            className={`${styles.itemRow} ${styles.libraryRow} ${styles.rootLibraryRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
-            onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
-          >
-            <div className={styles.itemMain}>
-              {showAssetPageIcons && (
-                <button
-                  className={styles.libraryBackButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (currentIds.projectId) {
-                      router.push(`/${currentIds.projectId}`);
-                    }
-                  }}
-                  title="Back to tree view"
-                >
-                  <Image
-                    src={sidebarFolderIcon3}
-                    alt="Back"
-                    width={24}
-                    height={24}
-                  />
-                </button>
-              )}
-              <div className={styles.libraryIconContainer}>
-                <Image
-                  src={libraryBookIcon}
-                  alt="Library"
-                  width={24}
-                  height={24}
-                />
-              </div>
-              <span className={styles.itemText} style={{ fontWeight: 500 }} title={lib.name}>{truncateText(lib.name, 15)}</span>
-            </div>
-            <div className={styles.itemActions}>
-              {userRole === 'admin' && (
-                <Tooltip
-                  title="Predefine asset here"
-                  placement="top"
-                  color="#8B5CF6"
-                >
-                  <button
-                    className={styles.iconButton}
-                    aria-label="Library sections"
-                    onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
-                  >
-                    <Image
-                      src={currentIds.isPredefinePage && currentIds.libraryId === lib.id ? PredefineNewClick : PredefineNewIcon}
-                      alt="Predefine"
-                      width={22}
-                      height={22}
-                    />
-                  </button>
-                </Tooltip>
-              )}
-            </div>
-          </div>
-        ),
-        key: `library-${lib.id}`,
-        isLeaf: true,
-        children: undefined,
-      });
-    });
-    
-    return result;
-  }, [folders, libraries, assets, currentIds.projectId, currentIds.libraryId, currentIds.isLibraryPage, currentIds.assetId, currentIds.isPredefinePage, handleLibraryPredefineClick, router, userRole]);
-
-  // Only highlight the current item: folder when on folder page, library when on library/predefine/asset page (no parent folder highlight)
-  const selectedKey = useMemo(() => {
-    const keys: string[] = [];
-
-    // Folder: only when we are on the folder page (URL has /folder/id), not when viewing a library inside a folder
-    if (currentIds.folderId && !currentIds.libraryId) {
-      keys.push(`folder-${currentIds.folderId}`);
-    }
-
-    // Library or asset: highlight only library/asset, not parent folder
-    if (currentIds.libraryId) {
-      if (currentIds.assetId && currentIds.assetId !== 'new' && currentIds.assetId !== 'predefine') {
-        keys.push(`asset-${currentIds.assetId}`);
-        keys.push(`library-${currentIds.libraryId}`);
-      } else if (currentIds.isLibraryPage || currentIds.isPredefinePage) {
-        keys.push(`library-${currentIds.libraryId}`);
-      }
-    }
-
-    return keys;
-  }, [currentIds.folderId, currentIds.libraryId, currentIds.assetId, currentIds.isLibraryPage, currentIds.isPredefinePage]);
-
   const onSelect = async (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
     if (key.startsWith('folder-')) {
@@ -1573,6 +1302,21 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     });
   };
 
+  const { treeData, selectedKeys } = useSidebarTree(
+    currentIds,
+    folders,
+    libraries,
+    {
+      router,
+      userRole,
+      onContextMenu: handleContextMenu,
+      openNewLibrary,
+      setSelectedFolderId,
+      setError,
+      onLibraryPredefineClick: handleLibraryPredefineClick,
+    }
+  );
+
   const handleContextMenuAction = (action: ContextMenuAction) => {
     if (!contextMenu) return;
     
@@ -1586,23 +1330,19 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Handle rename action (Project info / Library info / Folder rename)
     if (action === 'rename') {
       if (contextMenu.type === 'project') {
-        setEditingProjectId(contextMenu.id);
-        setShowEditProjectModal(true);
+        openEditProject(contextMenu.id);
         setContextMenu(null);
         return;
       } else if (contextMenu.type === 'library') {
-        setEditingLibraryId(contextMenu.id);
-        setShowEditLibraryModal(true);
+        openEditLibrary(contextMenu.id);
         setContextMenu(null);
         return;
       } else if (contextMenu.type === 'folder') {
-        setEditingFolderId(contextMenu.id);
-        setShowEditFolderModal(true);
+        openEditFolder(contextMenu.id);
         setContextMenu(null);
         return;
       } else if (contextMenu.type === 'asset') {
-        setEditingAssetId(contextMenu.id);
-        setShowEditAssetModal(true);
+        openEditAsset(contextMenu.id);
         setContextMenu(null);
         return;
       }
@@ -1761,7 +1501,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   };
   const handleProjectCreated = async (projectId: string, defaultFolderId: string) => {
-    setShowProjectModal(false);
+    closeProjectModal();
     
     // Immediately invalidate React Query cache to refresh the sidebar
     queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -1789,7 +1529,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   const handleLibraryCreated = async (libraryId: string) => {
-    setShowLibraryModal(false);
+    closeLibraryModal();
     const createdFolderId = selectedFolderId;
     setSelectedFolderId(null); // Clear selection after creation
     
@@ -1806,7 +1546,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   const handleFolderCreated = async (folderId: string) => {
-    setShowFolderModal(false);
+    closeFolderModal();
     setSelectedFolderId(null); // Clear selection after creation
     
     // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
@@ -1838,7 +1578,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       return;
     }
     // selectedFolderId is already set when button is clicked
-    setShowFolderModal(true);
+    openNewFolder();
   };
 
   const handleCreateLibrary = () => {
@@ -1848,7 +1588,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       return;
     }
     // selectedFolderId is already set when button is clicked
-    setShowLibraryModal(true);
+    openNewLibrary();
   };
 
   const handleLogoClick = () => {
@@ -1900,7 +1640,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               <span>Projects</span>
               <button
                 className={styles.addButton}
-                onClick={() => setShowProjectModal(true)}
+                onClick={() => openNewProject()}
                 title="New Project"
               >
                 <Image
@@ -1960,7 +1700,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               {!loadingProjects && projects.length === 0 && (
                 <button
                   className={styles.createProjectButton}
-                  onClick={() => setShowProjectModal(true)}
+                  onClick={() => openNewProject()}
                 >
                   <Image
                     src={createProjectIcon}
@@ -2129,7 +1869,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                         className={styles.tree}
                         showIcon={false}
                         treeData={treeData}
-                        selectedKeys={selectedKey}
+                        selectedKeys={selectedKeys}
                         onSelect={onSelect}
                         onExpand={onExpand}
                         switcherIcon={switcherIcon}
@@ -2163,7 +1903,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       <NewProjectModal
         open={showProjectModal}
-        onClose={() => setShowProjectModal(false)}
+        onClose={closeProjectModal}
         onCreated={handleProjectCreated}
       />
 
@@ -2171,10 +1911,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         <EditProjectModal
           open={showEditProjectModal}
           projectId={editingProjectId}
-          onClose={() => {
-            setShowEditProjectModal(false);
-            setEditingProjectId(null);
-          }}
+          onClose={closeEditProjectModal}
           onUpdated={() => {
             // Cache will be invalidated by the projectUpdated event listener
           }}
@@ -2183,7 +1920,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       <NewLibraryModal
         open={showLibraryModal}
-        onClose={() => setShowLibraryModal(false)}
+        onClose={closeLibraryModal}
         projectId={currentIds.projectId || ''}
         folderId={selectedFolderId}
         onCreated={handleLibraryCreated}
@@ -2193,10 +1930,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         <EditLibraryModal
           open={showEditLibraryModal}
           libraryId={editingLibraryId}
-          onClose={() => {
-            setShowEditLibraryModal(false);
-            setEditingLibraryId(null);
-          }}
+          onClose={closeEditLibraryModal}
           onUpdated={() => {
             // Cache will be invalidated by the libraryUpdated event listener
           }}
@@ -2205,7 +1939,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       <NewFolderModal
         open={showFolderModal}
-        onClose={() => setShowFolderModal(false)}
+        onClose={closeFolderModal}
         projectId={currentIds.projectId || ''}
         onCreated={handleFolderCreated}
       />
@@ -2214,10 +1948,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         <EditFolderModal
           open={showEditFolderModal}
           folderId={editingFolderId}
-          onClose={() => {
-            setShowEditFolderModal(false);
-            setEditingFolderId(null);
-          }}
+          onClose={closeEditFolderModal}
           onUpdated={() => {
             // Cache will be invalidated by the folderUpdated event listener
           }}
@@ -2228,10 +1959,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         <EditAssetModal
           open={showEditAssetModal}
           assetId={editingAssetId}
-          onClose={() => {
-            setShowEditAssetModal(false);
-            setEditingAssetId(null);
-          }}
+          onClose={closeEditAssetModal}
           onUpdated={() => {
             // Cache will be invalidated by the assetUpdated event listener
           }}

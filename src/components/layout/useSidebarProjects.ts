@@ -5,8 +5,8 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { listProjects, Project } from '@/lib/services/projectService';
 
 /**
- * 项目列表请求与缓存，供 Sidebar 使用。
- * queryKey 与 Projects 页一致，便于共享缓存。
+ * Fetches and caches the project list for the Sidebar.
+ * Uses the same queryKey as the Projects page for cache sharing.
  */
 export function useSidebarProjects(userId?: string | null) {
   const supabase = useSupabase();
