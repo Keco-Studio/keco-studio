@@ -26,7 +26,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { Tree, Tooltip } from "antd";
 import { DataNode, EventDataNode } from "antd/es/tree";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@/lib/contexts/NavigationContext";
 import { useSupabase } from "@/lib/SupabaseContext";
 import { queryKeys } from "@/lib/utils/queryKeys";
@@ -38,9 +38,11 @@ import { NewFolderModal } from "@/components/folders/NewFolderModal";
 import { EditFolderModal } from "@/components/folders/EditFolderModal";
 import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
-import { listProjects, Project, deleteProject } from "@/lib/services/projectService";
-import { listLibraries, Library, deleteLibrary } from "@/lib/services/libraryService";
-import { listFolders, Folder, deleteFolder } from "@/lib/services/folderService";
+import { Project, deleteProject } from "@/lib/services/projectService";
+import { Library, deleteLibrary } from "@/lib/services/libraryService";
+import { Folder, deleteFolder } from "@/lib/services/folderService";
+import { useSidebarProjects } from "./useSidebarProjects";
+import { useSidebarFoldersLibraries } from "./useSidebarFoldersLibraries";
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ContextMenu, ContextMenuAction } from "./ContextMenu";
@@ -205,58 +207,21 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     id: string;
   } | null>(null);
 
-  // Use React Query to fetch projects list; queryKey shared with Projects page.
-  // Pass userProfile?.id when available to skip getCurrentUserId/getUser(), avoiding slow auth on first login.
   const {
-    data: projects = [],
+    projects,
     isLoading: loadingProjects,
     error: projectsError,
     refetch: refetchProjects,
-  } = useQuery({
-    queryKey: ['projects'],
-    queryFn: () => listProjects(supabase, userProfile?.id),
-    enabled: true,
-    staleTime: 2 * 60 * 1000,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-  });
+  } = useSidebarProjects(userProfile?.id);
 
-  // Use React Query to fetch folders and libraries
-  // Only execute query when projectId exists and is a valid UUID
   const {
-    data: foldersAndLibraries,
+    folders,
+    libraries,
     isLoading: loadingFoldersAndLibraries,
-  } = useQuery({
-    queryKey: ['folders-libraries', currentIds.projectId],
-    queryFn: async () => {
-      if (!currentIds.projectId) {
-        return { folders: [], libraries: [] };
-      }
-      const [foldersData, librariesData] = await Promise.all([
-        listFolders(supabase, currentIds.projectId!),
-        listLibraries(supabase, currentIds.projectId!),
-      ]);
-      return { folders: foldersData, libraries: librariesData };
-    },
-    // Only query when projectId exists AND is a valid UUID (not "projects" string)
-    enabled: !!currentIds.projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(currentIds.projectId || ''),
-    staleTime: 0, // Always consider data stale for real-time updates
-    // Don't refetch if data is in cache and not expired
-    refetchOnMount: false, // Use cache to avoid duplicate requests
-    // Don't auto-refresh when switching tabs
-    refetchOnWindowFocus: false,
-    // REMOVED: placeholderData - it prevents UI updates from realtime changes
-    // Enable request deduplication: requests with the same queryKey will be automatically deduplicated
-    queryKeyHashFn: undefined, // Use default hash function
-  });
+  } = useSidebarFoldersLibraries(currentIds.projectId);
 
-  // For compatibility with existing code, set loading states separately
   const loadingFolders = loadingFoldersAndLibraries;
   const loadingLibraries = loadingFoldersAndLibraries;
-
-  // Extract data from React Query result
-  const folders = foldersAndLibraries?.folders || [];
-  const libraries = foldersAndLibraries?.libraries || [];
 
   // Handle errors
   useEffect(() => {
