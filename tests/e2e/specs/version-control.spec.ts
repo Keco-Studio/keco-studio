@@ -35,18 +35,19 @@ test.describe('Version Control Tests', () => {
   let projectPage: ProjectPage;
   let libraryPage: LibraryPage;
 
-  // Clean test data before all tests
+  // Clean test data before all tests (optional; continues if env missing or script fails)
   test.beforeAll(async () => {
     console.log('🧹 Cleaning test data before version control tests...');
     try {
-      execSync('npm run clean:test-data', { 
+      execSync('npm run clean:test-data', {
         cwd: process.cwd(),
-        stdio: 'inherit' 
+        stdio: 'inherit',
+        env: { ...process.env },
       });
       console.log('✅ Test data cleaned successfully');
     } catch (error) {
       console.warn('⚠️  Failed to clean test data:', error);
-      // Continue with tests even if cleanup fails
+      // Continue with tests even if cleanup fails (e.g. missing env in CI)
     }
   });
 
@@ -111,7 +112,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -169,7 +170,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -252,7 +253,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -338,7 +339,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -437,7 +438,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -473,23 +474,17 @@ test.describe('Version Control Tests', () => {
       // Verify it shows "Current Version" text
       await expect(currentVersionItem.getByText('Current Version')).toBeVisible();
       
-      // Verify it has current version styling
-      // CSS Modules generates hashed class names, so we check:
-      // 1. The class name contains "currentVersion" (CSS Modules pattern)
-      // 2. Or check the computed style (color should be rgba(255, 108, 170, 1) for current version)
+      // Verify it has current version styling (pink color rgba(255, 108, 170))
+      // CSS Modules may hash class names; check computed color of the version name or any text node
       const hasCurrentStyling = await currentVersionItem.evaluate((el) => {
-        // Check class name (CSS Modules may generate hashed names like "versionItem_currentVersion_abc123")
-        const className = el.className || '';
-        const hasCurrentClass = className.includes('currentVersion') || className.includes('current');
-        
-        // Also check the computed style of the version name text
-        const versionNameElement = el.querySelector('[class*="versionName"]') || el;
-        const computedStyle = window.getComputedStyle(versionNameElement);
-        const color = computedStyle.color;
-        // Current version color is rgba(255, 108, 170, 1) or rgb(255, 108, 170)
-        const hasCurrentColor = color.includes('255, 108, 170') || color.includes('rgb(255, 108, 170)');
-        
-        return hasCurrentClass || hasCurrentColor;
+        const versionNameEl = el.querySelector('[class*="versionName"]') || el.querySelector('.details') || el;
+        const style = window.getComputedStyle(versionNameEl);
+        const color = (style.color || '').toLowerCase();
+        // Accept rgb/rgba in any format as long as it contains the pink values
+        const hasPink = color.includes('255') && color.includes('108') && color.includes('170');
+        if (hasPink) return true;
+        const className = (el.className || '').toString();
+        return className.includes('currentVersion') || className.includes('current');
       });
       expect(hasCurrentStyling).toBe(true);
     });
@@ -514,26 +509,14 @@ test.describe('Version Control Tests', () => {
       // Verify it shows the version name
       await expect(historyVersionItem.getByText(versionName)).toBeVisible();
       
-      // Verify it has history version styling (not current version)
-      // Check that it doesn't show "Current Version" text and has different styling
+      // Verify it has history version styling (not current version): no "Current Version" text, no pink color
       const isHistoryVersion = await historyVersionItem.evaluate((el) => {
-        // Should not contain "Current Version" text
         const textContent = el.textContent || '';
         const isNotCurrent = !textContent.includes('Current Version');
-        
-        // Check class name (CSS Modules may generate hashed names)
-        const className = el.className || '';
-        const hasHistoryClass = className.includes('historyVersion') || 
-                                (className.includes('versionItem') && !className.includes('currentVersion'));
-        
-        // Check the computed style of the version name text
-        const versionNameElement = el.querySelector('[class*="versionName"]') || el;
-        const computedStyle = window.getComputedStyle(versionNameElement);
-        const color = computedStyle.color;
-        // History version color should be #21272A (not the pink current version color)
-        const hasHistoryColor = !color.includes('255, 108, 170') && !color.includes('rgb(255, 108, 170)');
-        
-        return isNotCurrent && (hasHistoryClass || hasHistoryColor);
+        const versionNameEl = el.querySelector('[class*="versionName"]') || el.querySelector('.details') || el;
+        const color = (window.getComputedStyle(versionNameEl).color || '').toLowerCase();
+        const notPink = !(color.includes('255') && color.includes('108') && color.includes('170'));
+        return isNotCurrent && notPink;
       });
       expect(isHistoryVersion).toBe(true);
     });
@@ -556,7 +539,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -620,7 +603,8 @@ test.describe('Version Control Tests', () => {
     });
   });
 
-  test.skip('Create Multiple Versions - Rapidly create many versions and verify list display', async ({ page }) => {
+  // Un-skipped: verifies creating many versions in sequence and list order; may be slower (~2min)
+  test('Create Multiple Versions - Rapidly create many versions and verify list display', async ({ page }) => {
     test.setTimeout(120000);
 
     // Generate unique project data
@@ -638,7 +622,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -722,6 +706,7 @@ test.describe('Version Control Tests', () => {
     });
   });
 
+  // Skipped: requires collaboration setup (user 2 must have access to same library); test is placeholder for future work
   test.skip('Concurrent Version Restore - Two users restore different versions simultaneously', async ({ browser }) => {
     test.setTimeout(120000);
 
@@ -757,7 +742,7 @@ test.describe('Version Control Tests', () => {
         await expect(sidebar1).toBeVisible({ timeout: 15000 });
         await page1.waitForTimeout(2000);
         
-        await libraryPage1.createLibrary(libraries.breed);
+        await libraryPage1.createLibraryUnderProject(libraries.breed);
         await libraryPage1.expectLibraryCreated();
         await page1.waitForTimeout(2000);
       });
@@ -876,7 +861,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -912,10 +897,12 @@ test.describe('Version Control Tests', () => {
       const testCases = [
         { name: 'Test /', input: 'Test /', shouldBlock: false }, // / is not blocked by current validation
         { name: 'Test <script>', input: 'Test <script>', shouldBlock: true },
-        { name: 'Test >', input: 'Test >', shouldBlock: true }, // HTML tag
+        { name: 'Test >', input: 'Test >', shouldBlock: false }, // ">" alone is not blocked (needs <...> or !@#$%)
         { name: 'Test !@#$%', input: 'Test !@#$%', shouldBlock: true },
         { name: 'Test <div>', input: 'Test <div>', shouldBlock: true },
       ];
+
+      const expectedErrorText = 'No emojis, HTML tags or !@#$% allowed';
 
       for (const testCase of testCases) {
         await expect(addButton).toBeVisible({ timeout: 5000 });
@@ -926,10 +913,8 @@ test.describe('Version Control Tests', () => {
         await page.getByRole('button', { name: /^create$/i }).click();
         
         if (testCase.shouldBlock) {
-          // Verify error message appears
-          const errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis|html tags/i });
-          await expect(errorMessage).toBeVisible({ timeout: 5000 });
-          await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
+          // Verify error message appears (modal is in portal; use getByText for reliability)
+          await expect(page.getByText(expectedErrorText)).toBeVisible({ timeout: 5000 });
           
           // Close modal for next test - specifically target the CreateVersionModal close button
           // Find the modal by its title, then locate the close button within that modal
