@@ -6,7 +6,8 @@
 
 'use client';
 
-import { Modal, App } from 'antd';
+import { Modal } from 'antd';
+import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { deleteVersion } from '@/lib/services/versionService';
@@ -31,17 +32,16 @@ function DeleteConfirmModalContent({
 }: DeleteConfirmModalProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
-  const { message } = App.useApp();
 
   const deleteVersionMutation = useMutation({
     mutationFn: () => deleteVersion(supabase, version.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
-      message.success('Version deleted successfully');
+      showSuccessToast('Version deleted successfully');
       onSuccess();
     },
     onError: (error: any) => {
-      message.error(error?.message || 'Failed to delete version');
+      showErrorToast(error?.message || 'Failed to delete version');
     },
   });
 
@@ -70,10 +70,6 @@ function DeleteConfirmModalContent({
 }
 
 export function DeleteConfirmModal(props: DeleteConfirmModalProps) {
-  return (
-    <App>
-      <DeleteConfirmModalContent {...props} />
-    </App>
-  );
+  return <DeleteConfirmModalContent {...props} />;
 }
 

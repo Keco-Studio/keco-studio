@@ -6,7 +6,8 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { useParams, useRouter } from 'next/navigation';
 import { useQueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/utils/queryKeys';
-import { Tabs, Button, App, ConfigProvider, Input, Tooltip } from 'antd';
+import { Tabs, Button, ConfigProvider, Input, Tooltip } from 'antd';
+import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import type { TabsProps } from 'antd/es/tabs';
 import type { InputRef } from 'antd/es/input';
 import Image from 'next/image';
@@ -32,7 +33,6 @@ import PredefineBackIcon from '@/assets/images/PredefineBackIcon.svg';
 const NEW_SECTION_TAB_KEY = '__new_section__';
 
 function PredefinePageContent() {
-  const { message } = App.useApp();
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   const router = useRouter();
@@ -317,7 +317,7 @@ function PredefinePageContent() {
 
   const handleSaveNewSection = async (newSection: { name: string; fields: FieldConfig[] }) => {
     if (!libraryId) {
-      message.error('Missing libraryId, cannot save');
+      showErrorToast('Missing libraryId, cannot save');
       return;
     }
 
@@ -331,7 +331,7 @@ function PredefinePageContent() {
 
   const saveSchema = useCallback(async (sectionsToSave: SectionConfig[] = sections, shouldReload: boolean = true) => {
     if (!libraryId) {
-      message.error('Missing libraryId, cannot save');
+      showErrorToast('Missing libraryId, cannot save');
       return;
     }
 
@@ -442,7 +442,7 @@ function PredefinePageContent() {
       pendingFieldsRef.current = emptyMap;
       setTempSectionNames(new Map());
     } catch (e: any) {
-      message.error(e?.message || 'Failed to save');
+      showErrorToast(e?.message || 'Failed to save');
       setErrors([e?.message || 'Failed to save']);
     } finally {
       setSaving(false);
@@ -466,13 +466,13 @@ function PredefinePageContent() {
 
   const handleDeleteSection = useCallback(async (sectionId: string) => {
     if (!libraryId) {
-      message.error('Missing libraryId, cannot delete');
+      showErrorToast('Missing libraryId, cannot delete');
       return;
     }
 
     const sectionToDelete = sections.find((s) => s.id === sectionId);
     if (!sectionToDelete) {
-      message.error('Section not found');
+      showErrorToast('Section not found');
       return;
     }
 
@@ -495,7 +495,7 @@ function PredefinePageContent() {
 
       if (delError) throw delError;
 
-      message.success(`Section "${sectionToDelete.name}" deleted successfully`);
+      showSuccessToast(`Section "${sectionToDelete.name}" deleted successfully`);
 
       // Invalidate cache before reloading to ensure fresh data
       const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
@@ -528,7 +528,7 @@ function PredefinePageContent() {
         }
       }
     } catch (e: any) {
-      message.error(e?.message || 'Failed to delete section');
+      showErrorToast(e?.message || 'Failed to delete section');
       setErrors([e?.message || 'Failed to delete section']);
     } finally {
       setSaving(false);
@@ -982,9 +982,7 @@ export default function PredefinePage() {
         },
       }}
     >
-      <App message={{ top: 20, maxCount: 1 }}>
-        <PredefinePageContent />
-      </App>
+      <PredefinePageContent />
     </ConfigProvider>
   );
 }
