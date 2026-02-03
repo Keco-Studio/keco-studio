@@ -3,20 +3,19 @@ import type { AssetRow } from '@/lib/types/libraryAssets';
 
 type OptimisticEditUpdate = { name: string; propertyValues: Record<string, any> };
 
-/**
- * useResolvedRows - 合并 allRowsSource、乐观编辑、乐观新增、已删除，得到最终展示行列表
- * 顺序：先按 allRowsSource，再追加仅存在于 optimisticNewAssets 的行。
- */
+
 export function useResolvedRows({
   allRowsSource,
   deletedAssetIds,
   optimisticEditUpdates,
   optimisticNewAssets,
+  optimisticInsertIndices = new Map(),
 }: {
   allRowsSource: AssetRow[];
   deletedAssetIds: Set<string>;
   optimisticEditUpdates: Map<string, OptimisticEditUpdate>;
   optimisticNewAssets: Map<string, AssetRow>;
+  optimisticInsertIndices?: Map<string, number>;
 }): AssetRow[] {
   return useMemo(() => {
     const allRowsMap = new Map<string, AssetRow>();
@@ -26,8 +25,6 @@ export function useResolvedRows({
       .forEach((row) => {
         const assetRow = row as AssetRow;
         const opt = optimisticEditUpdates.get(assetRow.id);
-        // Always overlay when optimistic exists. Requiring opt.name === assetRow.name caused
-        // "清空导致其他列恢复": Clear name → opt.name='' vs assetRow.name=old → no overlay → whole row falls back to base.
         if (opt) {
           allRowsMap.set(assetRow.id, {
             ...assetRow,
@@ -55,8 +52,24 @@ export function useResolvedRows({
       }
     });
 
+    // Insert optimistic new rows at their index (insert above/below) or append (add row at end)
+    const toInsert: Array<{ index: number; asset: AssetRow; id: string }> = [];
+    const toAppend: Array<{ asset: AssetRow; id: string }> = [];
     optimisticNewAssets.forEach((asset, id) => {
       if (done.has(id)) return;
+      const idx = optimisticInsertIndices.get(id);
+      if (typeof idx === 'number' && idx >= 0) {
+        toInsert.push({ index: Math.min(idx, out.length), asset, id });
+      } else {
+        toAppend.push({ asset, id });
+      }
+    });
+    toInsert.sort((a, b) => a.index - b.index);
+    toInsert.forEach(({ index, asset, id }) => {
+      out.splice(index, 0, asset);
+      done.add(id);
+    });
+    toAppend.forEach(({ asset, id }) => {
       out.push(asset);
       done.add(id);
     });
@@ -67,5 +80,6 @@ export function useResolvedRows({
     deletedAssetIds,
     optimisticEditUpdates,
     optimisticNewAssets,
+    optimisticInsertIndices,
   ]);
 }

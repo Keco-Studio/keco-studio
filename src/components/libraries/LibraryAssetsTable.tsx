@@ -25,6 +25,8 @@ import { useClipboardOperations } from './hooks/useClipboardOperations';
 import { useCellEditing } from './hooks/useCellEditing';
 import { useCellSelection, type CellKey } from './hooks/useCellSelection';
 import { useUserRole } from './hooks/useUserRole';
+import { useYjsSync } from './hooks/useYjsSync';
+import { useYjs } from '@/lib/contexts/YjsContext';
 import { useAssetHover } from './hooks/useAssetHover';
 import { useRowOperations } from './hooks/useRowOperations';
 import { useReferenceModal } from './hooks/useReferenceModal';
@@ -113,19 +115,10 @@ export function LibraryAssetsTable({
 }: LibraryAssetsTableProps) {
   // Get message API from App context to support dynamic theme
   const { message } = App.useApp();
-  
-  // Use props.rows directly (from LibraryDataContext via adapter)
-  // No need for separate Yjs sync - LibraryDataContext handles everything
-  const allRowsSource = rows;
-  
-  // Create a yRows mock object for hooks compatibility (no actual Yjs operations)
-  // LibraryDataContext handles all data persistence
-  const yRowsMock = useMemo(() => ({
-    length: allRowsSource.length,
-    toArray: () => allRowsSource,
-    insert: () => {}, // No-op: LibraryDataContext handles creation
-    delete: () => {}, // No-op: LibraryDataContext handles deletion
-  }), [allRowsSource]);
+
+  // Same as main-again: real Yjs + useYjsSync so insert row keeps position (temp replaced at correct index)
+  const { yRows } = useYjs();
+  const { allRowsSource } = useYjsSync(rows, yRows);
 
   const [isSaving, setIsSaving] = useState(false);
   
@@ -169,8 +162,8 @@ export function LibraryAssetsTable({
     propertyKeys: string[];
   } | null>(null);
   
-  // Toast message state
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // Toast message state (unified: success / error / default, bottom)
+  const [toastMessage, setToastMessage] = useState<{ message: string; type: 'success' | 'error' | 'default' } | null>(null);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   
@@ -185,6 +178,8 @@ export function LibraryAssetsTable({
   
   // Optimistic update: track newly added assets to show them immediately
   const [optimisticNewAssets, setOptimisticNewAssets] = useState<Map<string, AssetRow>>(new Map());
+  // Insert row: tempId -> index so optimistic rows appear at correct position (not appended)
+  const [optimisticInsertIndices, setOptimisticInsertIndices] = useState<Map<string, number>>(new Map());
   
   // Optimistic update: track edited assets to show updates immediately
   const [optimisticEditUpdates, setOptimisticEditUpdates] = useState<Map<string, { name: string; propertyValues: Record<string, any> }>>(new Map());
@@ -264,6 +259,7 @@ export function LibraryAssetsTable({
     optimisticNewAssets,
     setOptimisticEditUpdates,
     setOptimisticNewAssets,
+    setOptimisticInsertIndices,
   });
 
   const resolvedRows = useResolvedRows({
@@ -271,6 +267,7 @@ export function LibraryAssetsTable({
     deletedAssetIds,
     optimisticEditUpdates,
     optimisticNewAssets,
+    optimisticInsertIndices,
   });
 
   // Ref for table container to detect clicks outside
@@ -313,7 +310,7 @@ export function LibraryAssetsTable({
     library,
     onSaveAsset,
     userRole,
-    yRows: yRowsMock,
+    yRows,
     setOptimisticNewAssets,
     setIsSaving,
     enableRealtime,
@@ -324,7 +321,7 @@ export function LibraryAssetsTable({
   const cellEditing = useCellEditing({
     properties,
     rows,
-    yRows: yRowsMock,
+    yRows,
     onUpdateAsset,
     userRole,
     isAddingRow,
@@ -362,7 +359,7 @@ export function LibraryAssetsTable({
   } = useReferenceModal({
     setNewRowData,
     allRowsSource,
-    yRows: yRowsMock,
+    yRows,
     onUpdateAsset,
     rows,
     newRowData,
@@ -405,7 +402,7 @@ export function LibraryAssetsTable({
     setCurrentFocusedCell,
     onUpdateAsset,
     rows,
-    yRows: yRowsMock,
+    yRows,
     setOptimisticEditUpdates,
     presenceTracking,
   });
@@ -505,7 +502,7 @@ export function LibraryAssetsTable({
     onSaveAsset,
     onUpdateAsset,
     library,
-    yRows: yRowsMock,
+    yRows,
     setSelectedCells,
     setSelectedRowIds,
     setCutCells,
@@ -543,7 +540,7 @@ export function LibraryAssetsTable({
     supabase,
     orderedProperties,
     getAllRowsForCellSelection,
-    yRows: yRowsMock,
+    yRows,
     selectedCells,
     selectedRowIds,
     selectedCellsRef,
@@ -559,6 +556,7 @@ export function LibraryAssetsTable({
     setDeleteConfirmVisible,
     setDeletingAssetId,
     setOptimisticNewAssets,
+    setOptimisticInsertIndices,
     setOptimisticEditUpdates,
     setDeletedAssetIds,
     setToastMessage,
@@ -1229,7 +1227,7 @@ export function LibraryAssetsTable({
           setDeleteRowConfirmVisible(true);
         }}
       />
-      <TableToast message={toastMessage} />
+      <TableToast message={toastMessage?.message ?? null} type={toastMessage?.type ?? 'default'} />
       <DeleteAssetModal
         open={deleteConfirmVisible}
         onOk={handleDeleteAsset}

@@ -783,9 +783,20 @@ export async function duplicateVersionAsLibrary(
     }
 
     if (originalFieldDefs && originalFieldDefs.length > 0) {
-      // Create new field definitions for the new library
-      const newFieldDefs = originalFieldDefs.map(field => ({
+      // section_id is NOT NULL in library_field_definitions; assign one per distinct section name
+      const sectionIdBySectionName = new Map<string, string>();
+      const getSectionId = (sectionName: string): string => {
+        let id = sectionIdBySectionName.get(sectionName);
+        if (!id) {
+          id = crypto.randomUUID();
+          sectionIdBySectionName.set(sectionName, id);
+        }
+        return id;
+      };
+      // Create new field definitions for the new library (include section_id)
+      const newFieldDefs = originalFieldDefs.map((field) => ({
         library_id: newLibrary.id,
+        section_id: getSectionId(field.section),
         section: field.section,
         label: field.label,
         data_type: field.data_type,

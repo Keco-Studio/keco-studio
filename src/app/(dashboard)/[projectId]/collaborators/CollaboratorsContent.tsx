@@ -11,10 +11,10 @@
 'use client';
 
 import { useState } from 'react';
-import { Button, Table, Tag, Space, Popconfirm, Select, message, Empty } from 'antd';
+import { Button, Table, Tag, Space, Popconfirm, Select, Empty } from 'antd';
 import { UserAddOutlined, MailOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
-import { showSuccessToast } from '@/lib/utils/toast';
+import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { Collaborator, PendingInvitation, CollaboratorRole } from '@/lib/types/collaboration';
 import { canUserManageCollaborators } from '@/lib/types/collaboration';
@@ -53,7 +53,7 @@ export function CollaboratorsContent({
       // Get session for authorization
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        message.error('You must be logged in');
+        showErrorToast('You must be logged in');
         setLoadingRoleChange(null);
         return;
       }
@@ -71,16 +71,16 @@ export function CollaboratorsContent({
       const result = await response.json();
       
       if (response.ok && result.success) {
-        message.success('Role updated successfully');
+        showSuccessToast('Role updated successfully');
         // Update local state
         setCollaborators(prev =>
           prev.map(c => c.id === collaboratorId ? { ...c, role: newRole } : c)
         );
       } else {
-        message.error(result.error || 'Failed to update role');
+        showErrorToast(result.error || 'Failed to update role');
       }
     } catch (error) {
-      message.error('An unexpected error occurred');
+      showErrorToast('An unexpected error occurred');
       console.error('Error updating role:', error);
     } finally {
       setLoadingRoleChange(null);
@@ -95,7 +95,7 @@ export function CollaboratorsContent({
       // Get session for authorization
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) {
-        message.error('You must be logged in');
+        showErrorToast('You must be logged in');
         setLoadingRemove(null);
         return;
       }
@@ -111,14 +111,14 @@ export function CollaboratorsContent({
       const result = await response.json();
       
       if (response.ok && result.success) {
-        message.success('Collaborator removed');
+        showSuccessToast('Collaborator removed');
         // Update local state
         setCollaborators(prev => prev.filter(c => c.id !== collaboratorId));
       } else {
-        message.error(result.error || 'Failed to remove collaborator');
+        showErrorToast(result.error || 'Failed to remove collaborator');
       }
     } catch (error) {
-      message.error('An unexpected error occurred');
+      showErrorToast('An unexpected error occurred');
       console.error('Error removing collaborator:', error);
     } finally {
       setLoadingRemove(null);

@@ -40,9 +40,11 @@ export type UseRowOperationsParams = {
   setDeleteConfirmVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setDeletingAssetId: React.Dispatch<React.SetStateAction<string | null>>;
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
+  /** When using mock yRows (no real insert), pass this so optimistic rows are shown at correct index instead of appended */
+  setOptimisticInsertIndices?: React.Dispatch<React.SetStateAction<Map<string, number>>>;
   setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, { name: string; propertyValues: Record<string, any> }>>>;
   setDeletedAssetIds: React.Dispatch<React.SetStateAction<Set<string>>>;
-  setToastMessage: React.Dispatch<React.SetStateAction<string | null>>;
+  setToastMessage: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'error' | 'default' } | null>>;
   setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
   enableRealtime?: boolean;
   currentUser?: { id: string; name: string } | null;
@@ -66,9 +68,7 @@ function closeRowOpMenus(
   contextMenuRowIdRef.current = null;
 }
 
-/**
- * useRowOperations - 行操作：在上方/下方插入行、清空内容、删除行、删除单个资产
- */
+
 export function useRowOperations(params: UseRowOperationsParams) {
   const {
     onSaveAsset,
@@ -96,6 +96,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     setDeleteConfirmVisible,
     setDeletingAssetId,
     setOptimisticNewAssets,
+    setOptimisticInsertIndices,
     setOptimisticEditUpdates,
     setDeletedAssetIds,
     setToastMessage,
@@ -176,21 +177,30 @@ export function useRowOperations(params: UseRowOperationsParams) {
         return;
       }
 
-      if (supabase) {
+      // Prefer local row created_at to avoid 406 when Supabase returns 0 rows (.single() fails)
+      const targetRow = allRows.find((r) => r.id === firstRowId);
+      let targetCreatedAt: Date;
+      if (targetRow?.created_at) {
+        targetCreatedAt = new Date(targetRow.created_at);
+      } else if (supabase) {
         const { data: targetRowData, error: queryError } = await supabase
           .from('library_assets')
           .select('created_at')
           .eq('id', firstRowId)
-          .single();
+          .maybeSingle();
 
-        if (queryError) {
+        if (queryError || !targetRowData) {
           setIsSaving(false);
-          setToastMessage('Failed to insert rows above');
+          setToastMessage({ message: 'Failed to insert rows above', type: 'error' });
           setTimeout(() => setToastMessage(null), 2000);
           return;
         }
+        targetCreatedAt = new Date(targetRowData.created_at);
+      } else {
+        targetCreatedAt = new Date();
+      }
 
-        const targetCreatedAt = new Date(targetRowData.created_at);
+      if (supabase) {
         const createdTempIds: string[] = [];
         const optimisticAssets: AssetRow[] = [];
 
@@ -216,6 +226,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
             newMap.set(asset.id, asset);
             return newMap;
           });
+        });
+        setOptimisticInsertIndices?.((prev) => {
+          const next = new Map(prev);
+          createdTempIds.forEach((id, i) => next.set(id, targetRowIndex + i));
+          return next;
         });
 
         for (let i = 0; i < numRowsToInsert; i++) {
@@ -248,6 +263,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
             return newMap;
           });
         });
+        setOptimisticInsertIndices?.((prev) => {
+          const next = new Map(prev);
+          createdTempIds.forEach((id, i) => next.set(id, targetRowIndex + i));
+          return next;
+        });
         for (let i = 0; i < numRowsToInsert; i++) {
           await onSaveAsset('Untitled', {});
           if (enableRealtime && currentUser && i < optimisticAssets.length) {
@@ -261,11 +281,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
       }
 
       await new Promise((r) => setTimeout(r, 500));
-      setToastMessage(numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`);
+      setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
       setTimeout(() => setToastMessage(null), 2000);
     } catch (e) {
       console.error('Failed to insert rows above:', e);
-      setToastMessage('Failed to insert rows above');
+      setToastMessage({ message: 'Failed to insert rows above', type: 'error' });
       setTimeout(() => setToastMessage(null), 2000);
     } finally {
       setIsSaving(false);
@@ -284,6 +304,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     contextMenuRowIdRef,
     yRows,
     setOptimisticNewAssets,
+    setOptimisticInsertIndices,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
     setContextMenuRowId,
@@ -350,21 +371,30 @@ export function useRowOperations(params: UseRowOperationsParams) {
         return;
       }
 
-      if (supabase) {
+      // Prefer local row created_at to avoid 406 when Supabase returns 0 rows (.single() fails)
+      const targetRowBelow = allRows2.find((r) => r.id === lastRowId);
+      let targetCreatedAt: Date;
+      if (targetRowBelow?.created_at) {
+        targetCreatedAt = new Date(targetRowBelow.created_at);
+      } else if (supabase) {
         const { data: targetRowData, error: queryError } = await supabase
           .from('library_assets')
           .select('created_at')
           .eq('id', lastRowId)
-          .single();
+          .maybeSingle();
 
-        if (queryError) {
+        if (queryError || !targetRowData) {
           setIsSaving(false);
-          setToastMessage('Failed to insert rows below');
+          setToastMessage({ message: 'Failed to insert rows below', type: 'error' });
           setTimeout(() => setToastMessage(null), 2000);
           return;
         }
+        targetCreatedAt = new Date(targetRowData.created_at);
+      } else {
+        targetCreatedAt = new Date();
+      }
 
-        const targetCreatedAt = new Date(targetRowData.created_at);
+      if (supabase) {
         const createdTempIds: string[] = [];
         const optimisticAssets: AssetRow[] = [];
 
@@ -386,6 +416,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
             newMap.set(asset.id, asset);
             return newMap;
           });
+        });
+        setOptimisticInsertIndices?.((prev) => {
+          const next = new Map(prev);
+          createdTempIds.forEach((id, i) => next.set(id, insertIndex + i));
+          return next;
         });
 
         for (let i = 0; i < numRowsToInsert; i++) {
@@ -419,6 +454,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
             return newMap;
           });
         });
+        setOptimisticInsertIndices?.((prev) => {
+          const next = new Map(prev);
+          createdTempIds.forEach((id, i) => next.set(id, insertIndex + i));
+          return next;
+        });
         for (let i = 0; i < numRowsToInsert; i++) {
           await onSaveAsset('Untitled', {});
           if (enableRealtime && currentUser && i < optimisticAssets.length) {
@@ -432,11 +472,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
       }
 
       await new Promise((r) => setTimeout(r, 500));
-      setToastMessage(numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`);
+      setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
       setTimeout(() => setToastMessage(null), 2000);
     } catch (e) {
       console.error('Failed to insert rows below:', e);
-      setToastMessage('Failed to insert rows below');
+      setToastMessage({ message: 'Failed to insert rows below', type: 'error' });
       setTimeout(() => setToastMessage(null), 2000);
     } finally {
       setIsSaving(false);
@@ -455,6 +495,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     contextMenuRowIdRef,
     yRows,
     setOptimisticNewAssets,
+    setOptimisticInsertIndices,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
     setContextMenuRowId,

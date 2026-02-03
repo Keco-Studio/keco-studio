@@ -8,7 +8,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Tooltip, message } from 'antd';
+import { Tooltip } from 'antd';
+import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import Image from 'next/image';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -46,13 +47,13 @@ export function VersionItemMenu({ version, libraryId, externalMenuPosition, onEx
     onSuccess: (data) => {
       // Invalidate folders-libraries query with projectId to refresh the left sidebar
       queryClient.invalidateQueries({ queryKey: ['folders-libraries', data.projectId] });
-      message.success('Library duplicated successfully');
+      showSuccessToast('Library duplicated successfully');
       setShowMenu(false);
       // Optionally navigate to the new library
       // router.push(`/${data.projectId}/${data.libraryId}`);
     },
     onError: (error: any) => {
-      message.error(error?.message || 'Failed to duplicate library');
+      showErrorToast(error?.message || 'Failed to duplicate library');
     },
   });
 

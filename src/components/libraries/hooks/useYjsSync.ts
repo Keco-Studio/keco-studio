@@ -2,14 +2,6 @@ import { useEffect, useMemo, useRef } from 'react';
 import type { AssetRow } from '@/lib/types/libraryAssets';
 import { useYjsRows } from '@/lib/hooks/useYjsRows';
 
-/**
- * useYjsSync - 将 props.rows 与 Yjs yRows 同步，并产出统一数据源 allRowsSource
- *
- * - 首次：Yjs 为空时用 rows 初始化
- * - 增量：根据 props 增删改，保留 temp- 行
- * - 大变更（如切 version）：重叠 <30% 时整表替换，保留 temp- 行
- * - allRowsSource：yjsRows 优先，否则回退到 rows
- */
 export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: AssetRow[] } {
   const yjsRows = useYjsRows(yRows);
   const prevRowsRef = useRef<AssetRow[]>([]);
@@ -26,8 +18,12 @@ export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: Asset
       const overlapCount = Array.from(existingIds).filter((id: string) => propsIds.has(id)).length;
       const overlapRatio = existingIds.size > 0 ? overlapCount / existingIds.size : 0;
       const isMajorChange = overlapRatio < 0.3 && propsIds.size > 0;
+      // When we have insert/paste placeholders, never run major-change (which moves temps to end and causes "new row at end")
+      const hasInsertOrPastePlaceholders = yjsRowsArray.some(
+        (r: AssetRow) => r.id.startsWith('temp-insert-') || r.id.startsWith('temp-paste-')
+      );
 
-      if (isMajorChange) {
+      if (isMajorChange && !hasInsertOrPastePlaceholders) {
         const tempRowsToKeep: AssetRow[] = [];
         const indicesToKeep: number[] = [];
 
@@ -79,6 +75,33 @@ export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: Asset
         if (!existingIds.has(propsRow.id)) rowsToAdd.push(propsRow);
       });
 
+      // 1) Replace temp placeholders FIRST so optimistic row stays in place (never lost or moved to end)
+      if (rowsToAdd.length > 0) {
+        const currentYjsRows = yRows.toArray();
+        const insertTempRows: Array<{ index: number; id: string }> = [];
+        currentYjsRows.forEach((row: AssetRow, index: number) => {
+          if (row.id.startsWith('temp-insert-') || row.id.startsWith('temp-paste-')) {
+            insertTempRows.push({ index, id: row.id });
+          }
+        });
+        insertTempRows.sort((a, b) => a.index - b.index);
+        const sortedRowsToAdd = [...rowsToAdd].sort((a, b) => {
+          const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return ta - tb;
+        });
+        const rowsToReplace = sortedRowsToAdd.slice(0, Math.min(insertTempRows.length, sortedRowsToAdd.length));
+        for (let i = rowsToReplace.length - 1; i >= 0; i--) {
+          const newRow = rowsToReplace[i];
+          const tempRow = insertTempRows[i];
+          yRows.delete(tempRow.index, 1);
+          yRows.insert(tempRow.index, [newRow]);
+        }
+        const remainingRows = sortedRowsToAdd.slice(insertTempRows.length);
+        if (remainingRows.length > 0) yRows.insert(yRows.length, remainingRows);
+      }
+
+      // 2) Then delete rows in yRows but not in props
       indicesToDelete.sort((a, b) => b - a).forEach(index => {
         try {
           yRows.delete(index, 1);
@@ -104,30 +127,7 @@ export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: Asset
         }
       });
 
-      prevRowsRef.current = rows;
-
-      if (rowsToAdd.length > 0) {
-        const currentYjsRows = yRows.toArray();
-        const placeholderTempRows: Array<{ index: number; id: string }> = [];
-        currentYjsRows.forEach((row: AssetRow, index: number) => {
-          if (row.id.startsWith('temp-insert-') || row.id.startsWith('temp-paste-')) {
-            placeholderTempRows.push({ index, id: row.id });
-          }
-        });
-        placeholderTempRows.sort((a, b) => a.index - b.index);
-
-        const rowsToReplace = rowsToAdd.slice(0, Math.min(placeholderTempRows.length, rowsToAdd.length));
-        for (let i = rowsToReplace.length - 1; i >= 0; i--) {
-          const newRow = rowsToReplace[i];
-          const tempRow = placeholderTempRows[i];
-          yRows.delete(tempRow.index, 1);
-          yRows.insert(tempRow.index, [newRow]);
-        }
-
-        const remainingRows = rowsToAdd.slice(placeholderTempRows.length);
-        if (remainingRows.length > 0) yRows.insert(yRows.length, remainingRows);
-      }
-
+      // 3) Then apply content updates
       prevRowsRef.current = rows;
     }
   }, [rows, yRows]);
