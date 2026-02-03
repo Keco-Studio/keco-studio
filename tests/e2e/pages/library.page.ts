@@ -54,11 +54,9 @@ export class LibraryPage {
     // Action buttons
     this.createFolderButton = page.getByRole('button', { name: /create folder/i });
     
-    // Sidebar "Create new library" button (in folder treeitem)
-    // This button appears in the sidebar tree under each folder
-    // Uses data-testid for stable selection
-    this.createLibraryButton = page.locator('button[data-testid="sidebar-create-library-button"]')
-      .or(page.getByRole('treeitem').locator('button[class*="createButton"]').filter({ hasText: /^Create new library$/ }).first());
+    // Sidebar "Create new library" button (on folder row in tree)
+    // Button has aria-label="Create new library", no text content (icon only). Only visible for admin.
+    this.createLibraryButton = page.getByRole('tree').getByRole('button', { name: /create new library/i }).first();
     
     // Sidebar add button (for creating library/folder directly under project)
     this.sidebarAddButton = page.locator('button[title="Add new folder or library"]')
@@ -151,7 +149,8 @@ export class LibraryPage {
    * @param library - Library data with name and optional description
    */
   async createLibrary(library: LibraryData): Promise<void> {
-    // Click create library button
+    // Wait for sidebar tree and "Create new library" button on folder row to be visible
+    await expect(this.createLibraryButton).toBeVisible({ timeout: 15000 });
     await this.createLibraryButton.click();
 
     // Wait for modal to appear
