@@ -62,7 +62,7 @@
   font-weight: 500;
   color: #7D7D7D;
   text-transform: inherit;
-  letter-spacing: inherit;
+  letter-spacing: 0.5px;
   cursor: pointer;
   transition: color 0.2s;
 }
