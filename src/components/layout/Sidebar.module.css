@@ -839,7 +839,6 @@
 .tree :global(.ant-tree-treenode-selected) .rootLibraryRow .itemText {
   font-size: 1rem;
   font-weight: 500;
-  color: #e11d48;
 }
 
 /* Predefine page special view */
