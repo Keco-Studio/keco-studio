@@ -29,6 +29,7 @@ import { execSync } from 'child_process';
  * - All test data from fixtures
  * - Follows Page Object Model (POM) pattern
  * - Cleans test data before running tests
+ * - Test accounts are admin by default; non-admin cases are not considered
  */
 
 test.describe('Version Control Tests', () => {
