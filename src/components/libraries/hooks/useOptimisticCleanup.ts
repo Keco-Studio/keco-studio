@@ -6,23 +6,18 @@ type OptimisticEditUpdate = {
   propertyValues: Record<string, any>;
 };
 
-/**
- * useOptimisticCleanup - 当 rows 更新（父组件刷新）时清理 optimistic 状态
- *
- * - 当乐观编辑与后端数据一致时，清除 optimisticEditUpdates
- * - 当新增的乐观资产在 rows 中找到对应真实行时，清除 optimisticNewAssets
- * - 当 optimistic 的 name 与 row 不一致时，视为过期并清除
- */
 export function useOptimisticCleanup({
   rows,
   optimisticNewAssets,
   setOptimisticEditUpdates,
   setOptimisticNewAssets,
+  setOptimisticInsertIndices,
 }: {
   rows: AssetRow[];
   optimisticNewAssets: Map<string, AssetRow>;
   setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, OptimisticEditUpdate>>>;
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
+  setOptimisticInsertIndices?: React.Dispatch<React.SetStateAction<Map<string, number>>>;
 }) {
   const rowsSignature = useMemo(
     () => rows.map((r) => `${r.id}:${r.name}`).join('|'),
@@ -149,6 +144,12 @@ export function useOptimisticCleanup({
           if (matchingRow) {
             newMap.delete(tempId);
             hasChanges = true;
+            setOptimisticInsertIndices?.((prev) => {
+              if (!prev.has(tempId)) return prev;
+              const next = new Map(prev);
+              next.delete(tempId);
+              return next;
+            });
           }
         }
 
@@ -159,5 +160,5 @@ export function useOptimisticCleanup({
     // Removed: "if row.name !== optimisticUpdate.name then delete optimistic"
     // That caused 清空 name 列后 refetch 的 row.name='' 与 optimistic.name 旧值不等 → 整行乐观被删 → 其他列回退到 base（其他列恢复）.
     // Cleanup now only happens in the first pass when optimistic fully matches row (allMatch).
-  }, [rows, rowsSignature, optimisticNewAssets.size, setOptimisticEditUpdates, setOptimisticNewAssets]);
+  }, [rows, rowsSignature, optimisticNewAssets.size, setOptimisticEditUpdates, setOptimisticNewAssets, setOptimisticInsertIndices]);
 }

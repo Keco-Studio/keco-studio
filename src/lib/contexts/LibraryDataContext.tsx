@@ -537,9 +537,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       yPropertyValues.set(fieldId, valueForYjs);
     });
     yAsset.set('propertyValues', yPropertyValues);
-    
-    yAsset.set('created_at', newAsset.created_at);
-    
+    // Ensure created_at so allAssets sort puts insert-above/insert-below in correct position
+    yAsset.set('created_at', newAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString());
+
     yDoc.transact(() => {
       yAssets.set(assetId, yAsset);
     });
@@ -612,14 +612,14 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     presenceTracking.updateActiveCell(assetId, fieldId);
   }, [presenceTracking]);
   
-  // Convert Map to ordered array (maintain Yjs order)
+  // Convert Map to ordered array (sort by created_at so insert-above/insert-below position is correct)
   const allAssets = useMemo(() => {
     return Array.from(assets.values()).sort((a, b) => {
-      // Sort by created_at if available
-      if (a.created_at && b.created_at) {
-        return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      }
-      return 0;
+      // Items with created_at sort by time; items without created_at go to the end (avoid new row at end)
+      if (!a.created_at && !b.created_at) return 0;
+      if (!a.created_at) return 1;
+      if (!b.created_at) return -1;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
     });
   }, [assets]);
   

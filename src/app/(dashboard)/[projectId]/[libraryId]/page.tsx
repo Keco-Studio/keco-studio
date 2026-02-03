@@ -31,6 +31,7 @@ import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration'
 import { VersionControlSidebar } from '@/components/version-control/VersionControlSidebar';
 import { getVersionsByLibrary } from '@/lib/services/versionService';
 import type { LibraryVersion } from '@/lib/types/version';
+import { YjsProvider } from '@/lib/contexts/YjsContext';
 import { createPortal } from 'react-dom';
 import styles from './page.module.css';
 
@@ -608,24 +609,26 @@ export default function LibraryPage() {
             Later phases will replace placeholder service logic with real Supabase-backed data
             and upgrade the table to a two-level header that mirrors predefine + Figma. */}
         <div className={styles.tableContainer}>
-          <LibraryAssetsTableAdapter
-            library={
-              librarySummary
-                ? {
-                    id: librarySummary.id,
-                    name: librarySummary.name,
-                    description: librarySummary.description,
-                  }
-                : {
-                    id: library.id,
-                    name: library.name,
-                    description: library.description,
-                  }
-            }
-            sections={tableSections}
-            properties={tableProperties}
-            overrideRows={versionAssetRows}
-          />
+          <YjsProvider libraryId={libraryId}>
+            <LibraryAssetsTableAdapter
+              library={
+                librarySummary
+                  ? {
+                      id: librarySummary.id,
+                      name: librarySummary.name,
+                      description: librarySummary.description,
+                    }
+                  : {
+                      id: library.id,
+                      name: library.name,
+                      description: library.description,
+                    }
+              }
+              sections={tableSections}
+              properties={tableProperties}
+              overrideRows={versionAssetRows}
+            />
+          </YjsProvider>
         </div>
 
         {/* Version Control Sidebar */}

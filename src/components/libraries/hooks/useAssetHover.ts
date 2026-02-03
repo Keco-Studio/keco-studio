@@ -6,13 +6,6 @@ export type AssetHoverDetails = {
   libraryId: string;
 };
 
-/**
- * useAssetHover - 悬停 reference 头像时加载资产详情并定位浮层
- *
- * - 悬停/移出带延迟，避免闪动
- * - 从 library_assets 拉取 name、library，用于 Asset Card 浮层
- * - 产出：hoveredAssetId、hoveredAssetDetails、loading、position、handlers、avatarRefs
- */
 export function useAssetHover(supabase: any): {
   hoveredAssetId: string | null;
   setHoveredAssetId: React.Dispatch<React.SetStateAction<string | null>>;

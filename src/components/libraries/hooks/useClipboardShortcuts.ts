@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
 
 /**
- * useClipboardShortcuts - 全局 Ctrl/Cmd + X / C / V 监听，以及 Delete 清空选区
- * 在编辑单元格、input/textarea/select、modal 内时不触发。
+ * useClipboardShortcuts - Ctrl/Cmd + X / C / V 
  */
 export function useClipboardShortcuts({
   editingCell,
