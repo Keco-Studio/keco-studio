@@ -34,11 +34,9 @@ export function RestoreButton({ version, libraryId, onRestoreSuccess }: RestoreB
             setShowRestoreModal(true);
           }}
         >
-          <Image
-            src={versionItemRestoreIcon}
+          <Image src={versionItemRestoreIcon}
             alt="Restore"
-            width={24}
-            height={24}
+            width={24} height={24} className="icon-24"
           />
         </button>
         <div className={styles.tooltip}>

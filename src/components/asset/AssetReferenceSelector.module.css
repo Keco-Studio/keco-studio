@@ -6,15 +6,15 @@
 .inputContainer {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .inputField {
   flex: 1;
-  min-height: 32px;
-  padding: 4px 11px;
+  min-height: 2rem;
+  padding: 0.25rem 11px;
   border: 1px solid #d9d9d9;
-  border-radius: 6px;
+  border-radius: 0.375rem;
   background: #ffffff;
   cursor: pointer;
   transition: all 0.2s;
@@ -32,30 +32,30 @@
 
 .placeholder {
   color: #bfbfbf;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .selectedAsset {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .selectedAssetLeft {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.25rem;
   background: #5E00FF14;
   border-radius: 5px;
-  padding: 4px;
+  padding: 0.25rem;
 }
 .clearButton {
   margin-left: auto;
   border: none;
   background: none;
   color: #999;
-  font-size: 20px;
+  font-size: 1.25rem;
   line-height: 1;
   cursor: pointer;
   padding: 0 4px;
@@ -78,7 +78,7 @@
 .expandButton:hover {
   border-color: #4096ff;
   background: #f0f5ff;
-  border-radius: 6px;
+  border-radius: 0.375rem;
 }
 
 .dropdown {
@@ -88,7 +88,7 @@
   right: 0;
   background: #ffffff;
   border: 1px solid #d9d9d9;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
   z-index: 1000;
   max-height: 400px;
@@ -108,14 +108,14 @@
 }
 
 .dropdownHeader span {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   color: #111827;
 }
 
 :global(.ant-select-outlined:not(.ant-select-customize-input) .ant-select-selector){
-  padding: 4px 8px;
-  border-radius: 10px;
+  padding: 0.25rem 8px;
+  border-radius: 0.625rem;
   background: #0000000F;
 }
 
@@ -125,9 +125,9 @@
 
 .searchInput {
   width: 100%;
-  border-radius: 20px;
+  border-radius: 1.25rem;
   height: 38px;
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .dropdownContent {
@@ -151,10 +151,10 @@
 }
 
 .assetsGrid {
-  padding: 12px;
+  padding: 0.75rem;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
-  gap: 12px;
+  gap: 0.75rem;
   max-height: 300px;
   overflow-y: auto;
 }
@@ -163,9 +163,9 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
-  border-radius: 6px;
-  padding: 4px;
+  gap: 0.5rem;
+  border-radius: 0.375rem;
+  padding: 0.25rem;
   cursor: pointer;
   transition: all 0.2s;
   background: #ffffff;
@@ -178,7 +178,7 @@
 }
 
 .assetName {
-  font-size: 12px;
+  font-size: 0.75rem;
   text-align: center;
   word-break: break-word;
   max-width: 100%;
@@ -193,7 +193,7 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 40px;
+  padding: 2.5rem;
 }
 
 .emptyMessage {
@@ -201,20 +201,20 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 40px;
+  padding: 2.5rem;
   text-align: center;
   color: #999;
-  font-size: 14px;
+  font-size: 0.875rem;
   min-height: 200px;
 }
 
 .noLibrariesMessage {
-  padding: 12px;
+  padding: 0.75rem;
   color: #999;
-  font-size: 14px;
+  font-size: 0.875rem;
   text-align: center;
   border: 1px dashed #d9d9d9;
-  border-radius: 6px;
+  border-radius: 0.375rem;
   background: #fafafa;
 }
 
@@ -224,25 +224,25 @@
   left: 100px;
   z-index: 1001;
   border: 1px solid #E5E7EB;
-  border-radius: 12px;
+  border-radius: 0.75rem;
   background: #ffffff;
   width: 280px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   overflow: hidden;
-  padding-bottom: 20px;
+  padding-bottom: 1.25rem;
 }
 
 .hoverInfo {
   position: fixed;
   z-index: 1002;
   border: 1px solid #E5E7EB;
-  border-radius: 12px;
+  border-radius: 0.75rem;
   background: #ffffff;
   width: 280px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
   overflow: hidden;
   pointer-events: auto;
-  padding-bottom: 20px;
+  padding-bottom: 1.25rem;
 }
 
 .expandedHeader {
@@ -257,7 +257,7 @@
 }
 
 .expandedHeader span {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   color: #111827;
 }
@@ -266,7 +266,7 @@
   border: none;
   background: none;
   color: #6B7280;
-  font-size: 28px;
+  font-size: 1.75rem;
   line-height: 1;
   cursor: pointer;
   padding: 0;
@@ -281,30 +281,30 @@
 .expandedContent {
   display: flex;
   flex-direction: column;
-  padding: 10px;
+  padding: 0.625rem;
 }
 
 .detailsTitle {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 500;
   color: #9CA3AF;
-  margin-bottom: 4px;
+  margin-bottom: 0.25rem;
 }
 
 .detailsContent {
   display: flex;
-  gap: 20px;
+  gap: 1.25rem;
 }
 
 .avatarSection {
   display: flex;
   justify-content: flex-start;
-  padding: 8px 0;
+  padding: 0.5rem 0;
 }
 
 .avatarSection :global(.ant-avatar) {
   border-radius: 9px !important;
-  font-size: 40px !important;
+  font-size: 2.5rem !important;
   line-height: 60px !important;
 }
 
@@ -317,11 +317,11 @@
 .detailsContentRight {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0.375rem;
 }
 
 .detailLabel {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   color: #6B7280;
 }
@@ -335,8 +335,8 @@
 .libraryLink {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 16px;
+  gap: 0.5rem;
+  font-size: 1rem;
   font-weight: 500;
   color: #8B5CF6;
   cursor: pointer;
@@ -349,13 +349,13 @@
 
 .arrowIcon {
   margin-left: auto;
-  font-size: 18px;
+  font-size: 1.125rem;
 }
 
 .infoRow {
   display: flex;
-  gap: 12px;
-  font-size: 14px;
+  gap: 0.75rem;
+  font-size: 0.875rem;
 }
 
 .infoLabel {
@@ -369,4 +369,5 @@
   flex: 1;
   word-break: break-word;
 }
+
 

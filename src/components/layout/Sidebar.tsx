@@ -659,7 +659,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           onClick={handleLogoClick}
           style={{ cursor: 'pointer' }}
         >
-          <Image src={loginProductIcon} alt="Keco Studio" width={32} height={32} />
+          <Image src={loginProductIcon} alt="Keco Studio" width={32} height={32} className="icon-32" />
           <div className={styles.headerBrand}>
             <div className={styles.brandName}>Keco Studio</div>
             <div className={styles.brandSlogan}>for game designers</div>
@@ -674,7 +674,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             alt="Search"
             width={24}
             height={24}
-            className={styles.searchIcon}
+            className={`icon-24 ${styles.searchIcon}`}
           />
           <input
             placeholder="Search for..."

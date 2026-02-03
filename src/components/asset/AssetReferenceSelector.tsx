@@ -316,7 +316,7 @@ export function AssetReferenceSelector({
         >
           <div className={styles.selectedAsset}>
             <div className={styles.selectedAssetLeft}>
-              <Image src={assetRefInputLeftIcon} alt="" width={16} height={16} />
+              <Image src={assetRefInputLeftIcon} alt="" width={16} height={16} className="icon-16" />
               <Image 
                 src={assetRefAssetMenuExpandIcon} 
                 alt="" 
@@ -353,7 +353,7 @@ export function AssetReferenceSelector({
                   onClick={handleExpand}
                   title="View details"
                 >
-                  <Image src={assetRefAssetInfoIcon} alt="" width={16} height={16} />
+                  <Image src={assetRefAssetInfoIcon} alt="" width={16} height={16} className="icon-16" />
                 </button>
               )}
             </div>
@@ -397,13 +397,13 @@ export function AssetReferenceSelector({
                   {libraries.map((lib) => (
                     <Select.Option key={lib.id} value={lib.id}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Image src={assetRefMenuLibIcon} alt="" width={16} height={16} />
+                        <Image src={assetRefMenuLibIcon} alt="" width={16} height={16} className="icon-16" />
                         <span>{lib.name}</span>
                       </div>
                     </Select.Option>
                   ))}
                 </Select>
-                <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} />
+                <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} className="icon-22" />
               </div>
             </div>
             <div className={styles.assetsGrid}>
@@ -469,9 +469,9 @@ export function AssetReferenceSelector({
                     className={styles.libraryLink}
                     onClick={() => selectedAsset && handleLibraryClick(selectedAsset.library_id)}
                   >
-                    <Image src={assetRefDetailLibIcon} alt="" width={20} height={20} />
+                    <Image src={assetRefDetailLibIcon} alt="" width={20} height={20} className="icon-20" />
                     <span>{selectedAsset?.library_name}</span>
-                    <Image src={assetRefDetailLibExpandIcon} alt="" width={20} height={20} />
+                    <Image src={assetRefDetailLibExpandIcon} alt="" width={20} height={20} className="icon-20" />
                   </div>
                 </div>
               </div>
@@ -525,9 +525,9 @@ export function AssetReferenceSelector({
                     className={styles.libraryLink}
                     onClick={() => handleLibraryClick(hoveredAsset.library_id)}
                   >
-                    <Image src={assetRefDetailLibIcon} alt="" width={20} height={20} />
+                    <Image src={assetRefDetailLibIcon} alt="" width={20} height={20} className="icon-20" />
                     <span>{hoveredAssetDetails.library?.name || hoveredAsset.library_name}</span>
-                    <Image src={assetRefDetailLibExpandIcon} alt="" width={20} height={20} />
+                    <Image src={assetRefDetailLibExpandIcon} alt="" width={20} height={20} className="icon-20" />
                   </div>
                 </div>
               </div>

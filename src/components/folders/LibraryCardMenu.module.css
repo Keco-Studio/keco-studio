@@ -2,9 +2,9 @@
   position: fixed;
   background: white;
   border: 1px solid #E5E5E5;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-  padding: 4px 0;
+  padding: 0.25rem 0;
   min-width: 224px;
   z-index: 1000;
   display: flex;
@@ -14,9 +14,9 @@
 .menuItem {
   background: none;
   border: none;
-  padding: 8px 16px;
+  padding: 0.5rem 16px;
   text-align: left;
-  font-size: 14px;
+  font-size: 0.875rem;
   color: #21272A;
   cursor: pointer;
   transition: background-color 0.2s;
@@ -32,11 +32,11 @@
 }
 
 .divider {
-  margin: 4px 0;
+  margin: 0.25rem 0;
   padding: 0;
   display: flex;
   align-items: center;
   width: 100%;
-  height: 1px;
+  height: 0.0625rem;
 }
 

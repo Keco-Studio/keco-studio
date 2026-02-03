@@ -11,34 +11,34 @@
 .leftSection {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 0.25rem;
 }
 
 .title {
-  font-size: 28px;
-  font-weight: 600;
+  font-size: 1.75rem;
+  font-weight: 500;
   color: #0f172a;
   margin: 0;
-  line-height: 1.3;
+  line-height: 1.2;
 }
 
 .description {
-  font-size: 14px;
-  color: #64748b;
-  line-height: 1.5;
+  font-size: 0.75rem;
+  color: #7D7D7D;
+  line-height: 1;
   max-width: 500px;
 }
 
 .rightSection {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.75rem;
 }
 
 /* Icon Buttons */
 .iconButton {
-  width: 32px;
-  height: 32px;
+  width: 2rem;
+  height: 2rem;
   border: none;
   background: white;
   display: flex;
@@ -57,17 +57,17 @@
 .shareSection {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding-left: 12px;
+  gap: 0.5rem;
+  padding-left: 0.75rem;
 }
 
 .shareButton {
-  padding: 8px 16px;
-  border-radius: 20px;
+  padding: 0.5rem 16px;
+  border-radius: 1.25rem;
   border: 1px solid #F8C5D8;
   background: #F8C5D8;
   color: #000;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
@@ -77,8 +77,8 @@
 .adminRoleLabel {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 0.375rem;
+  padding: 0.375rem 14px;
   border-radius: 9999px;
   border: 1px solid #e5e7eb;
   background-color: #ffffff;
@@ -89,8 +89,8 @@
 .editorRoleLabel {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 0.375rem;
+  padding: 0.375rem 14px;
   border-radius: 9999px;
   border: 1px solid #e5e7eb;
   background-color: #ffffff;
@@ -101,8 +101,8 @@
 .viewerRoleLabel {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 0.375rem;
+  padding: 0.375rem 14px;
   border-radius: 9999px;
   border: 1px solid #e5e7eb;
   background-color: #ffffff;
@@ -114,21 +114,21 @@
   position: relative;
   display: flex;
   align-items: center;
-  padding-left: 12px;
+  padding-left: 0.75rem;
 }
 
 .membersAvatars {
   display: flex;
   align-items: center;
-  padding: 4px;
-  border-radius: 8px;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
 }
 
 .expandCollaboratorsButton {
-  height: 32px;
+  height: 2rem;
   border: none;
   background: white;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -144,8 +144,8 @@
 
 .memberAvatar {
   border: 2px solid white;
-  font-weight: 600;
-  font-size: 12px;
+  font-weight: 500;
+  font-size: 21px;
   flex-shrink: 0;
   transition: transform 0.2s;
 }
@@ -156,7 +156,7 @@
 }
 
 .remainingCount {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 600;
 }
 
@@ -168,7 +168,7 @@
   width: 320px;
   background: white;
   border: 1px solid #e2e8f0;
-  border-radius: 12px;
+  border-radius: 0.75rem;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
   z-index: 1000;
   overflow: hidden;
@@ -177,20 +177,20 @@
 /* Current User Section */
 .currentUserSection {
   background: #FF005E0F;
-  padding: 12px 16px;
+  padding: 0.75rem 16px;
   border-bottom: 1px solid #e2e8f0;
 }
 
 .currentUserItem {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0.75rem;
 }
 
 .membersPanelHeader {
-  padding: 12px 20px;
+  padding: 0.75rem 20px;
   background: white;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.5px;
   color: #94a3b8;
@@ -200,15 +200,15 @@
 .membersList {
   max-height: 400px;
   overflow-y: auto;
-  padding: 4px 0;
+  padding: 0.25rem 0;
 }
 
 .memberItem {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  border-radius: 8px;
+  gap: 0.75rem;
+  padding: 0.75rem 16px;
+  border-radius: 0.5rem;
   transition: background-color 0.2s;
   position: relative;
 }
@@ -223,23 +223,23 @@
 }
 
 .memberName {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   color: #0f172a;
   line-height: 1.4;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
 }
 
 .youLabel {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 400;
   color: #000;
 }
 
 .memberEmail {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: #64748b;
   line-height: 1.4;
   overflow: hidden;
@@ -248,32 +248,32 @@
 }
 
 .memberStatus {
-  width: 8px;
-  height: 8px;
+  width: 0.5rem;
+  height: 0.5rem;
   border-radius: 50%;
   flex-shrink: 0;
 }
 
 .emptyState {
-  padding: 40px 20px;
+  padding: 2.5rem 20px;
   text-align: center;
   color: #94a3b8;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 /* Scrollbar styling */
 .membersList::-webkit-scrollbar {
-  width: 6px;
+  width: 0.375rem;
 }
 
 .membersList::-webkit-scrollbar-track {
   background: #f1f5f9;
-  border-radius: 3px;
+  border-radius: 0.1875rem;
 }
 
 .membersList::-webkit-scrollbar-thumb {
   background: #cbd5e1;
-  border-radius: 3px;
+  border-radius: 0.1875rem;
 }
 
 .membersList::-webkit-scrollbar-thumb:hover {
@@ -285,8 +285,8 @@
   .header {
     flex-direction: column;
     align-items: flex-start;
-    gap: 16px;
-    padding: 16px 20px;
+    gap: 1rem;
+    padding: 1rem 20px;
   }
 
   .rightSection {
@@ -309,4 +309,5 @@
     left: 0;
   }
 }
+
 

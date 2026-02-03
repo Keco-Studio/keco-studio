@@ -889,11 +889,9 @@ function PredefinePageContent() {
                   title="Back to library"
                   aria-label="Back to library"
                 >
-                  <Image
-                    src={PredefineBackIcon}
+                  <Image src={PredefineBackIcon}
                     alt="Back"
-                    width={24}
-                    height={24}
+                    width={24} height={24} className="icon-24"
                   />
                 </button>
               )}
@@ -907,7 +905,7 @@ function PredefinePageContent() {
                     <h1 className={styles.title}>
                       {`Predefine ${library?.name ?? ''} Library`}
                     </h1>
-                    {library?.description && (
+                    {/* {library?.description && (
                       <Tooltip title={library.description.length > 50 ? library.description : undefined}>
                         <p className={styles.subtitle}>
                           {library.description.length > 50
@@ -915,7 +913,7 @@ function PredefinePageContent() {
                             : library.description}
                         </p>
                       </Tooltip>
-                    )}
+                    )} */}
                   </>
                 )}
               </div>
@@ -956,7 +954,7 @@ function PredefinePageContent() {
                       className={styles.addSectionButton}
                       style={{ left: `${addButtonLeft}px` }}
                     >
-                      <Image src={predefineAddSectionIcon} alt="Add Section" width={24} height={24} />
+                      <Image src={predefineAddSectionIcon} alt="Add Section" width={24} height={24} className="icon-24" />
                     </button>
                   )}
                 </>

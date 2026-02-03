@@ -151,7 +151,7 @@ export function LibraryListView({
                       alt={item.type === 'folder' ? 'Folder' : 'Library'}
                       width={36}
                       height={36}
-                      className={styles.libraryIcon}
+                      className={`icon-36 ${styles.libraryIcon}`}
                     />
                     <span className={styles.libraryName}>{item.name}</span>
                   </div>
@@ -205,11 +205,9 @@ export function LibraryListView({
                       onClick={(e) => handleMoreClick(item.id, item.type, e)}
                       aria-label="More options"
                     >
-                      <Image
-                        src={moreOptionsIcon}
+                      <Image src={moreOptionsIcon}
                         alt="More"
-                        width={20}
-                        height={20}
+                        width={20} height={20} className="icon-20"
                       />
                     </button>
                   </div>

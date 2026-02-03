@@ -226,11 +226,9 @@ export function LibraryHeader({
               onClick={() => setShowMembersPanel(!showMembersPanel)}
               aria-label="View all members"
             >
-              <Image
-                src={libraryHeadExpandCollaborators}
+              <Image src={libraryHeadExpandCollaborators}
                 alt="Expand"
-                width={16}
-                height={16}
+                width={16} height={16} className="icon-16"
               />
             </button>
           </Tooltip>
@@ -308,11 +306,9 @@ export function LibraryHeader({
         {/* More Options Icon */}
         <Tooltip title="More Options">
           <button className={styles.iconButton}>
-            <Image
-              src={libraryHeadMoreIcon}
+            <Image src={libraryHeadMoreIcon}
               alt="More"
-              width={32}
-              height={32}
+              width={32} height={32} className="icon-32"
             />
           </button>
         </Tooltip>
@@ -322,11 +318,9 @@ export function LibraryHeader({
             className={styles.iconButton}
             onClick={onVersionControlToggle}
           >
-            <Image
-              src={libraryHeadVersionControlIcon}
+            <Image src={libraryHeadVersionControlIcon}
               alt="Version Control"
-              width={32}
-              height={32}
+              width={32} height={32} className="icon-32"
             />
           </button>
         </Tooltip>

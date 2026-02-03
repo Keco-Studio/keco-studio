@@ -289,11 +289,9 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
   const dataTypeInputPrefix = useMemo(() => {
     if (dataTypeSelected && field.dataType) {
       return (
-        <Image
-          src={getFieldTypeIcon(field.dataType)}
+        <Image src={getFieldTypeIcon(field.dataType)}
           alt={field.dataType}
-          width={16}
-          height={16}
+          width={16} height={16} className="icon-16"
         />
       );
     }
@@ -367,10 +365,10 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
         disabled={disabled}
         title="Add property"
       >
-        <Image src={predefineLabelAddIcon} alt="Add" width={20} height={20} />
+        <Image src={predefineLabelAddIcon} alt="Add" width={20} height={20} className="icon-20" />
       </button>
       <div className={styles.dragHandle}>
-        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} />
+        <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
       </div>
       <div className={styles.inputWrapper}>
         <Input
@@ -411,11 +409,9 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
                 className={styles.slashMenuItem}
                 onClick={() => handleSlashMenuSelect(option.value as FieldType)}
               >
-                <Image
-                  src={getFieldTypeIcon(option.value as FieldType)}
+                <Image src={getFieldTypeIcon(option.value as FieldType)}
                   alt={option.value}
-                  width={16}
-                  height={16}
+                  width={16} height={16} className="icon-16"
                   style={{ marginRight: 8 }}
                 />
                 {option.label}
@@ -434,11 +430,9 @@ export function FieldForm({ initialField, onSubmit, onCancel, disabled, onFieldC
               disabled={disabled}
               title="Configure options"
             >
-              <Image 
-                src={predefineLabelConfigIcon} 
+              <Image src={predefineLabelConfigIcon} 
                 alt="Config" 
-                width={20} 
-                height={20} 
+                width={20} height={20} className="icon-20" 
               />
             </button>
             {showConfigMenu && field.dataType === 'enum' && (

@@ -83,7 +83,7 @@ export function SidebarLibrariesSection({
               onClick={onAddButtonClick}
               title="Add new folder or library"
             >
-              <Image src={addProjectIcon} alt="Add library" width={24} height={24} />
+              <Image src={addProjectIcon} alt="Add library" width={24} height={24} className="icon-24" />
             </button>
           )}
         </div>
@@ -107,10 +107,10 @@ export function SidebarLibrariesSection({
                         }}
                         title="Back to library"
                       >
-                        <Image src={sidebarFolderIcon3} alt="Back" width={24} height={24} />
+                        <Image src={sidebarFolderIcon3} alt="Back" width={24} height={24} className="icon-24" />
                       </button>
                       <div className={styles.libraryIconContainer}>
-                        <Image src={libraryBookIcon} alt="Library" width={24} height={24} />
+                        <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
                       </div>
                       <span className={styles.itemText} title={libraryName}>
                         {truncateText(libraryName, 15)}
@@ -129,7 +129,7 @@ export function SidebarLibrariesSection({
                               }
                             }}
                           >
-                            <Image src={sidebarFolderIcon4} alt="Predefine" width={22} height={22} />
+                            <Image src={sidebarFolderIcon4} alt="Predefine" width={22} height={22} className="icon-22" />
                           </button>
                         </Tooltip>
                       )}
@@ -144,7 +144,7 @@ export function SidebarLibrariesSection({
                       }}
                     >
                       <span className={styles.createButtonText}>
-                        <Image src={sidebarFolderIcon5} alt="Add" width={24} height={24} />
+                        <Image src={sidebarFolderIcon5} alt="Add" width={24} height={24} className="icon-24" />
                         Add new asset
                       </span>
                     </button>
@@ -195,7 +195,7 @@ export function SidebarLibrariesSection({
                   alt="No folders or libraries"
                   width={22}
                   height={18}
-                  className={styles.emptyIcon}
+                  className={`icon-22 ${styles.emptyIcon}`}
                 />
                 <div className={styles.sidebarEmptyText}>
                   No folder or library in this project yet.

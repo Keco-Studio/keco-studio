@@ -98,7 +98,7 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
         <div className={styles.header}>
           <div className={styles.title}>Edit Project</div>
           <button className={styles.close} onClick={onClose} aria-label="Close">
-            <Image src={closeIcon} alt="Close" width={32} height={32} />
+            <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>
         </div>
 
@@ -112,7 +112,7 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
           <>
             <div className={styles.nameContainer}>
               <div className={styles.iconWrapper}>
-                <Image src={projectIcon} alt="Project icon" width={52} height={52} />
+                <Image src={projectIcon} alt="Project icon" width={52} height={52} className="icon-52" />
               </div>
               <div className={styles.nameInputContainer}>
                 <label htmlFor="project-name" className={styles.nameLabel}>Project Name</label>

@@ -2,9 +2,9 @@
 .addFieldContainer {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 0px;
-  margin-top: 8px;
+  gap: 0.75rem;
+  padding: 0.75rem 0px;
+  margin-top: 0.5rem;
 }
 
 .addFieldContainerNoMargin {
@@ -47,7 +47,7 @@
 .fieldActions {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.25rem;
   flex-shrink: 0;
 }
 
@@ -58,11 +58,11 @@
 .configButton {
   padding: 0;
   border: none;
-  padding: 6px;
+  padding: 0.375rem;
   background: transparent;
   cursor: pointer;
   transition: all 0.2s;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -85,17 +85,17 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   flex-shrink: 0;
 }
 
 .addButton {
   border: none;
-  padding: 4px;
+  padding: 0.25rem;
   background: transparent;
   cursor: pointer;
   transition: all 0.2s;
-  border-radius: 4px;
+  border-radius: 0.25rem;
 }
 
 .addButton:hover:not(:disabled) {
@@ -114,11 +114,11 @@
 .slashMenu {
   background: #fff;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   width: 300px;
   height: 330px;
-  padding: 4px 4px;
+  padding: 0.25rem 4px;
   position: absolute;
   top: calc(100% + 4px);
   left: 0;
@@ -126,24 +126,24 @@
 }
 
 .slashMenuHeader {
-  padding: 8px 12px;
-  font-size: 12px;
+  padding: 0.5rem 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   color: #6b7280;
   text-transform: uppercase;
   border-bottom: 1px solid #e5e7eb;
-  margin-bottom: 4px;
+  margin-bottom: 0.25rem;
 }
 
 .slashMenuItem {
-  height: 40px;
-  padding-left: 10px;
+  height: 2.5rem;
+  padding-left: 0.625rem;
   display: flex;
   justify-content: flex-start;
   align-items: center;
   cursor: pointer;
   font-size: 15px;
-  border-radius: 6px;
+  border-radius: 0.375rem;
   color: #374151;
   transition: background-color 0.2s;
 }
@@ -159,7 +159,7 @@
   right: 0;
   background: #ffffff;
   border: 1px solid #e5e7eb;
-  border-radius: 8px;
+  border-radius: 0.5rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   width: 350px;
   height: 220px;
@@ -178,20 +178,20 @@
 }
 
 .configMenuHeader span {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 600;
   color: #111827;
 }
 
 .addOptionButton {
-  width: 28px;
-  height: 28px;
+  width: 1.75rem;
+  height: 1.75rem;
   border: none;
   background: #3b82f6;
   color: #ffffff;
-  font-size: 20px;
+  font-size: 1.25rem;
   line-height: 1;
-  border-radius: 6px;
+  border-radius: 0.375rem;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -211,8 +211,8 @@
 .optionsList {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px 10px 20px 10px;
+  gap: 0.625rem;
+  padding: 0.625rem 10px 20px 10px;
   height: 90%;
 }
 
@@ -223,7 +223,7 @@
 }
 
 .optionsListHeader {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   color: #111827;
 }
@@ -233,13 +233,13 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .optionItem {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.625rem;
 }
 
 .optionInput {
@@ -248,14 +248,14 @@
 }
 
 .removeOptionButton {
-  width: 28px;
-  height: 28px;
+  width: 1.75rem;
+  height: 1.75rem;
   border: 1px solid #e5e7eb;
   background: #ffffff;
   color: #6b7280;
-  font-size: 20px;
+  font-size: 1.25rem;
   line-height: 1;
-  border-radius: 6px;
+  border-radius: 0.375rem;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -276,7 +276,7 @@
 }
 
 .emptyOptionsMessage {
-  padding: 20px;
+  padding: 1.25rem;
   text-align: center;
   color: #9ca3af;
   font-size: 15px;
@@ -285,12 +285,12 @@
 .referenceConfig {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 10px;
+  gap: 0.625rem;
+  padding: 0.625rem;
 }
 
 .referenceConfigHeader {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   color: #111827;
 }
@@ -298,13 +298,13 @@
 .libraryTag {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
+  gap: 0.25rem;
+  padding: 0.125rem 8px;
   background: #e0e7ff;
   color: #3730a3;
-  border-radius: 4px;
-  font-size: 12px;
-  margin: 2px;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  margin: 0.125rem;
 }
 
 .libraryTagClose {
@@ -313,8 +313,8 @@
   color: #3730a3;
   cursor: pointer;
   padding: 0;
-  margin-left: 4px;
-  font-size: 16px;
+  margin-left: 0.25rem;
+  font-size: 1rem;
   line-height: 1;
   font-weight: bold;
   transition: color 0.2s;

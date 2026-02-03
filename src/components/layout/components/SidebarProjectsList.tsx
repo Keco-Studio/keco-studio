@@ -44,6 +44,7 @@ export function SidebarProjectsList({
             alt="Add project"
             width={24}
             height={24}
+            className="icon-24"
           />
         </button>
       </div>
@@ -60,9 +61,9 @@ export function SidebarProjectsList({
               <Image
                 src={projectIcon}
                 alt="Project"
-                width={20}
-                height={20}
-                className={styles.itemIcon}
+                width={24}
+                height={24}
+                className={`icon-24 ${styles.itemIcon}`}
               />
               <span className={styles.itemText} title={project.name}>
                 {truncateText(project.name, 20)}
@@ -83,6 +84,7 @@ export function SidebarProjectsList({
                         alt="Info"
                         width={24}
                         height={24}
+                        className="icon-24"
                       />
                     </div>
                   </Tooltip>
@@ -101,7 +103,7 @@ export function SidebarProjectsList({
               alt="Project"
               width={24}
               height={24}
-              className={styles.itemIcon}
+              className={`icon-24 ${styles.itemIcon}`}
             />
             <span className={styles.itemText}>Create Project</span>
           </button>

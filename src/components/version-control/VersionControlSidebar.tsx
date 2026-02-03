@@ -110,11 +110,9 @@ export function VersionControlSidebar({
               onClick={handleCreateVersion}
               title="Create new version"
             >
-              <Image
-                src={libraryAssetTableAddIcon}
+              <Image src={libraryAssetTableAddIcon}
                 alt="Add"
-                width={24}
-                height={24}
+                width={24} height={24} className="icon-24"
               />
             </button>
             <button
@@ -122,11 +120,9 @@ export function VersionControlSidebar({
               onClick={onClose}
               title="Close"
             >
-              <Image
-                src={closeIcon}
+              <Image src={closeIcon}
                 alt="Close"
-                width={24}
-                height={24}
+                width={24} height={24} className="icon-24"
               />
             </button>
           </div>

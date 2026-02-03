@@ -81,7 +81,7 @@ export function NewLibraryModal({ open, projectId, folderId, onClose, onCreated 
         <div className={styles.header}>
           <div className={styles.title}>Create Library</div>
           <button className={styles.close} onClick={onClose} aria-label="Close">
-            <Image src={closeIcon} alt="Close" width={32} height={32} />
+            <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>
         </div>
 

@@ -94,11 +94,11 @@ export function useSidebarTree(
                     }}
                     title="Back to tree view"
                   >
-                    <Image src={sidebarFolderIcon3} alt="Back" width={24} height={24} />
+                    <Image src={sidebarFolderIcon3} alt="Back" width={24} height={24} className="icon-24" />
                   </button>
                 )}
                 <div className={styles.libraryIconContainer}>
-                  <Image src={libraryBookIcon} alt="Library" width={24} height={24} />
+                  <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
                 </div>
                 <span className={styles.itemText} title={lib.name}>
                   {truncateText(lib.name, 15)}
@@ -121,6 +121,7 @@ export function useSidebarTree(
                         alt="Predefine"
                         width={22}
                         height={22}
+                        className="icon-22"
                       />
                     </button>
                   </Tooltip>
@@ -145,7 +146,7 @@ export function useSidebarTree(
             <div className={styles.itemMain}>
               {hasNoLibraries && (
                 <div className={styles.folderIconPlaceholder} aria-hidden>
-                  <Image src={folderCloseIcon} alt="" width={24} height={24} />
+                  <Image src={folderCloseIcon} alt="" width={24} height={24} className="icon-24" />
                 </div>
               )}
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={folder.name}>
@@ -169,7 +170,7 @@ export function useSidebarTree(
                     openNewLibrary();
                   }}
                 >
-                  <Image src={FolderAddLibIcon} alt="" width={24} height={24} />
+                  <Image src={FolderAddLibIcon} alt="" width={24} height={24} className="icon-24" />
                 </button>
               )}
             </div>
@@ -213,7 +214,7 @@ export function useSidebarTree(
                 </button>
               )}
               <div className={styles.libraryIconContainer}>
-                <Image src={libraryBookIcon} alt="Library" width={24} height={24} />
+                <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
               </div>
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={lib.name}>
                 {truncateText(lib.name, 15)}

@@ -3,12 +3,12 @@
 .presenceIndicators {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 8px 0;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
 }
 
 .label {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 500;
   color: var(--text-secondary, #666);
   white-space: nowrap;
@@ -25,7 +25,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   font-weight: 600;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .avatar:hover {
@@ -37,39 +37,39 @@
 .avatarOverflow {
   background-color: var(--bg-tertiary, #f0f0f0) !important;
   color: var(--text-secondary, #666);
-  font-size: 12px;
+  font-size: 0.75rem;
   border-color: var(--border-light, #e0e0e0);
 }
 
 /* Tooltip Content */
 
 .tooltipContent {
-  padding: 4px 0;
+  padding: 0.25rem 0;
 }
 
 .tooltipName {
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--text-primary, #000);
-  margin-bottom: 4px;
+  margin-bottom: 0.25rem;
 }
 
 .tooltipActivity {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--text-secondary, #666);
 }
 
 .tooltipEditing {
-  font-size: 12px;
+  font-size: 0.75rem;
   color: var(--color-success, #52c41a);
-  margin-top: 4px;
+  margin-top: 0.25rem;
   font-style: italic;
 }
 
 /* Custom Tooltip Overlay */
 
 :global(.ant-tooltip.presenceTooltip) .ant-tooltip-inner {
-  padding: 8px 12px;
+  padding: 0.5rem 12px;
   min-width: 150px;
 }
 
@@ -77,15 +77,15 @@
 
 @media (max-width: 768px) {
   .presenceIndicators {
-    gap: 8px;
+    gap: 0.5rem;
   }
 
   .label {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
 
   .avatar {
-    font-size: 12px;
+    font-size: 0.75rem;
   }
 }
 
@@ -113,8 +113,8 @@
   position: absolute;
   bottom: 0;
   right: 0;
-  width: 10px;
-  height: 10px;
+  width: 0.625rem;
+  height: 0.625rem;
   background-color: var(--color-success, #52c41a);
   border: 2px solid var(--bg-primary, #ffffff);
   border-radius: 50%;

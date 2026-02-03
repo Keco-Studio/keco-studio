@@ -315,11 +315,9 @@ export default function CollaboratorsList({
                       title="Remove collaborator"
                       aria-label={`Remove ${displayName}`}
                     >
-                      <Image
-                        src={collaborationDeleteIcon}
+                      <Image src={collaborationDeleteIcon}
                         alt="Delete"
-                        width={32}
-                        height={32}
+                        width={32} height={32} className="icon-32"
                       />
                     </button>
                   </div>

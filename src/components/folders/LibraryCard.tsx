@@ -81,11 +81,9 @@ export function LibraryCard({
         <div className={styles.cardFooter}>
           <div className={styles.libraryInfo}>
             <div className={styles.libraryIconContainer}>
-              <Image
-                src={libraryCardIcon}
+              <Image src={libraryCardIcon}
                 alt="Library"
-                width={24}
-                height={24}
+                width={24} height={24} className="icon-24"
               />
             </div>
             <div className={styles.libraryNameContainer}>
@@ -104,11 +102,9 @@ export function LibraryCard({
                 onClick={handleSettingsClick}
                 aria-label="Library settings"
               >
-                <Image
-                  src={predefineSettingIcon}
+                <Image src={predefineSettingIcon}
                   alt="Settings"
-                  width={22}
-                  height={22}
+                  width={22} height={22} className="icon-22"
                 />
               </button>
             </Tooltip>
@@ -117,11 +113,9 @@ export function LibraryCard({
               onClick={handleMoreClick}
               aria-label="More options"
             >
-              <Image
-                src={moreOptionsIcon}
+              <Image src={moreOptionsIcon}
                 alt="More"
-                width={20}
-                height={20}
+                width={20} height={20} className="icon-20"
               />
             </button>
           </div>

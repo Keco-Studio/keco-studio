@@ -36,7 +36,7 @@ export function EmptyState({ userRole, onPredefineClick }: EmptyStateProps) {
               alt=""
               width={24}
               height={24}
-              className={styles.predefineButtonIcon}
+              className={`icon-24 ${styles.predefineButtonIcon}`}
             />
             <span>Predefine</span>
           </button>

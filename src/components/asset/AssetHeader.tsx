@@ -225,11 +225,9 @@ export function AssetHeader({
               onClick={() => setShowMembersPanel(!showMembersPanel)}
               aria-label="View all members"
             >
-              <Image
-                src={libraryHeadExpandCollaborators}
+              <Image src={libraryHeadExpandCollaborators}
                 alt="Expand"
-                width={16}
-                height={16}
+                width={16} height={16} className="icon-16"
               />
             </button>
           </Tooltip>
@@ -310,13 +308,13 @@ export function AssetHeader({
           )}
           {userRole === 'editor' && (
             <button className={styles.editorRoleLabel}>
-              <Image src={libraryHeadEditIcon} alt="Editing" width={16} height={16} />
+              <Image src={libraryHeadEditIcon} alt="Editing" width={16} height={16} className="icon-16" />
               {getRoleText(userRole)}
             </button>
           )}
           {userRole === 'viewer' && (
             <button className={styles.viewerRoleLabel}>
-              <Image src={libraryHeadViewIcon} alt="Viewing" width={16} height={16} />
+              <Image src={libraryHeadViewIcon} alt="Viewing" width={16} height={16} className="icon-16" />
               {getRoleText(userRole)}
             </button>
           )} */}
@@ -325,11 +323,9 @@ export function AssetHeader({
         {/* More Options Icon (no Version Control) */}
         <Tooltip title="More Options">
           <button className={styles.iconButton}>
-            <Image
-              src={libraryHeadMoreIcon}
+            <Image src={libraryHeadMoreIcon}
               alt="More"
-              width={32}
-              height={32}
+              width={32} height={32} className="icon-32"
             />
           </button>
         </Tooltip>

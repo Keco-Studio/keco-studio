@@ -43,7 +43,7 @@ export function SidebarTreeView({
               alt="Closed folder"
               width={24}
               height={24}
-              className={styles.folderSwitcherBase}
+              className={`icon-24 ${styles.folderSwitcherBase}`}
             />
             <Image
               src={folderCollapseIcon}
@@ -62,7 +62,7 @@ export function SidebarTreeView({
             alt="Open folder"
             width={24}
             height={24}
-            className={styles.folderSwitcherBase}
+            className={`icon-24 ${styles.folderSwitcherBase}`}
           />
           <Image
             src={folderExpandIcon}

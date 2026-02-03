@@ -128,7 +128,7 @@ export default function ResetPasswordPage() {
                 aria-label="Back"
                 onClick={handleBack}
               >
-                <Image src={loginLeftArrowIcon} alt="Back" width={20} height={20} />
+                <Image src={loginLeftArrowIcon} alt="Back" width={20} height={20} className="icon-20" />
               </button>
               
               <h1 className={styles.title}>Reset Password</h1>
@@ -185,7 +185,7 @@ export default function ResetPasswordPage() {
               aria-label="Back"
               onClick={handleBack}
             >
-              <Image src={loginLeftArrowIcon} alt="Back" width={20} height={20} />
+              <Image src={loginLeftArrowIcon} alt="Back" width={20} height={20} className="icon-20" />
             </button>
             
             <h1 className={styles.title}>Forgot Your Password</h1>

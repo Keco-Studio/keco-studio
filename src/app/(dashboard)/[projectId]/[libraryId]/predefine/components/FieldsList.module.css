@@ -1,12 +1,12 @@
 .fieldsList {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .emptyFields {
   text-align: center;
-  padding: 40px;
+  padding: 2.5rem;
   color: #94a3b8;
 }
 
@@ -15,8 +15,8 @@
   grid-template-columns: auto 1fr 160px 80px;
   align-items: center;
   padding: 0 16px;
-  margin-bottom: 4px;
-  font-size: 12px;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
   font-weight: 500;
   color: #9ca3af;
 }
