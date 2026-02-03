@@ -349,6 +349,9 @@ function PredefinePageContent() {
     // Check if there are any pending fields and add them to their respective sections
     // Also apply temporary section name changes
     // Use ref to get latest pendingFields value to avoid stale closure issue
+    // Track which sections had pending fields added (to reset their FieldForms later)
+    const sectionsWithAddedFields: string[] = [];
+    
     const finalSections = sectionsToSave.map((section) => {
       const pendingField = pendingFieldsRef.current.get(section.id);
       const tempName = tempSectionNames.get(section.id);
@@ -377,6 +380,8 @@ function PredefinePageContent() {
             ...(pendingField.referenceLibraries && { referenceLibraries: pendingField.referenceLibraries }),
           };
           updatedSection.fields = [...updatedSection.fields, newField];
+          // Track that this section had a pending field added
+          sectionsWithAddedFields.push(section.id);
         }
       }
       
@@ -441,6 +446,12 @@ function PredefinePageContent() {
       setPendingFields(emptyMap);
       pendingFieldsRef.current = emptyMap;
       setTempSectionNames(new Map());
+      
+      // Reset FieldForm for sections that had pending fields added
+      // This ensures the form is cleared after auto-save adds the field
+      sectionsWithAddedFields.forEach((sectionId) => {
+        window.dispatchEvent(new CustomEvent('fieldform-reset', { detail: { sectionId } }));
+      });
     } catch (e: any) {
       showErrorToast(e?.message || 'Failed to save');
       setErrors([e?.message || 'Failed to save']);
@@ -747,6 +758,7 @@ function PredefinePageContent() {
           invalidFields={new Set()}
         />
         <FieldForm
+          sectionId={section.id}
           onSubmit={(data) => handleAddField(section.id, data)}
           disabled={saving}
           onFieldChange={(field) => {

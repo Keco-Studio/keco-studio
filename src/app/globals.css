@@ -9,7 +9,7 @@
 */
 
 html {
-  font-size: 1rem; /* 2174px+ */
+  font-size: 16px; /* 2174px+ */
 }
 
 /* @media (max-width: 2173px) {
@@ -26,7 +26,7 @@ html {
 
 @media (max-width: 1600px) {
   html {
-    font-size: 0.875rem;
+    font-size: 14px;
   }
 }
 
@@ -38,7 +38,7 @@ html {
 
 @media (max-width: 1280px) {
   html {
-    font-size: 0.75rem;
+    font-size: 12px;
   }
 }
 
