@@ -641,7 +641,8 @@ test.describe('Name Validation Tests', () => {
 
   test.describe('Duplicate Name Validation', () => {
     test('Project - Duplicate name validation', async ({ page }) => {
-      test.setTimeout(60000);
+      // Two createProject + goto in CI can exceed 60s; avoid "Target page/browser has been closed"
+      test.setTimeout(120000);
 
       // Generate unique project data
       const testProject1 = generateProjectData();
