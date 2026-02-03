@@ -73,10 +73,6 @@ test.describe('Edit Info Feature Tests', () => {
     await page.waitForTimeout(2000);
   });
 
-  // TODO: Fix this test - it fails because projects page doesn't have a "Projects" heading
-  // The test expects getByRole('heading', { name: /projects/i }) but the page doesn't have this element
-  // Commented out temporarily until the page structure is updated or the test is fixed
-  /*
   test('Project Info - Right-click project and open edit modal, can edit project name and description', async ({ page }) => {
     test.setTimeout(60000);
 
@@ -163,7 +159,6 @@ test.describe('Edit Info Feature Tests', () => {
       await expect(updatedProjectItem).toBeVisible({ timeout: 10000 });
     });
   });
-  */
 
   test('Library Info - Right-click library and open edit modal, can edit library name and description', async ({ page }) => {
     test.setTimeout(60000);
@@ -180,13 +175,13 @@ test.describe('Edit Info Feature Tests', () => {
       // Ensure we're on project detail page (createProject automatically navigates to project page)
       await libraryPage.waitForPageLoad();
       
-      // Ensure sidebar is loaded and create Library button is visible
+      // Ensure sidebar is loaded and Add button is visible
       const sidebar = page.getByRole('tree');
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000); // Wait for sidebar to fully render
       
-      // Create Library (in project page)
-      await libraryPage.createLibrary(libraries.breed);
+      // Create Library directly under project (sidebar Add -> Create new library)
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       
       // Wait for Library to appear in sidebar
@@ -391,8 +386,8 @@ test.describe('Edit Info Feature Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000); // Wait for sidebar to fully render
       
-      // Create Library
-      await libraryPage.createLibrary(libraries.breed);
+      // Create Library directly under project (sidebar Add -> Create new library)
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
       
@@ -493,4 +488,3 @@ test.describe('Edit Info Feature Tests', () => {
     });
   });
 });
-
