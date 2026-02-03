@@ -53,11 +53,11 @@
 }
 
 .tableRow:hover {
-  background-color: #F8F9FA;
+  background-color: #0B99FF14;
 }
 
 .tableRowSelected {
-  background-color: #FFF1F2 !important;
+  background-color: #0B99FF14 !important;
 }
 
 .cell {
@@ -116,7 +116,7 @@
   width: 1.75rem;
   height: 1.75rem;
   background: white;
-  border: 1px solid #E5E5E5;
+  border: 1px solid #BCBCBC;
   border-radius: 0.375rem;
   cursor: pointer;
   transition: background-color 0.2s, border-color 0.2s;
@@ -124,13 +124,21 @@
 }
 
 .actionButton:hover {
-  background-color: #F8F9FA;
+  background-color: #0B99FF;
   border-color: #D1D5DB;
 }
 
+.actionButton:hover img {
+  filter: brightness(0) invert(1); /* 图标变白色 */
+}
+
 .actionButtonActive {
-  background-color: #FF69B4 !important;
-  border-color: #FF69B4 !important;
+  background-color: #0B99FF !important;
+  border-color: #0B99FF !important;
+}
+
+.actionButtonActive img {
+  filter: brightness(0) invert(1); /* 图标变白色 */
 }
 
 .avatarCell {

@@ -224,6 +224,19 @@
   padding: 1rem 0 0;
 }
 
+/* Custom Ant Design Tabs styles */
+.tabsContainer :global(.ant-tabs-tab-active .ant-tabs-tab-btn) {
+  color: #0B99FF !important;
+}
+
+.tabsContainer :global(.ant-tabs-ink-bar) {
+  background: #0B99FF !important;
+}
+
+.tabsContainer :global(.ant-tabs-tab:hover .ant-tabs-tab-btn) {
+  color: #0B99FF !important;
+}
+
 .sectionHeaderRow {
   display: grid;
   grid-template-columns: minmax(200px, 1.5fr) 120px 2fr;
@@ -376,7 +389,7 @@
   padding-bottom: 0.125rem;
   padding-left: 0.75rem;
   /* background: #0000001C; */
-  background: #5E00FF14;
+  background: #EBEBEB;
 
 }
 

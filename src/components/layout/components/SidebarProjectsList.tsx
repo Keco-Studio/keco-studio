@@ -7,7 +7,7 @@ import { truncateText } from '@/lib/utils/truncateText';
 import projectIcon from '@/assets/images/projectIcon.svg';
 import addProjectIcon from '@/assets/images/addProjectIcon.svg';
 import createProjectIcon from '@/assets/images/createProjectIcon.svg';
-import projectRightIcon from '@/assets/images/ProjectRightIcon.svg';
+import projectRightIcon from '@/assets/images/homeMorehorizontalIcon.svg';
 import styles from '../Sidebar.module.css';
 
 export type SidebarProjectsListProps = {

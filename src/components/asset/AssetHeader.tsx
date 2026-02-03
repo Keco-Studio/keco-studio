@@ -187,7 +187,7 @@ export function AssetHeader({
             {displayUsers.map((user, index) => (
               <Tooltip key={user.userId} title={user.userName} placement="bottom">
                 <Avatar
-                  size={32}
+                  size={30}
                   className={styles.memberAvatar}
                   style={{
                     backgroundColor: user.avatarColor,
@@ -203,7 +203,7 @@ export function AssetHeader({
             {remainingCount > 0 && (
               <Tooltip title={`${remainingCount} more ${remainingCount === 1 ? 'member' : 'members'}`} placement="bottom">
                 <Avatar
-                  size={32}
+                  size={30}
                   className={`${styles.memberAvatar} ${styles.remainingCount}`}
                   style={{
                     backgroundColor: '#f0f0f0',
@@ -244,7 +244,7 @@ export function AssetHeader({
                   <div className={styles.currentUserSection}>
                     <div className={styles.currentUserItem}>
                       <Avatar
-                        size={36}
+                        size={30}
                         style={{ backgroundColor: currentUser.avatarColor }}
                       >
                         {getUserInitials(currentUser.userName)}
@@ -270,7 +270,8 @@ export function AssetHeader({
                         className={styles.memberItem}
                       >
                         <Avatar
-                          size={36}
+                          size={30}
+                          className={styles.memberAvatar}
                           style={{ backgroundColor: user.avatarColor }}
                         >
                           {getUserInitials(user.userName)}

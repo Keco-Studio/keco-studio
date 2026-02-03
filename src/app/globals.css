@@ -1,5 +1,6 @@
 :root {
   color-scheme: light;
+  /* 字体变量由 Next.js next/font/google 自动注入 */
 }
 
 /*
@@ -50,10 +51,20 @@ html {
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--font-roboto), system-ui, -apple-system, "Segoe UI", sans-serif;
   background: #f8fafc;
   color: #0f172a;
   font-size: 1rem;
+}
+
+/* 使用 Koulen 字体的工具类 */
+.font-koulen {
+  font-family: var(--font-koulen), sans-serif;
+}
+
+/* 使用 Roboto 字体的工具类 */
+.font-roboto {
+  font-family: var(--font-roboto), sans-serif;
 }
 
 /* 全局图标尺寸类 - 使用 rem 单位实现响应式 */

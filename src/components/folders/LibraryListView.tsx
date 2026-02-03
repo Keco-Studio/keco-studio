@@ -6,9 +6,10 @@ import { Library } from '@/lib/services/libraryService';
 import { Folder } from '@/lib/services/folderService';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
-import libraryIcon48 from "@/assets/images/projectPreviewListLibraryIcon.svg";
+import projectPreviewListLibraryIcon from "@/assets/images/projectPreviewListLibraryIcon.svg";
+import projectPreviewListLibraryActiveIcon from "@/assets/images/projectPreviewListLibraryActiveIcon.svg";
 import folderIcon from "@/assets/images/projectPreviewListFolderIcon.svg";
-import settingsIcon18 from "@/assets/images/settingsIcon18.svg";
+import predefineSettingIcon from "@/assets/images/PredefineNewIcon.svg";
 import moreOptionsIcon from "@/assets/images/moreOptionsIcon.svg";
 import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
 import styles from './LibraryListView.module.css';
@@ -55,6 +56,7 @@ export function LibraryListView({
 }: LibraryListViewProps) {
   const { userProfile } = useAuth();
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -138,16 +140,25 @@ export function LibraryListView({
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
+            {items.map((item) => {
+              const isHovered = hoveredItemId === item.id;
+              const isLibrary = item.type === 'library';
+              const iconSrc = isLibrary 
+                ? (isHovered ? projectPreviewListLibraryActiveIcon : projectPreviewListLibraryIcon)
+                : folderIcon;
+              
+              return (
               <tr
                 key={item.id}
                 className={`${styles.tableRow} ${selectedItemId === item.id ? styles.tableRowSelected : ''}`}
                 onClick={() => handleRowClick(item)}
+                onMouseEnter={() => setHoveredItemId(item.id)}
+                onMouseLeave={() => setHoveredItemId(null)}
               >
                 <td className={styles.cell}>
                   <div className={styles.libraryNameCell}>
                     <Image
-                      src={item.type === 'folder' ? folderIcon : libraryIcon48}
+                      src={iconSrc}
                       alt={item.type === 'folder' ? 'Folder' : 'Library'}
                       width={36}
                       height={36}
@@ -192,11 +203,9 @@ export function LibraryListView({
                         onClick={(e) => handleSettingsClick(item.id, e)}
                         aria-label="Library settings"
                       >
-                        <Image
-                          src={settingsIcon18}
+                        <Image src={predefineSettingIcon}
                           alt="Settings"
-                          width={18}
-                          height={18}
+                          width={20} height={20} className="icon-20"
                         />
                       </button>
                     )}
@@ -213,7 +222,8 @@ export function LibraryListView({
                   </div>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

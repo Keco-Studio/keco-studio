@@ -22,7 +22,7 @@
 
 .header {
   display: flex;
-  height: 4rem;
+  height: 2.4375rem;
   align-items: center;
   gap: 0.5rem;
 }
@@ -41,7 +41,8 @@
 
 .brandName {
   font-size: 1.5rem;
-  font-weight: 700;
+  font-weight: 400;
+  font-family: var(--font-koulen), sans-serif;
   color: #697077;
   line-height: 1;
 }
@@ -143,7 +144,8 @@
   height: 3rem;
   box-sizing: border-box;
   padding-bottom: 0.75rem;
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
+  margin-top: 0.75rem;
 }
 
 .searchLabel {
@@ -306,7 +308,7 @@
   position: relative;
   display: flex;
   align-items: stretch;
-  height: 2.5rem;
+  height: 3rem;
   width: 100%;
   padding-left: 0.5rem;
 }
@@ -411,6 +413,7 @@
 /* Ensure itemText in tree node has padding to avoid overlap with delete button */
 .tree :global(.ant-tree-node-content-wrapper) .itemText {
   font-size: 1rem;
+  font-family: var(--font-roboto), sans-serif;
   font-weight: 500;
   padding-right: 2rem; /* Reserve space for delete button to avoid text overlap */
 }
@@ -437,14 +440,14 @@
 
 /* Background for selected nodes - covers entire row */
 .tree :global(.ant-tree-treenode-selected) {
-  background-color: #fff1f2 !important;
+  background-color: #0B99FF14 !important;
   border-radius: 0.5rem !important;
 }
 
 .tree :global(.ant-tree-treenode-selected > .ant-tree-node-content-wrapper),
 .tree :global(.ant-tree-node-content-wrapper.ant-tree-node-selected) {
   background-color: transparent !important;
-  color: #e11d48 !important;
+  color: #070707 !important;
 }
 
 /* Ensure switcher is above the background */
@@ -555,8 +558,8 @@
 }
 
 .itemActive {
-  background-color: #fff1f2;
-  color: #e11d48;
+  background-color: #0B99FF14;
+  color: #070707;
 }
 
 .itemInactive {
@@ -578,7 +581,7 @@
   font-size: 0.875rem;
   cursor: pointer;
   transition: background-color 0.2s;
-  background-color: #fff1f2;
+  background-color: #0B99FF14;
   color: #e11d48;
   border: none;
 }
@@ -881,13 +884,12 @@
 
 /* Library item active state (when on library page) */
 .libraryItemActive {
-  background-color: #fff1f2 !important;
   border-radius: 0.5rem;
 }
 
 /* Library item active state with padding (when viewing an asset) */
 .libraryItemActiveWithPadding {
-  background-color: #fff1f2 !important;
+  background-color: #0B99FF14 !important;
   border-radius: 0.5rem;
   padding: 0.5rem 12px !important;
   min-height: 2.5rem;

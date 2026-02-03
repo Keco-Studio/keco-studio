@@ -66,6 +66,8 @@ export default function CollaboratorsList({
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [highlightedUserId, setHighlightedUserId] = useState<string | null>(highlightUserId);
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
+  const dropdownRefs = useRef<Record<string, HTMLDivElement | null>>({});
   
   // Computed values
   const isAdmin = currentUserRole === 'admin';
@@ -82,6 +84,25 @@ export default function CollaboratorsList({
       return () => clearTimeout(timer);
     }
   }, [highlightUserId]);
+
+  // Handle click outside to close dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (openDropdownId) {
+        const dropdownElement = dropdownRefs.current[openDropdownId];
+        if (dropdownElement && !dropdownElement.contains(event.target as Node)) {
+          setOpenDropdownId(null);
+        }
+      }
+    };
+
+    if (openDropdownId) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => {
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
+    }
+  }, [openDropdownId]);
   
   // Real-time subscription for database changes (from other users)
   useEffect(() => {
@@ -287,16 +308,39 @@ export default function CollaboratorsList({
               {/* Role Type Column */}
               <div className={styles.itemRoleType}>
                 {canManage && !isSelf ? (
-                  <select
-                    className={styles.roleSelect}
-                    value={collab.role}
-                    onChange={(e) => handleRoleChange(collab.id, e.target.value as any, collab.role)}
-                    disabled={isLoading}
+                  <div 
+                    className={styles.customSelectWrapper}
+                    ref={(el) => { dropdownRefs.current[collab.id] = el; }}
                   >
-                    <option value="admin">Admin</option>
-                    <option value="editor">Editor</option>
-                    <option value="viewer">Viewer</option>
-                  </select>
+                    <button
+                      type="button"
+                      className={styles.customSelectButton}
+                      onClick={() => setOpenDropdownId(openDropdownId === collab.id ? null : collab.id)}
+                      disabled={isLoading}
+                    >
+                      {collab.role.charAt(0).toUpperCase() + collab.role.slice(1)}
+                      <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.selectArrow}>
+                        <path d="M1 1L7 7L13 1" stroke="#BCBCBC" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    </button>
+                    {openDropdownId === collab.id && (
+                      <div className={styles.customSelectDropdown}>
+                        {(['admin', 'editor', 'viewer'] as const).map((role) => (
+                          <button
+                            key={role}
+                            type="button"
+                            className={`${styles.customSelectOption} ${collab.role === role ? styles.customSelectOptionSelected : ''}`}
+                            onClick={() => {
+                              handleRoleChange(collab.id, role, collab.role);
+                              setOpenDropdownId(null);
+                            }}
+                          >
+                            {role.charAt(0).toUpperCase() + role.slice(1)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ) : (
                   <div className={styles.roleText}>
                     {collab.role.charAt(0).toUpperCase() + collab.role.slice(1)}
