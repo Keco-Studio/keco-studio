@@ -78,7 +78,7 @@ export function useClipboardOperations({
   } | null>>;
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
   setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
-  setToastMessage: React.Dispatch<React.SetStateAction<string | null>>;
+  setToastMessage: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'error' | 'default' } | null>>;
   setBatchEditMenuVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setBatchEditMenuPosition: React.Dispatch<React.SetStateAction<{ x: number; y: number } | null>>;
   clipboardData: Array<Array<string | number | null>> | null;
@@ -263,7 +263,7 @@ export function useClipboardOperations({
 
     if (validCells.length === 0) {
       // Still show feedback even if no valid cells
-      setToastMessage('No cells with supported types (string, int, float) selected');
+      setToastMessage({ message: 'No cells with supported types (string, int, float) selected', type: 'default' });
       setTimeout(() => {
         setToastMessage(null);
       }, 2000);
@@ -424,7 +424,7 @@ export function useClipboardOperations({
     }
     
     // Show toast message immediately
-    setToastMessage('Content cut');
+    setToastMessage({ message: 'Content cut', type: 'success' });
     
     // Close menu first
     setBatchEditMenuVisible(false);
@@ -540,7 +540,7 @@ export function useClipboardOperations({
     });
 
     if (validCells.length === 0) {
-      setToastMessage('No cells with supported types (string, int, float) selected');
+      setToastMessage({ message: 'No cells with supported types (string, int, float) selected', type: 'default' });
       setTimeout(() => {
         setToastMessage(null);
       }, 2000);
@@ -631,7 +631,7 @@ export function useClipboardOperations({
     }
     
     // Show toast message
-    setToastMessage('Content copied');
+    setToastMessage({ message: 'Content copied', type: 'success' });
     
     // Close menu
     setBatchEditMenuVisible(false);
@@ -669,7 +669,7 @@ export function useClipboardOperations({
     if (!clipboardData || clipboardData.length === 0 || clipboardData[0].length === 0) {
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
-      setToastMessage('No content to paste. Please copy or cut cells first.');
+      setToastMessage({ message: 'No content to paste. Please copy or cut cells first.', type: 'default' });
       setTimeout(() => setToastMessage(null), 2000);
       return;
     }
@@ -688,7 +688,7 @@ export function useClipboardOperations({
     if (cellsToUse.size === 0) {
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
-      setToastMessage('Please select cells to paste');
+      setToastMessage({ message: 'Please select cells to paste', type: 'default' });
       setTimeout(() => setToastMessage(null), 2000);
       return;
     }
@@ -867,7 +867,7 @@ export function useClipboardOperations({
     if (hasTypeMismatch) {
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
-      setToastMessage('type mismatch');
+      setToastMessage({ message: 'type mismatch', type: 'error' });
       setTimeout(() => setToastMessage(null), 2000);
       return; // Don't proceed with paste if there are type mismatches
     }
@@ -889,7 +889,7 @@ export function useClipboardOperations({
     // Close menu and show toast immediately so UI feels responsive (async work continues in background)
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
-    setToastMessage('Content pasted');
+    setToastMessage({ message: 'Content pasted', type: 'success' });
     setTimeout(() => setToastMessage(null), 2000);
     
     // Apply updates to existing rows first (paste-start row), then create new rows.
@@ -991,7 +991,7 @@ export function useClipboardOperations({
         setIsSaving(false);
         setBatchEditMenuVisible(false);
         setBatchEditMenuPosition(null);
-        setToastMessage('Failed to paste: could not update cells');
+        setToastMessage({ message: 'Failed to paste: could not update cells', type: 'error' });
         setTimeout(() => setToastMessage(null), 2000);
         return;
       } finally {
@@ -1040,7 +1040,7 @@ export function useClipboardOperations({
         setIsSaving(false);
         setBatchEditMenuVisible(false);
         setBatchEditMenuPosition(null);
-        setToastMessage('Failed to paste: could not create new rows');
+        setToastMessage({ message: 'Failed to paste: could not create new rows', type: 'error' });
         setTimeout(() => setToastMessage(null), 2000);
         return;
       } finally {

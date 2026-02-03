@@ -44,7 +44,7 @@ export type UseRowOperationsParams = {
   setOptimisticInsertIndices?: React.Dispatch<React.SetStateAction<Map<string, number>>>;
   setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, { name: string; propertyValues: Record<string, any> }>>>;
   setDeletedAssetIds: React.Dispatch<React.SetStateAction<Set<string>>>;
-  setToastMessage: React.Dispatch<React.SetStateAction<string | null>>;
+  setToastMessage: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'error' | 'default' } | null>>;
   setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
   enableRealtime?: boolean;
   currentUser?: { id: string; name: string } | null;
@@ -191,7 +191,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
         if (queryError || !targetRowData) {
           setIsSaving(false);
-          setToastMessage('Failed to insert rows above');
+          setToastMessage({ message: 'Failed to insert rows above', type: 'error' });
           setTimeout(() => setToastMessage(null), 2000);
           return;
         }
@@ -281,11 +281,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
       }
 
       await new Promise((r) => setTimeout(r, 500));
-      setToastMessage(numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`);
+      setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
       setTimeout(() => setToastMessage(null), 2000);
     } catch (e) {
       console.error('Failed to insert rows above:', e);
-      setToastMessage('Failed to insert rows above');
+      setToastMessage({ message: 'Failed to insert rows above', type: 'error' });
       setTimeout(() => setToastMessage(null), 2000);
     } finally {
       setIsSaving(false);
@@ -385,7 +385,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
         if (queryError || !targetRowData) {
           setIsSaving(false);
-          setToastMessage('Failed to insert rows below');
+          setToastMessage({ message: 'Failed to insert rows below', type: 'error' });
           setTimeout(() => setToastMessage(null), 2000);
           return;
         }
@@ -472,11 +472,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
       }
 
       await new Promise((r) => setTimeout(r, 500));
-      setToastMessage(numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`);
+      setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
       setTimeout(() => setToastMessage(null), 2000);
     } catch (e) {
       console.error('Failed to insert rows below:', e);
-      setToastMessage('Failed to insert rows below');
+      setToastMessage({ message: 'Failed to insert rows below', type: 'error' });
       setTimeout(() => setToastMessage(null), 2000);
     } finally {
       setIsSaving(false);

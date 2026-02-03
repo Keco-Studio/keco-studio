@@ -162,8 +162,8 @@ export function LibraryAssetsTable({
     propertyKeys: string[];
   } | null>(null);
   
-  // Toast message state
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  // Toast message state (unified: success / error / default, bottom)
+  const [toastMessage, setToastMessage] = useState<{ message: string; type: 'success' | 'error' | 'default' } | null>(null);
   const [deleteConfirmVisible, setDeleteConfirmVisible] = useState(false);
   const [deletingAssetId, setDeletingAssetId] = useState<string | null>(null);
   
@@ -1227,7 +1227,7 @@ export function LibraryAssetsTable({
           setDeleteRowConfirmVisible(true);
         }}
       />
-      <TableToast message={toastMessage} />
+      <TableToast message={toastMessage?.message ?? null} type={toastMessage?.type ?? 'default'} />
       <DeleteAssetModal
         open={deleteConfirmVisible}
         onOk={handleDeleteAsset}
