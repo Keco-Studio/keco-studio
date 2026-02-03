@@ -9,8 +9,7 @@ jobs:
   test:
     timeout-minutes: 60
     runs-on: ubuntu-latest
-    # Temporarily disabled - many test files need to be updated
-    if: false && github.repository == 'Caerulean-ai/keco-studio'
+    if: github.repository == 'Caerulean-ai/keco-studio'
     strategy:
       fail-fast: false
       matrix:
