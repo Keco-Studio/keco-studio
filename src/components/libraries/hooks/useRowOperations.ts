@@ -775,6 +775,14 @@ export function useRowOperations(params: UseRowOperationsParams) {
           allDeleted.forEach((id) => next.delete(id));
           return next;
         });
+
+        // Show success toast for delete row
+        const deletedCount = allDeleted.size;
+        setToastMessage({
+          message: deletedCount === 1 ? '1 row deleted' : `${deletedCount} rows deleted`,
+          type: 'success',
+        });
+        setTimeout(() => setToastMessage(null), 2000);
       }
       // deletedAssetIds cleaned by useEffect when row not in rows (no fixed timeout)
       if (failedRowIds.length > 0) {
