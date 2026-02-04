@@ -56,7 +56,7 @@ import { TextCell } from './components/TextCell';
 import { AddNewRowForm } from './components/AddNewRowForm';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
-import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon.svg';
+import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
 import batchEditAddIcon from '@/assets/images/BatchEditAddIcon.svg';
 import tableAssetDetailIcon from '@/assets/images/TableAssetDetailIcon.svg';
 import collaborationViewNumIcon from '@/assets/images/collaborationViewNumIcon.svg';

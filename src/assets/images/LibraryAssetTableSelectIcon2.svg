@@ -1,0 +1,11 @@
+<svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g clip-path="url(#clip0_2230_26575)">
+<rect width="16" height="16" rx="5" fill="#EEEEEE" style="fill:#EEEEEE;fill:color(display-p3 0.9333 0.9333 0.9333);fill-opacity:1;"/>
+<path d="M4 6L8 10L12 6" stroke="#6B6B6B" style="stroke:#6B6B6B;stroke:color(display-p3 0.4184 0.4184 0.4184);stroke-opacity:1;" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<defs>
+<clipPath id="clip0_2230_26575">
+<rect width="16" height="16" rx="5" fill="white" style="fill:white;fill-opacity:1;"/>
+</clipPath>
+</defs>
+</svg>

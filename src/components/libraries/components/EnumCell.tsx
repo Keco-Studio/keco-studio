@@ -4,7 +4,7 @@ import Image from 'next/image';
 import { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import { CellKey } from '@/components/libraries/hooks/useCellSelection';
 import { CellPresenceAvatars } from './CellPresenceAvatars';
-import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon.svg';
+import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export interface EnumCellProps {
