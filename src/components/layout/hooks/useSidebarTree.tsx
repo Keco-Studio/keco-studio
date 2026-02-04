@@ -12,7 +12,6 @@ import PredefineNewIcon from '@/assets/images/PredefineNewIcon.svg';
 import PredefineNewClick from '@/assets/images/PredefineNewClick.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
 import folderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
-import sidebarFolderIcon3 from '@/assets/images/SidebarFloderIcon3.svg';
 import styles from '../Sidebar.module.css';
 
 export type SidebarCurrentIds = {
@@ -73,30 +72,14 @@ export function useSidebarTree(
 
       const children: DataNode[] = folderLibraries.map((lib) => {
         const libProjectId = lib.project_id;
-        const isCurrentLibrary =
-          currentIds.libraryId === lib.id &&
-          (currentIds.isLibraryPage || !!currentIds.assetId || currentIds.isPredefinePage);
-        const showAssetPageIcons = currentIds.libraryId === lib.id && !!currentIds.assetId;
         return {
           title: (
             <div
-              className={`${styles.itemRow} ${styles.libraryRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
+              className={`${styles.itemRow} ${styles.libraryRow}`}
               data-library-under-folder
               onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
             >
               <div className={styles.itemMain}>
-                {showAssetPageIcons && (
-                  <button
-                    className={styles.libraryBackButton}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (currentIds.projectId) router.push(`/${currentIds.projectId}`);
-                    }}
-                    title="Back to tree view"
-                  >
-                    <Image src={sidebarFolderIcon3} alt="Back" width={24} height={24} className="icon-24" />
-                  </button>
-                )}
                 <div className={styles.libraryIconContainer}>
                   <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
                 </div>
@@ -190,29 +173,13 @@ export function useSidebarTree(
     const rootLibraries = librariesByFolder.get('') || [];
     rootLibraries.forEach((lib) => {
       const libProjectId = lib.project_id;
-      const isCurrentLibrary =
-        currentIds.libraryId === lib.id &&
-        (currentIds.isLibraryPage || !!currentIds.assetId || currentIds.isPredefinePage);
-      const showAssetPageIcons = currentIds.libraryId === lib.id && !!currentIds.assetId;
       result.push({
         title: (
           <div
-            className={`${styles.itemRow} ${styles.libraryRow} ${styles.rootLibraryRow} ${isCurrentLibrary ? (showAssetPageIcons ? styles.libraryItemActiveWithPadding : styles.libraryItemActive) : ''}`}
+            className={`${styles.itemRow} ${styles.libraryRow} ${styles.rootLibraryRow}`}
             onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
           >
             <div className={styles.itemMain}>
-              {showAssetPageIcons && (
-                <button
-                  className={styles.libraryBackButton}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (currentIds.projectId) router.push(`/${currentIds.projectId}`);
-                  }}
-                  title="Back to tree view"
-                >
-                  <Image src={sidebarFolderIcon3} alt="Back" width={24} height={24} />
-                </button>
-              )}
               <div className={styles.libraryIconContainer}>
                 <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
               </div>

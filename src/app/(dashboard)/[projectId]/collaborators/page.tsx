@@ -28,8 +28,7 @@ import collaborationReturnIcon from '@/assets/images/collaborationReturnIcon.svg
 import collaborationAdminNumIcon from '@/assets/images/collaborationAdminNumIcon.svg';
 import collaborationEditNumIcon from '@/assets/images/collaborationEditNumIcon.svg';
 import collaborationViewNumIcon from '@/assets/images/collaborationViewNumIcon.svg';
-import searchIcon from '@/assets/images/searchIcon.svg';
-import libraryHeadMoreIcon from '@/assets/images/libraryHeadMoreIcon.svg';
+import libraryHeadMoreIcon from '@/assets/images/moreOptionsIcon.svg';
 import styles from './page.module.css';
 
 export default function CollaboratorsPage() {
@@ -356,7 +355,7 @@ export default function CollaboratorsPage() {
         >
           <Image src={collaborationReturnIcon}
             alt="Return"
-            width={32} height={32} className="icon-32"
+            width={20} height={20} className="icon-20"
           />
         </button>
         
@@ -418,7 +417,7 @@ export default function CollaboratorsPage() {
         >
           <Image src={libraryHeadMoreIcon}
             alt="More"
-            width={32} height={32} className="icon-32"
+            width={20} height={20} className="icon-20"
           />
         </button>
       </div>

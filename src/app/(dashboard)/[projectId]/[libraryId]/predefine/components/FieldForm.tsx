@@ -48,6 +48,8 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
   // Track IME composition state for Chinese/Japanese/Korean input
   const [isComposing, setIsComposing] = useState(false);
   const [localLabel, setLocalLabel] = useState(field.label);
+  const [composingOptionIndex, setComposingOptionIndex] = useState<number | null>(null);
+  const [localOptions, setLocalOptions] = useState(field.enumOptions ?? []);
   const inputRef = useRef<any>(null);
   const dataTypeInputRef = useRef<any>(null);
   const slashMenuRef = useRef<HTMLDivElement>(null);
@@ -67,6 +69,14 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
       setLocalLabel(field.label);
     }
   }, [field.label, isComposing]);
+
+  // Sync external field.enumOptions changes to local state
+  // Only sync when composingOptionIndex is null to avoid interrupting user input
+  useEffect(() => {
+    if (composingOptionIndex === null) {
+      setLocalOptions(field.enumOptions ?? []);
+    }
+  }, [field.enumOptions]); // Remove composingOptionIndex from deps to avoid sync on composition end
 
   // Listen for reset event from parent (when user clicks add button or auto-save adds field)
   useEffect(() => {
@@ -161,6 +171,18 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
         configButtonRef.current &&
         !configButtonRef.current.contains(target)
       ) {
+        // Before closing, save any pending changes to enum options
+        // This ensures changes are saved even if user clicks outside without blurring the input
+        if (field.dataType === 'enum') {
+          setField((p) => ({
+            ...p,
+            enumOptions: localOptions,
+          }));
+          // Trigger blur callback to notify parent
+          if (onFieldBlur) {
+            onFieldBlur();
+          }
+        }
         setShowConfigMenu(false);
       }
     };
@@ -169,7 +191,7 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showConfigMenu]);
+  }, [showConfigMenu, field.dataType, localOptions, onFieldBlur]);
 
   // Load libraries when config menu is opened for reference type
   useEffect(() => {
@@ -315,19 +337,34 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
   };
 
   const handleOptionChange = (index: number, value: string) => {
-    const newOptions = [...(field.enumOptions ?? [])];
+    // Always update localOptions to capture all input changes, including during IME composition
+    // This ensures we don't lose user input during Chinese/Japanese/Korean input
+    const newOptions = [...localOptions];
     newOptions[index] = value;
-    setField((p) => ({
-      ...p,
-      enumOptions: newOptions,
-    }));
+    setLocalOptions(newOptions);
   };
   
   const handleOptionBlur = () => {
+    // Update parent with the current options when input loses focus
+    setField((p) => ({
+      ...p,
+      enumOptions: localOptions,
+    }));
+    
     // Trigger blur callback when enum option loses focus
     if (onFieldBlur) {
       onFieldBlur();
     }
+  };
+
+  const handleOptionCompositionStart = (index: number) => {
+    setComposingOptionIndex(index);
+  };
+
+  const handleOptionCompositionEnd = (index: number) => {
+    setComposingOptionIndex(null);
+    // No need to update localOptions here since onChange already handles it
+    // Just clear the composing flag
   };
 
   const handleRemoveOption = (index: number) => {
@@ -433,7 +470,21 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
             <button 
               ref={configButtonRef}
               className={`${styles.configButton} ${showConfigMenu ? styles.configButtonActive : ''}`}
-              onClick={() => !disabled && setShowConfigMenu(!showConfigMenu)}
+              onClick={() => {
+                if (disabled) return;
+                // If closing the menu, save any pending enum option changes first
+                if (showConfigMenu && field.dataType === 'enum') {
+                  setField((p) => ({
+                    ...p,
+                    enumOptions: localOptions,
+                  }));
+                  // Trigger blur callback to notify parent
+                  if (onFieldBlur) {
+                    onFieldBlur();
+                  }
+                }
+                setShowConfigMenu(!showConfigMenu);
+              }}
               disabled={disabled}
               title="Configure options"
             >
@@ -459,12 +510,14 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
                     </button>
                   </div>
                   <div className={styles.optionsListItemsContainer}>  
-                    {(field.enumOptions ?? []).map((option, index) => (
+                    {localOptions.map((option, index) => (
                       <div key={index} className={styles.optionItem}>
                         <Input
                           value={option}
                           onChange={(e) => handleOptionChange(index, e.target.value)}
                           onBlur={handleOptionBlur}
+                          onCompositionStart={() => handleOptionCompositionStart(index)}
+                          onCompositionEnd={() => handleOptionCompositionEnd(index)}
                           placeholder="enter new option here"
                           className={styles.optionInput}
                         />
@@ -478,7 +531,7 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
                       </div>
                     ))}
                   </div>
-                  {(field.enumOptions ?? []).length === 0 && (
+                  {localOptions.length === 0 && (
                     <div className={styles.emptyOptionsMessage}>
                       Click + to add options
                     </div>

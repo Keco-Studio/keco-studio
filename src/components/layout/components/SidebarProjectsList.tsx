@@ -42,9 +42,9 @@ export function SidebarProjectsList({
           <Image
             src={addProjectIcon}
             alt="Add project"
-            width={24}
-            height={24}
-            className="icon-24"
+            width={16}
+            height={16}
+            className="icon-16"
           />
         </button>
       </div>

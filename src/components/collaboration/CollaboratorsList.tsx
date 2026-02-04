@@ -366,7 +366,7 @@ export default function CollaboratorsList({
                     >
                       <Image src={collaborationDeleteIcon}
                         alt="Delete"
-                        width={32} height={32} className="icon-32"
+                        width={20} height={20} className="icon-20"
                       />
                     </button>
                   </div>

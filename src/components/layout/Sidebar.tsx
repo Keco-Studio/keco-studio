@@ -1,7 +1,6 @@
 'use client';
 
 import loginProductIcon from "@/assets/images/loginProductIcon.svg";
-import addProjectIcon from "@/assets/images/addProjectIcon.svg";
 import searchIcon from "@/assets/images/searchIcon.svg";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -684,16 +683,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       </div>
 
       <div className={styles.content}>
-        {!currentIds.assetId && (
-          <SidebarProjectsList
-            projects={projects}
-            loadingProjects={loadingProjects}
-            currentProjectId={currentIds.projectId}
-            onOpenNewProject={openNewProject}
-            onProjectClick={handleProjectClick}
-            onContextMenu={handleContextMenu}
-          />
-        )}
+        <SidebarProjectsList
+          projects={projects}
+          loadingProjects={loadingProjects}
+          currentProjectId={currentIds.projectId}
+          onOpenNewProject={openNewProject}
+          onProjectClick={handleProjectClick}
+          onContextMenu={handleContextMenu}
+        />
 
         {currentIds.projectId &&
           projects.length > 0 &&
