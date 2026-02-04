@@ -9,7 +9,8 @@
   margin-bottom: 260px; /* Add bottom margin to ensure context menu has space (increased by ~60px for one more row) */
   border-radius: 0.5rem;
   border: 1px solid #0000003D;
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: #ffffff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
@@ -38,10 +39,11 @@
 }
 
 .table {
-  width: 100%;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
-  table-layout: fixed;
+  table-layout: auto;
 }
 
 .headerRowTop {
@@ -54,6 +56,7 @@
 }
 
 .headerCell {
+  min-width: 7.5rem;
   padding: 0.5rem;
   font-weight: 600;
   border-bottom: 1px solid #e2e8f0;
@@ -81,6 +84,7 @@
 }
 
 .propertyHeaderCell {
+  min-width: 7.5rem;
   text-align: left;
   font-size: 0.875rem;
   font-weight: 500;
@@ -92,7 +96,7 @@
 }
 
 .assetHeaderCell {
-  width: 28%;
+  min-width: 7.5rem;
 }
 
 .row {
@@ -100,17 +104,16 @@
 }
 
 .cell {
+  min-width: 7.5rem;
   padding: 0.5rem;
   vertical-align: middle;
   font-size: 0.875rem;
   color: #111827;
-  overflow: hidden; /* Keep hidden for text overflow, but allow absolute positioned icon */
+  overflow: hidden;
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.2s ease;
   border-right: 1px solid #e2e8f0;
   position: relative;
-  position: relative;
-  max-width: 0; /* Required for text-overflow to work with table-layout: fixed */
 }
 
 .cell:hover {
@@ -497,9 +500,13 @@ td.cellCopy.copyBorderRight:hover {
   background-color: #0B99FF14 !important;
 }
 
-/* Number column styles */
+/* Number column: narrower than data columns (3.75rem = 60px) */
+.headerCell.numberColumnHeader {
+  min-width: 3.75rem;
+}
+
 .numberColumnHeader {
-  width: 60px;
+  width: 3.75rem;
   text-align: center;
   font-weight: 400;
   color: #64748b;
@@ -519,7 +526,8 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .numberCell {
-  width: 60px;
+  min-width: 3.75rem;
+  width: 3.75rem;
   text-align: center;
   padding: 0.5rem;
   font-size: 0.875rem;
@@ -619,7 +627,8 @@ td.cellCopy.copyBorderRight:hover {
 
 /* Actions column styles */
 .actionsColumnHeader {
-  width: 120px;
+  min-width: 7.5rem;
+  width: 7.5rem;
   text-align: center;
   background: #f1f5f9;
   font-weight: 700;
@@ -629,7 +638,8 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .actionsCell {
-  width: 120px;
+  min-width: 7.5rem;
+  width: 7.5rem;
   text-align: center;
   padding: 0.625rem 16px;
   vertical-align: middle;
