@@ -154,90 +154,114 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     };
   }, [yAssets, libraryId]);
   
-  // Load initial data from database
-  useEffect(() => {
-    const loadInitialData = async () => {
-      if (!libraryId) return;
+  // Load initial data from database (can be reused after restore)
+  const loadInitialData = useCallback(async () => {
+    if (!libraryId) return;
+    
+    setIsLoading(true);
+    
+    try {
+      // Load assets
+      const { data: assetsData, error: assetsError } = await supabase
+        .from('library_assets')
+        .select('id, name, library_id, created_at')
+        .eq('library_id', libraryId)
+        .order('created_at', { ascending: true });
       
-      setIsLoading(true);
+      if (assetsError) throw assetsError;
       
-      try {
-        // Load assets
-        const { data: assetsData, error: assetsError } = await supabase
-          .from('library_assets')
-          .select('id, name, library_id, created_at')
-          .eq('library_id', libraryId)
-          .order('created_at', { ascending: true });
+      // Load all field values for these assets
+      const assetIds = assetsData?.map(a => a.id) || [];
+      let valuesData: any[] = [];
+      
+      if (assetIds.length > 0) {
+        const { data: values, error: valuesError } = await supabase
+          .from('library_asset_values')
+          .select('asset_id, field_id, value_json')
+          .in('asset_id', assetIds);
         
-        if (assetsError) throw assetsError;
-        
-        // Load all field values for these assets
-        const assetIds = assetsData?.map(a => a.id) || [];
-        let valuesData: any[] = [];
-        
-        if (assetIds.length > 0) {
-          const { data: values, error: valuesError } = await supabase
-            .from('library_asset_values')
-            .select('asset_id, field_id, value_json')
-            .in('asset_id', assetIds);
-          
-          if (valuesError) throw valuesError;
-          valuesData = values || [];
+        if (valuesError) throw valuesError;
+        valuesData = values || [];
+      }
+      
+      // Group values by asset
+      const valuesByAsset = new Map<string, Record<string, any>>();
+      valuesData.forEach((v: any) => {
+        if (!valuesByAsset.has(v.asset_id)) {
+          valuesByAsset.set(v.asset_id, {});
         }
         
-        // Group values by asset
-        const valuesByAsset = new Map<string, Record<string, any>>();
-        valuesData.forEach((v: any) => {
-          if (!valuesByAsset.has(v.asset_id)) {
-            valuesByAsset.set(v.asset_id, {});
+        // Parse JSON strings for complex types
+        let parsedValue = v.value_json;
+        if (typeof parsedValue === 'string' && parsedValue.trim() !== '') {
+          try {
+            parsedValue = JSON.parse(parsedValue);
+          } catch {
+            // Keep original value if parsing fails
           }
+        }
+        
+        valuesByAsset.get(v.asset_id)![v.field_id] = parsedValue;
+      });
+      
+      // Populate Yjs with data (using Y.Map for propertyValues)
+      // Always clear existing Yjs state first to avoid mixing old and new data
+      yDoc.transact(() => {
+        yAssets.clear();
+        
+        assetsData?.forEach((asset: any) => {
+          const yAsset = new Y.Map();
+          yAsset.set('name', asset.name);
           
-          // Parse JSON strings for complex types
-          let parsedValue = v.value_json;
-          if (typeof parsedValue === 'string' && parsedValue.trim() !== '') {
-            try {
-              parsedValue = JSON.parse(parsedValue);
-            } catch {
-              // Keep original value if parsing fails
+          // Create Y.Map for propertyValues (nested structure)
+          const yPropertyValues = new Y.Map();
+          const values = valuesByAsset.get(asset.id) || {};
+          Object.entries(values).forEach(([fieldId, value]) => {
+            // For complex objects, use deep copy to avoid reference issues
+            let valueForYjs = value;
+            if (value !== null && typeof value === 'object') {
+              valueForYjs = JSON.parse(JSON.stringify(value));
             }
-          }
-          
-          valuesByAsset.get(v.asset_id)![v.field_id] = parsedValue;
-        });
-        
-        // Populate Yjs with initial data (using Y.Map for propertyValues)
-        yDoc.transact(() => {
-          assetsData?.forEach((asset: any) => {
-            const yAsset = new Y.Map();
-            yAsset.set('name', asset.name);
-            
-            // Create Y.Map for propertyValues (nested structure)
-            const yPropertyValues = new Y.Map();
-            const values = valuesByAsset.get(asset.id) || {};
-            Object.entries(values).forEach(([fieldId, value]) => {
-              // For complex objects, use deep copy to avoid reference issues
-              let valueForYjs = value;
-              if (value !== null && typeof value === 'object') {
-                valueForYjs = JSON.parse(JSON.stringify(value));
-              }
-              yPropertyValues.set(fieldId, valueForYjs);
-            });
-            yAsset.set('propertyValues', yPropertyValues);
-            
-            yAsset.set('created_at', asset.created_at);
-            yAssets.set(asset.id, yAsset);
+            yPropertyValues.set(fieldId, valueForYjs);
           });
+          yAsset.set('propertyValues', yPropertyValues);
+          
+          yAsset.set('created_at', asset.created_at);
+          yAssets.set(asset.id, yAsset);
         });
-        
-      } catch (error) {
-        console.error('[LibraryDataContext] Failed to load initial data:', error);
-      } finally {
-        setIsLoading(false);
+      });
+      
+    } catch (error) {
+      console.error('[LibraryDataContext] Failed to load initial data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [libraryId, supabase, yDoc, yAssets]);
+
+  // Initial load
+  useEffect(() => {
+    loadInitialData();
+  }, [loadInitialData]);
+
+  // Reload data when a library restore event is dispatched
+  useEffect(() => {
+    const handleLibraryRestored = (event: Event) => {
+      const customEvent = event as CustomEvent<{ libraryId: string }>;
+      if (customEvent.detail?.libraryId === libraryId) {
+        loadInitialData();
       }
     };
-    
-    loadInitialData();
-  }, [libraryId, supabase, yDoc, yAssets]);
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('libraryRestored', handleLibraryRestored as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('libraryRestored', handleLibraryRestored as EventListener);
+      }
+    };
+  }, [libraryId, loadInitialData]);
   
   // Realtime collaboration event handlers
   const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {

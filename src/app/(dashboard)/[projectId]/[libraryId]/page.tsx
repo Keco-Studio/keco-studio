@@ -664,6 +664,8 @@ export default function LibraryPage() {
                 
                 // Notify components to refresh - event handler will invalidate cache
                 window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { libraryId } }));
+                // Notify Yjs-based data context to reload assets from the restored library state
+                window.dispatchEvent(new CustomEvent('libraryRestored', { detail: { libraryId } }));
                 
                 // Highlight the restored version for 1.5 seconds
                 setHighlightedVersionId(restoredVersionId);
