@@ -4,7 +4,7 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { Folder } from '@/lib/services/folderService';
 import { Library } from '@/lib/services/libraryService';
-import projectPreviewFolderIcon from "@/assets/images/projectPreviewFolderIcon.svg";
+import projectPreviewFolderIcon from "@/assets/images/projectPreviewListFolderIcon.svg";
 import projectPreviewFolderMoreIcon from "@/assets/images/projectPreviewFolderMoreIcon.svg";
 import libraryIconImage from "@/assets/images/LibraryBookIcon.svg";
 import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';

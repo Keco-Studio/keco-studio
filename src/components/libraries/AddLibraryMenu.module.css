@@ -24,8 +24,8 @@
 
 .menuItem:hover,
 .menuItem:focus {
-  background-color: #fff1f2;
-  color: #e11d48;
+  background-color: #0B99FF14;
+  color: #000;
   outline: none;
 }
 

@@ -4,8 +4,8 @@ import { useState } from 'react';
 import Image from 'next/image';
 import { Tooltip } from 'antd';
 import { Library } from '@/lib/services/libraryService';
-import libraryCardIcon from "@/assets/images/LibraryCardIcon.svg";
-import predefineSettingIcon from "@/assets/images/predefineSettingIcon.svg";
+import libraryCardIcon from "@/assets/images/projectPreviewListLibraryIcon.svg";
+import predefineSettingIcon from "@/assets/images/PredefineNewIcon.svg";
 import moreOptionsIcon from "@/assets/images/moreOptionsIcon.svg";
 import tableThumbnail from "@/assets/images/tableThumbnail.svg";
 import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
@@ -73,8 +73,8 @@ export function LibraryCard({
           <Image 
             src={tableThumbnail} 
             alt="Table thumbnail" 
-            width={574} 
-            height={105}
+            width={573} 
+            height={104}
             className={styles.thumbnail}
           />
         </div>
@@ -104,7 +104,7 @@ export function LibraryCard({
               >
                 <Image src={predefineSettingIcon}
                   alt="Settings"
-                  width={22} height={22} className="icon-22"
+                  width={20} height={20} className="icon-20"
                 />
               </button>
             </Tooltip>

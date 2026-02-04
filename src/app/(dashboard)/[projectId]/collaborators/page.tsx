@@ -421,24 +421,6 @@ export default function CollaboratorsPage() {
             width={32} height={32} className="icon-32"
           />
         </button>
-        
-        {/* Search Box */}
-        <div className={styles.searchContainer}>
-          <Image
-            src={searchIcon}
-            alt="Search"
-            width={24}
-            height={24}
-            className={`icon-24 ${styles.searchIcon}`}
-          />
-          <input
-            type="text"
-            placeholder="Search"
-            value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
-            className={styles.searchInput}
-          />
-        </div>
       </div>
       
       {/* Error Banner */}

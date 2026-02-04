@@ -57,12 +57,13 @@
 .breadcrumbItem {
   background: none;
   border: none;
-  padding: 0;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
   font-size: 1rem;
+  font-family: var(--font-roboto), sans-serif;
   font-weight: 500;
   color: #7D7D7D;
-  text-transform: inherit;
-  letter-spacing: 0.5px;
+  /* letter-spacing: 0.5px; */
   cursor: pointer;
   transition: color 0.2s;
 }
@@ -72,8 +73,8 @@
 }
 
 .breadcrumbItemClickable:hover {
-  color: #475569;
-  text-decoration: underline;
+  color: #0B99FF;
+  background-color: #0B99FF14;
 }
 
 .breadcrumbItemActive {

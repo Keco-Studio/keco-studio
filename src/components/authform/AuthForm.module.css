@@ -94,7 +94,7 @@
 }
 
 .cardInner {
-  width: min(1200px, 100%);
+  width:  64.8rem;
   min-height: 620px;
   background: #f5f7fb;
   border-radius: 1.125rem;
@@ -140,8 +140,9 @@
 
 .title {
   margin: 0;
+  font-family: 'Nunito Sans', sans-serif;
   font-size: 1.5rem;
-  font-weight: 700;
+  font-weight: 800;
   color: #333333;
   letter-spacing: 0;
   text-align: center;
@@ -149,12 +150,14 @@
 }
 
 .titleMain {
+  font-family: 'Nunito Sans', sans-serif;
   font-size: 1.5rem;
   font-weight: 800;
 }
 
 .titleBrand {
-  font-size: 30px;
+  font-family: var(--font-pixer), sans-serif;
+  font-size: 1.875rem;
   font-weight: 400;
 }
 
@@ -215,7 +218,8 @@
 }
 
 .submitLogin {
-  background: #f8c5d8;
+  background: #0B99FF;
+  color: #fff;
 }
 
 .submitRegister {
@@ -354,7 +358,6 @@
 .divider {
   display: flex;
   align-items: center;
-  margin: 1.5rem 0;
   position: relative;
 }
 

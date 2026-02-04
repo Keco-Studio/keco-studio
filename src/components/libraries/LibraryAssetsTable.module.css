@@ -7,8 +7,8 @@
 .tableContainer {
   margin-top: 1.5rem;
   margin-bottom: 260px; /* Add bottom margin to ensure context menu has space (increased by ~60px for one more row) */
-  border-radius: 0.75rem;
-  border: 1px solid #e2e8f0;
+  border-radius: 0.5rem;
+  border: 1px solid #0000003D;
   overflow: hidden;
   background: #ffffff;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
@@ -45,50 +45,50 @@
 }
 
 .headerRowTop {
-  background: rgba(255, 0, 94, 0.15);
+  background: #0000000D;
   border-bottom: 2px solid #e2e8f0;
 }
 
 .headerRowBottom {
-  background: rgba(255, 0, 94, 0.06);
   border-bottom: 1px solid #e2e8f0;
 }
 
 .headerCell {
-  padding: 0.75rem 16px;
-  text-align: left;
+  padding: 0.5rem;
   font-weight: 600;
   border-bottom: 1px solid #e2e8f0;
   color: #0f172a;
-  font-size: 13px;
+  font-size: 0.875rem;
   line-height: 1.4;
   letter-spacing: 0.02em;
+  border-right: 1px solid #0000001A;
 }
 
 .sectionHeaderCell {
-  text-align: center;
+  text-align: left;
   border-left: none;
   border-right: none;
   font-size: 0.875rem;
-  font-weight: 700;
-  text-transform: uppercase;
+  font-weight: 500;
   color: #475569;
   letter-spacing: 0.05em;
-  padding: 0.875rem 16px;
-  background: rgba(255, 0, 94, 0.15);
+  padding: 0.5rem;
+  background: #0000000D;
 }
 
 .sectionHeaderCellDivider {
-  border-right: 1px solid #e2e8f0;
+  border-right: 1px solid #0000001A;
 }
 
 .propertyHeaderCell {
-  font-size: 13px;
-  font-weight: 600;
+  text-align: left;
+  font-size: 0.875rem;
+  font-weight: 500;
   color: #64748b;
-  padding: 0.75rem 16px;
+  padding: 0.5rem;
   border-left: none;
-  background: rgba(255, 0, 94, 0.06);
+  background: #F9FAFB;
+  border-right: 1px solid #DDE1E6;
 }
 
 .assetHeaderCell {
@@ -100,10 +100,9 @@
 }
 
 .cell {
-  padding: 0.625rem 16px;
+  padding: 0.5rem;
   vertical-align: middle;
-  font-size: 13px;
-  line-height: 1.5;
+  font-size: 0.875rem;
   color: #111827;
   overflow: hidden; /* Keep hidden for text overflow, but allow absolute positioned icon */
   cursor: pointer;
@@ -120,11 +119,11 @@
 
 /* When row is hovered, cells should inherit row background */
 .row:hover .cell {
-  background-color: rgba(151, 71, 255, 0.09) !important;
+  background-color: #0B99FF14 !important;
 }
 
 .row:hover .cell:hover {
-  background-color: rgba(151, 71, 255, 0.09) !important;
+  background-color: #0B99FF14 !important;
 }
 
 /* Selected cells should not have background color even when row is hovered */
@@ -495,38 +494,39 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .row:hover {
-  background-color: rgba(151, 71, 255, 0.09) !important;
+  background-color: #0B99FF14 !important;
 }
 
 /* Number column styles */
 .numberColumnHeader {
   width: 60px;
   text-align: center;
-  font-weight: 700;
+  font-weight: 400;
   color: #64748b;
-  font-size: 13px;
+  font-size: 0.875rem;
   vertical-align: middle;
 }
 
 /* Number column header in first row (empty, should match section header background) */
 .headerRowTop .numberColumnHeader {
-  background: rgba(255, 0, 94, 0.15);
+  background: #0000000D;
 }
 
 /* Number column header in second row (# symbol, should match property header background) */
 .headerRowBottom .numberColumnHeader {
-  background: rgba(255, 0, 94, 0.06);
+  background: #F9FAFB;
+  border-right: 1px solid #DDE1E6;
 }
 
 .numberCell {
   width: 60px;
   text-align: center;
-  padding: 0.625rem 8px;
-  font-size: 13px;
-  color: #94a3b8;
-  font-weight: 500;
-  background: rgba(245, 246, 249, 1);
-  border-right: 1px solid #e2e8f0;
+  padding: 0.5rem;
+  font-size: 0.875rem;
+  color: #7D7D7D;
+  font-weight: 400;
+  background: #F5F6F9;
+  border-right: 1px solid #DDE1E6;
   position: relative;
   transition: background-color 0.15s ease;
   vertical-align: middle;
@@ -536,20 +536,20 @@ td.cellCopy.copyBorderRight:hover {
 
 /* Number cell hover state when row is hovered */
 .row:hover .numberCell {
-  background: rgba(151, 71, 255, 0.09);
+  background: #0B99FF14;
 }
 
 /* Row selected state */
 .rowSelected {
-  background-color: rgba(151, 71, 255, 0.09) !important;
+  background-color: #0B99FF14 !important;
 }
 
 .rowSelected .numberCell {
-  background: rgba(151, 71, 255, 0.09);
+  background: #0000000D;
 }
 
 .rowSelected:hover {
-  background: rgba(151, 71, 255, 0.09) !important;
+  background: #0000000D !important;
 }
 
 .checkboxContainer {
@@ -599,12 +599,12 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .checkboxContainer :global(.ant-checkbox-checked .ant-checkbox-inner) {
-  background-color: #8726EE;
-  border-color: #8726EE;
+  background-color: #0B99FF14;
+  border-color: #0B99FF14;
 }
 
 .checkboxContainer :global(.ant-checkbox:hover .ant-checkbox-inner) {
-  border-color: #8726EE;
+  border-color: #0B99FF14;
 }
 
 .checkboxContainer :global(.ant-checkbox-checked:hover .ant-checkbox-inner) {
@@ -613,7 +613,7 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .checkboxContainer :global(.ant-checkbox-input:focus + .ant-checkbox-inner) {
-  border-color: #8726EE;
+  border-color: #0B99FF14;
   box-shadow: 0 0 0 2px rgba(135, 38, 238, 0.2);
 }
 
@@ -1225,7 +1225,7 @@ td.cellCopy.copyBorderRight:hover {
 
 .assetCardLibraryName {
   font-size: 0.875rem;
-  color: #8726ee;
+  color: #0B99FF14;
   font-weight: 500;
 }
 

@@ -258,6 +258,7 @@ export default function FolderPage() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         userRole={userRole}
+        projectId={projectId}
       />
       {libraries.length === 0 ? (
         <div className={styles.emptyStateWrapper}>

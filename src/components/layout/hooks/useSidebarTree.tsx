@@ -237,6 +237,7 @@ export function useSidebarTree(
                       alt="Predefine"
                       width={22}
                       height={22}
+                      className="icon-22"
                     />
                   </button>
                 </Tooltip>

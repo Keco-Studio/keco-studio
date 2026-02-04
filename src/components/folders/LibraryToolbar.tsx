@@ -2,12 +2,11 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import plusHorizontal from "@/assets/images/plusHorizontal.svg";
-import plusVertical from "@/assets/images/plusVertical.svg";
-import searchIcon from "@/assets/images/searchIcon.svg";
-import listViewIcon from "@/assets/images/listViewIcon.svg";
-import gridViewIcon from "@/assets/images/gridViewIcon.svg";
+import projectPreviewCreateBtnIcon from "@/assets/images/projectPreviewCreateBtnIcon.svg";
 import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
+import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
+import { showSuccessToast } from '@/lib/utils/toast';
+import type { CollaboratorRole } from '@/lib/types/collaboration';
 import styles from './LibraryToolbar.module.css';
 
 type LibraryToolbarProps = {
@@ -32,7 +31,11 @@ type LibraryToolbarProps = {
    * User's role in the current project
    * Only admin users can see the Create button
    */
-  userRole?: 'admin' | 'editor' | 'viewer' | null;
+  userRole?: CollaboratorRole | null;
+  /**
+   * Project ID for sharing functionality
+   */
+  projectId?: string;
 };
 
 export function LibraryToolbar({
@@ -44,10 +47,12 @@ export function LibraryToolbar({
   mode = 'project',
   title,
   userRole,
+  projectId,
 }: LibraryToolbarProps) {
   const [searchValue, setSearchValue] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [createButtonRef, setCreateButtonRef] = useState<HTMLButtonElement | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
@@ -111,19 +116,9 @@ export function LibraryToolbar({
           aria-label={mode === 'folder' ? 'Create Library' : 'Create Folder/Library'}
         >
           <span className={styles.plusIcon}>
-            <Image
-              src={plusHorizontal}
-              alt=""
-              width={17}
-              height={2}
-              className={styles.plusHorizontal}
-            />
-            <Image
-              src={plusVertical}
-              alt=""
-              width={2}
-              height={17}
-              className={styles.plusVertical}
+            <Image src={projectPreviewCreateBtnIcon}
+              alt="Create"
+              width={20} height={20} className="icon-20"
             />
           </span>
           <span className={styles.createButtonText}>
@@ -132,21 +127,14 @@ export function LibraryToolbar({
         </button>
       )}
       
-      <div className={styles.searchContainer}>
-        <Image
-          src={searchIcon}
-          alt="Search"
-          width={24}
-          height={24}
-          className={`icon-24 ${styles.searchIcon}`}
-        />
-        <input
-          type="text"
-          className={styles.searchInput}
-          placeholder="Search"
-          value={searchValue}
-          onChange={handleSearchChange}
-        />
+      {/* Share Button */}
+      <div className={styles.shareSection}>
+        <button
+          className={styles.shareButton}
+          onClick={() => setShowInviteModal(true)}
+        >
+          Share
+        </button>
       </div>
 
       <div className={styles.viewToggle}>
@@ -155,20 +143,21 @@ export function LibraryToolbar({
           onClick={handleListViewClick}
           aria-label="List view"
         >
-          <Image src={listViewIcon}
-            alt="List view"
-            width={24} height={24} className="icon-24"
-          />
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.viewIcon}>
+            <path d="M7.5 5.00569H21M3 5.01734L3.01125 5.00439M3 12.0109L3.01125 11.9979M3 19.0044L3.01125 18.9915M7.5 11.9992H21M7.5 18.9927H21" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </button>
         <button
           className={`${styles.viewButton} ${viewMode === 'grid' ? styles.viewButtonActive : ''}`}
           onClick={handleGridViewClick}
           aria-label="Grid view"
         >
-          <Image src={gridViewIcon}
-            alt="Grid view"
-            width={24} height={24} className="icon-24"
-          />
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.viewIcon}>
+            <path d="M10 3H3V10H10V3Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M21 3H14V10H21V3Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M21 14H14V21H21V14Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+            <path d="M10 14H3V21H10V14Z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
         </button>
       </div>
 
@@ -180,6 +169,22 @@ export function LibraryToolbar({
           onClose={() => setShowAddMenu(false)}
           onCreateFolder={handleCreateFolder}
           onCreateLibrary={handleCreateLibrary}
+        />
+      )}
+
+      {/* Invite Collaborator Modal */}
+      {projectId && (
+        <InviteCollaboratorModal
+          projectId={projectId}
+          projectName={title || 'Project'}
+          userRole={userRole || 'viewer'}
+          open={showInviteModal}
+          onClose={() => setShowInviteModal(false)}
+          onSuccess={(email: string, message: string, autoAccepted: boolean) => {
+            // Show success message using custom toast
+            showSuccessToast(message);
+          }}
+          title={`Share ${title || 'Project'}..`}
         />
       )}
     </div>

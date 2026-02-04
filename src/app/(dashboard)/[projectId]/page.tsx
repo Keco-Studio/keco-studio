@@ -465,6 +465,7 @@ export default function ProjectPage() {
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         userRole={userRole}
+        projectId={projectId}
       />
       {!hasItems ? (
         <div className={styles.emptyState}>
