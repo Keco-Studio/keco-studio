@@ -1,5 +1,5 @@
 import '@ant-design/v5-patch-for-react-19';
-import { Koulen, Roboto } from 'next/font/google';
+import { Koulen, Roboto, Nunito } from 'next/font/google';
 import { SupabaseProvider } from '@/lib/SupabaseContext';
 import { AuthProvider } from '@/lib/contexts/AuthContext';
 import { NavigationProvider } from '@/lib/contexts/NavigationContext';
@@ -22,9 +22,17 @@ const roboto = Roboto({
   variable: '--font-roboto',
 });
 
+// 配置 Nunito 字体
+const nunito = Nunito({
+  weight: ['400', '500', '800'],
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-nunito',
+});
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
     return (
-      <html lang="en" className={`${koulen.variable} ${roboto.variable}`}>
+      <html lang="en" className={`${koulen.variable} ${roboto.variable} ${nunito.variable}`}>
         <body>
           <QueryProvider>
             <SupabaseProvider>

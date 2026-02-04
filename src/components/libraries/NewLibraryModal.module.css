@@ -211,7 +211,7 @@
   border: none;
   border-radius: 0.5rem;
   padding: 0.375rem 12px;
-  font-size: 0.875rem;
+  font-size: 1rem;
   cursor: pointer;
   font-weight: 500;
   width: 71px;
@@ -223,18 +223,18 @@
 }
 
 .primary {
-  background: #F8C5D8;
-  color: #21272A;
+  background: #0B99FF;
+  color: #fff;
 }
 
 .primary:hover {
-  background: #f0a8c4;
+  background: #0B99FF;
 }
 
 .primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-  background: #F8C5D8;
+  background: #0B99FF;
 }
 
 .error {

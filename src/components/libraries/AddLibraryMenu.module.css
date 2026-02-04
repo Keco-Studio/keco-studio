@@ -25,7 +25,7 @@
 .menuItem:hover,
 .menuItem:focus {
   background-color: #0B99FF14;
-  color: #e11d48;
+  color: #000;
   outline: none;
 }
 
