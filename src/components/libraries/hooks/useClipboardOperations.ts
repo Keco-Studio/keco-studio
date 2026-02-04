@@ -1,6 +1,7 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { useTableDataManager } from './useTableDataManager';
+import { applyPasteToRows } from './batchOperations';
 
 type CellKey = `${string}-${string}`; // Format: "rowId-propertyKey"
 
@@ -102,6 +103,8 @@ export function useClipboardOperations({
     propertyKeys: string[];
   } | null;
 }) {
+  const isPastingRef = useRef(false);
+
   /**
    * Parse cellKey to extract rowId and propertyKey
    * Handles UUIDs that may contain multiple dashes
@@ -692,299 +695,68 @@ export function useClipboardOperations({
       setTimeout(() => setToastMessage(null), 2000);
       return;
     }
-    
-    const allRowsForSelection = getAllRowsForCellSelection();
-    
-    // Find the TOP-LEFT selected cell as the paste starting point.
-    // IMPORTANT: Set iteration order is not stable, and using the "first" element can make
-    // paste appear to start from a lower row/col, which looks like "第一行最后才被 paste 上".
-    let firstSelectedCell: CellKey | null = null;
+
+    // 防重入：避免快捷键/菜单重复触发导致「一次 paste 执行两遍」出现多扩行、重复内容
+    if (isPastingRef.current) return;
+    isPastingRef.current = true;
+
+    try {
+    // 唯一数据源：使用 Yjs 快照作为锚点和扩行的统一基准，避免视图行数与 Yjs 不一致导致错判
+    const rowsSnapshot = yRows.toArray();
     let bestRowIndex = Number.POSITIVE_INFINITY;
     let bestPropertyIndex = Number.POSITIVE_INFINITY;
-
     cellsToUse.forEach((cellKey) => {
       const { rowId, propertyKey, property } = parseCellKey(cellKey);
       if (!rowId || !propertyKey || !property) return;
-      const rowIndex = allRowsForSelection.findIndex((r) => r.id === rowId);
+      const rowIndex = rowsSnapshot.findIndex((r: AssetRow) => r.id === rowId);
       if (rowIndex < 0) return;
       const propertyIndex = orderedProperties.findIndex((p) => p.key === propertyKey);
       if (propertyIndex < 0) return;
-
-      if (
-        rowIndex < bestRowIndex ||
-        (rowIndex === bestRowIndex && propertyIndex < bestPropertyIndex)
-      ) {
+      if (rowIndex < bestRowIndex || (rowIndex === bestRowIndex && propertyIndex < bestPropertyIndex)) {
         bestRowIndex = rowIndex;
         bestPropertyIndex = propertyIndex;
-        firstSelectedCell = cellKey as CellKey;
       }
     });
+    if (bestRowIndex === Number.POSITIVE_INFINITY || bestPropertyIndex === Number.POSITIVE_INFINITY) {
+      return;
+    }
+    const startRowIndex = bestRowIndex;
+    const startPropertyIndex = bestPropertyIndex;
 
-    if (!firstSelectedCell) {
-      return;
-    }
-    
-    // Parse the first selected cell to get rowId and propertyKey
-    const { rowId: startRowId, propertyKey: startPropertyKey, property: foundStartProperty } = parseCellKey(firstSelectedCell);
-    
-    if (!foundStartProperty || !startRowId) {
-      return;
-    }
-    
-    // Find the starting row index and property index
-    const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-    const startPropertyIndex = orderedProperties.findIndex(p => p.key === startPropertyKey);
-    
-    if (startRowIndex === -1 || startPropertyIndex === -1) {
-      return;
-    }
-    
-    // Store updates to apply
-    const updatesToApply: Array<{ rowId: string; propertyKey: string; value: string | number | null }> = [];
-    // Map to store new rows data by target row index (relative to current rows)
-    const rowsToCreateByIndex = new Map<number, { name: string; propertyValues: Record<string, any> }>();
-    
-    // Calculate how many new rows we need to create
-    const maxTargetRowIndex = startRowIndex + clipboardData.length - 1;
-    const rowsNeeded = Math.max(0, maxTargetRowIndex - allRowsForSelection.length + 1);
-    
-    // Initialize new rows
-    for (let i = 0; i < rowsNeeded; i++) {
-      const targetRowIndex = allRowsForSelection.length + i;
-      rowsToCreateByIndex.set(targetRowIndex, { name: 'Untitled', propertyValues: {} });
-    }
-    
-    // Get source property keys from selection bounds to check type compatibility
-    const sourceSelectionBounds = isCutOperation ? cutSelectionBounds : copySelectionBounds;
-    const sourcePropertyKeys = sourceSelectionBounds?.propertyKeys || [];
-    
-    // Track type mismatch errors
-    let hasTypeMismatch = false;
-    
-    // Helper function to check if source and target types are compatible
-    const isTypeCompatible = (sourceType: string | null | undefined, targetType: string): boolean => {
-      if (!sourceType || !['string', 'int', 'float'].includes(sourceType)) {
-        return false; // Unknown or unsupported source type
-      }
-      
-      // Type compatibility rules:
-      // - string -> string: ✅
-      // - int -> int: ✅
-      // - float -> float: ✅
-      // - int -> float: ❌ (not allowed)
-      // - float -> int: ❌ (loses precision)
-      // - string -> int/float: ❌
-      // - int/float -> string: ❌
-      
-      if (sourceType === targetType) {
-        return true; // Same type, always compatible
-      }
-      
-      return false; // All other combinations are incompatible
-    };
-    
-    // Iterate through clipboard data and map to target cells
-    clipboardData.forEach((clipboardRow, clipboardRowIndex) => {
-      clipboardRow.forEach((cellValue, clipboardColIndex) => {
-        const targetRowIndex = startRowIndex + clipboardRowIndex;
-        const targetPropertyIndex = startPropertyIndex + clipboardColIndex;
-        
-        // Check if target property exists
-        if (targetPropertyIndex >= orderedProperties.length) {
-          return; // Skip if column is out of range
-        }
-        
-        const targetProperty = orderedProperties[targetPropertyIndex];
-        
-        // Name field is identified by label='name' and dataType='string', not by position
-        const isNameField = targetProperty && targetProperty.name === 'name' && targetProperty.dataType === 'string';
-        const supported = ['string', 'int', 'float'] as const;
-        const typeSupported = targetProperty.dataType && supported.includes(targetProperty.dataType as any);
-        if (!typeSupported && !isNameField) {
-          return; // Skip unsupported types; name field always allowed
-        }
-        
-        // Check type compatibility if we have source property information (skip for name field)
-        if (!isNameField && sourcePropertyKeys.length > 0 && clipboardColIndex < sourcePropertyKeys.length) {
-          const sourcePropertyKey = sourcePropertyKeys[clipboardColIndex];
-          const sourceProperty = orderedProperties.find(p => p.key === sourcePropertyKey);
-          
-          if (sourceProperty && sourceProperty.dataType) {
-            const isCompatible = isTypeCompatible(sourceProperty.dataType, targetProperty.dataType);
-            if (!isCompatible) {
-              hasTypeMismatch = true;
-              return; // Skip this cell due to type mismatch
-            }
-          }
-        }
-        
-        // Convert value to appropriate type (string, int, float). Name field always as string.
-        let convertedValue: string | number | null = null;
-        if (cellValue !== null && cellValue !== undefined && cellValue !== '') {
-          if (isNameField) {
-            convertedValue = String(cellValue);
-          } else if (targetProperty.dataType === 'int') {
-            const numValue = parseInt(String(cellValue), 10);
-            convertedValue = isNaN(numValue) ? null : numValue;
-          } else if (targetProperty.dataType === 'float') {
-            if (typeof cellValue === 'number' && !isNaN(cellValue)) {
-              convertedValue = cellValue;
-            } else {
-              const numValue = parseFloat(String(cellValue));
-              convertedValue = isNaN(numValue) ? null : numValue;
-            }
-          } else if (targetProperty.dataType === 'string') {
-            convertedValue = String(cellValue);
-          }
-        }
-        
-        // Check if target row exists, add to create map or update list
-        if (targetRowIndex >= allRowsForSelection.length) {
-          // Need to create new row - add value to the row data
-          const newRowData = rowsToCreateByIndex.get(targetRowIndex);
-          if (newRowData) {
-            // For name field (propertyIndex === 0), set it as the name field, not in propertyValues
-            if (targetPropertyIndex === 0) {
-              newRowData.name = (convertedValue !== null && convertedValue !== '') ? String(convertedValue) : '';
-            } else {
-              newRowData.propertyValues[targetProperty.key] = convertedValue;
-            }
-          }
-        } else {
-          // Target row exists, prepare update
-          const targetRow = allRowsForSelection[targetRowIndex];
-          
-          updatesToApply.push({
-            rowId: targetRow.id,
-            propertyKey: targetProperty.key,
-            value: convertedValue,
-          });
-        }
-      });
-    });
-    
-    // Show type mismatch error if any cells were skipped
-    if (hasTypeMismatch) {
+    const sourcePropertyKeys = (isCutOperation ? cutSelectionBounds : copySelectionBounds)?.propertyKeys ?? [];
+    const result = applyPasteToRows(
+      rowsSnapshot,
+      orderedProperties,
+      { rowIndex: startRowIndex, colIndex: startPropertyIndex },
+      clipboardData,
+      sourcePropertyKeys.length > 0 ? sourcePropertyKeys : undefined
+    );
+
+    if (result.typeMismatch) {
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
       setToastMessage({ message: 'type mismatch', type: 'error' });
       setTimeout(() => setToastMessage(null), 2000);
-      return; // Don't proceed with paste if there are type mismatches
+      return;
     }
-    
-    // Build rowsToCreate in explicit target order and clone data to avoid reference reuse.
-    // Ensures correct mapping: clipboard row (startRowIndex + i) -> new row i when expanding at end.
-    const rowsToCreate: Array<{ name: string; propertyValues: Record<string, any> }> = [];
-    for (let i = 0; i < rowsNeeded; i++) {
-      const targetRowIndex = allRowsForSelection.length + i;
-      const data = rowsToCreateByIndex.get(targetRowIndex);
-      if (data) {
-        rowsToCreate.push({
-          name: data.name,
-          propertyValues: { ...data.propertyValues },
-        });
-      }
-    }
-    
-    // Close menu and show toast immediately so UI feels responsive (async work continues in background)
+
     setBatchEditMenuVisible(false);
     setBatchEditMenuPosition(null);
     setToastMessage({ message: 'Content pasted', type: 'success' });
     setTimeout(() => setToastMessage(null), 2000);
-    
-    // Apply updates to existing rows first (paste-start row), then create new rows.
-    // This avoids the paste-start cell appearing to "fill last" after expansion.
-    if (updatesToApply.length > 0 && onUpdateAsset) {
+
+    if (result.updates.length > 0 && onUpdateAsset) {
       setIsSaving(true);
       try {
-        // Group updates by rowId for efficiency
-        // Track both propertyValues and name field updates separately
-        const updatesByRow = new Map<string, { propertyValues: Record<string, any>; name?: string | null }>();
-        // Find the name field key (identified by label='name' and dataType='string')
-        const nameFieldProperty = orderedProperties.find(p => p.name === 'name' && p.dataType === 'string');
-        const nameFieldKey = nameFieldProperty?.key;
-        
-        // 对齐 batch fill：从 base 构建 propertyValues 再合并粘贴值，避免合并逻辑导致 float 小数丢失
-        updatesToApply.forEach(({ rowId, propertyKey, value }) => {
-          if (!updatesByRow.has(rowId)) {
-            const baseRow = dataManager.getRowBaseValue(rowId);
-            const row = allRowsForSelection.find(r => r.id === rowId);
-            if (baseRow) {
-              updatesByRow.set(rowId, { 
-                propertyValues: { ...baseRow.propertyValues },
-                name: baseRow.name
-              });
-            } else if (row) {
-              updatesByRow.set(rowId, { 
-                propertyValues: { ...row.propertyValues },
-                name: row.name
-              });
-            } else {
-              updatesByRow.set(rowId, { propertyValues: {} });
-            }
-          }
-          // Update with new value
-          const rowUpdates = updatesByRow.get(rowId);
-          if (rowUpdates) {
-            // Check if this is the name field (identified by matching the name field key)
-            if (nameFieldKey && propertyKey === nameFieldKey) {
-              // Update name field separately（空值保持空白，不写 "Untitled"）
-              rowUpdates.name = (value !== null && value !== '') ? String(value) : '';
-              // Also update propertyValues for consistency
-              rowUpdates.propertyValues[propertyKey] = value;
-            } else {
-              // Update property value
-              rowUpdates.propertyValues[propertyKey] = value;
-            }
-          }
+        // 直接按 Yjs 快照索引更新，索引与 applyPasteToRows 中保持一致
+        result.updates.forEach(({ rowIndex, row }) => {
+          yRows.delete(rowIndex, 1);
+          yRows.insert(rowIndex, [row]);
         });
-        
-        // Apply updates - update Yjs first, then update database
-        // Get snapshot of current Yjs array (before update)
-        const allRows = yRows.toArray();
-        const rowIndexMap = new Map<string, number>();
-        allRows.forEach((r, idx) => rowIndexMap.set(r.id, idx));
-        
-        // Batch update Yjs first (reverse order update to avoid index changes)
-        const rowsToUpdate: Array<{ rowId: string; index: number; row: AssetRow }> = [];
-        for (const [rowId, rowData] of updatesByRow.entries()) {
-          const row = allRowsForSelection.find(r => r.id === rowId);
-          if (row) {
-            const rowIndex = rowIndexMap.get(rowId);
-            if (rowIndex !== undefined) {
-              // Use updated name if name field was pasted, otherwise use existing row.name（空名保持 ''，不写 "Untitled"）
-              const updatedName = rowData.name !== undefined ? rowData.name : (row.name ?? '');
-              rowsToUpdate.push({
-                rowId,
-                index: rowIndex,
-                row: {
-                  ...row,
-                  name: updatedName,
-                  propertyValues: rowData.propertyValues
-                }
-              });
-            }
-          }
-        }
-        
-        // Update Yjs in ASC order so the top row appears first.
-        // Deleting+inserting at the same index keeps array length stable, so ascending order is safe
-        // and avoids the UX where the "first row" seems to paste last.
-        rowsToUpdate.sort((a, b) => a.index - b.index);
-        rowsToUpdate.forEach(({ index, row }) => {
-          yRows.delete(index, 1);
-          yRows.insert(index, [row]);
-        });
-        
-        // Update database only for real asset IDs (skip temp IDs from optimistic new rows)
-        const updatePromises = Array.from(updatesByRow.entries())
-          .filter(([rowId]) => !rowId.startsWith('temp-'))
-          .map(([rowId, rowData]) => {
-            const row = allRowsForSelection.find(r => r.id === rowId);
-            if (!row) return Promise.resolve();
-            const updatedName = rowData.name !== undefined ? rowData.name : (row.name ?? '');
-            return onUpdateAsset(rowId, updatedName, rowData.propertyValues);
-          });
+
+        const updatePromises = result.updates
+          .filter(({ row }) => !row.id.startsWith('temp-'))
+          .map(({ row }) => onUpdateAsset(row.id, row.name ?? '', row.propertyValues));
         await Promise.all(updatePromises);
       } catch (error) {
         console.error('Failed to update rows for paste:', error);
@@ -998,42 +770,31 @@ export function useClipboardOperations({
         setIsSaving(false);
       }
     }
-    
-    // Create new rows if needed (after updating existing rows)
-    if (rowsToCreate.length > 0 && onSaveAsset && library) {
+
+    if (result.creates.length > 0 && onSaveAsset && library) {
       setIsSaving(true);
       try {
-        // Create optimistic rows in one shot (stable order), and persist in parallel (much faster).
         const now = Date.now();
         const optimisticAssets: AssetRow[] = [];
         const savePromises: Array<Promise<void>> = [];
-
-        for (let i = 0; i < rowsToCreate.length; i++) {
-          const rowData = rowsToCreate[i];
+        for (let i = 0; i < result.creates.length; i++) {
+          const rowData = result.creates[i];
           const assetName = rowData.name || '';
           const tempId = `temp-paste-${now}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          const optimisticAsset: AssetRow = {
+          optimisticAssets.push({
             id: tempId,
             libraryId: library.id,
             name: assetName,
             propertyValues: { ...rowData.propertyValues },
-          };
-          optimisticAssets.push(optimisticAsset);
+          });
           savePromises.push(onSaveAsset(assetName, rowData.propertyValues));
         }
-
-        // Insert all optimistic assets at once to preserve visual order.
         yRows.insert(yRows.length, optimisticAssets);
-
-        // Add optimistic assets with a single state update.
         setOptimisticNewAssets((prev) => {
           const next = new Map(prev);
           optimisticAssets.forEach((a) => next.set(a.id, a));
           return next;
         });
-
-        // Persist in parallel. Cleanup of optimisticNewAssets is handled by useOptimisticCleanup
-        // when the real rows arrive (avoids flicker / timing issues).
         await Promise.all(savePromises);
       } catch (error) {
         console.error('Failed to create rows for paste:', error);
@@ -1072,11 +833,12 @@ export function useClipboardOperations({
     // Clear selected cells and rows after paste operation
     setSelectedCells(new Set());
     setSelectedRowIds(new Set());
+    } finally {
+      isPastingRef.current = false;
+    }
   }, [
-    dataManager,
     selectedCells,
     selectedRowIds,
-    getAllRowsForCellSelection,
     orderedProperties,
     onSaveAsset,
     onUpdateAsset,
