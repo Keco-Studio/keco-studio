@@ -11,6 +11,8 @@ type OptimisticEditUpdate = { name: string; propertyValues: Record<string, any> 
 
 export type UseClickOutsideAutoSaveParams = {
   tableContainerRef: React.RefObject<HTMLDivElement | null>;
+  /** When adding row, click outside this ref (e.g. another cell or outside table) triggers save */
+  addRowFormRef?: React.RefObject<HTMLTableRowElement | null>;
   isAddingRow: boolean;
   newRowData: Record<string, any>;
   setIsAddingRow: (v: boolean | ((prev: boolean) => boolean)) => void;
@@ -46,6 +48,7 @@ export type UseClickOutsideAutoSaveParams = {
 export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
   const {
     tableContainerRef,
+    addRowFormRef,
     isAddingRow,
     newRowData,
     setIsAddingRow,
@@ -89,7 +92,10 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
         return;
       }
 
-      if (!tableContainerRef.current || tableContainerRef.current.contains(target)) return;
+      // When editing a cell: only react to clicks outside the whole table
+      if (editingCell && (!tableContainerRef.current || tableContainerRef.current.contains(target))) return;
+      // When adding a row: react to clicks outside the add-row form (including other table cells)
+      if (isAddingRow && addRowFormRef?.current?.contains(target)) return;
 
       if (isAddingRow) {
         const hasData = Object.keys(newRowData).some((key) => {
@@ -261,6 +267,7 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
     rows,
     referenceModalOpen,
     tableContainerRef,
+    addRowFormRef,
     library,
     setIsAddingRow,
     setNewRowData,

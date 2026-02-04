@@ -5,9 +5,8 @@ import Image from 'next/image';
 import { Avatar } from 'antd';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import { getAssetAvatarColor, getAssetAvatarText } from '@/components/libraries/utils/libraryAssetUtils';
-import libraryAssetTableIcon from '@/assets/images/LibraryAssetTableIcon.svg';
-import libraryAssetTable2Icon from '@/assets/images/LibraryAssetTable2.svg';
-import libraryAssetTable3Icon from '@/assets/images/LibraryAssetTable3.svg';
+import libraryAssetTable7Icon from '@/assets/images/LibraryAssetTable7.svg';
+import libraryAssetTable8Icon from '@/assets/images/LibraryAssetTable8.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type ReferenceFieldProps = {
@@ -85,22 +84,15 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={handleMouseLeave}
     >
-      <div
-        className={styles.referenceSelectedAssetLeft}
-        data-reference-background="true"
-        onClick={handleClick}
-        onMouseDown={handleMouseDown}
-        onDoubleClick={handleDoubleClick}
-      >
-        <Image
-          src={libraryAssetTableIcon}
-          alt=""
-          width={16}
-          height={16}
-          className={`icon-16 ${styles.referenceDiamondIcon}`}
-        />
-        {hasValue && assetId ? (
-          <>
+      {hasValue && assetId ? (
+        <div
+          className={styles.referenceSelectedAssetLeft}
+          data-reference-background="true"
+          onClick={handleClick}
+          onMouseDown={handleMouseDown}
+          onDoubleClick={handleDoubleClick}
+        >
+          <div className={`${styles.referenceIconTile} ${styles.referenceAvatarTile}`}>
             <div
               ref={setAvatarRef}
               onMouseEnter={(e) => {
@@ -124,26 +116,35 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
                 {getAssetAvatarText(assetName)}
               </Avatar>
             </div>
+          </div>
+          <div className={`${styles.referenceIconTile} ${styles.referenceArrowTile}`}>
             <Image
-              src={isHovered ? libraryAssetTable3Icon : libraryAssetTable2Icon}
+              src={isHovered ? libraryAssetTable7Icon : libraryAssetTable8Icon}
               alt=""
               width={16}
               height={16}
               className={styles.referenceExpandIcon}
               onMouseEnter={() => setIsHovered(true)}
             />
-          </>
-        ) : (
+          </div>
+        </div>
+      ) : (
+        <div
+          className={`${styles.referenceIconTile} ${styles.referenceArrowTile} ${styles.referenceSingleIcon}`}
+          onClick={handleClick}
+          onMouseDown={handleMouseDown}
+          onDoubleClick={handleDoubleClick}
+        >
           <Image
-            src={isHovered ? libraryAssetTable3Icon : libraryAssetTable2Icon}
+            src={isHovered ? libraryAssetTable7Icon : libraryAssetTable8Icon}
             alt=""
             width={16}
             height={16}
             className={styles.referenceArrowIcon}
             onMouseEnter={() => setIsHovered(true)}
           />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 });

@@ -16,6 +16,8 @@
 .versionItem.selected {
   background: rgba(94, 0, 255, 0.08);
   border-radius: 7px;
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
 }
 
 .versionItem.selected::before {
@@ -42,8 +44,8 @@
 }
 
 .versionIcon {
-  width: 3rem;
-  height: 3rem;
+  width: 1.875rem;
+  height: 1.875rem;
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -63,8 +65,8 @@
 }
 
 .iconImage {
-  width: 3rem;
-  height: 3rem;
+  width: 1.875rem;
+  height: 1.875rem;
   object-fit: cover;
   border-radius: 50%;
   display: block;
@@ -72,33 +74,41 @@
 
 .connectionLine {
   position: absolute;
-  top: 1.5rem;
+  top: 0.9375rem;
   left: 50%;
   transform: translateX(-50%);
   width: 0;
-  height: calc(100% + 10px);
+  height: calc(100% + 0.625rem);
   border-left: 1px solid #E0E1E3;
   z-index: 0;
 }
 
 .lastConnectionLine {
   position: absolute;
-  top: 1.5rem;
+  top: 0.9375rem;
   left: 50%;
   transform: translateX(-50%);
   width: 0;
-  bottom: -10px;
+  bottom: -0.625rem;
   border-left: 1px solid #E0E1E3;
   z-index: 0;
 }
 
+.versionItem.selected .connectionLine {
+  height: calc(100% + 0.875rem);
+}
+
+.versionItem.selected .lastConnectionLine {
+  bottom: -0.875rem;
+}
+
 .firstConnectionLine {
   position: absolute;
-  top: -24px;
+  top: -1.3125rem;
   left: 50%;
   transform: translateX(-50%);
   width: 0;
-  height: calc(50% + 24px);
+  height: calc(50% + 1.3125rem);
   border-left: 1px solid #E0E1E3;
   z-index: 0;
 }

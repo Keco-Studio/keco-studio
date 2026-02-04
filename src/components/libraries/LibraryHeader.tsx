@@ -308,8 +308,12 @@ export function LibraryHeader({
           </button>
         </div>
 
-        {/* More Options Icon */}
-        <Tooltip title="More Options">
+        {/* More Options: mount to body + fixed so tooltip does not extend scroll area */}
+        <Tooltip
+          title="More Options"
+          getPopupContainer={() => document.body}
+          styles={{ root: { position: 'fixed' } }}
+        >
           <button className={styles.iconButton}>
             <Image src={libraryHeadMoreIcon}
               alt="More"
@@ -317,8 +321,12 @@ export function LibraryHeader({
             />
           </button>
         </Tooltip>
-        {/* Version Control Icon */}
-        <Tooltip title="Version Control">
+        {/* Version Control: mount to body + fixed so tooltip does not extend scroll area */}
+        <Tooltip
+          title="Version Control"
+          getPopupContainer={() => document.body}
+          styles={{ root: { position: 'fixed' } }}
+        >
           <button 
             className={styles.iconButton}
             onClick={onVersionControlToggle}

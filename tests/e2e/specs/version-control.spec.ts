@@ -916,11 +916,598 @@ test.describe('Version Control Tests', () => {
       await expect(restoreButton).toBeVisible({ timeout: 5000 });
       await restoreButton.click();
       await expect(page.getByText('Alert')).toBeVisible({ timeout: 5000 });
-      await page.locator('[class*="backdrop"]').filter({ hasText: 'Alert' }).getByRole('button', { name: /^restore$/i }).click();
+      await page
+        .locator('[class*="backdrop"]')
+        .filter({ hasText: 'Alert' })
+        .getByRole('button', { name: /^restore$/i })
+        .click();
       await expect(page.getByText('Library restored')).toBeVisible({ timeout: 10000 });
       await page.waitForTimeout(500);
       const highlightedRow = page.locator('[class*="highlighting"]');
       await expect(highlightedRow.first()).toBeVisible({ timeout: 2500 });
+    });
+  });
+
+  test('Restore record - Restore version entry is created with correct metadata', async ({ page }) => {
+    test.setTimeout(60000);
+    const testProject = generateProjectData();
+    const versionName = `To Restore ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library and open version sidebar', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Create one history version', async () => {
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await page.locator('#version-name').fill(versionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Restore and verify new restore entry metadata', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: versionName });
+      const restoreButton = versionItem.first().locator('button').filter({ has: page.locator('img[alt="Restore"]') });
+      await expect(restoreButton).toBeVisible({ timeout: 5000 });
+      await restoreButton.click();
+      await expect(page.getByText('Alert')).toBeVisible({ timeout: 5000 });
+      await page
+        .locator('[class*="backdrop"]')
+        .filter({ hasText: 'Alert' })
+        .getByRole('button', { name: /^restore$/i })
+        .click();
+      await expect(page.getByText('Library restored')).toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(2000);
+
+      // Find the new restore entry: version item that has Restored version icon (distinct from history)
+      const restoreEntry = page
+        .locator('[class*="versionItem"]')
+        .filter({ has: page.locator('img[alt="Restored version"]') })
+        .first();
+      await expect(restoreEntry).toBeVisible({ timeout: 5000 });
+
+      // Version name: restore record name format is "{original} (MonthDay, H:MM AM/PM)"
+      await expect(restoreEntry.getByText(versionName)).toBeVisible();
+      await expect(restoreEntry.getByText(/\(\w+\d*,\s*\d+:\d+\s*(AM|PM)\)/)).toBeVisible();
+
+      // "restored by xxx"
+      await expect(restoreEntry.getByText(/restored by/i)).toBeVisible();
+
+      // Restore time (date text like "Dec 28, 7:40 AM")
+      const datePattern = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d+,\s+\d+:\d+\s+(AM|PM)/i;
+      await expect(restoreEntry.getByText(datePattern)).toBeVisible();
+
+      // Icon distinguishes from history: Restored version icon visible in this row
+      await expect(restoreEntry.locator('img[alt="Restored version"]')).toBeVisible();
+    });
+  });
+
+  test('Version menu - Open menu via button and right click', async ({ page }) => {
+    test.setTimeout(60000);
+    const testProject = generateProjectData();
+    const versionName = `Menu Test ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library, open sidebar, and create one version', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
+      await page.locator('#version-name').fill(versionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Open menu via button click', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: versionName }).first();
+      await expect(versionItem).toBeVisible({ timeout: 5000 });
+
+      const menuButton = versionItem
+        .locator('button')
+        .filter({ has: page.locator('img[alt="More options"]') })
+        .first();
+      await expect(menuButton).toBeVisible({ timeout: 5000 });
+      await menuButton.click();
+
+      await expect(page.getByRole('button', { name: 'Edit version info' })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('button', { name: 'Duplicate as a new library' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Delete' })).toBeVisible();
+    });
+
+    await test.step('Open menu via right click on version item', async () => {
+      // Click somewhere else to close dropdown menu
+      await page.mouse.click(0, 0);
+      await page.waitForTimeout(300);
+
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: versionName }).first();
+      await expect(versionItem).toBeVisible({ timeout: 5000 });
+
+      await versionItem.click({ button: 'right' });
+
+      await expect(page.getByRole('button', { name: 'Edit version info' })).toBeVisible({ timeout: 5000 });
+      await expect(page.getByRole('button', { name: 'Duplicate as a new library' })).toBeVisible();
+      await expect(page.getByRole('button', { name: 'Delete' })).toBeVisible();
+    });
+  });
+
+  test('Version menu - Edit version info (rename success)', async ({ page }) => {
+    test.setTimeout(60000);
+    const testProject = generateProjectData();
+    const originalName = `Edit Menu ${Date.now()}`;
+    // Use a new name that does NOT contain originalName, so "old name gone" assertion is reliable
+    const updatedName = `Renamed ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library, open sidebar, and create version', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
+      await page.locator('#version-name').fill(originalName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Open edit modal from menu and rename', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: originalName }).first();
+      await expect(versionItem).toBeVisible({ timeout: 5000 });
+
+      const menuButton = versionItem
+        .locator('button')
+        .filter({ has: page.locator('img[alt="More options"]') })
+        .first();
+      await expect(menuButton).toBeVisible({ timeout: 5000 });
+      await menuButton.click();
+
+      await page.getByRole('button', { name: 'Edit version info' }).click();
+      await expect(page.getByText('Edit version')).toBeVisible({ timeout: 5000 });
+
+      const nameInput = page.locator('#version-name');
+      await expect(nameInput).toBeVisible({ timeout: 5000 });
+      await nameInput.fill(updatedName);
+
+      const saveButton = page.getByRole('button', { name: /^save$/i });
+      await expect(saveButton).toBeVisible();
+      await saveButton.click();
+
+      // Wait for modal to close and list to refresh
+      await expect(page.getByText('Edit version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(500);
+
+      // New name should be visible; old name should disappear after list refetch
+      await expect(page.locator('[class*="versionItem"]').filter({ hasText: updatedName }).first()).toBeVisible({
+        timeout: 10000,
+      });
+      await expect(page.locator('[class*="versionItem"]').filter({ hasText: originalName })).toHaveCount(0, {
+        timeout: 10000,
+      });
+    });
+  });
+
+  test('Version menu - Duplicate as a new library', async ({ page }) => {
+    test.setTimeout(120000);
+    const testProject = generateProjectData();
+    const originalLibraryName = libraries.breed.name;
+    const duplicatedLibraryName = `${originalLibraryName} (copy)`;
+    const sourceVersionName = `Duplicate Source ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library, open sidebar, and create source version', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${originalLibraryName}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
+      await page.locator('#version-name').fill(sourceVersionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Trigger duplicate as a new library from menu', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: sourceVersionName }).first();
+      await expect(versionItem).toBeVisible({ timeout: 5000 });
+
+      const menuButton = versionItem
+        .locator('button')
+        .filter({ has: page.locator('img[alt="More options"]') })
+        .first();
+      await expect(menuButton).toBeVisible({ timeout: 5000 });
+      await menuButton.click();
+
+      await page.getByRole('button', { name: 'Duplicate as a new library' }).click();
+
+      // Wait for duplication to finish and toast to appear
+      await expect(page.getByText('Library duplicated successfully')).toBeVisible({ timeout: 60000 });
+      await page.waitForTimeout(3000);
+    });
+
+    await test.step('Verify new library appears in sidebar with correct name', async () => {
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+
+      const duplicatedLibraryItem = sidebar.locator(`[title="${duplicatedLibraryName}"]`);
+      await expect(duplicatedLibraryItem).toBeVisible({ timeout: 60000 });
+    });
+
+    await test.step('Enter duplicated library and verify duplicated version record', async () => {
+      const sidebar = page.getByRole('tree');
+      const duplicatedLibraryItem = sidebar.locator(`[title="${duplicatedLibraryName}"]`);
+      await expect(duplicatedLibraryItem).toBeVisible({ timeout: 60000 });
+      await duplicatedLibraryItem.click();
+
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+
+      const expectedVersionName = `${originalLibraryName} duplicated from (${sourceVersionName})`;
+      const duplicatedVersionItem = page.locator('[class*="versionItem"]').filter({
+        hasText: expectedVersionName,
+      });
+      await expect(duplicatedVersionItem.first()).toBeVisible({ timeout: 60000 });
+    });
+  });
+
+  test('Version menu - Delete version', async ({ page }) => {
+    test.setTimeout(60000);
+    const testProject = generateProjectData();
+    const versionName = `Delete Menu ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library, open sidebar, and create version', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
+      await page.locator('#version-name').fill(versionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Delete version from menu and verify it is removed', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: versionName }).first();
+      await expect(versionItem).toBeVisible({ timeout: 5000 });
+
+      const menuButton = versionItem
+        .locator('button')
+        .filter({ has: page.locator('img[alt="More options"]') })
+        .first();
+      await expect(menuButton).toBeVisible({ timeout: 5000 });
+      await menuButton.click();
+
+      await page.getByRole('button', { name: 'Delete' }).click();
+
+      await expect(page.getByText('Delete version')).toBeVisible({ timeout: 5000 });
+      const confirmDeleteButton = page.getByRole('button', { name: /^delete$/i });
+      await expect(confirmDeleteButton).toBeVisible();
+      await confirmDeleteButton.click();
+
+      await expect(page.getByText('Version deleted successfully')).toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1500);
+
+      await expect(page.locator('[class*="versionItem"]').filter({ hasText: versionName })).toHaveCount(0);
+    });
+  });
+
+  test('Version menu - Cancel delete keeps version', async ({ page }) => {
+    test.setTimeout(60000);
+    const testProject = generateProjectData();
+    const versionName = `Cancel Delete ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library, open sidebar, and create version', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
+      await page.locator('#version-name').fill(versionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Open delete modal then cancel', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: versionName }).first();
+      await expect(versionItem).toBeVisible({ timeout: 5000 });
+
+      const menuButton = versionItem
+        .locator('button')
+        .filter({ has: page.locator('img[alt="More options"]') })
+        .first();
+      await expect(menuButton).toBeVisible({ timeout: 5000 });
+      await menuButton.click();
+
+      await page.getByRole('button', { name: 'Delete' }).click();
+
+      await expect(page.getByText('Delete version')).toBeVisible({ timeout: 5000 });
+
+      // Use Cancel button to cancel deletion (equivalent to clicking "x" or cancel as per requirements)
+      const cancelButton = page.getByRole('button', { name: /^cancel$/i });
+      await expect(cancelButton).toBeVisible();
+      await cancelButton.click();
+
+      await page.waitForTimeout(1000);
+
+      // Version should still be present in the list
+      await expect(page.locator('[class*="versionItem"]').filter({ hasText: versionName }).first()).toBeVisible({
+        timeout: 5000,
+      });
+    });
+  });
+
+  test('Original version retention - Oldest version record is kept', async ({ page }) => {
+    test.setTimeout(90000);
+    const testProject = generateProjectData();
+    const initialVersionName = `Initial Version ${Date.now()}`;
+    const anotherVersionName = `Another Version ${Date.now() + 1}`;
+
+    await test.step('Create project, library, and initial version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library and open version sidebar', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Create initial version and another version', async () => {
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+
+      // Initial version
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
+      await page.locator('#version-name').fill(initialVersionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+
+      // Another version to operate on
+      await addButton.click();
+      await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
+      await page.locator('#version-name').fill(anotherVersionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Restore another version and verify initial version is still present', async () => {
+      const target = page.locator('[class*="versionItem"]').filter({ hasText: anotherVersionName }).first();
+      await expect(target).toBeVisible({ timeout: 5000 });
+
+      const restoreButton = target.locator('button').filter({ has: page.locator('img[alt="Restore"]') });
+      await expect(restoreButton).toBeVisible({ timeout: 5000 });
+      await restoreButton.click();
+      await expect(page.getByText('Alert')).toBeVisible({ timeout: 5000 });
+      await page
+        .locator('[class*="backdrop"]')
+        .filter({ hasText: 'Alert' })
+        .getByRole('button', { name: /^restore$/i })
+        .click();
+      await expect(page.getByText('Library restored')).toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1500);
+
+      // Initial version record should still be visible in the history list
+      const initialEntry = page
+        .locator('[class*="versionItem"]')
+        .filter({ hasText: initialVersionName })
+        .first();
+      await expect(initialEntry).toBeVisible({ timeout: 5000 });
     });
   });
 

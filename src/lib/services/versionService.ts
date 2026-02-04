@@ -259,7 +259,7 @@ async function restoreLibraryFromSnapshot(
 /**
  * Generate restore version name
  * Format: {original_version_name} ({Month} {Day}, {Hour}:{Minute} {AM/PM})
- * Example: "Version 1 (Jan19, 7:32 PM)"
+ * Example: "Version 1 (Jan 19, 7:32 PM)" or "origin (Feb 4, 6:58 PM)"
  */
 function generateRestoreVersionName(originalVersionName: string, originalCreatedAt: Date): string {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -270,7 +270,7 @@ function generateRestoreVersionName(originalVersionName: string, originalCreated
   const ampm = hours >= 12 ? 'PM' : 'AM';
   const displayHours = hours % 12 || 12;
   const displayMinutes = minutes.toString().padStart(2, '0');
-  return `${originalVersionName} (${month}${day}, ${displayHours}:${displayMinutes} ${ampm})`;
+  return `${originalVersionName} (${month} ${day}, ${displayHours}:${displayMinutes} ${ampm})`;
 }
 
 /**

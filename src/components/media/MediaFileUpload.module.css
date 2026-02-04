@@ -107,19 +107,21 @@
 .replaceButton {
   padding: 0.375rem 12px;
   background-color: transparent;
-  color: #8726EE;
+  color: #111827;
   border: none;
   border-radius: 0.25rem;
   cursor: pointer;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 400;
   transition: all 0.2s;
   white-space: nowrap;
   flex-shrink: 0;
+  text-decoration: underline;
 }
 
 .replaceButton:hover:not(:disabled) {
-  background-color: #F0E7FC;
+  background-color: transparent;
+  text-decoration: underline;
 }
 
 .replaceButton:disabled {

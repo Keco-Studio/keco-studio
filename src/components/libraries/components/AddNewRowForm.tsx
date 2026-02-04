@@ -5,7 +5,7 @@ import { PropertyConfig } from '@/lib/types/libraryAssets';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { ReferenceField } from './ReferenceField';
-import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon.svg';
+import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export interface AddNewRowFormProps {

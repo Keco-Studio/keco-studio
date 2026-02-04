@@ -51,8 +51,9 @@ export function EditVersionModal({
 
   const editVersionMutation = useMutation({
     mutationFn: (name: string) => editVersion(supabase, { versionId: version.id, versionName: name }),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
+      await queryClient.refetchQueries({ queryKey: ['versions', libraryId] });
       setVersionName('');
       setError(null);
       onSuccess();
