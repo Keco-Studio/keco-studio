@@ -87,11 +87,12 @@ export function FieldItem({
   }, [field.label, isComposing, isEditing]);
 
   // Sync external field.enumOptions changes to local state
+  // Only sync when composingOptionIndex is null to avoid interrupting user input
   useEffect(() => {
     if (composingOptionIndex === null) {
       setLocalOptions(field.enumOptions ?? []);
     }
-  }, [field.enumOptions, composingOptionIndex]);
+  }, [field.enumOptions]); // Remove composingOptionIndex from deps to avoid sync on composition end
 
   const getDataTypeLabel = (value: FieldType) => {
     const option = FIELD_TYPE_OPTIONS.find((opt) => opt.value === value);
@@ -161,6 +162,8 @@ export function FieldItem({
   };
 
   const handleOptionChange = (index: number, value: string) => {
+    // Always update localOptions to capture all input changes, including during IME composition
+    // This ensures we don't lose user input during Chinese/Japanese/Korean input
     const newOptions = [...localOptions];
     newOptions[index] = value;
     setLocalOptions(newOptions);
@@ -179,12 +182,10 @@ export function FieldItem({
     setComposingOptionIndex(index);
   };
 
-  const handleOptionCompositionEnd = (index: number, value: string) => {
+  const handleOptionCompositionEnd = (index: number) => {
     setComposingOptionIndex(null);
-    // Update local state with the final composed value
-    const newOptions = [...localOptions];
-    newOptions[index] = value;
-    setLocalOptions(newOptions);
+    // No need to update localOptions here since onChange already handles it
+    // Just clear the composing flag
   };
 
   const handleRemoveOption = (index: number) => {
@@ -239,6 +240,15 @@ export function FieldItem({
         configButtonRef.current &&
         !configButtonRef.current.contains(target)
       ) {
+        // Before closing, save any pending changes to enum options
+        // This ensures changes are saved even if user clicks outside without blurring the input
+        if (field.dataType === 'enum') {
+          const { id, ...rest } = field;
+          onChangeField(field.id, {
+            ...rest,
+            enumOptions: localOptions,
+          });
+        }
         setShowConfigMenu(false);
       }
     };
@@ -247,7 +257,7 @@ export function FieldItem({
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [showConfigMenu]);
+  }, [showConfigMenu, field, localOptions, onChangeField]);
 
   // Load libraries when config menu is opened for reference type
   useEffect(() => {
@@ -400,7 +410,18 @@ export function FieldItem({
             <button 
               ref={configButtonRef}
               className={`${styles.configButton} ${showConfigMenu ? styles.configButtonActive : ''}`}
-              onClick={() => !disabled && setShowConfigMenu(!showConfigMenu)}
+              onClick={() => {
+                if (disabled) return;
+                // If closing the menu, save any pending enum option changes first
+                if (showConfigMenu && field.dataType === 'enum') {
+                  const { id, ...rest } = field;
+                  onChangeField(field.id, {
+                    ...rest,
+                    enumOptions: localOptions,
+                  });
+                }
+                setShowConfigMenu(!showConfigMenu);
+              }}
               disabled={disabled}
               title="Configure options"
             >
@@ -433,7 +454,7 @@ export function FieldItem({
                           onChange={(e) => handleOptionChange(index, e.target.value)}
                           onBlur={handleOptionBlur}
                           onCompositionStart={() => handleOptionCompositionStart(index)}
-                          onCompositionEnd={(e) => handleOptionCompositionEnd(index, (e.target as HTMLInputElement).value)}
+                          onCompositionEnd={() => handleOptionCompositionEnd(index)}
                           placeholder="enter new option here"
                           className={styles.optionInput}
                         />

@@ -69,140 +69,42 @@ export function SidebarLibrariesSection({
   addButtonRef,
   onAddButtonClick,
 }: SidebarLibrariesSectionProps) {
-  const showAssetView = currentIds.assetId && currentIds.libraryId;
-
   return (
     <>
-      {!currentIds.assetId && (
-        <div className={styles.sectionTitle}>
-          <span>Libraries</span>
-          {userRole === 'admin' && (
-            <button
-              ref={addButtonRef}
-              className={styles.addButton}
-              onClick={onAddButtonClick}
-              title="Add new folder or library"
-            >
-              <Image src={addProjectIcon} alt="Add library" width={24} height={24} className="icon-24" />
-            </button>
-          )}
-        </div>
-      )}
+      <div className={styles.sectionTitle}>
+        <span>Libraries</span>
+        {userRole === 'admin' && (
+          <button
+            ref={addButtonRef}
+            className={styles.addButton}
+            onClick={onAddButtonClick}
+            title="Add new folder or library"
+          >
+            <Image src={addProjectIcon} alt="Add library" width={16} height={16} className="icon-16" />
+          </button>
+        )}
+      </div>
       <div className={styles.sectionList}>
-        {showAssetView ? (
-          <>
-            {(() => {
-              const currentLibrary = libraries.find((lib) => lib.id === currentIds.libraryId);
-              const libraryName = currentLibrary?.name || 'Library';
-              const libraryAssets = assets[currentIds.libraryId!] || [];
-              return (
-                <>
-                  <div className={`${styles.itemRow} ${styles.libraryItemActiveWithPadding}`}>
-                    <div className={styles.itemMain}>
-                      <button
-                        className={styles.libraryBackButton}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onBackToLibrary();
-                        }}
-                        title="Back to library"
-                      >
-                        <Image src={sidebarFolderIcon3} alt="Back" width={24} height={24} className="icon-24" />
-                      </button>
-                      <div className={styles.libraryIconContainer}>
-                        <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
-                      </div>
-                      <span className={styles.itemText} title={libraryName}>
-                        {truncateText(libraryName, 15)}
-                      </span>
-                    </div>
-                    <div className={styles.itemActions}>
-                      {userRole === 'admin' && (
-                        <Tooltip title="Predefine asset here" placement="top" color="#8B5CF6">
-                          <button
-                            className={styles.iconButton}
-                            aria-label="Library sections"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (currentIds.projectId && currentIds.libraryId) {
-                                onLibraryPredefineClick(currentIds.projectId, currentIds.libraryId, e);
-                              }
-                            }}
-                          >
-                            <Image src={sidebarFolderIcon4} alt="Predefine" width={22} height={22} className="icon-22" />
-                          </button>
-                        </Tooltip>
-                      )}
-                    </div>
-                  </div>
-                  {(userRole === 'admin' || userRole === 'editor') && (
-                    <button
-                      className={`${styles.createButton} ${styles.createButtonAligned}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAddNewAsset();
-                      }}
-                    >
-                      <span className={styles.createButtonText}>
-                        <Image src={sidebarFolderIcon5} alt="Add" width={24} height={24} className="icon-24" />
-                        Add new asset
-                      </span>
-                    </button>
-                  )}
-                  <div className={styles.assetList}>
-                    {libraryAssets.map((asset) => {
-                      const isCurrentAsset = currentIds.assetId === asset.id;
-                      return (
-                        <div
-                          key={asset.id}
-                          className={`${styles.itemRow} ${isCurrentAsset ? styles.assetItemActive : ''}`}
-                          onClick={() => {
-                            if (currentIds.projectId && currentIds.libraryId) {
-                              onAssetClick(currentIds.projectId, currentIds.libraryId, asset.id);
-                            }
-                          }}
-                          onContextMenu={(e) => onContextMenu(e, 'asset', asset.id)}
-                        >
-                          <div className={styles.itemMain}>
-                            <span
-                              className={styles.itemText}
-                              title={asset.name && asset.name !== 'Untitled' ? asset.name : ''}
-                            >
-                              {truncateText(asset.name && asset.name !== 'Untitled' ? asset.name : '', 15)}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
-              );
-            })()}
-          </>
-        ) : (
-          <>
-            <SidebarTreeView
-              treeData={treeData}
-              selectedKeys={selectedKeys}
-              expandedKeys={expandedKeys}
-              onSelect={onSelect}
-              onExpand={onExpand}
+        <SidebarTreeView
+          treeData={treeData}
+          selectedKeys={selectedKeys}
+          expandedKeys={expandedKeys}
+          onSelect={onSelect}
+          onExpand={onExpand}
+        />
+        {!loadingFolders && !loadingLibraries && foldersLength === 0 && librariesLength === 0 && (
+          <div className={styles.sidebarEmptyState}>
+            <Image
+              src={FolderCloseIcon}
+              alt="No folders or libraries"
+              width={22}
+              height={18}
+              className={`icon-22 ${styles.emptyIcon}`}
             />
-            {!loadingFolders && !loadingLibraries && foldersLength === 0 && librariesLength === 0 && (
-              <div className={styles.sidebarEmptyState}>
-                <Image
-                  src={FolderCloseIcon}
-                  alt="No folders or libraries"
-                  width={22}
-                  height={18}
-                  className={`icon-22 ${styles.emptyIcon}`}
-                />
-                <div className={styles.sidebarEmptyText}>
-                  No folder or library in this project yet.
-                </div>
-              </div>
-            )}
-          </>
+            <div className={styles.sidebarEmptyText}>
+              No folder or library in this project yet.
+            </div>
+          </div>
         )}
       </div>
     </>

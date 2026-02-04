@@ -15,15 +15,17 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { Avatar, Tooltip } from 'antd';
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollaboratorModal';
 import { showSuccessToast } from '@/lib/utils/toast';
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
 import styles from './AssetHeader.module.css';
-import libraryHeadMoreIcon from '@/assets/images/libraryHeadMoreIcon.svg';
+import libraryHeadMoreIcon from '@/assets/images/moreOptionsIcon.svg';
 import libraryHeadExpandCollaborators from '@/assets/images/libraryHeadExpandCollaborators.svg';
 import libraryHeadEditIcon from '@/assets/images/assetEditIcon.svg';
 import libraryHeadViewIcon from '@/assets/images/assetViewIcon.svg';
+import PredefineBackIcon from '@/assets/images/PredefineBackIcon.svg';
 
 interface AssetHeaderProps {
   assetId: string;
@@ -52,6 +54,7 @@ export function AssetHeader({
   userRole,
   presenceUsers,
 }: AssetHeaderProps) {
+  const router = useRouter();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const membersPanelRef = useRef<HTMLDivElement>(null);
@@ -177,6 +180,22 @@ export function AssetHeader({
   return (
     <div className={styles.header}>
       <div className={styles.leftSection}>
+        {projectId && libraryId && (
+          <button
+            type="button"
+            className={styles.backButton}
+            onClick={() => {
+              router.push(`/${projectId}/${libraryId}`);
+            }}
+            title="Back to library"
+            aria-label="Back to library"
+          >
+            <Image src={PredefineBackIcon}
+              alt="Back"
+              width={20} height={20} className="icon-20"
+            />
+          </button>
+        )}
         <h1 className={styles.title}>{assetName || 'Untitled Asset'}</h1>
       </div>
 
@@ -326,7 +345,7 @@ export function AssetHeader({
           <button className={styles.iconButton}>
             <Image src={libraryHeadMoreIcon}
               alt="More"
-              width={32} height={32} className="icon-32"
+              width={20} height={20} className="icon-20"
             />
           </button>
         </Tooltip>

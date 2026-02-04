@@ -40,7 +40,7 @@ export async function saveSchemaIncremental(
   supabase: SupabaseClient,
   libraryId: string,
   sectionsToSave: SectionConfig[]
-): Promise<void> {
+): Promise<{ tempIdToDbIdMap: Map<string, string> }> {
   // Load existing definitions from database
   const { data: existingRows, error: fetchError } = await supabase
     .from('library_field_definitions')
@@ -60,9 +60,12 @@ export async function saveSchemaIncremental(
   // Track all field IDs that are being kept (to identify deletions)
   const keptFieldIds = new Set<string>();
   
+  // Track mapping from temporary frontend IDs to database IDs for newly inserted fields
+  const tempIdToDbIdMap = new Map<string, string>();
+  
   // Prepare lists for database operations
   const toUpdate: FieldDefinitionRow[] = [];
-  const toInsert: Omit<FieldDefinitionRow, 'id'>[] = [];
+  const toInsert: Array<{ tempId: string; row: Omit<FieldDefinitionRow, 'id'> }> = [];
   const fieldsToClearValues: string[] = []; // Track fields whose data_type changed
 
   // Process all fields in the new schema
@@ -90,7 +93,7 @@ export async function saveSchemaIncremental(
           
           // Update if anything changed
           if (dataTypeChanged || sectionChanged || labelChanged || enumOptionsChanged || referenceLibrariesChanged || requiredChanged || orderChanged) {
-            toUpdate.push({
+            const updatedRow = {
               ...existingField,
               section_id: section.id,
               section: section.name,
@@ -100,7 +103,9 @@ export async function saveSchemaIncremental(
               reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
               required: field.required,
               order_index: orderIndex,
-            });
+            };
+            
+            toUpdate.push(updatedRow);
             
             // If data type changed, mark this field's values for deletion
             if (dataTypeChanged) {
@@ -111,20 +116,23 @@ export async function saveSchemaIncremental(
           // Field ID is a UUID but not found in database (shouldn't happen, but handle it)
           // Treat as new field
           toInsert.push({
-            library_id: libraryId,
-            section_id: section.id,
-            section: section.name,
-            label: field.label,
-            data_type: field.dataType ?? null,
-            enum_options: field.dataType === 'enum' ? field.enumOptions ?? [] : null,
-            reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
-            required: field.required,
-            order_index: orderIndex,
+            tempId: field.id,
+            row: {
+              library_id: libraryId,
+              section_id: section.id,
+              section: section.name,
+              label: field.label,
+              data_type: field.dataType ?? null,
+              enum_options: field.dataType === 'enum' ? field.enumOptions ?? [] : null,
+              reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
+              required: field.required,
+              order_index: orderIndex,
+            },
           });
         }
       } else {
         // New field (temp ID from frontend) - insert it
-        toInsert.push({
+        const newRow = {
           library_id: libraryId,
           section_id: section.id,
           section: section.name,
@@ -134,6 +142,17 @@ export async function saveSchemaIncremental(
           reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
           required: field.required,
           order_index: orderIndex,
+        };
+        
+        // Log enum options for new fields for debugging
+        if (field.dataType === 'enum' && field.enumOptions && field.enumOptions.length > 0) {
+          // console.log('[saveSchemaIncremental] Inserting new enum field:', field.label);
+          // console.log('  Enum options:', newRow.enum_options);
+        }
+        
+        toInsert.push({
+          tempId: field.id,
+          row: newRow,
         });
       }
     });
@@ -151,7 +170,7 @@ export async function saveSchemaIncremental(
   
   // Step 1: Clear asset values for fields whose data_type changed
   if (fieldsToClearValues.length > 0) {
-    console.log('[saveSchemaIncremental] Clearing asset values for fields:', fieldsToClearValues);
+    // console.log('[saveSchemaIncremental] Clearing asset values for fields:', fieldsToClearValues);
     const { error: clearError } = await supabase
       .from('library_asset_values')
       .delete()
@@ -209,17 +228,34 @@ export async function saveSchemaIncremental(
     }
   }
 
-  // Step 4: Insert new fields
+  // Step 4: Insert new fields and map temp IDs to database IDs
   if (toInsert.length > 0) {
-    const { error: insertError } = await supabase
+    const rowsToInsert = toInsert.map(item => item.row);
+    const { data: insertedRows, error: insertError } = await supabase
       .from('library_field_definitions')
-      .insert(toInsert);
+      .insert(rowsToInsert)
+      .select('id, order_index');
+    
     if (insertError) throw insertError;
+    
+    // Map temp IDs to database IDs based on order_index
+    // Since we insert in order, we can match by order_index
+    if (insertedRows) {
+      toInsert.forEach((item, index) => {
+        const insertedRow = insertedRows.find(r => r.order_index === item.row.order_index);
+        if (insertedRow) {
+          tempIdToDbIdMap.set(item.tempId, insertedRow.id);
+          // console.log(`[saveSchemaIncremental] Mapped temp ID ${item.tempId} -> DB ID ${insertedRow.id}`);
+        }
+      });
+    }
   }
   
   // Invalidate cache after successful save
   const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
   globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+  
+  return { tempIdToDbIdMap };
 }
 
 

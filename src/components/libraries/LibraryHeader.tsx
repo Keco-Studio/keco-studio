@@ -18,7 +18,7 @@ import { showSuccessToast } from '@/lib/utils/toast';
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
 import styles from './LibraryHeader.module.css';
-import libraryHeadMoreIcon from '@/assets/images/libraryHeadMoreIcon.svg';
+import libraryHeadMoreIcon from '@/assets/images/moreOptionsIcon.svg';
 import libraryHeadVersionControlIcon from '@/assets/images/libraryHeadVersionControlIcon.svg';
 import libraryHeadExpandCollaborators from '@/assets/images/libraryHeadExpandCollaborators.svg';
 import libraryHeadShareIcon from '@/assets/images/libraryHeadShareIcon.svg';
@@ -317,7 +317,7 @@ export function LibraryHeader({
           <button className={styles.iconButton}>
             <Image src={libraryHeadMoreIcon}
               alt="More"
-              width={32} height={32} className="icon-32"
+              width={20} height={20} className="icon-20"
             />
           </button>
         </Tooltip>
@@ -333,7 +333,7 @@ export function LibraryHeader({
           >
             <Image src={libraryHeadVersionControlIcon}
               alt="Version Control"
-              width={32} height={32} className="icon-32"
+              width={20} height={20} className="icon-20"
             />
           </button>
         </Tooltip>

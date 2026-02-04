@@ -13,7 +13,7 @@ import type { InputRef } from 'antd/es/input';
 import Image from 'next/image';
 import predefineLabelAddIcon from '@/assets/images/predefineLabelAddIcon.svg';
 import predefineLabelDelIcon from '@/assets/images/predefineLabelDelIcon.svg';
-import predefineAddSectionIcon from '@/assets/images/predefineAddSectionIcon.svg';
+import predefineAddSectionIcon from '@/assets/images/addProjectIcon.svg';
 import type { SectionConfig, FieldConfig } from './types';
 import type { Library } from '@/lib/services/libraryService';
 import { getLibrary } from '@/lib/services/libraryService';
@@ -28,7 +28,7 @@ import styles from './page.module.css';
 import sectionHeaderStyles from './components/SectionHeader.module.css';
 import predefineDragIcon from '@/assets/images/predefineDragIcon.svg';
 import predefineExpandIcon from '@/assets/images/predefineExpandIcon.svg';
-import PredefineBackIcon from '@/assets/images/PredefineBackIcon.svg';
+import PredefineBackIcon from '@/assets/images/collaborationReturnIcon.svg';
 
 const NEW_SECTION_TAB_KEY = '__new_section__';
 
@@ -265,7 +265,25 @@ function PredefinePageContent() {
     setSections(updatedSections);
     setErrors([]);
     
-    // Debounce auto-save after changing field
+    // Check if enumOptions or referenceLibraries changed - if so, save immediately to prevent data loss
+    const field = sections.find(s => s.id === sectionId)?.fields.find(f => f.id === fieldId);
+    const enumOptionsChanged = field?.dataType === 'enum' && 
+      JSON.stringify(field.enumOptions) !== JSON.stringify(fieldData.enumOptions);
+    const referenceLibrariesChanged = field?.dataType === 'reference' &&
+      JSON.stringify(field.referenceLibraries) !== JSON.stringify(fieldData.referenceLibraries);
+    
+    if (enumOptionsChanged || referenceLibrariesChanged) {
+      // Save immediately for config changes (important data that shouldn't be lost)
+      if (!isSavingOrReloading.current) {
+        // Clear any pending auto-save timer
+        if (autoSaveTimerRef.current) {
+          clearTimeout(autoSaveTimerRef.current);
+          autoSaveTimerRef.current = null;
+        }
+        void saveSchema(updatedSections, false); // false = don't reload after save
+      }
+    } else {
+      // Debounce auto-save for other field changes
     // Clear previous timer and set new one
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current);
@@ -275,6 +293,7 @@ function PredefinePageContent() {
         void saveSchema(updatedSections, false); // false = don't reload after save
       }
     }, 500); // Increased to 500ms for debouncing
+    }
   };
 
   const handleDeleteField = (sectionId: string, fieldId: string) => {
@@ -396,7 +415,23 @@ function PredefinePageContent() {
     setErrors([]);
     try {
       // Use incremental update to preserve field IDs and asset data
-      await saveSchemaIncremental(supabase, libraryId, sectionsWithDefaults);
+      const { tempIdToDbIdMap } = await saveSchemaIncremental(supabase, libraryId, sectionsWithDefaults);
+      
+      // Update sections state to replace temp IDs with database IDs
+      if (tempIdToDbIdMap.size > 0) {
+        const updatedSectionsWithDbIds = sectionsWithDefaults.map(section => ({
+          ...section,
+          fields: section.fields.map(field => {
+            const dbId = tempIdToDbIdMap.get(field.id);
+            if (dbId) {
+              console.log(`[saveSchema] Replacing temp ID ${field.id} with DB ID ${dbId} for field: ${field.label}`);
+              return { ...field, id: dbId };
+            }
+            return field;
+          }),
+        }));
+        setSections(updatedSectionsWithDbIds);
+      }
       
       hasSavedThisSessionRef.current = true;
 
@@ -903,7 +938,7 @@ function PredefinePageContent() {
                 >
                   <Image src={PredefineBackIcon}
                     alt="Back"
-                    width={24} height={24} className="icon-24"
+                    width={20} height={20} className="icon-20"
                   />
                 </button>
               )}
@@ -966,7 +1001,7 @@ function PredefinePageContent() {
                       className={styles.addSectionButton}
                       style={{ left: `${addButtonLeft}px` }}
                     >
-                      <Image src={predefineAddSectionIcon} alt="Add Section" width={24} height={24} className="icon-24" />
+                      <Image src={predefineAddSectionIcon} alt="Add Section" width={16} height={16} className="icon-16" />
                     </button>
                   )}
                 </>

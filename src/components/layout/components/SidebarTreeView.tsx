@@ -84,6 +84,7 @@ export function SidebarTreeView({
       <Tree
         className={styles.tree}
         showIcon={false}
+        multiple={true}
         treeData={treeData}
         selectedKeys={selectedKeys}
         expandedKeys={expandedKeys}
