@@ -94,7 +94,6 @@
   z-index: 0;
 }
 
-/* 选中项向下多延伸，与下一项连接线重叠，消除缝隙 */
 .versionItem.selected .connectionLine {
   height: calc(100% + 0.875rem);
 }
@@ -105,7 +104,6 @@
 
 .firstConnectionLine {
   position: absolute;
-  /* 多延伸覆盖上一项选中时的 padding，与上一项连接线重叠消除缝隙 */
   top: -1.3125rem;
   left: 50%;
   transform: translateX(-50%);
