@@ -96,8 +96,8 @@ test.describe('Library Description Tooltip Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
 
-      // Create library with long description
-      await libraryPage.createLibrary(testLibrary);
+      // Create library via sidebar Add -> Create new library (works for admin/editor; folder-row button is admin-only)
+      await libraryPage.createLibraryUnderProject(testLibrary);
       await libraryPage.expectLibraryCreated();
       
       // Wait for library to appear in sidebar and refresh
@@ -226,8 +226,8 @@ test.describe('Library Description Tooltip Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
 
-      // Create library with short description
-      await libraryPage.createLibrary(testLibrary);
+      // Create library via sidebar Add -> Create new library
+      await libraryPage.createLibraryUnderProject(testLibrary);
       await libraryPage.expectLibraryCreated();
       
       // Wait for library to appear in sidebar and refresh
@@ -330,8 +330,8 @@ test.describe('Library Description Tooltip Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
 
-      // Create library with exactly 50 character description
-      await libraryPage.createLibrary(testLibrary);
+      // Create library via sidebar Add -> Create new library
+      await libraryPage.createLibraryUnderProject(testLibrary);
       await libraryPage.expectLibraryCreated();
       
       // Wait for library to appear in sidebar and refresh

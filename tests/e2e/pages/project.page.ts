@@ -28,15 +28,15 @@ export class ProjectPage {
   constructor(page: Page) {
     this.page = page;
 
-    // Main projects page elements
+    // Projects page has no "Projects" heading; it shows "Create first project" or project list.
+    // Keep locator for tests that may check URL/other indicators; do not use for visibility.
     this.projectsHeading = page.getByRole('heading', { name: /projects/i });
-    // Button text varies: 
-    // - "New Project" (when projects exist, in header)
-    // - "Create Project" (in sidebar when no projects)
-    // - "Create first project" (in empty state)
-    // Try to find button in main content area first, then sidebar
+    // Button text/accessible name varies:
+    // - Empty state (main): "Create first project"
+    // - Sidebar when empty: "Create Project" (span text)
+    // - Sidebar when has projects: icon button title="New Project", accessible name from img alt="Add project"
     this.createProjectButton = page.getByRole('button', { 
-      name: /^(new project|create project|create first project)$/i 
+      name: /^(new project|create project|create first project|add project)$/i 
     });
     this.projectList = page.locator('[role="list"], [data-testid="project-list"]');
 
@@ -60,8 +60,8 @@ export class ProjectPage {
   async goto(): Promise<void> {
     await this.page.goto('/projects');
     await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
-    await expect(this.projectsHeading).toBeVisible({ timeout: 10000 });
-    // Wait a bit more for buttons to render
+    // Projects page has no "Projects" heading; wait for create button (may show "Loading projects..." first)
+    await expect(this.createProjectButton.first()).toBeVisible({ timeout: 20000 });
     await this.page.waitForTimeout(1000);
   }
 
@@ -96,24 +96,17 @@ export class ProjectPage {
     // After login, user might be redirected to a project detail page, so we need to go to projects list
     const currentUrl = this.page.url();
     if (!currentUrl.includes('/projects')) {
-      // Navigate to projects page
       await this.page.goto('/projects');
       await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
     } else {
-      // Already on projects page, but ensure it's fully loaded
       await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     }
 
-    // Wait for the projects heading to be visible (confirms we're on projects page)
-    await expect(this.projectsHeading).toBeVisible({ timeout: 15000 });
-    
-    // Wait a bit for React components to fully render
-    await this.page.waitForTimeout(2000);
-
-    // Wait for create project button to be visible
-    // It might be "New Project" (header), "Create Project" (sidebar), or "Create first project" (empty state)
-    // Use first() to get the first matching button
-    await expect(this.createProjectButton.first()).toBeVisible({ timeout: 15000 });
+    // Ensure we're on /projects (wait for URL in case of redirect)
+    await this.page.waitForURL(/\/projects/, { timeout: 15000 }).catch(() => {});
+    // Projects page: wait for create button (may show "Loading projects..." first; sidebar uses "Add project" when has projects)
+    await expect(this.createProjectButton.first()).toBeVisible({ timeout: 25000 });
+    await this.page.waitForTimeout(1000);
 
     // Click the first visible create project button
     await this.createProjectButton.first().click();
@@ -294,8 +287,9 @@ export class ProjectPage {
    * Wait for projects page to be fully loaded
    */
   async waitForPageLoad(): Promise<void> {
-    await expect(this.projectsHeading).toBeVisible();
-    await this.page.waitForLoadState('load', { timeout: 10000 });
+    await this.page.waitForURL(/\/projects/, { timeout: 10000 });
+    await expect(this.createProjectButton.first()).toBeVisible({ timeout: 15000 });
+    await this.page.waitForLoadState('load', { timeout: 10000 }).catch(() => {});
   }
 }
 

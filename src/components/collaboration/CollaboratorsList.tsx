@@ -19,6 +19,7 @@ import Image from 'next/image';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useUpdateCollaboratorRole, useRemoveCollaborator } from '@/lib/hooks/useCacheMutations';
 import { queryKeys } from '@/lib/utils/queryKeys';
+import { showSuccessToast } from '@/lib/utils/toast';
 import type { Collaborator } from '@/lib/types/collaboration';
 import styles from './CollaboratorsList.module.css';
 import collaborationDeleteIcon from '@/assets/images/collaborationDeleteIcon.svg';
@@ -189,7 +190,11 @@ export default function CollaboratorsList({
           setError(err.message || 'Failed to remove collaborator');
           // Reset flag on error
           isLocalMutation.current = false;
-        }
+        },
+        onSuccess: () => {
+          const name = (userName && userName.trim()) ? userName : 'Collaborator';
+          showSuccessToast(`${name} removed`);
+        },
       }
     );
   };

@@ -6,6 +6,7 @@
   width: 22.875rem;
   height: 100%;
   max-height: calc(100vh - 200px); /* Adjust based on header height */
+  margin-top: 1.5rem; /* Align top with LibraryAssetsTable container */
   background: rgba(255, 255, 255, 0.15);
   backdrop-filter: blur(8px);
   border: 1px solid rgba(0, 0, 0, 0.16);

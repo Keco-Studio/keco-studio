@@ -22,31 +22,40 @@ import { execSync } from 'child_process';
  * 5. Version Type Display: View version list
  *    Result: Current version, history versions, restored versions clearly distinguished
  *    by different icons, font sizes, and font colors
- * 
+ *
+ * Version Restore (from requirements):
+ * - Restore button tooltip: hover → "Restore" tooltip — automated (tooltip may be image; we assert visibility).
+ * - Click restore → alert/modal — automated (confirmation modal with "Alert" and backup option).
+ * - Restore without backup — automated (direct restore, toast).
+ * - Restore with backup — automated (toggle backup, fill version name, restore; backup version appears in list).
+ * - Restore success toast + version highlight 1–2s — automated (toast "Library restored"; optional highlight class assert; if flaky, highlight can be manual).
+ *
  * Architecture:
  * - Pure business flow - no selectors in test file
  * - All UI interactions delegated to Page Objects
  * - All test data from fixtures
  * - Follows Page Object Model (POM) pattern
  * - Cleans test data before running tests
+ * - Test accounts are admin by default; non-admin cases are not considered
  */
 
 test.describe('Version Control Tests', () => {
   let projectPage: ProjectPage;
   let libraryPage: LibraryPage;
 
-  // Clean test data before all tests
+  // Clean test data before all tests (optional; continues if env missing or script fails)
   test.beforeAll(async () => {
     console.log('🧹 Cleaning test data before version control tests...');
     try {
-      execSync('npm run clean:test-data', { 
+      execSync('npm run clean:test-data', {
         cwd: process.cwd(),
-        stdio: 'inherit' 
+        stdio: 'inherit',
+        env: { ...process.env },
       });
       console.log('✅ Test data cleaned successfully');
     } catch (error) {
       console.warn('⚠️  Failed to clean test data:', error);
-      // Continue with tests even if cleanup fails
+      // Continue with tests even if cleanup fails (e.g. missing env in CI)
     }
   });
 
@@ -111,7 +120,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -169,7 +178,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -252,7 +261,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -338,7 +347,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -437,7 +446,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -473,23 +482,17 @@ test.describe('Version Control Tests', () => {
       // Verify it shows "Current Version" text
       await expect(currentVersionItem.getByText('Current Version')).toBeVisible();
       
-      // Verify it has current version styling
-      // CSS Modules generates hashed class names, so we check:
-      // 1. The class name contains "currentVersion" (CSS Modules pattern)
-      // 2. Or check the computed style (color should be rgba(255, 108, 170, 1) for current version)
+      // Verify it has current version styling (pink color rgba(255, 108, 170))
+      // CSS Modules may hash class names; check computed color of the version name or any text node
       const hasCurrentStyling = await currentVersionItem.evaluate((el) => {
-        // Check class name (CSS Modules may generate hashed names like "versionItem_currentVersion_abc123")
-        const className = el.className || '';
-        const hasCurrentClass = className.includes('currentVersion') || className.includes('current');
-        
-        // Also check the computed style of the version name text
-        const versionNameElement = el.querySelector('[class*="versionName"]') || el;
-        const computedStyle = window.getComputedStyle(versionNameElement);
-        const color = computedStyle.color;
-        // Current version color is rgba(255, 108, 170, 1) or rgb(255, 108, 170)
-        const hasCurrentColor = color.includes('255, 108, 170') || color.includes('rgb(255, 108, 170)');
-        
-        return hasCurrentClass || hasCurrentColor;
+        const versionNameEl = el.querySelector('[class*="versionName"]') || el.querySelector('.details') || el;
+        const style = window.getComputedStyle(versionNameEl);
+        const color = (style.color || '').toLowerCase();
+        // Accept rgb/rgba in any format as long as it contains the pink values
+        const hasPink = color.includes('255') && color.includes('108') && color.includes('170');
+        if (hasPink) return true;
+        const className = (el.className || '').toString();
+        return className.includes('currentVersion') || className.includes('current');
       });
       expect(hasCurrentStyling).toBe(true);
     });
@@ -514,26 +517,14 @@ test.describe('Version Control Tests', () => {
       // Verify it shows the version name
       await expect(historyVersionItem.getByText(versionName)).toBeVisible();
       
-      // Verify it has history version styling (not current version)
-      // Check that it doesn't show "Current Version" text and has different styling
+      // Verify it has history version styling (not current version): no "Current Version" text, no pink color
       const isHistoryVersion = await historyVersionItem.evaluate((el) => {
-        // Should not contain "Current Version" text
         const textContent = el.textContent || '';
         const isNotCurrent = !textContent.includes('Current Version');
-        
-        // Check class name (CSS Modules may generate hashed names)
-        const className = el.className || '';
-        const hasHistoryClass = className.includes('historyVersion') || 
-                                (className.includes('versionItem') && !className.includes('currentVersion'));
-        
-        // Check the computed style of the version name text
-        const versionNameElement = el.querySelector('[class*="versionName"]') || el;
-        const computedStyle = window.getComputedStyle(versionNameElement);
-        const color = computedStyle.color;
-        // History version color should be #21272A (not the pink current version color)
-        const hasHistoryColor = !color.includes('255, 108, 170') && !color.includes('rgb(255, 108, 170)');
-        
-        return isNotCurrent && (hasHistoryClass || hasHistoryColor);
+        const versionNameEl = el.querySelector('[class*="versionName"]') || el.querySelector('.details') || el;
+        const color = (window.getComputedStyle(versionNameEl).color || '').toLowerCase();
+        const notPink = !(color.includes('255') && color.includes('108') && color.includes('170'));
+        return isNotCurrent && notPink;
       });
       expect(isHistoryVersion).toBe(true);
     });
@@ -556,7 +547,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -620,7 +611,321 @@ test.describe('Version Control Tests', () => {
     });
   });
 
-  test.skip('Create Multiple Versions - Rapidly create many versions and verify list display', async ({ page }) => {
+  // --- Version Restore tests (from restore requirements) ---
+  test('Restore button tooltip - Hover shows Restore tooltip', async ({ page }) => {
+    test.setTimeout(60000);
+    const testProject = generateProjectData();
+    const versionName = `To Restore ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library and open version sidebar', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Create one history version', async () => {
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
+      await page.locator('#version-name').fill(versionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Hover restore button and verify tooltip', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: versionName });
+      await expect(versionItem.first()).toBeVisible({ timeout: 5000 });
+      const restoreButton = versionItem.first().locator('button').filter({ has: page.locator('img[alt="Restore"]') });
+      await expect(restoreButton).toBeVisible({ timeout: 5000 });
+      await restoreButton.hover();
+      await page.waitForTimeout(300);
+      // Tooltip shows Restore: either text "Restore" or the tooltip container with Restore icon (img alt)
+      const tooltipOrRestore = page.getByText('Restore').or(restoreButton.locator('..').locator('[class*="tooltip"]').locator('img[alt="Restore"]'));
+      await expect(tooltipOrRestore.first()).toBeVisible({ timeout: 2000 });
+    });
+  });
+
+ 
+  test('Click restore - Opens confirmation modal (alert)', async ({ page }) => {
+    test.setTimeout(60000);
+    const testProject = generateProjectData();
+    const versionName = `To Restore ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library and open version sidebar', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Create one history version', async () => {
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await page.locator('#version-name').fill(versionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Click restore and verify alert modal', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: versionName });
+      const restoreButton = versionItem.first().locator('button').filter({ has: page.locator('img[alt="Restore"]') });
+      await expect(restoreButton).toBeVisible({ timeout: 5000 });
+      await restoreButton.click();
+      await expect(page.getByText('Alert')).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText(/Are you sure you want to restore this version\?/)).toBeVisible({ timeout: 2000 });
+      await expect(page.getByText('backup the current version')).toBeVisible({ timeout: 2000 });
+      await page.getByRole('button', { name: /cancel/i }).click();
+      await expect(page.getByText('Alert')).not.toBeVisible({ timeout: 5000 });
+    });
+  });
+
+
+  test('Restore without backup - Direct restore', async ({ page }) => {
+    test.setTimeout(60000);
+    const testProject = generateProjectData();
+    const versionName = `To Restore ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library and open version sidebar', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Create one history version', async () => {
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await page.locator('#version-name').fill(versionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Restore without backup and verify success', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: versionName });
+      const restoreButton = versionItem.first().locator('button').filter({ has: page.locator('img[alt="Restore"]') });
+      await expect(restoreButton).toBeVisible({ timeout: 5000 });
+      await restoreButton.click();
+      await expect(page.getByText('Alert')).toBeVisible({ timeout: 5000 });
+      // Leave backup toggle off, click Restore (modal button only; sidebar also has a Restore button)
+      await page.locator('[class*="backdrop"]').filter({ hasText: 'Alert' }).getByRole('button', { name: /^restore$/i }).click();
+      await expect(page.getByText('Alert')).not.toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('Library restored')).toBeVisible({ timeout: 10000 });
+    });
+  });
+
+
+  test('Restore with backup - Current version saved as new version before restore', async ({ page }) => {
+    test.setTimeout(60000);
+    const testProject = generateProjectData();
+    const versionName = `To Restore ${Date.now()}`;
+    const backupVersionName = `Backup Before Restore ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library and open version sidebar', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Create one history version', async () => {
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await page.locator('#version-name').fill(versionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Restore with backup and verify backup version appears', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: versionName });
+      const restoreButton = versionItem.first().locator('button').filter({ has: page.locator('img[alt="Restore"]') });
+      await expect(restoreButton).toBeVisible({ timeout: 5000 });
+      await restoreButton.click();
+      await expect(page.getByText('Alert')).toBeVisible({ timeout: 5000 });
+      await expect(page.getByText('backup the current version')).toBeVisible({ timeout: 2000 });
+      await page.getByText('backup the current version').click();
+      await page.locator('#backup-version-name').fill(backupVersionName);
+      await page.locator('[class*="backdrop"]').filter({ hasText: 'Alert' }).getByRole('button', { name: /^restore$/i }).click();
+      await expect(page.getByText('Alert')).not.toBeVisible({ timeout: 15000 });
+      await expect(page.getByText('Library restored')).toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(2000);
+      const versionList = page.locator('[class*="versionItem"]');
+      await expect(versionList.filter({ hasText: backupVersionName }).first()).toBeVisible({ timeout: 5000 });
+    });
+  });
+
+
+  test('Restore success - Toast and version highlight', async ({ page }) => {
+    test.setTimeout(60000);
+    const testProject = generateProjectData();
+    const versionName = `To Restore ${Date.now()}`;
+
+    await test.step('Create project, library, and one version', async () => {
+      await projectPage.createProject(testProject);
+      await projectPage.expectProjectCreated();
+      await libraryPage.waitForPageLoad();
+      const sidebar = page.getByRole('tree');
+      await expect(sidebar).toBeVisible({ timeout: 15000 });
+      await page.waitForTimeout(2000);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+      await page.waitForTimeout(2000);
+    });
+
+    await test.step('Navigate to library and open version sidebar', async () => {
+      const sidebar = page.getByRole('tree');
+      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+      await libraryItem.click();
+      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
+      await page.waitForLoadState('load', { timeout: 15000 });
+      await page.waitForTimeout(2000);
+      const versionControlButton = page.locator('img[alt="Version Control"]')
+        .or(page.locator('button[title="Version Control"]'))
+        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
+        .first();
+      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
+      await versionControlButton.click();
+      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Create one history version', async () => {
+      const addButton = page.locator('button[title="Create new version"]')
+        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
+        .first();
+      await expect(addButton).toBeVisible({ timeout: 5000 });
+      await addButton.click();
+      await page.locator('#version-name').fill(versionName);
+      await page.getByRole('button', { name: /^create$/i }).click();
+      await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(1000);
+    });
+
+    await test.step('Restore and verify toast and version highlight', async () => {
+      const versionItem = page.locator('[class*="versionItem"]').filter({ hasText: versionName });
+      const restoreButton = versionItem.first().locator('button').filter({ has: page.locator('img[alt="Restore"]') });
+      await expect(restoreButton).toBeVisible({ timeout: 5000 });
+      await restoreButton.click();
+      await expect(page.getByText('Alert')).toBeVisible({ timeout: 5000 });
+      await page.locator('[class*="backdrop"]').filter({ hasText: 'Alert' }).getByRole('button', { name: /^restore$/i }).click();
+      await expect(page.getByText('Library restored')).toBeVisible({ timeout: 10000 });
+      await page.waitForTimeout(500);
+      const highlightedRow = page.locator('[class*="highlighting"]');
+      await expect(highlightedRow.first()).toBeVisible({ timeout: 2500 });
+    });
+  });
+
+  // Un-skipped: verifies creating many versions in sequence and list order; may be slower (~2min)
+  test('Create Multiple Versions - Rapidly create many versions and verify list display', async ({ page }) => {
     test.setTimeout(120000);
 
     // Generate unique project data
@@ -638,7 +943,7 @@ test.describe('Version Control Tests', () => {
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       await page.waitForTimeout(2000);
       
-      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.createLibraryUnderProject(libraries.breed);
       await libraryPage.expectLibraryCreated();
       await page.waitForTimeout(2000);
     });
@@ -722,242 +1027,6 @@ test.describe('Version Control Tests', () => {
     });
   });
 
-  test.skip('Concurrent Version Restore - Two users restore different versions simultaneously', async ({ browser }) => {
-    test.setTimeout(120000);
-
-    // Generate unique project data
-    const testProject = generateProjectData();
-    const versionName1 = `Version 1 ${Date.now()}`;
-    const versionName2 = `Version 2 ${Date.now()}`;
-
-    // Create two browser contexts for two users
-    const context1 = await browser.newContext();
-    const context2 = await browser.newContext();
-    const page1 = await context1.newPage();
-    const page2 = await context2.newPage();
-
-    try {
-      // Setup: Create project and library with user 1
-      await test.step('Setup: Create project and library', async () => {
-        const loginPage1 = new LoginPage(page1);
-        await loginPage1.goto();
-        await loginPage1.login(users.seedEmpty);
-        await loginPage1.expectLoginSuccess();
-        
-        await page1.waitForTimeout(2000);
-        
-        const projectPage1 = new ProjectPage(page1);
-        const libraryPage1 = new LibraryPage(page1);
-        
-        await projectPage1.createProject(testProject);
-        await projectPage1.expectProjectCreated();
-        await libraryPage1.waitForPageLoad();
-        
-        const sidebar1 = page1.getByRole('tree');
-        await expect(sidebar1).toBeVisible({ timeout: 15000 });
-        await page1.waitForTimeout(2000);
-        
-        await libraryPage1.createLibrary(libraries.breed);
-        await libraryPage1.expectLibraryCreated();
-        await page1.waitForTimeout(2000);
-      });
-
-      // User 2: Login and navigate to same library
-      await test.step('User 2: Login and navigate to library', async () => {
-        const loginPage2 = new LoginPage(page2);
-        await loginPage2.goto();
-        await loginPage2.login(users.seedEmpty2);
-        await loginPage2.expectLoginSuccess();
-        
-        await page2.waitForTimeout(2000);
-        
-        // Navigate to projects and find the project
-        // Note: User 2 needs to be a collaborator or owner to access the library
-        // For this test, we'll assume user 2 has access
-        // In a real scenario, you'd need to set up collaboration first
-      });
-
-      // Create two versions with user 1
-      await test.step('Create two versions', async () => {
-        const sidebar1 = page1.getByRole('tree');
-        const libraryItem1 = sidebar1.locator(`[title="${libraries.breed.name}"]`);
-        await expect(libraryItem1).toBeVisible({ timeout: 15000 });
-        await libraryItem1.click();
-        
-        await page1.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
-        await page1.waitForLoadState('load', { timeout: 15000 });
-        await page1.waitForTimeout(2000);
-        
-        const versionControlButton1 = page1.locator('img[alt="Version Control"]')
-          .or(page1.locator('button[title="Version Control"]'))
-          .or(page1.locator('button').filter({ has: page1.locator('img[alt*="Version"]') }))
-          .first();
-        await expect(versionControlButton1).toBeVisible({ timeout: 10000 });
-        await versionControlButton1.click();
-        
-        await expect(page1.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
-        await page1.waitForTimeout(1000);
-        
-        const addButton1 = page1.locator('button[title="Create new version"]')
-          .or(page1.locator('button').filter({ has: page1.locator('img[alt="Add"]') }))
-          .first();
-        
-        // Create version 1
-        await expect(addButton1).toBeVisible({ timeout: 5000 });
-        await addButton1.click();
-        await page1.locator('#version-name').fill(versionName1);
-        await page1.getByRole('button', { name: /^create$/i }).click();
-        await page1.waitForTimeout(2000);
-        
-        // Create version 2
-        await expect(addButton1).toBeVisible({ timeout: 5000 });
-        await addButton1.click();
-        await page1.locator('#version-name').fill(versionName2);
-        await page1.getByRole('button', { name: /^create$/i }).click();
-        await page1.waitForTimeout(2000);
-      });
-
-      // Both users restore different versions simultaneously
-      await test.step('Both users restore different versions simultaneously', async () => {
-        // Find version items
-        const versionItems1 = page1.locator('[class*="versionItem"]');
-        
-        // User 1: Restore version 1
-        const version1Item = versionItems1.filter({ hasText: versionName1 });
-        await expect(version1Item.first()).toBeVisible({ timeout: 5000 });
-        
-        // Find restore button for version 1
-        const restoreButton1 = version1Item.first().locator('button').filter({ has: page1.locator('img[alt="Restore"]') });
-        await expect(restoreButton1).toBeVisible({ timeout: 5000 });
-        
-        // User 2: Navigate to library (if they have access)
-        // Note: This test assumes both users have access to the same library
-        // In practice, you'd need to set up collaboration first
-        
-        // Click restore buttons simultaneously (or as close as possible)
-        await Promise.all([
-          restoreButton1.click(),
-          // User 2 restore would go here if collaboration is set up
-        ]);
-        
-        // Handle restore confirmation modal for user 1
-        await page1.waitForTimeout(1000);
-        const restoreConfirm1 = page1.getByText(/are you sure/i);
-        if (await restoreConfirm1.isVisible({ timeout: 2000 }).catch(() => false)) {
-          // Click Restore button in confirmation modal
-          const confirmRestoreButton1 = page1.getByRole('button', { name: /^restore$/i });
-          await confirmRestoreButton1.click();
-          await page1.waitForTimeout(2000);
-        }
-        
-        // Verify final state - last restore should be the active one
-        // This is a simplified test - in a real scenario, you'd verify the actual data state
-        await page1.waitForTimeout(3000);
-      });
-    } finally {
-      await context1.close();
-      await context2.close();
-    }
-  });
-
-  test('Special Characters in Version Name - Prevent invalid characters', async ({ page }) => {
-    test.setTimeout(60000);
-
-    // Generate unique project data
-    const testProject = generateProjectData();
-
-    // Create a test project and library
-    await test.step('Create test project and library', async () => {
-      await projectPage.createProject(testProject);
-      await projectPage.expectProjectCreated();
-      await libraryPage.waitForPageLoad();
-      
-      const sidebar = page.getByRole('tree');
-      await expect(sidebar).toBeVisible({ timeout: 15000 });
-      await page.waitForTimeout(2000);
-      
-      await libraryPage.createLibrary(libraries.breed);
-      await libraryPage.expectLibraryCreated();
-      await page.waitForTimeout(2000);
-    });
-
-    // Navigate to library and open sidebar
-    await test.step('Navigate to library and open sidebar', async () => {
-      const sidebar = page.getByRole('tree');
-      const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
-      await expect(libraryItem).toBeVisible({ timeout: 15000 });
-      await libraryItem.click();
-      
-      await page.waitForURL(/\/[^/]+\/[^/]+$/, { timeout: 15000 });
-      await page.waitForLoadState('load', { timeout: 15000 });
-      await page.waitForTimeout(2000);
-      
-      const versionControlButton = page.locator('img[alt="Version Control"]')
-        .or(page.locator('button[title="Version Control"]'))
-        .or(page.locator('button').filter({ has: page.locator('img[alt*="Version"]') }))
-        .first();
-      await expect(versionControlButton).toBeVisible({ timeout: 10000 });
-      await versionControlButton.click();
-      
-      await expect(page.getByText('VERSION HISTORY')).toBeVisible({ timeout: 5000 });
-      await page.waitForTimeout(1000);
-    });
-
-    // Test special characters
-    await test.step('Test special characters in version name', async () => {
-      const addButton = page.locator('button[title="Create new version"]')
-        .or(page.locator('button').filter({ has: page.locator('img[alt="Add"]') }))
-        .first();
-      
-      const testCases = [
-        { name: 'Test /', input: 'Test /', shouldBlock: false }, // / is not blocked by current validation
-        { name: 'Test <script>', input: 'Test <script>', shouldBlock: true },
-        { name: 'Test >', input: 'Test >', shouldBlock: true }, // HTML tag
-        { name: 'Test !@#$%', input: 'Test !@#$%', shouldBlock: true },
-        { name: 'Test <div>', input: 'Test <div>', shouldBlock: true },
-      ];
-
-      for (const testCase of testCases) {
-        await expect(addButton).toBeVisible({ timeout: 5000 });
-        await addButton.click();
-        
-        await expect(page.getByText('Create new version')).toBeVisible({ timeout: 5000 });
-        await page.locator('#version-name').fill(testCase.input);
-        await page.getByRole('button', { name: /^create$/i }).click();
-        
-        if (testCase.shouldBlock) {
-          // Verify error message appears
-          const errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis|html tags/i });
-          await expect(errorMessage).toBeVisible({ timeout: 5000 });
-          await expect(errorMessage).toContainText('No emojis, HTML tags or !@#$% allowed');
-          
-          // Close modal for next test - specifically target the CreateVersionModal close button
-          // Find the modal by its title, then locate the close button within that modal
-          const modalTitle = page.getByText('Create new version');
-          await expect(modalTitle).toBeVisible({ timeout: 2000 });
-          
-          // Find the close button within the same modal container as the title
-          // Navigate from title to its parent header, then find the close button
-          const modalCloseButton = modalTitle.locator('..').locator('..').locator('button[aria-label="Close"]');
-          await modalCloseButton.click();
-          await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 5000 });
-        } else {
-          // If not blocked, verify it was created or handle accordingly
-          // Note: / might not be blocked, so we'll check if modal closes
-          await page.waitForTimeout(1000);
-          const modalStillOpen = await page.getByText('Create new version').isVisible({ timeout: 1000 }).catch(() => false);
-          if (modalStillOpen) {
-            // Close modal for next test - find close button within the modal
-            const modalTitle = page.getByText('Create new version');
-            const modalCloseButton = modalTitle.locator('..').locator('..').locator('button[aria-label="Close"]');
-            await modalCloseButton.click();
-            await expect(page.getByText('Create new version')).not.toBeVisible({ timeout: 5000 });
-          }
-        }
-        
-        await page.waitForTimeout(500);
-      }
-    });
-  });
+  // Special-character validation for version name is covered by name-validation.spec.ts (same validation logic).
 });
 

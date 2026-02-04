@@ -25,6 +25,7 @@ import { useRealtimeSubscription, type ConnectionStatus } from '@/lib/hooks/useR
 import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState } from '@/lib/types/collaboration';
+import { serializeError } from '@/lib/utils/errorUtils';
 
 interface LibraryDataContextValue {
   // Data access
@@ -439,7 +440,10 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         // console.log('[LibraryDataContext] ✅ Broadcast complete');
       }
     } catch (error) {
-      console.error('[LibraryDataContext] ❌ Error in updateAssetField:', error);
+      const errMsg = serializeError(error);
+      console.error(
+        `[LibraryDataContext] ❌ Error in updateAssetField: assetId=${assetId} fieldId=${fieldId} | ${errMsg}`
+      );
       // Revert optimistic update on error
       yDoc.transact(() => {
         yPropertyValues.set(fieldId, oldValue);

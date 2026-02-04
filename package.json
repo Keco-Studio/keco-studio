@@ -62,6 +62,7 @@
     "test:upload-security:manual": "playwright test tests/e2e/specs/file-upload-security-manual.spec.ts --headed",
     "test:happy": "playwright test tests/e2e/specs/happy-path.spec.ts",
     "test:destructive": "playwright test tests/e2e/specs/destructive.spec.ts",
+    "test:e2e:edit-info": "playwright test tests/e2e/specs/edit-info.spec.ts",
     "clean:test-data": "tsx scripts/clean-remote-test-data.ts",
     "seed:api": "tsx scripts/seed-via-api.ts"
   }

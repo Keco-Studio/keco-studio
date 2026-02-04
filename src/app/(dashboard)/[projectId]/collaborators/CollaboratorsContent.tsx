@@ -111,7 +111,13 @@ export function CollaboratorsContent({
       const result = await response.json();
       
       if (response.ok && result.success) {
-        showSuccessToast('Collaborator removed');
+        const removed = collaborators.find(c => c.id === collaboratorId);
+        if (removed) {
+          const nameOrEmail = removed.userName || removed.userEmail || 'collaborator';
+          showSuccessToast(`${nameOrEmail} removed`);
+        } else {
+          showSuccessToast('Collaborator removed');
+        }
         // Update local state
         setCollaborators(prev => prev.filter(c => c.id !== collaboratorId));
       } else {

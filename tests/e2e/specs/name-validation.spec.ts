@@ -14,7 +14,8 @@ import { users } from '../fixures/users';
  * Test Scenarios:
  * 1. Empty name validation: Delete all characters in rename modal and click save, expect error message
  * 2. Special characters validation: Input emoji 😊, HTML tag <script>, special symbols !@#$%, expect error message
- * 3. Duplicate name validation: Rename to an existing name in the same directory, expect error message
+ * 3. URL validation: Input names starting with https://, http://, etc., expect same error as special chars
+ * 4. Duplicate name validation: Rename to an existing name in the same directory, expect error message
  * 
  * Architecture:
  * - Pure business flow - no selectors in test file
@@ -141,7 +142,7 @@ test.describe('Name Validation Tests', () => {
         await expect(sidebar).toBeVisible({ timeout: 15000 });
         await page.waitForTimeout(2000);
         
-        await libraryPage.createLibrary(libraries.breed);
+        await libraryPage.createLibraryUnderProject(libraries.breed);
         await libraryPage.expectLibraryCreated();
         await page.waitForTimeout(2000);
       });
@@ -337,7 +338,7 @@ test.describe('Name Validation Tests', () => {
         await expect(sidebar).toBeVisible({ timeout: 15000 });
         await page.waitForTimeout(2000);
         
-        await libraryPage.createLibrary(libraries.breed);
+        await libraryPage.createLibraryUnderProject(libraries.breed);
         await libraryPage.expectLibraryCreated();
         await page.waitForTimeout(2000);
       });
@@ -480,9 +481,168 @@ test.describe('Name Validation Tests', () => {
     });
   });
 
+  test.describe('URL Validation', () => {
+    const urlErrorText = 'No emojis, HTML tags or !@#$% allowed';
+
+    test('Project - URL validation (https://, http://)', async ({ page }) => {
+      test.setTimeout(60000);
+
+      const testProject = generateProjectData();
+
+      await test.step('Create test project', async () => {
+        await projectPage.createProject(testProject);
+        await projectPage.expectProjectCreated();
+        await libraryPage.waitForPageLoad();
+      });
+
+      await test.step('Open Project Info modal', async () => {
+        const sidebar = page.locator('aside');
+        const projectItem = sidebar.locator(`[title="${testProject.name}"]`);
+        await expect(projectItem).toBeVisible({ timeout: 15000 });
+        await projectItem.click({ button: 'right' });
+        const contextMenu = page.locator('[class*="contextMenu"]');
+        await expect(contextMenu).toBeVisible({ timeout: 5000 });
+        const projectInfoButton = contextMenu.getByRole('button', { name: /^project info$/i });
+        await expect(projectInfoButton).toBeVisible({ timeout: 5000 });
+        await projectInfoButton.click();
+        await expect(page.locator('#project-name')).toBeVisible({ timeout: 5000 });
+      });
+
+      await test.step('Test URL validation', async () => {
+        const projectNameInput = page.locator('#project-name');
+        const saveButton = page.getByRole('button', { name: /^save$/i });
+        await expect(saveButton).toBeVisible();
+
+        await projectNameInput.clear();
+        await projectNameInput.fill('https://example.com');
+        await saveButton.click();
+        let errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        await expect(errorMessage).toBeVisible({ timeout: 5000 });
+        await expect(errorMessage).toContainText(urlErrorText);
+
+        await projectNameInput.clear();
+        await projectNameInput.fill('http://test.com');
+        await saveButton.click();
+        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        await expect(errorMessage).toBeVisible({ timeout: 5000 });
+        await expect(errorMessage).toContainText(urlErrorText);
+      });
+    });
+
+    test('Library - URL validation (https://, http://)', async ({ page }) => {
+      test.setTimeout(60000);
+
+      const testProject = generateProjectData();
+
+      await test.step('Create test project and library', async () => {
+        await projectPage.createProject(testProject);
+        await projectPage.expectProjectCreated();
+        await libraryPage.waitForPageLoad();
+        const sidebar = page.getByRole('tree');
+        await expect(sidebar).toBeVisible({ timeout: 15000 });
+        await page.waitForTimeout(2000);
+        await libraryPage.createLibraryUnderProject(libraries.breed);
+        await libraryPage.expectLibraryCreated();
+        await page.waitForTimeout(2000);
+      });
+
+      await test.step('Open Library Info modal', async () => {
+        const sidebar = page.getByRole('tree');
+        await expect(sidebar).toBeVisible({ timeout: 10000 });
+        await page.waitForTimeout(2000);
+        const libraryItem = sidebar.locator(`[title="${libraries.breed.name}"]`);
+        await expect(libraryItem).toBeVisible({ timeout: 15000 });
+        await libraryItem.click({ button: 'right' });
+        const contextMenu = page.locator('[class*="contextMenu"]');
+        await expect(contextMenu).toBeVisible({ timeout: 5000 });
+        const libraryInfoButton = contextMenu.getByRole('button', { name: /^library info$/i });
+        await expect(libraryInfoButton).toBeVisible({ timeout: 5000 });
+        await libraryInfoButton.click();
+        await expect(page.locator('#library-name')).toBeVisible({ timeout: 5000 });
+      });
+
+      await test.step('Test URL validation', async () => {
+        const libraryNameInput = page.locator('#library-name');
+        const saveButton = page.getByRole('button', { name: /^save$/i });
+        await expect(saveButton).toBeVisible();
+
+        await libraryNameInput.clear();
+        await libraryNameInput.fill('https://example.com');
+        await saveButton.click();
+        let errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        await expect(errorMessage).toBeVisible({ timeout: 5000 });
+        await expect(errorMessage).toContainText(urlErrorText);
+
+        await libraryNameInput.clear();
+        await libraryNameInput.fill('http://test.com');
+        await saveButton.click();
+        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        await expect(errorMessage).toBeVisible({ timeout: 5000 });
+        await expect(errorMessage).toContainText(urlErrorText);
+      });
+    });
+
+    test('Folder - URL validation (https://, http://)', async ({ page }) => {
+      test.setTimeout(60000);
+
+      const testProject = generateProjectData();
+
+      await test.step('Create test project and folder', async () => {
+        await projectPage.createProject(testProject);
+        await projectPage.expectProjectCreated();
+        await libraryPage.waitForPageLoad();
+        const sidebar = page.getByRole('tree');
+        await expect(sidebar).toBeVisible({ timeout: 15000 });
+        await page.waitForTimeout(2000);
+        await libraryPage.createFolderUnderProject(folders.directFolder);
+        await libraryPage.expectFolderCreated();
+        await page.waitForTimeout(2000);
+      });
+
+      await test.step('Open Folder Rename modal', async () => {
+        const sidebar = page.getByRole('tree');
+        await expect(sidebar).toBeVisible({ timeout: 10000 });
+        await page.waitForTimeout(2000);
+        const folderItem = sidebar.locator(`[title="${folders.directFolder.name}"]`);
+        await expect(folderItem).toBeVisible({ timeout: 15000 });
+        await folderItem.click({ button: 'right' });
+        const contextMenu = page.locator('[class*="contextMenu"]');
+        await expect(contextMenu).toBeVisible({ timeout: 5000 });
+        const renameButton = contextMenu.getByRole('button', { name: /^rename$/i });
+        await expect(renameButton).toBeVisible({ timeout: 5000 });
+        await renameButton.click();
+        const folderNameInput = page.getByPlaceholder(/enter folder name/i)
+          .or(page.locator('label:has-text("Folder Name")').locator('..').locator('input'));
+        await expect(folderNameInput).toBeVisible({ timeout: 5000 });
+      });
+
+      await test.step('Test URL validation', async () => {
+        const folderNameInput = page.getByPlaceholder(/enter folder name/i)
+          .or(page.locator('label:has-text("Folder Name")').locator('..').locator('input'));
+        const saveButton = page.getByRole('button', { name: /^save$/i });
+        await expect(saveButton).toBeVisible();
+
+        await folderNameInput.clear();
+        await folderNameInput.fill('https://example.com');
+        await saveButton.click();
+        let errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        await expect(errorMessage).toBeVisible({ timeout: 5000 });
+        await expect(errorMessage).toContainText(urlErrorText);
+
+        await folderNameInput.clear();
+        await folderNameInput.fill('http://test.com');
+        await saveButton.click();
+        errorMessage = page.locator('[class*="error"]').filter({ hasText: /no emojis/i });
+        await expect(errorMessage).toBeVisible({ timeout: 5000 });
+        await expect(errorMessage).toContainText(urlErrorText);
+      });
+    });
+  });
+
   test.describe('Duplicate Name Validation', () => {
     test('Project - Duplicate name validation', async ({ page }) => {
-      test.setTimeout(60000);
+      // Two createProject + goto in CI can exceed 60s; avoid "Target page/browser has been closed"
+      test.setTimeout(120000);
 
       // Generate unique project data
       const testProject1 = generateProjectData();
@@ -556,13 +716,13 @@ test.describe('Name Validation Tests', () => {
         await page.waitForTimeout(2000);
         
         // Create first library
-        await libraryPage.createLibrary(libraries.breed);
+        await libraryPage.createLibraryUnderProject(libraries.breed);
         await libraryPage.expectLibraryCreated();
         await page.waitForTimeout(2000);
         
         // Create second library with different name
         const secondLibrary = { ...libraries.breed, name: `${libraries.breed.name} 2` };
-        await libraryPage.createLibrary(secondLibrary);
+        await libraryPage.createLibraryUnderProject(secondLibrary);
         await libraryPage.expectLibraryCreated();
         await page.waitForTimeout(2000);
       });
