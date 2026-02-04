@@ -124,9 +124,9 @@ export function VersionItem({ version, libraryId, isLast, isFirst = false, isSel
                   ? "Current version" 
                   : "History version"
             }
-            width={48}
-            height={48}
-            className={`icon-48 ${styles.iconImage}`}
+            width={30}
+            height={30}
+            className={styles.iconImage}
           />
         </div>
         {/* First Connection Line - from top to icon center */}
