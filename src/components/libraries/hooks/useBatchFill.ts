@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { useTableDataManager } from './useTableDataManager';
+import { serializeError } from '@/lib/utils/errorUtils';
 
 type DataManager = ReturnType<typeof useTableDataManager>;
 
@@ -213,7 +214,7 @@ export function useBatchFill({
             // We rely on useOptimisticCleanup to clear optimistic only when rows truly match.
           })
           .catch(error => {
-            console.error(`Failed to fill cell ${rowId}-${propertyKey}:`, error);
+            console.error(`Failed to fill cell ${rowId}-${propertyKey}:`, serializeError(error));
             // On error, remove only this property from optimistic update
             setOptimisticEditUpdates(prev => {
               const newMap = new Map(prev);
