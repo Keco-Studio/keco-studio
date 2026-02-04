@@ -1164,13 +1164,15 @@ test.describe('Version Control Tests', () => {
 
       // Wait for modal to close and list to refresh
       await expect(page.getByText('Edit version')).not.toBeVisible({ timeout: 10000 });
-      await page.waitForTimeout(1500);
+      await page.waitForTimeout(500);
 
-      // Old name should not be present; new name should be visible
+      // New name should be visible; old name should disappear after list refetch
       await expect(page.locator('[class*="versionItem"]').filter({ hasText: updatedName }).first()).toBeVisible({
-        timeout: 5000,
+        timeout: 10000,
       });
-      await expect(page.locator('[class*="versionItem"]').filter({ hasText: originalName })).toHaveCount(0);
+      await expect(page.locator('[class*="versionItem"]').filter({ hasText: originalName })).toHaveCount(0, {
+        timeout: 10000,
+      });
     });
   });
 

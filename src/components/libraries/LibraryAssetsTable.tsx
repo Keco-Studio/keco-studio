@@ -270,8 +270,10 @@ export function LibraryAssetsTable({
     optimisticInsertIndices,
   });
 
-  // Ref for table container to detect clicks outside
+  // Ref for table container to detect clicks outside (edit cell)
   const tableContainerRef = useRef<HTMLDivElement>(null);
+  // Ref for add-row form: click outside this (e.g. another cell) triggers save new row
+  const addRowFormRef = useRef<HTMLTableRowElement>(null);
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const contextMenuRowIdRef = useRef<string | null>(null);
   const router = useRouter();
@@ -384,6 +386,7 @@ export function LibraryAssetsTable({
 
   useClickOutsideAutoSave({
     tableContainerRef,
+    addRowFormRef,
     isAddingRow,
     newRowData,
     setIsAddingRow,
@@ -1079,7 +1082,7 @@ export function LibraryAssetsTable({
             })}
             {/* Add new asset row */}
             {isAddingRow ? (
-              <tr className={styles.editRow}>
+              <tr className={styles.editRow} ref={addRowFormRef}>
                 <td className={styles.numberCell}>{rows.length + 1}</td>
                 <AddNewRowForm
                   orderedProperties={orderedProperties}
