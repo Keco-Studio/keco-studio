@@ -127,16 +127,15 @@ export class LoginPage {
   }
 
   /**
-   * Assert successful login message or redirect to dashboard
+   * Assert successful login by verifying user avatar appears in TopBar
    */
   async expectLoginSuccess(): Promise<void> {
     // CI environments are significantly slower - use longer timeouts
     const isCI = process.env.CI === 'true';
     const longTimeout = isCI ? 60000 : 30000;
     const mediumTimeout = isCI ? 30000 : 15000;
-    const shortTimeout = isCI ? 15000 : 5000;
     
-    // After successful login, user is redirected to the projects dashboard
+    // After successful login, user is redirected to the dashboard and user avatar appears
     // In CI environments, page load can be slower, so we use multiple strategies:
     
     // Strategy 1: Wait for URL to change from login page (most reliable indicator)
@@ -151,11 +150,7 @@ export class LoginPage {
     // This ensures all API calls (including auth verification) are complete
     await this.page.waitForLoadState('networkidle', { timeout: longTimeout });
     
-    // Strategy 3: Wait for auth form to disappear (DashboardLayout shows dashboard after 1.5s delay)
-    // The DashboardLayout component has a 1.5 second delay after login to show success message
-    await expect(this.loginHeading).not.toBeVisible({ timeout: mediumTimeout });
-    
-    // Strategy 4: Wait for sessionStorage to contain Supabase auth token
+    // Strategy 3: Wait for sessionStorage to contain Supabase auth token
     // In CI environments, there may be a delay between login and session storage update
     await this.page.waitForFunction(
       () => {
@@ -182,21 +177,18 @@ export class LoginPage {
       { timeout: mediumTimeout }
     );
     
-    // Strategy 5: Additional wait to ensure authentication state is fully established
+    // Strategy 4: Additional wait to ensure authentication state is fully established
     // This is important after adding authorization checks - longer wait for CI
     await this.page.waitForTimeout(isCI ? 5000 : 2000);
     
-    // Strategy 6: Wait for projects heading or verify we're not on login page
-    // Note: If redirected to project detail page, this may not be visible,
-    // but we've already verified URL change and network idle, so login was successful
-    const projectsHeading = this.page.getByRole('heading', { name: /projects/i });
-    try {
-      await expect(projectsHeading).toBeVisible({ timeout: shortTimeout });
-    } catch {
-      // If projects heading not found, verify we're at least not on login page
-      // This handles the case where login redirects directly to a project page
-      await expect(this.loginHeading).not.toBeVisible({ timeout: shortTimeout });
-    }
+    // Strategy 5: PRIMARY VERIFICATION - Check that user avatar appears in TopBar
+    // This is the definitive indicator of successful login
+    // The user avatar appears in the TopBar when userProfile is loaded
+    const userAvatar = this.page.getByTestId('user-menu');
+    await expect(userAvatar).toBeVisible({ timeout: mediumTimeout });
+    
+    // Strategy 6: Wait for auth form to disappear
+    await expect(this.loginHeading).not.toBeVisible({ timeout: mediumTimeout });
   }
 
   /**

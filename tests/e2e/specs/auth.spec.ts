@@ -48,7 +48,7 @@ test.describe('Register Flow', () => {
     await loginPage.expectRegistrationSuccess();
   });
 
-  test('should automatically login and redirect to projects dashboard after successful registration', async ({ page }) => {
+  test('should automatically login and redirect to dashboard after successful registration', async ({ page }) => {
     const newUser = generateRegistrationData();
 
     await loginPage.register(newUser);
@@ -57,16 +57,15 @@ test.describe('Register Flow', () => {
     await loginPage.expectRegistrationSuccess();
     
     // If Supabase is configured to auto-login after signup (no email confirmation required),
-    // the user should be automatically redirected to the projects dashboard
+    // the user should be automatically redirected to the dashboard and show user avatar
     // This may take a moment due to the 1.5s delay in DashboardLayout
-    // Note: If email confirmation is required, this test may fail as user won't be auto-logged in
-    // In that case, the success message should remain visible
-    const projectsHeading = page.getByRole('heading', { name: /projects/i });
-    const isRedirected = await projectsHeading.isVisible({ timeout: 5000 }).catch(() => false);
+    // Note: If email confirmation is required, user won't be auto-logged in
+    const userAvatar = page.getByTestId('user-menu');
+    const isAutoLoggedIn = await userAvatar.isVisible({ timeout: 5000 }).catch(() => false);
     
-    if (isRedirected) {
-      // Auto-login is enabled, verify we're on the dashboard
-      await expect(projectsHeading).toBeVisible();
+    if (isAutoLoggedIn) {
+      // Auto-login is enabled, verify user avatar is visible
+      await expect(userAvatar).toBeVisible();
     } else {
       // Email confirmation required, user should still see success message
       // This is also a valid scenario
@@ -119,13 +118,16 @@ test.describe('Login Flow', () => {
     await loginPage.expectLoginSuccess();
   });
 
-  test('should redirect to projects dashboard after successful login', async ({ page }) => {
+  test('should redirect to dashboard and show user avatar after successful login', async ({ page }) => {
     await loginPage.login(users.seedEmpty);
 
-    // Verify we're on the projects dashboard
-    await expect(page).toHaveURL(/\/projects$/);
+    // Verify user avatar appears in TopBar (primary verification)
+    const userAvatar = page.getByTestId('user-menu');
+    await expect(userAvatar).toBeVisible({ timeout: 10000 });
   
-    await expect(page.getByText(/There is no any project here/i)).toBeVisible({ timeout: 10000 });
+    // Verify we're redirected away from login page
+    // Could be /projects page or a project detail page depending on user data
+    await expect(page).not.toHaveURL('/');
   });
 
   test('should show error with incorrect password', async () => {

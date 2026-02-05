@@ -402,7 +402,10 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
   const isEditing = !!initialField;
 
   return (
-    <div className={`${styles.addFieldContainer} ${disabled ? styles.disabled : ''}`}>
+    <div 
+      className={`${styles.addFieldContainer} ${disabled ? styles.disabled : ''}`}
+      data-testid="field-form"
+    >
       <button 
         className={styles.addButton} 
         onClick={handleSubmit}
@@ -431,6 +434,7 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
           onPressEnter={handleSubmit}
           disabled={disabled}
           status={validationError?.labelInvalid ? 'error' : undefined}
+          data-testid="field-form-label-input"
         />
       </div>
       <div className={styles.dataTypeDisplay}>
