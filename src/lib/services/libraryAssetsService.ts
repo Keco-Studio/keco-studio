@@ -283,6 +283,7 @@ export async function createAsset(
   propertyValues: Record<string, any>,
   options?: {
     createdAt?: Date; // Optional: set created_at to control insertion position
+    rowIndex?: number; // Optional: explicit row_index
   }
 ): Promise<string> {
   // verify creation permission (admin and editor can create)
@@ -293,6 +294,7 @@ export async function createAsset(
     library_id: string;
     name: string;
     created_at?: string;
+    row_index?: number;
   } = {
     library_id: libraryId,
     name: assetName,
@@ -301,6 +303,9 @@ export async function createAsset(
   // If createdAt is provided, use it to control insertion position
   if (options?.createdAt) {
     insertData.created_at = options.createdAt.toISOString();
+  }
+  if (typeof options?.rowIndex === 'number') {
+    insertData.row_index = options.rowIndex;
   }
   
   const { data: assetData, error: assetError } = await supabase
@@ -339,6 +344,47 @@ export async function createAsset(
   }
 
   return assetId;
+}
+
+/**
+ * Shift row_index for all assets in a library starting from fromRowIndex by delta.
+ * Used for insert-above/below so that newly inserted rows can take a contiguous range.
+ */
+export async function shiftRowIndices(
+  supabase: SupabaseClient,
+  libraryId: string,
+  fromRowIndex: number,
+  delta: number
+): Promise<void> {
+  if (!delta) return;
+
+  const { data, error } = await supabase
+    .from('library_assets')
+    .select('id, row_index')
+    .eq('library_id', libraryId)
+    .gte('row_index', fromRowIndex)
+    .order('row_index', { ascending: delta > 0 });
+
+  if (error) {
+    throw new Error(`Failed to load rows for shifting indices: ${error.message}`);
+  }
+
+  const rows = (data || []) as { id: string; row_index: number | null }[];
+  if (rows.length === 0) return;
+
+  const ordered = delta > 0 ? rows.reverse() : rows;
+
+  for (const row of ordered) {
+    if (row.row_index == null) continue;
+    const newIndex = row.row_index + delta;
+    const { error: updateError } = await supabase
+      .from('library_assets')
+      .update({ row_index: newIndex })
+      .eq('id', row.id);
+    if (updateError) {
+      throw new Error(`Failed to shift row_index for asset ${row.id}: ${updateError.message}`);
+    }
+  }
 }
 
 // T011: Update an existing asset and its property values

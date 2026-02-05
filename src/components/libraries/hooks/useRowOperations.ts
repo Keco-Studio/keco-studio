@@ -3,6 +3,7 @@ import type * as Y from 'yjs';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { CellKey } from './useCellSelection';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { shiftRowIndices } from '@/lib/services/libraryAssetsService';
 
 // Compatible interface for yRows (supports both Y.Array and mock objects)
 interface YRowsLike {
@@ -13,7 +14,7 @@ interface YRowsLike {
 }
 
 export type UseRowOperationsParams = {
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
+  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   /** Batch update: all updates then one dispatch → one invalidate, avoids 先消失后恢复再消失 + 其他列恢复 */
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;

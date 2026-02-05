@@ -48,6 +48,7 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       name: asset.name,
       propertyValues: asset.propertyValues,
       created_at: asset.created_at,
+      rowIndex: asset.rowIndex,
     }));
     if (process.env.NODE_ENV !== 'production') {
       try {
@@ -72,11 +73,10 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   const handleSaveAsset = useCallback(async (
     assetName: string,
     propertyValues: Record<string, any>,
-    options?: { createdAt?: Date }
+    options?: { createdAt?: Date; rowIndex?: number }
   ) => {
-    await createAsset(assetName, propertyValues, {
-      createdAt: options?.createdAt,
-    });
+    // 直接透传 options，保持与 LibraryDataContext.createAsset 的参数结构一致
+    await createAsset(assetName, propertyValues, options);
   }, [createAsset]);
   
   // Adapt updateAsset to onUpdateAsset format

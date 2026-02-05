@@ -53,7 +53,7 @@ export function useClipboardOperations({
   getAllRowsForCellSelection: () => AssetRow[];
   selectedCells: Set<CellKey>;
   selectedRowIds: Set<string>;
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
+  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   library: { id: string; name: string; description?: string | null } | null;

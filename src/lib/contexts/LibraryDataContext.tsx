@@ -513,8 +513,21 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   const createAsset = useCallback(async (
     name: string,
     propertyValues: Record<string, any>,
-    options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date }
+    options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date; rowIndex?: number }
   ): Promise<string> => {
+    // 0. Determine rowIndex: prefer explicit option, otherwise append to end
+    let nextRowIndex: number;
+    if (typeof options?.rowIndex === 'number') {
+      nextRowIndex = options.rowIndex;
+    } else {
+      const current = Array.from(assetsRef.current.values());
+      const maxIdx = current.reduce(
+        (max, a) => (typeof a.rowIndex === 'number' && a.rowIndex > max ? a.rowIndex : max),
+        0
+      );
+      nextRowIndex = maxIdx + 1;
+    }
+
     // 1. Create in database
     const { data: newAsset, error: assetError } = await supabase
       .from('library_assets')
@@ -522,6 +535,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         library_id: libraryId,
         name,
         created_at: options?.createdAt?.toISOString(),
+        row_index: nextRowIndex,
       })
       .select()
       .single();
@@ -560,8 +574,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       yPropertyValues.set(fieldId, valueForYjs);
     });
     yAsset.set('propertyValues', yPropertyValues);
-    // Ensure created_at so allAssets sort puts insert-above/insert-below in correct position
+    // Ensure created_at / row_index so allAssets sort puts insert-above/insert-below in correct position
     yAsset.set('created_at', newAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString());
+    yAsset.set('row_index', newAsset.row_index ?? nextRowIndex);
 
     yDoc.transact(() => {
       yAssets.set(assetId, yAsset);

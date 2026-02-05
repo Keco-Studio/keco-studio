@@ -71,7 +71,7 @@ export type LibraryAssetsTableProps = {
   sections: SectionConfig[];
   properties: PropertyConfig[];
   rows: AssetRow[];
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
+  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
@@ -306,13 +306,21 @@ export function LibraryAssetsTable({
   }, [library?.id]);
 
   const {
-    isAddingRow,setIsAddingRow,newRowData,setNewRowData,handleSaveNewAsset,handleCancelAdding,handleInputChange,handleMediaFileChange,
+    isAddingRow,
+    setIsAddingRow,
+    newRowData,
+    setNewRowData,
+    handleSaveNewAsset,
+    handleCancelAdding,
+    handleInputChange,
+    handleMediaFileChange,
   } = useAddRow({
     properties,
     library,
     onSaveAsset,
     userRole,
     yRows,
+    rows,
     setOptimisticNewAssets,
     setIsSaving,
     enableRealtime,

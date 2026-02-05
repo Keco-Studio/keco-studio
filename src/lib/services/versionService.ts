@@ -118,13 +118,11 @@ async function createLibrarySnapshot(
   // Get all assets with their properties
   const assets = await getLibraryAssetsWithProperties(supabase, libraryId);
 
-  // 为了在「创建版本」和「restore 版本」之间保持行顺序一致，这里显式记录每行的 createdAt。
-  // - source: getLibraryAssetsWithProperties 已按 created_at + id 排序，并在 AssetRow 上暴露 created_at 字段
-  // - snapshot 中使用 createdAt（camelCase），restore 时会复用这个时间写回 DB，
-  //   LibraryDataContext 再按 created_at + id 排序时，就能还原与快照相同的行顺序。
+  // 为了在「创建版本」和「restore 版本」之间保持行顺序一致，这里显式记录每行的 createdAt / rowIndex。
   const snapshotAssets = assets.map((asset) => ({
     ...asset,
     createdAt: asset.created_at || new Date().toISOString(),
+    rowIndex: asset.rowIndex ?? null,
   }));
 
   // Create snapshot object
@@ -209,6 +207,7 @@ async function restoreLibraryFromSnapshot(
     library_id: libraryId,
     name: asset.name,
     created_at: asset.createdAt || new Date().toISOString(),
+    row_index: asset.rowIndex ?? null,
   }));
 
   const { error: insertError } = await supabase
