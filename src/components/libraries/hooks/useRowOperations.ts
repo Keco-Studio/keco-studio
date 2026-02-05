@@ -204,9 +204,18 @@ export function useRowOperations(params: UseRowOperationsParams) {
         const createdTempIds: string[] = [];
         const optimisticAssets: AssetRow[] = [];
 
+        // 新行 created_at 必须严格落在「目标上一行」和「目标行」之间，这样 allAssets 按 created_at 排序后新行才会紧贴目标行上方，不会跑到最顶
+        const targetTime = targetCreatedAt.getTime();
+        const prevRow = allRows[targetRowIndex - 1];
+        const prevTime =
+          prevRow?.created_at != null
+            ? new Date(prevRow.created_at).getTime()
+            : targetTime - 86400000;
+
         for (let i = 0; i < numRowsToInsert; i++) {
-          const offsetMs = (numRowsToInsert - i) * 1000;
-          const newCreatedAt = new Date(targetCreatedAt.getTime() - offsetMs);
+          const newCreatedAt = new Date(
+            prevTime + ((i + 1) * (targetTime - prevTime)) / (numRowsToInsert + 1)
+          );
           const tempId = `temp-insert-above-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
           createdTempIds.push(tempId);
           optimisticAssets.push({
@@ -234,8 +243,9 @@ export function useRowOperations(params: UseRowOperationsParams) {
         });
 
         for (let i = 0; i < numRowsToInsert; i++) {
-          const offsetMs = (numRowsToInsert - i) * 1000;
-          const newCreatedAt = new Date(targetCreatedAt.getTime() - offsetMs);
+          const newCreatedAt = new Date(
+            prevTime + ((i + 1) * (targetTime - prevTime)) / (numRowsToInsert + 1)
+          );
           await onSaveAsset('Untitled', {}, { createdAt: newCreatedAt });
           if (enableRealtime && currentUser && i < optimisticAssets.length) {
             try {
