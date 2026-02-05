@@ -24,6 +24,7 @@ export function useClipboardOperations({
   selectedRowIds,
   onSaveAsset,
   onUpdateAsset,
+  onUpdateAssets,
   library,
   yRows,
   setSelectedCells,
@@ -35,6 +36,7 @@ export function useClipboardOperations({
   setCutSelectionBounds,
   setCopySelectionBounds,
   setOptimisticNewAssets,
+  setOptimisticEditUpdates,
   setIsSaving,
   setToastMessage,
   setBatchEditMenuVisible,
@@ -53,6 +55,7 @@ export function useClipboardOperations({
   selectedRowIds: Set<string>;
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
+  onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   library: { id: string; name: string; description?: string | null } | null;
   yRows: any; // Yjs array type
   setSelectedCells: React.Dispatch<React.SetStateAction<Set<CellKey>>>;
@@ -78,6 +81,7 @@ export function useClipboardOperations({
     propertyKeys: string[];
   } | null>>;
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
+  setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, { name: string; propertyValues: Record<string, any> }>>>;
   setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
   setToastMessage: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'error' | 'default' } | null>>;
   setBatchEditMenuVisible: React.Dispatch<React.SetStateAction<boolean>>;
@@ -413,8 +417,13 @@ export function useClipboardOperations({
             yRows.delete(rowIndex, 1);
             yRows.insert(rowIndex, [updatedRow]);
           });
-          // 并行写 DB，缩短 Cut 完成时间，减少与 Paste 重叠造成的排队
-          await Promise.all(toUpdate.map(({ rowId, assetName, propertyValues }) => onUpdateAsset(rowId, assetName, propertyValues)));
+          // 与 delete row 一致：多行走批量接口，减少往返与竞态
+          const cutUpdates = toUpdate.map(({ rowId, assetName, propertyValues }) => ({ assetId: rowId, assetName, propertyValues }));
+          if (cutUpdates.length > 1 && onUpdateAssets) {
+            await onUpdateAssets(cutUpdates);
+          } else {
+            await Promise.all(cutUpdates.map((u) => onUpdateAsset!(u.assetId, u.assetName, u.propertyValues)));
+          }
         } catch (error) {
           console.error('Failed to clear cut cells:', error);
         }
@@ -445,6 +454,7 @@ export function useClipboardOperations({
     getAllRowsForCellSelection,
     orderedProperties,
     onUpdateAsset,
+    onUpdateAssets,
     yRows,
     parseCellKey,
     getCellValue,
@@ -756,10 +766,24 @@ export function useClipboardOperations({
           yRows.insert(index, [row]);
         });
 
-        const updatePromises = rowsToUpdate
+        // 粘贴到现有行后设置乐观编辑，避免 useYjsSync 用 props（如清空后的数据）覆盖 yRows 导致粘贴内容被抹掉
+        setOptimisticEditUpdates((prev) => {
+          const next = new Map(prev);
+          rowsToUpdate.forEach(({ row }) => {
+            next.set(row.id, { name: row.name ?? '', propertyValues: row.propertyValues ?? {} });
+          });
+          return next;
+        });
+
+        // 与 delete row 一致：多行走批量接口
+        const pasteUpdates = rowsToUpdate
           .filter(({ row }) => !row.id.startsWith('temp-'))
-          .map(({ row }) => onUpdateAsset(row.id, row.name ?? '', row.propertyValues));
-        await Promise.all(updatePromises);
+          .map(({ row }) => ({ assetId: row.id, assetName: row.name ?? '', propertyValues: row.propertyValues }));
+        if (pasteUpdates.length > 1 && onUpdateAssets) {
+          await onUpdateAssets(pasteUpdates);
+        } else if (pasteUpdates.length > 0) {
+          await Promise.all(pasteUpdates.map((u) => onUpdateAsset!(u.assetId, u.assetName, u.propertyValues)));
+        }
       } catch (error) {
         console.error('Failed to update rows for paste:', error);
         setIsSaving(false);
@@ -845,6 +869,7 @@ export function useClipboardOperations({
     orderedProperties,
     onSaveAsset,
     onUpdateAsset,
+    onUpdateAssets,
     library,
     yRows,
     parseCellKey,
@@ -858,6 +883,7 @@ export function useClipboardOperations({
     setCutSelectionBounds,
     setCopySelectionBounds,
     setOptimisticNewAssets,
+    setOptimisticEditUpdates,
     setIsSaving,
     setToastMessage,
     setBatchEditMenuVisible,

@@ -19,6 +19,7 @@ export function useBatchFill({
   orderedProperties,
   getAllRowsForCellSelection,
   onUpdateAsset,
+  onUpdateAssets,
   setOptimisticEditUpdates,
   optimisticEditUpdates,
 }: {
@@ -26,6 +27,7 @@ export function useBatchFill({
   orderedProperties: PropertyConfig[];
   getAllRowsForCellSelection: () => AssetRow[];
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
+  onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, { name: string; propertyValues: Record<string, any> }>>>;
   optimisticEditUpdates: Map<string, { name: string; propertyValues: Record<string, any> }>;
 }) {
@@ -203,56 +205,75 @@ export function useBatchFill({
       });
     });
     
-    // Execute all updates
-    const updates: Array<Promise<void>> = [];
-    updateDataMap.forEach(({ rowId, rowName, propertyKey, fillValue, propertyValues }) => {
-      updates.push(
-        onUpdateAsset(rowId, rowName, propertyValues)
-          .then(() => {
-            // Do NOT remove optimistic here.
-            // Removing it before the parent refresh lands causes: filled value appears -> disappears -> reappears.
-            // We rely on useOptimisticCleanup to clear optimistic only when rows truly match.
-          })
-          .catch(error => {
-            console.error(`Failed to fill cell ${rowId}-${propertyKey}:`, serializeError(error));
-            // On error, remove only this property from optimistic update
-            setOptimisticEditUpdates(prev => {
-              const newMap = new Map(prev);
-              const currentUpdate = newMap.get(rowId);
-              if (currentUpdate) {
-                const updatedPropertyValues = { ...currentUpdate.propertyValues };
-                delete updatedPropertyValues[propertyKey];
-                
-                if (Object.keys(updatedPropertyValues).length > 0) {
-                  newMap.set(rowId, {
-                    name: currentUpdate.name,
-                    propertyValues: updatedPropertyValues
-                  });
-                } else {
-                  newMap.delete(rowId);
-                }
+    // 与 delete row 一致：多行走批量接口
+    const batchUpdates = Array.from(updateDataMap.entries()).map(([, data]) => ({
+      assetId: data.rowId,
+      assetName: data.rowName,
+      propertyValues: data.propertyValues,
+    }));
+
+    if (batchUpdates.length > 1 && onUpdateAssets) {
+      try {
+        await onUpdateAssets(batchUpdates);
+      } catch (error) {
+        console.error('Batch fill failed:', serializeError(error));
+        // On error, clear optimistic for all filled rows
+        setOptimisticEditUpdates(prev => {
+          const newMap = new Map(prev);
+          fillUpdates.forEach(({ rowId, propertyKey }) => {
+            const currentUpdate = newMap.get(rowId);
+            if (currentUpdate) {
+              const updatedPropertyValues = { ...currentUpdate.propertyValues };
+              delete updatedPropertyValues[propertyKey];
+              if (Object.keys(updatedPropertyValues).length > 0) {
+                newMap.set(rowId, { name: currentUpdate.name, propertyValues: updatedPropertyValues });
+              } else {
+                newMap.delete(rowId);
               }
-              return newMap;
-            });
-            // Re-throw to be caught by Promise.allSettled
-            throw error;
-          })
-      );
-    });
-    
-    // Wait for all updates to complete, but don't fail if some fail
-    const results = await Promise.allSettled(updates);
-    
-    // Check for failures and log them
-    const failures = results.filter(r => r.status === 'rejected');
-    if (failures.length > 0) {
-      console.warn(`Batch fill completed with ${failures.length} failures out of ${updates.length} updates`);
+            }
+          });
+          return newMap;
+        });
+        throw error;
+      }
+    } else {
+      // 单行或无批量接口：沿用原逻辑
+      const updates: Array<Promise<void>> = [];
+      updateDataMap.forEach(({ rowId, rowName, propertyKey, propertyValues }) => {
+        updates.push(
+          onUpdateAsset!(rowId, rowName, propertyValues)
+            .catch(error => {
+              console.error(`Failed to fill cell ${rowId}-${propertyKey}:`, serializeError(error));
+              setOptimisticEditUpdates(prev => {
+                const newMap = new Map(prev);
+                const currentUpdate = newMap.get(rowId);
+                if (currentUpdate) {
+                  const updatedPropertyValues = { ...currentUpdate.propertyValues };
+                  delete updatedPropertyValues[propertyKey];
+                  if (Object.keys(updatedPropertyValues).length > 0) {
+                    newMap.set(rowId, { name: currentUpdate.name, propertyValues: updatedPropertyValues });
+                  } else {
+                    newMap.delete(rowId);
+                  }
+                }
+                return newMap;
+              });
+              throw error;
+            })
+        );
+      });
+      const results = await Promise.allSettled(updates);
+      const failures = results.filter(r => r.status === 'rejected');
+      if (failures.length > 0) {
+        console.warn(`Batch fill completed with ${failures.length} failures out of ${updates.length} updates`);
+      }
     }
   }, [
     dataManager,
     orderedProperties,
     getAllRowsForCellSelection,
     onUpdateAsset,
+    onUpdateAssets,
     setOptimisticEditUpdates,
     optimisticEditUpdates,
   ]);
