@@ -242,18 +242,13 @@ export function useRowOperations(params: UseRowOperationsParams) {
           return next;
         });
 
+        // 创建真实行：只通过 onSaveAsset → LibraryDataContext.createAsset，
+        // 由 Context 统一写 DB 并广播（避免这里再次手动 broadcast 造成重复事件）
         for (let i = 0; i < numRowsToInsert; i++) {
           const newCreatedAt = new Date(
             prevTime + ((i + 1) * (targetTime - prevTime)) / (numRowsToInsert + 1)
           );
           await onSaveAsset('Untitled', {}, { createdAt: newCreatedAt });
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            try {
-              await broadcastAssetCreate(createdTempIds[i], optimisticAssets[i].name, optimisticAssets[i].propertyValues, { insertBeforeRowId: firstRowId });
-            } catch (e) {
-              console.error('Failed to broadcast asset creation:', e);
-            }
-          }
         }
       } else {
         const createdTempIds: string[] = [];
@@ -280,13 +275,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
         });
         for (let i = 0; i < numRowsToInsert; i++) {
           await onSaveAsset('Untitled', {});
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            try {
-              await broadcastAssetCreate(createdTempIds[i], optimisticAssets[i].name, optimisticAssets[i].propertyValues, { insertBeforeRowId: firstRowId });
-            } catch (e) {
-              console.error('Failed to broadcast asset creation:', e);
-            }
-          }
         }
       }
 
@@ -433,17 +421,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
           return next;
         });
 
+        // 创建真实行：同样只通过 onSaveAsset，广播交给 LibraryDataContext 统一处理
         for (let i = 0; i < numRowsToInsert; i++) {
           const offsetMs = (i + 1) * 1000;
           const newCreatedAt = new Date(targetCreatedAt.getTime() + offsetMs);
           await onSaveAsset('Untitled', {}, { createdAt: newCreatedAt });
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            try {
-              await broadcastAssetCreate(createdTempIds[i], optimisticAssets[i].name, optimisticAssets[i].propertyValues, { insertAfterRowId: lastRowId });
-            } catch (e) {
-              console.error('Failed to broadcast asset creation:', e);
-            }
-          }
         }
       } else {
         const createdTempIds: string[] = [];
@@ -471,13 +453,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
         });
         for (let i = 0; i < numRowsToInsert; i++) {
           await onSaveAsset('Untitled', {});
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            try {
-              await broadcastAssetCreate(createdTempIds[i], optimisticAssets[i].name, optimisticAssets[i].propertyValues, { insertAfterRowId: lastRowId });
-            } catch (e) {
-              console.error('Failed to broadcast asset creation:', e);
-            }
-          }
         }
       }
 
