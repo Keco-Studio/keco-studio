@@ -568,27 +568,32 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     }
     
     // 3. Add to Yjs (using Y.Map for propertyValues)
-    const yAsset = new Y.Map();
-    yAsset.set('name', name);
-    
-    // Create Y.Map for propertyValues
-    const yPropertyValues = new Y.Map();
-    Object.entries(propertyValues).forEach(([fieldId, value]) => {
-      // For complex objects, use deep copy to avoid reference issues
-      let valueForYjs = value;
-      if (value !== null && typeof value === 'object') {
-        valueForYjs = JSON.parse(JSON.stringify(value));
-      }
-      yPropertyValues.set(fieldId, valueForYjs);
-    });
-    yAsset.set('propertyValues', yPropertyValues);
-    // Ensure created_at / row_index so allAssets sort puts insert-above/insert-below in correct position
-    yAsset.set('created_at', newAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString());
-    yAsset.set('row_index', newAsset.row_index ?? nextRowIndex);
+    // 对于纯追加（没有显式 rowIndex）的场景，可以直接在本地插入 Yjs 记录，立即看到新行。
+    // 对于带 rowIndex 的场景（Add Row / Insert Above/Below / Paste 新行），我们后面会通过 loadInitialData()
+    // 用 DB 的完整行序覆盖一次本地状态，这里就不再做本地乐观插入，避免出现「先出现在错误位置再跳动」的闪烁。
+    if (typeof options?.rowIndex !== 'number') {
+      const yAsset = new Y.Map();
+      yAsset.set('name', name);
+      
+      // Create Y.Map for propertyValues
+      const yPropertyValues = new Y.Map();
+      Object.entries(propertyValues).forEach(([fieldId, value]) => {
+        // For complex objects, use deep copy to avoid reference issues
+        let valueForYjs = value;
+        if (value !== null && typeof value === 'object') {
+          valueForYjs = JSON.parse(JSON.stringify(value));
+        }
+        yPropertyValues.set(fieldId, valueForYjs);
+      });
+      yAsset.set('propertyValues', yPropertyValues);
+      // Ensure created_at / row_index so allAssets sort puts insert-above/insert-below in correct position
+      yAsset.set('created_at', newAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString());
+      yAsset.set('row_index', newAsset.row_index ?? nextRowIndex);
 
-    yDoc.transact(() => {
-      yAssets.set(assetId, yAsset);
-    });
+      yDoc.transact(() => {
+        yAssets.set(assetId, yAsset);
+      });
+    }
 
     // 如果这次创建显式使用了 rowIndex（包括追加、Insert Above/Below、Paste 新行），
     // 先在本客户端用 DB 结果全量刷新一次，避免本地仍持有旧的 rowIndex 造成“自己这边行出现在末尾”的错觉。
