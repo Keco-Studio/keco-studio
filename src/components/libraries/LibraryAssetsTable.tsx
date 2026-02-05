@@ -463,6 +463,7 @@ export function LibraryAssetsTable({
     orderedProperties,
     getAllRowsForCellSelection,
     onUpdateAsset,
+    onUpdateAssets,
     setOptimisticEditUpdates,
     optimisticEditUpdates,
   });
@@ -504,6 +505,7 @@ export function LibraryAssetsTable({
     selectedRowIds,
     onSaveAsset,
     onUpdateAsset,
+    onUpdateAssets,
     library,
     yRows,
     setSelectedCells,
@@ -515,6 +517,7 @@ export function LibraryAssetsTable({
     setCutSelectionBounds,
     setCopySelectionBounds,
     setOptimisticNewAssets,
+    setOptimisticEditUpdates,
     setIsSaving,
     setToastMessage,
     setBatchEditMenuVisible,

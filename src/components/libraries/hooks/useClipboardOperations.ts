@@ -24,6 +24,7 @@ export function useClipboardOperations({
   selectedRowIds,
   onSaveAsset,
   onUpdateAsset,
+  onUpdateAssets,
   library,
   yRows,
   setSelectedCells,
@@ -35,6 +36,7 @@ export function useClipboardOperations({
   setCutSelectionBounds,
   setCopySelectionBounds,
   setOptimisticNewAssets,
+  setOptimisticEditUpdates,
   setIsSaving,
   setToastMessage,
   setBatchEditMenuVisible,
@@ -53,6 +55,7 @@ export function useClipboardOperations({
   selectedRowIds: Set<string>;
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
+  onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   library: { id: string; name: string; description?: string | null } | null;
   yRows: any; // Yjs array type
   setSelectedCells: React.Dispatch<React.SetStateAction<Set<CellKey>>>;
@@ -78,6 +81,7 @@ export function useClipboardOperations({
     propertyKeys: string[];
   } | null>>;
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
+  setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, { name: string; propertyValues: Record<string, any> }>>>;
   setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
   setToastMessage: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'error' | 'default' } | null>>;
   setBatchEditMenuVisible: React.Dispatch<React.SetStateAction<boolean>>;
@@ -236,25 +240,20 @@ export function useClipboardOperations({
         return;
       }
       
+      // Copy/Cut 一律用「当前最新行」（含乐观更新），保证复制的就是表格当前显示的值
+      const rowToRead = (dataManager.getRowValue(rowId) as AssetRow | null) ?? row;
+      
       // Check if this is the name field (identified by label='name' and dataType='string')
       const isNameField = foundProperty && foundProperty.name === 'name' && foundProperty.dataType === 'string';
       
       let value: string | number | null;
-      // Name 与表格展示完全一致：表格在 name 为空且 row.name 为 "Untitled" 时显示空白（LibraryAssetsTable 1793–1802）
       if (isNameField) {
-        const raw = row.propertyValues?.[propertyKey];
+        const raw = rowToRead.propertyValues?.[propertyKey];
         const hasRaw = raw !== null && raw !== undefined && raw !== '';
-        const displayStr = hasRaw ? String(raw) : ((row.name && row.name !== 'Untitled') ? row.name : null);
+        const displayStr = hasRaw ? String(raw) : ((rowToRead.name && rowToRead.name !== 'Untitled') ? rowToRead.name : null);
         value = displayStr;
       } else {
-        // 非 name：对齐 batch fill，从 base 取源值，保留原始类型
-        const baseRow = dataManager.getRowBaseValue(rowId);
-        if (baseRow) {
-          const raw = baseRow.propertyValues?.[propertyKey] ?? null;
-          value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
-        } else {
-          value = getCellValue(row, propertyKey, foundProperty, false);
-        }
+        value = getCellValue(rowToRead, propertyKey, foundProperty, false);
       }
       
       if (!cellsByRow.has(rowId)) {
@@ -418,8 +417,13 @@ export function useClipboardOperations({
             yRows.delete(rowIndex, 1);
             yRows.insert(rowIndex, [updatedRow]);
           });
-          // 并行写 DB，缩短 Cut 完成时间，减少与 Paste 重叠造成的排队
-          await Promise.all(toUpdate.map(({ rowId, assetName, propertyValues }) => onUpdateAsset(rowId, assetName, propertyValues)));
+          // 与 delete row 一致：多行走批量接口，减少往返与竞态
+          const cutUpdates = toUpdate.map(({ rowId, assetName, propertyValues }) => ({ assetId: rowId, assetName, propertyValues }));
+          if (cutUpdates.length > 1 && onUpdateAssets) {
+            await onUpdateAssets(cutUpdates);
+          } else {
+            await Promise.all(cutUpdates.map((u) => onUpdateAsset!(u.assetId, u.assetName, u.propertyValues)));
+          }
         } catch (error) {
           console.error('Failed to clear cut cells:', error);
         }
@@ -450,6 +454,7 @@ export function useClipboardOperations({
     getAllRowsForCellSelection,
     orderedProperties,
     onUpdateAsset,
+    onUpdateAssets,
     yRows,
     parseCellKey,
     getCellValue,
@@ -514,25 +519,20 @@ export function useClipboardOperations({
         return;
       }
       
+      // Copy/Cut 一律用「当前最新行」（含乐观更新），保证复制的就是表格当前显示的值
+      const rowToRead = (dataManager.getRowValue(rowId) as AssetRow | null) ?? row;
+      
       // Check if this is the name field (identified by label='name' and dataType='string')
       const isNameField = foundProperty && foundProperty.name === 'name' && foundProperty.dataType === 'string';
       
       let value: string | number | null;
-      // Name 与表格展示完全一致：表格在 name 为空且 row.name 为 "Untitled" 时显示空白（LibraryAssetsTable 1793–1802）
       if (isNameField) {
-        const raw = row.propertyValues?.[propertyKey];
+        const raw = rowToRead.propertyValues?.[propertyKey];
         const hasRaw = raw !== null && raw !== undefined && raw !== '';
-        const displayStr = hasRaw ? String(raw) : ((row.name && row.name !== 'Untitled') ? row.name : null);
+        const displayStr = hasRaw ? String(raw) : ((rowToRead.name && rowToRead.name !== 'Untitled') ? rowToRead.name : null);
         value = displayStr;
       } else {
-        // 非 name：对齐 batch fill，从 base 取源值，保留原始类型
-        const baseRow = dataManager.getRowBaseValue(rowId);
-        if (baseRow) {
-          const raw = baseRow.propertyValues?.[propertyKey] ?? null;
-          value = (raw === '' || raw === undefined) ? null : (raw as string | number | null);
-        } else {
-          value = getCellValue(row, propertyKey, foundProperty, false);
-        }
+        value = getCellValue(rowToRead, propertyKey, foundProperty, false);
       }
       
       if (!cellsByRow.has(rowId)) {
@@ -701,14 +701,14 @@ export function useClipboardOperations({
     isPastingRef.current = true;
 
     try {
-    // 唯一数据源：使用 Yjs 快照作为锚点和扩行的统一基准，避免视图行数与 Yjs 不一致导致错判
-    const rowsSnapshot = yRows.toArray();
+    // 使用与表格一致的「视图行」计算锚点和扩行，避免 merge 后 yRows 与视图不同步导致 paste 空白/不扩行
+    const viewRows = getAllRowsForCellSelection();
     let bestRowIndex = Number.POSITIVE_INFINITY;
     let bestPropertyIndex = Number.POSITIVE_INFINITY;
     cellsToUse.forEach((cellKey) => {
       const { rowId, propertyKey, property } = parseCellKey(cellKey);
       if (!rowId || !propertyKey || !property) return;
-      const rowIndex = rowsSnapshot.findIndex((r: AssetRow) => r.id === rowId);
+      const rowIndex = viewRows.findIndex((r: AssetRow) => r.id === rowId);
       if (rowIndex < 0) return;
       const propertyIndex = orderedProperties.findIndex((p) => p.key === propertyKey);
       if (propertyIndex < 0) return;
@@ -718,6 +718,8 @@ export function useClipboardOperations({
       }
     });
     if (bestRowIndex === Number.POSITIVE_INFINITY || bestPropertyIndex === Number.POSITIVE_INFINITY) {
+      setToastMessage({ message: '请先选择要粘贴到的单元格', type: 'default' });
+      setTimeout(() => setToastMessage(null), 2000);
       return;
     }
     const startRowIndex = bestRowIndex;
@@ -725,7 +727,7 @@ export function useClipboardOperations({
 
     const sourcePropertyKeys = (isCutOperation ? cutSelectionBounds : copySelectionBounds)?.propertyKeys ?? [];
     const result = applyPasteToRows(
-      rowsSnapshot,
+      viewRows,
       orderedProperties,
       { rowIndex: startRowIndex, colIndex: startPropertyIndex },
       clipboardData,
@@ -748,16 +750,40 @@ export function useClipboardOperations({
     if (result.updates.length > 0 && onUpdateAsset) {
       setIsSaving(true);
       try {
-        // 直接按 Yjs 快照索引更新，索引与 applyPasteToRows 中保持一致
-        result.updates.forEach(({ rowIndex, row }) => {
-          yRows.delete(rowIndex, 1);
-          yRows.insert(rowIndex, [row]);
+        // 视图行索引与 Yjs 可能不一致（乐观行、sync 顺序），用 row.id 查 Yjs 索引再写回
+        const ySnapshot = yRows.toArray();
+        const idToYIndex = new Map<string, number>();
+        ySnapshot.forEach((r: AssetRow, idx: number) => idToYIndex.set(r.id, idx));
+
+        const rowsToUpdate: Array<{ index: number; row: AssetRow }> = [];
+        result.updates.forEach(({ row }) => {
+          const yIndex = idToYIndex.get(row.id);
+          if (yIndex !== undefined) rowsToUpdate.push({ index: yIndex, row });
+        });
+        rowsToUpdate.sort((a, b) => a.index - b.index);
+        rowsToUpdate.forEach(({ index, row }) => {
+          yRows.delete(index, 1);
+          yRows.insert(index, [row]);
         });
 
-        const updatePromises = result.updates
+        // 粘贴到现有行后设置乐观编辑，避免 useYjsSync 用 props（如清空后的数据）覆盖 yRows 导致粘贴内容被抹掉
+        setOptimisticEditUpdates((prev) => {
+          const next = new Map(prev);
+          rowsToUpdate.forEach(({ row }) => {
+            next.set(row.id, { name: row.name ?? '', propertyValues: row.propertyValues ?? {} });
+          });
+          return next;
+        });
+
+        // 与 delete row 一致：多行走批量接口
+        const pasteUpdates = rowsToUpdate
           .filter(({ row }) => !row.id.startsWith('temp-'))
-          .map(({ row }) => onUpdateAsset(row.id, row.name ?? '', row.propertyValues));
-        await Promise.all(updatePromises);
+          .map(({ row }) => ({ assetId: row.id, assetName: row.name ?? '', propertyValues: row.propertyValues }));
+        if (pasteUpdates.length > 1 && onUpdateAssets) {
+          await onUpdateAssets(pasteUpdates);
+        } else if (pasteUpdates.length > 0) {
+          await Promise.all(pasteUpdates.map((u) => onUpdateAsset!(u.assetId, u.assetName, u.propertyValues)));
+        }
       } catch (error) {
         console.error('Failed to update rows for paste:', error);
         setIsSaving(false);
@@ -839,9 +865,11 @@ export function useClipboardOperations({
   }, [
     selectedCells,
     selectedRowIds,
+    getAllRowsForCellSelection,
     orderedProperties,
     onSaveAsset,
     onUpdateAsset,
+    onUpdateAssets,
     library,
     yRows,
     parseCellKey,
@@ -855,6 +883,7 @@ export function useClipboardOperations({
     setCutSelectionBounds,
     setCopySelectionBounds,
     setOptimisticNewAssets,
+    setOptimisticEditUpdates,
     setIsSaving,
     setToastMessage,
     setBatchEditMenuVisible,

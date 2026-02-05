@@ -19,7 +19,7 @@ import type { AssetRow } from '@/lib/types/libraryAssets';
 
 type AdapterProps = Omit<
   LibraryAssetsTableProps,
-  'rows' | 'onSaveAsset' | 'onUpdateAsset' | 'onDeleteAsset' | 'currentUser' | 'enableRealtime' | 'presenceTracking'
+  'rows' | 'onSaveAsset' | 'onUpdateAsset' | 'onUpdateAssets' | 'onDeleteAsset' | 'onDeleteAssets' | 'currentUser' | 'enableRealtime' | 'presenceTracking'
 > & {
   /** When set (e.g. viewing a version snapshot), table shows these rows instead of context. */
   overrideRows?: AssetRow[] | null;
@@ -94,6 +94,18 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   const handleDeleteAsset = useCallback(async (assetId: string) => {
     await deleteAsset(assetId);
   }, [deleteAsset]);
+
+  // Batch update: 与 delete row 一致，多行时走批量接口（Adapter 内用 Promise.all 串行单条，与页面层一致）
+  const handleUpdateAssets = useCallback(async (
+    updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
+  ) => {
+    await Promise.all(updates.map((u) => handleUpdateAsset(u.assetId, u.assetName, u.propertyValues)));
+  }, [handleUpdateAsset]);
+
+  // Batch delete: 多行时一次调用多个 delete（Context 无真批量时用 Promise.all）
+  const handleDeleteAssets = useCallback(async (assetIds: string[]) => {
+    await Promise.all(assetIds.map((id) => deleteAsset(id)));
+  }, [deleteAsset]);
   
   // Current user info
   const currentUser = useMemo(() => {
@@ -134,7 +146,9 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       rows={rows}
       onSaveAsset={handleSaveAsset}
       onUpdateAsset={handleUpdateAsset}
+      onUpdateAssets={handleUpdateAssets}
       onDeleteAsset={handleDeleteAsset}
+      onDeleteAssets={handleDeleteAssets}
       currentUser={currentUser}
       enableRealtime={true}
       presenceTracking={presenceTracking}
