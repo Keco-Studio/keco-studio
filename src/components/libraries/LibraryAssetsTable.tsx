@@ -1036,14 +1036,9 @@ export function LibraryAssetsTable({
                     }
                     
                     // Text field
+                    // 对于 name 字段，这里不再从 row.name 回退，始终以 propertyValues 为准，
+                    // 避免「删除并重建 name 字段后又显示旧值」的情况。
                     let value = row.propertyValues[property.key];
-                    if (isNameField && (value === null || value === undefined || value === '')) {
-                      if (row.name && row.name !== 'Untitled') {
-                        value = row.name;
-                      } else {
-                        value = null;
-                      }
-                    }
                     let display: string | null = null;
                     if (value !== null && value !== undefined && value !== '') {
                       display = String(value);

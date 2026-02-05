@@ -168,9 +168,13 @@ export function useBatchFill({
           [propertyKey]: value  // Only save the filled property, keep other columns' optimistic updates
         };
         
-        // For name field, use the optimistic update name if it exists
-        // Otherwise, use baseRow.name
-        rowNameToSave = mergedOptimisticUpdate.name || baseRow.name;
+        if (isFillingNameField) {
+          // 对 name 字段做批量填充时，同时更新 assetName，使「显示名称」也随之变化
+          rowNameToSave = value === null || value === undefined ? '' : String(value);
+        } else {
+          // 非 name 字段：沿用原来的名称逻辑
+          rowNameToSave = mergedOptimisticUpdate.name || baseRow.name;
+        }
       } else {
         // No optimistic update (shouldn't happen after merge, but handle it)
         propertyValuesToSave = {
@@ -178,9 +182,11 @@ export function useBatchFill({
           [propertyKey]: value
         };
         
-        // If not filling name field, ensure name field value is preserved from baseRow
-        if (!isFillingNameField && nameFieldKey) {
-          // Preserve the current name field value from baseRow
+        if (isFillingNameField) {
+          // 直接用填充值作为 assetName
+          rowNameToSave = value === null || value === undefined ? '' : String(value);
+        } else if (nameFieldKey) {
+          // If not filling name field, ensure name field value is preserved from baseRow
           const currentNameValue = baseRow.propertyValues[nameFieldKey];
           if (currentNameValue === null || currentNameValue === undefined || currentNameValue === '') {
             // Name was cleared, keep it cleared
@@ -191,7 +197,7 @@ export function useBatchFill({
             rowNameToSave = String(currentNameValue);
           }
         } else {
-          // Filling name field or no name field, use baseRow.name
+          // No dedicated name field, fall back to baseRow.name
           rowNameToSave = baseRow.name;
         }
       }
