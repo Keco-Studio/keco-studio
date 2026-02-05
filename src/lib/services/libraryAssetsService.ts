@@ -31,6 +31,7 @@ type AssetRowDb = {
   id: string;
   library_id: string;
   name: string;
+  created_at?: string;
 };
 
 type AssetValueRow = {
@@ -59,18 +60,42 @@ const mapDataTypeToValueType = (
   }
 };
 
-const normalizeValue = (input: unknown): string | number | boolean | null => {
+/**
+ * 统一字段反序列化逻辑，和 LibraryDataContext.loadInitialData 保持一致：
+ * - Supabase jsonb 通常已经是对象/原始类型，直接返回
+ * - 如果是非空字符串，再尝试 JSON.parse，一旦失败就保留原字符串
+ */
+const normalizeValue = (input: unknown): any => {
   if (input === null || input === undefined) return null;
-  if (typeof input === 'string' || typeof input === 'number' || typeof input === 'boolean') {
-    return input;
+  let value = input;
+  if (typeof value === 'string' && value.trim() !== '') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      // 不是 JSON 字符串，就按普通字符串使用
+    }
   }
-  // Fallback: stringify complex JSON so UI can still display something sensible.
-  try {
-    return JSON.stringify(input);
-  } catch {
-    return String(input);
-  }
+  return value;
 };
+
+// Small helper for debugging asset mismatches between "current view" and "version snapshots".
+// It only logs in non-production environments and prints a compact digest.
+function debugLogAssetRows(label: string, rows: AssetRow[]) {
+  if (process.env.NODE_ENV === 'production') return;
+  try {
+    // Log at most first 20 rows to avoid noise
+    const digest = rows.slice(0, 20).map((r) => ({
+      id: r.id,
+      name: r.name,
+      created_at: r.created_at,
+      propertyKeys: Object.keys(r.propertyValues || {}),
+    }));
+    // eslint-disable-next-line no-console
+    console.log(`[Debug][Assets][${label}] count=${rows.length}`, digest);
+  } catch {
+    // Swallow any logging errors – never break main logic
+  }
+}
 
 // T007: Load library summary from existing libraries table / service.
 export async function getLibrarySummary(
@@ -194,9 +219,13 @@ export async function getLibraryAssetsWithProperties(
   
   const { data: assetData, error: assetError } = await supabase
     .from('library_assets')
-    .select('id, library_id, name')
+    .select('id, library_id, name, created_at')
     .eq('library_id', libraryId)
-    .order('created_at', { ascending: true });
+    // IMPORTANT: 排序逻辑必须与前端 allAssets 完全一致：
+    // 先按 created_at，再按 id，避免同一时间戳下 Postgres 返回顺序不确定，
+    // 导致「当前视图」与「版本快照」行序不一致。
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
 
   if (assetError) {
     throw assetError;
@@ -231,6 +260,7 @@ export async function getLibraryAssetsWithProperties(
       slug: null,
       figmaNodeId: null,
       propertyValues: {},
+      created_at: asset.created_at,
     });
   }
 
@@ -239,8 +269,9 @@ export async function getLibraryAssetsWithProperties(
     if (!row) continue;
     row.propertyValues[value.field_id] = normalizeValue(value.value_json);
   }
-
-  return Array.from(rowsByAssetId.values());
+  const result = Array.from(rowsByAssetId.values());
+  debugLogAssetRows('getLibraryAssetsWithProperties', result);
+  return result;
 }
 
 // T010: Create a new asset with property values

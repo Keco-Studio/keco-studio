@@ -191,48 +191,39 @@ async function restoreLibraryFromSnapshot(
   }
 
   // Insert assets
+  // IMPORTANT: 直接复用快照中的 asset.id 作为主键，避免「新生成 id 再做映射」带来的错位问题。
+  // 这样：
+  // - snapshotData.assets 中的每一行与 DB 中的新行一一对应（同一个 id）
+  // - 后续插入 library_asset_values 时可以直接使用 originalAsset.id 作为 asset_id
   const assetsToInsert = snapshotAssets.map(asset => ({
+    id: asset.id, // reuse original id from snapshot
     library_id: libraryId,
     name: asset.name,
     created_at: asset.createdAt || new Date().toISOString(),
   }));
 
-  const { data: insertedAssets, error: insertError } = await supabase
+  const { error: insertError } = await supabase
     .from('library_assets')
-    .insert(assetsToInsert)
-    .select('id, name');
+    .insert(assetsToInsert);
 
   if (insertError) {
     throw new Error(`Failed to insert restored assets: ${insertError.message}`);
   }
 
-  if (!insertedAssets) {
-    throw new Error('Failed to insert restored assets: no data returned');
-  }
-
   // Step 3: Restore asset values
-  // Create a map from asset name to new asset ID
-  const nameToIdMap = new Map<string, string>();
-  insertedAssets.forEach((newAsset, index) => {
-    const originalAsset = snapshotAssets[index];
-    if (originalAsset && originalAsset.name === newAsset.name) {
-      nameToIdMap.set(originalAsset.id, newAsset.id);
-    }
-  });
-
   // Collect all values to insert
   const valuesToInsert: Array<{ asset_id: string; field_id: string; value_json: any }> = [];
   
   snapshotAssets.forEach(originalAsset => {
-    const newAssetId = nameToIdMap.get(originalAsset.id);
-    if (!newAssetId || !originalAsset.propertyValues) {
+    if (!originalAsset.id || !originalAsset.propertyValues) {
       return;
     }
 
     Object.entries(originalAsset.propertyValues).forEach(([fieldId, value]) => {
       if (value !== null && value !== undefined && value !== '') {
         valuesToInsert.push({
-          asset_id: newAssetId,
+          // 这里直接使用快照中的 asset.id（与上面的 assetsToInsert 中 id 相同）
+          asset_id: originalAsset.id,
           field_id: fieldId,
           value_json: value,
         });

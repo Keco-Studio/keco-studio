@@ -42,13 +42,28 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   
   // Use override rows (e.g. version snapshot) when provided; otherwise context data
   const rowsFromContext = useMemo<AssetRow[]>(() => {
-    return allAssets.map(asset => ({
+    const rows = allAssets.map(asset => ({
       id: asset.id,
       libraryId: asset.libraryId,
       name: asset.name,
       propertyValues: asset.propertyValues,
       created_at: asset.created_at,
     }));
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const digest = rows.slice(0, 20).map((r) => ({
+          id: r.id,
+          name: r.name,
+          created_at: r.created_at,
+          propertyKeys: Object.keys(r.propertyValues || {}),
+        }));
+        // eslint-disable-next-line no-console
+        console.log('[Debug][Assets][rowsFromContext]', { count: rows.length, digest });
+      } catch {
+        // ignore logging errors
+      }
+    }
+    return rows;
   }, [allAssets]);
 
   const rows = overrideRows !== undefined && overrideRows !== null ? overrideRows : rowsFromContext;

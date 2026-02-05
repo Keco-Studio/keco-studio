@@ -26,6 +26,7 @@ import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState } from '@/lib/types/collaboration';
 import { serializeError } from '@/lib/utils/errorUtils';
+import { getLibraryAssetsWithProperties } from '@/lib/services/libraryAssetsService';
 
 interface LibraryDataContextValue {
   // Data access
@@ -148,61 +149,21 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     setIsLoading(true);
     
     try {
-      // Load assets
-      const { data: assetsData, error: assetsError } = await supabase
-        .from('library_assets')
-        .select('id, name, library_id, created_at')
-        .eq('library_id', libraryId)
-        .order('created_at', { ascending: true });
-      
-      if (assetsError) throw assetsError;
-      
-      // Load all field values for these assets
-      const assetIds = assetsData?.map(a => a.id) || [];
-      let valuesData: any[] = [];
-      
-      if (assetIds.length > 0) {
-        const { data: values, error: valuesError } = await supabase
-          .from('library_asset_values')
-          .select('asset_id, field_id, value_json')
-          .in('asset_id', assetIds);
-        
-        if (valuesError) throw valuesError;
-        valuesData = values || [];
-      }
-      
-      // Group values by asset
-      const valuesByAsset = new Map<string, Record<string, any>>();
-      valuesData.forEach((v: any) => {
-        if (!valuesByAsset.has(v.asset_id)) {
-          valuesByAsset.set(v.asset_id, {});
-        }
-        
-        // Parse JSON strings for complex types
-        let parsedValue = v.value_json;
-        if (typeof parsedValue === 'string' && parsedValue.trim() !== '') {
-          try {
-            parsedValue = JSON.parse(parsedValue);
-          } catch {
-            // Keep original value if parsing fails
-          }
-        }
-        
-        valuesByAsset.get(v.asset_id)![v.field_id] = parsedValue;
-      });
-      
+      // 使用与版本快照完全一致的服务读取当前库数据，避免「当前视图」和「版本快照」两套取数逻辑
+      const assetRows: AssetRow[] = await getLibraryAssetsWithProperties(supabase, libraryId);
+
       // Populate Yjs with data (using Y.Map for propertyValues)
       // Always clear existing Yjs state first to avoid mixing old and new data
       yDoc.transact(() => {
         yAssets.clear();
         
-        assetsData?.forEach((asset: any) => {
+        assetRows.forEach((asset: AssetRow) => {
           const yAsset = new Y.Map();
           yAsset.set('name', asset.name);
           
           // Create Y.Map for propertyValues (nested structure)
           const yPropertyValues = new Y.Map();
-          const values = valuesByAsset.get(asset.id) || {};
+          const values = asset.propertyValues || {};
           Object.entries(values).forEach(([fieldId, value]) => {
             // For complex objects, use deep copy to avoid reference issues
             let valueForYjs = value;
@@ -213,8 +174,10 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
           });
           yAsset.set('propertyValues', yPropertyValues);
           
-          yAsset.set('created_at', asset.created_at);
-          yAssets.set(asset.id, yAsset);
+          if (asset.created_at) {
+            yAsset.set('created_at', asset.created_at);
+          }
+          yAssets.set(asset.id, yAsset as any);
         });
       });
       
@@ -261,6 +224,39 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       }
     };
   }, [libraryId, loadInitialData]);
+
+  // Realtime: 当有人成功 restore 一个版本时，所有协作者自动从 DB 重新加载一次
+  useEffect(() => {
+    if (!libraryId) return;
+
+    const channel = supabase
+      .channel(`library-versions-restore:${libraryId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'library_versions',
+          filter: `library_id=eq.${libraryId}`,
+        },
+        (payload) => {
+          try {
+            const row: any = payload.new;
+            if (row?.version_type === 'restore') {
+              // 有新 restore 版本记录插入，说明库已被回滚到某个快照 → 强制用 DB 覆盖本地 Yjs
+              loadInitialData();
+            }
+          } catch (err) {
+            console.error('[LibraryDataContext] Failed to handle restore realtime event', err);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [libraryId, supabase, loadInitialData]);
   
   // Batch queue for cell updates - apply in one transact so UI updates at once (fixes "one by one" disappearing)
   const cellUpdateQueueRef = useRef<CellUpdateEvent[]>([]);
