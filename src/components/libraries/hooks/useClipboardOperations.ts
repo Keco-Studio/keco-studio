@@ -696,12 +696,12 @@ export function useClipboardOperations({
       return;
     }
 
-    // 防重入：避免快捷键/菜单重复触发导致「一次 paste 执行两遍」出现多扩行、重复内容
+    
     if (isPastingRef.current) return;
     isPastingRef.current = true;
 
     try {
-    // 使用与表格一致的「视图行」计算锚点和扩行，避免 merge 后 yRows 与视图不同步导致 paste 空白/不扩行
+   
     const viewRows = getAllRowsForCellSelection();
     let bestRowIndex = Number.POSITIVE_INFINITY;
     let bestPropertyIndex = Number.POSITIVE_INFINITY;
@@ -718,7 +718,7 @@ export function useClipboardOperations({
       }
     });
     if (bestRowIndex === Number.POSITIVE_INFINITY || bestPropertyIndex === Number.POSITIVE_INFINITY) {
-      setToastMessage({ message: '请先选择要粘贴到的单元格', type: 'default' });
+      setToastMessage({ message: 'Please select a cell or row to paste into', type: 'default' });
       setTimeout(() => setToastMessage(null), 2000);
       return;
     }
@@ -750,7 +750,7 @@ export function useClipboardOperations({
     if (result.updates.length > 0 && onUpdateAsset) {
       setIsSaving(true);
       try {
-        // 视图行索引与 Yjs 可能不一致（乐观行、sync 顺序），用 row.id 查 Yjs 索引再写回
+        
         const ySnapshot = yRows.toArray();
         const idToYIndex = new Map<string, number>();
         ySnapshot.forEach((r: AssetRow, idx: number) => idToYIndex.set(r.id, idx));
@@ -766,7 +766,7 @@ export function useClipboardOperations({
           yRows.insert(index, [row]);
         });
 
-        // 粘贴到现有行后设置乐观编辑，避免 useYjsSync 用 props（如清空后的数据）覆盖 yRows 导致粘贴内容被抹掉
+        
         setOptimisticEditUpdates((prev) => {
           const next = new Map(prev);
           rowsToUpdate.forEach(({ row }) => {
@@ -775,7 +775,7 @@ export function useClipboardOperations({
           return next;
         });
 
-        // 与 delete row 一致：多行走批量接口
+        
         const pasteUpdates = rowsToUpdate
           .filter(({ row }) => !row.id.startsWith('temp-'))
           .map(({ row }) => ({ assetId: row.id, assetName: row.name ?? '', propertyValues: row.propertyValues }));

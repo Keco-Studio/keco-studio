@@ -1,18 +1,18 @@
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 
-/** 粘贴锚点：左上角单元格的行索引和列索引（基于当前行列表） */
+/** Paste anchor: row and column index of the top-left cell (based on current row list) */
 export type PasteAnchor = { rowIndex: number; colIndex: number };
 
-/** 剪贴板矩阵：与 copy 时一致的二维数组，行 x 列 */
+/** Clipboard matrix: 2D array matching copy layout, rows x columns */
 export type ClipboardMatrix = Array<Array<string | number | null>>;
 
-/** 纯函数：对当前行快照应用一次粘贴，得到要更新的行和要新建的行 */
+/** Pure function: apply one paste to current row snapshot; returns rows to update and rows to create */
 export type ApplyPasteResult = {
-  /** 对已有行的更新，按 rowIndex 升序，便于按顺序写回 Yjs */
+  /** Updates to existing rows, sorted by rowIndex ascending for writing back to Yjs in order */
   updates: Array<{ rowIndex: number; row: AssetRow }>;
-  /** 需要追加的新行（无 id），顺序即追加顺序 */
+  /** New rows to append (no id), order is append order */
   creates: Array<{ name: string; propertyValues: Record<string, any> }>;
-  /** 是否存在类型不匹配（若有则调用方应只提示，不应用） */
+  /** Whether there is a type mismatch (caller should only show message, not apply) */
   typeMismatch: boolean;
 };
 
@@ -48,14 +48,14 @@ function convertCellValue(
 }
 
 /**
- * 对当前行快照应用一次粘贴操作（纯函数，可单测）。
- * 以 anchor 为左上角，将 matrix 按行/列贴到 rows 上；不足的行视为“新建行”。
+ * Apply one paste to the current row snapshot (pure function, unit-testable).
+ * Uses anchor as top-left; pastes matrix onto rows by row/column; missing rows are treated as new rows.
  *
- * @param rows 当前行列表快照（通常来自 yRows.toArray()）
- * @param properties 列定义（顺序与表格一致）
- * @param anchor 粘贴起点 { rowIndex, colIndex }
- * @param matrix 剪贴板二维数组
- * @param sourcePropertyKeys 可选，copy 时的列 key 顺序，用于类型兼容检查
+ * @param rows Current row list snapshot (typically from yRows.toArray())
+ * @param properties Column definitions (order matches table)
+ * @param anchor Paste start { rowIndex, colIndex }
+ * @param matrix Clipboard 2D array
+ * @param sourcePropertyKeys Optional; column key order from copy, for type compatibility check
  */
 export function applyPasteToRows(
   rows: AssetRow[],

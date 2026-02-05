@@ -89,19 +89,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     assetsRef.current = assets;
   }, [assets]);
   
-  // IndexedDB persistence
-  useEffect(() => {
-    const persistence = new IndexeddbPersistence(`library-${libraryId}`, yDoc);
-    
-    persistence.on('synced', () => {
-      setIsSynced(true);
-    });
-    
-    return () => {
-      persistence.destroy();
-    };
-  }, [yDoc, libraryId]);
-  
   // Sync Yjs Map to React state
   useEffect(() => {
     const updateAssetsFromYjs = () => {
@@ -243,6 +230,18 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     loadInitialData();
   }, [loadInitialData]);
 
+  // IndexedDB persistence — after restore, overwrite with DB so collaborative view matches server (fixes 44 vs 28 row mismatch)
+  useEffect(() => {
+    const persistence = new IndexeddbPersistence(`library-${libraryId}`, yDoc);
+    persistence.on('synced', () => {
+      setIsSynced(true);
+      loadInitialData();
+    });
+    return () => {
+      persistence.destroy();
+    };
+  }, [yDoc, libraryId, loadInitialData]);
+
   // Reload data when a library restore event is dispatched
   useEffect(() => {
     const handleLibraryRestored = (event: Event) => {
@@ -263,51 +262,45 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     };
   }, [libraryId, loadInitialData]);
   
+  // Batch queue for cell updates - apply in one transact so UI updates at once (fixes "one by one" disappearing)
+  const cellUpdateQueueRef = useRef<CellUpdateEvent[]>([]);
+  const cellUpdateFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  
+  const flushCellUpdateQueue = useCallback(() => {
+    const events = cellUpdateQueueRef.current;
+    cellUpdateQueueRef.current = [];
+    if (events.length === 0) return;
+    
+    yDoc.transact(() => {
+      for (const event of events) {
+        const yAsset = yAssets.get(event.assetId);
+        if (!yAsset) continue;
+        const yPropertyValues = yAsset.get('propertyValues') as Y.Map<any>;
+        if (!yPropertyValues) continue;
+        const currentValue = yPropertyValues.get(event.propertyKey);
+        if (JSON.stringify(currentValue) === JSON.stringify(event.newValue)) continue;
+        
+        let valueForYjs = event.newValue;
+        if (event.newValue !== null && typeof event.newValue === 'object') {
+          valueForYjs = JSON.parse(JSON.stringify(event.newValue));
+        }
+        yPropertyValues.set(event.propertyKey, valueForYjs);
+        if (event.propertyKey === 'name') {
+          yAsset.set('name', valueForYjs ?? '');
+        }
+      }
+    });
+  }, [yAssets, yDoc]);
+  
   // Realtime collaboration event handlers
   const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
-    // console.log('[LibraryDataContext] handleCellUpdateEvent received:', { 
-    //   assetId: event.assetId, 
-    //   propertyKey: event.propertyKey, 
-    //   newValue: event.newValue,
-    //   newValueType: typeof event.newValue,
-    //   userId: event.userId 
-    // });
-    
-    // Update Yjs (which will trigger React state update)
-    const yAsset = yAssets.get(event.assetId);
-    if (!yAsset) {
-      console.warn(`[LibraryDataContext] ❌ Asset ${event.assetId} not found for cell update`);
-      return;
-    }
-    
-    const yPropertyValues = yAsset.get('propertyValues') as Y.Map<any>;
-    if (!yPropertyValues) {
-      console.warn(`[LibraryDataContext] ❌ propertyValues not found for asset ${event.assetId}`);
-      return;
-    }
-    
-    // Only update if value actually changed to avoid unnecessary re-renders
-    const currentValue = yPropertyValues.get(event.propertyKey);
-    // console.log('[LibraryDataContext] Current Yjs value:', currentValue, 'currentValueType:', typeof currentValue);
-    
-    if (JSON.stringify(currentValue) === JSON.stringify(event.newValue)) {
-      // console.log('[LibraryDataContext] Values are equal, skipping update');
-      return;
-    }
-    
-    // For complex objects (like image/file metadata), create a deep copy to ensure proper synchronization
-    let valueForYjs = event.newValue;
-    if (event.newValue !== null && typeof event.newValue === 'object') {
-      valueForYjs = JSON.parse(JSON.stringify(event.newValue));
-      // console.log('[LibraryDataContext] Created deep copy for Yjs from broadcast:', valueForYjs);
-    }
-    
-    // Update the nested Y.Map (this will trigger observeDeep)
-    yDoc.transact(() => {
-      yPropertyValues.set(event.propertyKey, valueForYjs);
-    });
-    // console.log('[LibraryDataContext] ✅ Updated Yjs from broadcast');
-  }, [yAssets, yDoc]);
+    cellUpdateQueueRef.current.push(event);
+    if (cellUpdateFlushTimerRef.current) clearTimeout(cellUpdateFlushTimerRef.current);
+    cellUpdateFlushTimerRef.current = setTimeout(() => {
+      cellUpdateFlushTimerRef.current = null;
+      flushCellUpdateQueue();
+    }, 16); // ~1 frame, batch rapid updates
+  }, [flushCellUpdateQueue]);
   
   const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
     // Add new asset to Yjs (using Y.Map for propertyValues)
@@ -325,6 +318,11 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       yPropertyValues.set(fieldId, valueForYjs);
     });
     yAsset.set('propertyValues', yPropertyValues);
+    // Ensure created_at so allAssets sort is consistent across clients (fixes row order mismatch)
+    const createdAt =
+      event.targetCreatedAt ||
+      (event.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString());
+    yAsset.set('created_at', createdAt);
     
     yDoc.transact(() => {
       yAssets.set(event.assetId, yAsset);
@@ -640,14 +638,15 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     presenceTracking.updateActiveCell(assetId, fieldId);
   }, [presenceTracking]);
   
-  // Convert Map to ordered array (sort by created_at so insert-above/insert-below position is correct)
+  // Convert Map to ordered array (sort by created_at then id for deterministic order across clients)
   const allAssets = useMemo(() => {
     return Array.from(assets.values()).sort((a, b) => {
       // Items with created_at sort by time; items without created_at go to the end (avoid new row at end)
-      if (!a.created_at && !b.created_at) return 0;
+      if (!a.created_at && !b.created_at) return a.id.localeCompare(b.id);
       if (!a.created_at) return 1;
       if (!b.created_at) return -1;
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id);
     });
   }, [assets]);
   
@@ -656,6 +655,10 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      if (cellUpdateFlushTimerRef.current) {
+        clearTimeout(cellUpdateFlushTimerRef.current);
+        cellUpdateFlushTimerRef.current = null;
+      }
     };
   }, []);
   

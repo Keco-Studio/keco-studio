@@ -565,32 +565,76 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
         },
         async (payload) => {
           const newRecord = payload.new as any;
-          
-          if (newRecord && newRecord.id && newRecord.name) {
-            // Fetch property values for this asset
+          // Accept any new row with id so collaborators see insert-above/insert-below (allow empty name)
+          if (!newRecord?.id) return;
+          try {
             const { data: values } = await supabase
               .from('library_asset_values')
               .select('field_id, value_json')
               .eq('asset_id', newRecord.id);
-            
             const propertyValues: Record<string, any> = {};
             values?.forEach((v: any) => {
               propertyValues[v.field_id] = v.value_json;
             });
-            
-            // Create a synthetic AssetCreateEvent
             const syntheticEvent: AssetCreateEvent = {
               type: 'asset:create',
-              userId: '', // Unknown user (from database)
+              userId: '',
               userName: 'Another user',
               assetId: newRecord.id,
-              assetName: newRecord.name,
+              assetName: newRecord.name ?? '',
               propertyValues,
               timestamp: Date.now(),
+              targetCreatedAt: newRecord.created_at ?? new Date().toISOString(),
             };
-            
             handleAssetCreateEvent({ payload: syntheticEvent });
+          } catch (err) {
+            console.error('[useRealtimeSubscription] library_assets INSERT handler:', err);
+            // Still push minimal event so collaborator sees the new row
+            handleAssetCreateEvent({
+              payload: {
+                type: 'asset:create',
+                userId: '',
+                userName: 'Another user',
+                assetId: newRecord.id,
+                assetName: newRecord.name ?? '',
+                propertyValues: {},
+                timestamp: Date.now(),
+                targetCreatedAt: newRecord.created_at ?? new Date().toISOString(),
+              },
+            });
           }
+        }
+      )
+      // Subscribe to library_assets UPDATE (e.g. name change) so yAsset.name syncs immediately
+      // postgres_changes on library_asset_values uses field_id as propertyKey; only this path
+      // emits propertyKey='name' so LibraryDataContext can update yAsset.set('name', ...).
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'library_assets',
+          filter: `library_id=eq.${libraryId}`
+        },
+        (payload) => {
+          const newRecord = payload.new as any;
+          const oldRecord = payload.old as any;
+          if (!newRecord?.id) return;
+          const newName = newRecord.name ?? '';
+          const oldName = oldRecord?.name;
+          if (oldName === newName) return;
+          const syntheticEvent: CellUpdateEvent = {
+            type: 'cell:update',
+            userId: '',
+            userName: 'Another user',
+            avatarColor: '#888888',
+            assetId: newRecord.id,
+            propertyKey: 'name',
+            newValue: newName,
+            oldValue: oldName,
+            timestamp: Date.now(),
+          };
+          handleCellUpdateEvent({ payload: syntheticEvent });
         }
       )
       // Subscribe to asset deletion events

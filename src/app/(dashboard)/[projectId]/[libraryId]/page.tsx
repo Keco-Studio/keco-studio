@@ -91,6 +91,7 @@ export default function LibraryPage() {
     queryKey: queryKeys.librarySchema(libraryId),
     queryFn: () => getLibrarySchema(supabase, libraryId),
     enabled: !!libraryId,
+    refetchOnMount: 'always',
   });
 
   // LibraryDataContext is now the single source of truth for current assets
