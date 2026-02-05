@@ -284,9 +284,24 @@ happy_path_direct_library as (
   select id, 'Direct Library', 'Library created directly under project'
   from happy_path_project
   returning id, project_id
+),
+happy_path_collaborator as (
+  -- CRITICAL: Add project owner as admin collaborator
+  -- This is required for RLS policies to work - users can only access projects they collaborate on
+  insert into public.project_collaborators (user_id, project_id, role, invited_by, invited_at, accepted_at)
+  select 
+    owner_id,
+    id,
+    'admin',
+    NULL,  -- Self-added (owner)
+    now(),
+    now()  -- Auto-accepted
+  from happy_path_project
+  on conflict (user_id, project_id) do nothing
+  returning user_id, project_id
 )
 -- All data created successfully
-select 1 from happy_path_direct_library;
+select 1 from happy_path_collaborator;
 
 -- ==========================================
 -- File Upload Security Test User

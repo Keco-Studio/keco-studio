@@ -58,7 +58,7 @@ test.describe('Happy Path - Complete User Journey', () => {
     // Authenticate user before navigating to projects
     const loginPage = new LoginPage(page);
     await loginPage.goto();
-    await loginPage.login(users.seedEmpty2);
+    await loginPage.login(users.seedEmpty);
     // expectLoginSuccess now includes comprehensive verification:
     // - URL change, network idle, auth token presence, and user avatar visibility
     await loginPage.expectLoginSuccess();

@@ -60,12 +60,10 @@ test.describe('Destructive Tests - Delete Operations', () => {
     // - URL change, network idle, auth token presence, and user avatar visibility
     await loginPage.expectLoginSuccess();
 
-    // Navigate to projects page first to ensure we're on the right page
-    await projectPage.goto();
-    await projectPage.waitForPageLoad();
-
-    // Navigate to the test project (pre-seeded, matches happy-path output)
-    await projectPage.openProject(projects.happyPath.name);
+    // Note: seed-happy-path user has exactly one project, so after login success,
+    // the app will auto-redirect from /projects to /{projectId} (see Sidebar.tsx auto-navigate logic).
+    // This is the expected behavior - we're already in the project page.
+    // The pre-seeded project is "Livestock Management Project"
     await libraryPage.waitForPageLoad();
   });
 
@@ -165,8 +163,8 @@ test.describe('Destructive Tests - Delete Operations', () => {
     // STEP 2: Delete Libraries
     // ==========================================
     await test.step('Delete all libraries', async () => {
-      // Navigate back to project root
-      await libraryPage.navigateBackToProject();
+      // We're already in the project root page after beforeEach
+      // No need to navigate back
       
       // Delete breed library
       await libraryPage.deleteLibrary(libraries.breed.name);
