@@ -1,5 +1,6 @@
 import React from 'react';
 import Image from 'next/image';
+import { Tooltip } from 'antd';
 import { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import { CellKey } from '@/components/libraries/hooks/useCellSelection';
 import { CellEditor } from './CellEditor';
@@ -194,15 +195,17 @@ export const TextCell: React.FC<TextCellProps> = ({
           {propertyIndex === 0 ? (
             // First column: show text + view detail button
             <div className={styles.cellContent}>
-              <span 
-                className={styles.cellText}
-                onDoubleClick={(e) => {
-                  // Ensure double click on first column text triggers editing
-                  onCellDoubleClick(row, property, e);
-                }}
-              >
-                {display || ''}
-              </span>
+              <Tooltip title={display || ''} placement="topLeft" mouseEnterDelay={0.5}>
+                <span 
+                  className={styles.cellText}
+                  onDoubleClick={(e) => {
+                    // Ensure double click on first column text triggers editing
+                    onCellDoubleClick(row, property, e);
+                  }}
+                >
+                  {display || ''}
+                </span>
+              </Tooltip>
               <button
                 className={styles.viewDetailButton}
                 onClick={(e) => {
@@ -222,10 +225,12 @@ export const TextCell: React.FC<TextCellProps> = ({
               </button>
             </div>
           ) : (
-            // Other fields: show text only
-            <span className={styles.cellText}>
-              {display || ''}
-            </span>
+            // Other fields: show text only with tooltip
+            <Tooltip title={display || ''} placement="topLeft" mouseEnterDelay={0.5}>
+              <span className={styles.cellText}>
+                {display || ''}
+              </span>
+            </Tooltip>
           )}
         </>
       )}

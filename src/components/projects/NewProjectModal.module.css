@@ -244,7 +244,7 @@
 .primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-  background: #F8C5D8;
+  background: #0B99FF14;
 }
 
 .error {

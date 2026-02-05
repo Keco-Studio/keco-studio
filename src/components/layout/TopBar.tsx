@@ -314,7 +314,17 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             onClick={handlePredefineCancelOrDelete}
           >
             <span className={styles.topbarPillIcon}>
-              <Image src={topbarPredefinePublishIcon} alt="Cancel or Delete" width={16} height={16} className="icon-16" />
+              <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-16">
+                <g clipPath="url(#clip0_1420_346)">
+                  <path d="M8 8.6665L5.66666 10.9998M8 14.6665V8.6665V14.6665ZM8 8.6665L10.3333 10.9998L8 8.6665Z" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M13.3333 11.7384C14.3291 11.3482 15.3333 10.4594 15.3333 8.66683C15.3333 6.00016 13.1111 5.3335 12 5.3335C12 4.00016 12 1.3335 8 1.3335C4 1.3335 4 4.00016 4 5.3335C2.88888 5.3335 0.666664 6.00016 0.666664 8.66683C0.666664 10.4594 1.67085 11.3482 2.66666 11.7384" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </g>
+                <defs>
+                  <clipPath id="clip0_1420_346">
+                    <rect width="16" height="16" fill="white"/>
+                  </clipPath>
+                </defs>
+              </svg>
             </span>
             <span>{isPredefineCreatingNewSection ? 'Cancel' : 'Delete Section'}</span>
           </button>
@@ -323,7 +333,17 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             onClick={handlePredefinePublish}
           >
             <span className={styles.topbarPillIcon}>
-              <Image src={topbarPredefinePublishIcon} alt="Publish" width={16} height={16} className="icon-16" />
+              <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-16">
+                <g clipPath="url(#clip0_1420_347)">
+                  <path d="M8 8.6665L5.66666 10.9998M8 14.6665V8.6665V14.6665ZM8 8.6665L10.3333 10.9998L8 8.6665Z" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M13.3333 11.7384C14.3291 11.3482 15.3333 10.4594 15.3333 8.66683C15.3333 6.00016 13.1111 5.3335 12 5.3335C12 4.00016 12 1.3335 8 1.3335C4 1.3335 4 4.00016 4 5.3335C2.88888 5.3335 0.666664 6.00016 0.666664 8.66683C0.666664 10.4594 1.67085 11.3482 2.66666 11.7384" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </g>
+                <defs>
+                  <clipPath id="clip0_1420_347">
+                    <rect width="16" height="16" fill="white"/>
+                  </clipPath>
+                </defs>
+              </svg>
             </span>
             <span>Publish</span>
           </button>
@@ -393,24 +413,27 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               style={{ marginRight: '5px', cursor: 'pointer' }} 
               onClick={handleSidebarToggle}
             />
-            {displayBreadcrumbs.map((item, index) => (
-              <span key={index}>
-                <button
-                  className={`${styles.breadcrumbItem} ${
-                    index === displayBreadcrumbs.length - 1
-                      ? styles.breadcrumbItemActive
-                      : styles.breadcrumbItemClickable
-                  }`}
-                  onClick={() => handleBreadcrumbClick(item.path, index)}
-                  disabled={index === displayBreadcrumbs.length - 1}
-                >
-                  {item.label}
-                </button>
-                {index < displayBreadcrumbs.length - 1 && (
-                  <span className={styles.breadcrumbSeparator}> / </span>
-                )}
-              </span>
-            ))}
+            {displayBreadcrumbs.map((item, index) => {
+              const isLast = index === displayBreadcrumbs.length - 1;
+              const label = isLast && isAssetDetail ? 'asset' : item.label;
+
+              return (
+                <span key={index}>
+                  <button
+                    className={`${styles.breadcrumbItem} ${
+                      isLast ? styles.breadcrumbItemActive : styles.breadcrumbItemClickable
+                    }`}
+                    onClick={() => handleBreadcrumbClick(item.path, index)}
+                    disabled={isLast}
+                  >
+                    {label}
+                  </button>
+                  {index < displayBreadcrumbs.length - 1 && (
+                    <span className={styles.breadcrumbSeparator}> / </span>
+                  )}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>

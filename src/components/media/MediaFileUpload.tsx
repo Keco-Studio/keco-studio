@@ -2,6 +2,7 @@
 
 import { useState, useRef } from 'react';
 import Image from 'next/image';
+import { Tooltip } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getCurrentUserId } from '@/lib/services/authorizationService';
@@ -195,7 +196,9 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
                 <Image src={assetFileIcon} alt="" width={24} height={24} className="icon-24" />
               </div>
             )}
-            <span className={styles.uploadedFileName}>{value.fileName}</span>
+            <Tooltip title={value.fileName} placement="topLeft" mouseEnterDelay={0.5}>
+              <span className={styles.uploadedFileName}>{value.fileName}</span>
+            </Tooltip>
           </div>
           <button
             type="button"

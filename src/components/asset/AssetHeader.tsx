@@ -39,6 +39,7 @@ interface AssetHeaderProps {
   currentUserAvatarColor?: string;
   userRole: CollaboratorRole;
   presenceUsers: PresenceState[];
+  firstColumnLabel?: string; // Label of the first column for display
 }
 
 export function AssetHeader({
@@ -53,12 +54,18 @@ export function AssetHeader({
   currentUserAvatarColor = '#999999',
   userRole,
   presenceUsers,
+  firstColumnLabel,
 }: AssetHeaderProps) {
   const router = useRouter();
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showMembersPanel, setShowMembersPanel] = useState(false);
   const membersPanelRef = useRef<HTMLDivElement>(null);
   const hasInitializedPresence = useRef(false);
+
+  const truncatedAssetName = useMemo(() => {
+    const name = assetName || 'Untitled';
+    return name.length > 20 ? `${name.slice(0, 20)}...` : name;
+  }, [assetName]);
 
   // Get role display text
   const getRoleText = (role: CollaboratorRole): string => {
@@ -196,7 +203,9 @@ export function AssetHeader({
             />
           </button>
         )}
-        <h1 className={styles.title}>{assetName || 'Untitled Asset'}</h1>
+        <Tooltip title={assetName || 'Untitled'}>
+          <h1 className={styles.title}>{truncatedAssetName}</h1>
+        </Tooltip>
       </div>
 
       <div className={styles.rightSection}>
@@ -269,9 +278,14 @@ export function AssetHeader({
                         {getUserInitials(currentUser.userName)}
                       </Avatar>
                       <div className={styles.memberInfo}>
-                        <div className={styles.memberName}>
-                          {currentUser.userName} <span className={styles.youLabel}>(you)</span>
-                        </div>
+                        <Tooltip title={currentUser.userName}>
+                          <div className={styles.memberName}>
+                            {currentUser.userName && currentUser.userName.length > 10
+                              ? `${currentUser.userName.slice(0, 10)}...`
+                              : currentUser.userName}{' '}
+                            <span className={styles.youLabel}>(you)</span>
+                          </div>
+                        </Tooltip>
                       </div>
                     </div>
                   </div>
@@ -296,9 +310,13 @@ export function AssetHeader({
                           {getUserInitials(user.userName)}
                         </Avatar>
                         <div className={styles.memberInfo}>
-                          <div className={styles.memberName}>
-                            {user.userName}
-                          </div>
+                          <Tooltip title={user.userName}>
+                            <div className={styles.memberName}>
+                              {user.userName && user.userName.length > 10
+                                ? `${user.userName.slice(0, 10)}...`
+                                : user.userName}
+                            </div>
+                          </Tooltip>
                         </div>
                       </div>
                     ))

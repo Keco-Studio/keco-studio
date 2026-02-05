@@ -4,6 +4,7 @@ export type AssetHoverDetails = {
   name: string;
   libraryName: string;
   libraryId: string;
+  firstColumnLabel?: string;
 };
 
 export function useAssetHover(supabase: any): {
@@ -50,10 +51,42 @@ export function useAssetHover(supabase: any): {
         if (error) throw error;
 
         if (data) {
+          // Get the first column field definition for this asset's library
+          const { data: fieldDefs, error: fieldError } = await supabase
+            .from('library_field_definitions')
+            .select('id, label, order_index')
+            .eq('library_id', data.library_id)
+            .order('order_index', { ascending: true })
+            .limit(1);
+
+          const firstField = fieldDefs && fieldDefs.length > 0 ? fieldDefs[0] : null;
+          const firstFieldId = firstField?.id || null;
+          const firstFieldLabel = firstField?.label || 'Name';
+
+          // Get the first column value for this asset
+          let firstColumnValue = data.name; // Fallback to name
+          if (firstFieldId) {
+            const { data: valueData, error: valueError } = await supabase
+              .from('library_asset_values')
+              .select('value_json')
+              .eq('asset_id', hoveredAssetId)
+              .eq('field_id', firstFieldId)
+              .single();
+
+            if (!valueError && valueData?.value_json !== null && valueData?.value_json !== undefined) {
+              const rawValue = valueData.value_json;
+              const strValue = String(rawValue).trim();
+              if (strValue !== '' && strValue !== 'null' && strValue !== 'undefined') {
+                firstColumnValue = strValue;
+              }
+            }
+          }
+
           setHoveredAssetDetails({
-            name: data.name,
+            name: firstColumnValue || 'Untitled',
             libraryName: (data.libraries as any)?.name || 'Unknown Library',
             libraryId: data.library_id,
+            firstColumnLabel: firstFieldLabel,
           });
         }
       } catch (error) {

@@ -50,6 +50,13 @@
   border-radius: 5px;
   padding: 0.25rem;
 }
+.assetCardTitle {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #111827;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
 .clearButton {
   margin-left: auto;
   border: none;
@@ -104,7 +111,7 @@
   width: 100%;
   height: 45px;
   border-bottom: 1px solid #e5e7eb;
-  background: #FF005E0F;
+  background: #0B99FF14;
 }
 
 .dropdownHeader span {
@@ -253,7 +260,13 @@
   width: 100%;
   height: 45px;
   border-bottom: 1px solid #e5e7eb;
-  background: #FF005E0F;
+  background: #0B99FF14;
+}
+
+.assetCardLibraryName {
+  font-size: 0.875rem;
+  color: #0B99FF;
+  font-weight: 400;
 }
 
 .expandedHeader span {

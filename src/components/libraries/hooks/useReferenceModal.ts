@@ -48,7 +48,7 @@ export function useReferenceModal(params: UseReferenceModalParams) {
   const [referenceModalRowId, setReferenceModalRowId] = useState<string | null>(null);
   const [assetNamesCache, setAssetNamesCache] = useState<Record<string, string>>({});
 
-  // Load asset names by ID from reference fields
+  // Load asset names by ID from reference fields (using first column value)
   useEffect(() => {
     const loadAssetNames = async () => {
       const assetIds = new Set<string>();
@@ -70,13 +70,54 @@ export function useReferenceModal(params: UseReferenceModalParams) {
       }
       if (assetIds.size === 0 || !supabase) return;
       try {
-        const { data, error } = await supabase
+        // Get assets
+        const { data: assetsData, error: assetsError } = await supabase
           .from('library_assets')
-          .select('id, name')
+          .select('id, library_id')
           .in('id', Array.from(assetIds));
-        if (error) throw error;
+        if (assetsError) throw assetsError;
+
         const namesMap: Record<string, string> = {};
-        (data || []).forEach((a) => { namesMap[a.id] = a.name; });
+        
+        // For each asset, get the first column value
+        for (const asset of assetsData || []) {
+          // Get first column field definition
+          const { data: fieldDefs, error: fieldError } = await supabase
+            .from('library_field_definitions')
+            .select('id')
+            .eq('library_id', asset.library_id)
+            .order('order_index', { ascending: true })
+            .limit(1);
+
+          if (fieldError) continue;
+
+          const firstFieldId = fieldDefs && fieldDefs.length > 0 ? fieldDefs[0].id : null;
+          
+          if (firstFieldId) {
+            // Get first column value
+            const { data: valueData, error: valueError } = await supabase
+              .from('library_asset_values')
+              .select('value_json')
+              .eq('asset_id', asset.id)
+              .eq('field_id', firstFieldId)
+              .single();
+
+            if (!valueError && valueData?.value_json !== null && valueData?.value_json !== undefined) {
+              const rawValue = valueData.value_json;
+              const strValue = String(rawValue).trim();
+              if (strValue !== '' && strValue !== 'null' && strValue !== 'undefined') {
+                namesMap[asset.id] = strValue;
+              } else {
+                namesMap[asset.id] = 'Untitled';
+              }
+            } else {
+              namesMap[asset.id] = 'Untitled';
+            }
+          } else {
+            namesMap[asset.id] = 'Untitled';
+          }
+        }
+
         setAssetNamesCache((prev) => ({ ...prev, ...namesMap }));
       } catch (e) {
         console.error('Failed to load asset names:', e);
@@ -93,11 +134,45 @@ export function useReferenceModal(params: UseReferenceModalParams) {
       try {
         const { data, error } = await supabase
           .from('library_assets')
-          .select('id, name')
+          .select('id, library_id')
           .eq('id', ev.detail.assetId)
           .single();
-        if (!error && data) {
-          setAssetNamesCache((prev) => ({ ...prev, [data.id]: data.name }));
+        if (error || !data) return;
+
+        // Get first column field definition
+        const { data: fieldDefs, error: fieldError } = await supabase
+          .from('library_field_definitions')
+          .select('id')
+          .eq('library_id', data.library_id)
+          .order('order_index', { ascending: true })
+          .limit(1);
+
+        if (fieldError) return;
+
+        const firstFieldId = fieldDefs && fieldDefs.length > 0 ? fieldDefs[0].id : null;
+        
+        if (firstFieldId) {
+          // Get first column value
+          const { data: valueData, error: valueError } = await supabase
+            .from('library_asset_values')
+            .select('value_json')
+            .eq('asset_id', data.id)
+            .eq('field_id', firstFieldId)
+            .single();
+
+          if (!valueError && valueData?.value_json !== null && valueData?.value_json !== undefined) {
+            const rawValue = valueData.value_json;
+            const strValue = String(rawValue).trim();
+            if (strValue !== '' && strValue !== 'null' && strValue !== 'undefined') {
+              setAssetNamesCache((prev) => ({ ...prev, [data.id]: strValue }));
+            } else {
+              setAssetNamesCache((prev) => ({ ...prev, [data.id]: 'Untitled' }));
+            }
+          } else {
+            setAssetNamesCache((prev) => ({ ...prev, [data.id]: 'Untitled' }));
+          }
+        } else {
+          setAssetNamesCache((prev) => ({ ...prev, [data.id]: 'Untitled' }));
         }
       } catch (e) {
         console.error('Failed to refresh asset name:', e);
