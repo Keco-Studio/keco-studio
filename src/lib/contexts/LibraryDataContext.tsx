@@ -99,6 +99,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         const name = yAsset.get('name') || 'Untitled';
         const yPropertyValues = yAsset.get('propertyValues');
         const createdAt = yAsset.get('created_at');
+        const rowIndex = yAsset.get('row_index');
         
         // Convert Y.Map to plain object
         const propertyValues: Record<string, any> = {};
@@ -117,6 +118,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
           name,
           propertyValues,
           created_at: createdAt,
+          rowIndex: typeof rowIndex === 'number' ? rowIndex : undefined,
         });
       });
       
@@ -174,9 +176,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
           });
           yAsset.set('propertyValues', yPropertyValues);
           
-          if (asset.created_at) {
-            yAsset.set('created_at', asset.created_at);
-          }
+          if (asset.created_at) yAsset.set('created_at', asset.created_at);
+          if (typeof asset.rowIndex === 'number') yAsset.set('row_index', asset.rowIndex);
           yAssets.set(asset.id, yAsset as any);
         });
       });
@@ -634,10 +635,19 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     presenceTracking.updateActiveCell(assetId, fieldId);
   }, [presenceTracking]);
   
-  // Convert Map to ordered array (sort by created_at then id for deterministic order across clients)
+  // Convert Map to ordered array (sort by rowIndex then id for deterministic order across clients)
   const allAssets = useMemo(() => {
     return Array.from(assets.values()).sort((a, b) => {
-      // Items with created_at sort by time; items without created_at go to the end (avoid new row at end)
+      // Prefer explicit rowIndex when available
+      if (typeof a.rowIndex === 'number' && typeof b.rowIndex === 'number') {
+        if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
+      } else if (typeof a.rowIndex === 'number') {
+        return -1;
+      } else if (typeof b.rowIndex === 'number') {
+        return 1;
+      }
+
+      // Fallback: created_at + id to keep previous behavior for older data
       if (!a.created_at && !b.created_at) return a.id.localeCompare(b.id);
       if (!a.created_at) return 1;
       if (!b.created_at) return -1;

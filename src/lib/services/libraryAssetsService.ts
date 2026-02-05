@@ -32,6 +32,7 @@ type AssetRowDb = {
   library_id: string;
   name: string;
   created_at?: string;
+  row_index?: number;
 };
 
 type AssetValueRow = {
@@ -219,12 +220,11 @@ export async function getLibraryAssetsWithProperties(
   
   const { data: assetData, error: assetError } = await supabase
     .from('library_assets')
-    .select('id, library_id, name, created_at')
+    .select('id, library_id, name, created_at, row_index')
     .eq('library_id', libraryId)
     // IMPORTANT: 排序逻辑必须与前端 allAssets 完全一致：
-    // 先按 created_at，再按 id，避免同一时间戳下 Postgres 返回顺序不确定，
-    // 导致「当前视图」与「版本快照」行序不一致。
-    .order('created_at', { ascending: true })
+    // 先按 row_index，再按 id，避免不同客户端行顺序不一致。
+    .order('row_index', { ascending: true })
     .order('id', { ascending: true });
 
   if (assetError) {
@@ -261,6 +261,7 @@ export async function getLibraryAssetsWithProperties(
       figmaNodeId: null,
       propertyValues: {},
       created_at: asset.created_at,
+      rowIndex: asset.row_index ?? undefined,
     });
   }
 

@@ -32,6 +32,7 @@ export type AssetRow = {
   figmaNodeId?: string | null;
   propertyValues: Record<string, string | number | boolean | null>;
   created_at?: string; // ISO timestamp for ordering assets
+  rowIndex?: number; // explicit row order per library
 };
 
 
