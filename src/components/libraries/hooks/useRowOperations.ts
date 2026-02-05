@@ -195,14 +195,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
         await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
       }
 
-      // 插入完成后触发一次全量 reload，让 LibraryDataContext 从 DB 重新拉取带最新 row_index 的数据，
-      // 确保当前客户端视图中的行顺序与 DB / 其他协作者一致。
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('libraryRestored', { detail: { libraryId: library.id } })
-        );
-      }
-
       await new Promise((r) => setTimeout(r, 500));
       setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
       setTimeout(() => setToastMessage(null), 2000);
@@ -303,13 +295,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
       // 再创建 N 行，rowIndex 从 baseRowIndex 开始递增
       for (let i = 0; i < numRowsToInsert; i++) {
         await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
-      }
-
-      // 同上，插入后强制从 DB 覆盖一次本地 Yjs / assets，行顺序立即与最新 row_index 对齐
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('libraryRestored', { detail: { libraryId: library.id } })
-        );
       }
 
       await new Promise((r) => setTimeout(r, 500));

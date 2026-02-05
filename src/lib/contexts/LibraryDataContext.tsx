@@ -338,6 +338,11 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     console.warn('[LibraryDataContext] Conflict detected:', event);
     handleCellUpdateEvent(event);
   }, [handleCellUpdateEvent]);
+
+  // 行序变更事件：统一触发一次从 DB 的 reload，以后如果有更细粒度的行序事件再优化为局部更新
+  const handleRowOrderChangeEvent = useCallback(() => {
+    loadInitialData();
+  }, [loadInitialData]);
   
   // Initialize realtime subscription
   const realtimeConfig = useMemo(() => {
@@ -355,8 +360,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onAssetCreate: handleAssetCreateEvent,
       onAssetDelete: handleAssetDeleteEvent,
       onConflict: handleConflictEvent,
+      onRowOrderChange: handleRowOrderChangeEvent,
     };
-  }, [libraryId, userProfile, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent]);
+  }, [libraryId, userProfile, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent]);
   
   const realtimeSubscription = useRealtimeSubscription(
     realtimeConfig || {
@@ -369,15 +375,17 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onAssetCreate: () => {},
       onAssetDelete: () => {},
       onConflict: () => {},
+      onRowOrderChange: () => {},
     }
   );
   
-  const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete } = 
+  const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete, broadcastRowOrderChange } = 
     realtimeConfig ? realtimeSubscription : {
       connectionStatus: 'disconnected' as const,
       broadcastCellUpdate: async () => {},
       broadcastAssetCreate: async () => {},
       broadcastAssetDelete: async () => {},
+      broadcastRowOrderChange: async () => {},
     };
   
   // Presence tracking - use useMemo to avoid recreating config on every render
@@ -581,6 +589,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     yDoc.transact(() => {
       yAssets.set(assetId, yAsset);
     });
+
+    // 如果这次创建显式使用了 rowIndex（包括追加、Insert Above/Below、Paste 新行），
+    // 先在本客户端用 DB 结果全量刷新一次，避免本地仍持有旧的 rowIndex 造成“自己这边行出现在末尾”的错觉。
+    if (typeof options?.rowIndex === 'number') {
+      await loadInitialData();
+    }
     
     // 4. Broadcast creation
     if (realtimeConfig) {
@@ -589,10 +603,15 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         insertBeforeRowId: options?.insertBeforeRowId,
         targetCreatedAt: options?.createdAt?.toISOString(),
       });
+      // 如果显式指定了 rowIndex，说明这次创建可能影响到行顺序（包括追加、上下插入、Paste 新行），
+      // 通过单独的 roworder:change 事件提醒所有客户端（包括发起者）用最新的 DB 行序刷新视图。
+      if (typeof options?.rowIndex === 'number') {
+        await broadcastRowOrderChange();
+      }
     }
     
     return assetId;
-  }, [libraryId, supabase, yDoc, yAssets, broadcastAssetCreate, realtimeConfig]);
+  }, [libraryId, supabase, yDoc, yAssets, broadcastAssetCreate, broadcastRowOrderChange, realtimeConfig, loadInitialData]);
   
   const deleteAsset = useCallback(async (assetId: string) => {
     const asset = assetsRef.current.get(assetId);

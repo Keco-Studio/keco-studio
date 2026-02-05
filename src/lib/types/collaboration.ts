@@ -137,7 +137,18 @@ export type AssetDeleteEvent = {
   timestamp: number;
 };
 
-export type RealtimeEvent = CellUpdateEvent | AssetCreateEvent | AssetDeleteEvent;
+export type RowOrderChangeEvent = {
+  type: 'roworder:change';
+  userId: string;
+  userName: string;
+  timestamp: number;
+};
+
+export type RealtimeEvent =
+  | CellUpdateEvent
+  | AssetCreateEvent
+  | AssetDeleteEvent
+  | RowOrderChangeEvent;
 
 // ============================================================================
 // API Request/Response Types

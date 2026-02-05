@@ -20,6 +20,7 @@ import type {
   AssetCreateEvent,
   AssetDeleteEvent,
   OptimisticUpdate,
+  RowOrderChangeEvent,
 } from '@/lib/types/collaboration';
 
 export type RealtimeSubscriptionConfig = {
@@ -32,6 +33,8 @@ export type RealtimeSubscriptionConfig = {
   onAssetCreate: (event: AssetCreateEvent) => void;
   onAssetDelete: (event: AssetDeleteEvent) => void;
   onConflict: (event: CellUpdateEvent, localValue: any) => void;
+  /** 行顺序发生变更时的回调（例如 insert above/below 或批量重排） */
+  onRowOrderChange?: (event: RowOrderChangeEvent) => void;
 };
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
@@ -48,6 +51,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     onAssetCreate,
     onAssetDelete,
     onConflict,
+    onRowOrderChange,
   } = config;
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
@@ -158,6 +162,17 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
     onAssetDelete(event);
   }, [currentUserId, onAssetDelete]);
+
+  /**
+   * Handle incoming row order change events
+   * 对于行序事件，我们不会过滤掉自己的广播：所有客户端（包括发起者）都统一走一遍回调逻辑，
+   * 由上层决定是否触发 reload / 局部重排。
+   */
+  const handleRowOrderChangeEvent = useCallback((payload: any) => {
+    if (!onRowOrderChange) return;
+    const event = payload.payload as RowOrderChangeEvent;
+    onRowOrderChange(event);
+  }, [onRowOrderChange]);
 
   /**
    * Broadcast a cell update to all other clients
@@ -369,6 +384,35 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   }, [currentUserId, currentUserName]);
 
   /**
+   * Broadcast a row order change hint to all clients.
+   * 事件本身不携带具体 rowIndex 列表，上层通常在收到事件后触发一次从 DB 的 reload，
+   * 以 server 为准同步行序。
+   */
+  const broadcastRowOrderChange = useCallback(async (): Promise<void> => {
+    if (!channelRef.current) {
+      console.warn('Cannot broadcast row order change: channel not initialized');
+      return;
+    }
+
+    const event: RowOrderChangeEvent = {
+      type: 'roworder:change',
+      userId: currentUserId,
+      userName: currentUserName,
+      timestamp: Date.now(),
+    };
+
+    try {
+      await channelRef.current.send({
+        type: 'broadcast',
+        event: 'roworder:change',
+        payload: event,
+      });
+    } catch (error) {
+      console.error('Failed to broadcast row order change:', error);
+    }
+  }, [currentUserId, currentUserName]);
+
+  /**
    * Process queued updates after reconnection
    */
   const processQueuedUpdates = useCallback(async () => {
@@ -427,6 +471,9 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       .on('broadcast', { event: 'asset:delete' }, (payload) => {
         // console.log('[useRealtimeSubscription] 📨 Broadcast event received: asset:delete', payload);
         handleAssetDeleteEvent(payload);
+      })
+      .on('broadcast', { event: 'roworder:change' }, (payload) => {
+        handleRowOrderChangeEvent(payload);
       })
       // Add database subscription as backup (ensures updates even if broadcast fails)
       // Listen to both UPDATE and INSERT events
@@ -721,6 +768,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     handleAssetCreateEvent,
     handleAssetDeleteEvent,
     processQueuedUpdates,
+    handleRowOrderChangeEvent,
   ]);
 
   return {
@@ -728,6 +776,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     broadcastCellUpdate,
     broadcastAssetCreate,
     broadcastAssetDelete,
+    broadcastRowOrderChange,
     optimisticUpdates,
     queuedUpdatesCount: queuedUpdates.length,
   };
