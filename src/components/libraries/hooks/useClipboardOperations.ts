@@ -800,27 +800,25 @@ export function useClipboardOperations({
     if (result.creates.length > 0 && onSaveAsset && library) {
       setIsSaving(true);
       try {
-        const now = Date.now();
-        const optimisticAssets: AssetRow[] = [];
+        // 基于当前视图行的最大 rowIndex，为 Paste 产生的新行分配连续的 rowIndex（从 max+1 开始）
+        const currentRows = getAllRowsForCellSelection();
+        let maxRowIndex =
+          currentRows.length > 0
+            ? currentRows.reduce((max, r) => {
+                const idx = typeof r.rowIndex === 'number' ? r.rowIndex : 0;
+                return idx > max ? idx : max;
+              }, 0)
+            : 0;
+
         const savePromises: Array<Promise<void>> = [];
         for (let i = 0; i < result.creates.length; i++) {
           const rowData = result.creates[i];
           const assetName = rowData.name || '';
-          const tempId = `temp-paste-${now}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          optimisticAssets.push({
-            id: tempId,
-            libraryId: library.id,
-            name: assetName,
-            propertyValues: { ...rowData.propertyValues },
-          });
-          savePromises.push(onSaveAsset(assetName, rowData.propertyValues));
+          const nextRowIndex = maxRowIndex + 1;
+          maxRowIndex = nextRowIndex;
+          savePromises.push(onSaveAsset(assetName, rowData.propertyValues, { rowIndex: nextRowIndex }));
         }
-        yRows.insert(yRows.length, optimisticAssets);
-        setOptimisticNewAssets((prev) => {
-          const next = new Map(prev);
-          optimisticAssets.forEach((a) => next.set(a.id, a));
-          return next;
-        });
+
         await Promise.all(savePromises);
       } catch (error) {
         console.error('Failed to create rows for paste:', error);
@@ -871,7 +869,6 @@ export function useClipboardOperations({
     onUpdateAsset,
     onUpdateAssets,
     library,
-    yRows,
     parseCellKey,
     convertRowsToCells,
     setSelectedCells,
