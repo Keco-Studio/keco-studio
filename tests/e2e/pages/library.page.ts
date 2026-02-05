@@ -23,6 +23,9 @@ export class LibraryPage {
   readonly createFolderButton: Locator;
   readonly createLibraryButton: Locator;
   
+  // Folder page "Create Library" button (visible in folder preview page header)
+  readonly folderPageCreateLibraryButton: Locator;
+  
   // Sidebar add button (for creating library/folder directly under project)
   readonly sidebarAddButton: Locator;
   readonly addLibraryMenuButton: Locator;
@@ -57,6 +60,13 @@ export class LibraryPage {
     // Sidebar "Create new library" button (on folder row in tree)
     // Button has aria-label="Create new library", no text content (icon only). Only visible for admin.
     this.createLibraryButton = page.getByRole('tree').getByRole('button', { name: /create new library/i }).first();
+    
+    // Folder page "Create Library" button in header (LibraryToolbar)
+    // This button appears in the folder preview page header (LibraryToolbar component)
+    // Strategy: Use getByLabel to find button with aria-label="Create Library"
+    // Only the LibraryToolbar button has aria-label="Create Library"
+    // The empty state button doesn't have aria-label, only text content
+    this.folderPageCreateLibraryButton = page.getByLabel('Create Library');
     
     // Sidebar add button (for creating library/folder directly under project)
     this.sidebarAddButton = page.locator('button[title="Add new folder or library"]')
@@ -145,13 +155,15 @@ export class LibraryPage {
   }
 
   /**
-   * Create a new library in the current context (folder or project)
+   * Create a new library in the current folder context
+   * Uses the "Create Library" button on the folder preview page
    * @param library - Library data with name and optional description
    */
   async createLibrary(library: LibraryData): Promise<void> {
-    // Wait for sidebar tree and "Create new library" button on folder row to be visible
-    await expect(this.createLibraryButton).toBeVisible({ timeout: 15000 });
-    await this.createLibraryButton.click();
+    // Wait for the folder page "Create Library" button to be visible
+    // This button appears in the folder preview page header
+    await expect(this.folderPageCreateLibraryButton).toBeVisible({ timeout: 15000 });
+    await this.folderPageCreateLibraryButton.click();
 
     // Wait for modal to appear
     await expect(this.libraryNameInput).toBeVisible({ timeout: 5000 });

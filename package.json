@@ -43,6 +43,7 @@
   },
   "scripts": {
     "dev": "next dev",
+    "dev:lan": "bash scripts/dev-lan.sh",
     "dev:vercel": "vercel dev",
     "dev:vercel:prod": "vercel dev --prod",
     "dev:tunnel": "next dev & ngrok http 3000",

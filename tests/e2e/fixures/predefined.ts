@@ -7,7 +7,7 @@
  * - Each Section has multiple Field Items
  * 
  * Rules:
- * - First Section's First Field is always "Name" (string type, non-configurable)
+ * - Assets typically should have a "Name" field (string type) as the first field
  * - Other fields can be added with various datatypes
  * 
  * For Happy Path, we test these datatypes:
@@ -49,7 +49,8 @@ export function generatePredefinedTemplateData(): PredefinedTemplateData {
       {
         name: 'Basic Information',
         fields: [
-          // First field is always Name - skip in configuration
+          // Name field is required for assets
+          { label: 'Name', datatype: 'string' },
           { label: 'Description', datatype: 'string' },
         ],
       },
@@ -72,7 +73,11 @@ export const predefinedTemplates = {
       {
         name: 'Basic Information',
         fields: [
-          // Note: "Name" field is auto-created, not configured here
+          // Name field is required for assets
+          {
+            label: 'Name',
+            datatype: 'string',
+          },
           {
             label: 'Origin',
             datatype: 'string',
@@ -93,7 +98,11 @@ export const predefinedTemplates = {
       {
         name: 'Basic Information',
         fields: [
-          // Note: "Name" field is auto-created, not configured here
+          // Name field is required for assets
+          {
+            label: 'Name',
+            datatype: 'string',
+          },
           {
             label: 'Maturity Date',
             datatype: 'string',
@@ -123,6 +132,11 @@ export const predefinedTemplates = {
       {
         name: 'Main Section',
         fields: [
+          // Name field is required for assets
+          {
+            label: 'Name',
+            datatype: 'string',
+          },
           { label: 'Notes', datatype: 'string' },
         ],
       },

@@ -56,15 +56,14 @@ test.describe('Destructive Tests - Delete Operations', () => {
     const loginPage = new LoginPage(page);
     await loginPage.goto();
     await loginPage.login(users.seedHappyPath);
-    // await loginPage.login(users.seedHappyPath);
+    // expectLoginSuccess now includes comprehensive verification:
+    // - URL change, network idle, auth token presence, and user avatar visibility
     await loginPage.expectLoginSuccess();
 
-    // Navigate to projects page first to ensure we're on the right page
-    await projectPage.goto();
-    await projectPage.waitForPageLoad();
-
-    // Navigate to the test project (pre-seeded, matches happy-path output)
-    await projectPage.openProject(projects.happyPath.name);
+    // Note: seed-happy-path user has exactly one project, so after login success,
+    // the app will auto-redirect from /projects to /{projectId} (see Sidebar.tsx auto-navigate logic).
+    // This is the expected behavior - we're already in the project page.
+    // The pre-seeded project is "Livestock Management Project"
     await libraryPage.waitForPageLoad();
   });
 
@@ -148,69 +147,69 @@ test.describe('Destructive Tests - Delete Operations', () => {
   // ==========================================
   // Combined Test: Delete all in correct order
   // ==========================================
-  // test('should delete all entities in correct order: asset → library → folder → project', async () => {
-  //   test.setTimeout(120000); // 2 minutes
+  test('should delete all entities in correct order: asset → library → folder → project', async () => {
+    test.setTimeout(120000); // 2 minutes
     
-  //   // ==========================================
-  //   // STEP 1: Delete Asset
-  //   // ==========================================
-  //   await test.step('Delete breed asset', async () => {
-  //     // Delete the asset (deleteAsset will automatically expand the library)
-  //     await assetPage.deleteAsset(assets.breed.name, libraries.breed.name);
-  //     await assetPage.expectAssetDeleted(assets.breed.name);
-  //   });
+    // ==========================================
+    // STEP 1: Delete Asset
+    // ==========================================
+    // await test.step('Delete breed asset', async () => {
+    //   // Delete the asset (deleteAsset will automatically expand the library)
+    //   await assetPage.deleteAsset(assets.breed.name, libraries.breed.name);
+    //   await assetPage.expectAssetDeleted(assets.breed.name);
+    // });
 
-  //   // ==========================================
-  //   // STEP 2: Delete Libraries
-  //   // ==========================================
-  //   await test.step('Delete all libraries', async () => {
-  //     // Navigate back to project root
-  //     await libraryPage.navigateBackToProject();
+    // ==========================================
+    // STEP 2: Delete Libraries
+    // ==========================================
+    await test.step('Delete all libraries', async () => {
+      // We're already in the project root page after beforeEach
+      // No need to navigate back
       
-  //     // Delete breed library
-  //     await libraryPage.deleteLibrary(libraries.breed.name);
-  //     await libraryPage.expectLibraryDeleted(libraries.breed.name);
+      // Delete breed library
+      await libraryPage.deleteLibrary(libraries.breed.name);
+      await libraryPage.expectLibraryDeleted(libraries.breed.name);
       
-  //     // Delete direct library
-  //     await libraryPage.deleteLibrary(libraries.directLibrary.name);
-  //     await libraryPage.expectLibraryDeleted(libraries.directLibrary.name);
-  //   });
+      // Delete direct library
+      await libraryPage.deleteLibrary(libraries.directLibrary.name);
+      await libraryPage.expectLibraryDeleted(libraries.directLibrary.name);
+    });
 
-  //   // ==========================================
-  //   // STEP 3: Delete Folder
-  //   // ==========================================
-  //   await test.step('Delete direct folder', async () => {
-  //     await libraryPage.deleteFolder(folders.directFolder.name);
-  //     await libraryPage.expectFolderDeleted(folders.directFolder.name);
-  //   });
+    // ==========================================
+    // STEP 3: Delete Folder
+    // ==========================================
+    await test.step('Delete direct folder', async () => {
+      await libraryPage.deleteFolder(folders.directFolder.name);
+      await libraryPage.expectFolderDeleted(folders.directFolder.name);
+    });
 
-  //   // ==========================================
-  //   // STEP 4: Delete Project
-  //   // ==========================================
-  //   await test.step('Delete project', async () => {
-  //     // After deleting all libraries and folders, we should still be in the project page
-  //     // Wait for page to stabilize before attempting deletion
-  //     await libraryPage.page.waitForLoadState('load', { timeout: 10000 });
-  //     await libraryPage.page.waitForTimeout(1000);
+    // ==========================================
+    // STEP 4: Delete Project
+    // ==========================================
+    await test.step('Delete project', async () => {
+      // After deleting all libraries and folders, we should still be in the project page
+      // Wait for page to stabilize before attempting deletion
+      await libraryPage.page.waitForLoadState('load', { timeout: 10000 });
+      await libraryPage.page.waitForTimeout(1000);
       
-  //     // Wait for the Projects section in sidebar to be visible
-  //     // This ensures the sidebar has fully rendered and projects list is loaded
-  //     const projectsHeading = libraryPage.page.locator('aside').getByText('Projects');
-  //     await expect(projectsHeading).toBeVisible({ timeout: 10000 });
+      // Wait for the Projects section in sidebar to be visible
+      // This ensures the sidebar has fully rendered and projects list is loaded
+      const projectsHeading = libraryPage.page.locator('aside').getByText('Projects');
+      await expect(projectsHeading).toBeVisible({ timeout: 10000 });
       
-  //     // Additional wait to ensure projects list is populated
-  //     await libraryPage.page.waitForTimeout(1000);
+      // Additional wait to ensure projects list is populated
+      await libraryPage.page.waitForTimeout(1000);
       
-  //     // Delete the project from sidebar
-  //     await projectPage.deleteProject(projects.happyPath.name);
-  //     await projectPage.expectProjectDeleted(projects.happyPath.name);
+      // Delete the project from sidebar
+      await projectPage.deleteProject(projects.happyPath.name);
+      await projectPage.expectProjectDeleted(projects.happyPath.name);
       
-  //     // Verify navigation to home page (which redirects to /projects)
-  //     await libraryPage.page.waitForURL(/\/(projects)?$/, { timeout: 10000 });
-  //   });
+      // Verify navigation to home page (which redirects to /projects)
+      await libraryPage.page.waitForURL(/\/(projects)?$/, { timeout: 10000 });
+    });
 
-  //   // ==========================================
-  //   // SUCCESS: All entities deleted successfully! 🎉
-  //   // ==========================================
-  // });
+    // ==========================================
+    // SUCCESS: All entities deleted successfully! 🎉
+    // ==========================================
+  });
 });

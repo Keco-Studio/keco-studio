@@ -303,6 +303,7 @@ export function FieldItem({
       ref={setNodeRef}
       style={style}
       className={`${styles.fieldItem} ${disabled ? styles.disabled : ''}`}
+      data-testid="field-item"
     >
       <div 
         className={styles.dragHandle}
@@ -354,6 +355,7 @@ export function FieldItem({
             className={styles.dataTypeInput}
             disabled={disabled}
             status={hasValidationError && !field.dataType ? 'error' : undefined}
+            data-testid="field-datatype-input"
             prefix={
               field.dataType ? (
                 <Image src={getFieldTypeIcon(field.dataType)}

@@ -59,46 +59,11 @@ test.describe('Happy Path - Complete User Journey', () => {
     const loginPage = new LoginPage(page);
     await loginPage.goto();
     await loginPage.login(users.seedEmpty);
+    // expectLoginSuccess now includes comprehensive verification:
+    // - URL change, network idle, auth token presence, and user avatar visibility
     await loginPage.expectLoginSuccess();
 
-    // Verify authentication state is ready for API calls
-    // This is critical in CI environments where auth state may take longer to establish
-    await page.waitForFunction(
-      () => {
-        try {
-          // Check if Supabase auth token exists and is valid in sessionStorage
-          const keys = Object.keys(sessionStorage);
-          for (const key of keys) {
-            if (key.includes('sb-') && key.includes('auth-token')) {
-              const value = sessionStorage.getItem(key);
-              if (value) {
-                try {
-                  const parsed = JSON.parse(value);
-                  // Verify token structure contains access_token
-                  if (parsed && parsed.access_token && parsed.access_token.length > 10) {
-                    return true;
-                  }
-                } catch {
-                  // If parsing fails, token might be in different format
-                  if (value.length > 10) {
-                    return true;
-                  }
-                }
-              }
-            }
-          }
-          return false;
-        } catch {
-          return false;
-        }
-      },
-      { timeout: 30000 }
-    );
-
-    // Additional wait to ensure Supabase client is fully initialized
-    await page.waitForTimeout(2000);
-
-    // Now navigate to projects page
+    // Now navigate to projects page if needed
     // await projectPage.goto();
   });
 
@@ -110,60 +75,60 @@ test.describe('Happy Path - Complete User Journey', () => {
     // ==========================================
     // STEP 1: Create a new project
     // ==========================================
-    // await test.step('Create a new project', async () => {
-    //   await projectPage.createProject(projects.happyPath);
-    //   await projectPage.expectProjectCreated();
-    //   // Project creation automatically navigates to project detail page
-    //   await libraryPage.waitForPageLoad();
-    // });
+    await test.step('Create a new project', async () => {
+      await projectPage.createProject(projects.happyPath);
+      await projectPage.expectProjectCreated();
+      // Project creation automatically navigates to project detail page
+      await libraryPage.waitForPageLoad();
+    });
 
     // ==========================================
     // STEP 3: Navigate to default Resource Folder
     // ==========================================
-    // await test.step('Open the default Resource Folder', async () => {
-    //   // When a project is created, a "Resource Folder" is auto-created
-    //   await libraryPage.expectFolderExists(DEFAULT_RESOURCE_FOLDER);
-    //   await libraryPage.openFolder(DEFAULT_RESOURCE_FOLDER);
-    // });
+    await test.step('Open the default Resource Folder', async () => {
+      // When a project is created, a "Resource Folder" is auto-created
+      await libraryPage.expectFolderExists(DEFAULT_RESOURCE_FOLDER);
+      await libraryPage.openFolder(DEFAULT_RESOURCE_FOLDER);
+    });
 
     // ==========================================
     // STEP 4: Create the Reference Library (Breed Library)
     // ==========================================
     // This library will be referenced by the livestock library's reference field
-    // await test.step('Create the breed reference library', async () => {
-    //   await libraryPage.createLibrary(libraries.breed);
-    //   await libraryPage.expectLibraryCreated();
-    // });
+    await test.step('Create the breed reference library', async () => {
+      await libraryPage.createLibrary(libraries.breed);
+      await libraryPage.expectLibraryCreated();
+    });
 
     // ==========================================
     // STEP 5: Create Breed Schema and Asset
     // ==========================================
     // We need to create a breed asset first so it can be referenced by livestock
-    // await test.step('Create breed schema and asset', async () => {
-    //   // Open the breed library (goes to library page)
-    //   await libraryPage.openLibrary(libraries.breed.name);
-    //   await libraryPage.waitForPageLoad();
+    await test.step('Create breed schema and asset', async () => {
+      // Open the breed library (goes to library page)
+      await libraryPage.openLibrary(libraries.breed.name);
+      await libraryPage.waitForPageLoad();
       
-    //   // Click the predefine button in the sidebar to navigate to predefine page
-    //   await libraryPage.clickPredefineButton(libraries.breed.name);
-    //   await predefinedPage.waitForPageLoad();
+      // Click the predefine button in the sidebar to navigate to predefine page
+      await libraryPage.clickPredefineButton(libraries.breed.name);
+      await predefinedPage.waitForPageLoad();
       
-    //   // Create breed schema
-    //   await predefinedPage.createPredefinedTemplate(predefinedTemplates.breed);
-    //   await predefinedPage.expectTemplateCreated();
+      // Create breed schema
+      await predefinedPage.createPredefinedTemplate(predefinedTemplates.breed);
+      await predefinedPage.expectTemplateCreated();
       
-    //   // Navigate back to library page to create asset
-    //   // Note: In predefine page, sidebar doesn't show library tree, so we navigate via URL
-    //   await libraryPage.navigateBackToLibraryFromPredefine();
-    //   await libraryPage.waitForPageLoad();
+      // Navigate back to library page to create asset
+      // Note: In predefine page, sidebar doesn't show library tree, so we navigate via URL
+      await libraryPage.navigateBackToLibraryFromPredefine();
+      await libraryPage.waitForPageLoad();
       
-    //   // Wait for template to be fully saved to database (critical in parallel execution)
-    //   await libraryPage.page.waitForTimeout(2000);
+      // Wait for template to be fully saved to database (critical in parallel execution)
+      await libraryPage.page.waitForTimeout(2000);
       
-    //   // Create breed asset
-    //   await assetPage.createAsset(predefinedTemplates.breed.name, assets.breed);
-    //   await assetPage.expectAssetCreated();
-    // });
+      // Create breed asset
+      await assetPage.createAsset(predefinedTemplates.breed.name, assets.breed);
+      await assetPage.expectAssetCreated();
+    });
 
     // ==========================================
     // STEP 6: Create the Main Library (Livestock Library)
@@ -178,35 +143,35 @@ test.describe('Happy Path - Complete User Journey', () => {
     // STEP 7: Create a Folder directly under Project
     // ==========================================
     // Tests the P → F path (not P → F → F)
-    // await test.step('Create a folder directly under project', async () => {
-    //   // Navigate back to project root
-    //   await libraryPage.navigateBackToProject();
+    await test.step('Create a folder directly under project', async () => {
+      // Navigate back to project root
+      await libraryPage.navigateBackToProject();
       
-    //   // Create folder directly under project using sidebar add button
-    //   // This uses: sidebar add button -> AddLibraryMenu -> Create new folder
-    //   await libraryPage.createFolderUnderProject(folders.directFolder);
-    //   await libraryPage.expectFolderCreated();
+      // Create folder directly under project using sidebar add button
+      // This uses: sidebar add button -> AddLibraryMenu -> Create new folder
+      await libraryPage.createFolderUnderProject(folders.directFolder);
+      await libraryPage.expectFolderCreated();
       
-    //   // Navigate back to continue with main flow
-    //   await libraryPage.navigateBackToProject();
-    // });
+      // Navigate back to continue with main flow
+      await libraryPage.navigateBackToProject();
+    });
 
     // ==========================================
     // STEP 8: Create a Library directly under Project
     // ==========================================
     // Tests the P → L path (not P → F → L)
-    // await test.step('Create a library directly under project', async () => {
-    //   // Navigate back to project root
-    //   await libraryPage.navigateBackToProject();
+    await test.step('Create a library directly under project', async () => {
+      // Navigate back to project root
+      await libraryPage.navigateBackToProject();
       
-    //   // Create library directly under project using sidebar add button
-    //   // This uses: sidebar add button -> AddLibraryMenu -> Create new library
-    //   await libraryPage.createLibraryUnderProject(libraries.directLibrary);
-    //   await libraryPage.expectLibraryCreated();
+      // Create library directly under project using sidebar add button
+      // This uses: sidebar add button -> AddLibraryMenu -> Create new library
+      await libraryPage.createLibraryUnderProject(libraries.directLibrary);
+      await libraryPage.expectLibraryCreated();
       
-    //   // Navigate back to continue with main flow
-    //   await libraryPage.navigateBackToProject();
-    // });
+      // Navigate back to continue with main flow
+      await libraryPage.navigateBackToProject();
+    });
 
     
     // ==========================================
