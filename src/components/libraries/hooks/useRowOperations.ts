@@ -18,6 +18,8 @@ export type UseRowOperationsParams = {
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   /** Batch update: all updates then one dispatch → one invalidate, avoids 先消失后恢复再消失 + 其他列恢复 */
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
+  /** Clear Content 专用：批量更新 + 一次性广播，效仿 Delete Row 的即时同步 */
+  onUpdateAssetsWithBatchBroadcast?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   /** Batch delete: Supabase .delete().in(), one round-trip */
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
@@ -75,6 +77,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     onSaveAsset,
     onUpdateAsset,
     onUpdateAssets,
+    onUpdateAssetsWithBatchBroadcast,
     onDeleteAsset,
     onDeleteAssets,
     library,
@@ -350,7 +353,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
       setClearContentsConfirmVisible(false);
       return;
     }
-    if (!onUpdateAsset) {
+    if (!onUpdateAsset && !onUpdateAssetsWithBatchBroadcast) {
       setClearContentsConfirmVisible(false);
       return;
     }
@@ -425,16 +428,18 @@ export function useRowOperations(params: UseRowOperationsParams) {
       const entries = Array.from(cellsByRow.entries()).filter(([rowId]) =>
         allRowsForSelection.some((r) => r.id === rowId)
       );
-      const useBatch = entries.length > 1 && !!onUpdateAssets;
+      const updates = entries.map(([rowId, rowData]) => {
+        const row = allRowsForSelection.find((r) => r.id === rowId)!;
+        const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
+        return { assetId: rowId, assetName, propertyValues: rowData.propertyValues };
+      });
 
-      if (useBatch) {
-        const updates = entries.map(([rowId, rowData]) => {
-          const row = allRowsForSelection.find((r) => r.id === rowId)!;
-          const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
-          return { assetId: rowId, assetName, propertyValues: rowData.propertyValues };
-        });
-        await onUpdateAssets!(updates);
-      } else {
+      // 优先使用批量广播（效仿 Delete Row），协作者即时同步；否则回退到普通批量更新
+      if (updates.length > 0 && onUpdateAssetsWithBatchBroadcast) {
+        await onUpdateAssetsWithBatchBroadcast(updates);
+      } else if (entries.length > 1 && onUpdateAssets) {
+        await onUpdateAssets(updates);
+      } else if (onUpdateAsset) {
         await Promise.all(
           entries.map(([rowId, rowData]) => {
             const row = allRowsForSelection.find((r) => r.id === rowId);
@@ -464,6 +469,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     getAllRowsForCellSelection,
     onUpdateAsset,
     onUpdateAssets,
+    onUpdateAssetsWithBatchBroadcast,
     setSelectedCells,
     setSelectedRowIds,
     setClearContentsConfirmVisible,

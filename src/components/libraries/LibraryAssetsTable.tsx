@@ -74,6 +74,8 @@ export type LibraryAssetsTableProps = {
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
+  /** Clear Content 专用：批量更新 + 一次性广播，效仿 Delete Row 的即时同步 */
+  onUpdateAssetsWithBatchBroadcast?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
   // Real-time collaboration props
@@ -107,6 +109,7 @@ export function LibraryAssetsTable({
   onSaveAsset,
   onUpdateAsset,
   onUpdateAssets,
+  onUpdateAssetsWithBatchBroadcast,
   onDeleteAsset,
   onDeleteAssets,
   currentUser = null,
@@ -548,6 +551,7 @@ export function LibraryAssetsTable({
     onSaveAsset,
     onUpdateAsset,
     onUpdateAssets,
+    onUpdateAssetsWithBatchBroadcast,
     onDeleteAsset,
     onDeleteAssets,
     library,

@@ -19,7 +19,7 @@ import type { AssetRow } from '@/lib/types/libraryAssets';
 
 type AdapterProps = Omit<
   LibraryAssetsTableProps,
-  'rows' | 'onSaveAsset' | 'onUpdateAsset' | 'onUpdateAssets' | 'onDeleteAsset' | 'onDeleteAssets' | 'currentUser' | 'enableRealtime' | 'presenceTracking'
+  'rows' | 'onSaveAsset' | 'onUpdateAsset' | 'onUpdateAssets' | 'onUpdateAssetsWithBatchBroadcast' | 'onDeleteAsset' | 'onDeleteAssets' | 'currentUser' | 'enableRealtime' | 'presenceTracking'
 > & {
   /** When set (e.g. viewing a version snapshot), table shows these rows instead of context. */
   overrideRows?: AssetRow[] | null;
@@ -36,6 +36,7 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
     updateAssetField,
     updateAssetName,
     deleteAsset,
+    updateAssetsBatch,
     getUsersEditingField,
     setActiveField,
   } = useLibraryData();
@@ -110,12 +111,19 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
     await deleteAsset(assetId);
   }, [deleteAsset]);
 
-  // Batch update: 与 delete row 一致，多行时走批量接口（Adapter 内用 Promise.all 串行单条，与页面层一致）
+  // Batch update: 与 delete row 一致，多行时走批量接口
   const handleUpdateAssets = useCallback(async (
     updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
   ) => {
     await Promise.all(updates.map((u) => handleUpdateAsset(u.assetId, u.assetName, u.propertyValues)));
   }, [handleUpdateAsset]);
+
+  // Clear Content 专用：批量更新 + 一次性广播，效仿 Delete Row 的即时同步
+  const handleUpdateAssetsWithBatchBroadcast = useCallback(async (
+    updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
+  ) => {
+    await updateAssetsBatch(updates);
+  }, [updateAssetsBatch]);
 
   // Batch delete: 多行时一次调用多个 delete（Context 无真批量时用 Promise.all）
   const handleDeleteAssets = useCallback(async (assetIds: string[]) => {
@@ -162,6 +170,7 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       onSaveAsset={handleSaveAsset}
       onUpdateAsset={handleUpdateAsset}
       onUpdateAssets={handleUpdateAssets}
+      onUpdateAssetsWithBatchBroadcast={handleUpdateAssetsWithBatchBroadcast}
       onDeleteAsset={handleDeleteAsset}
       onDeleteAssets={handleDeleteAssets}
       currentUser={currentUser}

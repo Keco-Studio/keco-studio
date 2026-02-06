@@ -24,7 +24,7 @@ import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import { useRealtimeSubscription, type ConnectionStatus } from '@/lib/hooks/useRealtimeSubscription';
 import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
-import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState } from '@/lib/types/collaboration';
+import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState, CellsBatchUpdateEvent } from '@/lib/types/collaboration';
 import { serializeError } from '@/lib/utils/errorUtils';
 import { getLibraryAssetsWithProperties } from '@/lib/services/libraryAssetsService';
 
@@ -42,6 +42,8 @@ interface LibraryDataContextValue {
   
   // Bulk operations
   updateMultipleFields: (updates: Array<{ assetId: string; fieldId: string; value: any }>) => Promise<void>;
+  /** 批量更新并一次性广播，用于 Clear Content，效仿 Delete Row 的即时同步 */
+  updateAssetsBatch: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   
   // Realtime collaboration
   connectionStatus: ConnectionStatus;
@@ -343,6 +345,29 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   const handleRowOrderChangeEvent = useCallback(() => {
     loadInitialData();
   }, [loadInitialData]);
+
+  // 批量单元格更新：Clear Content 等场景，一次接收所有变更并应用到 Yjs
+  const handleCellsBatchUpdateEvent = useCallback((event: CellsBatchUpdateEvent) => {
+    if (event.cells.length === 0) return;
+    yDoc.transact(() => {
+      for (const { assetId, propertyKey, newValue } of event.cells) {
+        const yAsset = yAssets.get(assetId);
+        if (!yAsset) continue;
+        let valueForYjs = newValue;
+        if (newValue !== null && typeof newValue === 'object') {
+          valueForYjs = JSON.parse(JSON.stringify(newValue));
+        }
+        if (propertyKey === 'name') {
+          yAsset.set('name', valueForYjs ?? '');
+        } else {
+          const yPropertyValues = yAsset.get('propertyValues') as Y.Map<any>;
+          if (yPropertyValues) {
+            yPropertyValues.set(propertyKey, valueForYjs);
+          }
+        }
+      }
+    });
+  }, [yAssets, yDoc]);
   
   // Initialize realtime subscription
   const realtimeConfig = useMemo(() => {
@@ -361,8 +386,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onAssetDelete: handleAssetDeleteEvent,
       onConflict: handleConflictEvent,
       onRowOrderChange: handleRowOrderChangeEvent,
+      onCellsBatchUpdate: handleCellsBatchUpdateEvent,
     };
-  }, [libraryId, userProfile, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent]);
+  }, [libraryId, userProfile, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent]);
   
   const realtimeSubscription = useRealtimeSubscription(
     realtimeConfig || {
@@ -376,15 +402,17 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onAssetDelete: () => {},
       onConflict: () => {},
       onRowOrderChange: () => {},
+      onCellsBatchUpdate: () => {},
     }
   );
   
-  const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete, broadcastRowOrderChange } = 
+  const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete, broadcastCellsBatchUpdate, broadcastRowOrderChange } = 
     realtimeConfig ? realtimeSubscription : {
       connectionStatus: 'disconnected' as const,
       broadcastCellUpdate: async () => {},
       broadcastAssetCreate: async () => {},
       broadcastAssetDelete: async () => {},
+      broadcastCellsBatchUpdate: async () => {},
       broadcastRowOrderChange: async () => {},
     };
   
@@ -660,6 +688,34 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       }
     }
   }, [updateAssetField, broadcastCellUpdate, realtimeConfig]);
+
+  /** 批量更新并一次性广播，用于 Clear Content，效仿 Delete Row 的即时同步 */
+  const updateAssetsBatch = useCallback(async (
+    updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
+  ) => {
+    const cellsToBroadcast: Array<{ assetId: string; propertyKey: string; newValue: any }> = [];
+
+    for (const { assetId, assetName, propertyValues } of updates) {
+      const asset = assetsRef.current.get(assetId);
+      if (!asset) continue;
+
+      if (asset.name !== assetName) {
+        await updateAssetName(assetId, assetName, { skipBroadcast: true });
+        cellsToBroadcast.push({ assetId, propertyKey: 'name', newValue: assetName });
+      }
+
+      for (const [fieldId, value] of Object.entries(propertyValues)) {
+        const oldValue = asset.propertyValues[fieldId];
+        if (JSON.stringify(oldValue) === JSON.stringify(value)) continue;
+        await updateAssetField(assetId, fieldId, value, { skipBroadcast: true });
+        cellsToBroadcast.push({ assetId, propertyKey: fieldId, newValue: value });
+      }
+    }
+
+    if (realtimeConfig && cellsToBroadcast.length > 0) {
+      await broadcastCellsBatchUpdate(cellsToBroadcast);
+    }
+  }, [updateAssetName, updateAssetField, broadcastCellsBatchUpdate, realtimeConfig]);
   
   // Helper functions
   const getAsset = useCallback((assetId: string) => {
@@ -716,6 +772,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     createAsset,
     deleteAsset,
     updateMultipleFields,
+    updateAssetsBatch,
     connectionStatus,
     getUsersEditingField,
     setActiveField,

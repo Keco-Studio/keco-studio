@@ -21,6 +21,7 @@ import type {
   AssetDeleteEvent,
   OptimisticUpdate,
   RowOrderChangeEvent,
+  CellsBatchUpdateEvent,
 } from '@/lib/types/collaboration';
 
 export type RealtimeSubscriptionConfig = {
@@ -35,6 +36,8 @@ export type RealtimeSubscriptionConfig = {
   onConflict: (event: CellUpdateEvent, localValue: any) => void;
   /** 行顺序发生变更时的回调（例如 insert above/below 或批量重排） */
   onRowOrderChange?: (event: RowOrderChangeEvent) => void;
+  /** 批量单元格更新回调（Clear Content 等场景，一次接收所有变更，效仿 Delete Row 的即时同步） */
+  onCellsBatchUpdate?: (event: CellsBatchUpdateEvent) => void;
 };
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
@@ -52,6 +55,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     onAssetDelete,
     onConflict,
     onRowOrderChange,
+    onCellsBatchUpdate,
   } = config;
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
@@ -173,6 +177,17 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     const event = payload.payload as RowOrderChangeEvent;
     onRowOrderChange(event);
   }, [onRowOrderChange]);
+
+  /**
+   * Handle incoming cells batch update events (e.g. Clear Content).
+   * 效仿 Delete Row：一次性接收所有变更，协作者立即全部应用，无 debounce、无顺序问题。
+   */
+  const handleCellsBatchUpdateEvent = useCallback((payload: any) => {
+    if (!onCellsBatchUpdate) return;
+    const event = payload.payload as CellsBatchUpdateEvent;
+    if (event.userId === currentUserId) return;
+    onCellsBatchUpdate(event);
+  }, [currentUserId, onCellsBatchUpdate]);
 
   /**
    * Broadcast a cell update to all other clients
@@ -384,6 +399,34 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   }, [currentUserId, currentUserName]);
 
   /**
+   * Broadcast a batch of cell updates in one message (e.g. Clear Content).
+   * 效仿 Delete Row：无 debounce，一次发送所有变更，协作者一次性接收并应用。
+   */
+  const broadcastCellsBatchUpdate = useCallback(async (
+    cells: Array<{ assetId: string; propertyKey: string; newValue: any }>
+  ): Promise<void> => {
+    if (!channelRef.current || cells.length === 0) return;
+
+    const event: CellsBatchUpdateEvent = {
+      type: 'cells:batch-update',
+      userId: currentUserId,
+      userName: currentUserName,
+      timestamp: Date.now(),
+      cells,
+    };
+
+    try {
+      await channelRef.current.send({
+        type: 'broadcast',
+        event: 'cells:batch-update',
+        payload: event,
+      });
+    } catch (error) {
+      console.error('Failed to broadcast cells batch update:', error);
+    }
+  }, [currentUserId, currentUserName]);
+
+  /**
    * Broadcast a row order change hint to all clients.
    * 事件本身不携带具体 rowIndex 列表，上层通常在收到事件后触发一次从 DB 的 reload，
    * 以 server 为准同步行序。
@@ -474,6 +517,9 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       })
       .on('broadcast', { event: 'roworder:change' }, (payload) => {
         handleRowOrderChangeEvent(payload);
+      })
+      .on('broadcast', { event: 'cells:batch-update' }, (payload) => {
+        handleCellsBatchUpdateEvent(payload);
       })
       // Add database subscription as backup (ensures updates even if broadcast fails)
       // Listen to both UPDATE and INSERT events
@@ -769,6 +815,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     handleAssetDeleteEvent,
     processQueuedUpdates,
     handleRowOrderChangeEvent,
+    handleCellsBatchUpdateEvent,
   ]);
 
   return {
@@ -776,6 +823,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     broadcastCellUpdate,
     broadcastAssetCreate,
     broadcastAssetDelete,
+    broadcastCellsBatchUpdate,
     broadcastRowOrderChange,
     optimisticUpdates,
     queuedUpdatesCount: queuedUpdates.length,
