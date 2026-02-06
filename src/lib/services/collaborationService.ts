@@ -428,7 +428,6 @@ export async function getUserProjectRole(
   projectId: string,
   userId: string
 ): Promise<{ role: CollaboratorRole | null; isOwner: boolean }> {
-  
   try {
     // Check if user is project owner
     const { data: project } = await supabase
@@ -447,9 +446,16 @@ export async function getUserProjectRole(
       .eq('user_id', userId)
       .not('accepted_at', 'is', null)
       .single();
-    
+
+    // If the user is the project owner but not yet present in project_collaborators,
+    // treat them as an admin for permission checks on the frontend.
+    // This ensures newly created projects (where the owner is set on the project
+    // record but no collaborator row exists yet) still see all "admin only" UI.
+    const effectiveRole: CollaboratorRole | null =
+      (collaborator?.role as CollaboratorRole | null) || (isOwner ? 'admin' : null);
+
     return {
-      role: collaborator?.role || null,
+      role: effectiveRole,
       isOwner,
     };
   } catch (error) {
