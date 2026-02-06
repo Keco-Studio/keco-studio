@@ -687,6 +687,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           projects={projects}
           loadingProjects={loadingProjects}
           currentProjectId={currentIds.projectId}
+          currentLibraryId={currentIds.libraryId}
+          currentFolderId={currentIds.folderId}
           onOpenNewProject={openNewProject}
           onProjectClick={handleProjectClick}
           onContextMenu={handleContextMenu}
