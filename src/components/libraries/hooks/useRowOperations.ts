@@ -194,11 +194,13 @@ export function useRowOperations(params: UseRowOperationsParams) {
       }
 
       // 再创建 N 行，rowIndex 从 baseRowIndex 开始递增
+      // 使用 Promise.all 并行创建，避免逐条 await 带来的额外等待。
+      const createPromises: Promise<void>[] = [];
       for (let i = 0; i < numRowsToInsert; i++) {
-        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
+        createPromises.push(onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i }));
       }
+      await Promise.all(createPromises);
 
-      await new Promise((r) => setTimeout(r, 500));
       setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
       setTimeout(() => setToastMessage(null), 2000);
     } catch (e) {
@@ -296,11 +298,13 @@ export function useRowOperations(params: UseRowOperationsParams) {
       }
 
       // 再创建 N 行，rowIndex 从 baseRowIndex 开始递增
+      // 使用 Promise.all 并行创建，避免逐条 await 带来的额外等待。
+      const createPromises: Promise<void>[] = [];
       for (let i = 0; i < numRowsToInsert; i++) {
-        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
+        createPromises.push(onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i }));
       }
+      await Promise.all(createPromises);
 
-      await new Promise((r) => setTimeout(r, 500));
       setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
       setTimeout(() => setToastMessage(null), 2000);
     } catch (e) {
