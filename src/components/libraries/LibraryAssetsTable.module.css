@@ -569,7 +569,7 @@ td.cellCopy.copyBorderRight:hover {
   justify-content: center;
   gap: 0.5rem;
   padding: 0.75rem 24px;
-  background-color: rgba(94, 0, 255, 0.08);
+  background-color: #0B99FF14;
   border: none;
   border-radius: 1rem;
   cursor: pointer;

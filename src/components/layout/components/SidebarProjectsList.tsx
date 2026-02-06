@@ -14,6 +14,8 @@ export type SidebarProjectsListProps = {
   projects: Project[];
   loadingProjects: boolean;
   currentProjectId: string | null;
+  currentLibraryId: string | null;
+  currentFolderId: string | null;
   onOpenNewProject: () => void;
   onProjectClick: (projectId: string) => void;
   onContextMenu: (e: React.MouseEvent, type: 'project', id: string) => void;
@@ -26,6 +28,8 @@ export function SidebarProjectsList({
   projects,
   loadingProjects,
   currentProjectId,
+  currentLibraryId,
+  currentFolderId,
   onOpenNewProject,
   onProjectClick,
   onContextMenu,
@@ -50,11 +54,21 @@ export function SidebarProjectsList({
       </div>
       <div className={styles.projectsListContainer}>
         {projects.map((project) => {
-          const isActive = currentProjectId === project.id;
+          const isCurrentProject = currentProjectId === project.id;
+          // Project is "active" (blue highlight) only when on project page without folder/library
+          const isActive = isCurrentProject && !currentLibraryId && !currentFolderId;
+          // Project has "secondary" highlight (gray) when viewing folder/library under this project
+          const isSecondaryActive = isCurrentProject && (currentLibraryId || currentFolderId);
           return (
             <div
               key={project.id}
-              className={`${styles.item} ${isActive ? styles.itemActive : styles.itemInactive}`}
+              className={`${styles.item} ${
+                isActive 
+                  ? styles.itemActive 
+                  : isSecondaryActive 
+                  ? styles.itemSecondaryActive 
+                  : styles.itemInactive
+              }`}
               onClick={() => onProjectClick(project.id)}
               onContextMenu={(e) => onContextMenu(e, 'project', project.id)}
             >

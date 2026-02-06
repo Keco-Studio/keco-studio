@@ -564,6 +564,11 @@
   color: #070707;
 }
 
+.itemSecondaryActive {
+  background-color: #EEEEEE;
+  color: #070707;
+}
+
 .itemInactive {
   color: #334155;
 }
