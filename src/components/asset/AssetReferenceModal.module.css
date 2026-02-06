@@ -18,7 +18,7 @@
 .modal {
   background: white;
   border-radius: 0.5rem;
-  width: 600px;
+  width: 37rem;
   max-height: 90vh;
   display: flex;
   flex-direction: column;
@@ -33,7 +33,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 20px;
-  background: #FFF0F5;
+  background: #0B99FF14;
   border-bottom: 1px solid #e5e7eb;
   border-radius: 0.5rem 8px 0 0;
 }
@@ -180,7 +180,7 @@
 
 .assetCardSelected {
   background: #E5E5E5;
-  border-color: #8726EE;
+  border-color: #0B99FF;
   border-width: 2px;
 }
 
@@ -241,10 +241,10 @@
 
 .applyButton {
   padding: 0.5rem 16px;
-  border: 1px solid #F8C5D8;
+  border: none;
   border-radius: 0.75rem;
-  background-color: #F8C5D8;
-  color: #111827;
+  background-color: #0B99FF14;
+  color: #0B99FF;
   cursor: pointer;
   font-size: 0.875rem;
   font-weight: 500;
@@ -252,8 +252,7 @@
 }
 
 .applyButton:hover {
-  background-color: #f5b3c9;
-  border-color: #f5b3c9;
+  
 }
 
 /* Invisible bridge area to connect modal and asset card */
@@ -288,7 +287,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 1rem 20px;
-  background: #FFF0F5;
+  background: #0B99FF14;
   border-bottom: 1px solid #e5e7eb;
   border-radius: 0.5rem 8px 0 0;
 }
@@ -414,8 +413,8 @@
 
 .assetCardLibraryName {
   font-size: 0.875rem;
-  color: #8726ee;
-  font-weight: 500;
+  color: #0B99FF;
+  font-weight: 400;
 }
 
 .assetCardLibraryArrow {

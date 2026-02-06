@@ -13,6 +13,7 @@ import predefineSettingIcon from "@/assets/images/PredefineNewIcon.svg";
 import moreOptionsIcon from "@/assets/images/moreOptionsIcon.svg";
 import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
 import styles from './LibraryListView.module.css';
+import { Tooltip } from 'antd';
 
 type LibraryWithAssetCount = Library & {
   assetCount?: number;
@@ -198,16 +199,22 @@ export function LibraryListView({
                 <td className={styles.cell}>
                   <div className={styles.actionButtons}>
                     {item.type === 'library' && (
-                      <button
-                        className={styles.actionButton}
-                        onClick={(e) => handleSettingsClick(item.id, e)}
-                        aria-label="Library settings"
+                      <Tooltip
+                        title="Predefine asset here"
+                        placement="bottom"
+                        color="#0B99FF"
                       >
-                        <Image src={predefineSettingIcon}
-                          alt="Settings"
-                          width={20} height={20} className="icon-20"
-                        />
-                      </button>
+                        <button
+                          className={styles.actionButton}
+                          onClick={(e) => handleSettingsClick(item.id, e)}
+                          aria-label="Library settings"
+                        >
+                          <Image src={predefineSettingIcon}
+                            alt="Settings"
+                            width={20} height={20} className="icon-20"
+                          />
+                        </button>
+                    </Tooltip>
                     )}
                     <button
                       className={`${styles.actionButton} ${contextMenu?.id === item.id ? styles.actionButtonActive : ''}`}

@@ -251,9 +251,14 @@ export function LibraryHeader({
                         {getUserInitials(currentUser.userName)}
                       </Avatar>
                       <div className={styles.memberInfo}>
-                        <div className={styles.memberName}>
-                          {currentUser.userName} <span className={styles.youLabel}>(you)</span>
-                        </div>
+                        <Tooltip title={currentUser.userName}>
+                          <div className={styles.memberName}>
+                            {currentUser.userName && currentUser.userName.length > 10
+                              ? `${currentUser.userName.slice(0, 10)}...`
+                              : currentUser.userName}{' '}  
+                            <span className={styles.youLabel}>(you)</span>
+                          </div>
+                        </Tooltip>
                       </div>
                     </div>
                   </div>
@@ -278,9 +283,13 @@ export function LibraryHeader({
                           {getUserInitials(user.userName)}
                         </Avatar>
                         <div className={styles.memberInfo}>
-                          <div className={styles.memberName}>
-                            {user.userName}
-                          </div>
+                          <Tooltip title={user.userName}>
+                            <div className={styles.memberName}>
+                              {user.userName && user.userName.length > 10
+                                ? `${user.userName.slice(0, 10)}...`
+                                : user.userName}
+                            </div>
+                          </Tooltip>
                         </div>
                       </div>
                     ))

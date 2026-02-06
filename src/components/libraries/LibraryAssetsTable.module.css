@@ -39,11 +39,78 @@
 }
 
 .table {
-  width: max-content;
-  min-width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
-  table-layout: auto;
+  table-layout: fixed;
+}
+
+/* For 1-6 columns: table width is 100% */
+.table.cols1,
+.table.cols2,
+.table.cols3,
+.table.cols4,
+.table.cols5,
+.table.cols6 {
+  width: 100%;
+  min-width: 100%;
+}
+
+/* For more than 6 columns: table width is auto (based on min-width of columns) */
+.table.colsMany {
+  width: max-content;
+  min-width: 100%;
+}
+
+/* Dynamic column width based on column count */
+.table.cols1 .headerCell:not(.numberColumnHeader),
+.table.cols1 .propertyHeaderCell:not(.numberColumnHeader),
+.table.cols1 .cell:not(.numberCell) {
+  width: calc(100% - 3.75rem);
+  max-width: calc(100% - 3.75rem);
+}
+
+.table.cols2 .headerCell:not(.numberColumnHeader),
+.table.cols2 .propertyHeaderCell:not(.numberColumnHeader),
+.table.cols2 .cell:not(.numberCell) {
+  width: calc((100% - 3.75rem) / 2);
+  max-width: calc((100% - 3.75rem) / 2);
+}
+
+.table.cols3 .headerCell:not(.numberColumnHeader),
+.table.cols3 .propertyHeaderCell:not(.numberColumnHeader),
+.table.cols3 .cell:not(.numberCell) {
+  width: calc((100% - 3.75rem) / 3);
+  max-width: calc((100% - 3.75rem) / 3);
+}
+
+.table.cols4 .headerCell:not(.numberColumnHeader),
+.table.cols4 .propertyHeaderCell:not(.numberColumnHeader),
+.table.cols4 .cell:not(.numberCell) {
+  width: calc((100% - 3.75rem) / 4);
+  max-width: calc((100% - 3.75rem) / 4);
+}
+
+.table.cols5 .headerCell:not(.numberColumnHeader),
+.table.cols5 .propertyHeaderCell:not(.numberColumnHeader),
+.table.cols5 .cell:not(.numberCell) {
+  width: calc((100% - 3.75rem) / 5);
+  max-width: calc((100% - 3.75rem) / 5);
+}
+
+.table.cols6 .headerCell:not(.numberColumnHeader),
+.table.cols6 .propertyHeaderCell:not(.numberColumnHeader),
+.table.cols6 .cell:not(.numberCell) {
+  width: calc((100% - 3.75rem) / 6);
+  max-width: calc((100% - 3.75rem) / 6);
+}
+
+/* For more than 6 columns, use minimum width */
+.table.colsMany .headerCell:not(.numberColumnHeader),
+.table.colsMany .propertyHeaderCell:not(.numberColumnHeader),
+.table.colsMany .cell:not(.numberCell) {
+  width: 13.5rem;
+  max-width: 13.5rem;
+  min-width: 13.5rem;
 }
 
 .headerRowTop {
@@ -56,7 +123,6 @@
 }
 
 .headerCell {
-  min-width: 7.5rem;
   height: 40px;              /* match body row height (40px) */
   padding: 0.25rem 0.5rem;
   font-weight: 600;
@@ -66,6 +132,9 @@
   line-height: 1.4;
   letter-spacing: 0.02em;
   border-right: 1px solid #0000001A;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sectionHeaderCell {
@@ -78,6 +147,9 @@
   letter-spacing: 0.05em;
   padding: 0.25rem 0.5rem;
   background: #0000000D;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .sectionHeaderCellDivider {
@@ -85,7 +157,6 @@
 }
 
 .propertyHeaderCell {
-  min-width: 7.5rem;
   text-align: left;
   font-size: 0.875rem;
   font-weight: 500;
@@ -94,10 +165,13 @@
   border-left: none;
   background: #F9FAFB;
   border-right: 1px solid #DDE1E6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .assetHeaderCell {
-  min-width: 7.5rem;
+  /* Width controlled by column count classes */
 }
 
 .row {
@@ -106,7 +180,6 @@
 }
 
 .cell {
-  min-width: 7.5rem;
   height: 40px;
   padding: 0.25rem 0.5rem;
   vertical-align: middle;
@@ -145,7 +218,7 @@
 /* Single cell selected: only border, no background */
 .cellSelected {
   background-color: transparent !important;
-  border: 2px solid rgba(135, 38, 238, 1) !important;
+  border: 2px solid #0B99FF !important;
   position: relative;
   z-index: 1;
 }
@@ -167,7 +240,7 @@
 
 /* Ensure selected cells have proper border during drag */
 .cellSelected:not(:first-child) {
-  border-left: 2px solid rgba(135, 38, 238, 1) !important;
+  border-left: 2px solid #0B99FF !important;
 }
 
 /* Multiple cells selected: border + background color - only show outer border */
@@ -189,22 +262,22 @@
 /* Outer border styles - only show on boundary cells (solid line, similar to cut but solid) */
 .cellMultipleSelected.selectionBorderTop,
 td.cellMultipleSelected.selectionBorderTop {
-  border-top: 2px solid rgba(135, 38, 238, 1) !important;
+  border-top: 2px solid #0B99FF !important;
 }
 
 .cellMultipleSelected.selectionBorderBottom,
 td.cellMultipleSelected.selectionBorderBottom {
-  border-bottom: 2px solid rgba(135, 38, 238, 1) !important;
+  border-bottom: 2px solid #0B99FF !important;
 }
 
 .cellMultipleSelected.selectionBorderLeft,
 td.cellMultipleSelected.selectionBorderLeft {
-  border-left: 2px solid rgba(135, 38, 238, 1) !important;
+  border-left: 2px solid #0B99FF !important;
 }
 
 .cellMultipleSelected.selectionBorderRight,
 td.cellMultipleSelected.selectionBorderRight {
-  border-right: 2px solid rgba(135, 38, 238, 1) !important;
+  border-right: 2px solid #0B99FF !important;
 }
 
 /* Multiple selected cells should have background even when row is hovered */
@@ -346,7 +419,7 @@ td.cellCopy.copyBorderRight:hover {
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: rgba(135, 38, 238, 1);
+  background-color: #0B99FF;
   border: 1px solid rgba(94, 0, 255, 0.3);
   border-radius: 0.125rem 0 0 0;
   transition: background-color 0.15s ease, border-color 0.15s ease;
@@ -362,7 +435,7 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .cellExpandIcon:hover {
-  background-color: rgba(135, 38, 238, 1);
+  background-color: #0B99FF;
   border-color: rgba(94, 0, 255, 0.5);
   cursor: crosshair;
 }
@@ -393,6 +466,27 @@ td.cellCopy.copyBorderRight:hover {
   width: 100%;
   max-width: 100%;
   min-width: 0;
+}
+
+/* Editable text cell with scrolling */
+.cellText[contenteditable="true"] {
+  overflow-x: auto;
+  overflow-y: hidden;
+  white-space: nowrap;
+  text-overflow: clip;
+}
+
+.cellText[contenteditable="true"]::-webkit-scrollbar {
+  height: 2px;
+}
+
+.cellText[contenteditable="true"]::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 1px;
+}
+
+.cellText[contenteditable="true"]::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* When inside flex container (cellContent), use flex properties */
@@ -1139,6 +1233,36 @@ td.cellCopy.copyBorderRight:hover {
   white-space: nowrap;
   flex: 1;
   min-width: 0;
+  cursor: help;
+}
+
+/* Tooltip styles for text overflow */
+.cellTextWithTooltip {
+  position: relative;
+}
+
+.cellTextTooltip {
+  visibility: hidden;
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  white-space: nowrap;
+  z-index: 1000;
+  margin-bottom: 0.5rem;
+  pointer-events: none;
+  max-width: 400px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cellTextWithTooltip:hover .cellTextTooltip {
+  visibility: visible;
 }
 
 /* Asset Card Panel styles - for hovering over reference avatar */
@@ -1169,7 +1293,7 @@ td.cellCopy.copyBorderRight:hover {
   justify-content: space-between;
   align-items: center;
   padding: 1rem 20px;
-  background: #FFF0F5;
+  background: #0B99FF14;
   border-bottom: 1px solid #e5e7eb;
   border-radius: 0.5rem 8px 0 0;
 }
@@ -1295,8 +1419,8 @@ td.cellCopy.copyBorderRight:hover {
 
 .assetCardLibraryName {
   font-size: 0.875rem;
-  color: #0B99FF14;
-  font-weight: 500;
+  color: #0B99FF;
+  font-weight: 400;
 }
 
 .assetCardLibraryArrow {

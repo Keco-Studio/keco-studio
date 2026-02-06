@@ -95,7 +95,7 @@ export function LibraryCard({
             <Tooltip
               title="Predefine asset here"
               placement="bottom"
-              color="#8B5CF6"
+              color="#0B99FF"
             >
               <button
                 className={styles.actionButton}

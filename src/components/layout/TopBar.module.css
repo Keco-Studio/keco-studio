@@ -106,8 +106,8 @@
   padding: 0.375rem 14px;
   border-radius: 9999px;
   border: none;
-  background-color: #5E00FF14;
-  color: #4c1d95;
+  background-color: #0B99FF14;
+  color: #0B99FF;
   font-size: 0.875rem;
   cursor: pointer;
   transition: background-color 0.2s, box-shadow 0.2s;
@@ -115,7 +115,6 @@
 
 
 .topbarPillButton:hover {
-  background-color: #e0e7ff;
 }
 
 .topbarPillIcon {

@@ -89,7 +89,7 @@ export function useSidebarTree(
               </div>
               <div className={styles.itemActions}>
                 {userRole === 'admin' && (
-                  <Tooltip title="Predefine asset here" placement="top" color="#8B5CF6">
+                  <Tooltip title="Predefine asset here" placement="top" color="#0B99FF">
                     <button
                       className={styles.iconButton}
                       aria-label="Library sections"
@@ -189,7 +189,7 @@ export function useSidebarTree(
             </div>
             <div className={styles.itemActions}>
               {userRole === 'admin' && (
-                <Tooltip title="Predefine asset here" placement="top" color="#8B5CF6">
+                <Tooltip title="Predefine asset here" placement="top" color="#0B99FF">
                   <button
                     className={styles.iconButton}
                     aria-label="Library sections"

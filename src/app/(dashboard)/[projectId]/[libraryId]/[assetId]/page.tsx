@@ -236,38 +236,28 @@ export default function AssetPage() {
     return map;
   }, [fieldDefs]);
 
-  // Find the name field (for both new and existing assets)
-  const nameField = useMemo(() => {
+  // Find the first column field (field with smallest order_index)
+  const firstColumnField = useMemo(() => {
     if (fieldDefs.length === 0) return null;
-    // First try to find a field with label 'name' and type 'string'
-    const nameFieldDef = fieldDefs.find(f => f.label === 'name' && f.data_type === 'string');
-    if (nameFieldDef) return nameFieldDef;
-    
-    // Fallback: for new assets, use the first field of the first section
-    if (isNewAsset) {
-      const firstSectionKey = Object.keys(sections)[0];
-      const firstSection = sections[firstSectionKey];
-      if (!firstSection || firstSection.length === 0) return null;
-      const firstField = firstSection[0];
-      if (firstField.label === 'name' && firstField.data_type === 'string') {
-        return firstField;
-      }
-    }
-    return null;
-  }, [isNewAsset, fieldDefs, sections]);
+    // Find field with smallest order_index
+    const sortedFields = [...fieldDefs].sort((a, b) => a.order_index - b.order_index);
+    return sortedFields[0] || null;
+  }, [fieldDefs]);
 
-  // Get asset name (prioritize edited value, then asset name)
+  // Get asset name from first column value (or fallback to 'Untitled')
   const assetName = useMemo(() => {
-    // If we have a name field and its value is being edited, use that
-    if (nameField && values[nameField.id] !== undefined && values[nameField.id] !== null) {
-      const editedValue = String(values[nameField.id]).trim();
-      if (editedValue !== '') {
-        return editedValue;
+    // If we have a first column field and its value exists, use that
+    if (firstColumnField && values[firstColumnField.id] !== undefined && values[firstColumnField.id] !== null) {
+      const fieldValue = values[firstColumnField.id];
+      // Convert to string and trim
+      const displayValue = String(fieldValue).trim();
+      if (displayValue !== '' && displayValue !== 'null' && displayValue !== 'undefined') {
+        return displayValue;
       }
     }
-    // Otherwise, use the asset's name (for existing assets)
-    return asset?.name || '';
-  }, [nameField, values, asset]);
+    // Fallback to 'Untitled' for both new and existing assets
+    return '';
+  }, [firstColumnField, values]);
 
   // Fetch user role
   useEffect(() => {
@@ -419,11 +409,7 @@ export default function AssetPage() {
           
           if (!assetErr && assetRow) {
             setAsset(assetRow as AssetRow);
-            // If there's a name field, update its value too
-            const nameFieldDef = fieldDefs.find(f => f.label === 'name' && f.data_type === 'string');
-            if (nameFieldDef) {
-              setValues(prev => ({ ...prev, [nameFieldDef.id]: assetRow.name }));
-            }
+            // Note: Values are already being synced via Yjs, no need to manually update
           } else if (assetErr) {
             console.error('Error refreshing asset:', assetErr);
           }
@@ -596,6 +582,7 @@ export default function AssetPage() {
     
     if (isNewAsset) {
       // Create new asset using context
+      // Use first column value as asset name, or 'Untitled' if empty
       const nameValue = assetName.trim() || 'Untitled';
       // No validation error - allow creating assets without name field
 
@@ -650,14 +637,15 @@ export default function AssetPage() {
       
       setSaving(true);
       try {
-        // Find the name field and update asset name if changed
-        const nameFieldDef = fieldDefs.find(f => f.label === 'name' && f.data_type === 'string');
+        // Use first column field value as asset name
         let newAssetName = asset.name;
         
-        if (nameFieldDef) {
-          const nameValue = values[nameFieldDef.id];
-          if (nameValue !== undefined && nameValue !== null && String(nameValue).trim() !== '') {
-            newAssetName = String(nameValue).trim();
+        if (firstColumnField) {
+          const firstColValue = values[firstColumnField.id];
+          if (firstColValue !== undefined && firstColValue !== null && String(firstColValue).trim() !== '') {
+            newAssetName = String(firstColValue).trim();
+          } else {
+            newAssetName = 'Untitled';
           }
         }
         
@@ -891,13 +879,14 @@ export default function AssetPage() {
           currentUserAvatarColor={getUserAvatarColor(userProfile.id)}
           userRole={userRole as CollaboratorRole || 'viewer'}
           presenceUsers={presenceUsers || []}
+          firstColumnLabel={firstColumnField?.label}
         />
       )}
       
       <div className={styles.header}>
         {isNewAsset && (
           <div>
-            <h1 className={styles.title}>{assetName || 'New asset'}</h1>
+            <h1 className={styles.title}>{assetName || 'New Asset'}</h1>
           </div>
         )}
             <div className={styles.headerRight}>
@@ -1214,8 +1203,8 @@ export default function AssetPage() {
                         ? 'date'
                         : 'text';
                     
-                    // Add class to hide spinner for int type
-                    const inputClassName = f.data_type === 'int' 
+                    // Add class to hide spinner for int and float types
+                    const inputClassName = (f.data_type === 'int' || f.data_type === 'float')
                       ? `${styles.fieldInput} ${styles.noSpinner} ${mode === 'view' ? styles.disabledInput : ''}`
                       : `${styles.fieldInput} ${mode === 'view' ? styles.disabledInput : ''}`;
 

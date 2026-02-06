@@ -58,7 +58,7 @@ import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
 import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
 import batchEditAddIcon from '@/assets/images/BatchEditAddIcon.svg';
-import tableAssetDetailIcon from '@/assets/images/TableAssetDetailIcon.svg';
+import tableAssetDetailIcon from '@/assets/images/ProjectDescIcon.svg';
 import collaborationViewNumIcon from '@/assets/images/collaborationViewNumIcon.svg';
 import styles from './LibraryAssetsTable.module.css';
 
@@ -703,10 +703,22 @@ export function LibraryAssetsTable({
 
   const totalColumns = 1 + orderedProperties.length;
 
+  // Determine column width class based on number of columns
+  const getColumnWidthClass = () => {
+    const colCount = orderedProperties.length;
+    if (colCount === 1) return styles.cols1;
+    if (colCount === 2) return styles.cols2;
+    if (colCount === 3) return styles.cols3;
+    if (colCount === 4) return styles.cols4;
+    if (colCount === 5) return styles.cols5;
+    if (colCount === 6) return styles.cols6;
+    return styles.colsMany;
+  };
+
   return (
     <>
       <div className={styles.tableContainer} ref={tableContainerRef}>
-        <table className={styles.table}>
+        <table className={`${styles.table} ${getColumnWidthClass()}`}>
           <TableHeader groups={groups} />
           <tbody className={styles.body}>
             {resolvedRows.map((row, index) => {
@@ -1174,7 +1186,12 @@ export function LibraryAssetsTable({
         visible={!!(hoveredAssetId && hoveredAvatarPosition)}
         position={hoveredAvatarPosition ?? { x: 0, y: 0 }}
         assetId={hoveredAssetId}
-        details={hoveredAssetDetails ? { name: hoveredAssetDetails.name, libraryId: hoveredAssetDetails.libraryId, libraryName: hoveredAssetDetails.libraryName } : null}
+        details={hoveredAssetDetails ? { 
+          name: hoveredAssetDetails.name, 
+          libraryId: hoveredAssetDetails.libraryId, 
+          libraryName: hoveredAssetDetails.libraryName,
+          firstColumnLabel: hoveredAssetDetails.firstColumnLabel
+        } : null}
         loading={loadingAssetDetails}
         onClose={() => setHoveredAssetId(null)}
         onMouseEnter={handleAssetCardMouseEnter}

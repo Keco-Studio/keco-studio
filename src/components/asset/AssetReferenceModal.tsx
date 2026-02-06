@@ -26,11 +26,19 @@ type Asset = {
   name: string;
   library_id: string;
   library_name?: string;
+  firstColumnValue?: string; // Value of the first column
 };
 
 type Library = {
   id: string;
   name: string;
+};
+
+type FieldDefinition = {
+  id: string;
+  library_id: string;
+  label: string;
+  order_index: number;
 };
 
 interface AssetReferenceModalProps {
@@ -63,32 +71,44 @@ export function AssetReferenceModal({
     name: string;
     libraryName: string;
     libraryId: string;
+    firstColumnLabel?: string;
   } | null>(null);
   const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
+  const [firstColumnFieldId, setFirstColumnFieldId] = useState<string | null>(null);
+  const [firstColumnLabel, setFirstColumnLabel] = useState<string>('Name');
   const modalRef = useRef<HTMLDivElement>(null);
   const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const assetCardRef = useRef<HTMLDivElement>(null);
 
   // Load libraries
   useEffect(() => {
-    if (!open || referenceLibraries.length === 0) return;
+    console.log('[AssetReferenceModal] Load libraries effect:', { open, referenceLibrariesLength: referenceLibraries.length });
+    
+    if (!open || referenceLibraries.length === 0) {
+      console.log('[AssetReferenceModal] Skipping library load - modal closed or no reference libraries');
+      return;
+    }
 
     const loadLibraries = async () => {
       try {
+        console.log('[AssetReferenceModal] Loading libraries...', referenceLibraries);
         const { data, error } = await supabase
           .from('libraries')
           .select('id, name')
           .in('id', referenceLibraries);
 
         if (error) throw error;
+        
+        console.log('[AssetReferenceModal] Loaded libraries:', data);
         setLibraries(data || []);
         
         // Default to first library
         if (data && data.length > 0) {
           setSelectedLibraryId(data[0].id);
+          console.log('[AssetReferenceModal] Selected first library:', data[0].id);
         }
       } catch (error) {
-        console.error('Failed to load libraries:', error);
+        console.error('[AssetReferenceModal] Failed to load libraries:', error);
       }
     };
 
@@ -100,27 +120,141 @@ export function AssetReferenceModal({
     if (!open || !selectedLibraryId) {
       setAssets([]);
       setFilteredAssets([]);
+      setFirstColumnFieldId(null);
+      setFirstColumnLabel('Name');
       return;
     }
 
     const loadAssets = async () => {
       setLoading(true);
       try {
-        const { data, error } = await supabase
+        // First, get the first column field definition for this library
+        const { data: fieldDefs, error: fieldError } = await supabase
+          .from('library_field_definitions')
+          .select('id, label, order_index')
+          .eq('library_id', selectedLibraryId)
+          .order('order_index', { ascending: true })
+          .limit(1);
+
+        if (fieldError) throw fieldError;
+
+        const firstField = fieldDefs && fieldDefs.length > 0 ? fieldDefs[0] : null;
+        const firstFieldId = firstField?.id || null;
+        const firstFieldLabel = firstField?.label || 'Name';
+        
+        console.log('[AssetReferenceModal] loadAssets - First column:', {
+          selectedLibraryId,
+          firstField,
+          firstFieldId,
+          firstFieldLabel,
+        });
+        
+        setFirstColumnFieldId(firstFieldId);
+        setFirstColumnLabel(firstFieldLabel);
+
+        // Load all assets
+        const { data: assetsData, error: assetsError } = await supabase
           .from('library_assets')
           .select('id, name, library_id')
-          .eq('library_id', selectedLibraryId)
-          .order('name', { ascending: true });
+          .eq('library_id', selectedLibraryId);
 
-        if (error) throw error;
+        if (assetsError) throw assetsError;
+
+        if (!assetsData || assetsData.length === 0) {
+          setAssets([]);
+          setFilteredAssets([]);
+          setLoading(false);
+          return;
+        }
+
+        // Get all asset values for these assets
+        const assetIds = assetsData.map(a => a.id);
+        const { data: valuesData, error: valuesError } = await supabase
+          .from('library_asset_values')
+          .select('asset_id, field_id, value_json')
+          .in('asset_id', assetIds);
+
+        if (valuesError) throw valuesError;
+
+        // Build a map of asset values
+        const assetValuesMap = new Map<string, Map<string, any>>();
+        (valuesData || []).forEach((v) => {
+          if (!assetValuesMap.has(v.asset_id)) {
+            assetValuesMap.set(v.asset_id, new Map());
+          }
+          assetValuesMap.get(v.asset_id)!.set(v.field_id, v.value_json);
+        });
+
+        // Filter out assets that have all empty values and add first column value
+        const assetsWithData = assetsData
+          .map((asset) => {
+            const assetValues = assetValuesMap.get(asset.id);
+            
+            // Get first column value
+            let firstColumnValue = '';
+            if (firstFieldId && assetValues?.has(firstFieldId)) {
+              const rawValue = assetValues.get(firstFieldId);
+              if (rawValue !== null && rawValue !== undefined) {
+                firstColumnValue = String(rawValue).trim();
+              }
+            }
+
+            return {
+              ...asset,
+              library_name: libraries.find((lib) => lib.id === asset.library_id)?.name,
+              firstColumnValue,
+            };
+          })
+          .filter((asset) => {
+            // Filter out assets where ALL fields are empty/null
+            const assetValues = assetValuesMap.get(asset.id);
+            
+            console.log('[AssetReferenceModal] Filtering asset:', {
+              assetId: asset.id,
+              assetName: asset.name,
+              hasValues: !!assetValues,
+              valuesSize: assetValues?.size || 0,
+            });
+            
+            if (!assetValues || assetValues.size === 0) {
+              console.log('[AssetReferenceModal] Filtered out - no values at all');
+              return false; // No values at all
+            }
+            
+            // Check if at least one field has a non-empty value
+            let hasNonEmptyValue = false;
+            for (const [fieldId, value] of assetValues.entries()) {
+              if (value !== null && value !== undefined) {
+                const strValue = String(value).trim();
+                if (strValue !== '' && strValue !== 'null' && strValue !== 'undefined') {
+                  hasNonEmptyValue = true;
+                  break;
+                }
+              }
+            }
+            
+            console.log('[AssetReferenceModal] Filter result:', { assetId: asset.id, hasNonEmptyValue });
+            return hasNonEmptyValue;
+          });
+
+        // Sort by first column value
+        assetsWithData.sort((a, b) => {
+          const aName = a.firstColumnValue || 'Untitled';
+          const bName = b.firstColumnValue || 'Untitled';
+          return aName.localeCompare(bName);
+        });
         
-        const assetsWithLibrary = (data || []).map((asset) => ({
-          ...asset,
-          library_name: libraries.find((lib) => lib.id === asset.library_id)?.name,
-        }));
+        console.log('[AssetReferenceModal] loadAssets - Final assets:', {
+          count: assetsWithData.length,
+          samples: assetsWithData.slice(0, 3).map(a => ({
+            id: a.id,
+            name: a.name,
+            firstColumnValue: a.firstColumnValue,
+          })),
+        });
         
-        setAssets(assetsWithLibrary);
-        setFilteredAssets(assetsWithLibrary);
+        setAssets(assetsWithData);
+        setFilteredAssets(assetsWithData);
       } catch (error) {
         console.error('Failed to load assets:', error);
         setAssets([]);
@@ -138,9 +272,10 @@ export function AssetReferenceModal({
     if (!searchText.trim()) {
       setFilteredAssets(assets);
     } else {
-      const filtered = assets.filter((asset) =>
-        asset.name.toLowerCase().includes(searchText.toLowerCase())
-      );
+      const filtered = assets.filter((asset) => {
+        const searchValue = asset.firstColumnValue || 'Untitled';
+        return searchValue.toLowerCase().includes(searchText.toLowerCase());
+      });
       setFilteredAssets(filtered);
     }
   }, [searchText, assets]);
@@ -182,6 +317,7 @@ export function AssetReferenceModal({
   };
 
   const getAvatarText = (name: string) => {
+    if (!name || name.trim() === '') return 'U';
     return name.charAt(0).toUpperCase();
   };
 
@@ -228,11 +364,26 @@ export function AssetReferenceModal({
         if (error) throw error;
         
         if (data) {
-          setHoveredAssetDetails({
-            name: data.name,
+          // Find the asset in our loaded assets to get the first column value and label
+          const asset = assets.find(a => a.id === hoveredAssetId);
+          
+          const detailsToSet = {
+            name: asset?.firstColumnValue || 'Untitled',
             libraryName: (data.libraries as any)?.name || 'Unknown Library',
             libraryId: data.library_id,
+            firstColumnLabel: firstColumnLabel,
+          };
+          
+          console.log('[AssetReferenceModal] loadAssetDetails:', {
+            hoveredAssetId,
+            asset,
+            firstColumnLabel,
+            firstColumnValue: asset?.firstColumnValue,
+            assetsLength: assets.length,
+            detailsToSet,
           });
+          
+          setHoveredAssetDetails(detailsToSet);
         }
       } catch (error) {
         console.error('Failed to load asset details:', error);
@@ -243,7 +394,7 @@ export function AssetReferenceModal({
     };
 
     loadAssetDetails();
-  }, [hoveredAssetId, supabase]);
+  }, [hoveredAssetId, supabase, assets, firstColumnLabel]);
 
   // Cleanup timeout on unmount
   useEffect(() => {
@@ -291,6 +442,8 @@ export function AssetReferenceModal({
     }, 200); // 200ms delay
   };
 
+  console.log('[AssetReferenceModal] Render:', { open, assetsCount: assets.length, selectedLibraryId });
+  
   if (!open) return null;
 
   return createPortal(
@@ -369,12 +522,12 @@ export function AssetReferenceModal({
                 >
                   <Avatar
                     style={{ 
-                      backgroundColor: getAvatarColor(asset.id, asset.name)
+                      backgroundColor: getAvatarColor(asset.id, asset.firstColumnValue || 'Untitled')
                     }}
                     size={30}
                     className={styles.assetIcon}
                   >
-                    {getAvatarText(asset.name)}
+                    {getAvatarText(asset.firstColumnValue || 'Untitled')}
                   </Avatar>
                 </div>
               ))
@@ -432,18 +585,22 @@ export function AssetReferenceModal({
                         <Avatar
                           size={48}
                           style={{ 
-                            backgroundColor: hoveredAssetId ? getAvatarColor(hoveredAssetId, hoveredAssetDetails.name) : '#FF6CAA',
+                            backgroundColor: hoveredAssetId ? getAvatarColor(hoveredAssetId, hoveredAssetDetails.name || 'Untitled') : '#FF6CAA',
                             borderRadius: '6px'
                           }}
                           className={styles.assetCardIconAvatar}
                         >
-                          {getAvatarText(hoveredAssetDetails.name)}
+                          {getAvatarText(hoveredAssetDetails.name || 'Untitled')}
                         </Avatar>
                       </div>
                       <div className={styles.assetCardDetailInfo}>
                         <div className={styles.assetCardDetailItem}>
-                          <span className={styles.assetCardDetailLabel}>Name</span>
-                          <span className={styles.assetCardDetailValue}>{hoveredAssetDetails.name}</span>
+                          <span className={styles.assetCardDetailLabel}>
+                            {(() => {
+                              return hoveredAssetDetails.firstColumnLabel || 'Name';
+                            })()}
+                          </span>
+                          <span className={styles.assetCardDetailValue}>{hoveredAssetDetails.name || 'Untitled'}</span>
                         </div>
                         <div className={styles.assetCardDetailItem}>
                           <span className={styles.assetCardDetailLabel}>From Library</span>
@@ -457,15 +614,21 @@ export function AssetReferenceModal({
                             }}
                             style={{ cursor: 'pointer' }}
                           >
-                            <Image src={assetRefDetailLibIcon}
-                              alt=""
-                              width={20} height={20} className="icon-20"
-                            />
+                            <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-20">
+                              <g clipPath="url(#clip0_assetRefDetailLibIcon_modal)">
+                                <path d="M11.5896 4.41051L8.87503 1.69551C8.3917 1.21217 7.60837 1.21217 7.12504 1.69551L4.41048 4.41092M11.5896 4.41051L14.3041 7.12551C14.7875 7.60884 14.7875 8.39134 14.3041 8.87384L11.5896 11.5888M11.5896 4.41051L4.41132 11.5893M4.41132 11.5893L7.12671 14.3038C7.60921 14.7872 8.3917 14.7872 8.87503 14.3038L11.5896 11.5888M4.41132 11.5893L1.69592 8.87467C1.58098 8.75996 1.48978 8.6237 1.42756 8.4737C1.36534 8.3237 1.33331 8.1629 1.33331 8.00051C1.33331 7.83811 1.36534 7.67731 1.42756 7.52731C1.48978 7.37731 1.58098 7.24105 1.69592 7.12634L4.41048 4.41092M4.41048 4.41092L11.5896 11.5888" stroke="#0B99FF" strokeWidth="1.5"/>
+                              </g>
+                              <defs>
+                                <clipPath id="clip0_assetRefDetailLibIcon_modal">
+                                  <rect width="16" height="16" fill="white"/>
+                                </clipPath>
+                              </defs>
+                            </svg>
                             <span className={styles.assetCardLibraryName}>{hoveredAssetDetails.libraryName}</span>
-                            <Image src={assetRefDetailLibExpandIcon}
-                              alt=""
-                              width={20} height={20} className="icon-20"
-                            />
+                            <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-20">
+                              <path d="M4.66669 11.3337L11.3334 4.66699" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              <path d="M4.66669 4.66699H11.3334V11.3337" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
                           </div>
                         </div>
                       </div>
