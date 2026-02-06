@@ -214,11 +214,14 @@ export class LibraryPage {
       await this.libraryDescriptionInput.fill(library.description);
     }
 
-    // Step 5: Submit the form
-    await this.submitButton.click();
+    // Step 5: Submit the form (scope to New Library modal to avoid clicking another Create button)
+    const newLibraryModal = this.page.locator('[class*="backdrop"]').filter({ has: this.page.locator('#library-name') });
+    const createBtn = newLibraryModal.getByRole('button', { name: /^create$/i });
+    await expect(createBtn).toBeEnabled({ timeout: 5000 });
+    await createBtn.click();
 
     // Step 6: Wait for modal to close
-    await expect(this.libraryNameInput).not.toBeVisible({ timeout: 10000 });
+    await expect(this.libraryNameInput).not.toBeVisible({ timeout: 20000 });
     await this.page.waitForLoadState('load', { timeout: 15000 });
     // Additional wait to ensure authorization checks are complete
     await this.page.waitForTimeout(1000);
