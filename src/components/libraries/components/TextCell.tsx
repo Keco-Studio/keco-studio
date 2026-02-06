@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Tooltip } from 'antd';
 import { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
@@ -136,6 +136,36 @@ export const TextCell: React.FC<TextCellProps> = ({
   const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
   const shouldShowExpandIcon = showExpandIcon;
 
+  // Track whether text is overflowing (for conditional tooltip)
+  const textRef = useRef<HTMLSpanElement>(null);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+
+  // Check if text is overflowing
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (textRef.current) {
+        const isOverflow = textRef.current.scrollWidth > textRef.current.clientWidth;
+        setIsOverflowing(isOverflow);
+      }
+    };
+
+    // Check initially
+    checkOverflow();
+
+    // Use ResizeObserver to detect when cell size changes
+    const resizeObserver = new ResizeObserver(() => {
+      checkOverflow();
+    });
+
+    if (textRef.current) {
+      resizeObserver.observe(textRef.current);
+    }
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [display]);
+
   const handleMouseMove = (e: React.MouseEvent) => {
     if (showExpandIcon) {
       const rect = e.currentTarget.getBoundingClientRect();
@@ -195,8 +225,9 @@ export const TextCell: React.FC<TextCellProps> = ({
           {propertyIndex === 0 ? (
             // First column: show text + view detail button
             <div className={styles.cellContent}>
-              <Tooltip title={display || ''} placement="topLeft" mouseEnterDelay={0.5}>
+              <Tooltip title={isOverflowing ? (display || '') : null} placement="topLeft" mouseEnterDelay={0.5}>
                 <span 
+                  ref={textRef}
                   className={styles.cellText}
                   onDoubleClick={(e) => {
                     // Ensure double click on first column text triggers editing
@@ -225,9 +256,9 @@ export const TextCell: React.FC<TextCellProps> = ({
               </button>
             </div>
           ) : (
-            // Other fields: show text only with tooltip
-            <Tooltip title={display || ''} placement="topLeft" mouseEnterDelay={0.5}>
-              <span className={styles.cellText}>
+            // Other fields: show text only with tooltip (only if overflowing)
+            <Tooltip title={isOverflowing ? (display || '') : null} placement="topLeft" mouseEnterDelay={0.5}>
+              <span ref={textRef} className={styles.cellText}>
                 {display || ''}
               </span>
             </Tooltip>

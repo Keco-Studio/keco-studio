@@ -227,12 +227,32 @@ export default function AssetPage() {
   }, [assetId, isNewAsset]); // 移除 setActiveField 依赖
 
   const sections = useMemo(() => {
-    const map: Record<string, FieldDef[]> = {};
+    // Group fields by section and track minimum order_index for each section
+    const sectionMap = new Map<string, { fields: FieldDef[]; minOrderIndex: number }>();
+    
     fieldDefs.forEach((f) => {
-      if (!map[f.section]) map[f.section] = [];
-      map[f.section].push(f);
+      let entry = sectionMap.get(f.section);
+      if (!entry) {
+        entry = { fields: [], minOrderIndex: f.order_index };
+        sectionMap.set(f.section, entry);
+      } else {
+        // Update minimum order_index for this section
+        if (f.order_index < entry.minOrderIndex) {
+          entry.minOrderIndex = f.order_index;
+        }
+      }
+      entry.fields.push(f);
     });
-    Object.keys(map).forEach((k) => (map[k] = map[k].slice().sort((a, b) => a.order_index - b.order_index)));
+    
+    // Sort sections by their minimum order_index, then sort fields within each section
+    const sortedSections = Array.from(sectionMap.entries())
+      .sort((a, b) => a[1].minOrderIndex - b[1].minOrderIndex);
+    
+    const map: Record<string, FieldDef[]> = {};
+    sortedSections.forEach(([sectionName, entry]) => {
+      map[sectionName] = entry.fields.sort((a, b) => a.order_index - b.order_index);
+    });
+    
     return map;
   }, [fieldDefs]);
 
@@ -1322,7 +1342,6 @@ export default function AssetPage() {
                                         onBlur={handleFieldBlur}
                                         className={`${inputClassName} ${isBeingEdited ? styles.fieldInputEditing : ''} ${isRealtimeEdited ? styles.fieldRealtimeEdited : ''}`}
                                         style={borderColor ? { borderColor } : undefined}
-                          placeholder={f.label}
                         />
                                       <FieldPresenceAvatars users={editingUsers} />
                                     </div>

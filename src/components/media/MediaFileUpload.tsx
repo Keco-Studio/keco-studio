@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
 import { Tooltip } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -36,6 +36,8 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
   const [error, setError] = useState<string | null>(null);
   const [showImagePreview, setShowImagePreview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileNameRef = useRef<HTMLSpanElement>(null);
+  const [isFileNameOverflowing, setIsFileNameOverflowing] = useState(false);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -148,6 +150,45 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
     ? 'image/*' 
     : '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv';
 
+  // Check if file name is overflowing
+  useEffect(() => {
+    const checkOverflow = () => {
+      if (fileNameRef.current && value) {
+        // Check if element has text-overflow: ellipsis applied
+        const computedStyle = window.getComputedStyle(fileNameRef.current);
+        const hasEllipsis = computedStyle.textOverflow === 'ellipsis';
+        const hasOverflow = computedStyle.overflow === 'hidden' || computedStyle.overflowX === 'hidden';
+        
+        // Check if content is actually wider than container
+        // Use Math.ceil to handle sub-pixel rendering issues
+        const isContentOverflowing = Math.ceil(fileNameRef.current.scrollWidth) > Math.ceil(fileNameRef.current.clientWidth);
+        
+        // Show tooltip if element has ellipsis styling and content is overflowing
+        const isOverflow = hasEllipsis && hasOverflow && isContentOverflowing;
+        setIsFileNameOverflowing(isOverflow);
+      } else {
+        setIsFileNameOverflowing(false);
+      }
+    };
+
+    // Check initially with a small delay to ensure styles are applied
+    const timeoutId = setTimeout(checkOverflow, 0);
+
+    // Use ResizeObserver to detect when container size changes
+    const resizeObserver = new ResizeObserver(() => {
+      checkOverflow();
+    });
+
+    if (fileNameRef.current) {
+      resizeObserver.observe(fileNameRef.current);
+    }
+
+    return () => {
+      clearTimeout(timeoutId);
+      resizeObserver.disconnect();
+    };
+  }, [value]);
+
   return (
     <div className={styles.container}>
       <input
@@ -196,8 +237,8 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
                 <Image src={assetFileIcon} alt="" width={24} height={24} className="icon-24" />
               </div>
             )}
-            <Tooltip title={value.fileName} placement="topLeft" mouseEnterDelay={0.5}>
-              <span className={styles.uploadedFileName}>{value.fileName}</span>
+            <Tooltip title={isFileNameOverflowing ? value.fileName : null} placement="topLeft" mouseEnterDelay={0.5}>
+              <span ref={fileNameRef} className={styles.uploadedFileName}>{value.fileName}</span>
             </Tooltip>
           </div>
           <button
