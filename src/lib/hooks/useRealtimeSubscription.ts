@@ -64,6 +64,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   
   // Track recent broadcasts to prevent processing our own database updates
   const recentBroadcastsRef = useRef<Map<string, number>>(new Map());
+  // 收到 cells:batch-update 后短时间忽略同批 cell 的 postgres_changes，避免协作者「一格一格清空」
+  const recentBatchCellKeysRef = useRef<{ keys: Set<string>; at: number }>({ keys: new Set(), at: 0 });
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -181,11 +183,17 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   /**
    * Handle incoming cells batch update events (e.g. Clear Content).
    * 效仿 Delete Row：一次性接收所有变更，协作者立即全部应用，无 debounce、无顺序问题。
+   * 同时记录这批 cell，短时间忽略同批的 postgres_changes，避免「一格一格清空」。
    */
   const handleCellsBatchUpdateEvent = useCallback((payload: any) => {
     if (!onCellsBatchUpdate) return;
     const event = payload.payload as CellsBatchUpdateEvent;
     if (event.userId === currentUserId) return;
+    const batchKeys = new Set(event.cells.map((c) => `${c.assetId}-${c.propertyKey}`));
+    recentBatchCellKeysRef.current = { keys: batchKeys, at: Date.now() };
+    setTimeout(() => {
+      recentBatchCellKeysRef.current = { keys: new Set(), at: 0 };
+    }, 2500);
     onCellsBatchUpdate(event);
   }, [currentUserId, onCellsBatchUpdate]);
 
@@ -541,13 +549,11 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
             const cellKey = `${newRecord.asset_id}-${newRecord.field_id}`;
             const recentBroadcastTime = recentBroadcastsRef.current.get(cellKey);
             
-            if (recentBroadcastTime && Date.now() - recentBroadcastTime < 2000) {
-              // console.log('[useRealtimeSubscription] ⏭️ Skipping own recent broadcast');
-              return;
-            }
-            
-            // Verify that this asset belongs to our library
-            // (to avoid processing updates from other libraries)
+            if (recentBroadcastTime && Date.now() - recentBroadcastTime < 2000) return;
+
+            const batch = recentBatchCellKeysRef.current;
+            if (batch.keys.size > 0 && batch.keys.has(cellKey) && Date.now() - batch.at < 2500) return;
+
             try {
               const { data: assetData } = await supabase
                 .from('library_assets')
@@ -604,29 +610,20 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           const newRecord = payload.new as any;
           
           if (newRecord && newRecord.asset_id && newRecord.field_id) {
-            // Check if this is our own recent broadcast (to prevent infinite loops)
             const cellKey = `${newRecord.asset_id}-${newRecord.field_id}`;
             const recentBroadcastTime = recentBroadcastsRef.current.get(cellKey);
-            
-            if (recentBroadcastTime && Date.now() - recentBroadcastTime < 2000) {
-              // console.log('[useRealtimeSubscription] ⏭️ Skipping own recent broadcast');
-              return;
-            }
-            
-            // Verify that this asset belongs to our library
+            if (recentBroadcastTime && Date.now() - recentBroadcastTime < 2000) return;
+
+            const batch = recentBatchCellKeysRef.current;
+            if (batch.keys.size > 0 && batch.keys.has(cellKey) && Date.now() - batch.at < 2500) return;
+
             try {
               const { data: assetData } = await supabase
                 .from('library_assets')
                 .select('library_id')
                 .eq('id', newRecord.asset_id)
                 .single();
-              
-              if (!assetData || assetData.library_id !== libraryId) {
-                // console.log('[useRealtimeSubscription] ⏭️ Asset not in our library');
-                return;
-              }
-              
-              // console.log('[useRealtimeSubscription] ✅ Creating synthetic event from database INSERT');
+              if (!assetData || assetData.library_id !== libraryId) return;
               // Create a synthetic CellUpdateEvent from database INSERT
               const syntheticEvent: CellUpdateEvent = {
                 type: 'cell:update',

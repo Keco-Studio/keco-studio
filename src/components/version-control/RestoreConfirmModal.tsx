@@ -25,7 +25,7 @@ interface RestoreConfirmModalProps {
   version: LibraryVersion;
   libraryId: string;
   onClose: () => void;
-  onSuccess: (restoredVersionId: string) => void;
+  onSuccess: (restoredVersionId: string, snapshotData?: any) => void;
 }
 
 export function RestoreConfirmModal({
@@ -57,8 +57,7 @@ export function RestoreConfirmModal({
       setBackupEnabled(false);
       setBackupVersionName('');
       setError(null);
-      // Pass the restored version ID to onSuccess callback
-      onSuccess(data.restoredVersion.id);
+      onSuccess(data.restoredVersion.id, data.restoredVersion.snapshotData);
     },
     onError: (error: any) => {
       // If error is "Name exists", show it directly

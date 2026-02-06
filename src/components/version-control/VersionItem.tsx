@@ -26,7 +26,7 @@ interface VersionItemProps {
   isFirst?: boolean;
   isSelected?: boolean;
   onSelect?: (versionId: string | null) => void;
-  onRestoreSuccess?: (restoredVersionId: string) => void;
+  onRestoreSuccess?: (restoredVersionId: string, snapshotData?: any) => void;
   isHighlighted?: boolean;
 }
 

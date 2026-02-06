@@ -10,8 +10,10 @@
 import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
 import { getVersionsByLibrary } from '@/lib/services/versionService';
 import type { LibraryVersion } from '@/lib/types/version';
+import type { AssetRow } from '@/lib/types/libraryAssets';
 import { VersionList } from './VersionList';
 import { CreateVersionModal } from './CreateVersionModal';
 import styles from './VersionControlSidebar.module.css';
@@ -25,7 +27,7 @@ interface VersionControlSidebarProps {
   onClose: () => void;
   selectedVersionId?: string | null;
   onVersionSelect?: (versionId: string | null) => void;
-  onRestoreSuccess?: (restoredVersionId: string) => void;
+  onRestoreSuccess?: (restoredVersionId: string, snapshotData?: any) => void;
   highlightedVersionId?: string | null;
 }
 
@@ -40,7 +42,18 @@ export function VersionControlSidebar({
 }: VersionControlSidebarProps) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
+  const { allAssets } = useLibraryData();
   const [showCreateModal, setShowCreateModal] = useState(false);
+
+  // 当前界面（Yjs）数据，用于创建版本时保证快照与「当前看到」一致
+  const currentAssetsForVersion: AssetRow[] = allAssets.map((a) => ({
+    id: a.id,
+    libraryId: a.libraryId,
+    name: a.name,
+    propertyValues: a.propertyValues ?? {},
+    created_at: a.created_at,
+    rowIndex: a.rowIndex,
+  }));
 
   // Fetch versions using React Query
   const {
@@ -151,6 +164,7 @@ export function VersionControlSidebar({
       <CreateVersionModal
         open={showCreateModal}
         libraryId={libraryId}
+        currentAssetsFromClient={currentAssetsForVersion}
         onClose={() => setShowCreateModal(false)}
         onSuccess={handleVersionCreated}
       />

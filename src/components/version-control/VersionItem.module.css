@@ -14,7 +14,7 @@
 }
 
 .versionItem.selected {
-  background: rgba(94, 0, 255, 0.08);
+  background: #0b99ff14;
   border-radius: 7px;
   padding-top: 0.25rem;
   padding-bottom: 0.25rem;
@@ -27,7 +27,7 @@
   top: 0;
   right: 0;
   bottom: 0;
-  background: rgba(94, 0, 255, 0.08);
+  background: #0b99ff14;
   border-radius: 7px;
   z-index: -1;
 }
@@ -130,7 +130,7 @@
 }
 
 .currentName {
-  color: rgba(255, 108, 170, 1);
+  color: #0b99ff;
   font-family: 'Roboto', sans-serif;
   font-weight: 500;
   font-size: 1rem;

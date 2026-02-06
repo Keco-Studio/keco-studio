@@ -171,34 +171,29 @@ export function useRowOperations(params: UseRowOperationsParams) {
     });
 
     const numRowsToInsert = sortedRowIds.length;
-    const firstRowId = sortedRowIds[0];
     closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
     setIsSaving(true);
 
     try {
-      const targetRow = allRowsForSelection.find((r) => r.id === firstRowId);
-      if (!targetRow) {
-        setIsSaving(false);
-        return;
+      // 逐个目标行从下往上插入，保证「每个选中行上方各插入一行」，
+      // 而不是在第一行前一次性插入一整块空行。
+      for (let i = sortedRowIds.length - 1; i >= 0; i--) {
+        const rowId = sortedRowIds[i];
+        const targetRow = allRowsForSelection.find((r) => r.id === rowId);
+        if (!targetRow) continue;
+
+        const baseRowIndex =
+          typeof targetRow.rowIndex === 'number'
+            ? targetRow.rowIndex
+            : 1;
+
+        if (supabase) {
+          await shiftRowIndices(supabase, library.id, baseRowIndex, 1);
+        }
+
+        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex });
       }
 
-      // 基于 rowIndex 计算插入区间：在 firstRow 的 rowIndex 之前插 N 行
-      const baseRowIndex =
-        typeof targetRow.rowIndex === 'number'
-          ? targetRow.rowIndex
-          : 1;
-
-      // 先把 DB 中 row_index >= baseRowIndex 的行整体下移 N，腾出连续区间
-      if (supabase) {
-        await shiftRowIndices(supabase, library.id, baseRowIndex, numRowsToInsert);
-      }
-
-      // 再创建 N 行，rowIndex 从 baseRowIndex 开始递增
-      for (let i = 0; i < numRowsToInsert; i++) {
-        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
-      }
-
-      await new Promise((r) => setTimeout(r, 500));
       setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
       setTimeout(() => setToastMessage(null), 2000);
     } catch (e) {
@@ -273,34 +268,29 @@ export function useRowOperations(params: UseRowOperationsParams) {
     });
 
     const numRowsToInsert = sortedRowIds.length;
-    const lastRowId = sortedRowIds[sortedRowIds.length - 1];
     closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
     setIsSaving(true);
 
     try {
-      const targetRow = allRowsForSelection.find((r) => r.id === lastRowId);
-      if (!targetRow) {
-        setIsSaving(false);
-        return;
+      // 逐个目标行从下往上插入，保证「每个选中行下方各插入一行」，
+      // 而不是在最后一行之后一次性插入一整块空行。
+      for (let i = sortedRowIds.length - 1; i >= 0; i--) {
+        const rowId = sortedRowIds[i];
+        const targetRow = allRowsForSelection.find((r) => r.id === rowId);
+        if (!targetRow) continue;
+
+        const baseRowIndex =
+          typeof targetRow.rowIndex === 'number'
+            ? targetRow.rowIndex + 1
+            : 1;
+
+        if (supabase) {
+          await shiftRowIndices(supabase, library.id, baseRowIndex, 1);
+        }
+
+        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex });
       }
 
-      // 基于 rowIndex 计算插入区间：在 lastRow 的 rowIndex 之后插 N 行
-      const baseRowIndex =
-        typeof targetRow.rowIndex === 'number'
-          ? targetRow.rowIndex + 1
-          : (typeof targetRow.rowIndex === 'number' ? targetRow.rowIndex + 1 : 1);
-
-      // 先把 DB 中 row_index >= baseRowIndex 的行整体下移 N，腾出连续区间
-      if (supabase) {
-        await shiftRowIndices(supabase, library.id, baseRowIndex, numRowsToInsert);
-      }
-
-      // 再创建 N 行，rowIndex 从 baseRowIndex 开始递增
-      for (let i = 0; i < numRowsToInsert; i++) {
-        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
-      }
-
-      await new Promise((r) => setTimeout(r, 500));
       setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
       setTimeout(() => setToastMessage(null), 2000);
     } catch (e) {

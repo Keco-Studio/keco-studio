@@ -656,17 +656,14 @@ export default function LibraryPage() {
                 }
               }
             }}
-            onRestoreSuccess={async (restoredVersionId: string) => {
+            onRestoreSuccess={async (restoredVersionId: string, snapshotData?: any) => {
               showSuccessToast('Library restored');
-              // Reload versions and invalidate cache to refetch latest data
               try {
                 const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
                 setVersions(loadedVersions);
-                
-                // Notify components to refresh - event handler will invalidate cache
                 window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { libraryId } }));
-                // Notify Yjs-based data context to reload assets from the restored library state
-                window.dispatchEvent(new CustomEvent('libraryRestored', { detail: { libraryId } }));
+                // 用刚恢复的 snapshot 直接覆盖 Yjs，保证当前视图 = 恢复的版本（与「创建版本用 Yjs」一致）
+                window.dispatchEvent(new CustomEvent('libraryRestored', { detail: { libraryId, snapshotData } }));
                 
                 // Highlight the restored version for 1.5 seconds
                 setHighlightedVersionId(restoredVersionId);
