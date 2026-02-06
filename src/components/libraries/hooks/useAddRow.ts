@@ -13,9 +13,11 @@ interface YRowsLike {
 export type UseAddRowParams = {
   properties: PropertyConfig[];
   library: { id: string; name: string; description?: string | null } | null;
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
+  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number }) => Promise<void>;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   yRows: YRowsLike;
+  /** 当前表格的行（来自 Adapter），用于计算新增行的 rowIndex（追加在末尾 max+1） */
+  rows: AssetRow[];
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
   setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
   enableRealtime?: boolean;
@@ -30,6 +32,7 @@ export function useAddRow(params: UseAddRowParams) {
     onSaveAsset,
     userRole,
     yRows,
+    rows,
     setOptimisticNewAssets,
     setIsSaving,
     enableRealtime,
@@ -45,12 +48,23 @@ export function useAddRow(params: UseAddRowParams) {
     if (!onSaveAsset || !library) return;
 
     const assetName = newRowData[properties[0]?.id] ?? newRowData[properties[0]?.key] ?? 'Untitled';
+
+    // 使用当前 rows 中的最大 rowIndex 来分配新行的 rowIndex，确保追加在末尾（max+1）
+    const maxRowIndex =
+      rows.length > 0
+        ? rows.reduce((max, r) => {
+            const idx = typeof r.rowIndex === 'number' ? r.rowIndex : 0;
+            return idx > max ? idx : max;
+          }, 0)
+        : 0;
+    const nextRowIndex = maxRowIndex + 1;
     const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     const optimisticAsset: AssetRow = {
       id: tempId,
       libraryId: library.id,
       name: String(assetName),
       propertyValues: { ...newRowData },
+      rowIndex: nextRowIndex,
     };
 
     yRows.insert(yRows.length, [optimisticAsset]);
@@ -66,7 +80,7 @@ export function useAddRow(params: UseAddRowParams) {
 
     setIsSaving(true);
     try {
-      await onSaveAsset(assetName, savedNewRowData);
+      await onSaveAsset(assetName, savedNewRowData, { rowIndex: nextRowIndex });
       if (enableRealtime && currentUser) {
         await broadcastAssetCreate(tempId, assetName, savedNewRowData);
       }
@@ -101,6 +115,7 @@ export function useAddRow(params: UseAddRowParams) {
     properties,
     newRowData,
     yRows,
+    rows,
     setOptimisticNewAssets,
     setIsSaving,
     enableRealtime,

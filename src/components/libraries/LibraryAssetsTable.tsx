@@ -71,9 +71,11 @@ export type LibraryAssetsTableProps = {
   sections: SectionConfig[];
   properties: PropertyConfig[];
   rows: AssetRow[];
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
+  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
+  /** Clear Content 专用：批量更新 + 一次性广播，效仿 Delete Row 的即时同步 */
+  onUpdateAssetsWithBatchBroadcast?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
   // Real-time collaboration props
@@ -107,6 +109,7 @@ export function LibraryAssetsTable({
   onSaveAsset,
   onUpdateAsset,
   onUpdateAssets,
+  onUpdateAssetsWithBatchBroadcast,
   onDeleteAsset,
   onDeleteAssets,
   currentUser = null,
@@ -306,13 +309,21 @@ export function LibraryAssetsTable({
   }, [library?.id]);
 
   const {
-    isAddingRow,setIsAddingRow,newRowData,setNewRowData,handleSaveNewAsset,handleCancelAdding,handleInputChange,handleMediaFileChange,
+    isAddingRow,
+    setIsAddingRow,
+    newRowData,
+    setNewRowData,
+    handleSaveNewAsset,
+    handleCancelAdding,
+    handleInputChange,
+    handleMediaFileChange,
   } = useAddRow({
     properties,
     library,
     onSaveAsset,
     userRole,
     yRows,
+    rows,
     setOptimisticNewAssets,
     setIsSaving,
     enableRealtime,
@@ -540,6 +551,7 @@ export function LibraryAssetsTable({
     onSaveAsset,
     onUpdateAsset,
     onUpdateAssets,
+    onUpdateAssetsWithBatchBroadcast,
     onDeleteAsset,
     onDeleteAssets,
     library,
@@ -1040,14 +1052,9 @@ export function LibraryAssetsTable({
                     }
                     
                     // Text field
+                    // 对于 name 字段，这里不再从 row.name 回退，始终以 propertyValues 为准，
+                    // 避免「删除并重建 name 字段后又显示旧值」的情况。
                     let value = row.propertyValues[property.key];
-                    if (isNameField && (value === null || value === undefined || value === '')) {
-                      if (row.name && row.name !== 'Untitled') {
-                        value = row.name;
-                      } else {
-                        value = null;
-                      }
-                    }
                     let display: string | null = null;
                     if (value !== null && value !== undefined && value !== '') {
                       display = String(value);

@@ -19,7 +19,7 @@ import type { AssetRow } from '@/lib/types/libraryAssets';
 
 type AdapterProps = Omit<
   LibraryAssetsTableProps,
-  'rows' | 'onSaveAsset' | 'onUpdateAsset' | 'onUpdateAssets' | 'onDeleteAsset' | 'onDeleteAssets' | 'currentUser' | 'enableRealtime' | 'presenceTracking'
+  'rows' | 'onSaveAsset' | 'onUpdateAsset' | 'onUpdateAssets' | 'onUpdateAssetsWithBatchBroadcast' | 'onDeleteAsset' | 'onDeleteAssets' | 'currentUser' | 'enableRealtime' | 'presenceTracking'
 > & {
   /** When set (e.g. viewing a version snapshot), table shows these rows instead of context. */
   overrideRows?: AssetRow[] | null;
@@ -36,19 +36,36 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
     updateAssetField,
     updateAssetName,
     deleteAsset,
+    updateAssetsBatch,
     getUsersEditingField,
     setActiveField,
   } = useLibraryData();
   
   // Use override rows (e.g. version snapshot) when provided; otherwise context data
   const rowsFromContext = useMemo<AssetRow[]>(() => {
-    return allAssets.map(asset => ({
+    const rows = allAssets.map(asset => ({
       id: asset.id,
       libraryId: asset.libraryId,
       name: asset.name,
       propertyValues: asset.propertyValues,
       created_at: asset.created_at,
+      rowIndex: asset.rowIndex,
     }));
+    if (process.env.NODE_ENV !== 'production') {
+      try {
+        const digest = rows.slice(0, 20).map((r) => ({
+          id: r.id,
+          name: r.name,
+          created_at: r.created_at,
+          propertyKeys: Object.keys(r.propertyValues || {}),
+        }));
+        // eslint-disable-next-line no-console
+        console.log('[Debug][Assets][rowsFromContext]', { count: rows.length, digest });
+      } catch {
+        // ignore logging errors
+      }
+    }
+    return rows;
   }, [allAssets]);
 
   const rows = overrideRows !== undefined && overrideRows !== null ? overrideRows : rowsFromContext;
@@ -57,11 +74,10 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   const handleSaveAsset = useCallback(async (
     assetName: string,
     propertyValues: Record<string, any>,
-    options?: { createdAt?: Date }
+    options?: { createdAt?: Date; rowIndex?: number }
   ) => {
-    await createAsset(assetName, propertyValues, {
-      createdAt: options?.createdAt,
-    });
+    // 直接透传 options，保持与 LibraryDataContext.createAsset 的参数结构一致
+    await createAsset(assetName, propertyValues, options);
   }, [createAsset]);
   
   // Adapt updateAsset to onUpdateAsset format
@@ -95,12 +111,19 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
     await deleteAsset(assetId);
   }, [deleteAsset]);
 
-  // Batch update: 与 delete row 一致，多行时走批量接口（Adapter 内用 Promise.all 串行单条，与页面层一致）
+  // Batch update: 与 delete row 一致，多行时走批量接口
   const handleUpdateAssets = useCallback(async (
     updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
   ) => {
     await Promise.all(updates.map((u) => handleUpdateAsset(u.assetId, u.assetName, u.propertyValues)));
   }, [handleUpdateAsset]);
+
+  // Clear Content 专用：批量更新 + 一次性广播，效仿 Delete Row 的即时同步
+  const handleUpdateAssetsWithBatchBroadcast = useCallback(async (
+    updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
+  ) => {
+    await updateAssetsBatch(updates);
+  }, [updateAssetsBatch]);
 
   // Batch delete: 多行时一次调用多个 delete（Context 无真批量时用 Promise.all）
   const handleDeleteAssets = useCallback(async (assetIds: string[]) => {
@@ -147,6 +170,7 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
       onSaveAsset={handleSaveAsset}
       onUpdateAsset={handleUpdateAsset}
       onUpdateAssets={handleUpdateAssets}
+      onUpdateAssetsWithBatchBroadcast={handleUpdateAssetsWithBatchBroadcast}
       onDeleteAsset={handleDeleteAsset}
       onDeleteAssets={handleDeleteAssets}
       currentUser={currentUser}

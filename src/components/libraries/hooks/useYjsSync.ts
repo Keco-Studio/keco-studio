@@ -23,9 +23,8 @@ export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: Asset
     if (rows.length === 0) return;
 
     const yjsRowsArray = yRows.toArray();
-    const hasPlaceholders = yjsRowsArray.some(
-      (r: AssetRow) => r.id.startsWith('temp-insert-') || r.id.startsWith('temp-paste-')
-    );
+    const isTempId = (id: string) => id.startsWith('temp-insert-') || id.startsWith('temp-paste-');
+    const hasPlaceholders = yjsRowsArray.some((r: AssetRow) => isTempId(r.id));
 
     const realIdsY = yjsRowsArray.filter((r: AssetRow) => !r.id.startsWith('temp-')).map((r: AssetRow) => r.id);
     const idsRows = rows.map((r) => r.id);
@@ -78,7 +77,7 @@ export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: Asset
 
     const insertTempRows: Array<{ index: number; id: string }> = [];
     yjsRowsArray.forEach((row: AssetRow, index: number) => {
-      if (row.id.startsWith('temp-insert-') || row.id.startsWith('temp-paste-')) {
+      if (isTempId(row.id)) {
         insertTempRows.push({ index, id: row.id });
       }
     });
@@ -102,24 +101,29 @@ export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: Asset
       for (let i = yRows.length - 1; i >= 0; i--) yRows.delete(i, 1);
       yRows.insert(0, rows);
     }
+    // 兜底：如果此时 yRows 中依然残留 temp 行，但非 temp 行的集合已经与 rows 完全一致，
+    // 则直接整表替换，确保本地视图与 allAssets 完全对齐，避免 Paste/Insert 后操作者看到多余「幽灵行」。
+    const afterArray: AssetRow[] = yRows.toArray();
+    const tempsLeft = afterArray.some((r) => isTempId(r.id));
+    if (tempsLeft) {
+      const realAfterIds = afterArray.filter((r) => !r.id.startsWith('temp-')).map((r) => r.id);
+      const setAfter = new Set(realAfterIds);
+      const setRows2 = new Set(idsRows);
+      const realMatches =
+        setAfter.size === setRows2.size && Array.from(setAfter).every((id) => setRows2.has(id));
+      if (realMatches) {
+        for (let i = yRows.length - 1; i >= 0; i--) yRows.delete(i, 1);
+        yRows.insert(0, rows);
+      }
+    }
     prevRowsRef.current = rows;
   }, [rows, yRows]);
 
-  // Single source of truth: only use yjsRows when we have placeholders AND yRows (real IDs) matches rows in set and order.
-  // Otherwise use rows so both clients see the same (fixes: stale temp from IndexedDB causing row count/order mismatch).
+  // 最终展示一律以 rows(allAssets) 为准，保证所有协作者视图一致。
+  // yRows 仅作为本地缓存/占位的中间状态，不直接驱动渲染，避免本地 temp 行导致「操作者看到多余行」。
   const allRowsSource = useMemo(() => {
-    const hasPlaceholders = yjsRows.some(
-      (r: AssetRow) => r.id.startsWith('temp-insert-') || r.id.startsWith('temp-paste-')
-    );
-    if (!hasPlaceholders) return rows;
-    const realIdsY = yjsRows.filter((r: AssetRow) => !r.id.startsWith('temp-')).map((r: AssetRow) => r.id);
-    const idsRows = rows.map((r) => r.id);
-    const setY = new Set(realIdsY);
-    const setR = new Set(idsRows);
-    const setMatches = setY.size === setR.size && Array.from(setY).every((id: string) => setR.has(id));
-    const orderMatches = setMatches && realIdsY.join(',') === idsRows.join(',');
-    return hasPlaceholders && setMatches && orderMatches ? yjsRows : rows;
-  }, [yjsRows, rows]);
+    return rows;
+  }, [rows]);
 
   return { allRowsSource };
 }

@@ -31,6 +31,8 @@ type AssetRowDb = {
   id: string;
   library_id: string;
   name: string;
+  created_at?: string;
+  row_index?: number;
 };
 
 type AssetValueRow = {
@@ -59,18 +61,42 @@ const mapDataTypeToValueType = (
   }
 };
 
-const normalizeValue = (input: unknown): string | number | boolean | null => {
+/**
+ * 统一字段反序列化逻辑，和 LibraryDataContext.loadInitialData 保持一致：
+ * - Supabase jsonb 通常已经是对象/原始类型，直接返回
+ * - 如果是非空字符串，再尝试 JSON.parse，一旦失败就保留原字符串
+ */
+const normalizeValue = (input: unknown): any => {
   if (input === null || input === undefined) return null;
-  if (typeof input === 'string' || typeof input === 'number' || typeof input === 'boolean') {
-    return input;
+  let value = input;
+  if (typeof value === 'string' && value.trim() !== '') {
+    try {
+      value = JSON.parse(value);
+    } catch {
+      // 不是 JSON 字符串，就按普通字符串使用
+    }
   }
-  // Fallback: stringify complex JSON so UI can still display something sensible.
-  try {
-    return JSON.stringify(input);
-  } catch {
-    return String(input);
-  }
+  return value;
 };
+
+// Small helper for debugging asset mismatches between "current view" and "version snapshots".
+// It only logs in non-production environments and prints a compact digest.
+function debugLogAssetRows(label: string, rows: AssetRow[]) {
+  if (process.env.NODE_ENV === 'production') return;
+  try {
+    // Log at most first 20 rows to avoid noise
+    const digest = rows.slice(0, 20).map((r) => ({
+      id: r.id,
+      name: r.name,
+      created_at: r.created_at,
+      propertyKeys: Object.keys(r.propertyValues || {}),
+    }));
+    // eslint-disable-next-line no-console
+    console.log(`[Debug][Assets][${label}] count=${rows.length}`, digest);
+  } catch {
+    // Swallow any logging errors – never break main logic
+  }
+}
 
 // T007: Load library summary from existing libraries table / service.
 export async function getLibrarySummary(
@@ -194,9 +220,12 @@ export async function getLibraryAssetsWithProperties(
   
   const { data: assetData, error: assetError } = await supabase
     .from('library_assets')
-    .select('id, library_id, name')
+    .select('id, library_id, name, created_at, row_index')
     .eq('library_id', libraryId)
-    .order('created_at', { ascending: true });
+    // IMPORTANT: 排序逻辑必须与前端 allAssets 完全一致：
+    // 先按 row_index，再按 id，避免不同客户端行顺序不一致。
+    .order('row_index', { ascending: true })
+    .order('id', { ascending: true });
 
   if (assetError) {
     throw assetError;
@@ -231,6 +260,8 @@ export async function getLibraryAssetsWithProperties(
       slug: null,
       figmaNodeId: null,
       propertyValues: {},
+      created_at: asset.created_at,
+      rowIndex: asset.row_index ?? undefined,
     });
   }
 
@@ -239,8 +270,9 @@ export async function getLibraryAssetsWithProperties(
     if (!row) continue;
     row.propertyValues[value.field_id] = normalizeValue(value.value_json);
   }
-
-  return Array.from(rowsByAssetId.values());
+  const result = Array.from(rowsByAssetId.values());
+  debugLogAssetRows('getLibraryAssetsWithProperties', result);
+  return result;
 }
 
 // T010: Create a new asset with property values
@@ -251,6 +283,7 @@ export async function createAsset(
   propertyValues: Record<string, any>,
   options?: {
     createdAt?: Date; // Optional: set created_at to control insertion position
+    rowIndex?: number; // Optional: explicit row_index
   }
 ): Promise<string> {
   // verify creation permission (admin and editor can create)
@@ -261,6 +294,7 @@ export async function createAsset(
     library_id: string;
     name: string;
     created_at?: string;
+    row_index?: number;
   } = {
     library_id: libraryId,
     name: assetName,
@@ -269,6 +303,9 @@ export async function createAsset(
   // If createdAt is provided, use it to control insertion position
   if (options?.createdAt) {
     insertData.created_at = options.createdAt.toISOString();
+  }
+  if (typeof options?.rowIndex === 'number') {
+    insertData.row_index = options.rowIndex;
   }
   
   const { data: assetData, error: assetError } = await supabase
@@ -307,6 +344,47 @@ export async function createAsset(
   }
 
   return assetId;
+}
+
+/**
+ * Shift row_index for all assets in a library starting from fromRowIndex by delta.
+ * Used for insert-above/below so that newly inserted rows can take a contiguous range.
+ */
+export async function shiftRowIndices(
+  supabase: SupabaseClient,
+  libraryId: string,
+  fromRowIndex: number,
+  delta: number
+): Promise<void> {
+  if (!delta) return;
+
+  const { data, error } = await supabase
+    .from('library_assets')
+    .select('id, row_index')
+    .eq('library_id', libraryId)
+    .gte('row_index', fromRowIndex)
+    .order('row_index', { ascending: delta > 0 });
+
+  if (error) {
+    throw new Error(`Failed to load rows for shifting indices: ${error.message}`);
+  }
+
+  const rows = (data || []) as { id: string; row_index: number | null }[];
+  if (rows.length === 0) return;
+
+  const ordered = delta > 0 ? rows.reverse() : rows;
+
+  for (const row of ordered) {
+    if (row.row_index == null) continue;
+    const newIndex = row.row_index + delta;
+    const { error: updateError } = await supabase
+      .from('library_assets')
+      .update({ row_index: newIndex })
+      .eq('id', row.id);
+    if (updateError) {
+      throw new Error(`Failed to shift row_index for asset ${row.id}: ${updateError.message}`);
+    }
+  }
 }
 
 // T011: Update an existing asset and its property values

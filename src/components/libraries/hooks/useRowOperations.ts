@@ -3,6 +3,7 @@ import type * as Y from 'yjs';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { CellKey } from './useCellSelection';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { shiftRowIndices } from '@/lib/services/libraryAssetsService';
 
 // Compatible interface for yRows (supports both Y.Array and mock objects)
 interface YRowsLike {
@@ -13,10 +14,12 @@ interface YRowsLike {
 }
 
 export type UseRowOperationsParams = {
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => Promise<void>;
+  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   /** Batch update: all updates then one dispatch → one invalidate, avoids 先消失后恢复再消失 + 其他列恢复 */
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
+  /** Clear Content 专用：批量更新 + 一次性广播，效仿 Delete Row 的即时同步 */
+  onUpdateAssetsWithBatchBroadcast?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   /** Batch delete: Supabase .delete().in(), one round-trip */
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
@@ -74,6 +77,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     onSaveAsset,
     onUpdateAsset,
     onUpdateAssets,
+    onUpdateAssetsWithBatchBroadcast,
     onDeleteAsset,
     onDeleteAssets,
     library,
@@ -158,10 +162,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
       return;
     }
 
-    const allRows = yRows.toArray();
+    // 使用当前表格渲染用的 rows 顺序（来自 Adapter，已按 rowIndex 排好）来决定插入位置
+    const allRowsForSelection = rows;
     const sortedRowIds = Array.from(rowsToUse).sort((a, b) => {
-      const indexA = allRows.findIndex((r) => r.id === a);
-      const indexB = allRows.findIndex((r) => r.id === b);
+      const indexA = allRowsForSelection.findIndex((r) => r.id === a);
+      const indexB = allRowsForSelection.findIndex((r) => r.id === b);
       return indexA - indexB;
     });
 
@@ -171,123 +176,26 @@ export function useRowOperations(params: UseRowOperationsParams) {
     setIsSaving(true);
 
     try {
-      const targetRowIndex = allRows.findIndex((r) => r.id === firstRowId);
-      if (targetRowIndex === -1) {
+      const targetRow = allRowsForSelection.find((r) => r.id === firstRowId);
+      if (!targetRow) {
         setIsSaving(false);
         return;
       }
 
-      // Prefer local row created_at to avoid 406 when Supabase returns 0 rows (.single() fails)
-      const targetRow = allRows.find((r) => r.id === firstRowId);
-      let targetCreatedAt: Date;
-      if (targetRow?.created_at) {
-        targetCreatedAt = new Date(targetRow.created_at);
-      } else if (supabase) {
-        const { data: targetRowData, error: queryError } = await supabase
-          .from('library_assets')
-          .select('created_at')
-          .eq('id', firstRowId)
-          .maybeSingle();
+      // 基于 rowIndex 计算插入区间：在 firstRow 的 rowIndex 之前插 N 行
+      const baseRowIndex =
+        typeof targetRow.rowIndex === 'number'
+          ? targetRow.rowIndex
+          : 1;
 
-        if (queryError || !targetRowData) {
-          setIsSaving(false);
-          setToastMessage({ message: 'Failed to insert rows above', type: 'error' });
-          setTimeout(() => setToastMessage(null), 2000);
-          return;
-        }
-        targetCreatedAt = new Date(targetRowData.created_at);
-      } else {
-        targetCreatedAt = new Date();
+      // 先把 DB 中 row_index >= baseRowIndex 的行整体下移 N，腾出连续区间
+      if (supabase) {
+        await shiftRowIndices(supabase, library.id, baseRowIndex, numRowsToInsert);
       }
 
-      if (supabase) {
-        const createdTempIds: string[] = [];
-        const optimisticAssets: AssetRow[] = [];
-
-        // 新行 created_at 必须严格落在「目标上一行」和「目标行」之间，这样 allAssets 按 created_at 排序后新行才会紧贴目标行上方，不会跑到最顶
-        const targetTime = targetCreatedAt.getTime();
-        const prevRow = allRows[targetRowIndex - 1];
-        const prevTime =
-          prevRow?.created_at != null
-            ? new Date(prevRow.created_at).getTime()
-            : targetTime - 86400000;
-
-        for (let i = 0; i < numRowsToInsert; i++) {
-          const newCreatedAt = new Date(
-            prevTime + ((i + 1) * (targetTime - prevTime)) / (numRowsToInsert + 1)
-          );
-          const tempId = `temp-insert-above-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          createdTempIds.push(tempId);
-          optimisticAssets.push({
-            id: tempId,
-            libraryId: library.id,
-            name: 'Untitled',
-            propertyValues: {},
-          });
-        }
-
-        for (let i = optimisticAssets.length - 1; i >= 0; i--) {
-          yRows.insert(targetRowIndex, [optimisticAssets[i]]);
-        }
-        optimisticAssets.forEach((asset) => {
-          setOptimisticNewAssets((prev) => {
-            const newMap = new Map(prev);
-            newMap.set(asset.id, asset);
-            return newMap;
-          });
-        });
-        setOptimisticInsertIndices?.((prev) => {
-          const next = new Map(prev);
-          createdTempIds.forEach((id, i) => next.set(id, targetRowIndex + i));
-          return next;
-        });
-
-        for (let i = 0; i < numRowsToInsert; i++) {
-          const newCreatedAt = new Date(
-            prevTime + ((i + 1) * (targetTime - prevTime)) / (numRowsToInsert + 1)
-          );
-          await onSaveAsset('Untitled', {}, { createdAt: newCreatedAt });
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            try {
-              await broadcastAssetCreate(createdTempIds[i], optimisticAssets[i].name, optimisticAssets[i].propertyValues, { insertBeforeRowId: firstRowId });
-            } catch (e) {
-              console.error('Failed to broadcast asset creation:', e);
-            }
-          }
-        }
-      } else {
-        const createdTempIds: string[] = [];
-        const optimisticAssets: AssetRow[] = [];
-        for (let i = 0; i < numRowsToInsert; i++) {
-          const tempId = `temp-insert-above-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          createdTempIds.push(tempId);
-          optimisticAssets.push({ id: tempId, libraryId: library.id, name: 'Untitled', propertyValues: {} });
-        }
-        for (let i = optimisticAssets.length - 1; i >= 0; i--) {
-          yRows.insert(targetRowIndex, [optimisticAssets[i]]);
-        }
-        optimisticAssets.forEach((asset) => {
-          setOptimisticNewAssets((prev) => {
-            const newMap = new Map(prev);
-            newMap.set(asset.id, asset);
-            return newMap;
-          });
-        });
-        setOptimisticInsertIndices?.((prev) => {
-          const next = new Map(prev);
-          createdTempIds.forEach((id, i) => next.set(id, targetRowIndex + i));
-          return next;
-        });
-        for (let i = 0; i < numRowsToInsert; i++) {
-          await onSaveAsset('Untitled', {});
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            try {
-              await broadcastAssetCreate(createdTempIds[i], optimisticAssets[i].name, optimisticAssets[i].propertyValues, { insertBeforeRowId: firstRowId });
-            } catch (e) {
-              console.error('Failed to broadcast asset creation:', e);
-            }
-          }
-        }
+      // 再创建 N 行，rowIndex 从 baseRowIndex 开始递增
+      for (let i = 0; i < numRowsToInsert; i++) {
+        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
       }
 
       await new Promise((r) => setTimeout(r, 500));
@@ -312,9 +220,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     selectedCells,
     selectedRowIds,
     contextMenuRowIdRef,
-    yRows,
-    setOptimisticNewAssets,
-    setOptimisticInsertIndices,
+    getAllRowsForCellSelection,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
     setContextMenuRowId,
@@ -323,9 +229,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
     setIsSaving,
     setSelectedCells,
     setSelectedRowIds,
-    enableRealtime,
-    currentUser,
-    broadcastAssetCreate,
   ]);
 
   const handleInsertRowBelow = useCallback(async () => {
@@ -361,10 +264,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
       return;
     }
 
-    const allRows = yRows.toArray();
+    // 使用当前表格渲染用的 rows 顺序（来自 Adapter，已按 rowIndex 排好）来决定插入位置
+    const allRowsForSelection = rows;
     const sortedRowIds = Array.from(rowsToUse).sort((a, b) => {
-      const indexA = allRows.findIndex((r) => r.id === a);
-      const indexB = allRows.findIndex((r) => r.id === b);
+      const indexA = allRowsForSelection.findIndex((r) => r.id === a);
+      const indexB = allRowsForSelection.findIndex((r) => r.id === b);
       return indexA - indexB;
     });
 
@@ -374,111 +278,26 @@ export function useRowOperations(params: UseRowOperationsParams) {
     setIsSaving(true);
 
     try {
-      const allRows2 = yRows.toArray();
-      const targetRowIndex = allRows2.findIndex((r) => r.id === lastRowId);
-      if (targetRowIndex === -1) {
+      const targetRow = allRowsForSelection.find((r) => r.id === lastRowId);
+      if (!targetRow) {
         setIsSaving(false);
         return;
       }
 
-      // Prefer local row created_at to avoid 406 when Supabase returns 0 rows (.single() fails)
-      const targetRowBelow = allRows2.find((r) => r.id === lastRowId);
-      let targetCreatedAt: Date;
-      if (targetRowBelow?.created_at) {
-        targetCreatedAt = new Date(targetRowBelow.created_at);
-      } else if (supabase) {
-        const { data: targetRowData, error: queryError } = await supabase
-          .from('library_assets')
-          .select('created_at')
-          .eq('id', lastRowId)
-          .maybeSingle();
+      // 基于 rowIndex 计算插入区间：在 lastRow 的 rowIndex 之后插 N 行
+      const baseRowIndex =
+        typeof targetRow.rowIndex === 'number'
+          ? targetRow.rowIndex + 1
+          : (typeof targetRow.rowIndex === 'number' ? targetRow.rowIndex + 1 : 1);
 
-        if (queryError || !targetRowData) {
-          setIsSaving(false);
-          setToastMessage({ message: 'Failed to insert rows below', type: 'error' });
-          setTimeout(() => setToastMessage(null), 2000);
-          return;
-        }
-        targetCreatedAt = new Date(targetRowData.created_at);
-      } else {
-        targetCreatedAt = new Date();
+      // 先把 DB 中 row_index >= baseRowIndex 的行整体下移 N，腾出连续区间
+      if (supabase) {
+        await shiftRowIndices(supabase, library.id, baseRowIndex, numRowsToInsert);
       }
 
-      if (supabase) {
-        const createdTempIds: string[] = [];
-        const optimisticAssets: AssetRow[] = [];
-
-        for (let i = 0; i < numRowsToInsert; i++) {
-          const offsetMs = (i + 1) * 1000;
-          const newCreatedAt = new Date(targetCreatedAt.getTime() + offsetMs);
-          const tempId = `temp-insert-below-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          createdTempIds.push(tempId);
-          optimisticAssets.push({ id: tempId, libraryId: library.id, name: 'Untitled', propertyValues: {} });
-        }
-
-        const insertIndex = targetRowIndex + 1;
-        for (let i = optimisticAssets.length - 1; i >= 0; i--) {
-          yRows.insert(insertIndex, [optimisticAssets[i]]);
-        }
-        optimisticAssets.forEach((asset) => {
-          setOptimisticNewAssets((prev) => {
-            const newMap = new Map(prev);
-            newMap.set(asset.id, asset);
-            return newMap;
-          });
-        });
-        setOptimisticInsertIndices?.((prev) => {
-          const next = new Map(prev);
-          createdTempIds.forEach((id, i) => next.set(id, insertIndex + i));
-          return next;
-        });
-
-        for (let i = 0; i < numRowsToInsert; i++) {
-          const offsetMs = (i + 1) * 1000;
-          const newCreatedAt = new Date(targetCreatedAt.getTime() + offsetMs);
-          await onSaveAsset('Untitled', {}, { createdAt: newCreatedAt });
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            try {
-              await broadcastAssetCreate(createdTempIds[i], optimisticAssets[i].name, optimisticAssets[i].propertyValues, { insertAfterRowId: lastRowId });
-            } catch (e) {
-              console.error('Failed to broadcast asset creation:', e);
-            }
-          }
-        }
-      } else {
-        const createdTempIds: string[] = [];
-        const optimisticAssets: AssetRow[] = [];
-        for (let i = 0; i < numRowsToInsert; i++) {
-          const tempId = `temp-insert-below-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-          createdTempIds.push(tempId);
-          optimisticAssets.push({ id: tempId, libraryId: library.id, name: 'Untitled', propertyValues: {} });
-        }
-        const insertIndex = targetRowIndex + 1;
-        for (let i = optimisticAssets.length - 1; i >= 0; i--) {
-          yRows.insert(insertIndex, [optimisticAssets[i]]);
-        }
-        optimisticAssets.forEach((asset) => {
-          setOptimisticNewAssets((prev) => {
-            const newMap = new Map(prev);
-            newMap.set(asset.id, asset);
-            return newMap;
-          });
-        });
-        setOptimisticInsertIndices?.((prev) => {
-          const next = new Map(prev);
-          createdTempIds.forEach((id, i) => next.set(id, insertIndex + i));
-          return next;
-        });
-        for (let i = 0; i < numRowsToInsert; i++) {
-          await onSaveAsset('Untitled', {});
-          if (enableRealtime && currentUser && i < optimisticAssets.length) {
-            try {
-              await broadcastAssetCreate(createdTempIds[i], optimisticAssets[i].name, optimisticAssets[i].propertyValues, { insertAfterRowId: lastRowId });
-            } catch (e) {
-              console.error('Failed to broadcast asset creation:', e);
-            }
-          }
-        }
+      // 再创建 N 行，rowIndex 从 baseRowIndex 开始递增
+      for (let i = 0; i < numRowsToInsert; i++) {
+        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
       }
 
       await new Promise((r) => setTimeout(r, 500));
@@ -503,9 +322,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     selectedCells,
     selectedRowIds,
     contextMenuRowIdRef,
-    yRows,
-    setOptimisticNewAssets,
-    setOptimisticInsertIndices,
+    getAllRowsForCellSelection,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
     setContextMenuRowId,
@@ -536,7 +353,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
       setClearContentsConfirmVisible(false);
       return;
     }
-    if (!onUpdateAsset) {
+    if (!onUpdateAsset && !onUpdateAssetsWithBatchBroadcast) {
       setClearContentsConfirmVisible(false);
       return;
     }
@@ -611,16 +428,18 @@ export function useRowOperations(params: UseRowOperationsParams) {
       const entries = Array.from(cellsByRow.entries()).filter(([rowId]) =>
         allRowsForSelection.some((r) => r.id === rowId)
       );
-      const useBatch = entries.length > 1 && !!onUpdateAssets;
+      const updates = entries.map(([rowId, rowData]) => {
+        const row = allRowsForSelection.find((r) => r.id === rowId)!;
+        const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
+        return { assetId: rowId, assetName, propertyValues: rowData.propertyValues };
+      });
 
-      if (useBatch) {
-        const updates = entries.map(([rowId, rowData]) => {
-          const row = allRowsForSelection.find((r) => r.id === rowId)!;
-          const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
-          return { assetId: rowId, assetName, propertyValues: rowData.propertyValues };
-        });
-        await onUpdateAssets!(updates);
-      } else {
+      // 优先使用批量广播（效仿 Delete Row），协作者即时同步；否则回退到普通批量更新
+      if (updates.length > 0 && onUpdateAssetsWithBatchBroadcast) {
+        await onUpdateAssetsWithBatchBroadcast(updates);
+      } else if (entries.length > 1 && onUpdateAssets) {
+        await onUpdateAssets(updates);
+      } else if (onUpdateAsset) {
         await Promise.all(
           entries.map(([rowId, rowData]) => {
             const row = allRowsForSelection.find((r) => r.id === rowId);
@@ -650,6 +469,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     getAllRowsForCellSelection,
     onUpdateAsset,
     onUpdateAssets,
+    onUpdateAssetsWithBatchBroadcast,
     setSelectedCells,
     setSelectedRowIds,
     setClearContentsConfirmVisible,

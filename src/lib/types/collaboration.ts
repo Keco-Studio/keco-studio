@@ -137,7 +137,28 @@ export type AssetDeleteEvent = {
   timestamp: number;
 };
 
-export type RealtimeEvent = CellUpdateEvent | AssetCreateEvent | AssetDeleteEvent;
+export type RowOrderChangeEvent = {
+  type: 'roworder:change';
+  userId: string;
+  userName: string;
+  timestamp: number;
+};
+
+/** 批量单元格更新事件，用于 Clear Content 等批量清空场景，一次广播所有变更，避免多条 cell:update 的 debounce 与顺序问题 */
+export type CellsBatchUpdateEvent = {
+  type: 'cells:batch-update';
+  userId: string;
+  userName: string;
+  timestamp: number;
+  cells: Array<{ assetId: string; propertyKey: string; newValue: any }>;
+};
+
+export type RealtimeEvent =
+  | CellUpdateEvent
+  | AssetCreateEvent
+  | AssetDeleteEvent
+  | RowOrderChangeEvent
+  | CellsBatchUpdateEvent;
 
 // ============================================================================
 // API Request/Response Types

@@ -24,8 +24,9 @@ import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import { useRealtimeSubscription, type ConnectionStatus } from '@/lib/hooks/useRealtimeSubscription';
 import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
-import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState } from '@/lib/types/collaboration';
+import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState, CellsBatchUpdateEvent } from '@/lib/types/collaboration';
 import { serializeError } from '@/lib/utils/errorUtils';
+import { getLibraryAssetsWithProperties } from '@/lib/services/libraryAssetsService';
 
 interface LibraryDataContextValue {
   // Data access
@@ -41,6 +42,8 @@ interface LibraryDataContextValue {
   
   // Bulk operations
   updateMultipleFields: (updates: Array<{ assetId: string; fieldId: string; value: any }>) => Promise<void>;
+  /** 批量更新并一次性广播，用于 Clear Content，效仿 Delete Row 的即时同步 */
+  updateAssetsBatch: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   
   // Realtime collaboration
   connectionStatus: ConnectionStatus;
@@ -98,6 +101,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         const name = yAsset.get('name') || 'Untitled';
         const yPropertyValues = yAsset.get('propertyValues');
         const createdAt = yAsset.get('created_at');
+        const rowIndex = yAsset.get('row_index');
         
         // Convert Y.Map to plain object
         const propertyValues: Record<string, any> = {};
@@ -116,6 +120,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
           name,
           propertyValues,
           created_at: createdAt,
+          rowIndex: typeof rowIndex === 'number' ? rowIndex : undefined,
         });
       });
       
@@ -148,61 +153,21 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     setIsLoading(true);
     
     try {
-      // Load assets
-      const { data: assetsData, error: assetsError } = await supabase
-        .from('library_assets')
-        .select('id, name, library_id, created_at')
-        .eq('library_id', libraryId)
-        .order('created_at', { ascending: true });
-      
-      if (assetsError) throw assetsError;
-      
-      // Load all field values for these assets
-      const assetIds = assetsData?.map(a => a.id) || [];
-      let valuesData: any[] = [];
-      
-      if (assetIds.length > 0) {
-        const { data: values, error: valuesError } = await supabase
-          .from('library_asset_values')
-          .select('asset_id, field_id, value_json')
-          .in('asset_id', assetIds);
-        
-        if (valuesError) throw valuesError;
-        valuesData = values || [];
-      }
-      
-      // Group values by asset
-      const valuesByAsset = new Map<string, Record<string, any>>();
-      valuesData.forEach((v: any) => {
-        if (!valuesByAsset.has(v.asset_id)) {
-          valuesByAsset.set(v.asset_id, {});
-        }
-        
-        // Parse JSON strings for complex types
-        let parsedValue = v.value_json;
-        if (typeof parsedValue === 'string' && parsedValue.trim() !== '') {
-          try {
-            parsedValue = JSON.parse(parsedValue);
-          } catch {
-            // Keep original value if parsing fails
-          }
-        }
-        
-        valuesByAsset.get(v.asset_id)![v.field_id] = parsedValue;
-      });
-      
+      // 使用与版本快照完全一致的服务读取当前库数据，避免「当前视图」和「版本快照」两套取数逻辑
+      const assetRows: AssetRow[] = await getLibraryAssetsWithProperties(supabase, libraryId);
+
       // Populate Yjs with data (using Y.Map for propertyValues)
       // Always clear existing Yjs state first to avoid mixing old and new data
       yDoc.transact(() => {
         yAssets.clear();
         
-        assetsData?.forEach((asset: any) => {
+        assetRows.forEach((asset: AssetRow) => {
           const yAsset = new Y.Map();
           yAsset.set('name', asset.name);
           
           // Create Y.Map for propertyValues (nested structure)
           const yPropertyValues = new Y.Map();
-          const values = valuesByAsset.get(asset.id) || {};
+          const values = asset.propertyValues || {};
           Object.entries(values).forEach(([fieldId, value]) => {
             // For complex objects, use deep copy to avoid reference issues
             let valueForYjs = value;
@@ -213,8 +178,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
           });
           yAsset.set('propertyValues', yPropertyValues);
           
-          yAsset.set('created_at', asset.created_at);
-          yAssets.set(asset.id, yAsset);
+          if (asset.created_at) yAsset.set('created_at', asset.created_at);
+          if (typeof asset.rowIndex === 'number') yAsset.set('row_index', asset.rowIndex);
+          yAssets.set(asset.id, yAsset as any);
         });
       });
       
@@ -261,6 +227,39 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       }
     };
   }, [libraryId, loadInitialData]);
+
+  // Realtime: 当有人成功 restore 一个版本时，所有协作者自动从 DB 重新加载一次
+  useEffect(() => {
+    if (!libraryId) return;
+
+    const channel = supabase
+      .channel(`library-versions-restore:${libraryId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'library_versions',
+          filter: `library_id=eq.${libraryId}`,
+        },
+        (payload) => {
+          try {
+            const row: any = payload.new;
+            if (row?.version_type === 'restore') {
+              // 有新 restore 版本记录插入，说明库已被回滚到某个快照 → 强制用 DB 覆盖本地 Yjs
+              loadInitialData();
+            }
+          } catch (err) {
+            console.error('[LibraryDataContext] Failed to handle restore realtime event', err);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [libraryId, supabase, loadInitialData]);
   
   // Batch queue for cell updates - apply in one transact so UI updates at once (fixes "one by one" disappearing)
   const cellUpdateQueueRef = useRef<CellUpdateEvent[]>([]);
@@ -341,6 +340,34 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     console.warn('[LibraryDataContext] Conflict detected:', event);
     handleCellUpdateEvent(event);
   }, [handleCellUpdateEvent]);
+
+  // 行序变更事件：统一触发一次从 DB 的 reload，以后如果有更细粒度的行序事件再优化为局部更新
+  const handleRowOrderChangeEvent = useCallback(() => {
+    loadInitialData();
+  }, [loadInitialData]);
+
+  // 批量单元格更新：Clear Content 等场景，一次接收所有变更并应用到 Yjs
+  const handleCellsBatchUpdateEvent = useCallback((event: CellsBatchUpdateEvent) => {
+    if (event.cells.length === 0) return;
+    yDoc.transact(() => {
+      for (const { assetId, propertyKey, newValue } of event.cells) {
+        const yAsset = yAssets.get(assetId);
+        if (!yAsset) continue;
+        let valueForYjs = newValue;
+        if (newValue !== null && typeof newValue === 'object') {
+          valueForYjs = JSON.parse(JSON.stringify(newValue));
+        }
+        if (propertyKey === 'name') {
+          yAsset.set('name', valueForYjs ?? '');
+        } else {
+          const yPropertyValues = yAsset.get('propertyValues') as Y.Map<any>;
+          if (yPropertyValues) {
+            yPropertyValues.set(propertyKey, valueForYjs);
+          }
+        }
+      }
+    });
+  }, [yAssets, yDoc]);
   
   // Initialize realtime subscription
   const realtimeConfig = useMemo(() => {
@@ -358,8 +385,10 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onAssetCreate: handleAssetCreateEvent,
       onAssetDelete: handleAssetDeleteEvent,
       onConflict: handleConflictEvent,
+      onRowOrderChange: handleRowOrderChangeEvent,
+      onCellsBatchUpdate: handleCellsBatchUpdateEvent,
     };
-  }, [libraryId, userProfile, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent]);
+  }, [libraryId, userProfile, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent]);
   
   const realtimeSubscription = useRealtimeSubscription(
     realtimeConfig || {
@@ -372,15 +401,19 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onAssetCreate: () => {},
       onAssetDelete: () => {},
       onConflict: () => {},
+      onRowOrderChange: () => {},
+      onCellsBatchUpdate: () => {},
     }
   );
   
-  const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete } = 
+  const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete, broadcastCellsBatchUpdate, broadcastRowOrderChange } = 
     realtimeConfig ? realtimeSubscription : {
       connectionStatus: 'disconnected' as const,
       broadcastCellUpdate: async () => {},
       broadcastAssetCreate: async () => {},
       broadcastAssetDelete: async () => {},
+      broadcastCellsBatchUpdate: async () => {},
+      broadcastRowOrderChange: async () => {},
     };
   
   // Presence tracking - use useMemo to avoid recreating config on every render
@@ -516,8 +549,21 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   const createAsset = useCallback(async (
     name: string,
     propertyValues: Record<string, any>,
-    options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date }
+    options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date; rowIndex?: number }
   ): Promise<string> => {
+    // 0. Determine rowIndex: prefer explicit option, otherwise append to end
+    let nextRowIndex: number;
+    if (typeof options?.rowIndex === 'number') {
+      nextRowIndex = options.rowIndex;
+    } else {
+      const current = Array.from(assetsRef.current.values());
+      const maxIdx = current.reduce(
+        (max, a) => (typeof a.rowIndex === 'number' && a.rowIndex > max ? a.rowIndex : max),
+        0
+      );
+      nextRowIndex = maxIdx + 1;
+    }
+
     // 1. Create in database
     const { data: newAsset, error: assetError } = await supabase
       .from('library_assets')
@@ -525,6 +571,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         library_id: libraryId,
         name,
         created_at: options?.createdAt?.toISOString(),
+        row_index: nextRowIndex,
       })
       .select()
       .single();
@@ -549,26 +596,38 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     }
     
     // 3. Add to Yjs (using Y.Map for propertyValues)
-    const yAsset = new Y.Map();
-    yAsset.set('name', name);
-    
-    // Create Y.Map for propertyValues
-    const yPropertyValues = new Y.Map();
-    Object.entries(propertyValues).forEach(([fieldId, value]) => {
-      // For complex objects, use deep copy to avoid reference issues
-      let valueForYjs = value;
-      if (value !== null && typeof value === 'object') {
-        valueForYjs = JSON.parse(JSON.stringify(value));
-      }
-      yPropertyValues.set(fieldId, valueForYjs);
-    });
-    yAsset.set('propertyValues', yPropertyValues);
-    // Ensure created_at so allAssets sort puts insert-above/insert-below in correct position
-    yAsset.set('created_at', newAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString());
+    // 对于纯追加（没有显式 rowIndex）的场景，可以直接在本地插入 Yjs 记录，立即看到新行。
+    // 对于带 rowIndex 的场景（Add Row / Insert Above/Below / Paste 新行），我们后面会通过 loadInitialData()
+    // 用 DB 的完整行序覆盖一次本地状态，这里就不再做本地乐观插入，避免出现「先出现在错误位置再跳动」的闪烁。
+    if (typeof options?.rowIndex !== 'number') {
+      const yAsset = new Y.Map();
+      yAsset.set('name', name);
+      
+      // Create Y.Map for propertyValues
+      const yPropertyValues = new Y.Map();
+      Object.entries(propertyValues).forEach(([fieldId, value]) => {
+        // For complex objects, use deep copy to avoid reference issues
+        let valueForYjs = value;
+        if (value !== null && typeof value === 'object') {
+          valueForYjs = JSON.parse(JSON.stringify(value));
+        }
+        yPropertyValues.set(fieldId, valueForYjs);
+      });
+      yAsset.set('propertyValues', yPropertyValues);
+      // Ensure created_at / row_index so allAssets sort puts insert-above/insert-below in correct position
+      yAsset.set('created_at', newAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString());
+      yAsset.set('row_index', newAsset.row_index ?? nextRowIndex);
 
-    yDoc.transact(() => {
-      yAssets.set(assetId, yAsset);
-    });
+      yDoc.transact(() => {
+        yAssets.set(assetId, yAsset);
+      });
+    }
+
+    // 如果这次创建显式使用了 rowIndex（包括追加、Insert Above/Below、Paste 新行），
+    // 先在本客户端用 DB 结果全量刷新一次，避免本地仍持有旧的 rowIndex 造成“自己这边行出现在末尾”的错觉。
+    if (typeof options?.rowIndex === 'number') {
+      await loadInitialData();
+    }
     
     // 4. Broadcast creation
     if (realtimeConfig) {
@@ -577,10 +636,15 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         insertBeforeRowId: options?.insertBeforeRowId,
         targetCreatedAt: options?.createdAt?.toISOString(),
       });
+      // 如果显式指定了 rowIndex，说明这次创建可能影响到行顺序（包括追加、上下插入、Paste 新行），
+      // 通过单独的 roworder:change 事件提醒所有客户端（包括发起者）用最新的 DB 行序刷新视图。
+      if (typeof options?.rowIndex === 'number') {
+        await broadcastRowOrderChange();
+      }
     }
     
     return assetId;
-  }, [libraryId, supabase, yDoc, yAssets, broadcastAssetCreate, realtimeConfig]);
+  }, [libraryId, supabase, yDoc, yAssets, broadcastAssetCreate, broadcastRowOrderChange, realtimeConfig, loadInitialData]);
   
   const deleteAsset = useCallback(async (assetId: string) => {
     const asset = assetsRef.current.get(assetId);
@@ -624,6 +688,34 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       }
     }
   }, [updateAssetField, broadcastCellUpdate, realtimeConfig]);
+
+  /** 批量更新并一次性广播，用于 Clear Content，效仿 Delete Row 的即时同步 */
+  const updateAssetsBatch = useCallback(async (
+    updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
+  ) => {
+    const cellsToBroadcast: Array<{ assetId: string; propertyKey: string; newValue: any }> = [];
+
+    for (const { assetId, assetName, propertyValues } of updates) {
+      const asset = assetsRef.current.get(assetId);
+      if (!asset) continue;
+
+      if (asset.name !== assetName) {
+        await updateAssetName(assetId, assetName, { skipBroadcast: true });
+        cellsToBroadcast.push({ assetId, propertyKey: 'name', newValue: assetName });
+      }
+
+      for (const [fieldId, value] of Object.entries(propertyValues)) {
+        const oldValue = asset.propertyValues[fieldId];
+        if (JSON.stringify(oldValue) === JSON.stringify(value)) continue;
+        await updateAssetField(assetId, fieldId, value, { skipBroadcast: true });
+        cellsToBroadcast.push({ assetId, propertyKey: fieldId, newValue: value });
+      }
+    }
+
+    if (realtimeConfig && cellsToBroadcast.length > 0) {
+      await broadcastCellsBatchUpdate(cellsToBroadcast);
+    }
+  }, [updateAssetName, updateAssetField, broadcastCellsBatchUpdate, realtimeConfig]);
   
   // Helper functions
   const getAsset = useCallback((assetId: string) => {
@@ -638,10 +730,19 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     presenceTracking.updateActiveCell(assetId, fieldId);
   }, [presenceTracking]);
   
-  // Convert Map to ordered array (sort by created_at then id for deterministic order across clients)
+  // Convert Map to ordered array (sort by rowIndex then id for deterministic order across clients)
   const allAssets = useMemo(() => {
     return Array.from(assets.values()).sort((a, b) => {
-      // Items with created_at sort by time; items without created_at go to the end (avoid new row at end)
+      // Prefer explicit rowIndex when available
+      if (typeof a.rowIndex === 'number' && typeof b.rowIndex === 'number') {
+        if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
+      } else if (typeof a.rowIndex === 'number') {
+        return -1;
+      } else if (typeof b.rowIndex === 'number') {
+        return 1;
+      }
+
+      // Fallback: created_at + id to keep previous behavior for older data
       if (!a.created_at && !b.created_at) return a.id.localeCompare(b.id);
       if (!a.created_at) return 1;
       if (!b.created_at) return -1;
@@ -671,6 +772,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     createAsset,
     deleteAsset,
     updateMultipleFields,
+    updateAssetsBatch,
     connectionStatus,
     getUsersEditingField,
     setActiveField,

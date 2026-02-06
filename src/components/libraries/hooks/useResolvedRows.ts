@@ -36,10 +36,6 @@ export function useResolvedRows({
         }
       });
 
-    optimisticNewAssets.forEach((asset, id) => {
-      if (!allRowsMap.has(id)) allRowsMap.set(id, asset);
-    });
-
     const out: AssetRow[] = [];
     const done = new Set<string>();
 
@@ -52,27 +48,9 @@ export function useResolvedRows({
       }
     });
 
-    // Insert optimistic new rows at their index (insert above/below) or append (add row at end)
-    const toInsert: Array<{ index: number; asset: AssetRow; id: string }> = [];
-    const toAppend: Array<{ asset: AssetRow; id: string }> = [];
-    optimisticNewAssets.forEach((asset, id) => {
-      if (done.has(id)) return;
-      const idx = optimisticInsertIndices.get(id);
-      if (typeof idx === 'number' && idx >= 0) {
-        toInsert.push({ index: Math.min(idx, out.length), asset, id });
-      } else {
-        toAppend.push({ asset, id });
-      }
-    });
-    toInsert.sort((a, b) => a.index - b.index);
-    toInsert.forEach(({ index, asset, id }) => {
-      out.splice(index, 0, asset);
-      done.add(id);
-    });
-    toAppend.forEach(({ asset, id }) => {
-      out.push(asset);
-      done.add(id);
-    });
+    // ⚠️ 为了保证协作视图稳定，这里不再把 optimisticNewAssets 单独插入/追加到 out。
+    // 新建行统一依赖 LibraryDataContext.createAsset → allRowsSource 来驱动展示，
+    // 避免「本地乐观 temp 行 + 真实行」双重渲染导致表格比 DB 多出几行。
 
     return out;
   }, [
