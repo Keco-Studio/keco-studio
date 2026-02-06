@@ -234,6 +234,31 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [folders]);
 
+  // When a new library is created under a folder that is currently collapsed in the Sidebar,
+  // auto-expand that folder so the new library becomes visible in the tree.
+  // We intentionally DO NOT change selection here, only expanded state.
+  useEffect(() => {
+    const handleLibraryCreatedExpandFolder = (event: Event) => {
+      const detail = (event as CustomEvent<any>).detail || {};
+      const folderId: string | null | undefined = detail.folderId;
+      const eventProjectId: string | null | undefined = detail.projectId;
+
+      // Only care about folders in the current project (when projectId is provided)
+      if (eventProjectId && currentIds.projectId && eventProjectId !== currentIds.projectId) {
+        return;
+      }
+      if (!folderId) return; // Root-level libraries don't belong to any folder
+
+      const folderKey = `folder-${folderId}`;
+      setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
+    };
+
+    window.addEventListener('libraryCreated', handleLibraryCreatedExpandFolder as EventListener);
+    return () => {
+      window.removeEventListener('libraryCreated', handleLibraryCreatedExpandFolder as EventListener);
+    };
+  }, [currentIds.projectId]);
+
   // actions
   const handleProjectClick = async (projectId: string) => {
     // Clear all related caches before navigation to ensure fresh data
