@@ -16,7 +16,7 @@ interface VersionListProps {
   libraryId: string;
   selectedVersionId?: string | null;
   onVersionSelect?: (versionId: string | null) => void;
-  onRestoreSuccess?: (restoredVersionId: string) => void;
+  onRestoreSuccess?: (restoredVersionId: string, snapshotData?: any) => void;
   highlightedVersionId?: string | null;
 }
 

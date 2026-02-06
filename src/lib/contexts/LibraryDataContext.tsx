@@ -191,6 +191,31 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     }
   }, [libraryId, supabase, yDoc, yAssets]);
 
+  // Restore 后直接用 snapshot 覆盖 Yjs，保证「当前视图 = 刚恢复的版本」，与创建版本用 Yjs 一致
+  const applySnapshotToYjs = useCallback((snapshotData: { assets?: Array<{ id: string; name?: string; propertyValues?: Record<string, any>; createdAt?: string; rowIndex?: number | null }> }) => {
+    if (!snapshotData?.assets || !Array.isArray(snapshotData.assets)) return;
+    yDoc.transact(() => {
+      yAssets.clear();
+      snapshotData.assets.forEach((asset: any) => {
+        const yAsset = new Y.Map();
+        yAsset.set('name', asset.name ?? 'Untitled');
+        const yPropertyValues = new Y.Map();
+        const values = asset.propertyValues ?? {};
+        Object.entries(values).forEach(([fieldId, value]) => {
+          let valueForYjs = value;
+          if (value !== null && typeof value === 'object') {
+            valueForYjs = JSON.parse(JSON.stringify(value));
+          }
+          yPropertyValues.set(fieldId, valueForYjs);
+        });
+        yAsset.set('propertyValues', yPropertyValues);
+        if (asset.createdAt) yAsset.set('created_at', asset.createdAt);
+        if (typeof asset.rowIndex === 'number') yAsset.set('row_index', asset.rowIndex);
+        yAssets.set(asset.id, yAsset as any);
+      });
+    });
+  }, [yDoc, yAssets]);
+
   // Initial load
   useEffect(() => {
     loadInitialData();
@@ -209,10 +234,14 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   }, [yDoc, libraryId, loadInitialData]);
 
   // Reload data when a library restore event is dispatched
+  // 若带 snapshotData 则直接用其覆盖 Yjs，保证当前视图 = 刚恢复的版本；否则从 DB 拉取
   useEffect(() => {
     const handleLibraryRestored = (event: Event) => {
-      const customEvent = event as CustomEvent<{ libraryId: string }>;
-      if (customEvent.detail?.libraryId === libraryId) {
+      const customEvent = event as CustomEvent<{ libraryId: string; snapshotData?: any }>;
+      if (customEvent.detail?.libraryId !== libraryId) return;
+      if (customEvent.detail?.snapshotData) {
+        applySnapshotToYjs(customEvent.detail.snapshotData);
+      } else {
         loadInitialData();
       }
     };
@@ -226,7 +255,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         window.removeEventListener('libraryRestored', handleLibraryRestored as EventListener);
       }
     };
-  }, [libraryId, loadInitialData]);
+  }, [libraryId, loadInitialData, applySnapshotToYjs]);
 
   // Realtime: 当有人成功 restore 一个版本时，所有协作者自动从 DB 重新加载一次
   useEffect(() => {
@@ -292,13 +321,15 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   }, [yAssets, yDoc]);
   
   // Realtime collaboration event handlers
+  // 队列里已有多个事件时用较长延迟收集更多，协作者端多条 postgres 更新会合并成一次应用，与操作者「一次性消失」一致
   const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
     cellUpdateQueueRef.current.push(event);
     if (cellUpdateFlushTimerRef.current) clearTimeout(cellUpdateFlushTimerRef.current);
+    const delay = cellUpdateQueueRef.current.length > 1 ? 50 : 16;
     cellUpdateFlushTimerRef.current = setTimeout(() => {
       cellUpdateFlushTimerRef.current = null;
       flushCellUpdateQueue();
-    }, 16); // ~1 frame, batch rapid updates
+    }, delay);
   }, [flushCellUpdateQueue]);
   
   const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
