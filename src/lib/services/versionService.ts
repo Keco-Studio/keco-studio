@@ -24,6 +24,7 @@ import type {
 } from '@/lib/types/version';
 import { getLibrary } from './libraryService';
 import { getLibraryAssetsWithProperties, getLibrarySchema } from './libraryAssetsService';
+import type { AssetRow } from '@/lib/types/libraryAssets';
 
 /**
  * Extract display name from user profile
@@ -100,25 +101,25 @@ function dbVersionToAppVersion(dbVersion: LibraryVersionDb, createdByProfile?: a
 
 /**
  * Create a complete snapshot of a library
- * Includes all assets, field definitions, and configuration
+ * Includes all assets, field definitions, and configuration.
+ * 若传入 currentAssetsFromClient（当前界面 Yjs 数据），则用其作为快照内容，保证与用户看到的完全一致。
  */
 async function createLibrarySnapshot(
   supabase: SupabaseClient,
-  libraryId: string
+  libraryId: string,
+  currentAssetsFromClient?: AssetRow[]
 ): Promise<any> {
-  // Get library basic info
   const library = await getLibrary(supabase, libraryId);
   if (!library) {
     throw new Error('Library not found');
   }
 
-  // Get library schema (field definitions)
   const schema = await getLibrarySchema(supabase, libraryId);
 
-  // Get all assets with their properties
-  const assets = await getLibraryAssetsWithProperties(supabase, libraryId);
+  const assets: AssetRow[] = currentAssetsFromClient?.length
+    ? currentAssetsFromClient
+    : await getLibraryAssetsWithProperties(supabase, libraryId);
 
-  // 为了在「创建版本」和「restore 版本」之间保持行顺序一致，这里显式记录每行的 createdAt / rowIndex。
   const snapshotAssets = assets.map((asset) => ({
     ...asset,
     createdAt: asset.created_at || new Date().toISOString(),
@@ -358,7 +359,7 @@ export async function createVersion(
   supabase: SupabaseClient,
   request: CreateVersionRequest
 ): Promise<LibraryVersion> {
-  const { libraryId, versionName } = request;
+  const { libraryId, versionName, currentAssetsFromClient } = request;
 
   if (!versionName || !versionName.trim()) {
     throw new Error('Version name is required');
@@ -376,8 +377,8 @@ export async function createVersion(
   // Get current user
   const userId = await getCurrentUserId(supabase);
 
-  // Create snapshot
-  const snapshotData = await createLibrarySnapshot(supabase, libraryId);
+  // Create snapshot（优先用当前界面数据，避免 DB 与 Yjs 不同步导致快照和「当前看到」不一致）
+  const snapshotData = await createLibrarySnapshot(supabase, libraryId, currentAssetsFromClient);
 
   // Insert new version as history version (not current)
   // Current version is always virtual and represents the current editing state

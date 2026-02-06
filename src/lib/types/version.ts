@@ -31,9 +31,13 @@ export interface LibraryVersion {
   metadata?: Record<string, any>;
 }
 
+import type { AssetRow } from './libraryAssets';
+
 export interface CreateVersionRequest {
   libraryId: string;
   versionName: string;
+  /** 创建版本时优先使用当前界面（Yjs）数据，避免与 DB 未同步导致快照与「当前看到」不一致 */
+  currentAssetsFromClient?: AssetRow[];
 }
 
 export interface RestoreRequest {

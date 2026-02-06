@@ -6,6 +6,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { createVersion, checkVersionNameExists } from '@/lib/services/versionService';
 import { validateName } from '@/lib/utils/nameValidation';
+import type { AssetRow } from '@/lib/types/libraryAssets';
 import Image from 'next/image';
 import closeIcon from '@/assets/images/closeIcon32.svg';
 import styles from './CreateVersionModal.module.css';
@@ -13,6 +14,8 @@ import styles from './CreateVersionModal.module.css';
 interface CreateVersionModalProps {
   open: boolean;
   libraryId: string;
+  /** 当前界面（Yjs）数据，创建版本时优先用此保证快照与「当前看到」一致 */
+  currentAssetsFromClient?: AssetRow[];
   onClose: () => void;
   onSuccess: () => void;
 }
@@ -20,6 +23,7 @@ interface CreateVersionModalProps {
 export function CreateVersionModal({
   open,
   libraryId,
+  currentAssetsFromClient,
   onClose,
   onSuccess,
 }: CreateVersionModalProps) {
@@ -66,7 +70,11 @@ export function CreateVersionModal({
     setError(null);
     
     try {
-      await createVersion(supabase, { libraryId, versionName: trimmed });
+      await createVersion(supabase, {
+        libraryId,
+        versionName: trimmed,
+        currentAssetsFromClient,
+      });
       queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
       setVersionName('');
       onSuccess();
