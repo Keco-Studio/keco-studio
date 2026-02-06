@@ -147,15 +147,20 @@ async function createLibrarySnapshot(
 /**
  * Restore library data from a snapshot
  * This actually applies the snapshot data to the database
+ * @param useNewAssetIds - When true (e.g. duplicating to a new library), generate new UUIDs for assets
+ *   to avoid duplicate key on library_assets_pkey (snapshot IDs already exist in the original library).
  */
 async function restoreLibraryFromSnapshot(
   supabase: SupabaseClient,
   libraryId: string,
-  snapshotData: any
+  snapshotData: any,
+  options?: { useNewAssetIds?: boolean }
 ): Promise<void> {
   if (!snapshotData || !snapshotData.assets) {
     throw new Error('Invalid snapshot data');
   }
+
+  const useNewAssetIds = options?.useNewAssetIds ?? false;
 
   // Step 1: Delete all existing assets and their values
   // First, get all asset IDs for this library
@@ -198,18 +203,25 @@ async function restoreLibraryFromSnapshot(
     return; // No assets to restore
   }
 
-  // Insert assets
-  // IMPORTANT: 直接复用快照中的 asset.id 作为主键，避免「新生成 id 再做映射」带来的错位问题。
-  // 这样：
-  // - snapshotData.assets 中的每一行与 DB 中的新行一一对应（同一个 id）
-  // - 后续插入 library_asset_values 时可以直接使用 originalAsset.id 作为 asset_id
-  const assetsToInsert = snapshotAssets.map(asset => ({
-    id: asset.id, // reuse original id from snapshot
-    library_id: libraryId,
-    name: asset.name,
-    created_at: asset.createdAt || new Date().toISOString(),
-    row_index: asset.rowIndex ?? null,
-  }));
+  // When duplicating to a new library, snapshot asset IDs already exist in library_assets (original library).
+  // We must use new UUIDs to avoid duplicate key violation on library_assets_pkey.
+  const oldToNewAssetId = new Map<string, string>();
+  if (useNewAssetIds) {
+    snapshotAssets.forEach((asset: any) => {
+      if (asset.id) oldToNewAssetId.set(asset.id, crypto.randomUUID());
+    });
+  }
+
+  const assetsToInsert = snapshotAssets.map((asset: any) => {
+    const id = useNewAssetIds ? (oldToNewAssetId.get(asset.id) ?? crypto.randomUUID()) : asset.id;
+    return {
+      id,
+      library_id: libraryId,
+      name: asset.name,
+      created_at: asset.createdAt || new Date().toISOString(),
+      row_index: asset.rowIndex ?? null,
+    };
+  });
 
   const { error: insertError } = await supabase
     .from('library_assets')
@@ -219,20 +231,21 @@ async function restoreLibraryFromSnapshot(
     throw new Error(`Failed to insert restored assets: ${insertError.message}`);
   }
 
-  // Step 3: Restore asset values
-  // Collect all values to insert
+  // Step 3: Restore asset values (use new asset_id when useNewAssetIds)
   const valuesToInsert: Array<{ asset_id: string; field_id: string; value_json: any }> = [];
   
   snapshotAssets.forEach(originalAsset => {
-    if (!originalAsset.id || !originalAsset.propertyValues) {
+    const assetId = useNewAssetIds
+      ? (originalAsset.id ? oldToNewAssetId.get(originalAsset.id) : undefined)
+      : originalAsset.id;
+    if (!assetId || !originalAsset.propertyValues) {
       return;
     }
 
     Object.entries(originalAsset.propertyValues).forEach(([fieldId, value]) => {
       if (value !== null && value !== undefined && value !== '') {
         valuesToInsert.push({
-          // 这里直接使用快照中的 asset.id（与上面的 assetsToInsert 中 id 相同）
-          asset_id: originalAsset.id,
+          asset_id: assetId,
           field_id: fieldId,
           value_json: value,
         });
@@ -855,7 +868,7 @@ export async function duplicateVersionAsLibrary(
         });
       }
 
-      await restoreLibraryFromSnapshot(supabase, newLibrary.id, modifiedSnapshot);
+      await restoreLibraryFromSnapshot(supabase, newLibrary.id, modifiedSnapshot, { useNewAssetIds: true });
     } catch (restoreError: any) {
       // Rollback: delete the new library if restore fails
       await supabase.from('libraries').delete().eq('id', newLibrary.id);
