@@ -1001,21 +1001,23 @@ export default function AssetPage() {
                                           tabIndex={0}
                                         >
                                           <div className={styles.booleanToggle}>
-                                            <Switch
-                                              checked={!!value}
-                                              disabled={mode === 'view'}
-                                              onChange={
-                                                mode !== 'view'
-                                                  ? (checked) => {
-                                                      handleValueChange(f.id, checked);
-                                                      // Blur after a short delay to ensure other users see the change
-                                                      setTimeout(() => {
-                                                        handleFieldBlur();
-                                                      }, 1000);
-                                                    }
-                                                  : undefined
-                                              }
-                                            />
+                                            <ConfigProvider theme={{ token: { colorPrimary: '#0B99FF' } }}>
+                                              <Switch
+                                                checked={!!value}
+                                                disabled={mode === 'view'}
+                                                onChange={
+                                                  mode !== 'view'
+                                                    ? (checked) => {
+                                                        handleValueChange(f.id, checked);
+                                                        // Blur after a short delay to ensure other users see the change
+                                                        setTimeout(() => {
+                                                          handleFieldBlur();
+                                                        }, 1000);
+                                                      }
+                                                    : undefined
+                                                }
+                                              />
+                                            </ConfigProvider>
                                             <span className={styles.booleanLabel}>
                                               {value ? 'True' : 'False'}
                                             </span>
