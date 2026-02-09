@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { Checkbox } from 'antd';
 import type { SectionConfig, PropertyConfig } from '@/lib/types/libraryAssets';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
@@ -11,19 +12,37 @@ export type TableHeaderGroup = {
 
 export type TableHeaderProps = {
   groups: TableHeaderGroup[];
+  allRowsSelected: boolean;
+  hasSomeRowsSelected: boolean;
+  onToggleSelectAll: (checked: boolean) => void;
 };
 
-export function TableHeader({ groups }: TableHeaderProps) {
+export function TableHeader({
+  groups,
+  allRowsSelected,
+  hasSomeRowsSelected,
+  onToggleSelectAll,
+}: TableHeaderProps) {
   return (
     <thead>
       <tr className={styles.headerRowTop}>
-        <th scope="col" className={`${styles.headerCell} ${styles.numberColumnHeader}`} />
+        <th scope="col" className={`${styles.headerCell} ${styles.numberColumnHeader}`}>
+          <div className={styles.checkboxContainer}>
+            <Checkbox
+              checked={allRowsSelected}
+              indeterminate={hasSomeRowsSelected && !allRowsSelected}
+              onChange={(e) => onToggleSelectAll(e.target.checked)}
+            />
+          </div>
+        </th>
         {groups.map((group, index) => (
           <th
             key={group.section.id}
             scope="col"
             colSpan={group.properties.length}
-            className={`${styles.headerCell} ${styles.sectionHeaderCell} ${index < groups.length - 1 ? styles.sectionHeaderCellDivider : ''}`}
+            className={`${styles.headerCell} ${styles.sectionHeaderCell} ${
+              index < groups.length - 1 ? styles.sectionHeaderCellDivider : ''
+            }`}
           >
             {group.section.name}
           </th>
@@ -42,9 +61,10 @@ export function TableHeader({ groups }: TableHeaderProps) {
             >
               {property.name}
             </th>
-          ))
+          )),
         )}
       </tr>
     </thead>
   );
 }
+

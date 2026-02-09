@@ -765,11 +765,31 @@ export function LibraryAssetsTable({
     return styles.colsMany;
   };
 
+  // Header-level "select all rows" state
+  const headerAllRowsSelected =
+    resolvedRows.length > 0 && resolvedRows.every((row) => selectedRowIds.has(row.id));
+  const headerHasSomeRowsSelected =
+    selectedRowIds.size > 0 && !headerAllRowsSelected;
+
+  const handleToggleSelectAllRows = (checked: boolean) => {
+    if (checked) {
+      const allIds = new Set(resolvedRows.map((row) => row.id));
+      setSelectedRowIds(allIds);
+    } else {
+      setSelectedRowIds(new Set());
+    }
+  };
+
   return (
     <>
       <div className={styles.tableContainer} ref={tableContainerRef}>
         <table className={`${styles.table} ${getColumnWidthClass()}`}>
-          <TableHeader groups={groups} />
+          <TableHeader
+            groups={groups}
+            allRowsSelected={headerAllRowsSelected}
+            hasSomeRowsSelected={headerHasSomeRowsSelected}
+            onToggleSelectAll={handleToggleSelectAllRows}
+          />
           <tbody className={styles.body}>
             {resolvedRows.map((row, index) => {
               const isRowHovered = hoveredRowId === row.id;
