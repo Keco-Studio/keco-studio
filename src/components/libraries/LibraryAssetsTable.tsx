@@ -221,39 +221,51 @@ export function LibraryAssetsTable({
     }
   }, [presenceTracking]);
 
+  // Stable display order: current user first, then others by lastActivity (earliest first).
+  // Use fixed timestamp when merging current user to avoid flicker (same strategy as AssetHeader).
   const getUsersEditingCell = useCallback((assetId: string, propertyKey: string) => {
     if (!presenceTracking) {
       return [];
     }
-    let users = presenceTracking.getUsersEditingCell(assetId, propertyKey);
-    
-    // If current user is focused on this specific cell, make sure they're included
-    if (currentUser && currentFocusedCell && 
-        currentFocusedCell.assetId === assetId && 
-        currentFocusedCell.propertyKey === propertyKey) {
-      const hasCurrentUser = users.some(u => u.userId === currentUser.id);
-      if (!hasCurrentUser) {
-        const timestamp = users.length === 0 
-          ? new Date(Date.now() - 1000).toISOString()
-          : new Date().toISOString();
-        
-        users.push({
-          userId: currentUser.id,
-          userName: currentUser.name,
-          userEmail: currentUser.email,
-          avatarColor: currentUser.avatarColor || getUserAvatarColor(currentUser.id),
-          activeCell: { assetId, propertyKey },
-          cursorPosition: null,
-          lastActivity: timestamp,
-          connectionStatus: 'online' as const,
-        });
-        
-        users.sort((a, b) => {
-          return new Date(a.lastActivity).getTime() - new Date(b.lastActivity).getTime();
-        });
-      }
+    const rawUsers = presenceTracking.getUsersEditingCell(assetId, propertyKey);
+    const isCurrentUserInThisCell = currentUser && currentFocusedCell &&
+      currentFocusedCell.assetId === assetId &&
+      currentFocusedCell.propertyKey === propertyKey;
+    const hasCurrentUser = rawUsers.some(u => u.userId === currentUser?.id);
+
+    let users: Array<{
+      userId: string;
+      userName: string;
+      userEmail: string;
+      avatarColor: string;
+      activeCell: { assetId: string; propertyKey: string } | null;
+      cursorPosition: { row: number; col: number } | null;
+      lastActivity: string;
+      connectionStatus: 'online' | 'away';
+    }> = [...rawUsers];
+
+    if (isCurrentUserInThisCell && currentUser && !hasCurrentUser) {
+      users.push({
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userEmail: currentUser.email,
+        avatarColor: currentUser.avatarColor || getUserAvatarColor(currentUser.id),
+        activeCell: { assetId, propertyKey },
+        cursorPosition: null,
+        lastActivity: new Date(0).toISOString(),
+        connectionStatus: 'online' as const,
+      });
     }
-    
+
+    users.sort((a, b) => {
+      const aTime = new Date(a.lastActivity).getTime();
+      const bTime = new Date(b.lastActivity).getTime();
+      if (aTime !== bTime) return aTime - bTime;
+      if (currentUser && a.userId === currentUser.id) return -1;
+      if (currentUser && b.userId === currentUser.id) return 1;
+      return 0;
+    });
+
     return users;
   }, [presenceTracking, currentUser, currentFocusedCell]);
 

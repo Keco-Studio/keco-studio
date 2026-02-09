@@ -85,6 +85,7 @@ export default function AssetPage() {
     presenceUsers,
     yAssets,
     yDoc,
+    isLoading: contextLoading,
   } = useLibraryData();
   
   // Check if this is a new asset creation
@@ -120,9 +121,9 @@ export default function AssetPage() {
 
   // Presence tracking state
   const [currentFocusedField, setCurrentFocusedField] = useState<string | null>(null);
-  
-  // Subscribe to asset changes from context (for realtime updates)
-  // Use Yjs observeDeep to catch nested Y.Map changes
+
+  // Re-run when context has finished loading so yAsset exists and observeDeep can be attached
+  // (yAssets ref is stable; only contents change after loadInitialData, so we depend on contextLoading)
   useEffect(() => {
     if (isNewAsset || !assetId) return;
     
@@ -190,7 +191,7 @@ export default function AssetPage() {
     return () => {
       yAsset.unobserveDeep(observer);
     };
-  }, [isNewAsset, assetId, yAssets, mode, currentFocusedField]);
+  }, [isNewAsset, assetId, yAssets, contextLoading, mode, currentFocusedField]);
 
   // Presence tracking is now handled by LibraryDataContext
   // getUsersEditingField and setActiveField are available from context
