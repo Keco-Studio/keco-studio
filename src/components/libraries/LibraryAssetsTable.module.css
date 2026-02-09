@@ -245,7 +245,7 @@
 
 /* Multiple cells selected: border + background color - only show outer border */
 .cellMultipleSelected {
-  background-color: rgba(135, 38, 238, 0.1) !important;
+  background-color: #0B99FF14 !important;
   position: relative;
   z-index: 1;
   /* Remove default cell borders - only show border where selectionBorder classes are applied */
@@ -256,7 +256,7 @@
 }
 
 .cellMultipleSelected:hover {
-  background-color: rgba(135, 38, 238, 0.12) !important;
+  background-color: #0B99FF14 !important;
 }
 
 /* Outer border styles - only show on boundary cells (solid line, similar to cut but solid) */
@@ -282,17 +282,17 @@ td.cellMultipleSelected.selectionBorderRight {
 
 /* Multiple selected cells should have background even when row is hovered */
 .row:hover .cellMultipleSelected {
-  background-color: rgba(135, 38, 238, 0.1) !important;
+  background-color: #0B99FF14 !important;
 }
 
 .row:hover .cellMultipleSelected:hover {
-  background-color: rgba(135, 38, 238, 0.12) !important;
+  background-color: #0B99FF14 !important;
 }
 
 /* Cut cells: dashed border - only show outer border */
 .cell.cellCut,
 td.cellCut {
-  background-color: rgba(94, 0, 255, 0.08) !important;
+  background-color: #0B99FF14 !important;
   position: relative;
   z-index: 2;
   /* Remove default cell borders - only show border where cutBorder classes are applied */
@@ -304,48 +304,48 @@ td.cellCut {
 
 .cell.cellCut:hover,
 td.cellCut:hover {
-  background-color: rgba(94, 0, 255, 0.12) !important;
+  background-color: #0B99FF14 !important;
 }
 
 /* Outer border styles - only show on boundary cells */
 .cellCut.cutBorderTop,
 td.cellCut.cutBorderTop {
-  border-top: 2px dashed rgba(94, 0, 255, 0.6) !important;
+  border-top: 2px dashed #0B99FF90 !important;
 }
 
 .cellCut.cutBorderBottom,
 td.cellCut.cutBorderBottom {
-  border-bottom: 2px dashed rgba(94, 0, 255, 0.6) !important;
+  border-bottom: 2px dashed #0B99FF90 !important;
 }
 
 .cellCut.cutBorderLeft,
 td.cellCut.cutBorderLeft {
-  border-left: 2px dashed rgba(94, 0, 255, 0.6) !important;
+  border-left: 2px dashed #0B99FF90 !important;
 }
 
 .cellCut.cutBorderRight,
 td.cellCut.cutBorderRight {
-  border-right: 2px dashed rgba(94, 0, 255, 0.6) !important;
+  border-right: 2px dashed #0B99FF90 !important;
 }
 
 .cellCut.cutBorderTop:hover,
 td.cellCut.cutBorderTop:hover {
-  border-top-color: rgba(94, 0, 255, 0.8) !important;
+  border-top-color: #0B99FF !important;
 }
 
 .cellCut.cutBorderBottom:hover,
 td.cellCut.cutBorderBottom:hover {
-  border-bottom-color: rgba(94, 0, 255, 0.8) !important;
+  border-bottom-color: #0B99FF !important;
 }
 
 .cellCut.cutBorderLeft:hover,
 td.cellCut.cutBorderLeft:hover {
-  border-left-color: rgba(94, 0, 255, 0.8) !important;
+  border-left-color: #0B99FF !important;
 }
 
 .cellCut.cutBorderRight:hover,
 td.cellCut.cutBorderRight:hover {
-  border-right-color: rgba(94, 0, 255, 0.8) !important;
+  border-right-color: #0B99FF !important;
 }
 
 /* Copy cells: dashed border - only show outer border */
@@ -1560,11 +1560,11 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .batchEditMenuItem:hover {
-  background-color: #fff1f0;
+  background-color: #0B99FF14;
 }
 
 .batchEditMenuItem:active {
-  background-color: #ffe7e5;
+  background-color: #0B99FF14;
 }
 
 .batchEditMenuText {

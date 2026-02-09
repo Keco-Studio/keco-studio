@@ -59,7 +59,7 @@ export function BatchEditMenu({
 
       <div
         className={styles.batchEditMenuItem}
-        onMouseEnter={(e) => hoverBg(e.currentTarget, '#fff1f0')}
+        onMouseEnter={(e) => hoverBg(e.currentTarget, '#0B99FF14')}
         onMouseLeave={(e) => hoverReset(e.currentTarget)}
         onClick={(e) => {
           e.preventDefault();
@@ -71,7 +71,7 @@ export function BatchEditMenu({
       </div>
       <div
         className={styles.batchEditMenuItem}
-        onMouseEnter={(e) => hoverBg(e.currentTarget, '#fff1f0')}
+        onMouseEnter={(e) => hoverBg(e.currentTarget, '#0B99FF14')}
         onMouseLeave={(e) => hoverReset(e.currentTarget)}
         onClick={onCopy}
       >
@@ -79,7 +79,7 @@ export function BatchEditMenu({
       </div>
       <div
         className={styles.batchEditMenuItem}
-        onMouseEnter={(e) => hoverBg(e.currentTarget, '#fff1f0')}
+        onMouseEnter={(e) => hoverBg(e.currentTarget, '#0B99FF14')}
         onMouseLeave={(e) => hoverReset(e.currentTarget)}
         onClick={onPaste}
       >
@@ -119,7 +119,7 @@ export function BatchEditMenu({
         <div
           className={styles.batchEditMenuItem}
           style={{ color: '#ff4d4f' }}
-          onMouseEnter={(e) => hoverBg(e.currentTarget, '#fff1f0')}
+          onMouseEnter={(e) => hoverBg(e.currentTarget, '#0B99FF14')}
           onMouseLeave={(e) => hoverReset(e.currentTarget)}
           onClick={onDeleteRow}
         >

@@ -669,15 +669,17 @@ export function LibraryAssetsTable({
     }
   };
 
-  // Add global click listener to clear focus state
+  // Add global click listener to clear focus state and selection
   useEffect(() => {
     const handleDocumentClick = (event: MouseEvent) => {
       const target = event.target as HTMLElement;
       
+      // Don't clear if clicking inside the table
       if (tableContainerRef.current?.contains(target)) {
         return;
       }
       
+      // Don't clear if clicking on modals, dropdowns, or interactive components
       if (
         target.closest('[role="dialog"]') ||
         target.closest('.ant-modal') ||
@@ -691,15 +693,30 @@ export function LibraryAssetsTable({
         target.closest('[class*="dropdown"]') ||
         target.closest('[class*="Dropdown"]') ||
         target.closest('input[type="file"]') ||
-        target.closest('button') ||
         target.closest('[role="combobox"]') ||
-        target.closest('[class*="mediaFileUpload"]')
+        target.closest('[class*="mediaFileUpload"]') ||
+        // Don't clear if clicking on context menus (BatchEditMenu or RowContextMenu)
+        target.closest('.batchEditMenu') ||
+        // Check if the click target has fixed positioning (context menus use fixed positioning)
+        (window.getComputedStyle(target).position === 'fixed' && target.tagName === 'DIV')
       ) {
         return;
       }
       
+      // Clear focus state
       if (currentFocusedCell) {
         handleCellBlur();
+      }
+      
+      // Clear selection state only if not clicking on context menu buttons
+      // Context menus should handle selection clearing themselves after action
+      if (selectedCells.size > 0 || selectedRowIds.size > 0) {
+        // Don't clear selection if context menu or batch edit menu is visible
+        // The menu actions will clear selection after they complete
+        if (!batchEditMenuVisible && !contextMenuRowId) {
+          setSelectedCells(new Set());
+          setSelectedRowIds(new Set());
+        }
       }
     };
     
@@ -707,7 +724,16 @@ export function LibraryAssetsTable({
     return () => {
       document.removeEventListener('mousedown', handleDocumentClick);
     };
-  }, [currentFocusedCell, handleCellBlur]);
+  }, [
+    currentFocusedCell, 
+    handleCellBlur, 
+    selectedCells, 
+    selectedRowIds, 
+    setSelectedCells, 
+    setSelectedRowIds,
+    batchEditMenuVisible,
+    contextMenuRowId
+  ]);
 
   if (!hasProperties) {
     return <EmptyState userRole={userRole} onPredefineClick={handlePredefineClick} />;
