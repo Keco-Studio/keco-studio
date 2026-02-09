@@ -1094,7 +1094,7 @@ export function LibraryAssetsTable({
                     // 避免「删除并重建 name 字段后又显示旧值」的情况。
                     let value = row.propertyValues[property.key];
                     let display: string | null = null;
-                    if (value !== null && value !== undefined && value !== '') {
+                    if (value !== null && value !== undefined && value !== '' && !(typeof value === 'number' && Number.isNaN(value))) {
                       display = String(value);
                     }
                     
