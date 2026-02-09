@@ -568,16 +568,14 @@ export default function AssetPage() {
       }
       
       if (f.data_type === 'int') {
-        // Int type: must be a valid integer (no decimal point)
+        // Int type: must be a valid integer (no decimal point); allow negative
         const strValue = String(raw).trim();
         if (strValue !== '') {
-          // Check if contains decimal point
           if (strValue.includes('.')) {
             validationErrors[f.id] = 'type mismatch';
           } else {
-            // Check if valid integer
             const intValue = parseInt(strValue, 10);
-            if (isNaN(intValue) || String(intValue) !== strValue.replace(/^-/, '')) {
+            if (isNaN(intValue) || String(intValue) !== strValue) {
               validationErrors[f.id] = 'type mismatch';
             }
           }
