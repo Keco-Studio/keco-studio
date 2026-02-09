@@ -160,27 +160,17 @@ export default function AssetPage() {
         });
       }
       
-      // Update property values (selectively - skip currently focused field)
+      // Update property values from Yjs for all fields (no skip by focus).
+      // So when both edit the same field, last save wins and everyone sees it without refresh.
       setValues(prev => {
         const newValues = { ...prev };
         let hasChanges = false;
-        
         Object.keys(propertyValues).forEach(fieldId => {
-          // Skip the field user is currently editing to avoid overwriting their input
-          if (currentFocusedField === fieldId) {
-            return;
-          }
-          
-          // Update all other fields
           if (JSON.stringify(prev[fieldId]) !== JSON.stringify(propertyValues[fieldId])) {
             newValues[fieldId] = propertyValues[fieldId];
             hasChanges = true;
           }
         });
-        
-        if (hasChanges) {
-        }
-        
         return hasChanges ? newValues : prev;
       });
     };
@@ -191,7 +181,7 @@ export default function AssetPage() {
     return () => {
       yAsset.unobserveDeep(observer);
     };
-  }, [isNewAsset, assetId, yAssets, contextLoading, mode, currentFocusedField]);
+  }, [isNewAsset, assetId, yAssets, contextLoading, mode]);
 
   // Presence tracking is now handled by LibraryDataContext
   // getUsersEditingField and setActiveField are available from context
