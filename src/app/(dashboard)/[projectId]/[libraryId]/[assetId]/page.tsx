@@ -1208,16 +1208,11 @@ export default function AssetPage() {
                                 }
 
                     const inputType =
-                      f.data_type === 'int' || f.data_type === 'float'
-                        ? 'number'
-                        : f.data_type === 'date'
+                      f.data_type === 'date'
                         ? 'date'
                         : 'text';
                     
-                    // Add class to hide spinner for int and float types
-                    const inputClassName = (f.data_type === 'int' || f.data_type === 'float')
-                      ? `${styles.fieldInput} ${styles.noSpinner} ${mode === 'view' ? styles.disabledInput : ''}`
-                      : `${styles.fieldInput} ${mode === 'view' ? styles.disabledInput : ''}`;
+                    const inputClassName = `${styles.fieldInput} ${mode === 'view' ? styles.disabledInput : ''}`;
 
                     // Get users editing this field
                     const editingUsers = getFieldEditingUsers(f.id);
@@ -1253,7 +1248,6 @@ export default function AssetPage() {
                                     <div className={styles.fieldControl} style={{ position: 'relative' }}>
                         <input
                           type={inputType}
-                          step={f.data_type === 'int' ? '1' : f.data_type === 'float' ? 'any' : undefined}
                           value={value ?? ''}
                                         disabled={mode === 'view'}
                                         onChange={
@@ -1336,7 +1330,29 @@ export default function AssetPage() {
                                             : undefined
                                         }
                                         onFocus={() => handleFieldFocus(f.id)}
-                                        onBlur={handleFieldBlur}
+                                        onBlur={() => {
+                                          // Float type: check if value is a pure integer (no decimal point) on blur
+                                          if (f.data_type === 'float') {
+                                            const val = values[f.id];
+                                            if (val !== '' && val !== undefined && val !== null) {
+                                              const trimmed = String(val).trim();
+                                              if (trimmed !== '' && trimmed !== '-' && trimmed !== '.' && !trimmed.includes('.')) {
+                                                setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                                handleFieldBlur();
+                                                return;
+                                              }
+                                            }
+                                          }
+                                          // Clear type mismatch error on blur for other cases
+                                          if (fieldValidationErrors[f.id]) {
+                                            setFieldValidationErrors(prev => {
+                                              const newErrors = { ...prev };
+                                              delete newErrors[f.id];
+                                              return newErrors;
+                                            });
+                                          }
+                                          handleFieldBlur();
+                                        }}
                                         className={`${inputClassName} ${isBeingEdited ? styles.fieldInputEditing : ''} ${isRealtimeEdited ? styles.fieldRealtimeEdited : ''}`}
                                         style={borderColor ? { borderColor } : undefined}
                         />
