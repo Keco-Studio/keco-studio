@@ -305,6 +305,7 @@ export function LibraryAssetsTable({
     handleAssetCardMouseEnter,
     handleAssetCardMouseLeave,
     avatarRefs,
+    setAssetCardRef,
   } = useAssetHover(supabase);
   const hasSections = sections.length > 0;
   const userRole = useUserRole(params?.projectId as string | undefined, supabase);
@@ -1262,6 +1263,7 @@ export function LibraryAssetsTable({
         onMouseEnter={handleAssetCardMouseEnter}
         onMouseLeave={handleAssetCardMouseLeave}
         onLibraryClick={params?.projectId ? (libraryId) => router.push(`/${params.projectId}/${libraryId}`) : undefined}
+        containerRef={setAssetCardRef}
       />
 
       <RowContextMenu

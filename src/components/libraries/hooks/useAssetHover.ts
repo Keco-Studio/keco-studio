@@ -18,6 +18,7 @@ export function useAssetHover(supabase: any): {
   handleAssetCardMouseEnter: () => void;
   handleAssetCardMouseLeave: () => void;
   avatarRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
+  setAssetCardRef: (el: HTMLElement | null) => void;
 } {
   const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
   const [hoveredAssetDetails, setHoveredAssetDetails] = useState<AssetHoverDetails | null>(null);
@@ -99,6 +100,45 @@ export function useAssetHover(supabase: any): {
 
     loadAssetDetails();
   }, [hoveredAssetId, supabase]);
+
+  // Track the asset card DOM element so we can exclude clicks on it
+  const assetCardRef = useRef<HTMLElement | null>(null);
+
+  const setAssetCardRef = useCallback((el: HTMLElement | null) => {
+    assetCardRef.current = el;
+  }, []);
+
+  // Dismiss asset card on scroll or mousedown outside the card.
+  // Scrolling doesn't fire mouseleave, and when the cell is selected
+  // the mouseleave guard (`isCellSelected`) prevents dismissal, so
+  // clicking another cell would leave the card stuck.
+  useEffect(() => {
+    if (!hoveredAssetId) return;
+
+    const dismiss = () => {
+      if (hideTimeoutRef.current) {
+        clearTimeout(hideTimeoutRef.current);
+        hideTimeoutRef.current = null;
+      }
+      setHoveredAssetId(null);
+    };
+
+    const handleMouseDown = (e: MouseEvent) => {
+      // Don't dismiss if the click is inside the asset card itself
+      if (assetCardRef.current && assetCardRef.current.contains(e.target as Node)) {
+        return;
+      }
+      dismiss();
+    };
+
+    // Use capture phase so we catch scroll on any scrollable ancestor
+    window.addEventListener('scroll', dismiss, true);
+    window.addEventListener('mousedown', handleMouseDown, true);
+    return () => {
+      window.removeEventListener('scroll', dismiss, true);
+      window.removeEventListener('mousedown', handleMouseDown, true);
+    };
+  }, [hoveredAssetId]);
 
   useEffect(() => {
     return () => {
@@ -196,5 +236,6 @@ export function useAssetHover(supabase: any): {
     handleAssetCardMouseEnter,
     handleAssetCardMouseLeave,
     avatarRefs,
+    setAssetCardRef,
   };
 }

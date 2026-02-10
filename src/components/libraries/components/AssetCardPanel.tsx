@@ -25,6 +25,7 @@ export type AssetCardPanelProps = {
   onMouseEnter: () => void;
   onMouseLeave: () => void;
   onLibraryClick?: (libraryId: string) => void;
+  containerRef?: (el: HTMLElement | null) => void;
 };
 
 export function AssetCardPanel({
@@ -37,13 +38,14 @@ export function AssetCardPanel({
   onMouseEnter,
   onMouseLeave,
   onLibraryClick,
+  containerRef,
 }: AssetCardPanelProps) {
   if (!visible || !position || typeof document === 'undefined') return null;
 
   const { x, y } = position;
 
   return createPortal(
-    <>
+    <div ref={containerRef as React.Ref<HTMLDivElement>} style={{ display: 'contents' }}>
       <div
         className={styles.assetCardBridge}
         style={{ left: `${x - 40}px`, top: `${y}px` }}
@@ -124,7 +126,7 @@ export function AssetCardPanel({
           ) : null}
         </div>
       </div>
-    </>,
+    </div>,
     document.body
   );
 }
