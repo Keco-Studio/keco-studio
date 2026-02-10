@@ -795,12 +795,12 @@ td.cellCopy.copyBorderRight:hover {
 
 /* Edit row styles */
 .editRow {
-  background: #fffbeb;
-  border-bottom: 1px solid #fde68a;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
 }
 
 .editRow:hover {
-  background: #fffbeb;
+  background: #ffffff;
 }
 
 .booleanToggle {

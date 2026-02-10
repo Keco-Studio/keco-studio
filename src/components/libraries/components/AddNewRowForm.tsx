@@ -181,14 +181,11 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
         // Determine input type and validation based on data type
         const isInt = property.dataType === 'int';
         const isFloat = property.dataType === 'float';
-        const inputType = isInt || isFloat ? 'number' : 'text';
-        const step = isInt ? '1' : isFloat ? 'any' : undefined;
         
         return (
           <td key={property.id} className={styles.editCell}>
             <Input
-              type={inputType}
-              step={step}
+              type="text"
               value={newRowData[property.key] || ''}
               onChange={(e) => {
                 let value = e.target.value;
