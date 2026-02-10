@@ -131,7 +131,7 @@ export function RestoreConfirmModal({
               }}
               className={styles.switch}
               style={{
-                backgroundColor: backupEnabled ? 'rgba(135, 38, 238, 1)' : undefined,
+                backgroundColor: backupEnabled ? '#0B99FF' : undefined,
               }}
             />
             <label className={styles.switchLabel} onClick={() => {

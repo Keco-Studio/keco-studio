@@ -385,7 +385,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         const yAsset = yAssets.get(assetId);
         if (!yAsset) continue;
         let valueForYjs = newValue;
-        if (newValue !== null && typeof newValue === 'object') {
+        if (typeof newValue === 'number' && Number.isNaN(newValue)) {
+          valueForYjs = null;
+        } else if (newValue !== null && typeof newValue === 'object') {
           valueForYjs = JSON.parse(JSON.stringify(newValue));
         }
         if (propertyKey === 'name') {
@@ -482,10 +484,11 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     const oldValue = yPropertyValues.get(fieldId);
     // console.log('[LibraryDataContext] oldValue:', oldValue, 'oldValueType:', typeof oldValue);
     
-    // For complex objects (like image/file metadata), create a deep copy to avoid reference issues
-    // This ensures proper synchronization across clients
+    // Normalize NaN to null so it never persists (avoids "NaN" in table after Clear Content etc.)
     let valueForYjs = value;
-    if (value !== null && typeof value === 'object') {
+    if (typeof value === 'number' && Number.isNaN(value)) {
+      valueForYjs = null;
+    } else if (value !== null && typeof value === 'object') {
       // Deep clone the object to break any references
       valueForYjs = JSON.parse(JSON.stringify(value));
       // console.log('[LibraryDataContext] Created deep copy for Yjs:', valueForYjs);

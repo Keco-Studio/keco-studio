@@ -91,11 +91,11 @@
 }
 
 .switch :global(.ant-switch-checked) {
-  background-color: rgba(135, 38, 238, 1) !important;
+  background-color: #0B99FF !important;
 }
 
 .switch :global(.ant-switch-checked:hover:not(.ant-switch-disabled)) {
-  background-color: rgba(135, 38, 238, 0.8) !important;
+  background-color: rgba(11, 153, 255, 0.8) !important;
 }
 
 .switchLabel {

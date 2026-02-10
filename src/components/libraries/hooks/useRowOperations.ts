@@ -350,6 +350,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
     const allRowsForSelection = getAllRowsForCellSelection();
     const cellsByRow = new Map<string, { propertyValues: Record<string, any>; assetName: string | null }>();
+    const clearedKeysByRow = new Map<string, Set<string>>();
 
     cellsToClear.forEach((cellKey) => {
       let rowId = '';
@@ -371,6 +372,8 @@ export function useRowOperations(params: UseRowOperationsParams) {
           if (!cellsByRow.has(rowId)) {
             cellsByRow.set(rowId, { propertyValues: { ...row.propertyValues }, assetName: row.name || null });
           }
+          if (!clearedKeysByRow.has(rowId)) clearedKeysByRow.set(rowId, new Set());
+          clearedKeysByRow.get(rowId)!.add(propertyKey);
           const rowData = cellsByRow.get(rowId)!;
           const prop = orderedProperties[propertyIndex];
           // Name field is identified by label='name' and dataType='string', not by position
@@ -421,7 +424,12 @@ export function useRowOperations(params: UseRowOperationsParams) {
       const updates = entries.map(([rowId, rowData]) => {
         const row = allRowsForSelection.find((r) => r.id === rowId)!;
         const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
-        return { assetId: rowId, assetName, propertyValues: rowData.propertyValues };
+        const clearedKeys = clearedKeysByRow.get(rowId);
+        const propertyValues =
+          clearedKeys && clearedKeys.size > 0
+            ? Object.fromEntries([...clearedKeys].map((k) => [k, rowData.propertyValues[k]]))
+            : {};
+        return { assetId: rowId, assetName, propertyValues };
       });
 
       // 优先使用批量广播（效仿 Delete Row），协作者即时同步；否则回退到普通批量更新

@@ -85,6 +85,7 @@ export default function AssetPage() {
     presenceUsers,
     yAssets,
     yDoc,
+    isLoading: contextLoading,
   } = useLibraryData();
   
   // Check if this is a new asset creation
@@ -120,9 +121,9 @@ export default function AssetPage() {
 
   // Presence tracking state
   const [currentFocusedField, setCurrentFocusedField] = useState<string | null>(null);
-  
-  // Subscribe to asset changes from context (for realtime updates)
-  // Use Yjs observeDeep to catch nested Y.Map changes
+
+  // Re-run when context has finished loading so yAsset exists and observeDeep can be attached
+  // (yAssets ref is stable; only contents change after loadInitialData, so we depend on contextLoading)
   useEffect(() => {
     if (isNewAsset || !assetId) return;
     
@@ -159,27 +160,17 @@ export default function AssetPage() {
         });
       }
       
-      // Update property values (selectively - skip currently focused field)
+      // Update property values from Yjs for all fields (no skip by focus).
+      // So when both edit the same field, last save wins and everyone sees it without refresh.
       setValues(prev => {
         const newValues = { ...prev };
         let hasChanges = false;
-        
         Object.keys(propertyValues).forEach(fieldId => {
-          // Skip the field user is currently editing to avoid overwriting their input
-          if (currentFocusedField === fieldId) {
-            return;
-          }
-          
-          // Update all other fields
           if (JSON.stringify(prev[fieldId]) !== JSON.stringify(propertyValues[fieldId])) {
             newValues[fieldId] = propertyValues[fieldId];
             hasChanges = true;
           }
         });
-        
-        if (hasChanges) {
-        }
-        
         return hasChanges ? newValues : prev;
       });
     };
@@ -190,7 +181,7 @@ export default function AssetPage() {
     return () => {
       yAsset.unobserveDeep(observer);
     };
-  }, [isNewAsset, assetId, yAssets, mode, currentFocusedField]);
+  }, [isNewAsset, assetId, yAssets, contextLoading, mode]);
 
   // Presence tracking is now handled by LibraryDataContext
   // getUsersEditingField and setActiveField are available from context
@@ -567,16 +558,14 @@ export default function AssetPage() {
       }
       
       if (f.data_type === 'int') {
-        // Int type: must be a valid integer (no decimal point)
+        // Int type: must be a valid integer (no decimal point); allow negative
         const strValue = String(raw).trim();
         if (strValue !== '') {
-          // Check if contains decimal point
           if (strValue.includes('.')) {
             validationErrors[f.id] = 'type mismatch';
           } else {
-            // Check if valid integer
             const intValue = parseInt(strValue, 10);
-            if (isNaN(intValue) || String(intValue) !== strValue.replace(/^-/, '')) {
+            if (isNaN(intValue) || String(intValue) !== strValue) {
               validationErrors[f.id] = 'type mismatch';
             }
           }
@@ -1012,21 +1001,23 @@ export default function AssetPage() {
                                           tabIndex={0}
                                         >
                                           <div className={styles.booleanToggle}>
-                                            <Switch
-                                              checked={!!value}
-                                              disabled={mode === 'view'}
-                                              onChange={
-                                                mode !== 'view'
-                                                  ? (checked) => {
-                                                      handleValueChange(f.id, checked);
-                                                      // Blur after a short delay to ensure other users see the change
-                                                      setTimeout(() => {
-                                                        handleFieldBlur();
-                                                      }, 1000);
-                                                    }
-                                                  : undefined
-                                              }
-                                            />
+                                            <ConfigProvider theme={{ token: { colorPrimary: '#0B99FF' } }}>
+                                              <Switch
+                                                checked={!!value}
+                                                disabled={mode === 'view'}
+                                                onChange={
+                                                  mode !== 'view'
+                                                    ? (checked) => {
+                                                        handleValueChange(f.id, checked);
+                                                        // Blur after a short delay to ensure other users see the change
+                                                        setTimeout(() => {
+                                                          handleFieldBlur();
+                                                        }, 1000);
+                                                      }
+                                                    : undefined
+                                                }
+                                              />
+                                            </ConfigProvider>
                                             <span className={styles.booleanLabel}>
                                               {value ? 'True' : 'False'}
                                             </span>
