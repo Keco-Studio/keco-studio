@@ -113,6 +113,11 @@ export default function AssetPage() {
   const broadcastCellUpdateRef = useRef<((assetId: string, propertyKey: string, newValue: any, oldValue?: any) => Promise<void>) | null>(null);
   const assetRef = useRef<AssetRow | null>(null);
   
+  // Track whether the user is actively typing in a text field (string/int/float/date).
+  // When true, auto-save is suppressed so collaborators only see final values on blur,
+  // matching the table cell editing behavior.
+  const isTypingInTextFieldRef = useRef(false);
+  
   // Realtime collaboration state (field highlighting)
   const [realtimeEditedFields, setRealtimeEditedFields] = useState<Map<string, { value: any; timestamp: number }>>(new Map());
   
@@ -717,6 +722,9 @@ export default function AssetPage() {
   }, [handleSave]);
 
   // Auto-save functionality for edit mode (not for new assets)
+  // NOTE: When the user is actively typing in a text field (string/int/float/date),
+  // auto-save is suppressed. Save will be triggered explicitly on field blur,
+  // so collaborators only see the final committed value (matching table cell behavior).
   useEffect(() => {
     // Skip auto-save for new assets or if initial values haven't loaded
     if (isNewAsset || !asset || mode === 'view' || isSavingRef.current) {
@@ -737,6 +745,12 @@ export default function AssetPage() {
     
     // Only trigger auto-save if there are actual local changes
     if (!hasLocalChanges) {
+      return;
+    }
+
+    // If user is actively typing in a text field, skip auto-save.
+    // Save will be triggered on blur instead.
+    if (isTypingInTextFieldRef.current) {
       return;
     }
 
@@ -1329,8 +1343,14 @@ export default function AssetPage() {
                                               }
                                             : undefined
                                         }
-                                        onFocus={() => handleFieldFocus(f.id)}
+                                        onFocus={() => {
+                                          isTypingInTextFieldRef.current = true;
+                                          handleFieldFocus(f.id);
+                                        }}
                                         onBlur={() => {
+                                          // Mark text field editing as done
+                                          isTypingInTextFieldRef.current = false;
+
                                           // Float type: check if value is a pure integer (no decimal point) on blur
                                           if (f.data_type === 'float') {
                                             const val = values[f.id];
@@ -1352,6 +1372,20 @@ export default function AssetPage() {
                                             });
                                           }
                                           handleFieldBlur();
+
+                                          // Trigger explicit save on blur so collaborators see
+                                          // the final committed value (matching table cell behavior)
+                                          if (!isNewAsset && !isSavingRef.current && handleSaveRef.current) {
+                                            const hasChanges = Object.keys(values).some(fieldId => {
+                                              return JSON.stringify(values[fieldId]) !== JSON.stringify(previousValuesRef.current[fieldId]);
+                                            });
+                                            if (hasChanges) {
+                                              isSavingRef.current = true;
+                                              handleSaveRef.current().finally(() => {
+                                                isSavingRef.current = false;
+                                              });
+                                            }
+                                          }
                                         }}
                                         className={`${inputClassName} ${isBeingEdited ? styles.fieldInputEditing : ''} ${isRealtimeEdited ? styles.fieldRealtimeEdited : ''}`}
                                         style={borderColor ? { borderColor } : undefined}
