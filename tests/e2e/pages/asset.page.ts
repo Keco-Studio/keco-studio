@@ -54,12 +54,14 @@ export class AssetPage {
     this.selectTemplateButton = page.getByRole('button', { name: /select template|choose template/i });
 
     // Asset form (Name field is always present)
-    // Note: The form uses placeholder and span labels, not proper label elements
-    // The structure is: fieldRow > fieldMeta (with span label) > fieldControl > input
-    // We can find by placeholder (most reliable) or by finding input near label text
-    this.assetNameInput = page.getByPlaceholder(/^name$/i)
-      .or(page.locator('input').filter({ has: page.locator('text=/^name$/i').locator('..').locator('..') }).first())
-      .or(page.locator('input[placeholder*="name" i]').first());
+    // Note: The form uses span labels, not placeholders or proper label elements
+    // The structure is: fieldRow > fieldMeta (with span.fieldLabel) > fieldControl > input
+    // We find by locating the fieldRow containing label "Name", then the input within it
+    // Note: This locator is defined for potential future use, but createAsset() uses direct fieldRow lookup
+    this.assetNameInput = page.locator('div[class*="fieldRow"]')
+      .filter({ has: page.locator('span').filter({ hasText: /^name$/i }) })
+      .locator('input, select')
+      .first();
 
     // Form actions
     // Note: For new assets, the submit button is in TopBar with text "Create Asset"
@@ -114,9 +116,40 @@ export class AssetPage {
     await this.page.waitForLoadState('load', { timeout: 10000 });
     
     // Wait for the form to load - look for the name input field
-    // The form uses placeholder for labels, so we find by placeholder
-    const nameInput = this.page.getByPlaceholder(/^name$/i)
-      .or(this.page.locator('input[placeholder*="name" i]').first());
+    // The form uses label text (span.fieldLabel) instead of placeholder
+    // Structure: fieldRow > fieldMeta > span.fieldLabel + fieldControl > input
+    // Find the fieldRow containing label "Name" (case-insensitive)
+    const nameLabelRegex = /^name$/i;
+    const nameLabelSpan = this.page.locator('span').filter({ hasText: nameLabelRegex });
+    
+    // Wait for label to be visible
+    await expect(nameLabelSpan.first()).toBeVisible({ timeout: 30000 });
+    
+    // Find the fieldRow containing this label
+    let nameFieldRow: Locator | null = null;
+    
+    // Strategy: Find all divs with fieldRow class and check which contains our label
+    const allFieldRows = this.page.locator('div[class*="fieldRow"]');
+    const allRowCount = await allFieldRows.count();
+    
+    for (let i = 0; i < allRowCount; i++) {
+      const row = allFieldRows.nth(i);
+      const hasLabel = await row.locator('span').filter({ hasText: nameLabelRegex }).count() > 0;
+      if (hasLabel) {
+        const hasInput = await row.locator('input, select').count() > 0;
+        if (hasInput) {
+          nameFieldRow = row;
+          break;
+        }
+      }
+    }
+    
+    if (!nameFieldRow) {
+      throw new Error('Could not find fieldRow containing label "Name"');
+    }
+    
+    // Find input within this fieldRow
+    const nameInput = nameFieldRow.locator('input, select').first();
     
     // Fill in asset name (always required)
     await expect(nameInput).toBeVisible({ timeout: 30000 });
@@ -169,47 +202,52 @@ export class AssetPage {
    * @param value - Value to fill (string or array for multi-select)
    */
   async fillField(fieldLabel: string, value: string | string[]): Promise<void> {
-    // The form uses span labels, not proper label elements
+    // The form uses span labels, not proper label elements or placeholders
     // Structure: fieldRow > fieldMeta (with span.fieldLabel) > fieldControl > input/select/etc
-    // Strategy: 
-    // 1. Try placeholder first (for input fields, placeholder={f.label})
-    // 2. If not found, find the span with label text, then find input/select in the same fieldRow
+    // Strategy: Find the span with label text, then find input/select in the same fieldRow
     
-    // First, try to find by placeholder (for input fields)
-    const byPlaceholder = this.page.getByPlaceholder(fieldLabel);
-    const placeholderVisible = await byPlaceholder.isVisible({ timeout: 1000 }).catch(() => false);
+    // Find by label text: locate the span with label text
+    // The label span is in: fieldRow > fieldMeta > span.fieldLabel
+    // The input/select is in: fieldRow > fieldControl > input/select
+    // We need to find the fieldRow that contains both
+    const labelRegex = new RegExp(`^${fieldLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const labelSpan = this.page.locator('span').filter({ hasText: labelRegex });
     
-    let fieldInput: Locator;
+    // Wait for label to be visible
+    await expect(labelSpan.first()).toBeVisible({ timeout: 5000 });
     
-    if (placeholderVisible) {
-      // Found by placeholder (input field)
-      fieldInput = byPlaceholder;
-    } else {
-      // Find by label text: locate the span with label text
-      // The label span is in: fieldRow > fieldMeta > span.fieldLabel
-      // The input/select is in: fieldRow > fieldControl > input/select
-      // We need to find the fieldRow that contains both
-      const labelRegex = new RegExp(`^${fieldLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-      const labelSpan = this.page.locator('span').filter({ hasText: labelRegex });
+    // Find the fieldRow: use a more specific selector
+    // Try multiple strategies to find the fieldRow containing this label
+    let foundFieldRow: Locator | null = null;
+    
+    // Strategy 1: Find divs that contain the label span and have fieldRow in class
+    const potentialRows = this.page.locator('div').filter({ 
+      has: labelSpan.first() 
+    });
+    const rowCount = await potentialRows.count();
+    
+    for (let i = 0; i < rowCount; i++) {
+      const row = potentialRows.nth(i);
+      const classAttr = await row.getAttribute('class').catch(() => '');
+      if (classAttr && classAttr.includes('fieldRow')) {
+        // Check if this row has an input or select
+        const hasInput = await row.locator('input, select').count() > 0;
+        if (hasInput) {
+          foundFieldRow = row;
+          break;
+        }
+      }
+    }
+    
+    // Strategy 2: If not found, find all divs with fieldRow class and check which contains our label
+    if (!foundFieldRow) {
+      const allFieldRows = this.page.locator('div[class*="fieldRow"]');
+      const allRowCount = await allFieldRows.count();
       
-      // Wait for label to be visible
-      await expect(labelSpan.first()).toBeVisible({ timeout: 5000 });
-      
-      // Find the fieldRow: use a more specific selector
-      // Try multiple strategies to find the fieldRow containing this label
-      let foundFieldRow: Locator | null = null;
-      
-      // Strategy 1: Find divs that contain the label span and have fieldRow in class
-      const potentialRows = this.page.locator('div').filter({ 
-        has: labelSpan.first() 
-      });
-      const rowCount = await potentialRows.count();
-      
-      for (let i = 0; i < rowCount; i++) {
-        const row = potentialRows.nth(i);
-        const classAttr = await row.getAttribute('class').catch(() => '');
-        if (classAttr && classAttr.includes('fieldRow')) {
-          // Check if this row has an input or select
+      for (let i = 0; i < allRowCount; i++) {
+        const row = allFieldRows.nth(i);
+        const hasLabel = await row.locator('span').filter({ hasText: labelRegex }).count() > 0;
+        if (hasLabel) {
           const hasInput = await row.locator('input, select').count() > 0;
           if (hasInput) {
             foundFieldRow = row;
@@ -217,32 +255,14 @@ export class AssetPage {
           }
         }
       }
-      
-      // Strategy 2: If not found, find all divs with fieldRow class and check which contains our label
-      if (!foundFieldRow) {
-        const allFieldRows = this.page.locator('div[class*="fieldRow"]');
-        const allRowCount = await allFieldRows.count();
-        
-        for (let i = 0; i < allRowCount; i++) {
-          const row = allFieldRows.nth(i);
-          const hasLabel = await row.locator('span').filter({ hasText: labelRegex }).count() > 0;
-          if (hasLabel) {
-            const hasInput = await row.locator('input, select').count() > 0;
-            if (hasInput) {
-              foundFieldRow = row;
-              break;
-            }
-          }
-        }
-      }
-      
-      if (!foundFieldRow) {
-        throw new Error(`Could not find fieldRow containing label "${fieldLabel}"`);
-      }
-      
-      // Find input or select within this fieldRow
-      fieldInput = foundFieldRow.locator('input, select').first();
     }
+    
+    if (!foundFieldRow) {
+      throw new Error(`Could not find fieldRow containing label "${fieldLabel}"`);
+    }
+    
+    // Find input or select within this fieldRow
+    const fieldInput = foundFieldRow.locator('input, select').first();
     
     await expect(fieldInput).toBeVisible({ timeout: 5000 });
 
