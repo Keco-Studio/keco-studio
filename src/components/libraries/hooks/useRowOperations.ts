@@ -162,7 +162,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
       return;
     }
 
-    // 使用当前表格渲染用的 rows 顺序（来自 Adapter，已按 rowIndex 排好）来决定插入位置
     const allRowsForSelection = rows;
     const sortedRowIds = Array.from(rowsToUse).sort((a, b) => {
       const indexA = allRowsForSelection.findIndex((r) => r.id === a);
@@ -172,11 +171,35 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
     const numRowsToInsert = sortedRowIds.length;
     closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
-    setIsSaving(true);
 
+    // --- Optimistic: insert temp rows into yRows so they appear immediately ---
+    // useYjsSync detects temp-insert-* rows and uses yjsRows as display source.
+    const tempIds: string[] = [];
+    for (let i = 0; i < sortedRowIds.length; i++) {
+      const rowId = sortedRowIds[i];
+      const yIndex = yRows.toArray().findIndex((r: { id: string }) => r.id === rowId);
+      if (yIndex < 0) continue;
+
+      const tempId = `temp-insert-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
+      tempIds.push(tempId);
+      const tempRow = {
+        id: tempId,
+        libraryId: library.id,
+        name: 'Untitled',
+        propertyValues: {},
+        rowIndex: 0,
+      };
+      // Insert ABOVE the target row in yRows; +i accounts for previously inserted temps
+      yRows.insert(yIndex + i, [tempRow]);
+    }
+
+    setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
+    setTimeout(() => setToastMessage(null), 2000);
+    setSelectedCells(new Set());
+    setSelectedRowIds(new Set());
+
+    // --- Background: DB operations ---
     try {
-      // 逐个目标行从下往上插入，保证「每个选中行上方各插入一行」，
-      // 而不是在第一行前一次性插入一整块空行。
       for (let i = sortedRowIds.length - 1; i >= 0; i--) {
         const rowId = sortedRowIds[i];
         const targetRow = allRowsForSelection.find((r) => r.id === rowId);
@@ -193,20 +216,19 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
         await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex });
       }
-
-      setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
-      setTimeout(() => setToastMessage(null), 2000);
     } catch (e) {
       console.error('Failed to insert rows above:', e);
+      // Rollback: remove temp rows from yRows
+      const currentYRows = yRows.toArray();
+      for (let i = currentYRows.length - 1; i >= 0; i--) {
+        if (tempIds.includes(currentYRows[i].id)) {
+          yRows.delete(i, 1);
+        }
+      }
       setToastMessage({ message: 'Failed to insert rows above', type: 'error' });
       setTimeout(() => setToastMessage(null), 2000);
-    } finally {
-      setIsSaving(false);
     }
-
-    closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
-    setSelectedCells(new Set());
-    setSelectedRowIds(new Set());
+    // Note: temp rows are automatically replaced by useYjsSync when real rows arrive via loadInitialData
   }, [
     onSaveAsset,
     library,
@@ -215,13 +237,13 @@ export function useRowOperations(params: UseRowOperationsParams) {
     selectedCells,
     selectedRowIds,
     contextMenuRowIdRef,
-    getAllRowsForCellSelection,
+    rows,
+    yRows,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
     setContextMenuRowId,
     setContextMenuPosition,
     setToastMessage,
-    setIsSaving,
     setSelectedCells,
     setSelectedRowIds,
   ]);
@@ -259,7 +281,6 @@ export function useRowOperations(params: UseRowOperationsParams) {
       return;
     }
 
-    // 使用当前表格渲染用的 rows 顺序（来自 Adapter，已按 rowIndex 排好）来决定插入位置
     const allRowsForSelection = rows;
     const sortedRowIds = Array.from(rowsToUse).sort((a, b) => {
       const indexA = allRowsForSelection.findIndex((r) => r.id === a);
@@ -269,11 +290,34 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
     const numRowsToInsert = sortedRowIds.length;
     closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
-    setIsSaving(true);
 
+    // --- Optimistic: insert temp rows into yRows so they appear immediately ---
+    const tempIds: string[] = [];
+    for (let i = 0; i < sortedRowIds.length; i++) {
+      const rowId = sortedRowIds[i];
+      const yIndex = yRows.toArray().findIndex((r: { id: string }) => r.id === rowId);
+      if (yIndex < 0) continue;
+
+      const tempId = `temp-insert-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
+      tempIds.push(tempId);
+      const tempRow = {
+        id: tempId,
+        libraryId: library.id,
+        name: 'Untitled',
+        propertyValues: {},
+        rowIndex: 0,
+      };
+      // Insert BELOW the target row in yRows; +1 for after, +i for previously inserted temps
+      yRows.insert(yIndex + 1 + i, [tempRow]);
+    }
+
+    setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
+    setTimeout(() => setToastMessage(null), 2000);
+    setSelectedCells(new Set());
+    setSelectedRowIds(new Set());
+
+    // --- Background: DB operations ---
     try {
-      // 逐个目标行从下往上插入，保证「每个选中行下方各插入一行」，
-      // 而不是在最后一行之后一次性插入一整块空行。
       for (let i = sortedRowIds.length - 1; i >= 0; i--) {
         const rowId = sortedRowIds[i];
         const targetRow = allRowsForSelection.find((r) => r.id === rowId);
@@ -290,20 +334,19 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
         await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex });
       }
-
-      setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
-      setTimeout(() => setToastMessage(null), 2000);
     } catch (e) {
       console.error('Failed to insert rows below:', e);
+      // Rollback: remove temp rows from yRows
+      const currentYRows = yRows.toArray();
+      for (let i = currentYRows.length - 1; i >= 0; i--) {
+        if (tempIds.includes(currentYRows[i].id)) {
+          yRows.delete(i, 1);
+        }
+      }
       setToastMessage({ message: 'Failed to insert rows below', type: 'error' });
       setTimeout(() => setToastMessage(null), 2000);
-    } finally {
-      setIsSaving(false);
     }
-
-    closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
-    setSelectedCells(new Set());
-    setSelectedRowIds(new Set());
+    // Note: temp rows are automatically replaced by useYjsSync when real rows arrive via loadInitialData
   }, [
     onSaveAsset,
     library,
@@ -312,18 +355,15 @@ export function useRowOperations(params: UseRowOperationsParams) {
     selectedCells,
     selectedRowIds,
     contextMenuRowIdRef,
-    getAllRowsForCellSelection,
+    rows,
+    yRows,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
     setContextMenuRowId,
     setContextMenuPosition,
     setToastMessage,
-    setIsSaving,
     setSelectedCells,
     setSelectedRowIds,
-    enableRealtime,
-    currentUser,
-    broadcastAssetCreate,
   ]);
 
   const handleClearContents = useCallback(async () => {
