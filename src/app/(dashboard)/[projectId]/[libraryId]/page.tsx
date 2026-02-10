@@ -796,6 +796,11 @@ export default function LibraryPage() {
                                 ? '-' + cleaned.slice(1).replace(/-/g, '')
                                 : cleaned.replace(/-/g, '');
                               
+                              // Non-numeric input (e.g. letters): show type mismatch
+                              if (cleaned === '' && inputValue.trim() !== '') {
+                                setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                return;
+                              }
                               // Only update if valid integer format
                               if (!/^-?\d*$/.test(intValue)) {
                                 return; // Don't update if invalid
@@ -804,24 +809,25 @@ export default function LibraryPage() {
                             }
                             // Validate float type: must contain decimal point
                             else if (f.data_type === 'float' && inputValue !== '') {
-                              // Clear error initially
-                              setFieldValidationErrors(prev => {
-                                const newErrors = { ...prev };
-                                delete newErrors[f.id];
-                                return newErrors;
-                              });
-                              
                               // Remove invalid characters but keep valid float format
                               const cleaned = inputValue.replace(/[^\d.-]/g, '');
                               const floatValue = cleaned.startsWith('-') 
                                 ? '-' + cleaned.slice(1).replace(/-/g, '')
                                 : cleaned.replace(/-/g, '');
-                              // Ensure only one decimal point
                               const parts = floatValue.split('.');
                               const finalValue = parts.length > 2 
                                 ? parts[0] + '.' + parts.slice(1).join('')
                                 : floatValue;
-                              
+                              // Non-numeric input (e.g. letters) or invalid number: show type mismatch
+                              if ((finalValue === '' && inputValue.trim() !== '') || (finalValue !== '' && Number.isNaN(parseFloat(finalValue)))) {
+                                setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                return;
+                              }
+                              setFieldValidationErrors(prev => {
+                                const newErrors = { ...prev };
+                                delete newErrors[f.id];
+                                return newErrors;
+                              });
                               if (!/^-?\d*\.?\d*$/.test(finalValue)) {
                                 return; // Don't update if invalid
                               }

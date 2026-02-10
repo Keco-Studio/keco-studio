@@ -1250,7 +1250,7 @@ export default function AssetPage() {
                                         {DATA_TYPE_LABEL[f.data_type]}
                                       </div>
                                     </div>
-                                    <div className={styles.fieldControl}>
+                                    <div className={styles.fieldControl} style={{ position: 'relative' }}>
                         <input
                           type={inputType}
                           step={f.data_type === 'int' ? '1' : f.data_type === 'float' ? 'any' : undefined}
@@ -1286,6 +1286,11 @@ export default function AssetPage() {
                                                     ? '-' + cleaned.slice(1).replace(/-/g, '')
                                                     : cleaned.replace(/-/g, '');
                                                   
+                                                  // Non-numeric input (e.g. letters): show type mismatch
+                                                  if (cleaned === '' && inputValue.trim() !== '') {
+                                                    setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                                    return;
+                                                  }
                                                   // Only update if valid integer format
                                                   if (!/^-?\d*$/.test(intValue)) {
                                                     return; // Don't update if invalid
@@ -1294,24 +1299,25 @@ export default function AssetPage() {
                                                 }
                                                 // Validate float type: allow valid numbers (integer or decimal)
                                                 else if (f.data_type === 'float' && inputValue !== '') {
-                                                  // Clear error initially
-                                                  setFieldValidationErrors(prev => {
-                                                    const newErrors = { ...prev };
-                                                    delete newErrors[f.id];
-                                                    return newErrors;
-                                                  });
-                                                  
                                                   // Remove invalid characters but keep valid float format
                                                   const cleaned = inputValue.replace(/[^\d.-]/g, '');
                                                   const floatValue = cleaned.startsWith('-') 
                                                     ? '-' + cleaned.slice(1).replace(/-/g, '')
                                                     : cleaned.replace(/-/g, '');
-                                                  // Ensure only one decimal point
                                                   const parts = floatValue.split('.');
                                                   const finalValue = parts.length > 2 
                                                     ? parts[0] + '.' + parts.slice(1).join('')
                                                     : floatValue;
-                                                  
+                                                  // Non-numeric input (e.g. letters) or invalid number: show type mismatch
+                                                  if ((finalValue === '' && inputValue.trim() !== '') || (finalValue !== '' && Number.isNaN(parseFloat(finalValue)))) {
+                                                    setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                                    return;
+                                                  }
+                                                  setFieldValidationErrors(prev => {
+                                                    const newErrors = { ...prev };
+                                                    delete newErrors[f.id];
+                                                    return newErrors;
+                                                  });
                                                   if (!/^-?\d*\.?\d*$/.test(finalValue)) {
                                                     return; // Don't update if invalid
                                                   }
@@ -1334,6 +1340,28 @@ export default function AssetPage() {
                                         className={`${inputClassName} ${isBeingEdited ? styles.fieldInputEditing : ''} ${isRealtimeEdited ? styles.fieldRealtimeEdited : ''}`}
                                         style={borderColor ? { borderColor } : undefined}
                         />
+                                        {fieldValidationErrors[f.id] && (
+                                          <Tooltip
+                                            title={fieldValidationErrors[f.id]}
+                                            open={true}
+                                            placement="bottom"
+                                            overlayStyle={{ fontSize: '12px' }}
+                                          >
+                                            <div
+                                              style={{
+                                                position: 'absolute',
+                                                top: '4px',
+                                                right: '4px',
+                                                width: '8px',
+                                                height: '8px',
+                                                backgroundColor: '#ff4d4f',
+                                                borderRadius: '50%',
+                                                zIndex: 1001,
+                                                pointerEvents: 'none',
+                                              }}
+                                            />
+                                          </Tooltip>
+                                        )}
                                       <FieldPresenceAvatars users={editingUsers} />
                                     </div>
                                     {/* Only Reference and Option (enum) show configure icon */}

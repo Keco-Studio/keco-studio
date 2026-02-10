@@ -145,6 +145,12 @@ export function CellEditor({
               const intValue = cleaned.startsWith('-')
                 ? '-' + cleaned.slice(1).replace(/-/g, '')
                 : cleaned.replace(/-/g, '');
+              // Non-numeric input (e.g. letters): show type mismatch
+              if (cleaned === '' && newValue.trim() !== '') {
+                setTypeValidationError('type mismatch');
+                e.currentTarget.textContent = editingCellValue;
+                return;
+              }
               if (!/^-?\d*$/.test(intValue)) {
                 e.currentTarget.textContent = editingCellValue;
                 return;
@@ -172,7 +178,6 @@ export function CellEditor({
               }
               newValue = intValue;
             } else if (property.dataType === 'float' && newValue !== '') {
-              setTypeValidationError(null);
               const cleaned = newValue.replace(/[^\d.-]/g, '');
               const floatValue = cleaned.startsWith('-')
                 ? '-' + cleaned.slice(1).replace(/-/g, '')
@@ -181,6 +186,13 @@ export function CellEditor({
               const finalValue = parts.length > 2
                 ? parts[0] + '.' + parts.slice(1).join('')
                 : floatValue;
+              // Non-numeric input (e.g. letters) or invalid number: show type mismatch
+              if ((finalValue === '' && newValue.trim() !== '') || (finalValue !== '' && Number.isNaN(parseFloat(finalValue)))) {
+                setTypeValidationError('type mismatch');
+                e.currentTarget.textContent = editingCellValue;
+                return;
+              }
+              setTypeValidationError(null);
               if (!/^-?\d*\.?\d*$/.test(finalValue)) {
                 e.currentTarget.textContent = editingCellValue;
                 return;
@@ -232,6 +244,11 @@ export function CellEditor({
             const intValue = cleaned.startsWith('-')
               ? '-' + cleaned.slice(1).replace(/-/g, '')
               : cleaned.replace(/-/g, '');
+            if (cleaned === '' && newValue.trim() !== '') {
+              setTypeValidationError('type mismatch');
+              e.currentTarget.textContent = editingCellValue;
+              return;
+            }
             if (!/^-?\d*$/.test(intValue)) {
               e.currentTarget.textContent = editingCellValue;
               return;
@@ -241,7 +258,6 @@ export function CellEditor({
             }
             newValue = intValue;
           } else if (property.dataType === 'float' && newValue !== '') {
-            setTypeValidationError(null);
             const cleaned = newValue.replace(/[^\d.-]/g, '');
             const floatValue = cleaned.startsWith('-')
               ? '-' + cleaned.slice(1).replace(/-/g, '')
@@ -250,6 +266,12 @@ export function CellEditor({
             const finalValue = parts.length > 2
               ? parts[0] + '.' + parts.slice(1).join('')
               : floatValue;
+            if ((finalValue === '' && newValue.trim() !== '') || (finalValue !== '' && Number.isNaN(parseFloat(finalValue)))) {
+              setTypeValidationError('type mismatch');
+              e.currentTarget.textContent = editingCellValue;
+              return;
+            }
+            setTypeValidationError(null);
             if (!/^-?\d*\.?\d*$/.test(finalValue)) {
               e.currentTarget.textContent = editingCellValue;
               return;
