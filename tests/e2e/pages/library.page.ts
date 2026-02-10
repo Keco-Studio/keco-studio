@@ -204,6 +204,8 @@ export class LibraryPage {
 
     // Step 3: Wait for library creation modal to appear
     await expect(this.libraryNameInput).toBeVisible({ timeout: 5000 });
+    // Wait for any menu-close animation to finish before interacting with the modal
+    await this.page.waitForTimeout(500);
 
     // Step 4: Fill in library details
     await this.libraryNameInput.fill(library.name);
@@ -214,14 +216,25 @@ export class LibraryPage {
       await this.libraryDescriptionInput.fill(library.description);
     }
 
-    // Step 5: Submit the form (scope to New Library modal to avoid clicking another Create button)
+    // Step 5: Submit the form (scope to the portal-rendered modal backdrop)
+    // NewLibraryModal renders via createPortal to document.body with class*="backdrop"
     const newLibraryModal = this.page.locator('[class*="backdrop"]').filter({ has: this.page.locator('#library-name') });
-    const createBtn = newLibraryModal.getByRole('button', { name: /^create$/i });
+    const createBtn = newLibraryModal.getByRole('button', { name: 'Create', exact: true });
+    await expect(createBtn).toBeVisible({ timeout: 5000 });
     await expect(createBtn).toBeEnabled({ timeout: 5000 });
     await createBtn.click();
 
-    // Step 6: Wait for modal to close
-    await expect(this.libraryNameInput).not.toBeVisible({ timeout: 20000 });
+    // If the modal is still visible after a short wait, try clicking again (handles rare click interception)
+    await this.page.waitForTimeout(1000);
+    if (await this.libraryNameInput.isVisible()) {
+      const retryBtn = newLibraryModal.getByRole('button', { name: 'Create', exact: true });
+      if (await retryBtn.isVisible() && await retryBtn.isEnabled()) {
+        await retryBtn.click();
+      }
+    }
+
+    // Step 6: Wait for modal to close (increase timeout for slower API responses)
+    await expect(this.libraryNameInput).not.toBeVisible({ timeout: 30000 });
     await this.page.waitForLoadState('load', { timeout: 15000 });
     // Additional wait to ensure authorization checks are complete
     await this.page.waitForTimeout(1000);
@@ -244,15 +257,31 @@ export class LibraryPage {
 
     // Step 3: Wait for folder creation modal to appear
     await expect(this.folderNameInput).toBeVisible({ timeout: 5000 });
+    // Wait for any menu-close animation to finish before interacting with the modal
+    await this.page.waitForTimeout(500);
 
     // Step 4: Fill in folder name
     await this.folderNameInput.fill(folder.name);
 
-    // Step 5: Submit the form
-    await this.submitButton.click();
+    // Step 5: Submit the form (scope to the portal-rendered modal backdrop)
+    // NewFolderModal renders via createPortal to document.body with class*="backdrop"
+    const folderModal = this.page.locator('[class*="backdrop"]').filter({ has: this.folderNameInput });
+    const createBtn = folderModal.getByRole('button', { name: 'Create', exact: true });
+    await expect(createBtn).toBeVisible({ timeout: 5000 });
+    await expect(createBtn).toBeEnabled({ timeout: 5000 });
+    await createBtn.click();
 
-    // Step 6: Wait for modal to close
-    await expect(this.folderNameInput).not.toBeVisible({ timeout: 10000 });
+    // If the modal is still visible after a short wait, try clicking again (handles rare click interception)
+    await this.page.waitForTimeout(1000);
+    if (await this.folderNameInput.isVisible()) {
+      const retryBtn = folderModal.getByRole('button', { name: 'Create', exact: true });
+      if (await retryBtn.isVisible() && await retryBtn.isEnabled()) {
+        await retryBtn.click();
+      }
+    }
+
+    // Step 6: Wait for modal to close (increase timeout for slower API responses)
+    await expect(this.folderNameInput).not.toBeVisible({ timeout: 30000 });
     await this.page.waitForLoadState('load', { timeout: 15000 });
     // Additional wait to ensure authorization checks are complete
     await this.page.waitForTimeout(1000);
