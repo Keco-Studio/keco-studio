@@ -18,7 +18,7 @@
 
 export interface FieldItemData {
   label: string;
-  datatype: 'string' | 'number' | 'boolean' | 'date' | 'option' | 'reference' | 'media';
+  datatype: 'string' | 'number' | 'boolean' | 'date' | 'option' | 'reference' | 'media' | 'image' | 'file';
   // For option type: list of option values
   options?: string[];
   // For reference type: name of the referenced library

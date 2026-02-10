@@ -219,7 +219,9 @@ export class PredefinedPage {
     const datatypeLabelMap: Record<string, string> = {
       'string': 'String',
       'enum': 'Option',
-      'media': 'Media/File',
+      'image': 'Image',
+      'file': 'File',
+      'media': 'Image', // Legacy: map 'media' to 'Image'
       'boolean': 'Boolean',
       'reference': 'Reference',
       'int': 'Int',
