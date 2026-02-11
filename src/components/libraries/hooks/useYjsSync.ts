@@ -5,7 +5,7 @@ import { useYjsRows } from '@/lib/hooks/useYjsRows';
 /**
  * Sync rows (allAssets = single source of truth) with yRows (local cache).
  *
- * Design: 顺序以 LibraryDataContext 的 allAssets 为准；yRows 仅作本地缓存。
+ * Design: ordering follows LibraryDataContext's allAssets as source of truth; yRows is only a local cache.
  * - When there are NO local insert/paste placeholders: display rows directly → same order for all clients.
  * - When there ARE placeholders (local user just did "insert above"): display yjsRows so temp stays in place;
  *   only job is to replace temp at index K with rows[K] when the real row arrives.
@@ -101,8 +101,8 @@ export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: Asset
       for (let i = yRows.length - 1; i >= 0; i--) yRows.delete(i, 1);
       yRows.insert(0, rows);
     }
-    // 兜底：如果此时 yRows 中依然残留 temp 行，但非 temp 行的集合已经与 rows 完全一致，
-    // 则直接整表替换，确保本地视图与 allAssets 完全对齐，避免 Paste/Insert 后操作者看到多余「幽灵行」。
+    // Fallback: if yRows still has leftover temp rows but the set of real rows already matches rows,
+    // do a full replace to align the local view with allAssets, preventing ghost rows after Paste/Insert.
     const afterArray: AssetRow[] = yRows.toArray();
     const tempsLeft = afterArray.some((r) => isTempId(r.id));
     if (tempsLeft) {
@@ -119,11 +119,19 @@ export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: Asset
     prevRowsRef.current = rows;
   }, [rows, yRows]);
 
-  // 最终展示一律以 rows(allAssets) 为准，保证所有协作者视图一致。
-  // yRows 仅作为本地缓存/占位的中间状态，不直接驱动渲染，避免本地 temp 行导致「操作者看到多余行」。
+  // Normally use rows (allAssets) as the display source to keep all collaborators in sync.
+  // Exception: when local yRows contains temp-insert-* placeholder rows (user just did Insert Row Above/Below),
+  // use yjsRows as the display source so temp rows are immediately visible. Once DB operations complete
+  // and real rows replace the temps, this automatically switches back to rows.
   const allRowsSource = useMemo(() => {
+    const hasInsertPlaceholders = yjsRows.some((r: AssetRow) =>
+      r.id.startsWith('temp-insert-')
+    );
+    if (hasInsertPlaceholders) {
+      return yjsRows;
+    }
     return rows;
-  }, [rows]);
+  }, [rows, yjsRows]);
 
   return { allRowsSource };
 }

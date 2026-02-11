@@ -113,6 +113,11 @@ export default function AssetPage() {
   const broadcastCellUpdateRef = useRef<((assetId: string, propertyKey: string, newValue: any, oldValue?: any) => Promise<void>) | null>(null);
   const assetRef = useRef<AssetRow | null>(null);
   
+  // Track whether the user is actively typing in a text field (string/int/float/date).
+  // When true, auto-save is suppressed so collaborators only see final values on blur,
+  // matching the table cell editing behavior.
+  const isTypingInTextFieldRef = useRef(false);
+  
   // Realtime collaboration state (field highlighting)
   const [realtimeEditedFields, setRealtimeEditedFields] = useState<Map<string, { value: any; timestamp: number }>>(new Map());
   
@@ -717,6 +722,9 @@ export default function AssetPage() {
   }, [handleSave]);
 
   // Auto-save functionality for edit mode (not for new assets)
+  // NOTE: When the user is actively typing in a text field (string/int/float/date),
+  // auto-save is suppressed. Save will be triggered explicitly on field blur,
+  // so collaborators only see the final committed value (matching table cell behavior).
   useEffect(() => {
     // Skip auto-save for new assets or if initial values haven't loaded
     if (isNewAsset || !asset || mode === 'view' || isSavingRef.current) {
@@ -737,6 +745,12 @@ export default function AssetPage() {
     
     // Only trigger auto-save if there are actual local changes
     if (!hasLocalChanges) {
+      return;
+    }
+
+    // If user is actively typing in a text field, skip auto-save.
+    // Save will be triggered on blur instead.
+    if (isTypingInTextFieldRef.current) {
       return;
     }
 
@@ -1208,16 +1222,11 @@ export default function AssetPage() {
                                 }
 
                     const inputType =
-                      f.data_type === 'int' || f.data_type === 'float'
-                        ? 'number'
-                        : f.data_type === 'date'
+                      f.data_type === 'date'
                         ? 'date'
                         : 'text';
                     
-                    // Add class to hide spinner for int and float types
-                    const inputClassName = (f.data_type === 'int' || f.data_type === 'float')
-                      ? `${styles.fieldInput} ${styles.noSpinner} ${mode === 'view' ? styles.disabledInput : ''}`
-                      : `${styles.fieldInput} ${mode === 'view' ? styles.disabledInput : ''}`;
+                    const inputClassName = `${styles.fieldInput} ${mode === 'view' ? styles.disabledInput : ''}`;
 
                     // Get users editing this field
                     const editingUsers = getFieldEditingUsers(f.id);
@@ -1250,10 +1259,9 @@ export default function AssetPage() {
                                         {DATA_TYPE_LABEL[f.data_type]}
                                       </div>
                                     </div>
-                                    <div className={styles.fieldControl}>
+                                    <div className={styles.fieldControl} style={{ position: 'relative' }}>
                         <input
                           type={inputType}
-                          step={f.data_type === 'int' ? '1' : f.data_type === 'float' ? 'any' : undefined}
                           value={value ?? ''}
                                         disabled={mode === 'view'}
                                         onChange={
@@ -1286,6 +1294,11 @@ export default function AssetPage() {
                                                     ? '-' + cleaned.slice(1).replace(/-/g, '')
                                                     : cleaned.replace(/-/g, '');
                                                   
+                                                  // Non-numeric input (e.g. letters): show type mismatch
+                                                  if (cleaned === '' && inputValue.trim() !== '') {
+                                                    setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                                    return;
+                                                  }
                                                   // Only update if valid integer format
                                                   if (!/^-?\d*$/.test(intValue)) {
                                                     return; // Don't update if invalid
@@ -1294,24 +1307,25 @@ export default function AssetPage() {
                                                 }
                                                 // Validate float type: allow valid numbers (integer or decimal)
                                                 else if (f.data_type === 'float' && inputValue !== '') {
-                                                  // Clear error initially
-                                                  setFieldValidationErrors(prev => {
-                                                    const newErrors = { ...prev };
-                                                    delete newErrors[f.id];
-                                                    return newErrors;
-                                                  });
-                                                  
                                                   // Remove invalid characters but keep valid float format
                                                   const cleaned = inputValue.replace(/[^\d.-]/g, '');
                                                   const floatValue = cleaned.startsWith('-') 
                                                     ? '-' + cleaned.slice(1).replace(/-/g, '')
                                                     : cleaned.replace(/-/g, '');
-                                                  // Ensure only one decimal point
                                                   const parts = floatValue.split('.');
                                                   const finalValue = parts.length > 2 
                                                     ? parts[0] + '.' + parts.slice(1).join('')
                                                     : floatValue;
-                                                  
+                                                  // Non-numeric input (e.g. letters) or invalid number: show type mismatch
+                                                  if ((finalValue === '' && inputValue.trim() !== '') || (finalValue !== '' && Number.isNaN(parseFloat(finalValue)))) {
+                                                    setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                                    return;
+                                                  }
+                                                  setFieldValidationErrors(prev => {
+                                                    const newErrors = { ...prev };
+                                                    delete newErrors[f.id];
+                                                    return newErrors;
+                                                  });
                                                   if (!/^-?\d*\.?\d*$/.test(finalValue)) {
                                                     return; // Don't update if invalid
                                                   }
@@ -1329,11 +1343,75 @@ export default function AssetPage() {
                                               }
                                             : undefined
                                         }
-                                        onFocus={() => handleFieldFocus(f.id)}
-                                        onBlur={handleFieldBlur}
+                                        onFocus={() => {
+                                          isTypingInTextFieldRef.current = true;
+                                          handleFieldFocus(f.id);
+                                        }}
+                                        onBlur={() => {
+                                          // Mark text field editing as done
+                                          isTypingInTextFieldRef.current = false;
+
+                                          // Float type: check if value is a pure integer (no decimal point) on blur
+                                          if (f.data_type === 'float') {
+                                            const val = values[f.id];
+                                            if (val !== '' && val !== undefined && val !== null) {
+                                              const trimmed = String(val).trim();
+                                              if (trimmed !== '' && trimmed !== '-' && trimmed !== '.' && !trimmed.includes('.')) {
+                                                setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                                handleFieldBlur();
+                                                return;
+                                              }
+                                            }
+                                          }
+                                          // Clear type mismatch error on blur for other cases
+                                          if (fieldValidationErrors[f.id]) {
+                                            setFieldValidationErrors(prev => {
+                                              const newErrors = { ...prev };
+                                              delete newErrors[f.id];
+                                              return newErrors;
+                                            });
+                                          }
+                                          handleFieldBlur();
+
+                                          // Trigger explicit save on blur so collaborators see
+                                          // the final committed value (matching table cell behavior)
+                                          if (!isNewAsset && !isSavingRef.current && handleSaveRef.current) {
+                                            const hasChanges = Object.keys(values).some(fieldId => {
+                                              return JSON.stringify(values[fieldId]) !== JSON.stringify(previousValuesRef.current[fieldId]);
+                                            });
+                                            if (hasChanges) {
+                                              isSavingRef.current = true;
+                                              handleSaveRef.current().finally(() => {
+                                                isSavingRef.current = false;
+                                              });
+                                            }
+                                          }
+                                        }}
                                         className={`${inputClassName} ${isBeingEdited ? styles.fieldInputEditing : ''} ${isRealtimeEdited ? styles.fieldRealtimeEdited : ''}`}
                                         style={borderColor ? { borderColor } : undefined}
                         />
+                                        {fieldValidationErrors[f.id] && (
+                                          <Tooltip
+                                            title={fieldValidationErrors[f.id]}
+                                            open={true}
+                                            placement="bottom"
+                                            overlayStyle={{ fontSize: '12px' }}
+                                          >
+                                            <div
+                                              style={{
+                                                position: 'absolute',
+                                                top: '4px',
+                                                right: '4px',
+                                                width: '8px',
+                                                height: '8px',
+                                                backgroundColor: '#ff4d4f',
+                                                borderRadius: '50%',
+                                                zIndex: 1001,
+                                                pointerEvents: 'none',
+                                              }}
+                                            />
+                                          </Tooltip>
+                                        )}
                                       <FieldPresenceAvatars users={editingUsers} />
                                     </div>
                                     {/* Only Reference and Option (enum) show configure icon */}

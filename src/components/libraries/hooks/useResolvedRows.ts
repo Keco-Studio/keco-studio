@@ -48,9 +48,9 @@ export function useResolvedRows({
       }
     });
 
-    // ⚠️ 为了保证协作视图稳定，这里不再把 optimisticNewAssets 单独插入/追加到 out。
-    // 新建行统一依赖 LibraryDataContext.createAsset → allRowsSource 来驱动展示，
-    // 避免「本地乐观 temp 行 + 真实行」双重渲染导致表格比 DB 多出几行。
+    // ⚠️ Optimistic insert rows (temp-insert-*) are handled via yRows → useYjsSync → allRowsSource.
+    // When temp-insert placeholders exist in yRows, useYjsSync returns yjsRows as allRowsSource,
+    // so they naturally appear in the `out` array above without extra splicing here.
 
     return out;
   }, [

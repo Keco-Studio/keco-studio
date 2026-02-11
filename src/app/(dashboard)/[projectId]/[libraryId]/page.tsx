@@ -758,15 +758,13 @@ export default function LibraryPage() {
                         </label>
                       );
                     }
-                    const inputType = f.data_type === 'int' || f.data_type === 'float' ? 'number' : f.data_type === 'date' ? 'date' : 'text';
-                    const step = f.data_type === 'int' ? '1' : f.data_type === 'float' ? 'any' : undefined;
+                    const inputType = f.data_type === 'date' ? 'date' : 'text';
                     return (
                       <label key={f.id} className={styles.fieldLabel}>
                         <span>{label}</span>
                         <div style={{ position: 'relative', width: '100%' }}>
                           <input
                             type={inputType}
-                            step={step}
                             value={value ?? ''}
                             onChange={(e) => {
                             let inputValue = e.target.value;
@@ -796,6 +794,11 @@ export default function LibraryPage() {
                                 ? '-' + cleaned.slice(1).replace(/-/g, '')
                                 : cleaned.replace(/-/g, '');
                               
+                              // Non-numeric input (e.g. letters): show type mismatch
+                              if (cleaned === '' && inputValue.trim() !== '') {
+                                setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                return;
+                              }
                               // Only update if valid integer format
                               if (!/^-?\d*$/.test(intValue)) {
                                 return; // Don't update if invalid
@@ -804,24 +807,25 @@ export default function LibraryPage() {
                             }
                             // Validate float type: must contain decimal point
                             else if (f.data_type === 'float' && inputValue !== '') {
-                              // Clear error initially
-                              setFieldValidationErrors(prev => {
-                                const newErrors = { ...prev };
-                                delete newErrors[f.id];
-                                return newErrors;
-                              });
-                              
                               // Remove invalid characters but keep valid float format
                               const cleaned = inputValue.replace(/[^\d.-]/g, '');
                               const floatValue = cleaned.startsWith('-') 
                                 ? '-' + cleaned.slice(1).replace(/-/g, '')
                                 : cleaned.replace(/-/g, '');
-                              // Ensure only one decimal point
                               const parts = floatValue.split('.');
                               const finalValue = parts.length > 2 
                                 ? parts[0] + '.' + parts.slice(1).join('')
                                 : floatValue;
-                              
+                              // Non-numeric input (e.g. letters) or invalid number: show type mismatch
+                              if ((finalValue === '' && inputValue.trim() !== '') || (finalValue !== '' && Number.isNaN(parseFloat(finalValue)))) {
+                                setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                return;
+                              }
+                              setFieldValidationErrors(prev => {
+                                const newErrors = { ...prev };
+                                delete newErrors[f.id];
+                                return newErrors;
+                              });
                               if (!/^-?\d*\.?\d*$/.test(finalValue)) {
                                 return; // Don't update if invalid
                               }
@@ -838,17 +842,24 @@ export default function LibraryPage() {
                             handleValueChange(f.id, inputValue);
                           }}
                           onBlur={() => {
-                            // Validate on blur for float type: check if integer was entered
-                            if (f.data_type === 'float' && values[f.id] !== '' && values[f.id] !== undefined && values[f.id] !== null) {
-                              const trimmed = String(values[f.id]).trim();
-                              if (!trimmed.includes('.')) {
-                                setFieldValidationErrors(prev => ({
-                                  ...prev,
-                                  [f.id]: 'type mismatch'
-                                }));
-                                // Clear the invalid value
-                                handleValueChange(f.id, '');
+                            // Float type: check if value is a pure integer (no decimal point) on blur
+                            if (f.data_type === 'float') {
+                              const val = values[f.id];
+                              if (val !== '' && val !== undefined && val !== null) {
+                                const trimmed = String(val).trim();
+                                if (trimmed !== '' && trimmed !== '-' && trimmed !== '.' && !trimmed.includes('.')) {
+                                  setFieldValidationErrors(prev => ({ ...prev, [f.id]: 'type mismatch' }));
+                                  return;
+                                }
                               }
+                            }
+                            // Clear type mismatch error on blur for other cases
+                            if (fieldValidationErrors[f.id]) {
+                              setFieldValidationErrors(prev => {
+                                const newErrors = { ...prev };
+                                delete newErrors[f.id];
+                                return newErrors;
+                              });
                             }
                           }}
                           className={styles.fieldInput}
