@@ -46,12 +46,12 @@
 }
 
 .deleteItem:hover {
-  background-color: #fee2e2;
+  background-color: #0B99FF14;
   color: #AA052C;
 }
 
 .deleteItem:active {
-  background-color: #fecaca;
+  background-color: #0B99FF14;
 }
 
 .separator {

@@ -159,20 +159,10 @@ export async function listProjects(
   const cacheKey = `projects:list:${resolvedUserId}`;
 
   return globalRequestCache.fetch(cacheKey, async () => {
-    // Fetch projects where user is owner OR collaborator
-    // Method 1: Get owned projects
-    const { data: ownedProjects, error: ownedError } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('owner_id', resolvedUserId)
-      .order('created_at', { ascending: true });
-
-    if (ownedError) {
-      throw ownedError;
-    }
-
-    // Method 2: Get projects where user is a collaborator
-    // First get the project IDs from project_collaborators
+    // SECURITY FIX: Only return projects where user is in project_collaborators
+    // Access is determined ONLY by collaborator records, not ownership
+    
+    // Get project IDs where user is a collaborator
     const { data: collaboratorRecords, error: collaboratorError } = await supabase
       .from('project_collaborators')
       .select('project_id')
@@ -181,48 +171,29 @@ export async function listProjects(
 
     if (collaboratorError) {
       console.error('Error fetching collaborator projects:', collaboratorError);
-      // Continue with just owned projects if collaborator query fails
+      throw collaboratorError;
     }
 
-    // Then fetch the actual project details for those IDs
-    let collaboratorProjects: Project[] = [];
-    if (collaboratorRecords && collaboratorRecords.length > 0) {
-      const projectIds = collaboratorRecords.map(record => record.project_id);
-      
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('*')
-        .in('id', projectIds);
-
-      if (projectsError) {
-        // Continue with just owned projects
-      } else {
-        collaboratorProjects = projectsData || [];
-      }
+    // If user is not a collaborator of any project, return empty array
+    if (!collaboratorRecords || collaboratorRecords.length === 0) {
+      return [];
     }
 
-    // Combine and deduplicate projects
-    const projectsMap = new Map<string, Project>();
+    // Fetch the actual project details for those IDs
+    const projectIds = collaboratorRecords.map(record => record.project_id);
     
-    // Add owned projects
-    (ownedProjects || []).forEach((project) => {
-      projectsMap.set(project.id, project);
-    });
-    
-    // Add collaborator projects
-    collaboratorProjects.forEach((project) => {
-      if (!projectsMap.has(project.id)) {
-        projectsMap.set(project.id, project);
-      }
-    });
-    
-    // Convert to array and sort by created_at
-    const allProjects = Array.from(projectsMap.values());
-    allProjects.sort((a, b) => {
-      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-    });
+    const { data: projects, error: projectsError } = await supabase
+      .from('projects')
+      .select('*')
+      .in('id', projectIds)
+      .order('created_at', { ascending: true });
 
-    return allProjects;
+    if (projectsError) {
+      console.error('Error fetching projects:', projectsError);
+      throw projectsError;
+    }
+
+    return projects || [];
   });
 }
 

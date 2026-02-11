@@ -120,12 +120,16 @@ export function useCellSelection({
       ) {
         handleCellBlur();
       }
+      // Clear row selection when clicking on a cell
+      if (selectedRowIds.size > 0) {
+        setSelectedRowIds(new Set());
+      }
       const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
       setSelectedCells(new Set<CellKey>([cellKey]));
       setDragStartCell({ rowId, propertyKey });
       setDragCurrentCell(null);
     },
-    [selectedCells, currentFocusedCell, handleCellBlur]
+    [selectedCells, selectedRowIds, currentFocusedCell, handleCellBlur]
   );
 
   // Handle cell drag selection start (from cell - multi-selection rectangle)

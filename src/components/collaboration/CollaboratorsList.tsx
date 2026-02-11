@@ -30,6 +30,7 @@ interface CollaboratorsListProps {
   currentUserId: string;
   currentUserRole: 'admin' | 'editor' | 'viewer';
   onUpdate?: () => void;
+  onSelfRemoved?: () => void; // Called when current user is removed from collaborators
   highlightUserId?: string | null; // User ID to highlight with animation
 }
 
@@ -39,6 +40,7 @@ export default function CollaboratorsList({
   currentUserId,
   currentUserRole,
   onUpdate,
+  onSelfRemoved,
   highlightUserId = null,
 }: CollaboratorsListProps) {
   const supabase = useSupabase();
@@ -51,6 +53,12 @@ export default function CollaboratorsList({
   // Track if we're performing a local mutation to avoid unnecessary refetches
   const isLocalMutation = useRef(false);
   
+  // Ref for collaborators list used in subscription handler (avoids re-subscribing on every list change)
+  const collaboratorsRef = useRef<Collaborator[]>(initialCollaborators);
+  
+  // Ref for the broadcast channel to send messages after mutations
+  const channelRef = useRef<any>(null);
+  
   // Use React Query to read from cache
   // The cache will be updated by our mutation hooks
   const { data: cachedCollaborators } = useQuery<Collaborator[]>({
@@ -62,6 +70,11 @@ export default function CollaboratorsList({
   
   // Use cached data if available, otherwise fall back to prop
   const collaborators = cachedCollaborators || initialCollaborators;
+  
+  // Keep collaboratorsRef in sync (used by subscription handler without re-subscribing)
+  useEffect(() => {
+    collaboratorsRef.current = collaborators;
+  }, [collaborators]);
   
   // State management
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
@@ -106,44 +119,140 @@ export default function CollaboratorsList({
   }, [openDropdownId]);
   
   // Real-time subscription for database changes (from other users)
+  // Uses separate event listeners:
+  // - INSERT/UPDATE: with project_id filter (works reliably)
+  // - DELETE: without filter (Supabase DELETE events don't include non-PK columns by default)
+  // - Broadcast: custom channel as reliable backup for all mutation types
   useEffect(() => {
     if (!projectId) return;
     
-    const channel = supabase
-      .channel(`project:${projectId}:collaborators`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'project_collaborators',
-          filter: `project_id=eq.${projectId}`,
-        },
-        (payload) => {
-          // Skip if this is our own mutation (already updated via optimistic update)
-          if (isLocalMutation.current) {
-            isLocalMutation.current = false;
+    const handleInsertOrUpdate = (payload: any) => {
+      console.log('[CollaboratorsList] 📥 INSERT/UPDATE event received:', payload);
+      console.log('[CollaboratorsList] isLocalMutation.current:', isLocalMutation.current);
+      
+      // Skip if this is our own mutation (already updated via optimistic update)
+      if (isLocalMutation.current) {
+        console.log('[CollaboratorsList] ⏭️ Skipping - local mutation');
+        isLocalMutation.current = false;
+        return;
+      }
+      
+      // For changes from other users, call onUpdate to refresh data
+      console.log('[CollaboratorsList] 🔄 Calling onUpdate to refresh data');
+      if (onUpdate) {
+        onUpdate();
+      }
+    };
+    
+    const handleDelete = (payload: any) => {
+      console.log('[CollaboratorsList] 🗑️ DELETE event received:', payload);
+      console.log('[CollaboratorsList] isLocalMutation.current:', isLocalMutation.current);
+      
+      // Skip if this is our own mutation
+      if (isLocalMutation.current) {
+        console.log('[CollaboratorsList] ⏭️ Skipping - local mutation');
+        isLocalMutation.current = false;
+        return;
+      }
+      
+      // For DELETE events without filter, old record only contains id (primary key).
+      // Check if the deleted record belongs to our collaborators list.
+      const deletedId = (payload.old as any)?.id;
+      console.log('[CollaboratorsList] Deleted ID:', deletedId);
+      if (deletedId) {
+        const isOurCollaborator = collaboratorsRef.current.some(c => c.id === deletedId);
+        console.log('[CollaboratorsList] Is our collaborator?', isOurCollaborator);
+        if (isOurCollaborator) {
+          // Check if the deleted collaborator is the current user
+          const deletedCollab = collaboratorsRef.current.find(c => c.id === deletedId);
+          if (deletedCollab && deletedCollab.userId === currentUserId && onSelfRemoved) {
+            console.log('[CollaboratorsList] 🚨 Current user was removed, calling onSelfRemoved');
+            onSelfRemoved();
             return;
           }
-          
-          // For changes from other users, call onUpdate to refresh data
+          console.log('[CollaboratorsList] 🔄 Calling onUpdate to refresh data');
           if (onUpdate) {
             onUpdate();
           }
         }
+      }
+    };
+    
+    const handleBroadcast = (payload: any) => {
+      console.log('[CollaboratorsList] 📡 BROADCAST event received:', payload);
+      // Broadcast messages are NOT delivered to the sender (Supabase default),
+      // so no need to check isLocalMutation here.
+      const data = payload.payload;
+      
+      // If current user was removed, trigger redirect
+      if (data?.type === 'delete' && data?.removedUserId === currentUserId) {
+        console.log('[CollaboratorsList] 🚨 Current user was removed (broadcast), calling onSelfRemoved');
+        if (onSelfRemoved) {
+          onSelfRemoved();
+          return;
+        }
+      }
+      
+      console.log('[CollaboratorsList] 🔄 Calling onUpdate to refresh data (broadcast)');
+      if (onUpdate) {
+        onUpdate();
+      }
+    };
+    
+    console.log('[CollaboratorsList] 🔌 Setting up subscription for project:', projectId);
+    
+    const channel = supabase
+      .channel(`collaborators-list:project:${projectId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'project_collaborators',
+          filter: `project_id=eq.${projectId}`,
+        },
+        handleInsertOrUpdate
       )
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'project_collaborators',
+          filter: `project_id=eq.${projectId}`,
+        },
+        handleInsertOrUpdate
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: 'DELETE',
+          schema: 'public',
+          table: 'project_collaborators',
+        },
+        handleDelete
+      )
+      .on('broadcast', { event: 'collaborator-change' }, handleBroadcast)
       .subscribe((status) => {
+        console.log('[CollaboratorsList] Subscription status:', status);
       });
+    
+    channelRef.current = channel;
     
     return () => {
       channel.unsubscribe();
+      channelRef.current = null;
     };
-  }, [projectId, supabase, onUpdate]);
+  }, [projectId, supabase, onUpdate, onSelfRemoved, currentUserId]);
   
   // Handle role change
   const handleRoleChange = (collaboratorId: string, newRole: 'admin' | 'editor' | 'viewer', currentRole: string) => {
     if (!canManage) return;
     if (newRole === currentRole) return;
+    
+    // Find the user being affected (before role change)
+    const affectedCollab = collaborators.find(c => c.id === collaboratorId);
+    const affectedUserId = affectedCollab?.userId || null;
     
     // Clear any previous errors
     setError(null);
@@ -155,6 +264,15 @@ export default function CollaboratorsList({
     updateRole.mutate(
       { collaboratorId, projectId, newRole },
       {
+        onSuccess: () => {
+          // Broadcast to other users so they refresh (including the affected user)
+          // Include affectedUserId so ProjectLayout can detect if current user's role changed
+          channelRef.current?.send({
+            type: 'broadcast',
+            event: 'collaborator-change',
+            payload: { type: 'role-change', collaboratorId, newRole, affectedUserId }
+          });
+        },
         onError: (err: any) => {
           // Display error to user
           setError(err.message || 'Failed to update role');
@@ -175,6 +293,10 @@ export default function CollaboratorsList({
   const handleRemoveCollaborator = (collaboratorId: string, userName: string) => {
     if (!canManage) return;
     
+    // Find the user being removed (before optimistic update removes them from list)
+    const removedCollab = collaborators.find(c => c.id === collaboratorId);
+    const removedUserId = removedCollab?.userId || null;
+    
     setError(null);
     setConfirmingDelete(null);
     
@@ -194,6 +316,18 @@ export default function CollaboratorsList({
         onSuccess: () => {
           const name = (userName && userName.trim()) ? userName : 'Collaborator';
           showSuccessToast(`${name} removed`);
+          
+          // Broadcast to other users so they refresh
+          // Include removedUserId so the removed user can detect self-removal and redirect
+          console.log('[CollaboratorsList] Broadcasting delete event for user:', removedUserId);
+          const broadcastPayload = { type: 'delete', collaboratorId, removedUserId };
+          console.log('[CollaboratorsList] Broadcast payload:', broadcastPayload);
+          
+          channelRef.current?.send({
+            type: 'broadcast',
+            event: 'collaborator-change',
+            payload: broadcastPayload
+          });
         },
       }
     );

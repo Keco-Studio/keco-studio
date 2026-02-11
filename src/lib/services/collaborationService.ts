@@ -422,6 +422,10 @@ export async function acceptInvitation(
  * @param projectId - Project ID
  * @param userId - User ID
  * @returns User's role and owner status
+ * 
+ * IMPORTANT: Access is determined by project_collaborators table ONLY.
+ * Even project owners must have a collaborator record to access the project.
+ * If an owner is removed from collaborators, they lose access (isOwner is for info only).
  */
 export async function getUserProjectRole(
   supabase: SupabaseClient,
@@ -447,15 +451,13 @@ export async function getUserProjectRole(
       .not('accepted_at', 'is', null)
       .single();
 
-    // If the user is the project owner but not yet present in project_collaborators,
-    // treat them as an admin for permission checks on the frontend.
-    // This ensures newly created projects (where the owner is set on the project
-    // record but no collaborator row exists yet) still see all "admin only" UI.
-    const effectiveRole: CollaboratorRole | null =
-      (collaborator?.role as CollaboratorRole | null) || (isOwner ? 'admin' : null);
+    // SECURITY FIX: Access is determined ONLY by collaborator record.
+    // If user is not in project_collaborators (even if they are the owner),
+    // they have NO access. This prevents removed owners from accessing the project.
+    const role = collaborator?.role as CollaboratorRole | null;
 
     return {
-      role: effectiveRole,
+      role,
       isOwner,
     };
   } catch (error) {

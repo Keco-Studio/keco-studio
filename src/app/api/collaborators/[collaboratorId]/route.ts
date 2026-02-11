@@ -63,14 +63,15 @@ export async function PATCH(
     }
 
     // Check user is admin
-    const { role: userRole, isOwner } = await getUserProjectRole(
+    // SECURITY: Access is determined ONLY by collaborator role
+    const { role: userRole } = await getUserProjectRole(
       supabase,
       collaborator.project_id,
       user.id
     );
     
-    // Allow if user is owner OR has admin role
-    const canManage = isOwner || (userRole && canUserManageCollaborators(userRole));
+    // User must have a valid role and be able to manage collaborators
+    const canManage = userRole && canUserManageCollaborators(userRole);
     
     if (!canManage) {
       return NextResponse.json(
@@ -170,14 +171,15 @@ export async function DELETE(
     }
 
     // Check user is admin
-    const { role: userRole, isOwner } = await getUserProjectRole(
+    // SECURITY: Access is determined ONLY by collaborator role
+    const { role: userRole } = await getUserProjectRole(
       supabase,
       collaborator.project_id,
       user.id
     );
     
-    // Allow if user is owner OR has admin role
-    const canManage = isOwner || (userRole && canUserManageCollaborators(userRole));
+    // User must have a valid role and be able to manage collaborators
+    const canManage = userRole && canUserManageCollaborators(userRole);
     
     if (!canManage) {
       return NextResponse.json(
