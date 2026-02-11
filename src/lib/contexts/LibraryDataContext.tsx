@@ -333,6 +333,14 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   }, [flushCellUpdateQueue]);
   
   const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
+    // Skip if asset already exists in Yjs (e.g. from loadInitialData or a prior broadcast).
+    // This prevents the postgres_changes INSERT handler (which creates a synthetic event
+    // without row_index) from overwriting the correct entry that loadInitialData already
+    // set — which would cause the row to jump to the end of the table.
+    if (yAssets.has(event.assetId)) {
+      return;
+    }
+
     // Add new asset to Yjs (using Y.Map for propertyValues)
     const yAsset = new Y.Map();
     yAsset.set('name', event.assetName);

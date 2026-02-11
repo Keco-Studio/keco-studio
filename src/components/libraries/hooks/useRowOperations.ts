@@ -57,6 +57,36 @@ export type UseRowOperationsParams = {
   rows: AssetRow[];
 };
 
+/**
+ * Normalize all row_index values in the DB to be sequential (1-based) matching the
+ * current display order.  This guarantees that every row has a unique index so that
+ * `shiftRowIndices` and the subsequent insert work correctly — even when existing
+ * rows share the same (or NULL) row_index.
+ */
+async function normalizeRowIndices(
+  supabase: SupabaseClient,
+  libraryId: string,
+  displayOrderedRows: AssetRow[]
+): Promise<void> {
+  const updates: Promise<any>[] = [];
+  for (let idx = 0; idx < displayOrderedRows.length; idx++) {
+    const row = displayOrderedRows[idx];
+    const expectedIndex = idx + 1; // 1-based sequential
+    if (row.rowIndex !== expectedIndex) {
+      updates.push(
+        supabase
+          .from('library_assets')
+          .update({ row_index: expectedIndex })
+          .eq('id', row.id)
+          .eq('library_id', libraryId)
+      );
+    }
+  }
+  if (updates.length > 0) {
+    await Promise.all(updates);
+  }
+}
+
 function closeRowOpMenus(
   setBatchEditMenuVisible: UseRowOperationsParams['setBatchEditMenuVisible'],
   setBatchEditMenuPosition: UseRowOperationsParams['setBatchEditMenuPosition'],
@@ -200,15 +230,22 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
     // --- Background: DB operations ---
     try {
+      // Normalize row indices to sequential values matching display order.
+      // This ensures each row has a unique row_index so shiftRowIndices works
+      // correctly (fixes rows with duplicate or NULL row_index values).
+      if (supabase) {
+        await normalizeRowIndices(supabase, library.id, allRowsForSelection);
+      }
+
       for (let i = sortedRowIds.length - 1; i >= 0; i--) {
         const rowId = sortedRowIds[i];
-        const targetRow = allRowsForSelection.find((r) => r.id === rowId);
-        if (!targetRow) continue;
+        // Use the display position (0-based) to compute 1-based row index
+        // instead of relying on the potentially stale/duplicate targetRow.rowIndex.
+        const displayIndex = allRowsForSelection.findIndex((r) => r.id === rowId);
+        if (displayIndex < 0) continue;
 
-        const baseRowIndex =
-          typeof targetRow.rowIndex === 'number'
-            ? targetRow.rowIndex
-            : 1;
+        // Insert ABOVE: the new row takes the target row's normalized index
+        const baseRowIndex = displayIndex + 1;
 
         if (supabase) {
           await shiftRowIndices(supabase, library.id, baseRowIndex, 1);
@@ -318,15 +355,22 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
     // --- Background: DB operations ---
     try {
+      // Normalize row indices to sequential values matching display order.
+      // This ensures each row has a unique row_index so shiftRowIndices works
+      // correctly (fixes rows with duplicate or NULL row_index values).
+      if (supabase) {
+        await normalizeRowIndices(supabase, library.id, allRowsForSelection);
+      }
+
       for (let i = sortedRowIds.length - 1; i >= 0; i--) {
         const rowId = sortedRowIds[i];
-        const targetRow = allRowsForSelection.find((r) => r.id === rowId);
-        if (!targetRow) continue;
+        // Use the display position (0-based) to compute 1-based row index
+        // instead of relying on the potentially stale/duplicate targetRow.rowIndex.
+        const displayIndex = allRowsForSelection.findIndex((r) => r.id === rowId);
+        if (displayIndex < 0) continue;
 
-        const baseRowIndex =
-          typeof targetRow.rowIndex === 'number'
-            ? targetRow.rowIndex + 1
-            : 1;
+        // Insert BELOW: one position after the target row's normalized index
+        const baseRowIndex = displayIndex + 2;
 
         if (supabase) {
           await shiftRowIndices(supabase, library.id, baseRowIndex, 1);
