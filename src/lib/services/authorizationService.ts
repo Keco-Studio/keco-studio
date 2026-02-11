@@ -120,7 +120,11 @@ export async function verifyProjectAccess(
 }
 
 /**
- * Get user's role in a project (owner returns 'admin', collaborators return their role)
+ * Get user's role in a project
+ * 
+ * SECURITY: Access is determined by project_collaborators table ONLY.
+ * Even project owners must have a collaborator record to access the project.
+ * If an owner is removed from collaborators, they lose access.
  */
 export async function getUserProjectRole(
   supabase: SupabaseClient,
@@ -144,10 +148,8 @@ export async function getUserProjectRole(
       throw new AuthorizationError('Project not found');
     }
     
-    const isOwner = project.owner_id === currentUserId;
-    
-    // First check collaborator role (this takes precedence over owner status)
-    // This allows an admin collaborator to change the owner's role
+    // SECURITY FIX: Check collaborator role ONLY
+    // Access is determined by presence in project_collaborators table
     const { data: collaborator, error: collabError } = await supabase
       .from('project_collaborators')
       .select('role, accepted_at')
@@ -164,12 +166,8 @@ export async function getUserProjectRole(
       return collaborator.role as 'admin' | 'editor' | 'viewer';
     }
     
-    // If not a collaborator but is owner, default to admin
-    if (isOwner) {
-      return 'admin';
-    }
-    
-    // Not owner and not collaborator - no access
+    // SECURITY FIX: No access if not in collaborators table
+    // This applies even to project owners who have been removed from collaborators
     throw new AuthorizationError('User is not a collaborator of this project');
   });
 }

@@ -124,6 +124,8 @@ export default function CollaboratorsPage() {
           console.warn('[CollaboratorsPage] No role returned and user is not owner');
           setError('You do not have access to this project');
           setLoading(false);
+          // User was removed from the project - redirect to projects page
+          window.location.href = '/projects';
           return;
         }
       } catch (err) {
@@ -437,6 +439,10 @@ export default function CollaboratorsPage() {
           currentUserId={currentUserId}
           currentUserRole={userRole}
           onUpdate={fetchData}
+          onSelfRemoved={() => {
+            // Current user was removed from the project - redirect to projects page
+            window.location.href = '/projects';
+          }}
           highlightUserId={highlightUserId}
         />
       ) : (

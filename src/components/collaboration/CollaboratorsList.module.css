@@ -600,10 +600,10 @@
     background-color: #ffffff;
   }
   25%, 75% {
-    background-color: #FF005E08; /* Lighter pink for smooth transition */
+    background-color: #0B99FF14; /* Lighter pink for smooth transition */
   }
   50% {
-    background-color: #FF005E0F; /* Target highlight color */
+    background-color: #0B99FF26; /* Target highlight color */
   }
 }
 

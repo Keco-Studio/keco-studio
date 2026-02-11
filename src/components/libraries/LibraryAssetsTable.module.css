@@ -706,22 +706,22 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .checkboxContainer :global(.ant-checkbox-checked .ant-checkbox-inner) {
-  background-color: #0B99FF14;
-  border-color: #0B99FF14;
+  background-color: #0B99FF;
+  border-color: #0B99FF;
 }
 
 .checkboxContainer :global(.ant-checkbox:hover .ant-checkbox-inner) {
-  border-color: #0B99FF14;
+  border-color: #0B99FF;
 }
 
 .checkboxContainer :global(.ant-checkbox-checked:hover .ant-checkbox-inner) {
-  background-color: #6a1fc2;
-  border-color: #6a1fc2;
+  background-color: #0B99FF;
+  border-color: #0B99FF;
 }
 
 .checkboxContainer :global(.ant-checkbox-input:focus + .ant-checkbox-inner) {
-  border-color: #0B99FF14;
-  box-shadow: 0 0 0 2px rgba(135, 38, 238, 0.2);
+  border-color: #0B99FF;
+  box-shadow: 0 0 0 2px rgba(11, 153, 255, 0.2);
 }
 
 /* Actions column styles */
