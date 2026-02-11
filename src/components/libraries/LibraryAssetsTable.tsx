@@ -327,6 +327,7 @@ export function LibraryAssetsTable({
     newRowData,
     setNewRowData,
     handleSaveNewAsset,
+    handleAddRowDirect,
     handleCancelAdding,
     handleInputChange,
     handleMediaFileChange,
@@ -1194,7 +1195,7 @@ export function LibraryAssetsTable({
                       alert('Please finish editing the current cell first.');
                       return;
                     }
-                    setIsAddingRow(true);
+                    handleAddRowDirect();
                   }
                 }}
                 style={{ cursor: 'pointer' }}
@@ -1206,7 +1207,7 @@ export function LibraryAssetsTable({
                       alert('Please finish editing the current cell first.');
                       return;
                     }
-                    setIsAddingRow(true);
+                    handleAddRowDirect();
                   }}
                   style={{ cursor: 'pointer' }}
                 >
@@ -1218,7 +1219,7 @@ export function LibraryAssetsTable({
                         alert('Please finish editing the current cell first.');
                         return;
                       }
-                      setIsAddingRow(true);
+                      handleAddRowDirect();
                     }}
                     disabled={editingCell !== null}
                   >

@@ -202,25 +202,25 @@ export function useRowOperations(params: UseRowOperationsParams) {
     const numRowsToInsert = sortedRowIds.length;
     closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
 
-    // --- Optimistic: insert temp rows into yRows so they appear immediately ---
+    // --- Optimistic: insert temp rows ABOVE the FIRST selected row as a batch ---
     // useYjsSync detects temp-insert-* rows and uses yjsRows as display source.
+    const firstRowId = sortedRowIds[0];
+    const firstYIndex = yRows.toArray().findIndex((r: { id: string }) => r.id === firstRowId);
     const tempIds: string[] = [];
-    for (let i = 0; i < sortedRowIds.length; i++) {
-      const rowId = sortedRowIds[i];
-      const yIndex = yRows.toArray().findIndex((r: { id: string }) => r.id === rowId);
-      if (yIndex < 0) continue;
-
-      const tempId = `temp-insert-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-      tempIds.push(tempId);
-      const tempRow = {
-        id: tempId,
-        libraryId: library.id,
-        name: 'Untitled',
-        propertyValues: {},
-        rowIndex: 0,
-      };
-      // Insert ABOVE the target row in yRows; +i accounts for previously inserted temps
-      yRows.insert(yIndex + i, [tempRow]);
+    if (firstYIndex >= 0) {
+      for (let i = 0; i < numRowsToInsert; i++) {
+        const tempId = `temp-insert-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
+        tempIds.push(tempId);
+        const tempRow = {
+          id: tempId,
+          libraryId: library.id,
+          name: 'Untitled',
+          propertyValues: {},
+          rowIndex: 0,
+        };
+        // Insert all temps as a batch above the first selected row
+        yRows.insert(firstYIndex + i, [tempRow]);
+      }
     }
 
     setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
@@ -231,27 +231,26 @@ export function useRowOperations(params: UseRowOperationsParams) {
     // --- Background: DB operations ---
     try {
       // Normalize row indices to sequential values matching display order.
-      // This ensures each row has a unique row_index so shiftRowIndices works
-      // correctly (fixes rows with duplicate or NULL row_index values).
       if (supabase) {
         await normalizeRowIndices(supabase, library.id, allRowsForSelection);
       }
 
-      for (let i = sortedRowIds.length - 1; i >= 0; i--) {
-        const rowId = sortedRowIds[i];
-        // Use the display position (0-based) to compute 1-based row index
-        // instead of relying on the potentially stale/duplicate targetRow.rowIndex.
-        const displayIndex = allRowsForSelection.findIndex((r) => r.id === rowId);
-        if (displayIndex < 0) continue;
+      // Find the display position of the FIRST selected row — all new rows
+      // go above it as a contiguous batch.
+      const firstDisplayIndex = allRowsForSelection.findIndex((r) => r.id === firstRowId);
+      if (firstDisplayIndex < 0) throw new Error('First selected row not found');
 
-        // Insert ABOVE: the new row takes the target row's normalized index
-        const baseRowIndex = displayIndex + 1;
+      // baseRowIndex = 1-based index of the first selected row (after normalization)
+      const baseRowIndex = firstDisplayIndex + 1;
 
-        if (supabase) {
-          await shiftRowIndices(supabase, library.id, baseRowIndex, 1);
-        }
+      // Shift existing rows to make room for N new rows at once
+      if (supabase) {
+        await shiftRowIndices(supabase, library.id, baseRowIndex, numRowsToInsert);
+      }
 
-        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex });
+      // Create N new rows with sequential indices starting from baseRowIndex
+      for (let i = 0; i < numRowsToInsert; i++) {
+        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
       }
     } catch (e) {
       console.error('Failed to insert rows above:', e);
@@ -328,24 +327,24 @@ export function useRowOperations(params: UseRowOperationsParams) {
     const numRowsToInsert = sortedRowIds.length;
     closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
 
-    // --- Optimistic: insert temp rows into yRows so they appear immediately ---
+    // --- Optimistic: insert temp rows BELOW the LAST selected row as a batch ---
+    const lastRowId = sortedRowIds[sortedRowIds.length - 1];
+    const lastYIndex = yRows.toArray().findIndex((r: { id: string }) => r.id === lastRowId);
     const tempIds: string[] = [];
-    for (let i = 0; i < sortedRowIds.length; i++) {
-      const rowId = sortedRowIds[i];
-      const yIndex = yRows.toArray().findIndex((r: { id: string }) => r.id === rowId);
-      if (yIndex < 0) continue;
-
-      const tempId = `temp-insert-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
-      tempIds.push(tempId);
-      const tempRow = {
-        id: tempId,
-        libraryId: library.id,
-        name: 'Untitled',
-        propertyValues: {},
-        rowIndex: 0,
-      };
-      // Insert BELOW the target row in yRows; +1 for after, +i for previously inserted temps
-      yRows.insert(yIndex + 1 + i, [tempRow]);
+    if (lastYIndex >= 0) {
+      for (let i = 0; i < numRowsToInsert; i++) {
+        const tempId = `temp-insert-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}`;
+        tempIds.push(tempId);
+        const tempRow = {
+          id: tempId,
+          libraryId: library.id,
+          name: 'Untitled',
+          propertyValues: {},
+          rowIndex: 0,
+        };
+        // Insert all temps as a batch below the last selected row
+        yRows.insert(lastYIndex + 1 + i, [tempRow]);
+      }
     }
 
     setToastMessage({ message: numRowsToInsert === 1 ? '1 row inserted' : `${numRowsToInsert} rows inserted`, type: 'success' });
@@ -356,27 +355,26 @@ export function useRowOperations(params: UseRowOperationsParams) {
     // --- Background: DB operations ---
     try {
       // Normalize row indices to sequential values matching display order.
-      // This ensures each row has a unique row_index so shiftRowIndices works
-      // correctly (fixes rows with duplicate or NULL row_index values).
       if (supabase) {
         await normalizeRowIndices(supabase, library.id, allRowsForSelection);
       }
 
-      for (let i = sortedRowIds.length - 1; i >= 0; i--) {
-        const rowId = sortedRowIds[i];
-        // Use the display position (0-based) to compute 1-based row index
-        // instead of relying on the potentially stale/duplicate targetRow.rowIndex.
-        const displayIndex = allRowsForSelection.findIndex((r) => r.id === rowId);
-        if (displayIndex < 0) continue;
+      // Find the display position of the LAST selected row — all new rows
+      // go below it as a contiguous batch.
+      const lastDisplayIndex = allRowsForSelection.findIndex((r) => r.id === lastRowId);
+      if (lastDisplayIndex < 0) throw new Error('Last selected row not found');
 
-        // Insert BELOW: one position after the target row's normalized index
-        const baseRowIndex = displayIndex + 2;
+      // baseRowIndex = one position after the last selected row (1-based)
+      const baseRowIndex = lastDisplayIndex + 2;
 
-        if (supabase) {
-          await shiftRowIndices(supabase, library.id, baseRowIndex, 1);
-        }
+      // Shift existing rows to make room for N new rows at once
+      if (supabase) {
+        await shiftRowIndices(supabase, library.id, baseRowIndex, numRowsToInsert);
+      }
 
-        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex });
+      // Create N new rows with sequential indices starting from baseRowIndex
+      for (let i = 0; i < numRowsToInsert; i++) {
+        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
       }
     } catch (e) {
       console.error('Failed to insert rows below:', e);

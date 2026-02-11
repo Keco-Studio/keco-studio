@@ -123,6 +123,81 @@ export function useAddRow(params: UseAddRowParams) {
     broadcastAssetCreate,
   ]);
 
+  /**
+   * Directly add and save a new row (with default 'Untitled' name and empty
+   * property values) without entering editing mode.  The row is immediately
+   * persisted to the database and appears optimistically in the table.
+   */
+  const handleAddRowDirect = useCallback(async () => {
+    if (userRole === 'viewer') return;
+    if (!onSaveAsset || !library) return;
+
+    const maxRowIndex =
+      rows.length > 0
+        ? rows.reduce((max, r) => {
+            const idx = typeof r.rowIndex === 'number' ? r.rowIndex : 0;
+            return idx > max ? idx : max;
+          }, 0)
+        : 0;
+    const nextRowIndex = maxRowIndex + 1;
+
+    const tempId = `temp-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    const optimisticAsset: AssetRow = {
+      id: tempId,
+      libraryId: library.id,
+      name: 'Untitled',
+      propertyValues: {},
+      rowIndex: nextRowIndex,
+    };
+
+    yRows.insert(yRows.length, [optimisticAsset]);
+    setOptimisticNewAssets((prev) => {
+      const next = new Map(prev);
+      next.set(tempId, optimisticAsset);
+      return next;
+    });
+
+    setIsSaving(true);
+    try {
+      await onSaveAsset('Untitled', {}, { rowIndex: nextRowIndex });
+      if (enableRealtime && currentUser) {
+        await broadcastAssetCreate(tempId, 'Untitled', {});
+      }
+      setTimeout(() => {
+        const idx = yRows.toArray().findIndex((r) => r.id === tempId);
+        if (idx >= 0) yRows.delete(idx, 1);
+        setOptimisticNewAssets((prev) => {
+          const next = new Map(prev);
+          next.delete(tempId);
+          return next;
+        });
+      }, 500);
+    } catch (e) {
+      console.error('Failed to save asset:', e);
+      const idx = yRows.toArray().findIndex((r) => r.id === tempId);
+      if (idx >= 0) yRows.delete(idx, 1);
+      setOptimisticNewAssets((prev) => {
+        const next = new Map(prev);
+        next.delete(tempId);
+        return next;
+      });
+      alert('Failed to add row. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    userRole,
+    onSaveAsset,
+    library,
+    rows,
+    yRows,
+    setOptimisticNewAssets,
+    setIsSaving,
+    enableRealtime,
+    currentUser,
+    broadcastAssetCreate,
+  ]);
+
   const handleCancelAdding = useCallback(() => {
     setIsAddingRow(false);
     setNewRowData({});
@@ -142,6 +217,7 @@ export function useAddRow(params: UseAddRowParams) {
     newRowData,
     setNewRowData,
     handleSaveNewAsset,
+    handleAddRowDirect,
     handleCancelAdding,
     handleInputChange,
     handleMediaFileChange,
