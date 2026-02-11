@@ -259,7 +259,9 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
         <div className={styles.modalOverlay} onClick={() => setShowImagePreview(false)}>
           <div className={styles.modalContent} onClick={(e) => e.stopPropagation()}>
             <div className={styles.modalHeader}>
-              <span className={styles.modalTitle}>{value.fileName}</span>
+              <Tooltip title={value.fileName} placement="topLeft" mouseEnterDelay={0.5}>
+                <span className={styles.modalTitle}>{value.fileName}</span>
+              </Tooltip>
               <button
                 type="button"
                 className={styles.modalCloseButton}

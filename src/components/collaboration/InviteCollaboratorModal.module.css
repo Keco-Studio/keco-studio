@@ -58,3 +58,37 @@
   }
 }
 
+/* Ensure primary button uses blue color (not purple) */
+.modal :global(.ant-btn-primary) {
+  background-color: #0B99FF !important;
+  border-color: #0B99FF !important;
+}
+
+.modal :global(.ant-btn-primary:hover),
+.modal :global(.ant-btn-primary:focus) {
+  background-color: #0a8ae6 !important;
+  border-color: #0a8ae6 !important;
+}
+
+/* Ensure input fields use blue border on focus (not purple) */
+.modal :global(.ant-input:focus),
+.modal :global(.ant-input-focused) {
+  border-color: #0B99FF !important;
+  box-shadow: 0 0 0 2px rgba(11, 153, 255, 0.2) !important;
+}
+
+.modal :global(.ant-input:hover) {
+  border-color: #0B99FF !important;
+}
+
+/* Ensure select fields use blue border on focus (not purple) */
+.modal :global(.ant-select:not(.ant-select-disabled):hover .ant-select-selector) {
+  border-color: #0B99FF !important;
+}
+
+.modal :global(.ant-select-focused:not(.ant-select-disabled) .ant-select-selector) {
+  border-color: #0B99FF !important;
+  box-shadow: 0 0 0 2px rgba(11, 153, 255, 0.2) !important;
+}
+
+/* Responsive adjustments */
