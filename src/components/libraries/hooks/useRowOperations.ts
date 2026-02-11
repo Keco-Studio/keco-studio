@@ -68,7 +68,7 @@ async function normalizeRowIndices(
   libraryId: string,
   displayOrderedRows: AssetRow[]
 ): Promise<void> {
-  const updates: Promise<any>[] = [];
+  const updates: PromiseLike<any>[] = [];
   for (let idx = 0; idx < displayOrderedRows.length; idx++) {
     const row = displayOrderedRows[idx];
     const expectedIndex = idx + 1; // 1-based sequential
