@@ -71,7 +71,7 @@ export type LibraryAssetsTableProps = {
   sections: SectionConfig[];
   properties: PropertyConfig[];
   rows: AssetRow[];
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number }) => Promise<void>;
+  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   /** Clear Content 专用：批量更新 + 一次性广播，效仿 Delete Row 的即时同步 */

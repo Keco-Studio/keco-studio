@@ -74,7 +74,7 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   const handleSaveAsset = useCallback(async (
     assetName: string,
     propertyValues: Record<string, any>,
-    options?: { createdAt?: Date; rowIndex?: number }
+    options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }
   ) => {
     // 直接透传 options，保持与 LibraryDataContext.createAsset 的参数结构一致
     await createAsset(assetName, propertyValues, options);

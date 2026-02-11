@@ -13,10 +13,10 @@ interface YRowsLike {
 export type UseAddRowParams = {
   properties: PropertyConfig[];
   library: { id: string; name: string; description?: string | null } | null;
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number }) => Promise<void>;
+  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   yRows: YRowsLike;
-  /** 当前表格的行（来自 Adapter），用于计算新增行的 rowIndex（追加在末尾 max+1） */
+  /** The rows of the current table (from the Adapter), used to calculate the rowIndex of the newly added row (appended at the end with a value of max + 1). */
   rows: AssetRow[];
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
   setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
@@ -49,7 +49,8 @@ export function useAddRow(params: UseAddRowParams) {
 
     const assetName = newRowData[properties[0]?.id] ?? newRowData[properties[0]?.key] ?? 'Untitled';
 
-    // 使用当前 rows 中的最大 rowIndex 来分配新行的 rowIndex，确保追加在末尾（max+1）
+    // Allocate the rowIndex for the new row using the maximum rowIndex value from the current rows, 
+    // ensuring it is appended at the end (set to max + 1).
     const maxRowIndex =
       rows.length > 0
         ? rows.reduce((max, r) => {
