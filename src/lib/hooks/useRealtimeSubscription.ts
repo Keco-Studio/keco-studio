@@ -170,15 +170,18 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   }, [currentUserId, onAssetDelete]);
 
   /**
-   * Handle incoming row order change events
-   * 对于行序事件，我们不会过滤掉自己的广播：所有客户端（包括发起者）都统一走一遍回调逻辑，
-   * 由上层决定是否触发 reload / 局部重排。
+   * Handle incoming row order change events.
+   * Filter out our own broadcasts: the sender already called loadInitialData()
+   * inside createAsset, so processing our own event again would trigger a
+   * redundant full data refresh (yAssets.clear + repopulate), causing the
+   * newly inserted row to flicker (appear → disappear → reappear).
    */
   const handleRowOrderChangeEvent = useCallback((payload: any) => {
     if (!onRowOrderChange) return;
     const event = payload.payload as RowOrderChangeEvent;
+    if (event.userId === currentUserId) return;
     onRowOrderChange(event);
-  }, [onRowOrderChange]);
+  }, [currentUserId, onRowOrderChange]);
 
   /**
    * Handle incoming cells batch update events (e.g. Clear Content).
