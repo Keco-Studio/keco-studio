@@ -14,7 +14,7 @@ interface YRowsLike {
 }
 
 export type UseRowOperationsParams = {
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number }) => Promise<void>;
+  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   /** Batch update: all updates then one dispatch → one invalidate, avoids 先消失后恢复再消失 + 其他列恢复 */
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
@@ -248,9 +248,12 @@ export function useRowOperations(params: UseRowOperationsParams) {
         await shiftRowIndices(supabase, library.id, baseRowIndex, numRowsToInsert);
       }
 
-      // Create N new rows with sequential indices starting from baseRowIndex
+      // Create N new rows with sequential indices starting from baseRowIndex.
+      // Use skipReload for all but the last insert to avoid intermediate loadInitialData()
+      // calls that would wipe out the temp rows and cause flicker.
       for (let i = 0; i < numRowsToInsert; i++) {
-        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
+        const isLast = i === numRowsToInsert - 1;
+        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i, skipReload: !isLast });
       }
     } catch (e) {
       console.error('Failed to insert rows above:', e);
@@ -372,9 +375,12 @@ export function useRowOperations(params: UseRowOperationsParams) {
         await shiftRowIndices(supabase, library.id, baseRowIndex, numRowsToInsert);
       }
 
-      // Create N new rows with sequential indices starting from baseRowIndex
+      // Create N new rows with sequential indices starting from baseRowIndex.
+      // Use skipReload for all but the last insert to avoid intermediate loadInitialData()
+      // calls that would wipe out the temp rows and cause flicker.
       for (let i = 0; i < numRowsToInsert; i++) {
-        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i });
+        const isLast = i === numRowsToInsert - 1;
+        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i, skipReload: !isLast });
       }
     } catch (e) {
       console.error('Failed to insert rows below:', e);

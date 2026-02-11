@@ -95,27 +95,29 @@ export function useYjsSync(rows: AssetRow[], yRows: any): { allRowsSource: Asset
       }
     }
 
-    // New rows without a matching temp (e.g. collaborator received asset:create): full replace so order = rows
-    const remainingRows = rowsToAdd.filter((r) => !usedNewRowIds.has(r.id));
-    if (remainingRows.length > 0) {
-      for (let i = yRows.length - 1; i >= 0; i--) yRows.delete(i, 1);
-      yRows.insert(0, rows);
-    }
-    // Fallback: if yRows still has leftover temp rows but the set of real rows already matches rows,
-    // do a full replace to align the local view with allAssets, preventing ghost rows after Paste/Insert.
+    // After matching temps to real rows, check whether temps remain in yRows.
+    //
+    // KEY RULE: NEVER do a full replace while ANY temps still exist.
+    // A full replace would wipe placeholder rows and cause visible flicker
+    // (rows disappear then reappear).  The final loadInitialData() at the end
+    // of the insert batch will deliver all real rows; the next run of this
+    // effect will then match and replace the remaining temps.  Once all temps
+    // are gone, the `allRowsSource` useMemo switches from yjsRows to rows,
+    // and any subsequent run of this effect (in the `!hasPlaceholders` branch)
+    // can safely do a full replace if needed.
     const afterArray: AssetRow[] = yRows.toArray();
     const tempsLeft = afterArray.some((r) => isTempId(r.id));
-    if (tempsLeft) {
-      const realAfterIds = afterArray.filter((r) => !r.id.startsWith('temp-')).map((r) => r.id);
-      const setAfter = new Set(realAfterIds);
-      const setRows2 = new Set(idsRows);
-      const realMatches =
-        setAfter.size === setRows2.size && Array.from(setAfter).every((id) => setRows2.has(id));
-      if (realMatches) {
+
+    if (!tempsLeft) {
+      // All temps were successfully matched — safe to do a full replace if
+      // there are unmatched new rows (e.g. from a collaborator's concurrent insert).
+      const remainingRows = rowsToAdd.filter((r) => !usedNewRowIds.has(r.id));
+      if (remainingRows.length > 0) {
         for (let i = yRows.length - 1; i >= 0; i--) yRows.delete(i, 1);
         yRows.insert(0, rows);
       }
     }
+    // else: temps still present → leave yRows completely untouched.
     prevRowsRef.current = rows;
   }, [rows, yRows]);
 

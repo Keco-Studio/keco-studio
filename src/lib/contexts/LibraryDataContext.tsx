@@ -37,7 +37,7 @@ interface LibraryDataContextValue {
   // Data operations
   updateAssetField: (assetId: string, fieldId: string, value: any, options?: { skipBroadcast?: boolean }) => Promise<void>;
   updateAssetName: (assetId: string, newName: string, options?: { skipBroadcast?: boolean }) => Promise<void>;
-  createAsset: (name: string, propertyValues: Record<string, any>, options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date }) => Promise<string>;
+  createAsset: (name: string, propertyValues: Record<string, any>, options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<string>;
   deleteAsset: (assetId: string) => Promise<void>;
   
   // Bulk operations
@@ -86,6 +86,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Refs to avoid stale closures
   const assetsRef = useRef<Map<string, AssetRow>>(new Map());
   const isMountedRef = useRef(true);
+  // Track asset IDs created during a batch insert (skipReload=true) so that
+  // postgres_changes INSERT events don't add them to yAssets with missing row_index.
+  const pendingBatchInsertIdsRef = useRef<Set<string>>(new Set());
   
   // Keep ref updated
   useEffect(() => {
@@ -341,6 +344,14 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       return;
     }
 
+    // Skip if this asset is part of an ongoing batch insert (skipReload=true).
+    // The batch's final call will run loadInitialData() to bring in all rows correctly.
+    // Without this guard, postgres_changes INSERT events would add the asset without
+    // row_index, corrupting allAssets ordering and causing the temp rows to flicker.
+    if (pendingBatchInsertIdsRef.current.has(event.assetId)) {
+      return;
+    }
+
     // Add new asset to Yjs (using Y.Map for propertyValues)
     const yAsset = new Y.Map();
     yAsset.set('name', event.assetName);
@@ -591,7 +602,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   const createAsset = useCallback(async (
     name: string,
     propertyValues: Record<string, any>,
-    options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date; rowIndex?: number }
+    options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date; rowIndex?: number; skipReload?: boolean }
   ): Promise<string> => {
     // 0. Determine rowIndex: prefer explicit option, otherwise append to end
     let nextRowIndex: number;
@@ -621,6 +632,15 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     if (assetError) throw assetError;
     
     const assetId = newAsset.id;
+
+    // For any insert with explicit rowIndex, register the ID so that
+    // handleAssetCreateEvent ignores the postgres_changes INSERT event for it.
+    // This prevents incomplete synthetic events (missing row_index) from being
+    // added to yAssets between the DB insert and loadInitialData, which would
+    // corrupt allAssets ordering and cause temp rows to flicker.
+    if (typeof options?.rowIndex === 'number') {
+      pendingBatchInsertIdsRef.current.add(assetId);
+    }
     
     // 2. Insert field values
     const fieldValues = Object.entries(propertyValues).map(([fieldId, value]) => ({
@@ -667,8 +687,14 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
     // 如果这次创建显式使用了 rowIndex（包括追加、Insert Above/Below、Paste 新行），
     // 先在本客户端用 DB 结果全量刷新一次，避免本地仍持有旧的 rowIndex 造成“自己这边行出现在末尾”的错觉。
-    if (typeof options?.rowIndex === 'number') {
+    if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
       await loadInitialData();
+      // After the final reload of a batch insert, clear the pending set.
+      // All assets are now in yAssets via loadInitialData, so any late-arriving
+      // postgres_changes events will be caught by the yAssets.has() guard.
+      if (pendingBatchInsertIdsRef.current.size > 0) {
+        pendingBatchInsertIdsRef.current.clear();
+      }
     }
     
     // 4. Broadcast creation
@@ -680,7 +706,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       });
       // 如果显式指定了 rowIndex，说明这次创建可能影响到行顺序（包括追加、上下插入、Paste 新行），
       // 通过单独的 roworder:change 事件提醒所有客户端（包括发起者）用最新的 DB 行序刷新视图。
-      if (typeof options?.rowIndex === 'number') {
+      // 当 skipReload=true 时跳过（批量插入场景由调用方在最后统一广播一次）。
+      if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
         await broadcastRowOrderChange();
       }
     }
