@@ -94,7 +94,16 @@ test.describe('Library Description Tooltip Tests', () => {
       // Ensure sidebar is loaded
       const sidebar = page.getByRole('tree');
       await expect(sidebar).toBeVisible({ timeout: 15000 });
-      await page.waitForTimeout(2000);
+
+      // Wait for the user role API call to complete before interacting with role-dependent UI.
+      // The sidebar add button is only rendered when userRole === 'admin', which is fetched
+      // asynchronously via /api/projects/{projectId}/role after the page loads.
+      await page.waitForResponse(
+        response => response.url().includes('/role') && response.status() === 200,
+        { timeout: 15000 }
+      ).catch(() => {});
+      // Allow React to re-render with the fetched role
+      await page.waitForTimeout(1000);
 
       // Create library via sidebar Add -> Create new library (works for admin/editor; folder-row button is admin-only)
       await libraryPage.createLibraryUnderProject(testLibrary);
@@ -224,7 +233,14 @@ test.describe('Library Description Tooltip Tests', () => {
       // Ensure sidebar is loaded
       const sidebar = page.getByRole('tree');
       await expect(sidebar).toBeVisible({ timeout: 15000 });
-      await page.waitForTimeout(2000);
+
+      // Wait for the user role API call to complete before interacting with role-dependent UI.
+      await page.waitForResponse(
+        response => response.url().includes('/role') && response.status() === 200,
+        { timeout: 15000 }
+      ).catch(() => {});
+      // Allow React to re-render with the fetched role
+      await page.waitForTimeout(1000);
 
       // Create library via sidebar Add -> Create new library
       await libraryPage.createLibraryUnderProject(testLibrary);
@@ -328,7 +344,14 @@ test.describe('Library Description Tooltip Tests', () => {
       // Ensure sidebar is loaded
       const sidebar = page.getByRole('tree');
       await expect(sidebar).toBeVisible({ timeout: 15000 });
-      await page.waitForTimeout(2000);
+
+      // Wait for the user role API call to complete before interacting with role-dependent UI.
+      await page.waitForResponse(
+        response => response.url().includes('/role') && response.status() === 200,
+        { timeout: 15000 }
+      ).catch(() => {});
+      // Allow React to re-render with the fetched role
+      await page.waitForTimeout(1000);
 
       // Create library via sidebar Add -> Create new library
       await libraryPage.createLibraryUnderProject(testLibrary);

@@ -194,7 +194,10 @@ export class LibraryPage {
    */
   async createLibraryUnderProject(library: LibraryData): Promise<void> {
     // Step 1: Click the sidebar add button (title="Add new folder or library")
-    await expect(this.sidebarAddButton).toBeVisible({ timeout: 5000 });
+    // Note: This button is conditionally rendered only when userRole === 'admin'.
+    // The user role is fetched asynchronously via /api/projects/{projectId}/role,
+    // so we need a longer timeout to allow the API call to complete and the button to render.
+    await expect(this.sidebarAddButton).toBeVisible({ timeout: 15000 });
     await this.sidebarAddButton.click();
 
     // Step 2: Wait for AddLibraryMenu to appear and click "Create new library"
@@ -247,7 +250,10 @@ export class LibraryPage {
    */
   async createFolderUnderProject(folder: FolderData): Promise<void> {
     // Step 1: Click the sidebar add button (title="Add new folder or library")
-    await expect(this.sidebarAddButton).toBeVisible({ timeout: 5000 });
+    // Note: This button is conditionally rendered only when userRole === 'admin'.
+    // The user role is fetched asynchronously via /api/projects/{projectId}/role,
+    // so we need a longer timeout to allow the API call to complete and the button to render.
+    await expect(this.sidebarAddButton).toBeVisible({ timeout: 15000 });
     await this.sidebarAddButton.click();
 
     // Step 2: Wait for AddLibraryMenu to appear and click "Create new folder"
