@@ -291,7 +291,10 @@ jobs:
             # Release 分支部署到 Preview 环境，使用固定域名 keco-release.vercel.app
             BRANCH_NAME=${GITHUB_REF#refs/heads/}
             echo "🚀 部署到 Preview 环境 (Branch: $BRANCH_NAME)..."
-            vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} --alias=keco-release.vercel.app
+            DEPLOYMENT_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
+            echo "📦 部署 URL: $DEPLOYMENT_URL"
+            echo "🔗 设置别名 keco-release.vercel.app..."
+            vercel alias set "$DEPLOYMENT_URL" keco-release.vercel.app --token=${{ secrets.VERCEL_TOKEN }}
             echo "✅ Release 部署完成，Branch: $BRANCH_NAME"
             echo "🌐 Release URL: https://keco-release.vercel.app"
           else
