@@ -287,17 +287,15 @@ jobs:
             # Production 部署（main 分支）
             echo "🚀 部署到 Production 环境..."
             vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
-          elif [[ "${{ steps.env.outputs.deployment_target }}" == "preview" ]] && [[ "${{ github.ref }}" =~ ^refs/tags/v ]]; then
-            # Preview 部署（Tag 推送）- 部署到 Preview 环境并使用固定域名
-            TAG_NAME=${GITHUB_REF#refs/tags/}
-            echo "🚀 部署到 Preview 环境 (Tag: $TAG_NAME)..."
-            # 部署到 Preview 环境，并使用固定的 Preview 域名作为 alias
-            # 注意：keco-release.vercel.app 需要在 Vercel Dashboard 中配置为项目域名
-            vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} --env=${{ steps.env.outputs.environment }} --alias=keco-release.vercel.app
-            echo "✅ Preview 部署完成，Tag: $TAG_NAME"
-            echo "🌐 Preview URL: https://keco-release.vercel.app"
+          elif [[ "${{ github.ref }}" =~ ^refs/heads/release/ ]]; then
+            # Release 分支部署到 Preview 环境，使用固定域名 keco-release.vercel.app
+            BRANCH_NAME=${GITHUB_REF#refs/heads/}
+            echo "🚀 部署到 Preview 环境 (Branch: $BRANCH_NAME)..."
+            vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} --alias=keco-release.vercel.app
+            echo "✅ Release 部署完成，Branch: $BRANCH_NAME"
+            echo "🌐 Release URL: https://keco-release.vercel.app"
           else
-            # Preview 部署（release 分支和 PR 等）
+            # 其他 Preview 部署（PR 等）
             echo "🚀 部署到 Preview 环境..."
             vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
           fi
