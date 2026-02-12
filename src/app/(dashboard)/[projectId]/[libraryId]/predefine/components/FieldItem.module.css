@@ -384,7 +384,25 @@
 }
 
 :global(.ant-select-outlined.ant-select-multiple .ant-select-selection-item) {
-  background: #5E00FF14;
-  border: 1px solid #8726EE6B;
+  background: #0B99FF14;
+  border: 1px solid #0B99FF6B;
 }
 
+:global(.ant-select-dropdown .ant-select-item-option-selected:not(.ant-select-item-option-disabled) .ant-select-item-option-state) {
+  color: #0B99FF;
+}
+
+/* Reference Select - Blue border on hover and focus */
+.referenceSelect :global(.ant-select-selector) {
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.referenceSelect:hover :global(.ant-select-selector) {
+  border-color: #1890ff !important;
+}
+
+.referenceSelect:global(.ant-select-focused) :global(.ant-select-selector),
+.referenceSelect:global(.ant-select-focused:hover) :global(.ant-select-selector) {
+  border-color: #1890ff !important;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2) !important;
+}
