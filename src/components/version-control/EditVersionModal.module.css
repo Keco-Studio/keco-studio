@@ -142,18 +142,18 @@
 }
 
 .primary {
-  background: #0b99ff14;
-  color: #21272A;
+  background: #1677ff;
+  color: #fff;
 }
 
 .primary:hover {
-  background: #0b99ff28;
+  background: #4096ff;
 }
 
 .primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
-  background: #0b99ff14;
+  background: #1677ff;
 }
 
 .error {
