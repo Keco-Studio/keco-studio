@@ -126,6 +126,7 @@ export type AssetCreateEvent = {
   insertAfterRowId?: string; // Insert after this row ID (for "insert below")
   insertBeforeRowId?: string; // Insert before this row ID (for "insert above")
   targetCreatedAt?: string; // Target created_at timestamp for positioning
+  rowIndex?: number; // Explicit row_index from DB (helps collaborators sort correctly before loadInitialData)
 };
 
 export type AssetDeleteEvent = {
