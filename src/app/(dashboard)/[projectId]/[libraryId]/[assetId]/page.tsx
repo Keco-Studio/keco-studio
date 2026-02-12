@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ConfigProvider, Tabs, Switch, Tooltip } from 'antd';
+import { ConfigProvider, Tabs, Switch, Tooltip, Select } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
@@ -1074,8 +1074,8 @@ export default function AssetPage() {
                                         </div>
                                       </div>                                    
                                       <div className={styles.fieldControl}>
-                          <select
-                            value={value ?? ''}
+                          <Select
+                            value={value || undefined}
                                           disabled={mode === 'view'}
                                           onClick={() => {
                                             if (mode !== 'view') {
@@ -1084,10 +1084,10 @@ export default function AssetPage() {
                                           }}
                                           onChange={
                                             mode !== 'view'
-                                              ? (e) => {
+                                              ? (newValue) => {
                                                   handleValueChange(
                                                     f.id,
-                                                    e.target.value === '' ? null : e.target.value
+                                                    newValue || null
                                                   );
                                                   // Blur after a short delay to ensure other users see the change
                                                   setTimeout(() => {
@@ -1096,18 +1096,20 @@ export default function AssetPage() {
                                                 }
                                               : undefined
                                           }
+                                          placeholder="Select an option"
                                           className={`${styles.fieldSelect} ${isBeingEdited ? styles.fieldInputEditing : ''} ${isRealtimeEdited ? styles.fieldRealtimeEdited : ''} ${
                                             mode === 'view' ? styles.disabledInput : ''
                                           }`}
+                                          dropdownClassName={styles.fieldSelectDropdown}
                                           style={borderColor ? { borderColor } : undefined}
+                            getPopupContainer={() => document.body}
                           >
-                            <option value="">Select an option</option>
                             {(f.enum_options || []).map((opt) => (
-                              <option key={opt} value={opt}>
+                              <Select.Option key={opt} value={opt} title={opt}>
                                 {opt}
-                              </option>
+                              </Select.Option>
                             ))}
-                          </select>
+                          </Select>
                                         <FieldPresenceAvatars users={editingUsers} />
                                       </div>
                                     </div>

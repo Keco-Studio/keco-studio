@@ -296,6 +296,7 @@
   padding: 0.625rem;
   border-radius: 0.5rem;
   border: 1px solid #e5e7eb;
+  background-color: white;
   flex: 1;
   min-width: 0;
   font-size: 0.875rem;
@@ -314,6 +315,12 @@
   padding: 9px; /* Compensate for thicker border */
 }
 
+/* Apply same editing border to Select component */
+.fieldSelect.fieldInputEditing {
+  border-width: 2px;
+  padding: 9px;
+}
+
 /* Field that was just updated by remote user */
 .fieldRealtimeEdited {
   animation: realtimeFlash 0.8s ease-in-out;
@@ -330,20 +337,54 @@
   }
 }
 
-.fieldSelect {
-  padding-right: 30px;
-  appearance: none;
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  background-image: url('@/assets/images/assetOptionsExpandIcon.svg');
-  background-repeat: no-repeat;
-  background-position: right 5px center;
-  background-size: 1.25rem;
+/* Ant Design Select customization for enum fields */
+/* Remove default Ant Design Select styles - let it inherit from parent */
+.fieldSelect :global(.ant-select-selector) {
+  border: none !important;
+  box-shadow: none !important;
+  background: transparent !important;
+  padding: 0 !important;
+  height: auto !important;
 }
 
-.fieldSelect:focus{
-  border-color: #8726EE6B;
-  outline: none;
+.fieldSelect :global(.ant-select-selection-search) {
+  margin: 0 !important;
+}
+
+.fieldSelect :global(.ant-select-selection-item),
+.fieldSelect :global(.ant-select-selection-placeholder) {
+  padding: 0 !important;
+  line-height: normal !important;
+  margin-right: 0.8rem;
+}
+
+.fieldSelect :global(.ant-select-selection-placeholder) {
+  color: #9ca3af !important;
+}
+
+.fieldSelect :global(.ant-select-arrow) {
+  right: 0.625rem !important;
+  color: rgba(0, 0, 0, 0.45) !important;
+}
+
+/* Disabled state */
+.fieldSelect:global(.ant-select-disabled) :global(.ant-select-selector) {
+  background-color: transparent !important;
+  cursor: not-allowed !important;
+}
+
+
+/* Dropdown options with fixed width and ellipsis */
+:global(.fieldSelectDropdown.ant-select-dropdown .ant-select-item-option-content) {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Selected option highlight - blue color */
+:global(.ant-select-dropdown .ant-select-item-option-selected) {
+  background-color: #0B99FF14 !important;
 }
 
 /* Hide spinner buttons for number inputs with noSpinner class */

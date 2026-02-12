@@ -170,10 +170,6 @@
   white-space: nowrap;
 }
 
-.assetHeaderCell {
-  /* Width controlled by column count classes */
-}
-
 .row {
   height: 40px;
   border-bottom: 1px solid #e2e8f0;
@@ -248,11 +244,11 @@
   background-color: #0B99FF14 !important;
   position: relative;
   z-index: 1;
-  /* Remove default cell borders - only show border where selectionBorder classes are applied */
-  border-top: none !important;
-  border-bottom: none !important;
-  border-left: none !important;
-  border-right: none !important;
+  /* Use transparent borders instead of none to avoid flickering */
+  border-top: 1px solid transparent !important;
+  border-bottom: 1px solid transparent !important;
+  border-left: 1px solid transparent !important;
+  border-right: 1px solid transparent !important;
 }
 
 .cellMultipleSelected:hover {
@@ -295,11 +291,11 @@ td.cellCut {
   background-color: #0B99FF14 !important;
   position: relative;
   z-index: 2;
-  /* Remove default cell borders - only show border where cutBorder classes are applied */
-  border-top: none !important;
-  border-bottom: none !important;
-  border-left: none !important;
-  border-right: none !important;
+  /* Use transparent borders instead of none to avoid flickering */
+  border-top: 1px solid transparent !important;
+  border-bottom: 1px solid transparent !important;
+  border-left: 1px solid transparent !important;
+  border-right: 1px solid transparent !important;
 }
 
 .cell.cellCut:hover,
@@ -354,11 +350,11 @@ td.cellCopy {
   background-color: rgba(94, 0, 255, 0.08) !important;
   position: relative;
   z-index: 2;
-  /* Remove default cell borders - only show border where copyBorder classes are applied */
-  border-top: none !important;
-  border-bottom: none !important;
-  border-left: none !important;
-  border-right: none !important;
+  /* Use transparent borders instead of none to avoid flickering */
+  border-top: 1px solid transparent !important;
+  border-bottom: 1px solid transparent !important;
+  border-left: 1px solid transparent !important;
+  border-right: 1px solid transparent !important;
 }
 
 .cell.cellCopy:hover,

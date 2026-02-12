@@ -195,7 +195,7 @@ export const EnumCell: React.FC<EnumCellProps> = ({
       <div className={styles.enumSelectWrapper}>
         <Select
           value={value || undefined}
-          placeholder="Select"
+          placeholder="Select an option"
           open={isOpen}
           disabled={userRole === 'viewer'}
           onOpenChange={handleOpenChange}
@@ -205,7 +205,7 @@ export const EnumCell: React.FC<EnumCellProps> = ({
           getPopupContainer={() => document.body}
         >
           {property.enumOptions?.map((option) => (
-            <Select.Option key={option} value={option} title="">
+            <Select.Option key={option} value={option} title={option}>
               {option}
             </Select.Option>
           ))}
