@@ -9,6 +9,8 @@ export type SidebarContextMenuState = {
   y: number;
   type: SidebarContextMenuType;
   id: string;
+  // Store element reference for scroll tracking
+  elementRef: HTMLElement | null;
 } | null;
 
 /**
@@ -18,8 +20,8 @@ export function useSidebarContextMenu() {
   const [contextMenu, setContextMenu] = useState<SidebarContextMenuState>(null);
 
   const openContextMenu = useCallback(
-    (x: number, y: number, type: SidebarContextMenuType, id: string) => {
-      setContextMenu({ x, y, type, id });
+    (x: number, y: number, type: SidebarContextMenuType, id: string, elementRef?: HTMLElement | null) => {
+      setContextMenu({ x, y, type, id, elementRef: elementRef || null });
     },
     []
   );

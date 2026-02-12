@@ -491,7 +491,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const handleContextMenu = (e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
     e.preventDefault();
     e.stopPropagation();
-    openContextMenu(e.clientX, e.clientY, type, id);
+    // Get the element that triggered the context menu
+    const targetElement = e.currentTarget as HTMLElement;
+    openContextMenu(e.clientX, e.clientY, type, id, targetElement);
   };
 
   const { treeData, selectedKeys } = useSidebarTree(
@@ -837,6 +839,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           onAction={handleContextMenuAction}
           userRole={userRole}
           isProjectOwner={isProjectOwner}
+          elementRef={contextMenu.elementRef}
         />
       )}
     </aside>

@@ -10,7 +10,7 @@
 }
 
 .container {
-  min-height: 100vh;
+  height: 100%;
   padding: 0px 2rem;
 }
 
