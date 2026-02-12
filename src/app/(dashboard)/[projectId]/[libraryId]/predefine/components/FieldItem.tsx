@@ -497,6 +497,7 @@ export function FieldItem({
                       value: lib.id,
                     }))}
                     maxTagCount="responsive"
+                    className={styles.referenceSelect}
                   />
                   {(field.referenceLibraries ?? []).length === 0 && !loadingLibraries && (
                     <div className={styles.emptyOptionsMessage}>

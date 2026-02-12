@@ -562,6 +562,7 @@ export function FieldForm({ sectionId, initialField, onSubmit, onCancel, disable
                       value: lib.id,
                     }))}
                     maxTagCount="responsive"
+                    className={styles.referenceSelect}
                   />
                   {(field.referenceLibraries ?? []).length === 0 && !loadingLibraries && (
                     <div className={styles.emptyOptionsMessage}>
