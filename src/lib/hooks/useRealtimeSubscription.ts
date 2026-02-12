@@ -66,6 +66,11 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   const recentBroadcastsRef = useRef<Map<string, number>>(new Map());
   // 收到 cells:batch-update 后短时间忽略同批 cell 的 postgres_changes，避免协作者「一格一格清空」
   const recentBatchCellKeysRef = useRef<{ keys: Set<string>; at: number }>({ keys: new Set(), at: 0 });
+  // Buffer postgres_changes INSERT events for library_assets to coalesce with roworder:change.
+  // Without this, INSERT events arrive before roworder:change and cause rows to appear at
+  // wrong positions (because local rows haven't been shifted yet) before loadInitialData() corrects them.
+  const pendingPgInsertEventsRef = useRef<any[]>([]);
+  const pgInsertCoalesceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -180,6 +185,16 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     if (!onRowOrderChange) return;
     const event = payload.payload as RowOrderChangeEvent;
     if (event.userId === currentUserId) return;
+
+    // Clear buffered postgres_changes INSERT events — loadInitialData() will bring in
+    // all rows with correct row_index, so processing buffered INSERTs would only cause
+    // rows to flash at wrong positions before being corrected.
+    pendingPgInsertEventsRef.current = [];
+    if (pgInsertCoalesceTimerRef.current) {
+      clearTimeout(pgInsertCoalesceTimerRef.current);
+      pgInsertCoalesceTimerRef.current = null;
+    }
+
     onRowOrderChange(event);
   }, [currentUserId, onRowOrderChange]);
 
@@ -660,6 +675,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
           const newRecord = payload.new as any;
           // Accept any new row with id so collaborators see insert-above/insert-below (allow empty name)
           if (!newRecord?.id) return;
+
+          let syntheticEvent: AssetCreateEvent;
           try {
             const { data: values } = await supabase
               .from('library_asset_values')
@@ -669,7 +686,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
             values?.forEach((v: any) => {
               propertyValues[v.field_id] = v.value_json;
             });
-            const syntheticEvent: AssetCreateEvent = {
+            syntheticEvent = {
               type: 'asset:create',
               userId: '',
               userName: 'Another user',
@@ -678,24 +695,44 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
               propertyValues,
               timestamp: Date.now(),
               targetCreatedAt: newRecord.created_at ?? new Date().toISOString(),
+              rowIndex: typeof newRecord.row_index === 'number' ? newRecord.row_index : undefined,
             };
-            handleAssetCreateEvent({ payload: syntheticEvent });
           } catch (err) {
             console.error('[useRealtimeSubscription] library_assets INSERT handler:', err);
-            // Still push minimal event so collaborator sees the new row
-            handleAssetCreateEvent({
-              payload: {
-                type: 'asset:create',
-                userId: '',
-                userName: 'Another user',
-                assetId: newRecord.id,
-                assetName: newRecord.name ?? '',
-                propertyValues: {},
-                timestamp: Date.now(),
-                targetCreatedAt: newRecord.created_at ?? new Date().toISOString(),
-              },
-            });
+            syntheticEvent = {
+              type: 'asset:create',
+              userId: '',
+              userName: 'Another user',
+              assetId: newRecord.id,
+              assetName: newRecord.name ?? '',
+              propertyValues: {},
+              timestamp: Date.now(),
+              targetCreatedAt: newRecord.created_at ?? new Date().toISOString(),
+              rowIndex: typeof newRecord.row_index === 'number' ? newRecord.row_index : undefined,
+            };
           }
+
+          // Buffer the event instead of processing immediately.
+          // postgres_changes INSERT events arrive BEFORE the roworder:change broadcast
+          // (because DB INSERT triggers CDC immediately, while roworder:change is sent
+          // only after the operator's loadInitialData() completes). Processing them
+          // immediately would show rows at wrong positions because the collaborator's
+          // local row_index values haven't been shifted yet.
+          //
+          // If roworder:change arrives within the window, the buffer is cleared and
+          // loadInitialData() handles everything atomically. If not (e.g. broadcast
+          // failure), the buffer is flushed as a fallback after 3s.
+          pendingPgInsertEventsRef.current.push(syntheticEvent);
+          if (pgInsertCoalesceTimerRef.current) clearTimeout(pgInsertCoalesceTimerRef.current);
+          pgInsertCoalesceTimerRef.current = setTimeout(() => {
+            // Fallback: no roworder:change arrived — process buffered events
+            const events = [...pendingPgInsertEventsRef.current];
+            pendingPgInsertEventsRef.current = [];
+            pgInsertCoalesceTimerRef.current = null;
+            for (const evt of events) {
+              handleAssetCreateEvent({ payload: evt });
+            }
+          }, 3000);
         }
       )
       // Subscribe to library_assets UPDATE (e.g. name change) so yAsset.name syncs immediately
@@ -802,6 +839,13 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       // Clear all debounce timers
       broadcastDebounceRef.current.forEach(timer => clearTimeout(timer));
       broadcastDebounceRef.current.clear();
+
+      // Clear postgres_changes INSERT coalesce timer
+      if (pgInsertCoalesceTimerRef.current) {
+        clearTimeout(pgInsertCoalesceTimerRef.current);
+        pgInsertCoalesceTimerRef.current = null;
+      }
+      pendingPgInsertEventsRef.current = [];
 
       channel.unsubscribe();
       channelRef.current = null;

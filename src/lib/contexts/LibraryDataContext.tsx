@@ -372,6 +372,11 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       event.targetCreatedAt ||
       (event.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString());
     yAsset.set('created_at', createdAt);
+    // Set row_index if available (from postgres_changes INSERT) so allAssets sort places the
+    // row closer to the correct position even before roworder:change triggers loadInitialData().
+    if (typeof event.rowIndex === 'number') {
+      yAsset.set('row_index', event.rowIndex);
+    }
     
     yDoc.transact(() => {
       yAssets.set(event.assetId, yAsset);
@@ -685,7 +690,24 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       });
     }
 
-    // 如果这次创建显式使用了 rowIndex（包括追加、Insert Above/Below、Paste 新行），
+    // 4. Broadcast FIRST, then reload — broadcast roworder:change before loadInitialData()
+    // so collaborators start their DB query in parallel with ours (~1× instead of ~2× delay).
+    if (realtimeConfig) {
+      if (typeof options?.rowIndex !== 'number') {
+        await broadcastAssetCreate(assetId, name, propertyValues, {
+          insertAfterRowId: options?.insertAfterRowId,
+          insertBeforeRowId: options?.insertBeforeRowId,
+          targetCreatedAt: options?.createdAt?.toISOString(),
+        });
+      }
+      // Fire-and-forget (no await) since broadcast channel uses ack:false.
+      // All rows are already in DB (batch loop awaits each insert sequentially).
+      if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
+        broadcastRowOrderChange();
+      }
+    }
+
+    // 5. Reload: 如果这次创建显式使用了 rowIndex（包括追加、Insert Above/Below、Paste 新行），
     // 先在本客户端用 DB 结果全量刷新一次，避免本地仍持有旧的 rowIndex 造成“自己这边行出现在末尾”的错觉。
     if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
       await loadInitialData();
@@ -694,21 +716,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       // postgres_changes events will be caught by the yAssets.has() guard.
       if (pendingBatchInsertIdsRef.current.size > 0) {
         pendingBatchInsertIdsRef.current.clear();
-      }
-    }
-    
-    // 4. Broadcast creation
-    if (realtimeConfig) {
-      await broadcastAssetCreate(assetId, name, propertyValues, {
-        insertAfterRowId: options?.insertAfterRowId,
-        insertBeforeRowId: options?.insertBeforeRowId,
-        targetCreatedAt: options?.createdAt?.toISOString(),
-      });
-      // 如果显式指定了 rowIndex，说明这次创建可能影响到行顺序（包括追加、上下插入、Paste 新行），
-      // 通过单独的 roworder:change 事件提醒所有客户端（包括发起者）用最新的 DB 行序刷新视图。
-      // 当 skipReload=true 时跳过（批量插入场景由调用方在最后统一广播一次）。
-      if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
-        await broadcastRowOrderChange();
       }
     }
     

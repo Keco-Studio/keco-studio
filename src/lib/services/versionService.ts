@@ -761,8 +761,31 @@ export async function duplicateVersionAsLibrary(
   // Get current user
   const userId = await getCurrentUserId(supabase);
 
-  // Create new library with name: {originalLibraryName} (copy)
-  const newLibraryName = `${originalLibraryName} (copy)`;
+  // Create new library with a unique name: "xxx (copy)", "xxx (copy 2)", "xxx (copy 3)", ...
+  // Query existing libraries in the same folder to find the next available suffix.
+  let existingNamesQuery = supabase
+    .from('libraries')
+    .select('name')
+    .eq('project_id', projectId)
+    .like('name', `${originalLibraryName} (copy%`);
+
+  if (folderId) {
+    existingNamesQuery = existingNamesQuery.eq('folder_id', folderId);
+  } else {
+    existingNamesQuery = existingNamesQuery.is('folder_id', null);
+  }
+
+  const { data: existingLibs } = await existingNamesQuery;
+  const existingNames = new Set((existingLibs || []).map((l: any) => l.name));
+
+  let newLibraryName = `${originalLibraryName} (copy)`;
+  if (existingNames.has(newLibraryName)) {
+    let counter = 1;
+    while (existingNames.has(`${originalLibraryName} (copy)（${counter}）`)) {
+      counter++;
+    }
+    newLibraryName = `${originalLibraryName} (copy)（${counter}）`;
+  }
   
   const { data: newLibrary, error: libraryError } = await supabase
     .from('libraries')

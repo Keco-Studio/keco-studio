@@ -82,7 +82,11 @@ export function VersionControlSidebar({
 
     // console.log(`[VersionControlSidebar] Setting up realtime subscription for library: ${libraryId}`);
 
-    // Subscribe to changes in library_versions table
+    // Subscribe to changes in library_versions table.
+    // NOTE: No server-side filter on library_id because PostgreSQL's default
+    // REPLICA IDENTITY only includes the primary key in DELETE events' `old` record,
+    // so `filter: library_id=eq.xxx` silently drops DELETE events. Instead, we
+    // listen to all events and filter client-side.
     const versionsChannel = supabase
       .channel(`library-versions:${libraryId}`)
       .on(
@@ -91,12 +95,16 @@ export function VersionControlSidebar({
           event: '*', // Listen to INSERT, UPDATE, DELETE
           schema: 'public',
           table: 'library_versions',
-          filter: `library_id=eq.${libraryId}`,
         },
         async (payload) => {
-          // console.log('[VersionControlSidebar] Version change detected:', payload);
-          
-          // Invalidate and refetch versions to get the latest data
+          // Client-side filter: only react to events for this library
+          const newRecord = payload.new as any;
+          const oldRecord = payload.old as any;
+          const eventLibraryId = newRecord?.library_id || oldRecord?.library_id;
+          // For DELETE, old record may only have the primary key (id), so if we
+          // can't determine the library_id, refetch anyway to stay safe.
+          if (eventLibraryId && eventLibraryId !== libraryId) return;
+
           queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
         }
       )
