@@ -778,11 +778,14 @@ export async function duplicateVersionAsLibrary(
   const { data: existingLibs } = await existingNamesQuery;
   const existingNames = new Set((existingLibs || []).map((l: any) => l.name));
 
-  let counter = 1;
-  while (existingNames.has(`${originalLibraryName} (copy)（${counter}）`)) {
-    counter++;
+  let newLibraryName = `${originalLibraryName} (copy)`;
+  if (existingNames.has(newLibraryName)) {
+    let counter = 1;
+    while (existingNames.has(`${originalLibraryName} (copy)（${counter}）`)) {
+      counter++;
+    }
+    newLibraryName = `${originalLibraryName} (copy)（${counter}）`;
   }
-  const newLibraryName = `${originalLibraryName} (copy)（${counter}）`;
   
   const { data: newLibrary, error: libraryError } = await supabase
     .from('libraries')
