@@ -32,3 +32,4 @@ alter table public.library_field_definitions
 -- Note: We keep the section column for display purposes and backward compatibility
 -- section_id is now the stable identifier, section name can be updated freely
 
+

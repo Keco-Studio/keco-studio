@@ -237,13 +237,13 @@
 }
 
 .modalButton:first-child {
-  background-color: #8726ee;
+  background-color: #1890ff;
   color: white;
-  border-color: #8726ee;
+  border-color: #1890ff;
 }
 
 .modalButton:first-child:hover {
-  background-color: #7020d0;
-  border-color: #7020d0;
+  background-color: #40a9ff;
+  border-color: #40a9ff;
 }
 
