@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
         # 只有指定仓库才触发
-    if: github.repository == 'Caerulean-ai/keco-studio'
+    if: github.repository == 'Keco-Studio/keco-studio'
     steps:
       - name: 检出代码
         uses: actions/checkout@v4
