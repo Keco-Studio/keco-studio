@@ -109,6 +109,7 @@ export function applyPasteToRows(
         const data = createsByOffset.get(offset)!;
         if (isNameField) {
           data.name = convertedValue !== null && convertedValue !== '' ? String(convertedValue) : '';
+          data.propertyValues[targetProperty.key] = convertedValue;
         } else {
           data.propertyValues[targetProperty.key] = convertedValue;
         }

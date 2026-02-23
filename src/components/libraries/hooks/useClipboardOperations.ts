@@ -747,6 +747,20 @@ export function useClipboardOperations({
     setToastMessage({ message: 'Content pasted', type: 'success' });
     setTimeout(() => setToastMessage(null), 2000);
 
+    // Clear cut/copy visual feedback immediately, before async DB operations,
+    // so the dashed border / blue highlight disappears right away.
+    if (isCutOperation && cutCells.size > 0) {
+      setCutCells(new Set());
+      setCutSelectionBounds(null);
+      setIsCutOperation(false);
+      setClipboardData(null);
+    } else if (copyCells.size > 0) {
+      setCopyCells(new Set());
+      setCopySelectionBounds(null);
+      setClipboardData(null);
+      setIsCutOperation(false);
+    }
+
     if (result.updates.length > 0 && onUpdateAsset) {
       setIsSaving(true);
       try {
@@ -810,16 +824,14 @@ export function useClipboardOperations({
               }, 0)
             : 0;
 
-        const savePromises: Array<Promise<void>> = [];
         for (let i = 0; i < result.creates.length; i++) {
           const rowData = result.creates[i];
           const assetName = rowData.name || '';
           const nextRowIndex = maxRowIndex + 1;
           maxRowIndex = nextRowIndex;
-          savePromises.push(onSaveAsset(assetName, rowData.propertyValues, { rowIndex: nextRowIndex }));
+          const isLast = i === result.creates.length - 1;
+          await onSaveAsset(assetName, rowData.propertyValues, { rowIndex: nextRowIndex, skipReload: !isLast });
         }
-
-        await Promise.all(savePromises);
       } catch (error) {
         console.error('Failed to create rows for paste:', error);
         setIsSaving(false);
@@ -833,28 +845,6 @@ export function useClipboardOperations({
       }
     }
     
-    // If this was a cut operation, clear the cut state (cells were already cleared during cut)
-    // Use values from props
-    if (isCutOperation && cutCells.size > 0) {
-      // Clear cut state to remove visual feedback (dashed border)
-      // Note: cell contents were already cleared during cut operation
-      setCutCells(new Set());
-      setCutSelectionBounds(null);
-      setIsCutOperation(false);
-      setClipboardData(null);
-    } else {
-      // If not a cut operation, clear copy state to remove visual feedback (dashed border)
-      // Use values from props
-      if (copyCells.size > 0) {
-        setCopyCells(new Set());
-        setCopySelectionBounds(null);
-      }
-      // Clear clipboard data
-      setClipboardData(null);
-      setIsCutOperation(false);
-    }
-    
-    // Clear selected cells and rows after paste operation
     setSelectedCells(new Set());
     setSelectedRowIds(new Set());
     } finally {
