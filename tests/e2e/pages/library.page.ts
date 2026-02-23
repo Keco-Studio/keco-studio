@@ -555,23 +555,9 @@ export class LibraryPage {
    * Wait for libraries page to be fully loaded
    */
   async waitForPageLoad(): Promise<void> {
-    // Project detail page doesn't have headings, wait for URL or toolbar/empty state
-    // Wait for page to stabilize first
     await this.page.waitForLoadState('domcontentloaded', { timeout: 30000 });
-    
-    // Wait for either sidebar folder or empty state text
-    // Note: Use sidebar.getByText to avoid strict mode violation (Resources Folder appears in both sidebar and folder card)
-    // Don't use createLibraryButton here as it may not exist if folder is not expanded
-    const sidebar = this.page.getByRole('tree');
-    // await expect(
-    //   sidebar.getByText(/resources folder/i)
-    //     .or(this.page.getByText(/no folders or libraries/i))
-    // ).toBeVisible({ timeout: 30000 });
-    
     await this.page.waitForLoadState('load', { timeout: 15000 });
-    
-    // Additional wait to ensure authorization checks are complete
-    await this.page.waitForTimeout(1000);
+    await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
   }
 }
 
