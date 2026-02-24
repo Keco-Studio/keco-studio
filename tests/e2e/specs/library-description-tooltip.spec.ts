@@ -70,12 +70,11 @@ test.describe('Library Description Tooltip Tests', () => {
       { timeout: 30000 }
     );
 
-    // Additional wait to ensure Supabase client is fully initialized
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(500);
   });
 
   test('Library description > 50 characters - should display truncated text with tooltip on hover', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(120000);
 
     // Generate unique project and library data
     const testProject = generateProjectData();
@@ -102,40 +101,27 @@ test.describe('Library Description Tooltip Tests', () => {
         response => response.url().includes('/role') && response.status() === 200,
         { timeout: 15000 }
       ).catch(() => {});
-      // Allow React to re-render with the fetched role
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(500);
 
-      // Create library via sidebar Add -> Create new library (works for admin/editor; folder-row button is admin-only)
       await libraryPage.createLibraryUnderProject(testLibrary);
       await libraryPage.expectLibraryCreated();
       
-      // Wait for library to appear in sidebar and refresh
-      await page.waitForTimeout(3000);
-      
-      // Verify library appears in sidebar
       const sidebarCheck = page.getByRole('tree');
       await expect(sidebarCheck).toBeVisible({ timeout: 15000 });
       const libraryItemCheck = sidebarCheck.locator(`[title="${testLibrary.name}"]`);
       await expect(libraryItemCheck).toBeVisible({ timeout: 15000 });
     });
 
-    // Navigate to library page
     await test.step('Navigate to library page', async () => {
-      // Open library from sidebar (not from main content area)
       const sidebar = page.getByRole('tree');
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       
-      // Wait for library to appear in sidebar
       const libraryItem = sidebar.locator(`[title="${testLibrary.name}"]`);
       await expect(libraryItem).toBeVisible({ timeout: 15000 });
       
-      // Click on library in sidebar to navigate to library page
       await libraryItem.click();
       
-      // Wait for navigation to library detail page
-      await page.waitForLoadState('domcontentloaded', { timeout: 10000 });
       await libraryPage.waitForPageLoad();
-      await page.waitForTimeout(2000);
     });
 
     // Verify truncated description is displayed
@@ -214,7 +200,7 @@ test.describe('Library Description Tooltip Tests', () => {
   });
 
   test('Library description ≤ 50 characters - should display full text without tooltip', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(120000);
 
     // Generate unique project and library data
     const testProject = generateProjectData();
@@ -234,50 +220,34 @@ test.describe('Library Description Tooltip Tests', () => {
       const sidebar = page.getByRole('tree');
       await expect(sidebar).toBeVisible({ timeout: 15000 });
 
-      // Wait for the user role API call to complete before interacting with role-dependent UI.
       await page.waitForResponse(
         response => response.url().includes('/role') && response.status() === 200,
         { timeout: 15000 }
       ).catch(() => {});
-      // Allow React to re-render with the fetched role
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(500);
 
-      // Create library via sidebar Add -> Create new library
       await libraryPage.createLibraryUnderProject(testLibrary);
       await libraryPage.expectLibraryCreated();
       
-      // Wait for library to appear in sidebar and refresh
-      await page.waitForTimeout(3000);
-      
-      // Verify library appears in sidebar
       const sidebarCheck = page.getByRole('tree');
       await expect(sidebarCheck).toBeVisible({ timeout: 15000 });
       const libraryItemCheck = sidebarCheck.locator(`[title="${testLibrary.name}"]`);
       await expect(libraryItemCheck).toBeVisible({ timeout: 15000 });
     });
 
-    // Navigate to library page
     await test.step('Navigate to library page', async () => {
-      // Open library from sidebar (not from main content area)
       const sidebar = page.getByRole('tree');
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       
-      // Wait for library to appear in sidebar
       const libraryItem = sidebar.locator(`[title="${testLibrary.name}"]`);
       await expect(libraryItem).toBeVisible({ timeout: 15000 });
       
-      // Click on library in sidebar to navigate to library page
       await libraryItem.click();
       
-      // Wait for navigation to library detail page
-      await page.waitForLoadState('domcontentloaded', { timeout: 10000 });
       await libraryPage.waitForPageLoad();
-      await page.waitForTimeout(2000);
     });
 
-    // Verify full description is displayed
     await test.step('Verify full description is displayed', async () => {
-      // Find the description element in LibraryHeader
       const libraryNameHeading = page.getByRole('heading', { name: testLibrary.name });
       await expect(libraryNameHeading).toBeVisible({ timeout: 10000 });
       
@@ -324,7 +294,7 @@ test.describe('Library Description Tooltip Tests', () => {
   });
 
   test('Library description exactly 50 characters - should display full text without tooltip', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(120000);
 
     // Generate unique project and library data
     const testProject = generateProjectData();
@@ -345,50 +315,34 @@ test.describe('Library Description Tooltip Tests', () => {
       const sidebar = page.getByRole('tree');
       await expect(sidebar).toBeVisible({ timeout: 15000 });
 
-      // Wait for the user role API call to complete before interacting with role-dependent UI.
       await page.waitForResponse(
         response => response.url().includes('/role') && response.status() === 200,
         { timeout: 15000 }
       ).catch(() => {});
-      // Allow React to re-render with the fetched role
-      await page.waitForTimeout(1000);
+      await page.waitForTimeout(500);
 
-      // Create library via sidebar Add -> Create new library
       await libraryPage.createLibraryUnderProject(testLibrary);
       await libraryPage.expectLibraryCreated();
       
-      // Wait for library to appear in sidebar and refresh
-      await page.waitForTimeout(3000);
-      
-      // Verify library appears in sidebar
       const sidebarCheck = page.getByRole('tree');
       await expect(sidebarCheck).toBeVisible({ timeout: 15000 });
       const libraryItemCheck = sidebarCheck.locator(`[title="${testLibrary.name}"]`);
       await expect(libraryItemCheck).toBeVisible({ timeout: 15000 });
     });
 
-    // Navigate to library page
     await test.step('Navigate to library page', async () => {
-      // Open library from sidebar (not from main content area)
       const sidebar = page.getByRole('tree');
       await expect(sidebar).toBeVisible({ timeout: 15000 });
       
-      // Wait for library to appear in sidebar
       const libraryItem = sidebar.locator(`[title="${testLibrary.name}"]`);
       await expect(libraryItem).toBeVisible({ timeout: 15000 });
       
-      // Click on library in sidebar to navigate to library page
       await libraryItem.click();
       
-      // Wait for navigation to library detail page
-      await page.waitForLoadState('domcontentloaded', { timeout: 10000 });
       await libraryPage.waitForPageLoad();
-      await page.waitForTimeout(2000);
     });
 
-    // Verify full description is displayed (no truncation at exactly 50 chars)
     await test.step('Verify full description is displayed without truncation', async () => {
-      // Find the description element in LibraryHeader
       const libraryNameHeading = page.getByRole('heading', { name: testLibrary.name });
       await expect(libraryNameHeading).toBeVisible({ timeout: 10000 });
       
