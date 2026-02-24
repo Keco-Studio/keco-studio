@@ -179,7 +179,8 @@ export default function ResetPasswordPage() {
   return (
     <div className={styles.page}>
       {/* Header */}
-      <header className={styles.header}>
+      
+      {/* <header className={styles.header}>
         <div className={styles.headerLeft}>
           <div className={styles.headerLogo}>
             <div className={styles.logoSmall}>K</div>
@@ -190,7 +191,30 @@ export default function ResetPasswordPage() {
           </div>
         </div>
         <div className={styles.headerRight}>
-          {/* Empty for now, can add icons later */}
+          
+        </div>
+      </header> */}
+
+      <header className={styles.header}>
+        <div className={styles.headerLeft}>
+          <div className={styles.headerLogo}>
+            <Image src={loginProductIcon} alt="Logo" width={32} height={32} className="icon-32" />
+            <div className={styles.headerBrand}>
+              <div className={styles.brandName}>Keco Studio</div>
+              <div className={styles.brandSlogan}>for game designers</div>
+            </div>
+          </div>
+        </div>
+        <div className={styles.headerRight}>
+          <button className={styles.headerIconBtn} aria-label="Messages">
+            <Image src={loginMessageIcon} alt="Messages" width={20} height={20} className="icon-20" />
+          </button>
+          <button className={styles.headerIconBtn} aria-label="Service">
+            <Image src={loginServiceIcon} alt="Service" width={20} height={20} className="icon-20" />
+          </button>
+          <button className={styles.headerIconBtn} aria-label="Question">
+            <Image src={loginQuestionIcon} alt="Question" width={20} height={20} className="icon-20" />
+          </button>
         </div>
       </header>
 
