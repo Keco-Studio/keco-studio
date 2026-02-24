@@ -28,6 +28,8 @@ type NavigationContextType = {
   isLibraryPage: boolean;
   showCreateProjectBreadcrumb: boolean;
   setShowCreateProjectBreadcrumb: (show: boolean) => void;
+  sidebarSearchQuery: string;
+  setSidebarSearchQuery: (query: string) => void;
 };
 
 const NavigationContext = createContext<NavigationContextType | null>(null);
@@ -44,6 +46,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const [folderName, setFolderName] = useState<string | null>(null);
   const [libraryFolderId, setLibraryFolderId] = useState<string | null>(null);
   const [showCreateProjectBreadcrumb, setShowCreateProjectBreadcrumb] = useState(false);
+  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
   
   // Track current user ID to detect user switches
   const currentUserIdRef = useRef<string | null>(null);
@@ -535,6 +538,8 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     isLibraryPage: routeParams.isLibraryPage,
     showCreateProjectBreadcrumb,
     setShowCreateProjectBreadcrumb,
+    sidebarSearchQuery,
+    setSidebarSearchQuery,
   };
 
   return (

@@ -3,15 +3,13 @@
 import { useRouter } from 'next/navigation';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
+import { useToolbarSlot } from '@/lib/contexts/ToolbarSlotContext';
 import { useSupabase } from '@/lib/SupabaseContext';
 import Image from 'next/image';
 import { useRef, useState, useEffect, useMemo } from 'react';
 import { Avatar } from 'antd';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import styles from './TopBar.module.css';
-import homeMorehorizontalIcon from '@/assets/images/homeMorehorizontalIcon.svg';
-import homeQuestionIcon from '@/assets/images/homeQuestionIcon.svg';
-import homeMessageIcon from '@/assets/images/loginMessageIcon.svg';
 import homeDefaultUserIcon from '@/assets/images/homeDefaultUserIcon.svg';
 import topbarPredefinePublishIcon from '@/assets/images/topbarPredefinePublishIcon.svg';
 import assetViewIcon from '@/assets/images/assetViewIcon.svg';
@@ -19,6 +17,7 @@ import assetEditIcon from '@/assets/images/assetEditIcon.svg';
 import assetShareIcon from '@/assets/images/assetShareIcon.svg';
 import topBarBreadCrumbIcon from '@/assets/images/topBarBreadCrumbIcon.svg';
 import menuIcon from '@/assets/images/menuIcon36.svg';
+import searchIcon from '@/assets/images/searchIcon.svg';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -35,9 +34,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     currentProjectId,
     isPredefinePage,
     showCreateProjectBreadcrumb: contextShowCreateProjectBreadcrumb,
+    sidebarSearchQuery,
+    setSidebarSearchQuery,
   } = useNavigation();
   const showCreateProjectBreadcrumb = propShowCreateProjectBreadcrumb ?? contextShowCreateProjectBreadcrumb;
   const { userProfile, signOut } = useAuth();
+  const { setToolbarSlot } = useToolbarSlot();
   const supabase = useSupabase();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -365,15 +367,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               </span>
               <span>Create Asset</span>
             </button>
-            <button className={`${styles.button} ${styles.buttonText}`}>
-              <Image src={homeMorehorizontalIcon} alt="More" width={20} height={20} className="icon-20" />
-            </button>
-            <button className={styles.button}>
-              <Image src={homeQuestionIcon} alt="Question" width={20} height={20} className="icon-20" />
-            </button>
-            <button className={styles.button}>
-              <Image src={homeMessageIcon} alt="Message" width={20} height={20} className="icon-20" />
-            </button>
           </>
         );
       } else {
@@ -382,19 +375,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     }
 
     // Default icon group
-    return (
-      <>
-        <button className={`${styles.button} ${styles.buttonText}`}>
-          <Image src={homeMorehorizontalIcon} alt="More" width={20} height={20} className="icon-20" />
-        </button>
-        <button className={styles.button}>
-          <Image src={homeQuestionIcon} alt="Question" width={20} height={20} className="icon-20" />
-        </button>
-        <button className={styles.button}>
-          <Image src={homeMessageIcon} alt="Message" width={20} height={20} className="icon-20" />
-        </button>
-      </>
-    );
+    return null;
   };
 
   return (
@@ -437,8 +418,30 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </div>
         )}
       </div>
+      <div className={styles.center}>
+        <div className={styles.searchContainer}>
+          <label className={styles.searchLabel}>
+            <Image
+              src={searchIcon}
+              alt="Search"
+              width={24}
+              height={24}
+              className={`icon-24 ${styles.searchIcon}`}
+            />
+            <input
+              type="search"
+              placeholder="Search"
+              className={styles.searchInput}
+              value={sidebarSearchQuery}
+              onChange={(e) => setSidebarSearchQuery(e.target.value)}
+              aria-label="Search"
+            />
+          </label>
+        </div>
+      </div>
       <div className={styles.right}>
         {renderRightContent()}
+        <div ref={setToolbarSlot} className={styles.toolbarSlot} />
         <div className={styles.userContainer} ref={menuRef}>
           <button
             className={styles.userAvatar}

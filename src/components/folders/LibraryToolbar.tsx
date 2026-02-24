@@ -28,6 +28,10 @@ type LibraryToolbarProps = {
    */
   title?: string;
   /**
+   * Whether to show the title. Default true. Set to false when rendering in TopBar slot.
+   */
+  showTitle?: boolean;
+  /**
    * User's role in the current project
    * Only admin users can see the Create button
    */
@@ -46,6 +50,7 @@ export function LibraryToolbar({
   onViewModeChange,
   mode = 'project',
   title,
+  showTitle = true,
   userRole,
   projectId,
 }: LibraryToolbarProps) {
@@ -105,7 +110,7 @@ export function LibraryToolbar({
 
   return (
     <div className={styles.toolbar}>
-      {title && (
+      {showTitle && title && (
         <h1 className={styles.title}>{title}</h1>
       )}
       {canCreate && (

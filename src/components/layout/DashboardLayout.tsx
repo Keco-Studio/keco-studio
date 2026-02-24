@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { TopBar } from './TopBar';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
+import { ToolbarSlotProvider } from '@/lib/contexts/ToolbarSlotContext';
 import AuthForm from '@/components/authform/AuthForm';
 import styles from './DashboardLayout.module.css';
 import { useEffect, useRef, useState } from 'react';
@@ -57,13 +58,15 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
   return (
     <div className={styles.dashboard}>
-      <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
-      <div className={styles.main}>
-        <TopBar />
-        <div className={styles.content}>
-          {children}
+      <ToolbarSlotProvider>
+        <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
+        <div className={styles.main}>
+          <TopBar />
+          <div className={styles.content}>
+            {children}
+          </div>
         </div>
-      </div>
+      </ToolbarSlotProvider>
     </div>
   );
 }

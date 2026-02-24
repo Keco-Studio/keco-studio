@@ -1,9 +1,11 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useParams, useRouter, usePathname } from 'next/navigation';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { useToolbarSlot } from '@/lib/contexts/ToolbarSlotContext';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { getProject, Project } from '@/lib/services/projectService';
 import { listFolders, Folder } from '@/lib/services/folderService';
@@ -35,7 +37,7 @@ export default function ProjectPage() {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   const projectId = params.projectId as string;
-    
+  const { toolbarSlot } = useToolbarSlot();
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showFolderModal, setShowFolderModal] = useState(false);
@@ -457,16 +459,20 @@ export default function ProjectPage() {
 
   return (
     <div className={styles.container}>
-      <LibraryToolbar
-        mode="project"
-        title={project?.name}
-        onCreateFolder={handleCreateFolder}
-        onCreateLibrary={handleCreateLibrary}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        userRole={userRole}
-        projectId={projectId}
-      />
+      {toolbarSlot && createPortal(
+        <LibraryToolbar
+          mode="project"
+          title={project?.name}
+          showTitle={false}
+          onCreateFolder={handleCreateFolder}
+          onCreateLibrary={handleCreateLibrary}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          userRole={userRole}
+          projectId={projectId}
+        />,
+        toolbarSlot
+      )}
       {!hasItems ? (
         <div className={styles.emptyState}>
           <Image

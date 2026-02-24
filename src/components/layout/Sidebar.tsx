@@ -1,7 +1,6 @@
 'use client';
 
 import loginProductIcon from "@/assets/images/loginProductIcon.svg";
-import searchIcon from "@/assets/images/searchIcon.svg";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -55,6 +54,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     currentAssetId,
     isPredefinePage,
     isLibraryPage,
+    sidebarSearchQuery,
   } = useNavigation();
   const currentIds = useMemo(
     () => ({
@@ -126,6 +126,29 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const loadingFolders = loadingFoldersAndLibraries;
   const loadingLibraries = loadingFoldersAndLibraries;
+
+  const searchLower = sidebarSearchQuery.trim().toLowerCase();
+  const filteredProjects = useMemo(
+    () =>
+      searchLower
+        ? projects.filter((p) => p.name.toLowerCase().includes(searchLower))
+        : projects,
+    [projects, searchLower]
+  );
+  const filteredFolders = useMemo(
+    () =>
+      searchLower
+        ? folders.filter((f) => f.name.toLowerCase().includes(searchLower))
+        : folders,
+    [folders, searchLower]
+  );
+  const filteredLibraries = useMemo(
+    () =>
+      searchLower
+        ? libraries.filter((l) => l.name.toLowerCase().includes(searchLower))
+        : libraries,
+    [libraries, searchLower]
+  );
 
   // Handle errors
   useEffect(() => {
@@ -498,8 +521,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const { treeData, selectedKeys } = useSidebarTree(
     currentIds,
-    folders,
-    libraries,
+    filteredFolders,
+    filteredLibraries,
     {
       router,
       userRole,
@@ -693,25 +716,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         </div>
       </div>
 
-      <div className={styles.searchContainer}>
-        <label className={styles.searchLabel}>
-          <Image
-            src={searchIcon}
-            alt="Search"
-            width={24}
-            height={24}
-            className={`icon-24 ${styles.searchIcon}`}
-          />
-          <input
-            placeholder="Search for..."
-            className={styles.searchInput}
-          />
-        </label>
-      </div>
-
       <div className={styles.content}>
         <SidebarProjectsList
-          projects={projects}
+          projects={filteredProjects}
           loadingProjects={loadingProjects}
           currentProjectId={currentIds.projectId}
           currentLibraryId={currentIds.libraryId}
@@ -722,17 +729,17 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         />
 
         {currentIds.projectId &&
-          projects.length > 0 &&
-          projects.some((p) => p.id === currentIds.projectId) && (
+          filteredProjects.length > 0 &&
+          filteredProjects.some((p) => p.id === currentIds.projectId) && (
             <SidebarLibrariesSection
               currentIds={currentIds}
-              libraries={libraries}
+              libraries={filteredLibraries}
               assets={assets}
               userRole={userRole}
               loadingFolders={loadingFolders}
               loadingLibraries={loadingLibraries}
-              foldersLength={folders.length}
-              librariesLength={libraries.length}
+              foldersLength={filteredFolders.length}
+              librariesLength={filteredLibraries.length}
               treeData={treeData}
               selectedKeys={selectedKeys}
               expandedKeys={expandedKeys}
