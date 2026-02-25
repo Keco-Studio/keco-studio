@@ -77,7 +77,6 @@ export function useSidebarTree(
             <div
               className={`${styles.itemRow} ${styles.libraryRow}`}
               data-library-under-folder
-              onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
             >
               <div className={styles.itemMain}>
                 <div className={styles.libraryIconContainer}>
@@ -124,7 +123,6 @@ export function useSidebarTree(
           <div
             className={`${styles.itemRow} ${styles.folderRow}`}
             data-folder-row
-            onContextMenu={(e) => handleContextMenu(e, 'folder', folder.id)}
           >
             <div className={styles.itemMain}>
               {hasNoLibraries && (

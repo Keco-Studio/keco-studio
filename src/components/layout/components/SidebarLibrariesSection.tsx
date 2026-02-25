@@ -42,6 +42,7 @@ export type SidebarLibrariesSectionProps = {
   onContextMenu: (e: React.MouseEvent, type: 'asset', id: string) => void;
   addButtonRef: (el: HTMLButtonElement | null) => void;
   onAddButtonClick: (e: React.MouseEvent<HTMLButtonElement>) => void;
+  onTreeRightClick: (info: { event: any; node: any }) => void;
 };
 
 /**
@@ -68,6 +69,7 @@ export function SidebarLibrariesSection({
   onContextMenu,
   addButtonRef,
   onAddButtonClick,
+  onTreeRightClick,
 }: SidebarLibrariesSectionProps) {
   return (
     <>
@@ -91,6 +93,7 @@ export function SidebarLibrariesSection({
           expandedKeys={expandedKeys}
           onSelect={onSelect}
           onExpand={onExpand}
+          onRightClick={onTreeRightClick}
         />
         {!loadingFolders && !loadingLibraries && foldersLength === 0 && librariesLength === 0 && (
           <div className={styles.sidebarEmptyState}>
