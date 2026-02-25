@@ -9,7 +9,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NewProjectModal } from '@/components/projects/NewProjectModal';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { globalRequestCache } from '@/lib/hooks/useRequestCache';
-import projectEmptyIcon from '@/assets/images/projectEmptyIcon.svg';
+import projectEmptyIcon from '@/assets/images/projectEmptyIcon_2.png';
 import plusHorizontal from '@/assets/images/plusHorizontal.svg';
 import plusVertical from '@/assets/images/plusVertical.svg';
 import Image from 'next/image';
@@ -115,8 +115,8 @@ export default function ProjectsPage() {
               <Image
                 src={projectEmptyIcon}
                 alt="Project icon"
-                width={59}
-                height={64}
+                fill
+                className={styles.emptyIconImage}
               />
             </div>
             <div className={styles.emptyText}>

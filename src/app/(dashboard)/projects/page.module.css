@@ -49,11 +49,16 @@
 }
 
 .emptyIcon {
+  position: relative;
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 59px;
-  height: 4rem;
+  width: 237px;
+  height: 219px;
+}
+
+.emptyIconImage {
+  object-fit: contain;
 }
 
 .emptyText {
