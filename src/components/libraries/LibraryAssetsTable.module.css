@@ -567,8 +567,8 @@ td.cellCopy.copyBorderRight:hover {
 
 .emptyStateIcon {
   display: block;
-  width: 72px;
-  height: 72px;
+  width: 237px;
+  height: 219px;
   margin: 0 auto 24px;
 }
 
@@ -603,6 +603,8 @@ td.cellCopy.copyBorderRight:hover {
   letter-spacing: 0.5px;
   color: #1A1A1A;
   transition: background-color 0.2s, transform 0.1s;
+  width: 116px;
+  height: 44px;
 }
 
 
