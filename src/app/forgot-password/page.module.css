@@ -69,6 +69,22 @@
   gap: 0;
 }
 
+.headerIconBtn {
+  width: 44px;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.headerIconBtn:hover {
+  opacity: 0.7;
+}
+
 .card {
   flex: 1;
   display: flex;
@@ -171,7 +187,7 @@
   left: 0;
   right: 0;
   height: 0.125rem;
-  background: #8726EE;
+  background: #0B99FF;
   transform: scaleX(0);
   transition: transform 0.2s ease;
   border-radius: 1px;
@@ -179,7 +195,7 @@
 }
 
 .stepActive {
-  color: #8726EE;
+  color: #0B99FF;
 }
 
 .stepActive::after {
@@ -211,8 +227,8 @@
 
 .stepActive .stepNumber {
   background: transparent;
-  color: #8726EE;
-  border: 1.5px solid #8726EE;
+  color: #0B99FF;
+  border: 1.5px solid #0B99FF;
 }
 
 .stepInactive .stepNumber {
@@ -256,9 +272,9 @@
 }
 
 .input:focus {
-  border-color: #7c3aed;
+  border-color: #0B99FF;
   background: #fff;
-  box-shadow: 0 0 0 2px rgba(124, 58, 237, 0.15);
+  box-shadow: 0px 0px 10.2px 0px rgba(38, 98, 238, 0.36) inset;
 }
 
 .submit {
@@ -266,7 +282,7 @@
   height: 52px;
   border: none;
   border-radius: 1rem;
-  background: #f8c5d8;
+  background: #0B99FF;
   color: #1a1a1a;
   font-size: 1rem;
   font-weight: 500;

@@ -4,9 +4,15 @@ import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
-import loginImg from '@/assets/images/loginImg.png';
-import loginLeftArrowIcon from '@/assets/images/loginArrowIcon.svg';
+import loginImg from '@/assets/images/loginImg_2.png';
+// import loginLeftArrowIcon from '@/assets/images/loginArrowIcon.svg';
 import styles from './page.module.css';
+
+import loginMessageIcon from "@/assets/images/loginMessageIcon.svg";
+import loginProductIcon from "@/assets/images/loginProductIcon.svg";
+import loginQuestionIcon from "@/assets/images/loginQuestionIcon.svg";
+import loginServiceIcon from "@/assets/images/loginServiceIcon.svg";
+import loginLeftArrowIcon from "@/assets/images/loginArrowIcon.svg";
 
 export default function ResetPasswordPage() {
   const supabase = useSupabase();
@@ -107,16 +113,27 @@ export default function ResetPasswordPage() {
     // Invalid session, show error
     return (
       <div className={styles.page}>
-        {/* Header */}
+
         <header className={styles.header}>
           <div className={styles.headerLeft}>
             <div className={styles.headerLogo}>
-              <div className={styles.logoSmall}>K</div>
+              <Image src={loginProductIcon} alt="Logo" width={32} height={32} className="icon-32" />
               <div className={styles.headerBrand}>
                 <div className={styles.brandName}>Keco Studio</div>
                 <div className={styles.brandSlogan}>for game designers</div>
               </div>
             </div>
+          </div>
+          <div className={styles.headerRight}>
+            <button className={styles.headerIconBtn} aria-label="Messages">
+              <Image src={loginMessageIcon} alt="Messages" width={20} height={20} className="icon-20" />
+            </button>
+            <button className={styles.headerIconBtn} aria-label="Service">
+              <Image src={loginServiceIcon} alt="Service" width={20} height={20} className="icon-20" />
+            </button>
+            <button className={styles.headerIconBtn} aria-label="Question">
+              <Image src={loginQuestionIcon} alt="Question" width={20} height={20} className="icon-20" />
+            </button>
           </div>
         </header>
 
@@ -162,7 +179,8 @@ export default function ResetPasswordPage() {
   return (
     <div className={styles.page}>
       {/* Header */}
-      <header className={styles.header}>
+      
+      {/* <header className={styles.header}>
         <div className={styles.headerLeft}>
           <div className={styles.headerLogo}>
             <div className={styles.logoSmall}>K</div>
@@ -173,7 +191,30 @@ export default function ResetPasswordPage() {
           </div>
         </div>
         <div className={styles.headerRight}>
-          {/* Empty for now, can add icons later */}
+          
+        </div>
+      </header> */}
+
+      <header className={styles.header}>
+        <div className={styles.headerLeft}>
+          <div className={styles.headerLogo}>
+            <Image src={loginProductIcon} alt="Logo" width={32} height={32} className="icon-32" />
+            <div className={styles.headerBrand}>
+              <div className={styles.brandName}>Keco Studio</div>
+              <div className={styles.brandSlogan}>for game designers</div>
+            </div>
+          </div>
+        </div>
+        <div className={styles.headerRight}>
+          <button className={styles.headerIconBtn} aria-label="Messages">
+            <Image src={loginMessageIcon} alt="Messages" width={20} height={20} className="icon-20" />
+          </button>
+          <button className={styles.headerIconBtn} aria-label="Service">
+            <Image src={loginServiceIcon} alt="Service" width={20} height={20} className="icon-20" />
+          </button>
+          <button className={styles.headerIconBtn} aria-label="Question">
+            <Image src={loginQuestionIcon} alt="Question" width={20} height={20} className="icon-20" />
+          </button>
         </div>
       </header>
 
