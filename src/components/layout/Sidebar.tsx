@@ -40,6 +40,10 @@ import { useSidebarRealtime } from "./hooks/useSidebarRealtime";
 import { useSidebarContextMenuActions } from "./hooks/useSidebarContextMenuActions";
 import styles from "./Sidebar.module.css";
 
+const MIN_SIDEBAR_WIDTH = 300;
+const MAX_SIDEBAR_WIDTH = 400;
+const DEFAULT_SIDEBAR_WIDTH = 303; // 18.9375rem
+
 type SidebarProps = {
   userProfile?: UserProfileDisplay | null;
   onAuthRequest?: () => void;
@@ -108,8 +112,39 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [error, setError] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  const [isResizing, setIsResizing] = useState(false);
+  const resizeStartX = useRef(0);
+  const resizeStartWidth = useRef(DEFAULT_SIDEBAR_WIDTH);
 
   const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
+
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartX.current = e.clientX;
+    resizeStartWidth.current = sidebarWidth;
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    if (!isResizing) return;
+    const onMove = (e: MouseEvent) => {
+      const delta = e.clientX - resizeStartX.current;
+      const next = Math.min(MAX_SIDEBAR_WIDTH, Math.max(MIN_SIDEBAR_WIDTH, resizeStartWidth.current + delta));
+      setSidebarWidth(next);
+    };
+    const onUp = () => setIsResizing(false);
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+    return () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    };
+  }, [isResizing]);
 
   const {
     projects,
@@ -678,7 +713,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   return (
-    <aside className={`${styles.sidebar} ${!isSidebarVisible ? styles.sidebarHidden : ''}`}>
+    <aside
+      className={`${styles.sidebar} ${!isSidebarVisible ? styles.sidebarHidden : ''} ${isResizing ? styles.sidebarResizing : ''}`}
+      style={{ width: isSidebarVisible ? sidebarWidth : 0 }}
+    >
       <div className={styles.header}>
         <div 
           className={styles.headerLogo}
@@ -840,6 +878,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           userRole={userRole}
           isProjectOwner={isProjectOwner}
           elementRef={contextMenu.elementRef}
+        />
+      )}
+
+      {isSidebarVisible && (
+        <div
+          role="separator"
+          aria-label="调整侧边栏宽度"
+          className={styles.resizeHandle}
+          onMouseDown={handleResizeStart}
         />
       )}
     </aside>

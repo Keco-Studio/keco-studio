@@ -1,5 +1,6 @@
 .sidebar {
-  width: 18.9375rem;
+  min-width: 300px;
+  max-width: 400px;
   height: 100vh;
   display: flex;
   flex-direction: column;
@@ -14,6 +15,46 @@
   position: relative;
   z-index: 10;
   overflow: hidden;
+  box-sizing: border-box;
+}
+
+.sidebarResizing {
+  transition: none;
+}
+
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+  user-select: none;
+}
+
+.resizeHandle:hover,
+.sidebarResizing .resizeHandle {
+  background: linear-gradient(to right, transparent, rgba(99, 102, 241, 0.15));
+}
+
+.resizeHandle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 40px;
+  border-radius: 1px;
+  background: #cbd5e1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.resizeHandle:hover::after,
+.sidebarResizing .resizeHandle::after {
+  opacity: 1;
 }
 
 .sidebarHidden {
