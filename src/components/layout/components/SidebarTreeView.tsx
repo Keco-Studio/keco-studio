@@ -15,6 +15,7 @@ export type SidebarTreeViewProps = {
   expandedKeys: React.Key[];
   onSelect: (keys: React.Key[], info: any) => void;
   onExpand: (expandedKeys: React.Key[], info: { node: EventDataNode }) => void;
+  onRightClick?: (info: { event: any; node: EventDataNode }) => void;
 };
 
 /**
@@ -27,6 +28,7 @@ export function SidebarTreeView({
   expandedKeys,
   onSelect,
   onExpand,
+  onRightClick,
 }: SidebarTreeViewProps) {
   const switcherIcon = (node: any) => {
     const { expanded, isLeaf, data } = node || {};
@@ -90,6 +92,7 @@ export function SidebarTreeView({
         expandedKeys={expandedKeys}
         onSelect={onSelect}
         onExpand={onExpand}
+        onRightClick={onRightClick}
         switcherIcon={switcherIcon}
         motion={false}
       />

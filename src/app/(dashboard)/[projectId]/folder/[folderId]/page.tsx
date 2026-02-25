@@ -267,8 +267,8 @@ export default function FolderPage() {
               <Image
                 src={libraryEmptyIcon}
                 alt="Library icon"
-                width={72}
-                height={72}
+                width={237}
+                height={219}
               />
             </div>
             <div className={styles.emptyText}>

@@ -10,7 +10,7 @@ import { listFolders, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
 import { AuthorizationError, getUserProjectRole } from '@/lib/services/authorizationService';
 import predefineSettingIcon from "@/assets/images/predefineSettingIcon.svg";
-import projectNoFolderPreIcon from "@/assets/images/projectNoFolderPreIcon.svg";
+import projectNoFolderPreIcon from "@/assets/images/projectEmptyIcon_2.png";
 import plusHorizontal from "@/assets/images/plusHorizontal.svg";
 import plusVertical from "@/assets/images/plusVertical.svg";
 import Image from 'next/image';
@@ -472,8 +472,8 @@ export default function ProjectPage() {
           <Image
             src={projectNoFolderPreIcon}
             alt="No folders or libraries"
-            width={72}
-            height={72}
+            // width={72}
+            // height={72}
             className={styles.emptyIcon}
           />
           <div className={styles.emptyText}>There is no any folder or library here in this project yet.</div>

@@ -2,8 +2,8 @@
 
 import React from 'react';
 import Image from 'next/image';
-import noassetIcon1 from '@/assets/images/NoassetIcon1.svg';
-import noassetIcon2 from '@/assets/images/NoassetIcon2.svg';
+import noassetIcon1 from '@/assets/images/projectEmptyIcon_2.png';
+import noassetIcon2 from '@/assets/images/PredefineNewIcon.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type EmptyStateProps = {
@@ -22,8 +22,8 @@ export function EmptyState({ userRole, onPredefineClick }: EmptyStateProps) {
         <Image
           src={noassetIcon1}
           alt=""
-          width={72}
-          height={72}
+          width={237}
+          height={219}
           className={styles.emptyStateIcon}
         />
         <p className={styles.emptyStateText}>

@@ -522,6 +522,35 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // Folders don't need to fetch anything on expand/collapse
   };
 
+  const handleTreeRightClick = ({ event, node }: { event: any; node: EventDataNode }) => {
+    if (!node || !node.key) return;
+
+    const rawKey = String(node.key);
+    let type: 'project' | 'library' | 'folder' | 'asset' | null = null;
+    let id: string | null = null;
+
+    if (rawKey.startsWith('folder-')) {
+      type = 'folder';
+      id = rawKey.replace('folder-', '');
+    } else if (rawKey.startsWith('library-')) {
+      type = 'library';
+      id = rawKey.replace('library-', '');
+    } else if (rawKey.startsWith('asset-')) {
+      type = 'asset';
+      id = rawKey.replace('asset-', '');
+    }
+
+    if (!type || !id) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const treeNodeElement =
+      (event.target as HTMLElement | null)?.closest('.ant-tree-treenode') as HTMLElement | null;
+
+    openContextMenu(event.clientX, event.clientY, type, id, treeNodeElement || null);
+  };
+
   // Context menu handlers
   const handleContextMenu = (e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
     e.preventDefault();
@@ -791,6 +820,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               onContextMenu={handleContextMenu}
               addButtonRef={setAddButtonRef}
               onAddButtonClick={handleAddButtonClick}
+              onTreeRightClick={handleTreeRightClick}
             />
           )}
       </div>
