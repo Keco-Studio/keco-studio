@@ -40,9 +40,9 @@ import { useSidebarRealtime } from "./hooks/useSidebarRealtime";
 import { useSidebarContextMenuActions } from "./hooks/useSidebarContextMenuActions";
 import styles from "./Sidebar.module.css";
 
-const MIN_SIDEBAR_WIDTH = 300;
+const MIN_SIDEBAR_WIDTH = 267;
 const MAX_SIDEBAR_WIDTH = 400;
-const DEFAULT_SIDEBAR_WIDTH = 303; // 18.9375rem
+const DEFAULT_SIDEBAR_WIDTH = 267; // 16.6875rem
 
 type SidebarProps = {
   userProfile?: UserProfileDisplay | null;
@@ -572,7 +572,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setSelectedFolderId,
       setError,
       onLibraryPredefineClick: handleLibraryPredefineClick,
-    }
+    },
+    sidebarWidth
   );
 
   const handleProjectDeleteViaAPI = useCallback(

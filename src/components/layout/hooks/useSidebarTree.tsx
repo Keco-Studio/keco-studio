@@ -40,7 +40,8 @@ export function useSidebarTree(
   currentIds: SidebarCurrentIds,
   folders: Folder[],
   libraries: Library[],
-  context: UseSidebarTreeContext
+  context: UseSidebarTreeContext,
+  sidebarWidth?: number
 ): { treeData: DataNode[]; selectedKeys: string[] } {
   const {
     router,
@@ -57,6 +58,19 @@ export function useSidebarTree(
 
     const projectFolders = folders.filter((f) => f.project_id === currentIds.projectId);
     const projectLibraries = libraries.filter((lib) => lib.project_id === currentIds.projectId);
+
+    // 根据侧边栏宽度动态估算最多显示的字符数
+    // 例如：宽度约 300px 时显示 ~15 个字符，宽度约 400px 时显示 ~20 个字符
+    const computeMaxChars = (baseChars: number) => {
+      if (!sidebarWidth) return baseChars;
+      const MIN_WIDTH_FOR_BASE = 267;
+      const PX_PER_CHAR = 10; // 大约每 20px 增加 1 个字符
+
+      const extraWidth = Math.max(0, sidebarWidth - MIN_WIDTH_FOR_BASE);
+      const extraChars = Math.floor(extraWidth / PX_PER_CHAR);
+
+      return Math.max(8, baseChars + extraChars); // 给一个最小下限，避免太小
+    };
 
     const librariesByFolder = new Map<string, Library[]>();
     projectLibraries.forEach((lib) => {
@@ -83,7 +97,7 @@ export function useSidebarTree(
                   <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
                 </div>
                 <span className={styles.itemText} title={lib.name}>
-                  {truncateText(lib.name, 15)}
+                  {truncateText(lib.name, computeMaxChars(15))}
                 </span>
               </div>
               <div className={styles.itemActions}>
@@ -131,7 +145,7 @@ export function useSidebarTree(
                 </div>
               )}
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={folder.name}>
-                {truncateText(folder.name, 20)}
+                {truncateText(folder.name, computeMaxChars(20))}
               </span>
             </div>
             <div className={styles.itemActions}>
@@ -182,7 +196,7 @@ export function useSidebarTree(
                 <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
               </div>
               <span className={styles.itemText} style={{ fontWeight: 500 }} title={lib.name}>
-                {truncateText(lib.name, 15)}
+                {truncateText(lib.name, computeMaxChars(15))}
               </span>
             </div>
             <div className={styles.itemActions}>
@@ -232,6 +246,7 @@ export function useSidebarTree(
     openNewLibrary,
     setSelectedFolderId,
     setError,
+    sidebarWidth,
   ]);
 
   const selectedKeys = useMemo(() => {
