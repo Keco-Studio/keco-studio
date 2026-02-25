@@ -3,7 +3,7 @@
 import { FormEvent, useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
-import loginImg from "@/assets/images/loginImg.png";
+import loginImg from "@/assets/images/loginImg_2.png";
 import { useSupabase } from "@/lib/SupabaseContext";
 import styles from "./AuthForm.module.css";
 import loginMessageIcon from "@/assets/images/loginMessageIcon.svg";
