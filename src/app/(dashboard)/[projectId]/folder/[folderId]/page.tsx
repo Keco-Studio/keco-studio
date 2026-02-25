@@ -15,7 +15,7 @@ import { NewLibraryModal } from '@/components/libraries/NewLibraryModal';
 import { EditLibraryModal } from '@/components/libraries/EditLibraryModal';
 import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
-import libraryEmptyIcon from '@/assets/images/libraryEmptyIcon.svg';
+import libraryEmptyIcon from '@/assets/images/projectEmptyIcon_2.png';
 import plusHorizontal from '@/assets/images/plusHorizontal.svg';
 import plusVertical from '@/assets/images/plusVertical.svg';
 import Image from 'next/image';
@@ -275,28 +275,28 @@ export default function FolderPage() {
               There is no any library here. you need to create a library firstly
             </div>
             {canCreate && (
-            <button
-              className={styles.createLibraryButton}
-              onClick={handleCreateLibrary}
-            >
-              <span className={styles.plusIcon}>
-                <Image
-                  src={plusHorizontal}
-                  alt=""
-                  width={17}
-                  height={2}
-                  className={styles.plusHorizontal}
-                />
-                <Image
-                  src={plusVertical}
-                  alt=""
-                  width={2}
-                  height={17}
-                  className={styles.plusVertical}
-                />
-              </span>
-              <span className={styles.buttonText}>Create Library</span>
-            </button>
+              <button
+                className={styles.createLibraryButton}
+                onClick={handleCreateLibrary}
+              >
+                <span className={styles.plusIcon}>
+                  <Image
+                    src={plusHorizontal}
+                    alt=""
+                    width={17}
+                    height={2}
+                    className={styles.plusHorizontal}
+                  />
+                  <Image
+                    src={plusVertical}
+                    alt=""
+                    width={2}
+                    height={17}
+                    className={styles.plusVertical}
+                  />
+                </span>
+                <span className={styles.buttonText}>Create Library</span>
+              </button>
             )}
           </div>
         </div>
