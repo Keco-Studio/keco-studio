@@ -572,7 +572,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setSelectedFolderId,
       setError,
       onLibraryPredefineClick: handleLibraryPredefineClick,
-    }
+    },
+    sidebarWidth
   );
 
   const handleProjectDeleteViaAPI = useCallback(
