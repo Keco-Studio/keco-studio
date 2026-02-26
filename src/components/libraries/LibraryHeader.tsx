@@ -318,7 +318,7 @@ export function LibraryHeader({
         </div>
 
         {/* More Options: mount to body + fixed so tooltip does not extend scroll area */}
-        <Tooltip
+        {/* <Tooltip
           title="More Options"
           getPopupContainer={() => document.body}
           styles={{ root: { position: 'fixed' } }}
@@ -329,7 +329,7 @@ export function LibraryHeader({
               width={20} height={20} className="icon-20"
             />
           </button>
-        </Tooltip>
+        </Tooltip> */}
         {/* Version Control: mount to body + fixed so tooltip does not extend scroll area */}
         <Tooltip
           title="Version Control"
