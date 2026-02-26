@@ -167,7 +167,7 @@ export function LibraryHeader({
 
   return (
     <div className={styles.header}>
-      <div className={styles.leftSection}>
+      {/* <div className={styles.leftSection}>
         <h1 className={styles.title}>{libraryName}</h1>
         {libraryDescription && (
           <Tooltip title={libraryDescription.length > 50 ? libraryDescription : undefined}>
@@ -178,7 +178,7 @@ export function LibraryHeader({
             </div>
           </Tooltip>
         )}
-      </div>
+      </div> */}
 
       <div className={styles.rightSection}>
            {/* Viewing Members Indicator */}

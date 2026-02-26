@@ -761,7 +761,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         </div>
       </div>
 
-      <div className={styles.searchContainer}>
+      {/* <div className={styles.searchContainer}>
         <label className={styles.searchLabel}>
           <Image
             src={searchIcon}
@@ -775,7 +775,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             className={styles.searchInput}
           />
         </label>
-      </div>
+      </div> */}
 
       <div className={styles.content}>
         <SidebarProjectsList
