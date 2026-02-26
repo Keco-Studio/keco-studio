@@ -19,6 +19,10 @@ import assetEditIcon from '@/assets/images/assetEditIcon.svg';
 import assetShareIcon from '@/assets/images/assetShareIcon.svg';
 import topBarBreadCrumbIcon from '@/assets/images/topBarBreadCrumbIcon.svg';
 import menuIcon from '@/assets/images/menuIcon36.svg';
+import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
+import { LibraryHeader } from '@/components/libraries/LibraryHeader';
+import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
+import searchIcon from "@/assets/images/searchIcon.svg";
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -33,7 +37,10 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     breadcrumbs,
     currentAssetId,
     currentProjectId,
+    currentLibraryId,
+    currentFolderId,
     isPredefinePage,
+    isLibraryPage,
     showCreateProjectBreadcrumb: contextShowCreateProjectBreadcrumb,
   } = useNavigation();
   const showCreateProjectBreadcrumb = propShowCreateProjectBreadcrumb ?? contextShowCreateProjectBreadcrumb;
@@ -46,6 +53,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [isPredefineCreatingNewSection, setIsPredefineCreatingNewSection] = useState(false);
   const [predefineActiveSectionId, setPredefineActiveSectionId] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
+  const [libraryViewMode, setLibraryViewMode] = useState<'list' | 'grid'>('grid');
+  const [libraryVersionControlOpen, setLibraryVersionControlOpen] = useState(false);
 
   // Resolve display name: prefer username, then full_name, then email
   const displayName =
@@ -261,6 +270,70 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const isPredefine = isPredefinePage;
   const isAssetDetail = !!currentAssetId;
+  const isLibraryTopLevelPage = isLibraryPage && !!currentLibraryId && !currentAssetId && !isPredefine;
+  const isProjectRootPage =
+    !!currentProjectId && !currentFolderId && !currentLibraryId && !currentAssetId && !isPredefine;
+  const isFolderPage =
+    !!currentProjectId && !!currentFolderId && !currentLibraryId && !currentAssetId && !isPredefine;
+
+  // Sync view mode from page-level LibraryToolbar to TopBar
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{
+        mode?: 'list' | 'grid';
+        projectId?: string;
+        folderId?: string | null;
+      }>;
+
+      const { mode, projectId, folderId } = custom.detail || {};
+      if (!mode) return;
+      if (!currentProjectId || projectId !== currentProjectId) return;
+
+      const currentFolderOrNull = currentFolderId ?? null;
+      const detailFolderOrNull = folderId ?? null;
+
+      if (currentFolderOrNull !== detailFolderOrNull) return;
+
+      setLibraryViewMode(mode);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('library-page-view-mode-change', handler as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('library-page-view-mode-change', handler as EventListener);
+      }
+    };
+  }, [currentProjectId, currentFolderId]);
+
+  // Sync version control open state from LibraryPage to TopBar
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{
+        projectId?: string;
+        libraryId?: string;
+        isOpen?: boolean;
+      }>;
+
+      const { projectId, libraryId, isOpen } = custom.detail || {};
+      if (projectId !== currentProjectId || libraryId !== currentLibraryId) return;
+      if (typeof isOpen !== 'boolean') return;
+
+      setLibraryVersionControlOpen(isOpen);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('library-version-control-state', handler as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('library-version-control-state', handler as EventListener);
+      }
+    };
+  }, [currentProjectId, currentLibraryId]);
 
   const handlePredefineCancelOrDelete = () => {
     if (typeof window !== 'undefined') {
@@ -302,6 +375,59 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     // Trigger asset save from the asset page
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('asset-create-save'));
+    }
+  };
+
+  const handleTopbarViewModeChange = (mode: 'list' | 'grid') => {
+    setLibraryViewMode(mode);
+    if (typeof window !== 'undefined' && currentProjectId) {
+      window.dispatchEvent(
+        new CustomEvent('library-toolbar-view-mode-change', {
+          detail: {
+            mode,
+            projectId: currentProjectId,
+            folderId: isFolderPage ? currentFolderId ?? null : null,
+          },
+        })
+      );
+    }
+  };
+
+  const handleTopbarCreateFolder = () => {
+    if (typeof window !== 'undefined' && currentProjectId) {
+      window.dispatchEvent(
+        new CustomEvent('library-toolbar-create-folder', {
+          detail: {
+            projectId: currentProjectId,
+          },
+        })
+      );
+    }
+  };
+
+  const handleTopbarCreateLibrary = () => {
+    if (typeof window !== 'undefined' && currentProjectId) {
+      window.dispatchEvent(
+        new CustomEvent('library-toolbar-create-library', {
+          detail: {
+            projectId: currentProjectId,
+            folderId: isFolderPage ? currentFolderId ?? null : null,
+          },
+        })
+      );
+    }
+  };
+
+  const handleTopbarVersionControlToggle = () => {
+    if (typeof window !== 'undefined' && currentProjectId && currentLibraryId) {
+      window.dispatchEvent(
+        new CustomEvent('library-version-control-toggle', {
+          detail: {
+            projectId: currentProjectId,
+            libraryId: currentLibraryId,
+          },
+        })
+      );
     }
   };
 
@@ -348,6 +474,59 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             <span>Publish</span>
           </button>
         </>
+      );
+    }
+
+    if (isLibraryTopLevelPage && currentLibraryId && currentProjectId && userProfile) {
+      const lastBreadcrumb = displayBreadcrumbs[displayBreadcrumbs.length - 1];
+      const libraryName = lastBreadcrumb?.label || 'Library';
+
+      const presenceUsers: PresenceState[] = [
+        {
+          userId: userProfile.id,
+          userName: displayName,
+          userEmail: userProfile.email || '',
+          avatarColor: userAvatarColor,
+          activeCell: null,
+          cursorPosition: null,
+          lastActivity: new Date().toISOString(),
+          connectionStatus: 'online',
+        },
+      ];
+
+      return (
+        <LibraryHeader
+          libraryId={currentLibraryId}
+          libraryName={libraryName}
+          libraryDescription={null}
+          projectId={currentProjectId}
+          currentUserId={userProfile.id}
+          currentUserName={displayName}
+          currentUserEmail={userProfile.email || ''}
+          currentUserAvatarColor={userAvatarColor}
+          userRole={(userRole || 'viewer') as CollaboratorRole}
+          presenceUsers={presenceUsers}
+          isVersionControlOpen={libraryVersionControlOpen}
+          onVersionControlToggle={handleTopbarVersionControlToggle}
+        />
+      );
+    }
+
+    if ((isProjectRootPage || isFolderPage) && currentProjectId) {
+      const lastBreadcrumb = displayBreadcrumbs[displayBreadcrumbs.length - 1];
+      const title = lastBreadcrumb?.label;
+
+      return (
+        <LibraryToolbar
+          mode={isFolderPage ? 'folder' : 'project'}
+          title={title}
+          onCreateFolder={isProjectRootPage ? handleTopbarCreateFolder : undefined}
+          onCreateLibrary={handleTopbarCreateLibrary}
+          viewMode={libraryViewMode}
+          onViewModeChange={handleTopbarViewModeChange}
+          userRole={userRole as CollaboratorRole | null}
+          projectId={currentProjectId}
+        />
       );
     }
 
@@ -437,6 +616,22 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </div>
         )}
       </div>
+      <div className={styles.searchContainer}>
+        <label className={styles.searchLabel}>
+          <Image
+            src={searchIcon}
+            alt="Search"
+            width={24}
+            height={24}
+            className={`icon-24 ${styles.searchIcon}`}
+          />
+          <input
+            placeholder="Search for..."
+            className={styles.searchInput}
+          />
+        </label>
+      </div>
+
       <div className={styles.right}>
         {renderRightContent()}
         <div className={styles.userContainer} ref={menuRef}>

@@ -221,6 +221,55 @@ export default function FolderPage() {
     }));
   };
 
+  // 将页面内 LibraryToolbar 的视图模式同步到 TopBar
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(
+      new CustomEvent('library-page-view-mode-change', {
+        detail: {
+          mode: viewMode,
+          projectId,
+          folderId,
+        },
+      })
+    );
+  }, [viewMode, projectId, folderId]);
+
+  // 让 TopBar 中的 LibraryToolbar 也能控制本页视图切换和创建 Library
+  useEffect(() => {
+    const handleTopbarCreateLibrary = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
+      if (custom.detail?.projectId === projectId && custom.detail?.folderId === folderId) {
+        handleCreateLibrary();
+      }
+    };
+
+    const handleTopbarViewModeChange = (event: Event) => {
+      const custom = event as CustomEvent<{
+        mode?: 'list' | 'grid';
+        projectId?: string;
+        folderId?: string | null;
+      }>;
+      const { mode, projectId: evtProjectId, folderId: evtFolderId } = custom.detail || {};
+      if (!mode) return;
+      if (evtProjectId !== projectId) return;
+      if (evtFolderId !== folderId) return;
+      setViewMode(mode);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('library-toolbar-create-library', handleTopbarCreateLibrary as EventListener);
+      window.addEventListener('library-toolbar-view-mode-change', handleTopbarViewModeChange as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('library-toolbar-create-library', handleTopbarCreateLibrary as EventListener);
+        window.removeEventListener('library-toolbar-view-mode-change', handleTopbarViewModeChange as EventListener);
+      }
+    };
+  }, [projectId, folderId, handleCreateLibrary, setViewMode]);
+
   if (loading) {
     return (
       <div className={styles.container}>
@@ -251,7 +300,7 @@ export default function FolderPage() {
 
   return (
     <div className={styles.container}>
-      <LibraryToolbar
+      {/* <LibraryToolbar
         mode="folder"
         title={folder?.name}
         onCreateLibrary={handleCreateLibrary}
@@ -259,7 +308,7 @@ export default function FolderPage() {
         onViewModeChange={setViewMode}
         userRole={userRole}
         projectId={projectId}
-      />
+      /> */}
       {libraries.length === 0 ? (
         <div className={styles.emptyStateWrapper}>
           <div className={styles.emptyStateContainer}>

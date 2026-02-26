@@ -408,6 +408,64 @@ export default function ProjectPage() {
     setShowLibraryModal(true);
   };
 
+  // 将页面内 LibraryToolbar 的视图模式同步到 TopBar
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(
+      new CustomEvent('library-page-view-mode-change', {
+        detail: {
+          mode: viewMode,
+          projectId,
+          folderId: null,
+        },
+      })
+    );
+  }, [viewMode, projectId]);
+
+  // 让 TopBar 中的 LibraryToolbar 也能控制本页面的创建与视图切换
+  useEffect(() => {
+    const handleTopbarCreateFolder = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string }>;
+      if (custom.detail?.projectId === projectId) {
+        handleCreateFolder();
+      }
+    };
+
+    const handleTopbarCreateLibrary = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
+      if (custom.detail?.projectId === projectId && !custom.detail?.folderId) {
+        handleCreateLibrary();
+      }
+    };
+
+    const handleTopbarViewModeChange = (event: Event) => {
+      const custom = event as CustomEvent<{
+        mode?: 'list' | 'grid';
+        projectId?: string;
+        folderId?: string | null;
+      }>;
+      const { mode, projectId: evtProjectId, folderId } = custom.detail || {};
+      if (!mode) return;
+      if (evtProjectId !== projectId) return;
+      if (folderId != null) return; // 仅根项目页处理
+      setViewMode(mode);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('library-toolbar-create-folder', handleTopbarCreateFolder as EventListener);
+      window.addEventListener('library-toolbar-create-library', handleTopbarCreateLibrary as EventListener);
+      window.addEventListener('library-toolbar-view-mode-change', handleTopbarViewModeChange as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('library-toolbar-create-folder', handleTopbarCreateFolder as EventListener);
+        window.removeEventListener('library-toolbar-create-library', handleTopbarCreateLibrary as EventListener);
+        window.removeEventListener('library-toolbar-view-mode-change', handleTopbarViewModeChange as EventListener);
+      }
+    };
+  }, [projectId, handleCreateFolder, handleCreateLibrary, setViewMode]);
+
   const handleFolderCreated = () => {
     setShowFolderModal(false);
     // 只发送事件，让所有监听器统一刷新，避免重复请求
@@ -457,7 +515,7 @@ export default function ProjectPage() {
 
   return (
     <div className={styles.container}>
-      <LibraryToolbar
+      {/* <LibraryToolbar
         mode="project"
         title={project?.name}
         onCreateFolder={handleCreateFolder}
@@ -466,7 +524,7 @@ export default function ProjectPage() {
         onViewModeChange={setViewMode}
         userRole={userRole}
         projectId={projectId}
-      />
+      /> */}
       {!hasItems ? (
         <div className={styles.emptyState}>
           <Image

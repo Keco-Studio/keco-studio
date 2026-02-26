@@ -105,9 +105,9 @@ export function LibraryToolbar({
 
   return (
     <div className={styles.toolbar}>
-      {title && (
+      {/* {title && (
         <h1 className={styles.title}>{title}</h1>
-      )}
+      )} */}
       {canCreate && (
         <button
           ref={setCreateButtonRef}

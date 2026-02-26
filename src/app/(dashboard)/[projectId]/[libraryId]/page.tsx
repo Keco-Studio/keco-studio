@@ -68,6 +68,39 @@ export default function LibraryPage() {
   const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
   const hasInitializedBlankRowsRef = useRef(false);
 
+  // 将版本控制打开状态同步给 TopBar（LibraryHeader）
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(
+      new CustomEvent('library-version-control-state', {
+        detail: {
+          projectId,
+          libraryId,
+          isOpen: isVersionControlOpen,
+        },
+      })
+    );
+  }, [isVersionControlOpen, projectId, libraryId]);
+
+  // 响应来自 TopBar 的版本控制切换请求
+  useEffect(() => {
+    const handleToggleFromTopbar = (event: Event) => {
+      const custom = event as CustomEvent<{ projectId?: string; libraryId?: string }>;
+      if (custom.detail?.projectId !== projectId || custom.detail?.libraryId !== libraryId) return;
+      setIsVersionControlOpen((prev) => !prev);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('library-version-control-toggle', handleToggleFromTopbar as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('library-version-control-toggle', handleToggleFromTopbar as EventListener);
+      }
+    };
+  }, [projectId, libraryId]);
+
   // Use React Query for data fetching
   const { data: project, isLoading: projectLoading, error: projectError } = useQuery({
     queryKey: queryKeys.project(projectId),
@@ -586,7 +619,7 @@ export default function LibraryPage() {
   return (
     <div className={styles.container}>
       {/* Library Header with members and share functionality */}
-      {userProfile && (
+      {/* {userProfile && (
         <LibraryHeader
           libraryId={libraryId}
           libraryName={library.name}
@@ -601,7 +634,7 @@ export default function LibraryPage() {
           isVersionControlOpen={isVersionControlOpen}
           onVersionControlToggle={() => setIsVersionControlOpen(!isVersionControlOpen)}
         />
-      )}
+      )} */}
 
       {/* Main content area: Table and Version Control Sidebar side by side */}
       <div className={styles.mainContent}>
