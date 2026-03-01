@@ -4,6 +4,50 @@
   cursor: crosshair !important;
 }
 
+/* Section tabs: horizontal tabs above table, active = blue text + underline, inactive = gray */
+.sectionTabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 0 0 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.sectionTab {
+  padding: 0.75rem 1rem;
+  font-size: 16px;
+  font-weight: 500;
+  color: #7D7D7D;
+  background: none;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  margin-bottom: -1px;
+  transition: color 0.2s ease;
+}
+
+.sectionTab:hover {
+  color: #475569;
+}
+
+.sectionTabActive {
+  color: #0B99FF;
+  /* font-weight: 600; */
+}
+
+.sectionTabActive::after {
+  content: '';
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: 0;
+  height: 2px;
+  background: #0B99FF;
+  border-radius: 1px 1px 0 0;
+}
+
 .tableContainer {
   margin-top: 1.5rem;
   margin-bottom: 260px; /* Add bottom margin to ensure context menu has space (increased by ~60px for one more row) */

@@ -473,6 +473,21 @@ export function LibraryAssetsTable({
     return { groups, orderedProperties };
   }, [sections, properties]);
 
+  // Section tab: which section's columns to show (default first section)
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const effectiveActiveSectionId = activeSectionId ?? groups[0]?.section.id ?? null;
+  const activeGroup = useMemo(
+    () => groups.find((g) => g.section.id === effectiveActiveSectionId) ?? groups[0],
+    [groups, effectiveActiveSectionId]
+  );
+  const activeProperties = activeGroup ? activeGroup.properties : orderedProperties;
+  useEffect(() => {
+    if (groups.length > 0) {
+      if (!activeSectionId) setActiveSectionId(groups[0].section.id);
+      else if (!groups.some((g) => g.section.id === activeSectionId)) setActiveSectionId(groups[0].section.id);
+    }
+  }, [groups, activeSectionId]);
+
   const handlePredefineClick = () => {
     const projectId = params.projectId as string;
     const libraryId = params.libraryId as string;
@@ -753,11 +768,11 @@ export function LibraryAssetsTable({
     return <EmptyState userRole={userRole} onPredefineClick={handlePredefineClick} />;
   }
 
-  const totalColumns = 1 + orderedProperties.length;
+  const totalColumns = 1 + activeProperties.length;
 
-  // Determine column width class based on number of columns
+  // Determine column width class based on number of columns (active section when using tabs)
   const getColumnWidthClass = () => {
-    const colCount = orderedProperties.length;
+    const colCount = activeProperties.length;
     if (colCount === 1) return styles.cols1;
     if (colCount === 2) return styles.cols2;
     if (colCount === 3) return styles.cols3;
@@ -784,13 +799,29 @@ export function LibraryAssetsTable({
 
   return (
     <>
+      {hasSections && (
+        <div className={styles.sectionTabs}>
+          {groups.map((group) => (
+            <button
+              key={group.section.id}
+              type="button"
+              className={`${styles.sectionTab} ${effectiveActiveSectionId === group.section.id ? styles.sectionTabActive : ''}`}
+              onClick={() => setActiveSectionId(group.section.id)}
+            >
+              {group.section.name}
+            </button>
+          ))}
+
+        </div>
+      )}
       <div className={styles.tableContainer} ref={tableContainerRef}>
         <table className={`${styles.table} ${getColumnWidthClass()}`}>
           <TableHeader
-            groups={groups}
+            groups={hasSections && activeGroup ? [activeGroup] : groups}
             allRowsSelected={headerAllRowsSelected}
             hasSomeRowsSelected={headerHasSomeRowsSelected}
             onToggleSelectAll={handleToggleSelectAllRows}
+            showSectionRow={!hasSections}
           />
           <tbody className={styles.body}>
             {resolvedRows.map((row, index) => {
@@ -828,7 +859,9 @@ export function LibraryAssetsTable({
                       <span>{index + 1}</span>
                     )}
                   </td>
-                  {orderedProperties.map((property, propertyIndex) => {
+                  {activeProperties.map((property) => {
+                    const globalPropertyIndex = orderedProperties.findIndex((p) => p.id === property.id);
+                    const propertyIndex = globalPropertyIndex >= 0 ? globalPropertyIndex : 0;
                     const isNameField = property.name === 'name' && property.dataType === 'string';
                     const editingUsers = getUsersEditingCell(row.id, property.key);
                     const borderColor = getFirstUserColor(editingUsers);
@@ -1167,7 +1200,7 @@ export function LibraryAssetsTable({
               <tr className={styles.editRow} ref={addRowFormRef}>
                 <td className={styles.numberCell}>{rows.length + 1}</td>
                 <AddNewRowForm
-                  orderedProperties={orderedProperties}
+                  orderedProperties={activeProperties}
                   newRowData={newRowData}
                   isSaving={isSaving}
                   userRole={userRole}
@@ -1229,7 +1262,7 @@ export function LibraryAssetsTable({
                     />
                   </button>
                 </td>
-                {orderedProperties.map((property) => (
+                {activeProperties.map((property) => (
                   <td key={property.id} className={styles.cell}></td>
                 ))}
               </tr>
