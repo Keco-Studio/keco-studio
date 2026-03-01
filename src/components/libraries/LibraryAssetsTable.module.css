@@ -48,6 +48,22 @@
   border-radius: 1px 1px 0 0;
 }
 
+.sectionTabEdit {
+  padding: 0.5rem 0.75rem;
+  margin-bottom: -1px;
+}
+
+.sectionTabInput {
+  font-size: 16px;
+  font-weight: 500;
+  min-width: 120px;
+}
+
+.sectionTabInput :global(.ant-input) {
+  font-size: 16px;
+  font-weight: 500;
+}
+
 .tableContainer {
   margin-top: 1.5rem;
   margin-bottom: 260px; /* Add bottom margin to ensure context menu has space (increased by ~60px for one more row) */

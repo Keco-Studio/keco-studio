@@ -78,6 +78,8 @@ export type LibraryAssetsTableProps = {
   onUpdateAssetsWithBatchBroadcast?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
+  /** 可选：双击 section 标签修改名称时回调，不传则仅本地展示不可持久化 */
+  onUpdateSection?: (sectionId: string, newName: string) => Promise<void>;
   // Real-time collaboration props
   currentUser?: {
     id: string;
@@ -112,6 +114,7 @@ export function LibraryAssetsTable({
   onUpdateAssetsWithBatchBroadcast,
   onDeleteAsset,
   onDeleteAssets,
+  onUpdateSection,
   currentUser = null,
   enableRealtime = false,
   presenceTracking,
@@ -476,6 +479,12 @@ export function LibraryAssetsTable({
   // Section tab: which section's columns to show (default first section)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const effectiveActiveSectionId = activeSectionId ?? groups[0]?.section.id ?? null;
+
+  // 双击 section 标签进入编辑：当前正在编辑的 section id 与输入框内容
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editingSectionName, setEditingSectionName] = useState('');
+  const sectionInputRef = useRef<HTMLInputElement>(null);
+
   const activeGroup = useMemo(
     () => groups.find((g) => g.section.id === effectiveActiveSectionId) ?? groups[0],
     [groups, effectiveActiveSectionId]
@@ -493,6 +502,27 @@ export function LibraryAssetsTable({
     const libraryId = params.libraryId as string;
     router.push(`/${projectId}/${libraryId}/predefine`);
   };
+
+  const handleSectionEditStart = useCallback((sectionId: string, currentName: string) => {
+    setEditingSectionId(sectionId);
+    setEditingSectionName(currentName);
+    setTimeout(() => sectionInputRef.current?.focus(), 0);
+  }, []);
+
+  const handleSectionEditEnd = useCallback(async (submit: boolean) => {
+    if (!editingSectionId) return;
+    const trimmed = editingSectionName.trim();
+    if (submit && trimmed && onUpdateSection) {
+      try {
+        await onUpdateSection(editingSectionId, trimmed);
+        message.success('Section 名称已更新');
+      } catch (e) {
+        message.error('更新失败');
+      }
+    }
+    setEditingSectionId(null);
+    setEditingSectionName('');
+  }, [editingSectionId, editingSectionName, onUpdateSection, message]);
 
   const getAllRowsForCellSelection = useCallback(() => {
     return dataManager.getRowsWithOptimisticUpdates();
@@ -802,16 +832,37 @@ export function LibraryAssetsTable({
       {hasSections && (
         <div className={styles.sectionTabs}>
           {groups.map((group) => (
-            <button
-              key={group.section.id}
-              type="button"
-              className={`${styles.sectionTab} ${effectiveActiveSectionId === group.section.id ? styles.sectionTabActive : ''}`}
-              onClick={() => setActiveSectionId(group.section.id)}
-            >
-              {group.section.name}
-            </button>
+            editingSectionId === group.section.id ? (
+              <div key={group.section.id} className={styles.sectionTabEdit}>
+                <Input
+                  ref={sectionInputRef}
+                  value={editingSectionName}
+                  onChange={(e) => setEditingSectionName(e.target.value)}
+                  onBlur={() => handleSectionEditEnd(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSectionEditEnd(true);
+                    if (e.key === 'Escape') handleSectionEditEnd(false);
+                  }}
+                  className={styles.sectionTabInput}
+                  size="small"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            ) : (
+              <button
+                key={group.section.id}
+                type="button"
+                className={`${styles.sectionTab} ${effectiveActiveSectionId === group.section.id ? styles.sectionTabActive : ''}`}
+                onClick={() => setActiveSectionId(group.section.id)}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  handleSectionEditStart(group.section.id, group.section.name);
+                }}
+              >
+                {group.section.name}
+              </button>
+            )
           ))}
-
         </div>
       )}
       <div className={styles.tableContainer} ref={tableContainerRef}>

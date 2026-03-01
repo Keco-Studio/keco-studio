@@ -24,6 +24,7 @@ import {
   updateAsset,
   deleteAsset,
   deleteAssets,
+  updateSectionName,
 } from '@/lib/services/libraryAssetsService';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
@@ -373,6 +374,14 @@ export default function LibraryPage() {
     };
   }, [libraryId, selectedVersionId, queryClient]);
 
+  const handleUpdateSection = useCallback(
+    async (sectionId: string, newName: string) => {
+      await updateSectionName(supabase, sectionId, newName);
+      queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+    },
+    [supabase, libraryId, queryClient]
+  );
+
   // Load versions when version control is opened
   useEffect(() => {
     if (!isVersionControlOpen || !libraryId) return;
@@ -660,6 +669,7 @@ export default function LibraryPage() {
               sections={tableSections}
               properties={tableProperties}
               overrideRows={versionAssetRows}
+              onUpdateSection={handleUpdateSection}
             />
           </YjsProvider>
         </div>
