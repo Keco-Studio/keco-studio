@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
+import Image from 'next/image';
 import { Input, Select, Switch } from 'antd';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { ReferenceField } from './ReferenceField';
+import { getFieldTypeIcon } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type AssetDetailDrawerProps = {
@@ -25,16 +27,28 @@ export type AssetDetailDrawerProps = {
 
 function getTypeBadgeLabel(property: PropertyConfig): string {
   const t = property.dataType;
-  if (t === 'string') return 'T String';
-  if (t === 'int') return 'Nº Int';
-  if (t === 'float') return '% Float';
-  if (t === 'boolean') return 'Boolean';
-  if (t === 'enum') return 'Option';
-  if (t === 'reference') return 'Reference';
-  if (t === 'image') return 'Image';
-  if (t === 'file') return 'Video'; // or Audio / File - use name or file type
-  if (t === 'date') return 'Date';
-  return 'T String';
+  switch (t) {
+    case 'string':
+      return 'String';
+    case 'int':
+      return 'Int';
+    case 'float':
+      return 'Float';
+    case 'boolean':
+      return 'Boolean';
+    case 'enum':
+      return 'Option';
+    case 'reference':
+      return 'Reference';
+    case 'image':
+      return 'Image';
+    case 'file':
+      return 'File';
+    case 'date':
+      return 'Date';
+    default:
+      return 'String';
+  }
 }
 
 export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
@@ -160,7 +174,17 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
               return (
                 <div key={property.id} className={styles.detailDrawerField}>
                   <label className={styles.detailDrawerLabel}>{property.name}</label>
-                  <span className={styles.detailDrawerTypeBadge}>{getTypeBadgeLabel(property)}</span>
+                  <div className={styles.detailDrawerTypeBadge}>
+                    <Image
+                      src={getFieldTypeIcon(property.dataType as any)}
+                      alt={property.dataType}
+                      width={16}
+                      height={16}
+                      className="icon-16"
+                      style={{ marginRight: 4 }}
+                    />
+                    {getTypeBadgeLabel(property)}
+                  </div>
                   <div className={styles.detailDrawerInputWrap}>
                     <ReferenceField
                       property={property}
@@ -195,7 +219,15 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                 <div key={property.id} className={styles.detailDrawerField}>
                   <label className={styles.detailDrawerLabel}>{property.name}</label>
                   <span className={styles.detailDrawerTypeBadge}>
-                    {property.dataType === 'file' ? 'Video' : 'Image'}
+                    <Image
+                      src={getFieldTypeIcon(property.dataType as any)}
+                      alt={property.dataType}
+                      width={16}
+                      height={16}
+                      className="icon-16"
+                      style={{ marginRight: 4 }}
+                    />
+                    {getTypeBadgeLabel(property)}
                   </span>
                   <div className={styles.detailDrawerInputWrap}>
                     <MediaFileUpload
@@ -214,7 +246,17 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
               return (
                 <div key={property.id} className={styles.detailDrawerField}>
                   <label className={styles.detailDrawerLabel}>{property.name}</label>
-                  <span className={styles.detailDrawerTypeBadge}>{getTypeBadgeLabel(property)}</span>
+                  <span className={styles.detailDrawerTypeBadge}>
+                    <Image
+                      src={getFieldTypeIcon(property.dataType as any)}
+                      alt={property.dataType}
+                      width={16}
+                      height={16}
+                      className="icon-16"
+                      style={{ marginRight: 4 }}
+                    />
+                    {getTypeBadgeLabel(property)}
+                  </span>
                   <div className={styles.detailDrawerInputWrap}>
                     <Switch
                       checked={checked}
@@ -231,7 +273,17 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
               return (
                 <div key={property.id} className={styles.detailDrawerField}>
                   <label className={styles.detailDrawerLabel}>{property.name}</label>
-                  <span className={styles.detailDrawerTypeBadge}>{getTypeBadgeLabel(property)}</span>
+                  <span className={styles.detailDrawerTypeBadge}>
+                    <Image
+                      src={getFieldTypeIcon(property.dataType as any)}
+                      alt={property.dataType}
+                      width={16}
+                      height={16}
+                      className="icon-16"
+                      style={{ marginRight: 4 }}
+                    />
+                    {getTypeBadgeLabel(property)}
+                  </span>
                   <div className={styles.detailDrawerInputWrap}>
                     <Select
                       value={selectValue}
@@ -250,7 +302,17 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
             return (
               <div key={property.id} className={styles.detailDrawerField}>
                 <label className={styles.detailDrawerLabel}>{property.name}</label>
-                <span className={styles.detailDrawerTypeBadge}>{getTypeBadgeLabel(property)}</span>
+                <span className={styles.detailDrawerTypeBadge}>
+                  <Image
+                    src={getFieldTypeIcon(property.dataType as any)}
+                    alt={property.dataType}
+                    width={16}
+                    height={16}
+                    className="icon-16"
+                    style={{ marginRight: 4 }}
+                  />
+                  {getTypeBadgeLabel(property)}
+                </span>
                 <div className={styles.detailDrawerInputWrap}>
                   <Input
                     value={inputValue}

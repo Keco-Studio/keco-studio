@@ -1,9 +1,11 @@
 'use client';
 
 import React from 'react';
+import Image from 'next/image';
 import { Checkbox } from 'antd';
 import type { SectionConfig, PropertyConfig } from '@/lib/types/libraryAssets';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
+import showIcon from '@/assets/images/showIcon.svg';
 
 export type TableHeaderGroup = {
   section: SectionConfig;
@@ -74,7 +76,19 @@ export function TableHeader({
               scope="col"
               className={`${styles.headerCell} ${styles.propertyHeaderCell}`}
             >
-              {property.name}
+              <div className={styles.propertyHeaderContent}>
+                <span className={styles.propertyHeaderText}>{property.name}</span>
+                <div style={{ width: 16, height: 16, backgroundColor: 'rgba(11, 153, 255, 0.08)', borderRadius: '2px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Image
+                    src={showIcon}
+                    alt=""
+                    width={8}
+                    height={4}
+                    className={styles.propertyHeaderIcon}
+                  />
+                </div>
+              
+              </div>
             </th>
           )),
         )}

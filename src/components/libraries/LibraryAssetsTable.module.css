@@ -258,6 +258,24 @@
   white-space: nowrap;
 }
 
+.propertyHeaderContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  width: 100%;
+}
+
+.propertyHeaderText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.propertyHeaderIcon {
+  flex-shrink: 0;
+}
+
 .row {
   height: 40px;
   border-bottom: 1px solid #e2e8f0;
@@ -1958,6 +1976,9 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .detailDrawerTypeBadge {
+  display: inline-flex;
+  align-items: center;
+  /* gap: 2px; */
   font-size: 0.75rem;
   color: #64748b;
   margin-bottom: 0.125rem;
