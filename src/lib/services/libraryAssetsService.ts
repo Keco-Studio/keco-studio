@@ -8,6 +8,7 @@ import {
 import { getLibrary } from '@/lib/services/libraryService';
 import {
   verifyLibraryAccess,
+  verifyLibraryUpdatePermission,
   verifyAssetAccess,
   verifyAssetDeletionPermission,
   verifyAssetsDeletionPermission,
@@ -208,6 +209,30 @@ export async function getLibrarySchema(
   });
 
   return { sections, properties };
+}
+
+/** 更新 section 显示名称：sectionId 格式为 libraryId:旧名称，将 library_field_definitions 中该 section 的 section 字段改为 newName */
+export async function updateSectionName(
+  supabase: SupabaseClient,
+  sectionId: string,
+  newName: string
+): Promise<void> {
+  const colonIndex = sectionId.indexOf(':');
+  if (colonIndex < 0) return;
+  const libraryId = sectionId.slice(0, colonIndex);
+  const oldName = sectionId.slice(colonIndex + 1);
+  const trimmed = newName.trim();
+  if (!trimmed || trimmed === oldName) return;
+
+  await verifyLibraryUpdatePermission(supabase, libraryId);
+
+  const { error } = await supabase
+    .from('library_field_definitions')
+    .update({ section: trimmed })
+    .eq('library_id', libraryId)
+    .eq('section', oldName);
+
+  if (error) throw error;
 }
 
 // T009: Load assets and property values for a library and aggregate into AssetRow[].

@@ -15,6 +15,8 @@ export type TableHeaderProps = {
   allRowsSelected: boolean;
   hasSomeRowsSelected: boolean;
   onToggleSelectAll: (checked: boolean) => void;
+  /** When true (e.g. section tabs mode), hide the section name row and only show property names */
+  showSectionRow?: boolean;
 };
 
 export function TableHeader({
@@ -22,35 +24,48 @@ export function TableHeader({
   allRowsSelected,
   hasSomeRowsSelected,
   onToggleSelectAll,
+  showSectionRow = true,
 }: TableHeaderProps) {
   return (
     <thead>
-      <tr className={styles.headerRowTop}>
-        <th scope="col" className={`${styles.headerCell} ${styles.numberColumnHeader}`}>
-          <div className={styles.checkboxContainer}>
-            <Checkbox
-              checked={allRowsSelected}
-              indeterminate={hasSomeRowsSelected && !allRowsSelected}
-              onChange={(e) => onToggleSelectAll(e.target.checked)}
-            />
-          </div>
-        </th>
-        {groups.map((group, index) => (
-          <th
-            key={group.section.id}
-            scope="col"
-            colSpan={group.properties.length}
-            className={`${styles.headerCell} ${styles.sectionHeaderCell} ${
-              index < groups.length - 1 ? styles.sectionHeaderCellDivider : ''
-            }`}
-          >
-            {group.section.name}
+      {showSectionRow && (
+        <tr className={styles.headerRowTop}>
+          <th scope="col" className={`${styles.headerCell} ${styles.numberColumnHeader}`}>
+            <div className={styles.checkboxContainer}>
+              <Checkbox
+                checked={allRowsSelected}
+                indeterminate={hasSomeRowsSelected && !allRowsSelected}
+                onChange={(e) => onToggleSelectAll(e.target.checked)}
+              />
+            </div>
           </th>
-        ))}
-      </tr>
+          {groups.map((group, index) => (
+            <th
+              key={group.section.id}
+              scope="col"
+              colSpan={group.properties.length}
+              className={`${styles.headerCell} ${styles.sectionHeaderCell} ${
+                index < groups.length - 1 ? styles.sectionHeaderCellDivider : ''
+              }`}
+            >
+              {group.section.name}
+            </th>
+          ))}
+        </tr>
+      )}
       <tr className={styles.headerRowBottom}>
         <th scope="col" className={`${styles.headerCell} ${styles.numberColumnHeader}`}>
-          #
+          {showSectionRow ? (
+            '#'
+          ) : (
+            <div className={styles.checkboxContainer}>
+              <Checkbox
+                checked={allRowsSelected}
+                indeterminate={hasSomeRowsSelected && !allRowsSelected}
+                onChange={(e) => onToggleSelectAll(e.target.checked)}
+              />
+            </div>
+          )}
         </th>
         {groups.map((group) =>
           group.properties.map((property) => (

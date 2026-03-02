@@ -1,7 +1,9 @@
 import React from 'react';
+import Image from 'next/image';
 import { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import { CellKey } from '@/components/libraries/hooks/useCellSelection';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
+import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { CellPresenceAvatars } from './CellPresenceAvatars';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
@@ -60,6 +62,9 @@ export interface MediaCellProps {
   // Border classes
   getCopyBorderClasses: (rowId: string, propertyIndex: number) => string;
   getSelectionBorderClasses: (rowId: string, propertyIndex: number) => string;
+  // View detail (first column only)
+  isFirstColumn?: boolean;
+  onViewAssetDetail?: (row: AssetRow, e: React.MouseEvent) => void;
 }
 
 /**
@@ -92,6 +97,8 @@ export const MediaCell: React.FC<MediaCellProps> = ({
   setHoveredCellForExpand,
   getCopyBorderClasses,
   getSelectionBorderClasses,
+  isFirstColumn,
+  onViewAssetDetail,
 }) => {
   const cellKey: CellKey = `${row.id}-${property.key}`;
   const isCellSelected = selectedCells.has(cellKey);
@@ -178,17 +185,42 @@ export const MediaCell: React.FC<MediaCellProps> = ({
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
-      {/* Always show MediaFileUpload component for image/file fields */}
-      <div className={styles.mediaFileUploadContainer}>
-        <MediaFileUpload
-          value={value || null}
-          onChange={onChange}
-          disabled={isSaving || userRole === 'viewer'}
-          fieldType={property.dataType as 'image' | 'file'}
-          onFocus={() => onCellFocus(row.id, property.key)}
-          onBlur={onCellBlur}
-        />
-      </div>
+      {isFirstColumn && onViewAssetDetail ? (
+        <div className={styles.cellContent}>
+          <div className={styles.mediaFileUploadContainer}>
+            <MediaFileUpload
+              value={value || null}
+              onChange={onChange}
+              disabled={isSaving || userRole === 'viewer'}
+              fieldType={property.dataType as 'image' | 'file'}
+              onFocus={() => onCellFocus(row.id, property.key)}
+              onBlur={onCellBlur}
+            />
+          </div>
+          <button
+            className={styles.viewDetailButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewAssetDetail(row, e);
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            title="View asset details (Ctrl/Cmd+Click for new tab)"
+          >
+            <Image src={assetTableIcon} alt="View" width={20} height={20} className="icon-20" />
+          </button>
+        </div>
+      ) : (
+        <div className={styles.mediaFileUploadContainer}>
+          <MediaFileUpload
+            value={value || null}
+            onChange={onChange}
+            disabled={isSaving || userRole === 'viewer'}
+            fieldType={property.dataType as 'image' | 'file'}
+            onFocus={() => onCellFocus(row.id, property.key)}
+            onBlur={onCellBlur}
+          />
+        </div>
+      )}
       {/* Show expand icon for cell selection - always render, CSS controls visibility */}
       <div
         className={`${styles.cellExpandIcon} ${shouldShowExpandIcon ? '' : styles.cellExpandIconHidden}`}

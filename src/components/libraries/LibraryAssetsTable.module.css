@@ -4,6 +4,67 @@
   cursor: crosshair !important;
 }
 
+/* Section tabs: horizontal tabs above table, active = blue text + underline, inactive = gray */
+.sectionTabs {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  padding: 0 0 0 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid #e2e8f0;
+  background: #ffffff;
+}
+
+.sectionTab {
+  font-family: 'Roboto', sans-serif;
+  padding: 0.75rem 1rem;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #7D7D7D;
+  background: none;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  margin-bottom: -1px;
+  transition: color 0.2s ease;
+}
+
+.sectionTab:hover {
+  color: #475569;
+}
+
+.sectionTabActive {
+  color: #0B99FF;
+  /* font-weight: 600; */
+}
+
+.sectionTabActive::after {
+  content: '';
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  bottom: 0;
+  height: 2px;
+  background: #0B99FF;
+  border-radius: 1px 1px 0 0;
+}
+
+.sectionTabEdit {
+  padding: 0.5rem 0.75rem;
+  margin-bottom: -1px;
+}
+
+.sectionTabInput {
+  font-size: 16px;
+  font-weight: 500;
+  min-width: 120px;
+}
+
+.sectionTabInput :global(.ant-input) {
+  font-size: 16px;
+  font-weight: 500;
+}
+
 .tableContainer {
   margin-top: 1.5rem;
   margin-bottom: 260px; /* Add bottom margin to ensure context menu has space (increased by ~60px for one more row) */
@@ -1802,5 +1863,126 @@ td.cellCopy.copyBorderRight:hover {
 
 .viewerBannerClose:hover {
   color: #1f2937;
+}
+
+/* Asset Detail Drawer - right slide-out panel */
+.detailDrawerOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.2);
+  z-index: 1999;
+  animation: detailDrawerFadeIn 0.2s ease;
+}
+
+.detailDrawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 400px;
+  max-width: 90vw;
+  height: 100vh;
+  background: #ffffff;
+  box-shadow: -4px 0 24px rgba(0, 0, 0, 0.12);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  animation: detailDrawerSlideIn 0.25s ease;
+}
+
+@keyframes detailDrawerFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes detailDrawerSlideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.detailDrawerHeader {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.detailDrawerTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.detailDrawerClose {
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: none;
+  font-size: 1.5rem;
+  line-height: 1;
+  color: #64748b;
+  cursor: pointer;
+  border-radius: 0.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s, background-color 0.2s;
+}
+
+.detailDrawerClose:hover {
+  color: #0f172a;
+  background-color: #f1f5f9;
+}
+
+.detailDrawerBody {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.detailDrawerField {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.detailDrawerLabel {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.detailDrawerTypeBadge {
+  font-size: 0.75rem;
+  color: #64748b;
+  margin-bottom: 0.125rem;
+}
+
+.detailDrawerInputWrap {
+  width: 100%;
+}
+
+.detailDrawerInput {
+  border-radius: 0.375rem;
+  border: 1px solid #e2e8f0;
+}
+
+.detailDrawerInput:focus,
+.detailDrawerInput:hover {
+  border-color: #0B99FF;
+}
+
+.detailDrawerInputWrap :global(.ant-select-selector) {
+  border-radius: 0.375rem !important;
+  border: 1px solid #e2e8f0 !important;
+}
+
+.detailDrawerInputWrap :global(.ant-switch) {
+  margin: 0;
 }
 

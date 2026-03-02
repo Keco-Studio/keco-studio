@@ -53,6 +53,7 @@ import { BooleanCell } from './components/BooleanCell';
 import { EnumCell } from './components/EnumCell';
 import { MediaCell } from './components/MediaCell';
 import { TextCell } from './components/TextCell';
+import { AssetDetailDrawer } from './components/AssetDetailDrawer';
 import { AddNewRowForm } from './components/AddNewRowForm';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
@@ -78,6 +79,8 @@ export type LibraryAssetsTableProps = {
   onUpdateAssetsWithBatchBroadcast?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
+  /** 可选：双击 section 标签修改名称时回调，不传则仅本地展示不可持久化 */
+  onUpdateSection?: (sectionId: string, newName: string) => Promise<void>;
   // Real-time collaboration props
   currentUser?: {
     id: string;
@@ -112,6 +115,7 @@ export function LibraryAssetsTable({
   onUpdateAssetsWithBatchBroadcast,
   onDeleteAsset,
   onDeleteAssets,
+  onUpdateSection,
   currentUser = null,
   enableRealtime = false,
   presenceTracking,
@@ -310,6 +314,9 @@ export function LibraryAssetsTable({
   const hasSections = sections.length > 0;
   const userRole = useUserRole(params?.projectId as string | undefined, supabase);
   
+  // Asset detail drawer (right side panel)
+  const [detailDrawerRowId, setDetailDrawerRowId] = useState<string | null>(null);
+  
   // Viewer notification banner state
   const [isViewerBannerDismissed, setIsViewerBannerDismissed] = useState(false);
   
@@ -320,6 +327,12 @@ export function LibraryAssetsTable({
   useEffect(() => {
     setIsViewerBannerDismissed(false);
   }, [library?.id]);
+
+  useEffect(() => {
+    if (detailDrawerRowId && !resolvedRows.some((r) => r.id === detailDrawerRowId)) {
+      setDetailDrawerRowId(null);
+    }
+  }, [detailDrawerRowId, resolvedRows]);
 
   const {
     isAddingRow,
@@ -473,11 +486,53 @@ export function LibraryAssetsTable({
     return { groups, orderedProperties };
   }, [sections, properties]);
 
+  // Section tab: which section's columns to show (default first section)
+  const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const effectiveActiveSectionId = activeSectionId ?? groups[0]?.section.id ?? null;
+
+  // 双击 section 标签进入编辑：当前正在编辑的 section id 与输入框内容
+  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
+  const [editingSectionName, setEditingSectionName] = useState('');
+  const sectionInputRef = useRef<HTMLInputElement>(null);
+
+  const activeGroup = useMemo(
+    () => groups.find((g) => g.section.id === effectiveActiveSectionId) ?? groups[0],
+    [groups, effectiveActiveSectionId]
+  );
+  const activeProperties = activeGroup ? activeGroup.properties : orderedProperties;
+  useEffect(() => {
+    if (groups.length > 0) {
+      if (!activeSectionId) setActiveSectionId(groups[0].section.id);
+      else if (!groups.some((g) => g.section.id === activeSectionId)) setActiveSectionId(groups[0].section.id);
+    }
+  }, [groups, activeSectionId]);
+
   const handlePredefineClick = () => {
     const projectId = params.projectId as string;
     const libraryId = params.libraryId as string;
     router.push(`/${projectId}/${libraryId}/predefine`);
   };
+
+  const handleSectionEditStart = useCallback((sectionId: string, currentName: string) => {
+    setEditingSectionId(sectionId);
+    setEditingSectionName(currentName);
+    setTimeout(() => sectionInputRef.current?.focus(), 0);
+  }, []);
+
+  const handleSectionEditEnd = useCallback(async (submit: boolean) => {
+    if (!editingSectionId) return;
+    const trimmed = editingSectionName.trim();
+    if (submit && trimmed && onUpdateSection) {
+      try {
+        await onUpdateSection(editingSectionId, trimmed);
+        message.success('Section 名称已更新');
+      } catch (e) {
+        message.error('更新失败');
+      }
+    }
+    setEditingSectionId(null);
+    setEditingSectionName('');
+  }, [editingSectionId, editingSectionName, onUpdateSection, message]);
 
   const getAllRowsForCellSelection = useCallback(() => {
     return dataManager.getRowsWithOptimisticUpdates();
@@ -671,7 +726,49 @@ export function LibraryAssetsTable({
   }, []);
   useCloseOnDocumentClick(!!contextMenuRowId, closeRowContextMenu);
 
-  // Handle view asset detail
+  // Update row from detail drawer (optimistic + yRows + onUpdateAsset)
+  const handleUpdateRowFromDrawer = useCallback(async (
+    assetId: string,
+    name: string,
+    propertyValues: Record<string, any>
+  ) => {
+    if (!onUpdateAsset) return;
+    const allRows = yRows.toArray();
+    const rowIndex = allRows.findIndex((r) => r.id === assetId);
+    if (rowIndex >= 0) {
+      const existingRow = allRows[rowIndex];
+      const updatedRow = { ...existingRow, name, propertyValues };
+      yRows.delete(rowIndex, 1);
+      yRows.insert(rowIndex, [updatedRow]);
+    }
+    setOptimisticEditUpdates((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(assetId, { name, propertyValues });
+      return newMap;
+    });
+    setIsSaving(true);
+    try {
+      await onUpdateAsset(assetId, name, propertyValues);
+      setTimeout(() => {
+        setOptimisticEditUpdates((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(assetId);
+          return newMap;
+        });
+      }, 500);
+    } catch (err) {
+      setOptimisticEditUpdates((prev) => {
+        const newMap = new Map(prev);
+        newMap.delete(assetId);
+        return newMap;
+      });
+      console.error('Failed to update from drawer:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [onUpdateAsset, yRows, setOptimisticEditUpdates, setIsSaving]);
+
+  // Handle view asset detail: Ctrl/Cmd = new tab; else open right-side drawer
   const handleViewAssetDetail = (row: AssetRow, e: React.MouseEvent) => {
     const projectId = params.projectId as string;
     const libraryId = params.libraryId as string;
@@ -679,7 +776,7 @@ export function LibraryAssetsTable({
     if (e.ctrlKey || e.metaKey) {
       window.open(`/${projectId}/${libraryId}/${row.id}`, '_blank');
     } else {
-      router.push(`/${projectId}/${libraryId}/${row.id}`);
+      setDetailDrawerRowId(row.id);
     }
   };
 
@@ -693,7 +790,7 @@ export function LibraryAssetsTable({
         return;
       }
       
-      // Don't clear if clicking on modals, dropdowns, or interactive components
+      // Don't clear if clicking on modals, dropdowns, drawer, or interactive components
       if (
         target.closest('[role="dialog"]') ||
         target.closest('.ant-modal') ||
@@ -709,6 +806,8 @@ export function LibraryAssetsTable({
         target.closest('input[type="file"]') ||
         target.closest('[role="combobox"]') ||
         target.closest('[class*="mediaFileUpload"]') ||
+        target.closest('[class*="detailDrawer"]') ||
+        target.closest('[class*="detailDrawerOverlay"]') ||
         // Don't clear if clicking on context menus (BatchEditMenu or RowContextMenu)
         target.closest('.batchEditMenu') ||
         // Check if the click target has fixed positioning (context menus use fixed positioning)
@@ -753,11 +852,11 @@ export function LibraryAssetsTable({
     return <EmptyState userRole={userRole} onPredefineClick={handlePredefineClick} />;
   }
 
-  const totalColumns = 1 + orderedProperties.length;
+  const totalColumns = 1 + activeProperties.length;
 
-  // Determine column width class based on number of columns
+  // Determine column width class based on number of columns (active section when using tabs)
   const getColumnWidthClass = () => {
-    const colCount = orderedProperties.length;
+    const colCount = activeProperties.length;
     if (colCount === 1) return styles.cols1;
     if (colCount === 2) return styles.cols2;
     if (colCount === 3) return styles.cols3;
@@ -784,13 +883,50 @@ export function LibraryAssetsTable({
 
   return (
     <>
+      {hasSections && (
+        <div className={styles.sectionTabs}>
+          {groups.map((group) => (
+            editingSectionId === group.section.id ? (
+              <div key={group.section.id} className={styles.sectionTabEdit}>
+                <Input
+                  ref={sectionInputRef}
+                  value={editingSectionName}
+                  onChange={(e) => setEditingSectionName(e.target.value)}
+                  onBlur={() => handleSectionEditEnd(true)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleSectionEditEnd(true);
+                    if (e.key === 'Escape') handleSectionEditEnd(false);
+                  }}
+                  className={styles.sectionTabInput}
+                  size="small"
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            ) : (
+              <button
+                key={group.section.id}
+                type="button"
+                className={`${styles.sectionTab} ${effectiveActiveSectionId === group.section.id ? styles.sectionTabActive : ''}`}
+                onClick={() => setActiveSectionId(group.section.id)}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  handleSectionEditStart(group.section.id, group.section.name);
+                }}
+              >
+                {group.section.name}
+              </button>
+            )
+          ))}
+        </div>
+      )}
       <div className={styles.tableContainer} ref={tableContainerRef}>
         <table className={`${styles.table} ${getColumnWidthClass()}`}>
           <TableHeader
-            groups={groups}
+            groups={hasSections && activeGroup ? [activeGroup] : groups}
             allRowsSelected={headerAllRowsSelected}
             hasSomeRowsSelected={headerHasSomeRowsSelected}
             onToggleSelectAll={handleToggleSelectAllRows}
+            showSectionRow={!hasSections}
           />
           <tbody className={styles.body}>
             {resolvedRows.map((row, index) => {
@@ -828,8 +964,11 @@ export function LibraryAssetsTable({
                       <span>{index + 1}</span>
                     )}
                   </td>
-                  {orderedProperties.map((property, propertyIndex) => {
+                  {activeProperties.map((property) => {
+                    const globalPropertyIndex = orderedProperties.findIndex((p) => p.id === property.id);
+                    const propertyIndex = globalPropertyIndex >= 0 ? globalPropertyIndex : 0;
                     const isNameField = property.name === 'name' && property.dataType === 'string';
+                    const isFirstColumn = activeProperties[0]?.id === property.id;
                     const editingUsers = getUsersEditingCell(row.id, property.key);
                     const borderColor = getFirstUserColor(editingUsers);
                     
@@ -879,7 +1018,57 @@ export function LibraryAssetsTable({
                             }
                           }}
                         >
-                          <ReferenceField
+                          {isFirstColumn ? (
+                            <div className={styles.cellContent}>
+                              <ReferenceField
+                                property={property}
+                                assetId={assetId}
+                                rowId={row.id}
+                                assetNamesCache={assetNamesCache}
+                                isCellSelected={isCellSelected}
+                                avatarRefs={avatarRefs}
+                                onAvatarMouseEnter={handleAvatarMouseEnter}
+                                onAvatarMouseLeave={handleAvatarMouseLeave}
+                                onOpenReferenceModal={handleOpenReferenceModal}
+                                onFocus={() => handleCellFocus(row.id, property.key)}
+                                onBlur={handleCellBlur}
+                              />
+                              {isCellSelected && (
+                                <Image
+                                  src={tableAssetDetailIcon}
+                                  alt=""
+                                  width={16}
+                                  height={16}
+                                  className={styles.referenceDetailIcon}
+                                  onMouseEnter={(e) => {
+                                    if (assetId) {
+                                      e.stopPropagation();
+                                      handleAvatarMouseEnter(assetId, e.currentTarget);
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (assetId) {
+                                      e.stopPropagation();
+                                      handleAvatarMouseLeave();
+                                    }
+                                  }}
+                                />
+                              )}
+                              <button
+                                className={styles.viewDetailButton}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewAssetDetail(row, e);
+                                }}
+                                onDoubleClick={(e) => e.stopPropagation()}
+                                title="View asset details (Ctrl/Cmd+Click for new tab)"
+                              >
+                                <Image src={assetTableIcon} alt="View" width={20} height={20} className="icon-20" />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <ReferenceField
                             property={property}
                             assetId={assetId}
                             rowId={row.id}
@@ -912,6 +1101,8 @@ export function LibraryAssetsTable({
                                 }
                               }}
                             />
+                          )}
+                            </>
                           )}
                           {editingUsers.length > 0 && (
                             <CellPresenceAvatars users={editingUsers} />
@@ -969,6 +1160,8 @@ export function LibraryAssetsTable({
                           setHoveredCellForExpand={setHoveredCellForExpand}
                           getCopyBorderClasses={getCopyBorderClasses}
                           getSelectionBorderClasses={getSelectionBorderClasses}
+                          isFirstColumn={isFirstColumn}
+                          onViewAssetDetail={handleViewAssetDetail}
                         />
                       );
                     }
@@ -994,6 +1187,8 @@ export function LibraryAssetsTable({
                           cutSelectionBounds={cutSelectionBounds}
                           editingUsers={editingUsers}
                           borderColor={borderColor}
+                          isFirstColumn={isFirstColumn}
+                          onViewAssetDetail={handleViewAssetDetail}
                           onChange={async (newValue) => {
                             if (userRole === 'viewer' || !onUpdateAsset) return;
                             
@@ -1056,6 +1251,8 @@ export function LibraryAssetsTable({
                           cutSelectionBounds={cutSelectionBounds}
                           editingUsers={editingUsers}
                           borderColor={borderColor}
+                          isFirstColumn={isFirstColumn}
+                          onViewAssetDetail={handleViewAssetDetail}
                           onChange={async (newValue) => {
                             if (userRole === 'viewer' || !onUpdateAsset) return;
                             
@@ -1129,6 +1326,7 @@ export function LibraryAssetsTable({
                         actualRowIndex={actualRowIndex}
                         display={display}
                         isNameField={isNameField}
+                        isFirstColumn={isFirstColumn}
                         editingCell={editingCell}
                         editingCellRef={editingCellRef}
                         editingCellValue={editingCellValue}
@@ -1167,7 +1365,7 @@ export function LibraryAssetsTable({
               <tr className={styles.editRow} ref={addRowFormRef}>
                 <td className={styles.numberCell}>{rows.length + 1}</td>
                 <AddNewRowForm
-                  orderedProperties={orderedProperties}
+                  orderedProperties={activeProperties}
                   newRowData={newRowData}
                   isSaving={isSaving}
                   userRole={userRole}
@@ -1229,7 +1427,7 @@ export function LibraryAssetsTable({
                     />
                   </button>
                 </td>
-                {orderedProperties.map((property) => (
+                {activeProperties.map((property) => (
                   <td key={property.id} className={styles.cell}></td>
                 ))}
               </tr>
@@ -1266,6 +1464,27 @@ export function LibraryAssetsTable({
         onLibraryClick={params?.projectId ? (libraryId) => router.push(`/${params.projectId}/${libraryId}`) : undefined}
         containerRef={setAssetCardRef}
       />
+
+      {detailDrawerRowId && (() => {
+        const drawerRow = resolvedRows.find((r) => r.id === detailDrawerRowId);
+        if (!drawerRow) return null;
+        return (
+          <AssetDetailDrawer
+            open={true}
+            onClose={() => setDetailDrawerRowId(null)}
+            row={drawerRow}
+            orderedProperties={activeProperties}
+            userRole={userRole}
+            onUpdateRow={handleUpdateRowFromDrawer}
+            onMediaFileChange={handleEditMediaFileChange}
+            onOpenReferenceModal={handleOpenReferenceModal}
+            assetNamesCache={assetNamesCache}
+            avatarRefs={avatarRefs}
+            onAvatarMouseEnter={handleAvatarMouseEnter}
+            onAvatarMouseLeave={handleAvatarMouseLeave}
+          />
+        );
+      })()}
 
       <RowContextMenu
         visible={!!(contextMenuRowId && contextMenuPosition)}

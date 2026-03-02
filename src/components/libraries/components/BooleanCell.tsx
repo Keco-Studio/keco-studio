@@ -1,6 +1,8 @@
 import React from 'react';
+import Image from 'next/image';
 import { Switch } from 'antd';
 import { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import { CellKey } from '@/components/libraries/hooks/useCellSelection';
 import { CellPresenceAvatars } from './CellPresenceAvatars';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
@@ -51,6 +53,9 @@ export interface BooleanCellProps {
   // Border classes
   getCopyBorderClasses: (rowId: string, propertyIndex: number) => string;
   getSelectionBorderClasses: (rowId: string, propertyIndex: number) => string;
+  // View detail (first column only)
+  isFirstColumn?: boolean;
+  onViewAssetDetail?: (row: AssetRow, e: React.MouseEvent) => void;
 }
 
 /**
@@ -82,6 +87,8 @@ export const BooleanCell: React.FC<BooleanCellProps> = ({
   setHoveredCellForExpand,
   getCopyBorderClasses,
   getSelectionBorderClasses,
+  isFirstColumn,
+  onViewAssetDetail,
 }) => {
   const cellKey: CellKey = `${row.id}-${property.key}`;
   const isCellSelected = selectedCells.has(cellKey);
@@ -172,16 +179,42 @@ export const BooleanCell: React.FC<BooleanCellProps> = ({
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
-      <div className={styles.booleanToggle}>
-        <Switch
-          checked={checked}
-          disabled={userRole === 'viewer'}
-          onChange={handleSwitchChange}
-        />
-        <span className={styles.booleanLabel}>
-          {checked ? 'True' : 'False'}
-        </span>
-      </div>
+      {isFirstColumn && onViewAssetDetail ? (
+        <div className={styles.cellContent}>
+          <div className={styles.booleanToggle}>
+            <Switch
+              checked={checked}
+              disabled={userRole === 'viewer'}
+              onChange={handleSwitchChange}
+            />
+            <span className={styles.booleanLabel}>
+              {checked ? 'True' : 'False'}
+            </span>
+          </div>
+          <button
+            className={styles.viewDetailButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewAssetDetail(row, e);
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            title="View asset details (Ctrl/Cmd+Click for new tab)"
+          >
+            <Image src={assetTableIcon} alt="View" width={20} height={20} className="icon-20" />
+          </button>
+        </div>
+      ) : (
+        <div className={styles.booleanToggle}>
+          <Switch
+            checked={checked}
+            disabled={userRole === 'viewer'}
+            onChange={handleSwitchChange}
+          />
+          <span className={styles.booleanLabel}>
+            {checked ? 'True' : 'False'}
+          </span>
+        </div>
+      )}
       {/* Show collaboration avatars in cell corner */}
       {editingUsers.length > 0 && (
         <CellPresenceAvatars users={editingUsers} />
