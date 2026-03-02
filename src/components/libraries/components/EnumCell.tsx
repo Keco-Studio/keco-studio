@@ -2,6 +2,7 @@ import React from 'react';
 import { Select } from 'antd';
 import Image from 'next/image';
 import { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import { CellKey } from '@/components/libraries/hooks/useCellSelection';
 import { CellPresenceAvatars } from './CellPresenceAvatars';
 import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
@@ -54,6 +55,9 @@ export interface EnumCellProps {
   // Border classes
   getCopyBorderClasses: (rowId: string, propertyIndex: number) => string;
   getSelectionBorderClasses: (rowId: string, propertyIndex: number) => string;
+  // View detail (first column only)
+  isFirstColumn?: boolean;
+  onViewAssetDetail?: (row: AssetRow, e: React.MouseEvent) => void;
 }
 
 /**
@@ -86,6 +90,8 @@ export const EnumCell: React.FC<EnumCellProps> = ({
   setHoveredCellForExpand,
   getCopyBorderClasses,
   getSelectionBorderClasses,
+  isFirstColumn,
+  onViewAssetDetail,
 }) => {
   const cellKey: CellKey = `${row.id}-${property.key}`;
   const isCellSelected = selectedCells.has(cellKey);
@@ -192,36 +198,82 @@ export const EnumCell: React.FC<EnumCellProps> = ({
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
     >
-      <div className={styles.enumSelectWrapper}>
-        <Select
-          value={value || undefined}
-          placeholder="Select an option"
-          open={isOpen}
-          disabled={userRole === 'viewer'}
-          onOpenChange={handleOpenChange}
-          onChange={handleChange}
-          className={styles.enumSelectDisplay}
-          suffixIcon={null}
-          getPopupContainer={() => document.body}
-        >
-          {property.enumOptions?.map((option) => (
-            <Select.Option key={option} value={option} title={option}>
-              {option}
-            </Select.Option>
-          ))}
-        </Select>
-        <Image
-          src={libraryAssetTableSelectIcon}
-          alt=""
-          width={16}
-          height={16}
-          className={styles.enumSelectIcon}
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenChange(!isOpen);
-          }}
-        />
-      </div>
+      {isFirstColumn && onViewAssetDetail ? (
+        <div className={styles.cellContent}>
+          <div className={styles.enumSelectWrapper}>
+            <Select
+              value={value || undefined}
+              placeholder="Select an option"
+              open={isOpen}
+              disabled={userRole === 'viewer'}
+              onOpenChange={handleOpenChange}
+              onChange={handleChange}
+              className={styles.enumSelectDisplay}
+              suffixIcon={null}
+              getPopupContainer={() => document.body}
+            >
+              {property.enumOptions?.map((option) => (
+                <Select.Option key={option} value={option} title={option}>
+                  {option}
+                </Select.Option>
+              ))}
+            </Select>
+            <Image
+              src={libraryAssetTableSelectIcon}
+              alt=""
+              width={16}
+              height={16}
+              className={styles.enumSelectIcon}
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenChange(!isOpen);
+              }}
+            />
+          </div>
+          <button
+            className={styles.viewDetailButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              onViewAssetDetail(row, e);
+            }}
+            onDoubleClick={(e) => e.stopPropagation()}
+            title="View asset details (Ctrl/Cmd+Click for new tab)"
+          >
+            <Image src={assetTableIcon} alt="View" width={20} height={20} className="icon-20" />
+          </button>
+        </div>
+      ) : (
+        <div className={styles.enumSelectWrapper}>
+          <Select
+            value={value || undefined}
+            placeholder="Select an option"
+            open={isOpen}
+            disabled={userRole === 'viewer'}
+            onOpenChange={handleOpenChange}
+            onChange={handleChange}
+            className={styles.enumSelectDisplay}
+            suffixIcon={null}
+            getPopupContainer={() => document.body}
+          >
+            {property.enumOptions?.map((option) => (
+              <Select.Option key={option} value={option} title={option}>
+                {option}
+              </Select.Option>
+            ))}
+          </Select>
+          <Image
+            src={libraryAssetTableSelectIcon}
+            alt=""
+            width={16}
+            height={16}
+            className={styles.enumSelectIcon}
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenChange(!isOpen);
+            }}
+          />
+        </div>
+      )}
       {/* Show collaboration avatars in cell corner */}
       {editingUsers.length > 0 && (
         <CellPresenceAvatars users={editingUsers} />

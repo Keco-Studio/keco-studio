@@ -15,6 +15,8 @@ export interface TextCellProps {
   actualRowIndex: number;
   display: string | null;
   isNameField: boolean;
+  /** 当前 section 下的第一列（用于显示查看详情按钮） */
+  isFirstColumn?: boolean;
   // Cell editing state
   editingCell: { rowId: string; propertyKey: string } | null;
   editingCellRef: React.MutableRefObject<HTMLSpanElement | null>;
@@ -77,6 +79,7 @@ export const TextCell: React.FC<TextCellProps> = ({
   actualRowIndex,
   display,
   isNameField,
+  isFirstColumn = propertyIndex === 0,
   editingCell,
   editingCellRef,
   editingCellValue,
@@ -222,7 +225,7 @@ export const TextCell: React.FC<TextCellProps> = ({
         />
       ) : (
         <>
-          {propertyIndex === 0 ? (
+          {isFirstColumn ? (
             // First column: show text + view detail button
             <div className={styles.cellContent}>
               <Tooltip title={isOverflowing ? (display || '') : null} placement="topLeft" mouseEnterDelay={0.5}>

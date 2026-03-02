@@ -53,6 +53,7 @@ import { BooleanCell } from './components/BooleanCell';
 import { EnumCell } from './components/EnumCell';
 import { MediaCell } from './components/MediaCell';
 import { TextCell } from './components/TextCell';
+import { AssetDetailDrawer } from './components/AssetDetailDrawer';
 import { AddNewRowForm } from './components/AddNewRowForm';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
@@ -313,6 +314,9 @@ export function LibraryAssetsTable({
   const hasSections = sections.length > 0;
   const userRole = useUserRole(params?.projectId as string | undefined, supabase);
   
+  // Asset detail drawer (right side panel)
+  const [detailDrawerRowId, setDetailDrawerRowId] = useState<string | null>(null);
+  
   // Viewer notification banner state
   const [isViewerBannerDismissed, setIsViewerBannerDismissed] = useState(false);
   
@@ -323,6 +327,12 @@ export function LibraryAssetsTable({
   useEffect(() => {
     setIsViewerBannerDismissed(false);
   }, [library?.id]);
+
+  useEffect(() => {
+    if (detailDrawerRowId && !resolvedRows.some((r) => r.id === detailDrawerRowId)) {
+      setDetailDrawerRowId(null);
+    }
+  }, [detailDrawerRowId, resolvedRows]);
 
   const {
     isAddingRow,
@@ -716,7 +726,49 @@ export function LibraryAssetsTable({
   }, []);
   useCloseOnDocumentClick(!!contextMenuRowId, closeRowContextMenu);
 
-  // Handle view asset detail
+  // Update row from detail drawer (optimistic + yRows + onUpdateAsset)
+  const handleUpdateRowFromDrawer = useCallback(async (
+    assetId: string,
+    name: string,
+    propertyValues: Record<string, any>
+  ) => {
+    if (!onUpdateAsset) return;
+    const allRows = yRows.toArray();
+    const rowIndex = allRows.findIndex((r) => r.id === assetId);
+    if (rowIndex >= 0) {
+      const existingRow = allRows[rowIndex];
+      const updatedRow = { ...existingRow, name, propertyValues };
+      yRows.delete(rowIndex, 1);
+      yRows.insert(rowIndex, [updatedRow]);
+    }
+    setOptimisticEditUpdates((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(assetId, { name, propertyValues });
+      return newMap;
+    });
+    setIsSaving(true);
+    try {
+      await onUpdateAsset(assetId, name, propertyValues);
+      setTimeout(() => {
+        setOptimisticEditUpdates((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(assetId);
+          return newMap;
+        });
+      }, 500);
+    } catch (err) {
+      setOptimisticEditUpdates((prev) => {
+        const newMap = new Map(prev);
+        newMap.delete(assetId);
+        return newMap;
+      });
+      console.error('Failed to update from drawer:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  }, [onUpdateAsset, yRows, setOptimisticEditUpdates, setIsSaving]);
+
+  // Handle view asset detail: Ctrl/Cmd = new tab; else open right-side drawer
   const handleViewAssetDetail = (row: AssetRow, e: React.MouseEvent) => {
     const projectId = params.projectId as string;
     const libraryId = params.libraryId as string;
@@ -724,7 +776,7 @@ export function LibraryAssetsTable({
     if (e.ctrlKey || e.metaKey) {
       window.open(`/${projectId}/${libraryId}/${row.id}`, '_blank');
     } else {
-      router.push(`/${projectId}/${libraryId}/${row.id}`);
+      setDetailDrawerRowId(row.id);
     }
   };
 
@@ -738,7 +790,7 @@ export function LibraryAssetsTable({
         return;
       }
       
-      // Don't clear if clicking on modals, dropdowns, or interactive components
+      // Don't clear if clicking on modals, dropdowns, drawer, or interactive components
       if (
         target.closest('[role="dialog"]') ||
         target.closest('.ant-modal') ||
@@ -754,6 +806,8 @@ export function LibraryAssetsTable({
         target.closest('input[type="file"]') ||
         target.closest('[role="combobox"]') ||
         target.closest('[class*="mediaFileUpload"]') ||
+        target.closest('[class*="detailDrawer"]') ||
+        target.closest('[class*="detailDrawerOverlay"]') ||
         // Don't clear if clicking on context menus (BatchEditMenu or RowContextMenu)
         target.closest('.batchEditMenu') ||
         // Check if the click target has fixed positioning (context menus use fixed positioning)
@@ -914,6 +968,7 @@ export function LibraryAssetsTable({
                     const globalPropertyIndex = orderedProperties.findIndex((p) => p.id === property.id);
                     const propertyIndex = globalPropertyIndex >= 0 ? globalPropertyIndex : 0;
                     const isNameField = property.name === 'name' && property.dataType === 'string';
+                    const isFirstColumn = activeProperties[0]?.id === property.id;
                     const editingUsers = getUsersEditingCell(row.id, property.key);
                     const borderColor = getFirstUserColor(editingUsers);
                     
@@ -963,7 +1018,57 @@ export function LibraryAssetsTable({
                             }
                           }}
                         >
-                          <ReferenceField
+                          {isFirstColumn ? (
+                            <div className={styles.cellContent}>
+                              <ReferenceField
+                                property={property}
+                                assetId={assetId}
+                                rowId={row.id}
+                                assetNamesCache={assetNamesCache}
+                                isCellSelected={isCellSelected}
+                                avatarRefs={avatarRefs}
+                                onAvatarMouseEnter={handleAvatarMouseEnter}
+                                onAvatarMouseLeave={handleAvatarMouseLeave}
+                                onOpenReferenceModal={handleOpenReferenceModal}
+                                onFocus={() => handleCellFocus(row.id, property.key)}
+                                onBlur={handleCellBlur}
+                              />
+                              {isCellSelected && (
+                                <Image
+                                  src={tableAssetDetailIcon}
+                                  alt=""
+                                  width={16}
+                                  height={16}
+                                  className={styles.referenceDetailIcon}
+                                  onMouseEnter={(e) => {
+                                    if (assetId) {
+                                      e.stopPropagation();
+                                      handleAvatarMouseEnter(assetId, e.currentTarget);
+                                    }
+                                  }}
+                                  onMouseLeave={(e) => {
+                                    if (assetId) {
+                                      e.stopPropagation();
+                                      handleAvatarMouseLeave();
+                                    }
+                                  }}
+                                />
+                              )}
+                              <button
+                                className={styles.viewDetailButton}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleViewAssetDetail(row, e);
+                                }}
+                                onDoubleClick={(e) => e.stopPropagation()}
+                                title="View asset details (Ctrl/Cmd+Click for new tab)"
+                              >
+                                <Image src={assetTableIcon} alt="View" width={20} height={20} className="icon-20" />
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <ReferenceField
                             property={property}
                             assetId={assetId}
                             rowId={row.id}
@@ -996,6 +1101,8 @@ export function LibraryAssetsTable({
                                 }
                               }}
                             />
+                          )}
+                            </>
                           )}
                           {editingUsers.length > 0 && (
                             <CellPresenceAvatars users={editingUsers} />
@@ -1053,6 +1160,8 @@ export function LibraryAssetsTable({
                           setHoveredCellForExpand={setHoveredCellForExpand}
                           getCopyBorderClasses={getCopyBorderClasses}
                           getSelectionBorderClasses={getSelectionBorderClasses}
+                          isFirstColumn={isFirstColumn}
+                          onViewAssetDetail={handleViewAssetDetail}
                         />
                       );
                     }
@@ -1078,6 +1187,8 @@ export function LibraryAssetsTable({
                           cutSelectionBounds={cutSelectionBounds}
                           editingUsers={editingUsers}
                           borderColor={borderColor}
+                          isFirstColumn={isFirstColumn}
+                          onViewAssetDetail={handleViewAssetDetail}
                           onChange={async (newValue) => {
                             if (userRole === 'viewer' || !onUpdateAsset) return;
                             
@@ -1140,6 +1251,8 @@ export function LibraryAssetsTable({
                           cutSelectionBounds={cutSelectionBounds}
                           editingUsers={editingUsers}
                           borderColor={borderColor}
+                          isFirstColumn={isFirstColumn}
+                          onViewAssetDetail={handleViewAssetDetail}
                           onChange={async (newValue) => {
                             if (userRole === 'viewer' || !onUpdateAsset) return;
                             
@@ -1213,6 +1326,7 @@ export function LibraryAssetsTable({
                         actualRowIndex={actualRowIndex}
                         display={display}
                         isNameField={isNameField}
+                        isFirstColumn={isFirstColumn}
                         editingCell={editingCell}
                         editingCellRef={editingCellRef}
                         editingCellValue={editingCellValue}
@@ -1350,6 +1464,27 @@ export function LibraryAssetsTable({
         onLibraryClick={params?.projectId ? (libraryId) => router.push(`/${params.projectId}/${libraryId}`) : undefined}
         containerRef={setAssetCardRef}
       />
+
+      {detailDrawerRowId && (() => {
+        const drawerRow = resolvedRows.find((r) => r.id === detailDrawerRowId);
+        if (!drawerRow) return null;
+        return (
+          <AssetDetailDrawer
+            open={true}
+            onClose={() => setDetailDrawerRowId(null)}
+            row={drawerRow}
+            orderedProperties={activeProperties}
+            userRole={userRole}
+            onUpdateRow={handleUpdateRowFromDrawer}
+            onMediaFileChange={handleEditMediaFileChange}
+            onOpenReferenceModal={handleOpenReferenceModal}
+            assetNamesCache={assetNamesCache}
+            avatarRefs={avatarRefs}
+            onAvatarMouseEnter={handleAvatarMouseEnter}
+            onAvatarMouseLeave={handleAvatarMouseLeave}
+          />
+        );
+      })()}
 
       <RowContextMenu
         visible={!!(contextMenuRowId && contextMenuPosition)}
