@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
-import { Input, Select, Switch } from 'antd';
+import { App, Input, Select, Switch } from 'antd';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
@@ -51,6 +51,59 @@ function getTypeBadgeLabel(property: PropertyConfig): string {
   }
 }
 
+function validateValueByTypeForDrawer(
+  value: string,
+  dataType: string
+): { isValid: boolean; normalizedValue: string | number | null } {
+  if (value === '' || value === null || value === undefined) {
+    return { isValid: true, normalizedValue: null };
+  }
+
+  if (dataType === 'int') {
+    const trimmed = value.trim();
+    if (trimmed === '' || trimmed === '-') {
+      return { isValid: true, normalizedValue: null };
+    }
+    if (trimmed.includes('.')) {
+      return { isValid: false, normalizedValue: null };
+    }
+    const intValue = parseInt(trimmed, 10);
+    if (Number.isNaN(intValue)) {
+      return { isValid: false, normalizedValue: null };
+    }
+    return { isValid: true, normalizedValue: intValue };
+  }
+
+  if (dataType === 'float') {
+    const trimmed = value.trim();
+    if (trimmed === '' || trimmed === '-' || trimmed === '.') {
+      return { isValid: true, normalizedValue: null };
+    }
+    if (!trimmed.includes('.')) {
+      return { isValid: false, normalizedValue: null };
+    }
+    const floatValue = parseFloat(trimmed);
+    if (Number.isNaN(floatValue)) {
+      return { isValid: false, normalizedValue: null };
+    }
+    return { isValid: true, normalizedValue: floatValue };
+  }
+
+  if (dataType === 'date') {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+      return { isValid: true, normalizedValue: null };
+    }
+    const timestamp = Date.parse(trimmed);
+    if (Number.isNaN(timestamp)) {
+      return { isValid: false, normalizedValue: null };
+    }
+    return { isValid: true, normalizedValue: trimmed };
+  }
+
+  return { isValid: true, normalizedValue: value === '' ? null : value };
+}
+
 export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
   open,
   onClose,
@@ -67,6 +120,7 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
 }) => {
   const isViewer = userRole === 'viewer';
   const readOnly = isViewer;
+  const { message } = App.useApp();
 
   const [localTextValues, setLocalTextValues] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -98,18 +152,37 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
       if (!property) return;
       const isNameField = property.name === 'name' && property.dataType === 'string';
       let value: string | number | null = raw === '' ? null : raw;
-      if (property.dataType === 'int' && raw !== '' && raw !== '-') {
-        const v = parseInt(raw, 10);
-        if (!Number.isNaN(v)) value = v;
-      } else if (property.dataType === 'float' && raw !== '' && raw !== '-' && raw !== '.') {
-        const v = parseFloat(raw);
-        if (!Number.isNaN(v)) value = v;
+
+      if (
+        property.dataType === 'int' ||
+        property.dataType === 'float' ||
+        property.dataType === 'date'
+      ) {
+        const { isValid, normalizedValue } = validateValueByTypeForDrawer(
+          raw,
+          property.dataType
+        );
+        if (!isValid) {
+          message.error('datatype mismatch');
+          setLocalTextValues((prev) => ({
+            ...prev,
+            [property.key]:
+              row.propertyValues[property.key] !== null &&
+              row.propertyValues[property.key] !== undefined &&
+              row.propertyValues[property.key] !== ''
+                ? String(row.propertyValues[property.key])
+                : '',
+          }));
+          return;
+        }
+        value = normalizedValue;
       }
+
       const assetName = isNameField && value !== null ? String(value) : row.name || 'Untitled';
       const updatedPropertyValues = { ...row.propertyValues, [propertyKey]: value };
       onUpdateRow(row.id, assetName, updatedPropertyValues);
     },
-    [row, orderedProperties, onUpdateRow, readOnly]
+    [row, orderedProperties, onUpdateRow, readOnly, message]
   );
 
   const handleInputBlur = useCallback(
