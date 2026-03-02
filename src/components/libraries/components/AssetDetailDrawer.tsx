@@ -109,6 +109,21 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
 
   if (!open) return null;
 
+  const firstProp = orderedProperties[0];
+  const firstValue = firstProp ? row.propertyValues[firstProp.key] : undefined;
+  const getTitleDisplay = (): string => {
+    if (!firstProp || firstValue === null || firstValue === undefined || firstValue === '')
+      return row.name || 'Untitled';
+    const val = firstValue;
+    if (firstProp.dataType === 'reference' && typeof val === 'string') {
+      return (assetNamesCache[val] ?? val) || (row.name || 'Untitled');
+    }
+    if (val && typeof val === 'object' && 'fileName' in (val as object)) {
+      return ((val as MediaFileMetadata).fileName ?? row.name) || 'Untitled';
+    }
+    return String(val) || row.name || 'Untitled';
+  };
+
   return (
     <>
       <div
@@ -121,7 +136,7 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
       />
       <div className={styles.detailDrawer} role="dialog" aria-label="Asset detail">
         <div className={styles.detailDrawerHeader}>
-          <h2 className={styles.detailDrawerTitle}>{row.name || 'Untitled'}</h2>
+          <h2 className={styles.detailDrawerTitle}>{getTitleDisplay()}</h2>
           <button
             type="button"
             className={styles.detailDrawerClose}
