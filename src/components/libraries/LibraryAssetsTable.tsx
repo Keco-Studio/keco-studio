@@ -525,9 +525,9 @@ export function LibraryAssetsTable({
     if (submit && trimmed && onUpdateSection) {
       try {
         await onUpdateSection(editingSectionId, trimmed);
-        message.success('Section 名称已更新');
+        message.success('Section name updated');
       } catch (e) {
-        message.error('更新失败');
+        message.error('Update failed');
       }
     }
     setEditingSectionId(null);

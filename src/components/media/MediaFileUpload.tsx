@@ -39,6 +39,16 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
   const fileNameRef = useRef<HTMLSpanElement>(null);
   const [isFileNameOverflowing, setIsFileNameOverflowing] = useState(false);
 
+  const getTooltipPopupContainer = (triggerNode: HTMLElement) => {
+    // If inside asset detail drawer, mount tooltip to the drawer element
+    const drawerElement = triggerNode.closest('[class*="detailDrawer"]');
+    if (drawerElement instanceof HTMLElement) {
+      return drawerElement;
+    }
+    // Fallback to body so tooltips inside table are not clipped by cell overflow
+    return document.body;
+  };
+
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -237,7 +247,12 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
                 <Image src={assetFileIcon} alt="" width={24} height={24} className="icon-24" />
               </div>
             )}
-            <Tooltip title={isFileNameOverflowing ? value.fileName : null} placement="topLeft" mouseEnterDelay={0.5}>
+            <Tooltip
+              title={value.fileName}
+              placement="topLeft"
+              mouseEnterDelay={0.5}
+              getPopupContainer={getTooltipPopupContainer}
+            >
               <span ref={fileNameRef} className={styles.uploadedFileName}>{value.fileName}</span>
             </Tooltip>
           </div>
