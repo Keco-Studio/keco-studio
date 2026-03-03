@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import Image from 'next/image';
-import { App, Input, Select, Switch } from 'antd';
+import { App, Input, Select, Switch, Tooltip } from 'antd';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
@@ -210,6 +210,7 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
     }
     return String(val) || row.name || 'Untitled';
   };
+  const titleDisplay = getTitleDisplay();
 
   return (
     <>
@@ -223,7 +224,13 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
       />
       <div className={styles.detailDrawer} role="dialog" aria-label="Asset detail">
         <div className={styles.detailDrawerHeader}>
-          <h2 className={styles.detailDrawerTitle}>{getTitleDisplay()}</h2>
+          <Tooltip
+            title={titleDisplay}
+            zIndex={2100}
+            getPopupContainer={(triggerNode) => triggerNode.parentElement ?? document.body}
+          >
+            <h2 className={styles.detailDrawerTitle}>{titleDisplay}</h2>
+          </Tooltip>
           <button
             type="button"
             className={styles.detailDrawerClose}
@@ -387,19 +394,25 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                   {getTypeBadgeLabel(property)}
                 </span>
                 <div className={styles.detailDrawerInputWrap}>
-                  <Input
-                    value={inputValue}
-                    onChange={(e) => {
-                      let v = e.target.value;
-                      if (property.dataType === 'int') v = v.replace(/[^\d-]/g, '');
-                      else if (property.dataType === 'float') v = v.replace(/[^\d.-]/g, '');
-                      setLocalTextValues((prev) => ({ ...prev, [property.key]: v }));
-                    }}
-                    onBlur={(e) => handleInputBlur(property, e)}
-                    onPressEnter={(e) => (e.target as HTMLInputElement).blur()}
-                    disabled={readOnly}
-                    className={styles.detailDrawerInput}
-                  />
+                  <Tooltip
+                    title={inputValue}
+                    zIndex={2100}
+                    getPopupContainer={(triggerNode) => triggerNode.parentElement ?? document.body}
+                  >
+                    <Input
+                      value={inputValue}
+                      onChange={(e) => {
+                        let v = e.target.value;
+                        if (property.dataType === 'int') v = v.replace(/[^\d-]/g, '');
+                        else if (property.dataType === 'float') v = v.replace(/[^\d.-]/g, '');
+                        setLocalTextValues((prev) => ({ ...prev, [property.key]: v }));
+                      }}
+                      onBlur={(e) => handleInputBlur(property, e)}
+                      onPressEnter={(e) => (e.target as HTMLInputElement).blur()}
+                      disabled={readOnly}
+                      className={styles.detailDrawerInput}
+                    />
+                  </Tooltip>
                 </div>
               </div>
             );

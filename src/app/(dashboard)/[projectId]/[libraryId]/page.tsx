@@ -25,7 +25,9 @@ import {
   deleteAsset,
   deleteAssets,
   updateSectionName,
+  addLibraryField,
 } from '@/lib/services/libraryAssetsService';
+import type { AddColumnFormPayload } from '@/components/libraries/components/AddColumnModal';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
@@ -35,6 +37,7 @@ import { getVersionsByLibrary } from '@/lib/services/versionService';
 import type { LibraryVersion } from '@/lib/types/version';
 import { YjsProvider } from '@/lib/contexts/YjsContext';
 import styles from './page.module.css';
+import addColumIcon from "@/assets/images/addColumIcon.svg";
 
 type FieldDef = {
   id: string;
@@ -153,21 +156,19 @@ export default function LibraryPage() {
   useEffect(() => {
     if (!libraryId) return;
     if (selectedVersionId && selectedVersionId !== '__current__') return;
-    if (assetsLoading) return;
-    if (assetRows.length > 0) return;
     if (hasInitializedBlankRowsRef.current) return;
-    if (!librarySchema || !tableProperties || tableProperties.length === 0) return;
     if (userRole === 'viewer') return;
 
-    const initBlankRows = async () => {
+    const initDefaultData = async () => {
       try {
+        // 1) 若库中已经有资产，则不做任何事
         const { count, error } = await supabase
           .from('library_assets')
           .select('id', { count: 'exact', head: true })
           .eq('library_id', libraryId);
 
         if (error) {
-          console.error('Failed to check existing assets before initializing blank rows', error);
+          console.error('Failed to check existing assets before initializing default data', error);
           return;
         }
         if ((count ?? 0) > 0) {
@@ -175,29 +176,61 @@ export default function LibraryPage() {
           return;
         }
 
-        hasInitializedBlankRowsRef.current = true;
-        const now = Date.now();
-        for (let i = 0; i < 3; i++) {
-          await contextCreateAsset('', {}, { createdAt: new Date(now + i) });
+        const props = librarySchema?.properties ?? [];
+
+        if (!librarySchema || props.length === 0) {
+          // 2) no schema and no assets: create default section1 / field ID(String) + two records 00001, 00002
+          const sectionId = `${libraryId}:section1`;
+
+          const { data: newField, error: fieldErr } = await supabase
+            .from('library_field_definitions')
+            .insert({
+              library_id: libraryId,
+              section_id: sectionId,
+              section: 'section1',
+              label: 'ID',
+              data_type: 'string',
+              order_index: 0,
+              required: false,
+            })
+            .select('id')
+            .single();
+
+          if (fieldErr) {
+            console.error('Failed to create default section/field', fieldErr);
+            return;
+          }
+
+          const fieldId = newField.id as string;
+
+          // Update the table with the latest schema (including the ID field)
+          await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+
+          const now = Date.now();
+          await contextCreateAsset('00001', { [fieldId]: '00001' }, { createdAt: new Date(now) });
+          await contextCreateAsset('00002', { [fieldId]: '00002' }, { createdAt: new Date(now + 1) });
+
+          // Notify the sidebar to refresh etc.
+          window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
+        } else {
+          // 3) already has schema but no assets: don't create 3 empty rows, avoid extra empty rows in the table
         }
 
-        window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
+        hasInitializedBlankRowsRef.current = true;
       } catch (e) {
-        console.error('Failed to initialize blank asset rows', e);
+        console.error('Failed to initialize default library data', e);
         hasInitializedBlankRowsRef.current = false;
       }
     };
 
-    void initBlankRows();
+    void initDefaultData();
   }, [
-    assetRows.length,
-    assetsLoading,
     contextCreateAsset,
     libraryId,
     librarySchema,
+    queryClient,
     selectedVersionId,
     supabase,
-    tableProperties,
     userRole,
   ]);
 
@@ -378,6 +411,31 @@ export default function LibraryPage() {
     async (sectionId: string, newName: string) => {
       await updateSectionName(supabase, sectionId, newName);
       queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+    },
+    [supabase, libraryId, queryClient]
+  );
+
+  const handleAddProperty = useCallback(
+    async (
+      sectionId: string,
+      sectionName: string,
+      payload: AddColumnFormPayload
+    ) => {
+      await addLibraryField(supabase, libraryId, sectionId, sectionName, {
+        label: payload.name,
+        dataType: payload.dataType as PropertyConfig['dataType'],
+        required: false,
+        enumOptions:
+          payload.dataType === 'enum'
+            ? (payload.enumOptions ?? [])
+            : undefined,
+        referenceLibraries:
+          payload.dataType === 'reference'
+            ? (payload.referenceLibraries ?? [])
+            : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+      showSuccessToast('Column added');
     },
     [supabase, libraryId, queryClient]
   );
@@ -670,6 +728,7 @@ export default function LibraryPage() {
               properties={tableProperties}
               overrideRows={versionAssetRows}
               onUpdateSection={handleUpdateSection}
+              onAddProperty={handleAddProperty}
             />
           </YjsProvider>
         </div>
