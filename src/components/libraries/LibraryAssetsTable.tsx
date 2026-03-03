@@ -55,6 +55,7 @@ import { MediaCell } from './components/MediaCell';
 import { TextCell } from './components/TextCell';
 import { AssetDetailDrawer } from './components/AssetDetailDrawer';
 import { AddNewRowForm } from './components/AddNewRowForm';
+import { AddColumnModal, type AddColumnFormPayload } from './components/AddColumnModal';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
 import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
@@ -81,6 +82,8 @@ export type LibraryAssetsTableProps = {
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
   /** 可选：双击 section 标签修改名称时回调，不传则仅本地展示不可持久化 */
   onUpdateSection?: (sectionId: string, newName: string) => Promise<void>;
+  /** 可选：表格内「新增列」弹窗提交时回调；不传则点击新增列按钮会跳转到 predefine 页 */
+  onAddProperty?: (sectionId: string, sectionName: string, payload: AddColumnFormPayload) => Promise<void>;
   // Real-time collaboration props
   currentUser?: {
     id: string;
@@ -116,6 +119,7 @@ export function LibraryAssetsTable({
   onDeleteAsset,
   onDeleteAssets,
   onUpdateSection,
+  onAddProperty,
   currentUser = null,
   enableRealtime = false,
   presenceTracking,
@@ -138,6 +142,8 @@ export function LibraryAssetsTable({
   // Context menu state for right-click delete
   const [contextMenuRowId, setContextMenuRowId] = useState<string | null>(null);
   const [contextMenuPosition, setContextMenuPosition] = useState<{ x: number; y: number } | null>(null);
+  const [addColumnModalOpen, setAddColumnModalOpen] = useState(false);
+  const addColumnButtonRef = useRef<HTMLButtonElement>(null);
   
   // Batch edit context menu state
   const [batchEditMenuVisible, setBatchEditMenuVisible] = useState(false);
@@ -511,6 +517,11 @@ export function LibraryAssetsTable({
     const projectId = params.projectId as string;
     const libraryId = params.libraryId as string;
     router.push(`/${projectId}/${libraryId}/predefine`);
+  };
+
+  const handleAddColumnClick = () => {
+    if (onAddProperty) setAddColumnModalOpen(true);
+    else handlePredefineClick();
   };
 
   const handleSectionEditStart = useCallback((sectionId: string, currentName: string) => {
@@ -927,6 +938,9 @@ export function LibraryAssetsTable({
             hasSomeRowsSelected={headerHasSomeRowsSelected}
             onToggleSelectAll={handleToggleSelectAllRows}
             showSectionRow={!hasSections}
+            showAddColumn={userRole === 'admin' || userRole === 'editor'}
+            onAddColumnClick={handleAddColumnClick}
+            addColumnButtonRef={addColumnButtonRef}
           />
           <tbody className={styles.body}>
             {resolvedRows.map((row, index) => {
@@ -1357,6 +1371,9 @@ export function LibraryAssetsTable({
                       />
                     );
                   })}
+                  {(userRole === 'admin' || userRole === 'editor') && (
+                    <td className={styles.addColumnCell} />
+                  )}
                 </tr>
               );
             })}
@@ -1379,6 +1396,9 @@ export function LibraryAssetsTable({
                   handleAvatarMouseLeave={handleAvatarMouseLeave}
                   setOpenEnumSelects={setOpenEnumSelects}
                 />
+                {(userRole === 'admin' || userRole === 'editor') && (
+                  <td className={styles.addColumnCell} />
+                )}
               </tr>
             ) : (userRole === 'admin' || userRole === 'editor') ? (
               <tr 
@@ -1430,6 +1450,7 @@ export function LibraryAssetsTable({
                 {activeProperties.map((property) => (
                   <td key={property.id} className={styles.cell}></td>
                 ))}
+                <td className={styles.addColumnCell} />
               </tr>
             ) : null}
           </tbody>
@@ -1444,6 +1465,20 @@ export function LibraryAssetsTable({
           referenceLibraries={referenceModalProperty.referenceLibraries || []}
           onClose={handleCloseReferenceModal}
           onApply={handleApplyReference}
+        />
+      )}
+
+      {/* Add Column modal - floating over table */}
+      {onAddProperty && activeGroup && (
+        <AddColumnModal
+          open={addColumnModalOpen}
+          onClose={() => setAddColumnModalOpen(false)}
+          sectionId={activeGroup.section.id}
+          sectionName={activeGroup.section.name}
+          anchorRef={addColumnButtonRef}
+          onSubmit={async (payload) => {
+            await onAddProperty(activeGroup.section.id, activeGroup.section.name, payload);
+          }}
         />
       )}
 

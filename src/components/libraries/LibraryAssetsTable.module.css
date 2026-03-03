@@ -76,6 +76,52 @@
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
+.addColumnButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: none;
+  padding: 0;
+  background-color: #ffffff;
+  cursor: pointer;
+  transition: background-color 0.2s ease, transform 0.05s ease;
+}
+
+.addColumnButton:hover {
+  background-color: #0B99FF26;
+}
+
+.addColumnButton:active {
+  transform: scale(0.96);
+}
+
+.addColumnButtonIcon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.addColumnHeaderCell {
+  text-align: center;
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  background: #F9FAFB;
+  border-left: none;
+  border-right: 1px solid #DDE1E6;
+}
+
+.addColumnCell {
+  width: 40px !important;
+  min-width: 40px !important;
+  max-width: 40px !important;
+  border-left: none;
+  border-right: 1px solid #DDE1E6;
+}
+
 /* Custom scrollbar for table container - thin and elegant */
 .tableContainer::-webkit-scrollbar {
   height: 6px;
@@ -272,8 +318,65 @@
   white-space: nowrap;
 }
 
+.propertyHeaderIconWrapper {
+  width: 16px;
+  height: 16px;
+  border-radius: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
 .propertyHeaderIcon {
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.propertyHeaderContent:hover .propertyHeaderIconWrapper {
+  background-color: rgba(11, 153, 255, 0.08);
+  opacity: 1;
+}
+
+.propertyHeaderContent:hover .propertyHeaderIcon {
+  opacity: 1;
+}
+
+.headerContextMenu {
+  position: fixed;
+  z-index: 2000;
+  min-width: 180px;
+  padding: 6px 0 8px;
+  background-color: #ffffff;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  border: 1px solid #E5E7EB;
+}
+
+.headerContextMenuLabel {
+  padding: 4px 12px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: #9CA3AF;
+}
+
+.headerContextMenuButton {
+  width: 100%;
+  padding: 6px 12px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font-size: 13px;
+  color: #111827;
+  cursor: pointer;
+}
+
+.headerContextMenuButton:hover {
+  background-color: #E5F0FF;
 }
 
 .row {
@@ -1931,6 +2034,11 @@ td.cellCopy.copyBorderRight:hover {
   font-size: 1.25rem;
   font-weight: 700;
   color: #0f172a;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .detailDrawerClose {

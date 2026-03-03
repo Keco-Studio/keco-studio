@@ -235,6 +235,132 @@ export async function updateSectionName(
   if (error) throw error;
 }
 
+/** 在指定 section 下新增一个字段（用于表格内「新增列」弹窗）。sectionId 为前端格式（libraryId:sectionName），内部会按 library_id + section 解析出 DB 的 section_id。 */
+export async function addLibraryField(
+  supabase: SupabaseClient,
+  libraryId: string,
+  _sectionId: string,
+  sectionName: string,
+  payload: {
+    label: string;
+    dataType: PropertyConfig['dataType'];
+    required?: boolean;
+    enumOptions?: string[];
+    referenceLibraries?: string[];
+  }
+): Promise<{ id: string }> {
+  await verifyLibraryUpdatePermission(supabase, libraryId);
+
+  const { data: existingRows, error: fetchError } = await supabase
+    .from('library_field_definitions')
+    .select('section_id, order_index')
+    .eq('library_id', libraryId)
+    .eq('section', sectionName)
+    .order('order_index', { ascending: false });
+
+  if (fetchError) throw fetchError;
+  const existing = (existingRows || []) as { section_id: string; order_index: number }[];
+  const nextOrderIndex = existing.length > 0 ? existing[0].order_index + 1 : 0;
+  const dbSectionId =
+    existing.length > 0 ? existing[0].section_id : `${libraryId}:${sectionName}`;
+
+  const enumOptions =
+    payload.dataType === 'enum'
+      ? (payload.enumOptions ?? []).map((v) => v.trim()).filter((v) => v.length > 0)
+      : null;
+
+  const referenceLibraries =
+    payload.dataType === 'reference'
+      ? (payload.referenceLibraries ?? [])
+      : null;
+
+  const { data: inserted, error } = await supabase
+    .from('library_field_definitions')
+    .insert({
+      library_id: libraryId,
+      section_id: dbSectionId,
+      section: sectionName,
+      label: payload.label.trim(),
+      data_type: payload.dataType ?? 'string',
+      required: payload.required ?? false,
+      order_index: nextOrderIndex,
+      enum_options: enumOptions,
+      reference_libraries: referenceLibraries,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+  return { id: inserted.id };
+}
+
+/** 删除单个字段（列），会依赖数据库外键自动级联删除该列下所有资产值 */
+export async function deleteLibraryField(
+  supabase: SupabaseClient,
+  libraryId: string,
+  fieldId: string
+): Promise<void> {
+  await verifyLibraryUpdatePermission(supabase, libraryId);
+
+  const { error } = await supabase
+    .from('library_field_definitions')
+    .delete()
+    .eq('library_id', libraryId)
+    .eq('id', fieldId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+}
+
+/** 更新单个字段（列）的基础信息和类型配置 */
+export async function updateLibraryField(
+  supabase: SupabaseClient,
+  libraryId: string,
+  fieldId: string,
+  payload: {
+    label: string;
+    dataType: PropertyConfig['dataType'];
+    enumOptions?: string[];
+    referenceLibraries?: string[];
+  }
+): Promise<void> {
+  await verifyLibraryUpdatePermission(supabase, libraryId);
+
+  const enumOptions =
+    payload.dataType === 'enum'
+      ? (payload.enumOptions ?? []).map((v) => v.trim()).filter((v) => v.length > 0)
+      : null;
+
+  const referenceLibraries =
+    payload.dataType === 'reference'
+      ? (payload.referenceLibraries ?? [])
+      : null;
+
+  const { error } = await supabase
+    .from('library_field_definitions')
+    .update({
+      label: payload.label.trim(),
+      data_type: payload.dataType ?? 'string',
+      enum_options: enumOptions,
+      reference_libraries: referenceLibraries,
+    })
+    .eq('library_id', libraryId)
+    .eq('id', fieldId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+}
+
 // T009: Load assets and property values for a library and aggregate into AssetRow[].
 export async function getLibraryAssetsWithProperties(
   supabase: SupabaseClient,
