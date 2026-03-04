@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Input, Select } from 'antd';
+import { Input, Select, Checkbox } from 'antd';
 import Image from 'next/image';
 import { useParams } from 'next/navigation';
 import { getFieldTypeIcon, FIELD_TYPE_OPTIONS } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { listLibraries, type Library } from '@/lib/services/libraryService';
+import { listFolders, type Folder } from '@/lib/services/folderService';
 import styles from './AddColumnModal.module.css';
 
 const DESCRIPTION_MAX = 50;
@@ -52,11 +53,16 @@ export function AddColumnModal({
   const [referenceLibraries, setReferenceLibraries] = useState<string[]>([]);
   const [libraries, setLibraries] = useState<Library[]>([]);
   const [loadingLibraries, setLoadingLibraries] = useState(false);
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [loadingFolders, setLoadingFolders] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameInputRef = useRef<any>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({});
+  const [referenceFolderFilter, setReferenceFolderFilter] = useState<'all' | 'root' | string>('all');
+  const [referenceSearch, setReferenceSearch] = useState('');
+  const [referenceDropdownOpen, setReferenceDropdownOpen] = useState(false);
 
   const updatePosition = () => {
     // 无锚点时，居中显示
@@ -143,21 +149,72 @@ export function AddColumnModal({
     if (!open || dataType !== 'reference' || !projectId) return;
 
     setLoadingLibraries(true);
+    setLoadingFolders(true);
     const loadLibraries = async () => {
       try {
-        const libs = await listLibraries(supabase, projectId);
-        const filtered = libs.filter((lib) => lib.id !== currentLibraryId);
-        setLibraries(filtered);
+        const [libs, fds] = await Promise.all([
+          listLibraries(supabase, projectId),
+          listFolders(supabase, projectId),
+        ]);
+        const filteredLibs = libs.filter((lib) => lib.id !== currentLibraryId);
+        setLibraries(filteredLibs);
+        setFolders(fds);
       } catch (e) {
         console.error('Failed to load libraries for reference field', e);
         setLibraries([]);
+        setFolders([]);
       } finally {
         setLoadingLibraries(false);
+        setLoadingFolders(false);
       }
     };
 
     void loadLibraries();
   }, [open, dataType, projectId, currentLibraryId, supabase]);
+
+  const { librariesWithFolder, librariesWithoutFolder, foldersById } = useMemo(() => {
+    const byId = new Map<string, Folder>();
+    folders.forEach((folder) => {
+      byId.set(folder.id, folder);
+    });
+
+    const withFolder: Library[] = [];
+    const withoutFolder: Library[] = [];
+
+    libraries.forEach((lib) => {
+      if (lib.folder_id && byId.has(lib.folder_id)) {
+        withFolder.push(lib);
+      } else {
+        withoutFolder.push(lib);
+      }
+    });
+
+    return {
+      librariesWithFolder: withFolder,
+      librariesWithoutFolder: withoutFolder,
+      foldersById: byId,
+    };
+  }, [folders, libraries]);
+
+  const filteredReferenceLibraries = useMemo(() => {
+    const keyword = referenceSearch.trim().toLowerCase();
+
+    const base = libraries.filter((lib) => {
+      if (referenceFolderFilter === 'all') return true;
+      if (referenceFolderFilter === 'root') {
+        return !lib.folder_id || !foldersById.has(lib.folder_id);
+      }
+      return lib.folder_id === referenceFolderFilter;
+    });
+
+    if (!keyword) return base;
+
+    return base.filter((lib) => {
+      const name = lib.name.toLowerCase();
+      const folderName = lib.folder_id ? foldersById.get(lib.folder_id)?.name.toLowerCase() ?? '' : '';
+      return name.includes(keyword) || folderName.includes(keyword);
+    });
+  }, [libraries, referenceFolderFilter, referenceSearch, foldersById]);
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
@@ -367,7 +424,7 @@ export function AddColumnModal({
                 style={{ width: '100%' }}
                 placeholder="Select libraries to reference"
                 value={referenceLibraries}
-                loading={loadingLibraries}
+                loading={loadingLibraries || loadingFolders}
                 onChange={(values) => {
                   setReferenceLibraries(values as string[]);
                   setError(null);
@@ -378,6 +435,112 @@ export function AddColumnModal({
                   value: lib.id,
                 }))}
                 maxTagCount="responsive"
+                open={referenceDropdownOpen}
+                onDropdownVisibleChange={(openDropdown) => {
+                  setReferenceDropdownOpen(openDropdown);
+                  if (!openDropdown) {
+                    setReferenceFolderFilter('all');
+                    setReferenceSearch('');
+                  }
+                }}
+                dropdownRender={() => (
+                  <div className={styles.referenceDropdown}>
+                    <div className={styles.referenceDropdownContent}>
+                      <Input
+                        allowClear
+                        placeholder="Search libraries"
+                        value={referenceSearch}
+                        onChange={(e) => setReferenceSearch(e.target.value)}
+                        className={styles.referenceSearchInput}
+                      />
+                      <div className={styles.referenceFolderTabs}>
+                        <button
+                          type="button"
+                          className={`${styles.referenceFolderTab} ${
+                            referenceFolderFilter === 'all' ? styles.referenceFolderTabActive : ''
+                          }`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setReferenceFolderFilter('all');
+                          }}
+                        >
+                          All folders
+                        </button>
+                        {folders.map((folder) => (
+                          <button
+                            key={folder.id}
+                            type="button"
+                            className={`${styles.referenceFolderTab} ${
+                              referenceFolderFilter === folder.id ? styles.referenceFolderTabActive : ''
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReferenceFolderFilter(folder.id);
+                            }}
+                          >
+                            {folder.name}
+                          </button>
+                        ))}
+                        {librariesWithoutFolder.length > 0 && (
+                          <button
+                            type="button"
+                            className={`${styles.referenceFolderTab} ${
+                              referenceFolderFilter === 'root' ? styles.referenceFolderTabActive : ''
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setReferenceFolderFilter('root');
+                            }}
+                          >
+                            No folder
+                          </button>
+                        )}
+                      </div>
+                      <div className={styles.referenceOptionsList}>
+                        {loadingLibraries || loadingFolders ? (
+                          <div className={styles.referenceEmptyHint}>Loading libraries…</div>
+                        ) : filteredReferenceLibraries.length === 0 ? (
+                          <div className={styles.referenceEmptyHint}>No libraries found.</div>
+                        ) : (
+                          filteredReferenceLibraries.map((lib) => {
+                            const checked = referenceLibraries.includes(lib.id);
+                            const folderName =
+                              lib.folder_id && foldersById.get(lib.folder_id)
+                                ? foldersById.get(lib.folder_id)!.name
+                                : librariesWithFolder.length > 0
+                                ? 'No folder'
+                                : '';
+                            return (
+                              <label
+                                key={lib.id}
+                                className={styles.referenceOptionRow}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <Checkbox
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    const isChecked = e.target.checked;
+                                    setReferenceLibraries((prev) => {
+                                      const next = isChecked
+                                        ? [...prev, lib.id]
+                                        : prev.filter((id) => id !== lib.id);
+                                      return Array.from(new Set(next));
+                                    });
+                                    setError(null);
+                                  }}
+                                />
+                                <span className={styles.referenceOptionLabel}>{lib.name}</span>
+                                {folderName && (
+                                  <span className={styles.referenceOptionFolderTag}>{folderName}</span>
+                                )}
+                              </label>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
               />
               {!loadingLibraries && referenceLibraries.length === 0 && (
                 <span className={styles.hint}>

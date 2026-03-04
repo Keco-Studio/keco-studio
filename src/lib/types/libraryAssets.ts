@@ -17,6 +17,7 @@ export type PropertyConfig = {
   sectionId: string;
   key: string;
   name: string;
+  description?: string | null;
   valueType: 'string' | 'number' | 'boolean' | 'enum' | 'tag' | 'other';
   dataType?: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference';
   referenceLibraries?: string[]; // For reference type: which libraries can be referenced

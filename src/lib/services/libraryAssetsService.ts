@@ -21,6 +21,7 @@ type FieldDefinitionRow = {
   library_id: string;
   section: string;
   label: string;
+  description: string | null;
   data_type: 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference';
   enum_options: string[] | null;
   reference_libraries: string[] | null; // Array of library IDs that can be referenced
@@ -184,6 +185,7 @@ export async function getLibrarySchema(
       sectionId: grouped.section.id,
       key: row.id, // propertyValues keyed by field definition id
       name: row.label,
+      description: row.description,
       valueType: mapDataTypeToValueType(row.data_type),
       dataType: row.data_type,
       referenceLibraries: row.reference_libraries || undefined,
@@ -244,6 +246,7 @@ export async function addLibraryField(
   payload: {
     label: string;
     dataType: PropertyConfig['dataType'];
+    description?: string;
     required?: boolean;
     enumOptions?: string[];
     referenceLibraries?: string[];
@@ -281,6 +284,7 @@ export async function addLibraryField(
       section_id: dbSectionId,
       section: sectionName,
       label: payload.label.trim(),
+      description: payload.description?.trim() || null,
       data_type: payload.dataType ?? 'string',
       required: payload.required ?? false,
       order_index: nextOrderIndex,
@@ -326,6 +330,7 @@ export async function updateLibraryField(
   payload: {
     label: string;
     dataType: PropertyConfig['dataType'];
+    description?: string;
     enumOptions?: string[];
     referenceLibraries?: string[];
   }
@@ -346,6 +351,7 @@ export async function updateLibraryField(
     .from('library_field_definitions')
     .update({
       label: payload.label.trim(),
+      description: payload.description?.trim() || null,
       data_type: payload.dataType ?? 'string',
       enum_options: enumOptions,
       reference_libraries: referenceLibraries,
