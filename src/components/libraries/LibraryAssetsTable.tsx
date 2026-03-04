@@ -536,7 +536,11 @@ export function LibraryAssetsTable({
     if (submit && trimmed && onUpdateSection) {
       try {
         await onUpdateSection(editingSectionId, trimmed);
-        message.success('Section name updated');
+        setToastMessage({
+          message: 'Section name updated.',
+          type: 'success',
+        });
+        setTimeout(() => setToastMessage(null), 2000);
       } catch (e) {
         message.error('Update failed');
       }

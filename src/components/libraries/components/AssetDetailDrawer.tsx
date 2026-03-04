@@ -379,10 +379,15 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
             }
 
             const inputValue = localTextValues[property.key] ?? displayValue;
+            const isStringType = property.dataType === 'string';
             return (
               <div key={property.id} className={styles.detailDrawerField}>
                 <label className={styles.detailDrawerLabel}>{property.name}</label>
-                <span className={styles.detailDrawerTypeBadge}>
+                <span className={
+                  isStringType
+                  ? `${styles.detailDrawerTypeBadge} ${styles.detailDrawerTypeBadgeString}`
+                  : styles.detailDrawerTypeBadge
+                }>
                   <Image
                     src={getFieldTypeIcon(property.dataType as any)}
                     alt={property.dataType}
