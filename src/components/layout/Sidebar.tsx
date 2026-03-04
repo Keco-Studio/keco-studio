@@ -729,6 +729,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       return;
     }
     // selectedFolderId is already set when button is clicked
+    setSelectedFolderId(null);
     openNewLibrary();
   };
 
