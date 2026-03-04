@@ -59,6 +59,7 @@ export function TableHeader({
     y: number;
     propertyId?: string;
     propertyName?: string;
+    propertyDescription?: string | null;
     propertyDataType?: PropertyConfig['dataType'];
     propertyEnumOptions?: string[];
     propertyReferenceLibraries?: string[];
@@ -68,6 +69,7 @@ export function TableHeader({
     y: 0,
     propertyId: undefined,
     propertyName: undefined,
+    propertyDescription: undefined,
     propertyDataType: undefined,
     propertyEnumOptions: undefined,
     propertyReferenceLibraries: undefined,
@@ -88,6 +90,7 @@ export function TableHeader({
     open: boolean;
     propertyId?: string;
     propertyName?: string;
+    propertyDescription?: string | null;
     propertyDataType?: PropertyConfig['dataType'];
     propertyEnumOptions?: string[];
     propertyReferenceLibraries?: string[];
@@ -189,6 +192,7 @@ export function TableHeader({
                     y: rect.bottom + 8,
                     propertyId: property.id,
                     propertyName: property.name,
+                    propertyDescription: property.description,
                     propertyDataType: property.dataType,
                     propertyEnumOptions: property.enumOptions,
                     propertyReferenceLibraries: property.referenceLibraries,
@@ -257,6 +261,7 @@ export function TableHeader({
                   open: true,
                   propertyId: headerMenu.propertyId,
                   propertyName: headerMenu.propertyName ?? '',
+                  propertyDescription: headerMenu.propertyDescription,
                   propertyDataType: headerMenu.propertyDataType,
                   propertyEnumOptions: headerMenu.propertyEnumOptions,
                   propertyReferenceLibraries: headerMenu.propertyReferenceLibraries,
@@ -345,6 +350,7 @@ export function TableHeader({
         }
         propertyId={editTarget.propertyId}
         propertyName={editTarget.propertyName}
+        propertyDescription={editTarget.propertyDescription}
         propertyDataType={editTarget.propertyDataType}
         propertyEnumOptions={editTarget.propertyEnumOptions}
         propertyReferenceLibraries={editTarget.propertyReferenceLibraries}

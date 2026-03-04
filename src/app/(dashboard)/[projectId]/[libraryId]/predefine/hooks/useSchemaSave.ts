@@ -7,6 +7,7 @@ interface FieldDefinitionRow {
   section_id: string;
   section: string;
   label: string;
+  description: string | null;
   data_type: string | null; // Allow null for flexible field types
   enum_options: string[] | null;
   reference_libraries: string[] | null;
@@ -86,18 +87,20 @@ export async function saveSchemaIncremental(
           const dataTypeChanged = existingField.data_type !== (field.dataType ?? null);
           const sectionChanged = existingField.section !== section.name;
           const labelChanged = existingField.label !== field.label;
+          const descriptionChanged = existingField.description !== (field.description ?? null);
           const enumOptionsChanged = JSON.stringify(existingField.enum_options) !== JSON.stringify(field.dataType === 'enum' ? field.enumOptions ?? [] : null);
           const referenceLibrariesChanged = JSON.stringify(existingField.reference_libraries) !== JSON.stringify(field.dataType === 'reference' ? field.referenceLibraries ?? [] : null);
           const requiredChanged = existingField.required !== field.required;
           const orderChanged = existingField.order_index !== orderIndex;
           
           // Update if anything changed
-          if (dataTypeChanged || sectionChanged || labelChanged || enumOptionsChanged || referenceLibrariesChanged || requiredChanged || orderChanged) {
+          if (dataTypeChanged || sectionChanged || labelChanged || descriptionChanged || enumOptionsChanged || referenceLibrariesChanged || requiredChanged || orderChanged) {
             const updatedRow = {
               ...existingField,
               section_id: section.id,
               section: section.name,
               label: field.label,
+              description: field.description ?? null,
               data_type: field.dataType ?? null,
               enum_options: field.dataType === 'enum' ? field.enumOptions ?? [] : null,
               reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
@@ -122,6 +125,7 @@ export async function saveSchemaIncremental(
               section_id: section.id,
               section: section.name,
               label: field.label,
+              description: field.description ?? null,
               data_type: field.dataType ?? null,
               enum_options: field.dataType === 'enum' ? field.enumOptions ?? [] : null,
               reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
@@ -137,6 +141,7 @@ export async function saveSchemaIncremental(
           section_id: section.id,
           section: section.name,
           label: field.label,
+          description: field.description ?? null,
           data_type: field.dataType ?? null,
           enum_options: field.dataType === 'enum' ? field.enumOptions ?? [] : null,
           reference_libraries: field.dataType === 'reference' ? field.referenceLibraries ?? [] : null,
@@ -217,6 +222,7 @@ export async function saveSchemaIncremental(
           section_id: row.section_id,
           section: row.section,
           label: row.label,
+          description: row.description,
           data_type: row.data_type,
           enum_options: row.enum_options,
           reference_libraries: row.reference_libraries,

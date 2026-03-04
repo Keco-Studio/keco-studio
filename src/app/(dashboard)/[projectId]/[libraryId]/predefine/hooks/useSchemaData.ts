@@ -54,6 +54,7 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
         section_id: string;
         section: string;
         label: string;
+        description: string | null;
         data_type: FieldType;
         required: boolean;
         enum_options: string[] | null;
@@ -95,6 +96,7 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
         const field = {
           id: row.id,
           label: row.label,
+          description: row.description,
           dataType: dataType,
           required: row.required,
           enumOptions: dataType === 'enum' ? row.enum_options ?? [] : undefined,

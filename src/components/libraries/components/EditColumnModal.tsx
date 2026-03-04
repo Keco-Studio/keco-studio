@@ -22,6 +22,7 @@ type EditColumnModalProps = {
   anchorPosition?: { x: number; y: number } | null;
   propertyId?: string;
   propertyName?: string;
+  propertyDescription?: string | null;
   propertyDataType?: PropertyConfig['dataType'];
   propertyEnumOptions?: string[];
   propertyReferenceLibraries?: string[];
@@ -61,6 +62,7 @@ export function EditColumnModal({
   anchorPosition,
   propertyId,
   propertyName,
+  propertyDescription,
   propertyDataType,
   propertyEnumOptions,
   propertyReferenceLibraries,
@@ -86,7 +88,7 @@ export function EditColumnModal({
       propertyId,
       name: propertyName ?? '',
       dataType: propertyDataType,
-      description: '',
+      description: propertyDescription ?? '',
       enumOptions: propertyDataType === 'enum' ? propertyEnumOptions ?? [] : [],
       referenceLibraries:
         propertyDataType === 'reference' ? propertyReferenceLibraries ?? [] : [],
@@ -103,6 +105,7 @@ export function EditColumnModal({
     open,
     propertyId,
     propertyName,
+    propertyDescription,
     propertyDataType,
     propertyEnumOptions,
     propertyReferenceLibraries,
