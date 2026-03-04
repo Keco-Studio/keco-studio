@@ -3,6 +3,7 @@ export type FieldType = 'string' | 'int' | 'float' | 'boolean' | 'enum' | 'date'
 export type FieldConfig = {
   id: string;
   label: string;
+  description?: string | null;
   dataType?: FieldType; // Optional to allow adding empty field rows first
   required: boolean;
   enumOptions?: string[];

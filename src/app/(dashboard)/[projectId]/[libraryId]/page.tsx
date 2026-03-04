@@ -424,6 +424,7 @@ export default function LibraryPage() {
       await addLibraryField(supabase, libraryId, sectionId, sectionName, {
         label: payload.name,
         dataType: payload.dataType as PropertyConfig['dataType'],
+        description: payload.description,
         required: false,
         enumOptions:
           payload.dataType === 'enum'
