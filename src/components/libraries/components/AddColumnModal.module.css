@@ -318,3 +318,116 @@
   padding: 8px 4px;
   text-align: center;
 }
+
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(148, 163, 184, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.confirmDialog {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18);
+  width: 616px;
+  height: 204px;
+  padding: 1.1rem 1.4rem 1.1rem;
+  box-sizing: border-box;
+}
+
+.confirmHeader {
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.confirmTitle {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.confirmBody {
+  height: 75px;
+  font-size: 16px;
+  line-height: 50px;
+  color: #475569;
+  margin: 0.9rem 0 1.1rem;
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  border-top: 1px solid #e2e8f0;
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.confirmCancelBtn {
+  width: 73px;
+  height: 32px;
+  font-size: 16px;
+  padding: 0.45rem 0.9rem;
+  font-weight: 500;
+  color: #0f172a;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.confirmCancelBtn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.confirmDiscardBtn {
+  width: 73px;
+  height: 32px;
+  font-size: 16px;
+  padding: 0.45rem 0.9rem;
+  font-weight: 500;
+  color: #ffffff;
+  background: #dc2626;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.2s, opacity 0.2s;
+}
+
+.confirmDiscardBtn:hover {
+  background: #b91c1c;
+}
+
+.confirmDiscardBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.confirmCloseBtn {
+  padding: 0.25rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.confirmCloseBtn:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}

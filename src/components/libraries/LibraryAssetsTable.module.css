@@ -312,6 +312,13 @@
   width: 100%;
 }
 
+.properIconContent{
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
 .propertyHeaderText {
   overflow: hidden;
   text-overflow: ellipsis;

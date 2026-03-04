@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { Checkbox, Modal } from 'antd';
+import { Checkbox, Modal, Tooltip } from 'antd';
 import { useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -16,6 +16,65 @@ import { EditColumnModal } from './EditColumnModal';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 import showIcon from '@/assets/images/showIcon.svg';
 import addColumIcon from '@/assets/images/addColumIcon.svg';
+import descriptionIcon from '@/assets/images/descriptionIcon.svg';
+
+function EllipsisTextWithTooltip({
+  text,
+  className,
+}: {
+  text: string;
+  className?: string;
+}) {
+  const spanRef = useRef<HTMLSpanElement | null>(null);
+  const [isOverflowed, setIsOverflowed] = useState(false);
+
+  const checkOverflow = () => {
+    const el = spanRef.current;
+    if (!el) return;
+    const hasOverflow = el.scrollWidth > el.clientWidth + 1;
+    setIsOverflowed(hasOverflow);
+  };
+
+  useEffect(() => {
+    checkOverflow();
+  }, [text]);
+
+  useEffect(() => {
+    const el = spanRef.current;
+    if (!el) return;
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(() => {
+        checkOverflow();
+      });
+      observer.observe(el);
+      return () => {
+        observer.disconnect();
+      };
+    }
+
+    window.addEventListener('resize', checkOverflow);
+    return () => {
+      window.removeEventListener('resize', checkOverflow);
+    };
+  }, []);
+
+  const span = (
+    <span ref={spanRef} className={className}>
+      {text}
+    </span>
+  );
+
+  if (!isOverflowed) {
+    return span;
+  }
+
+  return (
+    <Tooltip title={text} placement="top">
+      {span}
+    </Tooltip>
+  );
+}
 
 export type TableHeaderGroup = {
   section: SectionConfig;
@@ -187,7 +246,6 @@ export function TableHeader({
                   const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
                   setHeaderMenu({
                     visible: true,
-                    // 水平居中在当前列头下方，略微下移，效果参考设计稿
                     x: rect.left + rect.width / 2,
                     y: rect.bottom + 8,
                     propertyId: property.id,
@@ -199,15 +257,31 @@ export function TableHeader({
                   });
                 }}
               >
-                <span className={styles.propertyHeaderText}>{property.name}</span>
-                <div className={styles.propertyHeaderIconWrapper}>
-                  <Image
-                    src={showIcon}
-                    alt=""
-                    width={8}
-                    height={4}
-                    className={styles.propertyHeaderIcon}
-                  />
+                <EllipsisTextWithTooltip
+                  text={property.name}
+                  className={styles.propertyHeaderText}
+                />
+                <div className={styles.properIconContent}>
+                  {property.description && (
+                    <Tooltip title={property.description} placement="top">
+                      <Image
+                        src={descriptionIcon}
+                        alt=""
+                        width={16}
+                        height={16}
+                        className={styles.propertyHeaderIcon}
+                      />
+                    </Tooltip>
+                  )}
+                  <div className={styles.propertyHeaderIconWrapper}>
+                    <Image
+                      src={showIcon}
+                      alt=""
+                      width={8}
+                      height={4}
+                      className={styles.propertyHeaderIcon}
+                    />
+                  </div>
                 </div>
               </div>
             </th>

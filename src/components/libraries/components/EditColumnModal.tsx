@@ -75,9 +75,11 @@ export function EditColumnModal({
   const projectId = params?.projectId as string | undefined;
 
   const [editColumnModal, setEditColumnModal] = useState<EditColumnFormState>(EMPTY_STATE);
-  const [referenceFolderFilter, setReferenceFolderFilter] = useState<'all' | 'root' | string>('all');
+  const [referenceFolderFilter, setReferenceFolderFilter] =
+    useState<'all' | 'root' | string>('all');
   const [referenceSearch, setReferenceSearch] = useState('');
   const [referenceDropdownOpen, setReferenceDropdownOpen] = useState(false);
+  const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
   const modalRef = useRef<HTMLDivElement | null>(null);
 
   // 每次打开时，用当前列配置初始化表单状态
@@ -121,13 +123,25 @@ export function EditColumnModal({
     }
   }, [open]);
 
-  // 点击弹窗外部关闭
+  // 点击弹窗外部关闭（但在覆盖 Alert 弹框时，点击任意区域都不关闭）
   useEffect(() => {
     if (!open) return;
 
     const handlePointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (modalRef.current && target && modalRef.current.contains(target)) {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      // 如果当前显示覆盖式 Alert，对话框内及其遮罩区域的点击都不触发关闭
+      if (showOverwriteConfirm) {
+        if (
+          target.closest(`.${styles.confirmOverlay}`) ||
+          target.closest(`.${styles.confirmDialog}`)
+        ) {
+          return;
+        }
+      }
+
+      if (modalRef.current && modalRef.current.contains(target)) {
         return;
       }
       onClose();
@@ -137,7 +151,7 @@ export function EditColumnModal({
     return () => {
       window.removeEventListener('mousedown', handlePointerDown, true);
     };
-  }, [open, onClose]);
+  }, [open, onClose, showOverwriteConfirm]);
 
   // 当编辑弹窗打开并选择 reference 类型时，加载可选库列表与文件夹
   useEffect(() => {
@@ -221,21 +235,21 @@ export function EditColumnModal({
     });
   }, [editColumnModal.libraries, referenceFolderFilter, referenceSearch, foldersById]);
 
-  const handleSubmit = async () => {
+  const validateForm = () => {
     // 前端校验：名称和类型必填，enum/reference 需配置完整
     if (!editColumnModal.name.trim()) {
       setEditColumnModal((prev) => ({
         ...prev,
         error: 'Header name is required.',
       }));
-      return;
+      return false;
     }
     if (!editColumnModal.dataType) {
       setEditColumnModal((prev) => ({
         ...prev,
         error: 'Data type is required.',
       }));
-      return;
+      return false;
     }
     if (
       editColumnModal.dataType === 'enum' &&
@@ -245,7 +259,7 @@ export function EditColumnModal({
         ...prev,
         error: 'Please add at least one option for enum type.',
       }));
-      return;
+      return false;
     }
     if (
       editColumnModal.dataType === 'reference' &&
@@ -255,16 +269,24 @@ export function EditColumnModal({
         ...prev,
         error: 'Please select at least one reference library.',
       }));
-      return;
+      return false;
     }
 
     if (!libraryId || !editColumnModal.propertyId) {
       showErrorToast('Missing libraryId or column id, cannot save');
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleSubmit = async () => {
+    if (!validateForm()) {
       return;
     }
 
     try {
-      await updateLibraryField(supabase, libraryId, editColumnModal.propertyId, {
+      await updateLibraryField(supabase, libraryId!, editColumnModal.propertyId!, {
         label: editColumnModal.name,
         dataType: editColumnModal.dataType,
         description: editColumnModal.description.trim() || undefined,
@@ -273,16 +295,23 @@ export function EditColumnModal({
       });
 
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.librarySchema(libraryId),
+        queryKey: queryKeys.librarySchema(libraryId!),
       });
       await queryClient.invalidateQueries({
-        queryKey: queryKeys.libraryAssets(libraryId),
+        queryKey: queryKeys.libraryAssets(libraryId!),
       });
       showSuccessToast('Column updated');
       onClose();
     } catch (e: any) {
       showErrorToast(e?.message || 'Failed to update column');
     }
+  };
+
+  const handleSaveClick = () => {
+    if (!validateForm()) {
+      return;
+    }
+    setShowOverwriteConfirm(true);
   };
 
   if (!open || !editColumnModal.propertyId) {
@@ -608,7 +637,7 @@ export function EditColumnModal({
           <button type="button" className={styles.cancelBtn} onClick={onClose}>
             Cancel
           </button>
-          <button type="button" className={styles.addBtn} onClick={handleSubmit}>
+          <button type="button" className={styles.addBtn} onClick={handleSaveClick}>
             Save
           </button>
         </div>
@@ -616,8 +645,83 @@ export function EditColumnModal({
     </div>
   );
 
-  return typeof document !== 'undefined'
-    ? createPortal(modalContent, document.body)
-    : modalContent;
+  const confirmOverlay =
+    showOverwriteConfirm && typeof document !== 'undefined'
+      ? createPortal(
+          <div className={styles.confirmOverlay}>
+            <div
+              className={styles.confirmDialog}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="overwrite-confirm-title"
+              aria-describedby="overwrite-confirm-description"
+            >
+              <div className={styles.confirmHeader}>
+                <h3 id="overwrite-confirm-title" className={styles.confirmTitle}>
+                  Alert
+                </h3>
+                <button
+                  type="button"
+                  className={styles.confirmCloseBtn}
+                  aria-label="Close"
+                  onClick={() => setShowOverwriteConfirm(false)}
+                >
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M12 4L4 12M4 4l8 8"
+                      stroke="currentColor"
+                      strokeWidth="1.6"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+              <div
+                id="overwrite-confirm-description"
+                className={styles.confirmBody}
+              >
+                This operation may overwrite the existing content in this column. Do you
+                want to continue?
+              </div>
+              <div className={styles.confirmActions}>
+                <button
+                  type="button"
+                  className={styles.confirmCancelBtn}
+                  onClick={() => setShowOverwriteConfirm(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.confirmDiscardBtn}
+                  onClick={async () => {
+                    setShowOverwriteConfirm(false);
+                    await handleSubmit();
+                  }}
+                >
+                  Overwrite
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      {typeof document !== 'undefined'
+        ? createPortal(modalContent, document.body)
+        : modalContent}
+      {confirmOverlay}
+    </>
+  );
 }
 
