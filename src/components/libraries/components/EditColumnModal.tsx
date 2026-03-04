@@ -14,7 +14,7 @@ import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { getFieldTypeIcon, FIELD_TYPE_OPTIONS } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
 import { listLibraries, type Library } from '@/lib/services/libraryService';
 import { listFolders, type Folder } from '@/lib/services/folderService';
-import styles from './AddColumnModal.module.css';
+import styles from './EditColumnModal.module.css';
 
 type EditColumnModalProps = {
   open: boolean;
