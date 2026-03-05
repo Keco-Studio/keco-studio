@@ -257,10 +257,19 @@ export function TableHeader({
                   });
                 }}
               >
-                <EllipsisTextWithTooltip
-                  text={property.name}
-                  className={styles.propertyHeaderText}
-                />
+                <div className={styles.propertyHeaderMain}>
+                  <Image
+                    src={getFieldTypeIcon(property.dataType as any)}
+                    alt={property.dataType}
+                    width={16}
+                    height={16}
+                    className={styles.propertyHeaderTypeIcon}
+                  />
+                  <EllipsisTextWithTooltip
+                    text={property.name}
+                    className={styles.propertyHeaderText}
+                  />
+                </div>
                 <div className={styles.properIconContent}>
                   {property.description && (
                     <Tooltip title={property.description} placement="top">

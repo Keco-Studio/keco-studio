@@ -312,6 +312,13 @@
   width: 100%;
 }
 
+.propertyHeaderMain{
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
 .properIconContent{
   display: flex;
   align-items: center;
@@ -323,6 +330,12 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.propertyHeaderTypeIcon{
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .propertyHeaderIconWrapper {
