@@ -162,7 +162,7 @@ export default function LibraryPage() {
 
     const initDefaultData = async () => {
       try {
-        // 1) 若库中已经有资产，则不做任何事
+        //If there are already assets in the Treasury, nothing will be done
         const { count, error } = await supabase
           .from('library_assets')
           .select('id', { count: 'exact', head: true })
@@ -180,7 +180,7 @@ export default function LibraryPage() {
         const props = librarySchema?.properties ?? [];
 
         if (!librarySchema || props.length === 0) {
-          // 2) no schema and no assets: create default section1 / field ID(String) + two records 00001, 00002
+          // 2) no schema and no assets: create default section1 / field ID(String)
           const sectionId = `${libraryId}:section1`;
 
           const { data: newField, error: fieldErr } = await supabase
@@ -207,9 +207,14 @@ export default function LibraryPage() {
           // Update the table with the latest schema (including the ID field)
           await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
 
+          // Business requirement:
+          // When a brand new library is created (no schema & no assets),
+          // initialize the main table with 3 completely blank input rows
+          // instead of 2 pre-filled rows like "00001" / "00002".
           const now = Date.now();
-          await contextCreateAsset('00001', { [fieldId]: '00001' }, { createdAt: new Date(now) });
-          await contextCreateAsset('00002', { [fieldId]: '00002' }, { createdAt: new Date(now + 1) });
+          await contextCreateAsset('', { [fieldId]: '' }, { createdAt: new Date(now) });
+          await contextCreateAsset('', { [fieldId]: '' }, { createdAt: new Date(now + 1) });
+          await contextCreateAsset('', { [fieldId]: '' }, { createdAt: new Date(now + 2) });
 
           // Notify the sidebar to refresh etc.
           window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
