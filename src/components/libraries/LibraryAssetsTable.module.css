@@ -2122,3 +2122,15 @@ td.cellCopy.copyBorderRight:hover {
   margin: 0;
 }
 
+.addSectionButton{
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  font-size: 16px;
+  border: 1px solid  rgba(188, 188, 188, 1);
+  margin-left: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+

@@ -392,7 +392,7 @@
 }
 
 .confirmDiscardBtn {
-  width: 73px;
+  width: 90px;
   height: 32px;
   font-size: 16px;
   padding: 0.45rem 0.9rem;
@@ -406,7 +406,7 @@
 }
 
 .confirmDiscardBtn:hover {
-  background: #b91c1c;
+  
 }
 
 .confirmDiscardBtn:disabled {

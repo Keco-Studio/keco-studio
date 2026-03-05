@@ -237,6 +237,58 @@ export async function updateSectionName(
   if (error) throw error;
 }
 
+/** 新增一个 section（在 library_field_definitions 中插入一个默认字段以创建新区块，参考 predefine 的 handleSaveNewSection）。 */
+export async function addLibrarySection(
+  supabase: SupabaseClient,
+  libraryId: string,
+  options?: { name?: string }
+): Promise<{ sectionId: string; sectionName: string; fieldId: string }> {
+  await verifyLibraryUpdatePermission(supabase, libraryId);
+
+  const { data: existingRows } = await supabase
+    .from('library_field_definitions')
+    .select('section, order_index')
+    .eq('library_id', libraryId);
+
+  const existing = (existingRows || []) as { section: string; order_index: number }[];
+  const existingSectionNames = new Set(existing.map((r) => r.section));
+  const maxOrderIndex = existing.length > 0 ? Math.max(...existing.map((r) => r.order_index)) : -1;
+  const nextOrderIndex = maxOrderIndex + 1000;
+
+  let sectionName = (options?.name ?? 'New Section').trim() || 'New Section';
+  let counter = 1;
+  while (existingSectionNames.has(sectionName)) {
+    sectionName = `New Section ${counter}`;
+    counter += 1;
+  }
+
+  const sectionId = `${libraryId}:${sectionName}`;
+
+  // 与表初始化保持一致：默认创建一个 ID(String) 字段
+  const { data: inserted, error } = await supabase
+    .from('library_field_definitions')
+    .insert({
+      library_id: libraryId,
+      section_id: sectionId,
+      section: sectionName,
+      label: 'ID',
+      description: null,
+      data_type: 'string',
+      required: false,
+      order_index: nextOrderIndex,
+      enum_options: null,
+      reference_libraries: null,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+  return { sectionId, sectionName, fieldId: inserted.id as string };
+}
+
 /** 在指定 section 下新增一个字段（用于表格内「新增列」弹窗）。sectionId 为前端格式（libraryId:sectionName），内部会按 library_id + section 解析出 DB 的 section_id。 */
 export async function addLibraryField(
   supabase: SupabaseClient,

@@ -25,6 +25,7 @@ import {
   deleteAsset,
   deleteAssets,
   updateSectionName,
+  addLibrarySection,
   addLibraryField,
 } from '@/lib/services/libraryAssetsService';
 import type { AddColumnFormPayload } from '@/components/libraries/components/AddColumnModal';
@@ -415,6 +416,37 @@ export default function LibraryPage() {
     [supabase, libraryId, queryClient]
   );
 
+  const handleAddSection = useCallback(async (): Promise<string> => {
+    const { sectionId, sectionName, fieldId } = await addLibrarySection(supabase, libraryId);
+
+    // 刷新 schema，确保新建的 ID 字段出现在表头
+    await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+
+    try {
+      // 若当前库还没有任何资产，则与初始表逻辑保持一致：创建 00001 / 00002 两条记录
+      const { count, error } = await supabase
+        .from('library_assets')
+        .select('id', { count: 'exact', head: true })
+        .eq('library_id', libraryId);
+
+      if (!error && (count ?? 0) === 0) {
+        const now = Date.now();
+        await contextCreateAsset('00001', { [fieldId]: '00001' }, { createdAt: new Date(now) });
+        await contextCreateAsset('00002', { [fieldId]: '00002' }, { createdAt: new Date(now + 1) });
+
+        // 通知其他视图刷新
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to create default assets for new section', e);
+    }
+
+    showSuccessToast(`Section "${sectionName}" added`);
+    return sectionId;
+  }, [addLibrarySection, contextCreateAsset, libraryId, queryClient, supabase]);
+
   const handleAddProperty = useCallback(
     async (
       sectionId: string,
@@ -729,6 +761,7 @@ export default function LibraryPage() {
               properties={tableProperties}
               overrideRows={versionAssetRows}
               onUpdateSection={handleUpdateSection}
+              onAddSection={handleAddSection}
               onAddProperty={handleAddProperty}
             />
           </YjsProvider>
