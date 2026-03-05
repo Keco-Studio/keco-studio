@@ -242,7 +242,8 @@ export function useCellSelection({
   );
 
   // Handle cell fill drag start (from expand icon - Excel-like fill down)
-  // Int: 若选中两格连续，用步长=第二格-第一格做序列填充；否则单格复制。String/float: 单格复制。
+  // Int: 若选中两格连续，用步长=第二格-第一格做序列填充；否则单格复制。
+  // String / float / boolean: 单格复制（布尔值按源单元格 true/false 直接复制）。
   const handleCellDragStart = useCallback(
     (rowId: string, propertyKey: string, e: React.MouseEvent) => {
       e.preventDefault();
@@ -252,7 +253,10 @@ export function useCellSelection({
         return;
       }
       const property = orderedProperties.find(p => p.key === propertyKey);
-      if (!property || !['string', 'int', 'float'].includes(property.dataType)) {
+      // 允许 string / int / float / boolean 使用填充柄：
+      // - int: 支持序列填充（两格连续时）
+      // - 其余类型（string / float / boolean）统一走「单值复制」的 fillDown 逻辑
+      if (!property || !['string', 'int', 'float', 'boolean'].includes(property.dataType)) {
         return;
       }
       const allRowsAtStart = getAllRowsForCellSelection();
