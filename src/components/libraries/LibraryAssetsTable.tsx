@@ -63,6 +63,7 @@ import batchEditAddIcon from '@/assets/images/BatchEditAddIcon.svg';
 import tableAssetDetailIcon from '@/assets/images/ProjectDescIcon.svg';
 import collaborationViewNumIcon from '@/assets/images/collaborationViewNumIcon.svg';
 import styles from './LibraryAssetsTable.module.css';
+import addSectionIcon from '@/assets/images/addProjectIcon.svg'
 
 export type LibraryAssetsTableProps = {
   library: {
@@ -82,6 +83,8 @@ export type LibraryAssetsTableProps = {
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
   /** 可选：双击 section 标签修改名称时回调，不传则仅本地展示不可持久化 */
   onUpdateSection?: (sectionId: string, newName: string) => Promise<void>;
+  /** 可选：点击「添加 section」按钮时回调，不传则按钮不生效；可返回新 sectionId 以自动切换到此 section */
+  onAddSection?: () => Promise<string | void>;
   /** 可选：表格内「新增列」弹窗提交时回调；不传则点击新增列按钮会跳转到 predefine 页 */
   onAddProperty?: (sectionId: string, sectionName: string, payload: AddColumnFormPayload) => Promise<void>;
   // Real-time collaboration props
@@ -119,6 +122,7 @@ export function LibraryAssetsTable({
   onDeleteAsset,
   onDeleteAssets,
   onUpdateSection,
+  onAddSection,
   onAddProperty,
   currentUser = null,
   enableRealtime = false,
@@ -928,7 +932,26 @@ export function LibraryAssetsTable({
               </button>
             )
           ))}
+
+          <button
+            type="button"
+            className={styles.addSectionButton}
+            onClick={async () => {
+              if (onAddSection) {
+                try {
+                  const newSectionId = await onAddSection();
+                  if (newSectionId) setActiveSectionId(newSectionId);
+                } catch (e) {
+                  message.error((e as Error)?.message ?? 'Failed to add section');
+                }
+              }
+            }}
+            aria-label="Add section"
+          >
+            <Image src={addSectionIcon} alt="Add section" width={16} height={16} />
+          </button>
         </div>
+
       )}
       <div className={styles.tableContainer} ref={tableContainerRef}>
         <table className={`${styles.table} ${getColumnWidthClass()}`}>
@@ -1323,8 +1346,8 @@ export function LibraryAssetsTable({
                     }
                     
                     // Text field
-                    // 对于 name 字段，这里不再从 row.name 回退，始终以 propertyValues 为准，
-                    // 避免「删除并重建 name 字段后又显示旧值」的情况。
+                    // For the name field, we no longer fall back to row.name here; propertyValues always takes precedence.
+                    // To avoid the issue of showing old values after deleting and rebuilding the name field.
                     let value = row.propertyValues[property.key];
                     let display: string | null = null;
                     if (value !== null && value !== undefined && value !== '' && !(typeof value === 'number' && Number.isNaN(value))) {
