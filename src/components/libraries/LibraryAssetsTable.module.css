@@ -2073,6 +2073,13 @@ td.cellCopy.copyBorderRight:hover {
 
 .detailDrawerField {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.375rem;
+}
+
+.detailDrawerFieldHeader {
+  display: flex;
   flex-direction: row;
   align-items: center;
   gap: 0.25rem;
@@ -2091,7 +2098,7 @@ td.cellCopy.copyBorderRight:hover {
   font-size: 0.75rem;
   font-weight: 400;
   color: rgba(7, 7, 7, 1);
-  margin-bottom: 0.125rem;
+  margin-bottom: 0;
 }
 
 /* .detailDrawerTypeBadgeString {
