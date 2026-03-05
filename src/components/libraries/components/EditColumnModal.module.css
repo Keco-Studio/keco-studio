@@ -1,4 +1,4 @@
-/* Add Column popup - no overlay, floats below trigger button；具体 left/top 由内联样式设置 */
+/* Edit Column popup styles, initially copied from AddColumnModal for visual consistency */
 .popup {
   position: fixed;
   z-index: 1050;
@@ -398,7 +398,7 @@
   padding: 0.45rem 0.9rem;
   font-weight: 500;
   color: #ffffff;
-  background: #dc2626;
+  background: rgba(11, 153, 255, 1);
   border: none;
   border-radius: 8px;
   cursor: pointer;
@@ -431,3 +431,4 @@
   color: #0f172a;
   background: #f1f5f9;
 }
+

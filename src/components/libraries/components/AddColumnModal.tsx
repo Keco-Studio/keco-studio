@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Input, Select, Checkbox } from 'antd';
 import Image from 'next/image';
@@ -63,6 +63,7 @@ export function AddColumnModal({
   const [referenceFolderFilter, setReferenceFolderFilter] = useState<'all' | 'root' | string>('all');
   const [referenceSearch, setReferenceSearch] = useState('');
   const [referenceDropdownOpen, setReferenceDropdownOpen] = useState(false);
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
 
   const updatePosition = () => {
     // 无锚点时，居中显示
@@ -108,10 +109,28 @@ export function AddColumnModal({
       setReferenceLibraries([]);
       setError(null);
       setSubmitting(false);
+      setShowDiscardConfirm(false);
       updatePosition();
       setTimeout(() => nameInputRef.current?.focus(), 80);
     }
   }, [open]);
+
+  const hasUnsavedChanges = useMemo(() => {
+    if (name.trim()) return true;
+    if (dataType) return true;
+    if (description.trim()) return true;
+    if (enumOptions.some((opt) => opt.trim().length > 0)) return true;
+    if (referenceLibraries.length > 0) return true;
+    return false;
+  }, [name, dataType, description, enumOptions, referenceLibraries]);
+
+  const handleRequestClose = useCallback(() => {
+    if (hasUnsavedChanges) {
+      setShowDiscardConfirm(true);
+      return;
+    }
+    onClose();
+  }, [hasUnsavedChanges, onClose]);
 
   useEffect(() => {
     if (!open || !anchorRef?.current) return;
@@ -133,7 +152,7 @@ export function AddColumnModal({
       const target = e.target as Node;
       if (modalRef.current?.contains(target)) return;
       if (anchorRef?.current?.contains(target)) return;
-      onClose();
+      handleRequestClose();
     };
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
@@ -142,7 +161,7 @@ export function AddColumnModal({
       clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [open, onClose, anchorRef]);
+  }, [open, handleRequestClose, anchorRef]);
 
   // Lazy-load libraries when configuring a reference field
   useEffect(() => {
@@ -271,7 +290,10 @@ export function AddColumnModal({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') onClose();
+    if (e.key === 'Escape') {
+      e.stopPropagation();
+      handleRequestClose();
+    }
   };
 
   if (!open) return null;
@@ -292,7 +314,7 @@ export function AddColumnModal({
           <button
             type="button"
             className={styles.closeBtn}
-            onClick={onClose}
+            onClick={handleRequestClose}
             aria-label="Close"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -553,7 +575,7 @@ export function AddColumnModal({
         </div>
         <div className={styles.body} style={{ paddingTop: 0, paddingBottom: '1.25rem' }}>
           <div className={styles.footer}>
-            <button type="button" className={styles.cancelBtn} onClick={onClose}>
+            <button type="button" className={styles.cancelBtn} onClick={handleRequestClose}>
               Cancel
             </button>
             <button
@@ -566,6 +588,55 @@ export function AddColumnModal({
             </button>
           </div>
         </div>
+        {showDiscardConfirm && (
+          <div className={styles.confirmOverlay}>
+            <div
+              className={styles.confirmDialog}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="discard-confirm-title"
+              aria-describedby="discard-confirm-description"
+            >
+              <div className={styles.confirmHeader}>
+                <h3 id="discard-confirm-title" className={styles.confirmTitle}>
+                  Alert
+                </h3>
+                <button
+                  type="button"
+                  className={styles.confirmCloseBtn}
+                  aria-label="Close"
+                  onClick={() => setShowDiscardConfirm(false)}
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+              <div id="discard-confirm-description" className={styles.confirmBody}>
+                Are you sure you want to discard the changes?
+              </div>
+              <div className={styles.confirmActions}>
+                <button
+                  type="button"
+                  className={styles.confirmCancelBtn}
+                  onClick={() => setShowDiscardConfirm(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.confirmDiscardBtn}
+                  onClick={() => {
+                    setShowDiscardConfirm(false);
+                    onClose();
+                  }}
+                >
+                  Discard
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 
