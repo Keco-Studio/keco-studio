@@ -66,6 +66,8 @@ export interface TextCellProps {
   // Border classes
   getCopyBorderClasses: (rowId: string, propertyIndex: number) => string;
   getSelectionBorderClasses: (rowId: string, propertyIndex: number) => string;
+  /** Int 列拖动填充柄时的预览值（待填充格实时显示） */
+  fillPreviewValue?: number;
 }
 
 /**
@@ -80,6 +82,7 @@ export const TextCell: React.FC<TextCellProps> = ({
   display,
   isNameField,
   isFirstColumn = propertyIndex === 0,
+  fillPreviewValue,
   editingCell,
   editingCellRef,
   editingCellValue,
@@ -117,6 +120,8 @@ export const TextCell: React.FC<TextCellProps> = ({
   const isSingleSelected = selectedCells.size === 1 && isCellSelected;
   const isCellEditing = editingCell?.rowId === row.id && editingCell?.propertyKey === property.key;
   const isBeingEdited = editingUsers.length > 0;
+  const showFillPreview = fillPreviewValue !== undefined && !isCellEditing;
+  const cellDisplay = showFillPreview ? String(fillPreviewValue) : (display || '');
 
   // Check if cell is on border of cut selection (only show outer border)
   let cutBorderClass = '';
@@ -167,7 +172,7 @@ export const TextCell: React.FC<TextCellProps> = ({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [display]);
+  }, [display, fillPreviewValue]);
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (showExpandIcon) {
@@ -228,16 +233,16 @@ export const TextCell: React.FC<TextCellProps> = ({
           {isFirstColumn ? (
             // First column: show text + view detail button
             <div className={styles.cellContent}>
-              <Tooltip title={isOverflowing ? (display || '') : null} placement="topLeft" mouseEnterDelay={0.5}>
+              <Tooltip title={isOverflowing ? cellDisplay : null} placement="topLeft" mouseEnterDelay={0.5}>
                 <span 
                   ref={textRef}
-                  className={styles.cellText}
+                  className={`${styles.cellText} ${showFillPreview ? styles.cellFillPreview : ''}`}
                   onDoubleClick={(e) => {
                     // Ensure double click on first column text triggers editing
                     onCellDoubleClick(row, property, e);
                   }}
                 >
-                  {display || ''}
+                  {cellDisplay}
                 </span>
               </Tooltip>
               <button
@@ -260,9 +265,9 @@ export const TextCell: React.FC<TextCellProps> = ({
             </div>
           ) : (
             // Other fields: show text only with tooltip (only if overflowing)
-            <Tooltip title={isOverflowing ? (display || '') : null} placement="topLeft" mouseEnterDelay={0.5}>
-              <span ref={textRef} className={styles.cellText}>
-                {display || ''}
+            <Tooltip title={isOverflowing ? cellDisplay : null} placement="topLeft" mouseEnterDelay={0.5}>
+              <span ref={textRef} className={`${styles.cellText} ${showFillPreview ? styles.cellFillPreview : ''}`}>
+                {cellDisplay}
               </span>
             </Tooltip>
           )}

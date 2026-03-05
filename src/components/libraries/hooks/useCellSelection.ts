@@ -33,6 +33,7 @@ export function useCellSelection({
   orderedProperties,
   getAllRowsForCellSelection,
   fillDown,
+  fillDownIntSequence,
   currentFocusedCell,
   handleCellBlur,
   selectionBorderClassNames,
@@ -40,6 +41,8 @@ export function useCellSelection({
   orderedProperties: PropertyConfig[];
   getAllRowsForCellSelection: () => AssetRow[];
   fillDown: (startRowId: string, endRowId: string, propertyKey: string) => Promise<void>;
+  /** Int 序列填充：步长 = 第二格 - 第一格，仅当选中两格连续时使用 */
+  fillDownIntSequence: (startRowId: string, secondRowId: string, endRowId: string, propertyKey: string) => Promise<void>;
   currentFocusedCell: { assetId: string; propertyKey: string } | null;
   handleCellBlur: () => void;
   selectionBorderClassNames: SelectionBorderClassNames;
@@ -57,10 +60,12 @@ export function useCellSelection({
   const dragCurrentCellRef = useRef<{ rowId: string; propertyKey: string } | null>(null);
 
   // Fill drag state (for Excel-like fill down functionality)
+  // secondRowId: 仅 Int 类型且选中两格连续时存在，用于序列填充步长 = 第二格值 - 第一格值
   const [fillDragStartCell, setFillDragStartCell] = useState<{
     rowId: string;
     propertyKey: string;
     startY: number;
+    secondRowId?: string | null;
   } | null>(null);
   const isFillingCellsRef = useRef(false);
 
@@ -237,19 +242,36 @@ export function useCellSelection({
   );
 
   // Handle cell fill drag start (from expand icon - Excel-like fill down)
+  // Int: 若选中两格连续，用步长=第二格-第一格做序列填充；否则单格复制。String/float: 单格复制。
   const handleCellDragStart = useCallback(
     (rowId: string, propertyKey: string, e: React.MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
       const cellKey: CellKey = `${rowId}-${propertyKey}` as CellKey;
-      if (!selectedCells.has(cellKey) || selectedCells.size !== 1) {
+      if (!selectedCells.has(cellKey)) {
         return;
       }
       const property = orderedProperties.find(p => p.key === propertyKey);
       if (!property || !['string', 'int', 'float'].includes(property.dataType)) {
         return;
       }
-      const startRowId = rowId;
+      const allRowsAtStart = getAllRowsForCellSelection();
+      const suffix = '-' + propertyKey;
+      const selectedRowIdsForCol = Array.from(selectedCells)
+        .filter(k => k.endsWith(suffix))
+        .map(k => k.slice(0, k.length - suffix.length));
+      const selectedRowIndices = selectedRowIdsForCol
+        .map(rid => allRowsAtStart.findIndex(r => r.id === rid))
+        .filter(i => i !== -1)
+        .sort((a, b) => a - b);
+      let startRowId: string;
+      let secondRowId: string | null = null;
+      if (property.dataType === 'int' && selectedRowIndices.length === 2 && selectedRowIndices[1] === selectedRowIndices[0] + 1) {
+        startRowId = allRowsAtStart[selectedRowIndices[0]].id;
+        secondRowId = allRowsAtStart[selectedRowIndices[1]].id;
+      } else {
+        startRowId = rowId;
+      }
       const startPropertyKey = propertyKey;
       const startX = e.clientX;
       const startY = e.clientY;
@@ -265,7 +287,7 @@ export function useCellSelection({
           isClick = false;
           if (!isFillingCellsRef.current) {
             isFillingCellsRef.current = true;
-            setFillDragStartCell({ rowId: startRowId, propertyKey: startPropertyKey, startY });
+            setFillDragStartCell({ rowId: startRowId, propertyKey: startPropertyKey, startY, secondRowId: secondRowId ?? undefined });
             document.body.style.userSelect = 'none';
             document.body.style.cursor = 'crosshair';
             document.body.classList.add('filling-cells');
@@ -358,7 +380,12 @@ export function useCellSelection({
             document.body.style.cursor = '';
             document.body.classList.remove('filling-cells');
             setFillDragStartCell(null);
-            void fillDown(startRowId, endRowId, startPropertyKey);
+            const secondRowIndex = secondRowId != null ? allRowsForSelection.findIndex(r => r.id === secondRowId) : -1;
+            if (secondRowId != null && secondRowIndex !== -1 && endRowIndex > secondRowIndex) {
+              void fillDownIntSequence(startRowId, secondRowId, endRowId, startPropertyKey);
+            } else {
+              void fillDown(startRowId, endRowId, startPropertyKey);
+            }
           } else {
             setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
           }
@@ -377,7 +404,7 @@ export function useCellSelection({
       document.addEventListener('mousemove', fillDragMoveHandler);
       document.addEventListener('mouseup', fillDragEndHandlerWrapper);
     },
-    [selectedCells, orderedProperties, getAllRowsForCellSelection, fillDown]
+    [selectedCells, orderedProperties, getAllRowsForCellSelection, fillDown, fillDownIntSequence]
   );
 
   // Update selected cells during drag (for visual feedback)

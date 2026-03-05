@@ -284,8 +284,217 @@ export function useBatchFill({
     optimisticEditUpdates,
   ]);
 
+  /**
+   * Parse integer from cell value (for Int type sequence fill)
+   */
+  const parseIntValue = useCallback((v: unknown): number => {
+    if (v === null || v === undefined || v === '') return 0;
+    const n = typeof v === 'number' ? v : parseInt(String(v), 10);
+    return Number.isNaN(n) ? 0 : n;
+  }, []);
+
+  /**
+   * Get preview values for Int sequence fill (during drag).
+   * Returns Map<rowId, number> for cells that would be filled (from row after secondRowId to endRowId).
+   * Step = secondCellValue - firstCellValue; each cell = value2 + step * (index).
+   */
+  const getIntSequencePreviewValues = useCallback(
+    (startRowId: string, secondRowId: string, endRowId: string, propertyKey: string): Map<string, number> => {
+      const allRows = getAllRowsForCellSelection();
+      const startIdx = allRows.findIndex(r => r.id === startRowId);
+      const secondIdx = allRows.findIndex(r => r.id === secondRowId);
+      const endIdx = allRows.findIndex(r => r.id === endRowId);
+      if (startIdx === -1 || secondIdx === -1 || endIdx === -1 || secondIdx !== startIdx + 1) {
+        return new Map();
+      }
+      if (endIdx <= secondIdx) return new Map();
+      const value1 = parseIntValue(dataManager.getRowBaseValue(startRowId, propertyKey));
+      const value2 = parseIntValue(dataManager.getRowBaseValue(secondRowId, propertyKey));
+      const step = value2 - value1;
+      const map = new Map<string, number>();
+      for (let i = secondIdx + 1; i <= endIdx; i++) {
+        const row = allRows[i];
+        if (row) {
+          const k = i - (secondIdx + 1);
+          map.set(row.id, value2 + step * (k + 1));
+        }
+      }
+      return map;
+    },
+    [getAllRowsForCellSelection, dataManager, parseIntValue]
+  );
+
+  /**
+   * Fill down with Int sequence: step = secondCellValue - firstCellValue.
+   * Only for Int type. Fills from row after secondRowId to endRowId.
+   */
+  const fillDownIntSequence = useCallback(async (
+    startRowId: string,
+    secondRowId: string,
+    endRowId: string,
+    propertyKey: string
+  ): Promise<void> => {
+    if (!onUpdateAsset) {
+      console.warn('onUpdateAsset is not provided');
+      return;
+    }
+
+    const allRowsForFill = getAllRowsForCellSelection();
+    const startIdx = allRowsForFill.findIndex(r => r.id === startRowId);
+    const secondIdx = allRowsForFill.findIndex(r => r.id === secondRowId);
+    const endIdx = allRowsForFill.findIndex(r => r.id === endRowId);
+
+    if (startIdx === -1 || secondIdx === -1 || endIdx === -1 || secondIdx !== startIdx + 1 || endIdx <= secondIdx) {
+      console.warn('Invalid Int sequence fill indices:', { startIdx, secondIdx, endIdx });
+      return;
+    }
+
+    const sourceProperty = orderedProperties.find(p => p.key === propertyKey);
+    if (!sourceProperty || sourceProperty.dataType !== 'int') {
+      console.warn('fillDownIntSequence only supports Int type:', propertyKey);
+      return;
+    }
+
+    const value1 = parseIntValue(dataManager.getRowBaseValue(startRowId, propertyKey));
+    const value2 = parseIntValue(dataManager.getRowBaseValue(secondRowId, propertyKey));
+    const step = value2 - value1;
+
+    const fillUpdates: Array<{ rowId: string; propertyKey: string; value: number }> = [];
+    for (let r = secondIdx + 1; r <= endIdx; r++) {
+      const targetRow = allRowsForFill[r];
+      if (!targetRow) continue;
+      const k = r - (secondIdx + 1);
+      fillUpdates.push({
+        rowId: targetRow.id,
+        propertyKey,
+        value: value2 + step * (k + 1),
+      });
+    }
+
+    if (fillUpdates.length === 0) return;
+
+    const mergedOptimisticUpdates = new Map(optimisticEditUpdates);
+    fillUpdates.forEach(({ rowId, propertyKey, value }) => {
+      const existingUpdate = mergedOptimisticUpdates.get(rowId);
+      if (existingUpdate) {
+        mergedOptimisticUpdates.set(rowId, {
+          name: existingUpdate.name,
+          propertyValues: { ...existingUpdate.propertyValues, [propertyKey]: value },
+        });
+      } else {
+        const baseRow = dataManager.getRowBaseValue(rowId);
+        if (baseRow) {
+          mergedOptimisticUpdates.set(rowId, {
+            name: baseRow.name,
+            propertyValues: { [propertyKey]: value },
+          });
+        }
+      }
+    });
+
+    setOptimisticEditUpdates(mergedOptimisticUpdates);
+
+    const nameFieldProperty = orderedProperties.find(p => p.name === 'name' && p.dataType === 'string');
+    const isFillingNameField = nameFieldProperty?.key === propertyKey;
+    const nameFieldKey = nameFieldProperty?.key;
+
+    const updateDataMap = new Map<string, {
+      rowId: string;
+      rowName: string;
+      propertyKey: string;
+      fillValue: number;
+      propertyValues: Record<string, any>;
+    }>();
+
+    fillUpdates.forEach(({ rowId, propertyKey, value }) => {
+      const baseRow = dataManager.getRowBaseValue(rowId);
+      if (!baseRow) return;
+      const mergedOptimisticUpdate = mergedOptimisticUpdates.get(rowId);
+      let propertyValuesToSave: Record<string, any>;
+      let rowNameToSave: string;
+      propertyValuesToSave = { ...baseRow.propertyValues, [propertyKey]: value };
+      if (isFillingNameField) {
+        rowNameToSave = String(value);
+      } else if (mergedOptimisticUpdate) {
+        rowNameToSave = mergedOptimisticUpdate.name || baseRow.name;
+      } else if (nameFieldKey) {
+        const currentNameValue = baseRow.propertyValues[nameFieldKey];
+        rowNameToSave = (currentNameValue == null || currentNameValue === '') ? '' : String(currentNameValue);
+      } else {
+        rowNameToSave = baseRow.name;
+      }
+      updateDataMap.set(rowId, { rowId, rowName: rowNameToSave, propertyKey, fillValue: value, propertyValues: propertyValuesToSave });
+    });
+
+    const batchUpdates = Array.from(updateDataMap.entries()).map(([, data]) => ({
+      assetId: data.rowId,
+      assetName: data.rowName,
+      propertyValues: data.propertyValues,
+    }));
+
+    if (batchUpdates.length > 1 && onUpdateAssets) {
+      try {
+        await onUpdateAssets(batchUpdates);
+      } catch (error) {
+        console.error('Int sequence fill failed:', serializeError(error));
+        setOptimisticEditUpdates(prev => {
+          const newMap = new Map(prev);
+          fillUpdates.forEach(({ rowId, propertyKey }) => {
+            const currentUpdate = newMap.get(rowId);
+            if (currentUpdate) {
+              const updatedPropertyValues = { ...currentUpdate.propertyValues };
+              delete updatedPropertyValues[propertyKey];
+              if (Object.keys(updatedPropertyValues).length > 0) {
+                newMap.set(rowId, { name: currentUpdate.name, propertyValues: updatedPropertyValues });
+              } else {
+                newMap.delete(rowId);
+              }
+            }
+          });
+          return newMap;
+        });
+        throw error;
+      }
+    } else {
+      const updates: Array<Promise<void>> = [];
+      updateDataMap.forEach(({ rowId, rowName, propertyKey, propertyValues }) => {
+        updates.push(
+          onUpdateAsset!(rowId, rowName, propertyValues).catch(error => {
+            console.error(`Failed to fill cell ${rowId}-${propertyKey}:`, serializeError(error));
+            setOptimisticEditUpdates(prev => {
+              const newMap = new Map(prev);
+              const currentUpdate = newMap.get(rowId);
+              if (currentUpdate) {
+                const updatedPropertyValues = { ...currentUpdate.propertyValues };
+                delete updatedPropertyValues[propertyKey];
+                if (Object.keys(updatedPropertyValues).length > 0) {
+                  newMap.set(rowId, { name: currentUpdate.name, propertyValues: updatedPropertyValues });
+                } else {
+                  newMap.delete(rowId);
+                }
+              }
+              return newMap;
+            });
+            throw error;
+          })
+        );
+      });
+      await Promise.allSettled(updates);
+    }
+  }, [
+    dataManager,
+    orderedProperties,
+    getAllRowsForCellSelection,
+    onUpdateAsset,
+    onUpdateAssets,
+    setOptimisticEditUpdates,
+    optimisticEditUpdates,
+    parseIntValue,
+  ]);
+
   return {
     fillDown,
-    // Future: fillUp, fillRight, fillLeft can be added here
+    fillDownIntSequence,
+    getIntSequencePreviewValues,
   };
 }
