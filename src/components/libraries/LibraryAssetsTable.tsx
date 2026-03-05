@@ -52,7 +52,7 @@ import { EmptyState } from './components/EmptyState';
 import { BooleanCell } from './components/BooleanCell';
 import { EnumCell } from './components/EnumCell';
 import { MediaCell } from './components/MediaCell';
-import { TextCell } from './components/TextCell';
+import { TextCell, type TextCellProps } from './components/TextCell';
 import { AssetDetailDrawer } from './components/AssetDetailDrawer';
 import { AddNewRowForm } from './components/AddNewRowForm';
 import { AddColumnModal, type AddColumnFormPayload } from './components/AddColumnModal';
@@ -557,7 +557,7 @@ export function LibraryAssetsTable({
     return dataManager.getRowsWithOptimisticUpdates();
   }, [dataManager]);
 
-  const { fillDown } = useBatchFill({
+  const { fillDown, fillDownIntSequence, getIntSequencePreviewValues } = useBatchFill({
     dataManager,
     orderedProperties,
     getAllRowsForCellSelection,
@@ -586,6 +586,7 @@ export function LibraryAssetsTable({
     orderedProperties,
     getAllRowsForCellSelection,
     fillDown,
+    fillDownIntSequence,
     currentFocusedCell,
     handleCellBlur,
     selectionBorderClassNames: {
@@ -872,6 +873,29 @@ export function LibraryAssetsTable({
   }
 
   const totalColumns = 1 + activeProperties.length;
+
+  // Int 序列填充预览：拖动填充柄时待填充格显示的预填值（仅 Int 且两格连续时）
+  const fillPreviewMap = useMemo(() => {
+    if (!fillDragStartCell?.secondRowId) return new Map<string, number>();
+    const allRows = getAllRowsForCellSelection();
+    const suffix = '-' + fillDragStartCell.propertyKey;
+    const selectedRowIdsForCol = Array.from(selectedCells)
+      .filter((k) => k.endsWith(suffix))
+      .map((k) => k.slice(0, k.length - suffix.length));
+    if (selectedRowIdsForCol.length === 0) return new Map();
+    const indices = selectedRowIdsForCol
+      .map((rid) => allRows.findIndex((r) => r.id === rid))
+      .filter((i) => i !== -1);
+    if (indices.length === 0) return new Map();
+    const endRowId = allRows[Math.max(...indices)]?.id;
+    if (!endRowId) return new Map();
+    return getIntSequencePreviewValues(
+      fillDragStartCell.rowId,
+      fillDragStartCell.secondRowId,
+      endRowId,
+      fillDragStartCell.propertyKey
+    );
+  }, [fillDragStartCell, selectedCells, getAllRowsForCellSelection, getIntSequencePreviewValues]);
 
   // Determine column width class based on number of columns (active section when using tabs)
   const getColumnWidthClass = () => {
@@ -1358,6 +1382,11 @@ export function LibraryAssetsTable({
                       display = String(value);
                     }
                     
+                    const fillPreviewValue: TextCellProps['fillPreviewValue'] =
+                      property.dataType === 'int' && fillDragStartCell?.propertyKey === property.key
+                        ? fillPreviewMap.get(row.id)
+                        : undefined;
+
                     return (
                       <TextCell
                         key={property.id}
@@ -1368,6 +1397,7 @@ export function LibraryAssetsTable({
                         display={display}
                         isNameField={isNameField}
                         isFirstColumn={isFirstColumn}
+                        fillPreviewValue={fillPreviewValue}
                         editingCell={editingCell}
                         editingCellRef={editingCellRef}
                         editingCellValue={editingCellValue}
