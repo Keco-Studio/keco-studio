@@ -371,6 +371,27 @@ export function AddColumnModal({
               placeholder="Select type"
               className={styles.dataTypeSelect}
               style={{ width: '100%' }}
+              suffixIcon={
+                <svg
+                  width="12"
+                  height="7"
+                  viewBox="0 0 12 7"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M0.75 0.75L5.75 5.75L10.75 0.75"
+                    stroke="#21272A"
+                    style={{
+                      stroke: '#21272A',
+                      strokeOpacity: 1,
+                    }}
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              }
               getPopupContainer={(node) => node.parentElement ?? document.body}
               popupRender={(originNode) => (
                 <div className={styles.dataTypeDropdown}>
@@ -478,8 +499,29 @@ export function AddColumnModal({
               </label>
               <Select
                 mode="multiple"
-                style={{ width: '100%' }}
+                className={styles.referenceSelect}
                 placeholder="Select libraries to reference"
+                suffixIcon={
+                  <svg
+                    width="12"
+                    height="7"
+                    viewBox="0 0 12 7"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M0.75 0.75L5.75 5.75L10.75 0.75"
+                      stroke="#21272A"
+                      style={{
+                        stroke: '#21272A',
+                        strokeOpacity: 1,
+                      }}
+                      strokeWidth="1.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                }
                 value={referenceLibraries}
                 loading={loadingLibraries || loadingFolders}
                 onChange={(values) => {
