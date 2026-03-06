@@ -165,6 +165,52 @@
   gap: 0.5rem;
 }
 
+.dataTypeDropdown {
+  display: flex;
+  flex-direction: column;
+}
+
+.dataTypeSearchWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.dataTypeSearchWrap:focus-within {
+  border-color: #0B99FF;
+  box-shadow: 0 0 0 2px rgba(11, 153, 255, 0.15);
+}
+
+.dataTypeSearchIcon {
+  position: absolute;
+  left: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.dataTypeSearchInput {
+  flex: 1;
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 10px 6px 32px;
+  font-size: 0.875rem;
+  background: transparent;
+  color: #0f172a;
+  outline: none;
+}
+
+.dataTypeSearchInput::placeholder {
+  color: #94a3b8;
+}
+
 .typeIcon {
   width: 16px;
   height: 16px;
