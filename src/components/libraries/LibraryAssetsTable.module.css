@@ -353,7 +353,6 @@
 .propertyHeaderIcon {
   flex-shrink: 0;
   opacity: 1;
-  transition: opacity 0.15s ease;
 }
 
 .propertyHeaderContent:hover .propertyHeaderIconWrapper {
@@ -361,9 +360,6 @@
   opacity: 1;
 }
 
-.propertyHeaderContent:hover .propertyHeaderIcon {
-  opacity: 1;
-}
 
 .headerContextMenu {
   position: fixed;
