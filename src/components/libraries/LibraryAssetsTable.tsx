@@ -503,6 +503,7 @@ export function LibraryAssetsTable({
   // 双击 section 标签进入编辑：当前正在编辑的 section id 与输入框内容
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingSectionName, setEditingSectionName] = useState('');
+  const [editingSectionOriginalName, setEditingSectionOriginalName] = useState('');
   const sectionInputRef = useRef<HTMLInputElement>(null);
 
   const activeGroup = useMemo(
@@ -531,13 +532,16 @@ export function LibraryAssetsTable({
   const handleSectionEditStart = useCallback((sectionId: string, currentName: string) => {
     setEditingSectionId(sectionId);
     setEditingSectionName(currentName);
+    setEditingSectionOriginalName(currentName);
     setTimeout(() => sectionInputRef.current?.focus(), 0);
   }, []);
 
   const handleSectionEditEnd = useCallback(async (submit: boolean) => {
     if (!editingSectionId) return;
     const trimmed = editingSectionName.trim();
-    if (submit && trimmed && onUpdateSection) {
+    const originalTrimmed = editingSectionOriginalName.trim();
+    const hasChanged = trimmed !== originalTrimmed;
+    if (submit && trimmed && hasChanged && onUpdateSection) {
       try {
         await onUpdateSection(editingSectionId, trimmed);
         setToastMessage({
@@ -551,7 +555,8 @@ export function LibraryAssetsTable({
     }
     setEditingSectionId(null);
     setEditingSectionName('');
-  }, [editingSectionId, editingSectionName, onUpdateSection, message]);
+    setEditingSectionOriginalName('');
+  }, [editingSectionId, editingSectionName, editingSectionOriginalName, onUpdateSection, message]);
 
   const getAllRowsForCellSelection = useCallback(() => {
     return dataManager.getRowsWithOptimisticUpdates();
@@ -868,13 +873,8 @@ export function LibraryAssetsTable({
     contextMenuRowId
   ]);
 
-  if (!hasProperties) {
-    return <EmptyState userRole={userRole} onPredefineClick={handlePredefineClick} />;
-  }
-
-  const totalColumns = 1 + activeProperties.length;
-
   // Int 序列填充预览：拖动填充柄时待填充格显示的预填值（仅 Int 且两格连续时）
+  // 必须在任何条件 return 之前调用，否则会违反 React Hooks 调用顺序
   const fillPreviewMap = useMemo(() => {
     if (!fillDragStartCell?.secondRowId) return new Map<string, number>();
     const allRows = getAllRowsForCellSelection();
@@ -896,6 +896,12 @@ export function LibraryAssetsTable({
       fillDragStartCell.propertyKey
     );
   }, [fillDragStartCell, selectedCells, getAllRowsForCellSelection, getIntSequencePreviewValues]);
+
+  if (!hasProperties) {
+    return <EmptyState userRole={userRole} onPredefineClick={handlePredefineClick} />;
+  }
+
+  const totalColumns = 1 + activeProperties.length;
 
   // Determine column width class based on number of columns (active section when using tabs)
   const getColumnWidthClass = () => {

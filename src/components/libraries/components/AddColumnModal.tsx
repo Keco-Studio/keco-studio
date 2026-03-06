@@ -64,6 +64,14 @@ export function AddColumnModal({
   const [referenceSearch, setReferenceSearch] = useState('');
   const [referenceDropdownOpen, setReferenceDropdownOpen] = useState(false);
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [dataTypeSearch, setDataTypeSearch] = useState('');
+  const dataTypeSearchRef = useRef<HTMLInputElement>(null);
+
+  const filteredFieldTypeOptions = useMemo(() => {
+    if (!dataTypeSearch.trim()) return FIELD_TYPE_OPTIONS;
+    const q = dataTypeSearch.trim().toLowerCase();
+    return FIELD_TYPE_OPTIONS.filter((opt) => opt.label.toLowerCase().includes(q));
+  }, [dataTypeSearch]);
 
   const updatePosition = () => {
     // 无锚点时，居中显示
@@ -110,6 +118,7 @@ export function AddColumnModal({
       setError(null);
       setSubmitting(false);
       setShowDiscardConfirm(false);
+      setDataTypeSearch('');
       updatePosition();
       setTimeout(() => nameInputRef.current?.focus(), 80);
     }
@@ -363,7 +372,33 @@ export function AddColumnModal({
               className={styles.dataTypeSelect}
               style={{ width: '100%' }}
               getPopupContainer={(node) => node.parentElement ?? document.body}
-              options={FIELD_TYPE_OPTIONS.map((opt) => ({
+              popupRender={(originNode) => (
+                <div className={styles.dataTypeDropdown}>
+                  <div className={styles.dataTypeSearchWrap}>
+                    <span className={styles.dataTypeSearchIcon} aria-hidden>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8" />
+                        <path d="m21 21-4.35-4.35" />
+                      </svg>
+                    </span>
+                    <input
+                      ref={dataTypeSearchRef}
+                      type="text"
+                      className={styles.dataTypeSearchInput}
+                      placeholder="Search"
+                      value={dataTypeSearch}
+                      onChange={(e) => setDataTypeSearch(e.target.value)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    />
+                  </div>
+                  {originNode}
+                </div>
+              )}
+              onOpenChange={(open) => {
+                if (!open) setDataTypeSearch('');
+                else setTimeout(() => dataTypeSearchRef.current?.focus(), 0);
+              }}
+              options={filteredFieldTypeOptions.map((opt) => ({
                 value: opt.value,
                 label: (
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

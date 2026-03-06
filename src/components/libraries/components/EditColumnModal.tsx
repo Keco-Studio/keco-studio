@@ -80,7 +80,15 @@ export function EditColumnModal({
   const [referenceSearch, setReferenceSearch] = useState('');
   const [referenceDropdownOpen, setReferenceDropdownOpen] = useState(false);
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
+  const [dataTypeSearch, setDataTypeSearch] = useState('');
+  const dataTypeSearchRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredFieldTypeOptions = useMemo(() => {
+    if (!dataTypeSearch.trim()) return FIELD_TYPE_OPTIONS;
+    const q = dataTypeSearch.trim().toLowerCase();
+    return FIELD_TYPE_OPTIONS.filter((opt) => opt.label.toLowerCase().includes(q));
+  }, [dataTypeSearch]);
 
   // 每次打开时，用当前列配置初始化表单状态
   useEffect(() => {
@@ -307,8 +315,38 @@ export function EditColumnModal({
     }
   };
 
+  /** 判断两个字符串数组是否相等（顺序与元素一致） */
+  const stringArraysEqual = (a: string[], b: string[] | undefined): boolean => {
+    const left = a ?? [];
+    const right = b ?? [];
+    if (left.length !== right.length) return false;
+    return left.every((v, i) => v === right[i]);
+  };
+
+  /** 是否有“会覆盖列内数据”的修改：类型、枚举、引用库、描述等；仅改列名不算 */
+  const hasOverwriteRelevantChanges = (): boolean => {
+    const nameChanged = (editColumnModal.name ?? '').trim() !== (propertyName ?? '').trim();
+    const descChanged =
+      (editColumnModal.description ?? '').trim() !== (propertyDescription ?? '').trim();
+    const typeChanged = editColumnModal.dataType !== propertyDataType;
+    const enumChanged = !stringArraysEqual(
+      editColumnModal.enumOptions ?? [],
+      propertyDataType === 'enum' ? propertyEnumOptions ?? [] : [],
+    );
+    const refChanged = !stringArraysEqual(
+      editColumnModal.referenceLibraries ?? [],
+      propertyDataType === 'reference' ? propertyReferenceLibraries ?? [] : [],
+    );
+    return descChanged || typeChanged || enumChanged || refChanged;
+  };
+
   const handleSaveClick = () => {
     if (!validateForm()) {
+      return;
+    }
+    // 无任何修改，或仅修改了列名：直接保存，不弹出 overwrite 确认
+    if (!hasOverwriteRelevantChanges()) {
+      void handleSubmit();
       return;
     }
     setShowOverwriteConfirm(true);
@@ -390,7 +428,33 @@ export function EditColumnModal({
             className={styles.dataTypeSelect}
             style={{ width: '100%' }}
             getPopupContainer={(node) => node.parentElement ?? document.body}
-            options={FIELD_TYPE_OPTIONS.map((opt) => ({
+            popupRender={(originNode) => (
+              <div className={styles.dataTypeDropdown}>
+                <div className={styles.dataTypeSearchWrap}>
+                  <span className={styles.dataTypeSearchIcon} aria-hidden>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" />
+                      <path d="m21 21-4.35-4.35" />
+                    </svg>
+                  </span>
+                  <input
+                    ref={dataTypeSearchRef}
+                    type="text"
+                    className={styles.dataTypeSearchInput}
+                    placeholder="Search"
+                    value={dataTypeSearch}
+                    onChange={(e) => setDataTypeSearch(e.target.value)}
+                    onMouseDown={(e) => e.stopPropagation()}
+                  />
+                </div>
+                {originNode}
+              </div>
+            )}
+            onOpenChange={(open) => {
+              if (!open) setDataTypeSearch('');
+              else setTimeout(() => dataTypeSearchRef.current?.focus(), 0);
+            }}
+            options={filteredFieldTypeOptions.map((opt) => ({
               value: opt.value,
               label: (
                 <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
