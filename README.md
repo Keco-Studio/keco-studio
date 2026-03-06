@@ -22,7 +22,7 @@ Supabase relies on Docker. Please install Docker Desktop and ensure it is runnin
 ## 2. Download the Source Code
 
 Project repository:
-[https://github.com/Caerulean-ai/keco-studio](https://github.com/Caerulean-ai/keco-studio)
+[https://github.com/Keco-Studio/keco-studio](https://github.com/Keco-Studio/keco-studio)
 
 ### 1. Create a project directory and open a terminal
 
@@ -43,7 +43,7 @@ cd project
 
 ```bash
 # Clone the repository
-git clone https://github.com/Caerulean-ai/keco-studio.git
+git clone https://github.com/Keco-Studio/keco-studio.git
 
 # Enter the project directory
 cd keco-studio
