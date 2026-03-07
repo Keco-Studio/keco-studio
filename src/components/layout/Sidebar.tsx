@@ -341,11 +341,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     fetchAssets(libraryId);
   };
 
-  const handleLibraryPredefineClick = useCallback((projectId: string, libraryId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    router.push(`/${projectId}/${libraryId}/predefine`);
-  }, [router]);
-
   const handleAssetClick = async (projectId: string, libraryId: string, assetId: string) => {
     // Clear authorization caches before navigation
     try {
@@ -571,7 +566,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       openNewLibrary,
       setSelectedFolderId,
       setError,
-      onLibraryPredefineClick: handleLibraryPredefineClick,
     },
     sidebarWidth
   );
@@ -812,7 +806,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
                   router.push(`/${currentIds.projectId}/${currentIds.libraryId}`);
                 }
               }}
-              onLibraryPredefineClick={handleLibraryPredefineClick}
               onAddNewAsset={() => {
                 if (currentIds.projectId && currentIds.libraryId) {
                   router.push(`/${currentIds.projectId}/${currentIds.libraryId}/new`);

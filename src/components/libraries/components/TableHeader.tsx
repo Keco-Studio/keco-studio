@@ -191,6 +191,21 @@ export function TableHeader({
     };
   }, [headerMenu.visible]);
 
+  const openHeaderMenu = (anchorEl: HTMLDivElement, property: PropertyConfig) => {
+    const rect = anchorEl.getBoundingClientRect();
+    setHeaderMenu({
+      visible: true,
+      x: rect.left + rect.width / 2,
+      y: rect.bottom + 8,
+      propertyId: property.id,
+      propertyName: property.name,
+      propertyDescription: property.description,
+      propertyDataType: property.dataType,
+      propertyEnumOptions: property.enumOptions,
+      propertyReferenceLibraries: property.referenceLibraries,
+    });
+  };
+
   const header = (
     <thead>
       {showSectionRow && (
@@ -243,18 +258,7 @@ export function TableHeader({
                 className={styles.propertyHeaderContent}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
-                  setHeaderMenu({
-                    visible: true,
-                    x: rect.left + rect.width / 2,
-                    y: rect.bottom + 8,
-                    propertyId: property.id,
-                    propertyName: property.name,
-                    propertyDescription: property.description,
-                    propertyDataType: property.dataType,
-                    propertyEnumOptions: property.enumOptions,
-                    propertyReferenceLibraries: property.referenceLibraries,
-                  });
+                  openHeaderMenu(e.currentTarget as HTMLDivElement, property);
                 }}
               >
                 <div className={styles.propertyHeaderMain}>
@@ -282,7 +286,16 @@ export function TableHeader({
                       />
                     </Tooltip>
                   )}
-                  <div className={styles.propertyHeaderIconWrapper}>
+                  <div
+                    className={styles.propertyHeaderIconWrapper}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const contentEl = (e.currentTarget as HTMLElement).closest(
+                        `.${styles.propertyHeaderContent}`
+                      ) as HTMLDivElement | null;
+                      if (contentEl) openHeaderMenu(contentEl, property);
+                    }}
+                  >
                     <Image
                       src={showIcon}
                       alt=""
