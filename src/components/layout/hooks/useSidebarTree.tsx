@@ -2,14 +2,11 @@
 
 import Image from 'next/image';
 import { useMemo, type MouseEvent } from 'react';
-import { Tooltip } from 'antd';
 import type { DataNode } from 'antd/es/tree';
 import type { Folder } from '@/lib/services/folderService';
 import type { Library } from '@/lib/services/libraryService';
 import { truncateText } from '@/lib/utils/truncateText';
 import libraryBookIcon from '@/assets/images/LibraryBookIcon.svg';
-import PredefineNewIcon from '@/assets/images/PredefineNewIcon.svg';
-import PredefineNewClick from '@/assets/images/PredefineNewClick.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
 import folderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import styles from '../Sidebar.module.css';
@@ -30,7 +27,6 @@ export type UseSidebarTreeContext = {
   openNewLibrary: () => void;
   setSelectedFolderId: (id: string | null) => void;
   setError: (msg: string | null) => void;
-  onLibraryPredefineClick: (projId: string, libId: string, e: MouseEvent) => void;
 };
 
 /**
@@ -50,7 +46,6 @@ export function useSidebarTree(
     openNewLibrary,
     setSelectedFolderId,
     setError,
-    onLibraryPredefineClick: handleLibraryPredefineClick,
   } = context;
 
   const treeData: DataNode[] = useMemo(() => {
@@ -99,29 +94,6 @@ export function useSidebarTree(
                 <span className={styles.itemText} title={lib.name}>
                   {truncateText(lib.name, computeMaxChars(15))}
                 </span>
-              </div>
-              <div className={styles.itemActions}>
-                {userRole === 'admin' && (
-                  <Tooltip title="Predefine asset here" placement="top" color="#0B99FF">
-                    <button
-                      className={styles.iconButton}
-                      aria-label="Library sections"
-                      onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
-                    >
-                      <Image
-                        src={
-                          currentIds.isPredefinePage && currentIds.libraryId === lib.id
-                            ? PredefineNewClick
-                            : PredefineNewIcon
-                        }
-                        alt="Predefine"
-                        width={22}
-                        height={22}
-                        className="icon-22"
-                      />
-                    </button>
-                  </Tooltip>
-                )}
               </div>
             </div>
           ),
@@ -199,29 +171,6 @@ export function useSidebarTree(
                 {truncateText(lib.name, computeMaxChars(15))}
               </span>
             </div>
-            <div className={styles.itemActions}>
-              {userRole === 'admin' && (
-                <Tooltip title="Predefine asset here" placement="top" color="#0B99FF">
-                  <button
-                    className={styles.iconButton}
-                    aria-label="Library sections"
-                    onClick={(e) => handleLibraryPredefineClick(libProjectId, lib.id, e)}
-                  >
-                    <Image
-                      src={
-                        currentIds.isPredefinePage && currentIds.libraryId === lib.id
-                          ? PredefineNewClick
-                          : PredefineNewIcon
-                      }
-                      alt="Predefine"
-                      width={22}
-                      height={22}
-                      className="icon-22"
-                    />
-                  </button>
-                </Tooltip>
-              )}
-            </div>
           </div>
         ),
         key: `library-${lib.id}`,
@@ -240,7 +189,6 @@ export function useSidebarTree(
     folders,
     libraries,
     handleContextMenu,
-    handleLibraryPredefineClick,
     router,
     userRole,
     openNewLibrary,

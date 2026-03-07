@@ -2,10 +2,8 @@
 
 import { useState } from 'react';
 import Image from 'next/image';
-import { Tooltip } from 'antd';
 import { Library } from '@/lib/services/libraryService';
 import libraryCardIcon from "@/assets/images/projectPreviewListLibraryIcon.svg";
-import predefineSettingIcon from "@/assets/images/PredefineNewIcon.svg";
 import moreOptionsIcon from "@/assets/images/moreOptionsIcon.svg";
 import tableThumbnail from "@/assets/images/tableThumbnail.svg";
 import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
@@ -40,13 +38,6 @@ export function LibraryCard({
   const handleCardClick = () => {
     if (onClick && !contextMenu) {
       onClick(library.id);
-    }
-  };
-
-  const handleSettingsClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onSettingsClick) {
-      onSettingsClick(library.id, e);
     }
   };
 
@@ -92,22 +83,6 @@ export function LibraryCard({
             </div>
           </div>
           <div className={styles.cardActions}>
-            <Tooltip
-              title="Predefine asset here"
-              placement="bottom"
-              color="#0B99FF"
-            >
-              <button
-                className={styles.actionButton}
-                onClick={handleSettingsClick}
-                aria-label="Library settings"
-              >
-                <Image src={predefineSettingIcon}
-                  alt="Settings"
-                  width={20} height={20} className="icon-20"
-                />
-              </button>
-            </Tooltip>
             <button
               className={`${styles.actionButton} ${contextMenu ? styles.actionButtonActive : ''}`}
               onClick={handleMoreClick}

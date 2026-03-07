@@ -36,7 +36,6 @@ export type SidebarLibrariesSectionProps = {
   onSelect: (keys: React.Key[], info: any) => void;
   onExpand: (expandedKeys: React.Key[], info: { node: any }) => void;
   onBackToLibrary: () => void;
-  onLibraryPredefineClick: (projectId: string, libraryId: string, e: React.MouseEvent) => void;
   onAddNewAsset: () => void;
   onAssetClick: (projectId: string, libraryId: string, assetId: string) => void;
   onContextMenu: (e: React.MouseEvent, type: 'asset', id: string) => void;
@@ -63,7 +62,6 @@ export function SidebarLibrariesSection({
   onSelect,
   onExpand,
   onBackToLibrary,
-  onLibraryPredefineClick,
   onAddNewAsset,
   onAssetClick,
   onContextMenu,
