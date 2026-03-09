@@ -426,7 +426,24 @@ export function EditColumnModal({
             }
             placeholder="Select type"
             className={styles.dataTypeSelect}
-            style={{ width: '100%' }}
+            style={{ width: '100%', backgroundColor: '#ffffff' }}
+            suffixIcon={
+              <svg
+                width="12"
+                height="7"
+                viewBox="0 0 12 7"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M0.75 0.75L5.75 5.75L10.75 0.75"
+                  stroke="#21272A"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            }
             getPopupContainer={(node) => node.parentElement ?? document.body}
             popupRender={(originNode) => (
               <div className={styles.dataTypeDropdown}>
@@ -487,7 +504,7 @@ export function EditColumnModal({
             }
             placeholder="Type..."
             className={styles.textarea}
-            rows={3}
+            rows={2}
             maxLength={250}
             showCount={false}
           />
@@ -557,7 +574,25 @@ export function EditColumnModal({
             <Select
               mode="multiple"
               style={{ width: '100%' }}
+              className={styles.referenceSelect}
               placeholder="Select libraries to reference"
+            suffixIcon={
+              <svg
+                width="12"
+                height="7"
+                viewBox="0 0 12 7"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  d="M0.75 0.75L5.75 5.75L10.75 0.75"
+                  stroke="#21272A"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            }
               value={editColumnModal.referenceLibraries}
               loading={editColumnModal.loadingLibraries || editColumnModal.loadingFolders}
               onChange={(values) =>
@@ -581,7 +616,7 @@ export function EditColumnModal({
                   setReferenceSearch('');
                 }
               }}
-              dropdownRender={() => (
+              popupRender={() => (
                 <div className={styles.referenceDropdown}>
                   <div className={styles.referenceDropdownContent}>
                     <Input
