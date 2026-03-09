@@ -528,3 +528,158 @@ export async function updateLibrary(
     globalRequestCache.invalidate(`libraries:list:${library.project_id}:root`);
   }
 }
+
+export async function duplicateLibrary(
+  supabase: SupabaseClient,
+  libraryId: string,
+  newName: string,
+  copyHeaderOnly: boolean
+): Promise<string> {
+  // 1. Get original library
+  const originalLib = await getLibrary(supabase, libraryId);
+  if (!originalLib) throw new Error('Original library not found');
+
+  // Verify create permission
+  await verifyLibraryCreationPermission(supabase, originalLib.project_id);
+
+  // 2. Create new library
+  const { data: newLib, error: newLibError } = await supabase
+    .from('libraries')
+    .insert({
+      project_id: originalLib.project_id,
+      folder_id: originalLib.folder_id,
+      name: newName,
+      description: originalLib.description,
+    })
+    .select('id')
+    .single();
+
+  if (newLibError) {
+    if (newLibError.code === '23505') {
+      throw new Error('A library with this name already exists in the project or folder.');
+    }
+    throw newLibError;
+  }
+  const newLibraryId = newLib.id;
+
+  // 3. Copy field definitions
+  const { data: fields, error: fieldsError } = await supabase
+    .from('library_field_definitions')
+    .select('*')
+    .eq('library_id', libraryId);
+  if (fieldsError) throw fieldsError;
+
+  const oldToNewFieldMap = new Map<string, string>();
+  if (fields && fields.length > 0) {
+    const newFieldsToInsert = fields.map(f => {
+      const { id, created_at, updated_at, library_id, section_id, ...rest } = f;
+      // We need to generate a new section_id. Format is usually "libraryId:sectionName"
+      const newSectionId = `${newLibraryId}:${f.section}`;
+      return {
+        ...rest,
+        library_id: newLibraryId,
+        section_id: newSectionId,
+      };
+    });
+
+    const { data: insertedFields, error: insertFieldsError } = await supabase
+      .from('library_field_definitions')
+      .insert(newFieldsToInsert)
+      .select('id, section, order_index, label');
+    if (insertFieldsError) throw insertFieldsError;
+
+    // Build map
+    if (insertedFields) {
+      for (const oldF of fields) {
+        const newF = insertedFields.find(nf => nf.section === oldF.section && nf.order_index === oldF.order_index && nf.label === oldF.label);
+        if (newF) {
+          oldToNewFieldMap.set(oldF.id, newF.id);
+        }
+      }
+    }
+  }
+
+  // 4. Handle assets
+  if (copyHeaderOnly) {
+    // Insert 3 empty rows
+    const emptyRows = Array.from({ length: 3 }).map((_, i) => ({
+      library_id: newLibraryId,
+      name: '',
+      row_index: i
+    }));
+    await supabase.from('library_assets').insert(emptyRows);
+  } else {
+    // Copy all assets
+    const { data: assets, error: assetsError } = await supabase
+      .from('library_assets')
+      .select('*')
+      .eq('library_id', libraryId);
+    if (assetsError) throw assetsError;
+
+    if (assets && assets.length > 0) {
+      const newAssetsToInsert = assets.map(a => {
+        const { id, created_at, updated_at, library_id, ...rest } = a;
+        return {
+          ...rest,
+          library_id: newLibraryId
+        };
+      });
+
+      const { data: insertedAssets, error: insertAssetsError } = await supabase
+        .from('library_assets')
+        .insert(newAssetsToInsert)
+        .select('id, row_index, name');
+      if (insertAssetsError) throw insertAssetsError;
+
+      const oldToNewAssetMap = new Map<string, string>();
+      for (const oldA of assets) {
+        const newA = insertedAssets?.find(na => na.row_index === oldA.row_index && na.name === oldA.name);
+        if (newA) {
+          oldToNewAssetMap.set(oldA.id, newA.id);
+        }
+      }
+
+      // Fetch and copy values
+      const assetIds = assets.map(a => a.id);
+      
+      // Fetch in chunks to avoid URL size limit if there are thousands of assets
+      const chunkSize = 100;
+      for (let i = 0; i < assetIds.length; i += chunkSize) {
+        const chunk = assetIds.slice(i, i + chunkSize);
+        const { data: values, error: valuesError } = await supabase
+          .from('library_asset_values')
+          .select('*')
+          .in('asset_id', chunk);
+        if (valuesError) throw valuesError;
+
+        if (values && values.length > 0) {
+          const newValuesToInsert = values.map(v => {
+            return {
+              asset_id: oldToNewAssetMap.get(v.asset_id)!,
+              field_id: oldToNewFieldMap.get(v.field_id)!,
+              value_json: v.value_json
+            };
+          }).filter(v => v.asset_id && v.field_id); // Ensure mapping exists
+
+          if (newValuesToInsert.length > 0) {
+            const { error: insertValuesError } = await supabase
+              .from('library_asset_values')
+              .insert(newValuesToInsert);
+            if (insertValuesError) throw insertValuesError;
+          }
+        }
+      }
+    }
+  }
+
+  // Invalidate caches
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`libraries:list:${originalLib.project_id}:all`);
+  if (originalLib.folder_id) {
+    globalRequestCache.invalidate(`libraries:list:${originalLib.project_id}:${originalLib.folder_id}`);
+  } else {
+    globalRequestCache.invalidate(`libraries:list:${originalLib.project_id}:root`);
+  }
+
+  return newLibraryId;
+}

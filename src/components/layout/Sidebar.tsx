@@ -14,6 +14,7 @@ import { NewProjectModal } from "@/components/projects/NewProjectModal";
 import { EditProjectModal } from "@/components/projects/EditProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
 import { EditLibraryModal } from "@/components/libraries/EditLibraryModal";
+import { DuplicateLibraryModal } from "@/components/libraries/DuplicateLibraryModal";
 import { NewFolderModal } from "@/components/folders/NewFolderModal";
 import { EditFolderModal } from "@/components/folders/EditFolderModal";
 import { EditAssetModal } from "@/components/asset/EditAssetModal";
@@ -85,6 +86,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     showLibraryModal,
     showEditLibraryModal,
     editingLibraryId,
+    showDuplicateLibraryModal,
+    duplicatingLibraryId,
     showFolderModal,
     showEditFolderModal,
     editingFolderId,
@@ -98,6 +101,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     closeLibraryModal,
     openEditLibrary,
     closeEditLibraryModal,
+    openDuplicateLibrary,
+    closeDuplicateLibraryModal,
     openNewFolder,
     closeFolderModal,
     openEditFolder,
@@ -617,6 +622,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     router,
     openEditProject,
     openEditLibrary,
+    openDuplicateLibrary,
     openEditFolder,
     openEditAsset,
     supabase,
@@ -852,6 +858,28 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           onClose={closeEditLibraryModal}
           onUpdated={() => {
             // Cache will be invalidated by the libraryUpdated event listener
+          }}
+        />
+      )}
+
+      {duplicatingLibraryId && (
+        <DuplicateLibraryModal
+          open={showDuplicateLibraryModal}
+          libraryId={duplicatingLibraryId}
+          onClose={closeDuplicateLibraryModal}
+          onDuplicated={(newLibraryId) => {
+            const originalLibrary = libraries.find(lib => lib.id === duplicatingLibraryId);
+            const folderId = originalLibrary?.folder_id || null;
+            
+            // Dispatch event so that tree and other caches can refresh
+            window.dispatchEvent(new CustomEvent('libraryCreated', {
+              detail: { folderId, libraryId: newLibraryId, projectId: currentIds.projectId }
+            }));
+            
+            // Navigate to the newly duplicated library
+            if (currentIds.projectId) {
+              router.push(`/${currentIds.projectId}/${newLibraryId}`);
+            }
           }}
         />
       )}

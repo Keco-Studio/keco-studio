@@ -245,4 +245,6 @@
   left: 0;
   top: 50%;
   transform: translateY(-50%);
+  max-width: calc(100% - 150px);
+  pointer-events: none;
 }

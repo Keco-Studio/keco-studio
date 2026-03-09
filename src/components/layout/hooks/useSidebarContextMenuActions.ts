@@ -18,6 +18,7 @@ export type UseSidebarContextMenuActionsParams = {
   router: AppRouterInstance;
   openEditProject: (id: string) => void;
   openEditLibrary: (id: string) => void;
+  openDuplicateLibrary: (id: string) => void;
   openEditFolder: (id: string) => void;
   openEditAsset: (id: string) => void;
   supabase: SupabaseClient;
@@ -45,6 +46,7 @@ export function useSidebarContextMenuActions({
   router,
   openEditProject,
   openEditLibrary,
+  openDuplicateLibrary,
   openEditFolder,
   openEditAsset,
   supabase,
@@ -86,6 +88,18 @@ export function useSidebarContextMenuActions({
           closeContextMenu();
           return;
         }
+      }
+
+      // Handle duplicate action
+      if (action === 'duplicate') {
+        if (contextMenu.type === 'library') {
+          openDuplicateLibrary(contextMenu.id);
+          closeContextMenu();
+          return;
+        }
+        // Project, Folder, Asset duplication not implemented yet
+        closeContextMenu();
+        return;
       }
 
       // Handle delete action
@@ -207,6 +221,7 @@ export function useSidebarContextMenuActions({
       router,
       openEditProject,
       openEditLibrary,
+      openDuplicateLibrary,
       openEditFolder,
       openEditAsset,
       supabase,
