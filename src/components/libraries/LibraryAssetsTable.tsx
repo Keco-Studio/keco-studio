@@ -500,7 +500,7 @@ export function LibraryAssetsTable({
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const effectiveActiveSectionId = activeSectionId ?? groups[0]?.section.id ?? null;
 
-  // 双击 section 标签进入编辑：当前正在编辑的 section id 与输入框内容
+  // Double-click the section TAB to enter editing: The section id currently being edited and the content of the input box
   const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
   const [editingSectionName, setEditingSectionName] = useState('');
   const [editingSectionOriginalName, setEditingSectionOriginalName] = useState('');
@@ -545,7 +545,7 @@ export function LibraryAssetsTable({
       try {
         await onUpdateSection(editingSectionId, trimmed);
         setToastMessage({
-          message: 'Section name updated.',
+          message: 'Section name updated',
           type: 'success',
         });
         setTimeout(() => setToastMessage(null), 2000);
