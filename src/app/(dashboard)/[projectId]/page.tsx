@@ -9,7 +9,6 @@ import { getProject, Project } from '@/lib/services/projectService';
 import { listFolders, Folder } from '@/lib/services/folderService';
 import { listLibraries, Library, getLibrariesAssetCounts } from '@/lib/services/libraryService';
 import { AuthorizationError, getUserProjectRole } from '@/lib/services/authorizationService';
-import predefineSettingIcon from "@/assets/images/predefineSettingIcon.svg";
 import projectNoFolderPreIcon from "@/assets/images/projectEmptyIcon_2.png";
 import plusHorizontal from "@/assets/images/plusHorizontal.svg";
 import plusVertical from "@/assets/images/plusVertical.svg";
@@ -275,11 +274,6 @@ export default function ProjectPage() {
 
   const handleLibraryClick = (libraryId: string) => {
     router.push(`/${projectId}/${libraryId}`);
-  };
-
-  const handleLibrarySettingsClick = (libraryId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    router.push(`/${projectId}/${libraryId}/predefine`);
   };
 
   const handleLibraryMoreClick = (libraryId: string, e: React.MouseEvent) => {
@@ -592,7 +586,6 @@ export default function ProjectPage() {
               assetCount={assetCounts[library.id] || 0} 
               userRole={userRole}
               onClick={handleLibraryClick}
-              onSettingsClick={handleLibrarySettingsClick}
               onAction={handleLibraryAction}
             />
           ))}
@@ -629,7 +622,6 @@ export default function ProjectPage() {
           userRole={userRole}
           onFolderClick={handleFolderClick}
           onLibraryClick={handleLibraryClick}
-          onSettingsClick={handleLibrarySettingsClick}
           onLibraryAction={handleLibraryAction}
           onFolderAction={handleFolderAction}
         />

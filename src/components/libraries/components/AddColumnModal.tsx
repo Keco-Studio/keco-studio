@@ -12,7 +12,7 @@ import { listLibraries, type Library } from '@/lib/services/libraryService';
 import { listFolders, type Folder } from '@/lib/services/folderService';
 import styles from './AddColumnModal.module.css';
 
-const DESCRIPTION_MAX = 50;
+const DESCRIPTION_MAX = 250;
 type DataType = NonNullable<PropertyConfig['dataType']>;
 
 export type AddColumnFormPayload = {

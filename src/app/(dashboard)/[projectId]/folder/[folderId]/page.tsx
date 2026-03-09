@@ -133,11 +133,6 @@ export default function FolderPage() {
     router.push(`/${projectId}/${libraryId}`);
   };
 
-  const handleLibrarySettingsClick = (libraryId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    router.push(`/${projectId}/${libraryId}/predefine`);
-  };
-
   const handleLibraryMoreClick = (libraryId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     // Feature not implemented yet
@@ -359,7 +354,6 @@ export default function FolderPage() {
               assetCount={assetCounts[library.id] || 0}
               userRole={userRole}
               onClick={handleLibraryClick}
-              onSettingsClick={handleLibrarySettingsClick}
               onAction={handleLibraryAction}
             />
           ))}
@@ -373,7 +367,6 @@ export default function FolderPage() {
           projectId={projectId}
           userRole={userRole}
           onLibraryClick={handleLibraryClick}
-          onSettingsClick={handleLibrarySettingsClick}
           onLibraryAction={handleLibraryAction}
         />
       )}
