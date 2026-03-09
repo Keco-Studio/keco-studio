@@ -7,6 +7,7 @@ import predefineTypeMediaIcon from '@/assets/images/predefineTypeMediaIcon.svg';
 import predefineTypeBoolenIcon from '@/assets/images/predefineTypeBoolenIcon.svg';
 import predefineTypeFloatIcon from '@/assets/images/predefineTypeFloatIcon.svg';
 import predefineTypeFileIcon from '@/assets/images/predefineTypeFileIcon.svg';
+import predefineTypeIntArrayIcon from '@/assets/images/predefineTypeIntArrayIcon.svg';
 
 export const getFieldTypeIcon = (dataType: FieldType) => {
   switch (dataType) {
@@ -14,6 +15,8 @@ export const getFieldTypeIcon = (dataType: FieldType) => {
       return predefineTypeStrIcon;
     case 'int':
       return predefineTypeIntIcon;
+    case 'int_array':
+      return predefineTypeIntArrayIcon;
     case 'float':
       return predefineTypeFloatIcon;
     case 'enum':
@@ -39,6 +42,7 @@ export const FIELD_TYPE_OPTIONS = [
   { label: 'Boolean', value: 'boolean' },
   { label: 'Reference', value: 'reference' },
   { label: 'Int', value: 'int' },
+  { label: 'Int Array', value: 'int_array' },
   { label: 'Float', value: 'float' },
 ] as const;
 

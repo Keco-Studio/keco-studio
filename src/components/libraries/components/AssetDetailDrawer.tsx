@@ -32,6 +32,8 @@ function getTypeBadgeLabel(property: PropertyConfig): string {
       return 'String';
     case 'int':
       return 'Int';
+    case 'int_array':
+      return 'Int Array';
     case 'float':
       return 'Float';
     case 'boolean':
