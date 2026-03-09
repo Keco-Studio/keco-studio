@@ -15,7 +15,6 @@ type LibraryCardProps = {
   assetCount?: number;
   userRole?: 'admin' | 'editor' | 'viewer' | null;
   isProjectOwner?: boolean;
-  onSettingsClick?: (libraryId: string, e: React.MouseEvent) => void;
   onClick?: (libraryId: string) => void;
   onAction?: (libraryId: string, action: ContextMenuAction) => void;
 };
@@ -26,7 +25,6 @@ export function LibraryCard({
   assetCount = 0,
   userRole,
   isProjectOwner,
-  onSettingsClick,
   onClick,
   onAction,
 }: LibraryCardProps) {

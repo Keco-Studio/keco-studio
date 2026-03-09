@@ -9,11 +9,9 @@ import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import projectPreviewListLibraryIcon from "@/assets/images/projectPreviewListLibraryIcon.svg";
 import projectPreviewListLibraryActiveIcon from "@/assets/images/projectPreviewListLibraryActiveIcon.svg";
 import folderIcon from "@/assets/images/projectPreviewListFolderIcon.svg";
-import predefineSettingIcon from "@/assets/images/PredefineNewIcon.svg";
 import moreOptionsIcon from "@/assets/images/moreOptionsIcon.svg";
 import { ContextMenu, ContextMenuAction } from '@/components/layout/ContextMenu';
 import styles from './LibraryListView.module.css';
-import { Tooltip } from 'antd';
 
 type LibraryWithAssetCount = Library & {
   assetCount?: number;
@@ -38,7 +36,6 @@ type LibraryListViewProps = {
   isProjectOwner?: boolean;
   onLibraryClick?: (libraryId: string) => void;
   onFolderClick?: (folderId: string) => void;
-  onSettingsClick?: (libraryId: string, e: React.MouseEvent) => void;
   onLibraryAction?: (libraryId: string, action: ContextMenuAction) => void;
   onFolderAction?: (folderId: string, action: ContextMenuAction) => void;
 };
@@ -51,7 +48,6 @@ export function LibraryListView({
   isProjectOwner,
   onLibraryClick,
   onFolderClick,
-  onSettingsClick,
   onLibraryAction,
   onFolderAction,
 }: LibraryListViewProps) {
@@ -86,13 +82,6 @@ export function LibraryListView({
       onFolderClick(item.id);
     } else if (item.type === 'library' && onLibraryClick) {
       onLibraryClick(item.id);
-    }
-  };
-
-  const handleSettingsClick = (libraryId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onSettingsClick) {
-      onSettingsClick(libraryId, e);
     }
   };
 
@@ -198,24 +187,6 @@ export function LibraryListView({
                 </td>
                 <td className={styles.cell}>
                   <div className={styles.actionButtons}>
-                    {item.type === 'library' && (
-                      <Tooltip
-                        title="Predefine asset here"
-                        placement="bottom"
-                        color="#0B99FF"
-                      >
-                        <button
-                          className={styles.actionButton}
-                          onClick={(e) => handleSettingsClick(item.id, e)}
-                          aria-label="Library settings"
-                        >
-                          <Image src={predefineSettingIcon}
-                            alt="Settings"
-                            width={20} height={20} className="icon-20"
-                          />
-                        </button>
-                    </Tooltip>
-                    )}
                     <button
                       className={`${styles.actionButton} ${contextMenu?.id === item.id ? styles.actionButtonActive : ''}`}
                       onClick={(e) => handleMoreClick(item.id, item.type, e)}
