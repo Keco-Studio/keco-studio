@@ -4,7 +4,21 @@ create table if not exists public.library_field_definitions (
   library_id uuid not null references public.libraries(id) on delete cascade,
   section text not null,
   label text not null,
-  data_type text not null check (data_type in ('string','int','float','boolean','enum','date')),
+  data_type text not null check (
+    data_type in (
+      'string',
+      'int',
+      'float',
+      'boolean',
+      'enum',
+      'date',
+      'int_array',
+      'float_array',
+      'string_array',
+      'multimedia',
+      'audio'
+    )
+  ),
   enum_options text[] default null,
   required boolean default false,
   order_index int not null default 0,
