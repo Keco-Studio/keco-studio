@@ -225,10 +225,17 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
     return false;
   };
 
+  // Check if user can duplicate based on type and role
+  const canDuplicate = () => {
+    // admin and editor can duplicate
+    return userRole === 'admin' || userRole === 'editor';
+  };
+
   // Render menu items based on type
   const renderMenuItems = () => {
     const showDeleteButton = canDelete();
     const showEditButton = canEdit();
+    const showDuplicateButton = canDuplicate();
     
     if (type === 'project') {
       // Project: Project info (admin only), Collaborators, Duplicate, separator, Delete (admin only)
@@ -248,15 +255,14 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
           >
             Collaborators
           </button>
-          <button
-            className={styles.menuItem}
-            onClick={() => {
-              // Not implemented yet, just close menu
-              onClose();
-            }}
-          >
-            Duplicate
-          </button>
+          {showDuplicateButton && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('duplicate')}
+            >
+              Duplicate
+            </button>
+          )}
           {showDeleteButton && (
             <>
               <div className={styles.separator} />
@@ -303,15 +309,14 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
               </button>
             </>
           )}
-          <button
-            className={styles.menuItem}
-            onClick={() => {
-              // Not implemented yet, just close menu
-              onClose();
-            }}
-          >
-            Duplicate
-          </button>
+          {showDuplicateButton && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('duplicate')}
+            >
+              Duplicate
+            </button>
+          )}
           <button
             className={styles.menuItem}
             onClick={() => {
@@ -346,15 +351,14 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
               Rename
             </button>
           )}
-          <button
-            className={styles.menuItem}
-            onClick={() => {
-              // Not implemented yet, just close menu
-              onClose();
-            }}
-          >
-            Duplicate
-          </button>
+          {showDuplicateButton && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('duplicate')}
+            >
+              Duplicate
+            </button>
+          )}
           {showDeleteButton && (
             <>
               <div className={styles.separator} />
@@ -380,15 +384,14 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
               Rename
             </button>
           )}
-          <button
-            className={styles.menuItem}
-            onClick={() => {
-              // Not implemented yet, just close menu
-              onClose();
-            }}
-          >
-            Duplicate
-          </button>
+          {showDuplicateButton && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('duplicate')}
+            >
+              Duplicate
+            </button>
+          )}
           {showDeleteButton && (
             <>
               <div className={styles.separator} />
