@@ -286,7 +286,12 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
               );
             }
 
-            if (property.dataType === 'image' || property.dataType === 'file') {
+            if (
+              property.dataType === 'image' ||
+              property.dataType === 'file' ||
+              property.dataType === 'multimedia' ||
+              property.dataType === 'audio'
+            ) {
               let mediaValue: MediaFileMetadata | null = null;
               if (value) {
                 if (typeof value === 'string') {

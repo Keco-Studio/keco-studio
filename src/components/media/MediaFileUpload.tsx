@@ -23,7 +23,7 @@ interface MediaFileUploadProps {
   value?: MediaFileMetadata | null;
   onChange: (value: MediaFileMetadata | null) => void;
   disabled?: boolean;
-  fieldType?: 'image' | 'file';
+  fieldType?: 'image' | 'file' | 'multimedia' | 'audio';
   onFocus?: () => void;
   onBlur?: () => void;
 }
@@ -155,10 +155,23 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
     await handleFileSelect(event);
   };
 
-  const uploadLabel = fieldType === 'image' ? 'upload image' : 'upload file';
-  const acceptTypes = fieldType === 'image' 
-    ? 'image/*' 
-    : '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv';
+  const uploadLabel =
+    fieldType === 'image'
+      ? 'upload image'
+      : fieldType === 'multimedia'
+      ? 'upload video'
+      : fieldType === 'audio'
+      ? 'upload audio'
+      : 'upload file';
+
+  const acceptTypes =
+    fieldType === 'image'
+      ? 'image/*'
+      : fieldType === 'multimedia'
+      ? 'video/mp4'
+      : fieldType === 'audio'
+      ? '.mp3,.m4a,.wav,.ogg,audio/mpeg,audio/mp4,audio/x-m4a,audio/wav,audio/ogg'
+      : '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv';
 
   // Check if file name is overflowing
   useEffect(() => {

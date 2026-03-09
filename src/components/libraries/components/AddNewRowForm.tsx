@@ -85,8 +85,13 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
           );
         }
         
-        // Check if this is an image or file type field
-        if (property.dataType === 'image' || property.dataType === 'file') {
+        // Check if this is an image, file, multimedia, or audio type field
+        if (
+          property.dataType === 'image' ||
+          property.dataType === 'file' ||
+          property.dataType === 'multimedia' ||
+          property.dataType === 'audio'
+        ) {
           const mediaValue = newRowData[property.key] as MediaFileMetadata | null | undefined;
           return (
             <td key={property.id} className={styles.editCell}>

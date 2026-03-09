@@ -114,7 +114,10 @@ export function CellEditor({
           if (!isComposingRef.current) {
             let newValue = e.currentTarget.textContent || '';
 
-            if (property.dataType === 'int' && newValue !== '') {
+            if (property.dataType === 'int_array' || property.dataType === 'float_array') {
+              // For array types, we just update text; actual validation happens in useCellEditing
+              setTypeValidationError(null);
+            } else if (property.dataType === 'int' && newValue !== '') {
               if (newValue.includes('.')) {
                 setTypeValidationError('type mismatch');
                 const intValue = newValue.split('.')[0];

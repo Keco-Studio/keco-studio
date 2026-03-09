@@ -49,9 +49,142 @@ export function useCellEditing({
   const typeValidationErrorRef = useRef<HTMLDivElement | null>(null);
 
   // Validate value based on data type
-  const validateValueByType = useCallback((value: string, dataType: string): { isValid: boolean; error: string | null; normalizedValue: string | number | null } => {
+  const validateValueByType = useCallback((value: string, dataType: string): {
+    isValid: boolean;
+    error: string | null;
+    normalizedValue: string | number | null;
+  } => {
     if (value === '' || value === null || value === undefined) {
       return { isValid: true, error: null, normalizedValue: null };
+    }
+
+    if (dataType === 'int_array') {
+      const trimmed = value.trim();
+      // must start with [ and end with ]
+      if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
+        return {
+          isValid: false,
+          error: '数组格式错误，请使用 [ ] 包裹，元素用 , 分隔',
+          normalizedValue: null,
+        };
+      }
+      const inner = trimmed.slice(1, -1);
+      // empty array is allowed: []
+      if (inner.trim() === '') {
+        return { isValid: true, error: null, normalizedValue: '[]' };
+      }
+      const parts = inner.split(',');
+      // any empty item after trimming is illegal
+      for (const part of parts) {
+        const t = part.trim();
+        if (t === '') {
+          return {
+            isValid: false,
+            error: '数组格式错误，存在空元素',
+            normalizedValue: null,
+          };
+        }
+        // detect illegal separators like "[1 2 3]" (missing comma)
+        if (/\s/.test(t)) {
+          return {
+            isValid: false,
+            error: '数组格式错误，缺少逗号分隔',
+            normalizedValue: null,
+          };
+        }
+        const num = parseInt(t, 10);
+        if (Number.isNaN(num)) {
+          return {
+            isValid: false,
+            error: '数组格式错误，元素必须为整数',
+            normalizedValue: null,
+          };
+        }
+      }
+      // normalized string: [1,2,3]
+      const normalized = `[${parts.map((p) => parseInt(p.trim(), 10)).join(',')}]`;
+      return { isValid: true, error: null, normalizedValue: normalized };
+    }
+
+    if (dataType === 'float_array') {
+      const trimmed = value.trim();
+      if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
+        return {
+          isValid: false,
+          error: '数组格式错误，请使用 [ ] 包裹，元素用 , 分隔',
+          normalizedValue: null,
+        };
+      }
+      const inner = trimmed.slice(1, -1);
+      if (inner.trim() === '') {
+        return { isValid: true, error: null, normalizedValue: '[]' };
+      }
+      const parts = inner.split(',');
+      for (const part of parts) {
+        const t = part.trim();
+        if (t === '') {
+          return {
+            isValid: false,
+            error: '数组格式错误，存在空元素',
+            normalizedValue: null,
+          };
+        }
+        // detect illegal separators like "[1.2 3.4]"
+        if (/\s/.test(t)) {
+          return {
+            isValid: false,
+            error: '数组格式错误，缺少逗号分隔',
+            normalizedValue: null,
+          };
+        }
+        const num = parseFloat(t);
+        if (Number.isNaN(num)) {
+          return {
+            isValid: false,
+            error: '数组格式错误，元素必须为浮点数',
+            normalizedValue: null,
+          };
+        }
+      }
+      const normalized = `[${parts.map((p) => parseFloat(p.trim())).join(',')}]`;
+      return { isValid: true, error: null, normalizedValue: normalized };
+    }
+
+    if (dataType === 'string_array') {
+      const trimmed = value.trim();
+      // 直接按 JSON 数组解析，支持 ["A","B"]、["s, d","x]"] 等复杂内容
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (!Array.isArray(parsed)) {
+          return {
+            isValid: false,
+            error: '数组格式错误，请使用 ["A","B"] 形式',
+            normalizedValue: null,
+          };
+        }
+        if (parsed.length === 0) {
+          return { isValid: true, error: null, normalizedValue: '[]' };
+        }
+        // 所有元素必须是字符串
+        for (const item of parsed) {
+          if (typeof item !== 'string') {
+            return {
+              isValid: false,
+              error: '数组格式错误，元素必须为字符串',
+              normalizedValue: null,
+            };
+          }
+        }
+        // 归一化为标准 JSON 字符串
+        const normalized = JSON.stringify(parsed);
+        return { isValid: true, error: null, normalizedValue: normalized };
+      } catch {
+        return {
+          isValid: false,
+          error: '数组格式错误，请使用 ["A","B"] 形式',
+          normalizedValue: null,
+        };
+      }
     }
     
     if (dataType === 'int') {
@@ -106,7 +239,6 @@ export function useCellEditing({
           normalizedValue: null 
         };
       }
-      
       return { isValid: true, error: null, normalizedValue: floatValue };
     }
     
