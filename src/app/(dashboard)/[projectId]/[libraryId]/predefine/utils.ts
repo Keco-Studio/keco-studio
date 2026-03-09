@@ -8,17 +8,25 @@ import predefineTypeBoolenIcon from '@/assets/images/predefineTypeBoolenIcon.svg
 import predefineTypeFloatIcon from '@/assets/images/predefineTypeFloatIcon.svg';
 import predefineTypeFileIcon from '@/assets/images/predefineTypeFileIcon.svg';
 import predefineTypeIntArrayIcon from '@/assets/images/predefineTypeIntArrayIcon.svg';
+import predefineTypeFloatArrayIcon from '@/assets/images/predefineTypeFloatArrayIcon.svg';
+import predefineTypeStringArrayIcon from '@/assets/images/predefineTypeStringArrayIcon.svg';
+import predefineTypeMultimediaIcon from '@/assets/images/predefineTypeMultimediaIcon.svg';
+import predefineTypeAudioIcon from '@/assets/images/predefineTypeAudioIcon.svg';
 
 export const getFieldTypeIcon = (dataType: FieldType) => {
   switch (dataType) {
     case 'string':
       return predefineTypeStrIcon;
+    case 'string_array':
+      return predefineTypeStringArrayIcon;
     case 'int':
       return predefineTypeIntIcon;
     case 'int_array':
       return predefineTypeIntArrayIcon;
     case 'float':
       return predefineTypeFloatIcon;
+    case 'float_array':
+      return predefineTypeFloatArrayIcon;
     case 'enum':
       return predefineTypeOptIcon;
     case 'reference':
@@ -29,6 +37,10 @@ export const getFieldTypeIcon = (dataType: FieldType) => {
       return predefineTypeFileIcon;
     case 'boolean':
       return predefineTypeBoolenIcon;
+    case 'multimedia':
+      return predefineTypeMultimediaIcon;
+    case 'audio':
+      return predefineTypeAudioIcon;
     default:
       return predefineTypeRefIcon;
   }
@@ -36,13 +48,17 @@ export const getFieldTypeIcon = (dataType: FieldType) => {
 
 export const FIELD_TYPE_OPTIONS = [
   { label: 'String', value: 'string' },
+  { label: 'String Array', value: 'string_array' },
   { label: 'Option', value: 'enum' },
   { label: 'Image', value: 'image' },
+  { label: 'Multimedia', value: 'multimedia' },
+  { label: 'Audio', value: 'audio' },
   { label: 'File', value: 'file' },
   { label: 'Boolean', value: 'boolean' },
   { label: 'Reference', value: 'reference' },
   { label: 'Int', value: 'int' },
   { label: 'Int Array', value: 'int_array' },
   { label: 'Float', value: 'float' },
+  { label: 'Float Array', value: 'float_array' },
 ] as const;
 

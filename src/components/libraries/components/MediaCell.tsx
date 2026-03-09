@@ -192,7 +192,7 @@ export const MediaCell: React.FC<MediaCellProps> = ({
               value={value || null}
               onChange={onChange}
               disabled={isSaving || userRole === 'viewer'}
-              fieldType={property.dataType as 'image' | 'file'}
+              fieldType={property.dataType as 'image' | 'file' | 'multimedia' | 'audio'}
               onFocus={() => onCellFocus(row.id, property.key)}
               onBlur={onCellBlur}
             />
@@ -215,7 +215,7 @@ export const MediaCell: React.FC<MediaCellProps> = ({
             value={value || null}
             onChange={onChange}
             disabled={isSaving || userRole === 'viewer'}
-            fieldType={property.dataType as 'image' | 'file'}
+            fieldType={property.dataType as 'image' | 'file' | 'multimedia' | 'audio'}
             onFocus={() => onCellFocus(row.id, property.key)}
             onBlur={onCellBlur}
           />

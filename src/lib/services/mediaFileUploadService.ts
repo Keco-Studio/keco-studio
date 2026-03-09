@@ -10,6 +10,14 @@ const ALLOWED_TYPES = [
   'image/gif',
   'image/webp',
   'image/svg+xml',
+  // Video (for multimedia fields)
+  'video/mp4',
+  // Audio (for audio fields)
+  'audio/mpeg', // .mp3
+  'audio/mp4',  // .m4a (common MIME)
+  'audio/x-m4a', // some browsers use this for .m4a
+  'audio/wav',
+  'audio/ogg',
   // Documents
   'application/pdf',
   'application/msword', // .doc

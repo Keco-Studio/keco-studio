@@ -22,7 +22,7 @@ type FieldDefinitionRow = {
   section: string;
   label: string;
   description: string | null;
-  data_type: 'string' | 'int' | 'int_array' | 'float' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference';
+  data_type: 'string' | 'string_array' | 'int' | 'int_array' | 'float' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference' | 'multimedia' | 'audio';
   enum_options: string[] | null;
   reference_libraries: string[] | null; // Array of library IDs that can be referenced
   required: boolean;

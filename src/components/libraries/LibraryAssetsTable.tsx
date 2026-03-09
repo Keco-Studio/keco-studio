@@ -1186,8 +1186,13 @@ export function LibraryAssetsTable({
                       );
                     }
                     
-                    // Media/Image/File field
-                    if (property.dataType === 'image' || property.dataType === 'file') {
+                    // Media/Image/File/Multimedia/Audio field
+                    if (
+                      property.dataType === 'image' ||
+                      property.dataType === 'file' ||
+                      property.dataType === 'multimedia' ||
+                      property.dataType === 'audio'
+                    ) {
                       const value = row.propertyValues[property.key];
                       let mediaValue: MediaFileMetadata | null = null;
                       
@@ -1384,8 +1389,29 @@ export function LibraryAssetsTable({
                     // To avoid the issue of showing old values after deleting and rebuilding the name field.
                     let value = row.propertyValues[property.key];
                     let display: string | null = null;
-                    if (value !== null && value !== undefined && value !== '' && !(typeof value === 'number' && Number.isNaN(value))) {
-                      display = String(value);
+                    if (
+                      value !== null &&
+                      value !== undefined &&
+                      value !== '' &&
+                      !(typeof value === 'number' && Number.isNaN(value))
+                    ) {
+                      // For array-like types, normalize display:
+                      // - number arrays: [1,2,3]
+                      // - string arrays: ["A","B","C"]
+                      if (
+                        (property.dataType === 'int_array' ||
+                          property.dataType === 'float_array') &&
+                        Array.isArray(value)
+                      ) {
+                        display = `[${value.join(',')}]`;
+                      } else if (
+                        property.dataType === 'string_array' &&
+                        Array.isArray(value)
+                      ) {
+                        display = `[${value.map((v) => JSON.stringify(v)).join(',')}]`;
+                      } else {
+                        display = String(value);
+                      }
                     }
                     
                     const fillPreviewValue: TextCellProps['fillPreviewValue'] =
