@@ -152,7 +152,7 @@ export function useCellEditing({
 
     if (dataType === 'string_array') {
       const trimmed = value.trim();
-      // 直接按 JSON 数组解析，支持 ["A","B"]、["s, d","x]"] 等复杂内容
+      // Directly parse JSON arrays, supporting complex content such as ["A","B"] and ["s", "d","x"]
       try {
         const parsed = JSON.parse(trimmed);
         if (!Array.isArray(parsed)) {
@@ -165,7 +165,7 @@ export function useCellEditing({
         if (parsed.length === 0) {
           return { isValid: true, error: null, normalizedValue: '[]' };
         }
-        // 所有元素必须是字符串
+        // All elements must be strings
         for (const item of parsed) {
           if (typeof item !== 'string') {
             return {
@@ -175,7 +175,7 @@ export function useCellEditing({
             };
           }
         }
-        // 归一化为标准 JSON 字符串
+        // Normalize to standard JSON string
         const normalized = JSON.stringify(parsed);
         return { isValid: true, error: null, normalizedValue: normalized };
       } catch {
