@@ -723,9 +723,9 @@
 .renameInput {
   flex: 1 1 auto;
   min-width: 0;
-  height: 24px;
-  line-height: 24px;
-  font-size: 12px;
+  height: 1.5rem;
+  line-height: 1.5rem;
+  font-size: 1rem;
   font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
   font-weight: 500;
   color: rgba(0, 0, 0, 0.88);
