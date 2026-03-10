@@ -20,6 +20,7 @@ export function DuplicateLibraryModal({ open, libraryId, onClose, onDuplicated }
   const [originalName, setOriginalName] = useState('');
   const [name, setName] = useState('');
   const [copyHeaderOnly, setCopyHeaderOnly] = useState(true);
+  const [hasUserEditedName, setHasUserEditedName] = useState(false);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +31,8 @@ export function DuplicateLibraryModal({ open, libraryId, onClose, onDuplicated }
   // Load original library data when modal opens
   useEffect(() => {
     if (open && libraryId) {
+      setCopyHeaderOnly(true);
+      setHasUserEditedName(false);
       setLoading(true);
       setError(null);
       getLibrary(supabase, libraryId)
@@ -51,17 +54,17 @@ export function DuplicateLibraryModal({ open, libraryId, onClose, onDuplicated }
     }
   }, [open, libraryId, supabase]);
 
-  // Update default name when copy mode changes, but only if user hasn't edited it significantly?
-  // We can just forcefully update if they haven't manually changed it, or simply update the suffix.
   useEffect(() => {
     if (originalName) {
-      if (copyHeaderOnly) {
-        setName(`${originalName} (Copy headers)`);
-      } else {
-        setName(`${originalName} (Copy)`);
+      if (!hasUserEditedName) {
+        if (copyHeaderOnly) {
+          setName(`${originalName} (Copy headers)`);
+        } else {
+          setName(`${originalName} (Copy)`);
+        }
       }
     }
-  }, [copyHeaderOnly, originalName]);
+  }, [copyHeaderOnly, originalName, hasUserEditedName]);
 
   // Clear error when user interacts with inputs
   useEffect(() => {
@@ -140,7 +143,10 @@ export function DuplicateLibraryModal({ open, libraryId, onClose, onDuplicated }
                   id="duplicate-library-name"
                   className={styles.nameInput}
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  onChange={(e) => {
+                    setName(e.target.value);
+                    setHasUserEditedName(true);
+                  }}
                   placeholder="Enter new library name"
                   disabled={submitting}
                 />
