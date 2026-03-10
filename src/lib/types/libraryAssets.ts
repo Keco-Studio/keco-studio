@@ -19,7 +19,7 @@ export type PropertyConfig = {
   name: string;
   description?: string | null;
   valueType: 'string' | 'number' | 'boolean' | 'enum' | 'tag' | 'other';
-  dataType?: 'string' | 'string_array' | 'int' | 'int_array' | 'float' | 'float_array' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference' | 'multimedia' | 'audio';
+  dataType?: 'string' | 'string_array' | 'int' | 'int_array' | 'float' | 'float_array' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference' | 'multimedia' | 'audio' | 'formula';
   referenceLibraries?: string[]; // For reference type: which libraries can be referenced
   enumOptions?: string[]; // For enum type: available option values
   orderIndex: number;

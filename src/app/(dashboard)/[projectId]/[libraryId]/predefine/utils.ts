@@ -12,6 +12,7 @@ import predefineTypeFloatArrayIcon from '@/assets/images/predefineTypeFloatArray
 import predefineTypeStringArrayIcon from '@/assets/images/predefineTypeStringArrayIcon.svg';
 import predefineTypeMultimediaIcon from '@/assets/images/predefineTypeMultimediaIcon.svg';
 import predefineTypeAudioIcon from '@/assets/images/predefineTypeAudioIcon.svg';
+import predefineTypeFormulaIcon from '@/assets/images/predefineTypeFormulaIcon.svg';
 
 export const getFieldTypeIcon = (dataType: FieldType) => {
   switch (dataType) {
@@ -41,6 +42,8 @@ export const getFieldTypeIcon = (dataType: FieldType) => {
       return predefineTypeMultimediaIcon;
     case 'audio':
       return predefineTypeAudioIcon;
+    case 'formula':
+      return predefineTypeFormulaIcon;
     default:
       return predefineTypeRefIcon;
   }
@@ -53,6 +56,7 @@ export const FIELD_TYPE_OPTIONS = [
   { label: 'Image', value: 'image' },
   { label: 'Multimedia', value: 'multimedia' },
   { label: 'Audio', value: 'audio' },
+  { label: 'Formula', value: 'formula' },
   { label: 'File', value: 'file' },
   { label: 'Boolean', value: 'boolean' },
   { label: 'Reference', value: 'reference' },
