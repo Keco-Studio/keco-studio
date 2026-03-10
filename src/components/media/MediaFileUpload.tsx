@@ -232,7 +232,7 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
           disabled={disabled || uploading}
           className={styles.uploadButton}
         >
-          <Image src={assetFileUploadIcon} alt="" width={24} height={24} className="icon-24" />
+          <Image src={assetFileUploadIcon} alt="" width={16} height={16} className="icon-16" />
           {uploading ? uploadProgress : uploadLabel}
         </button>
       )}
@@ -245,8 +245,8 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
                 <Image
                   src={value.url}
                   alt={value.fileName}
-                  width={40}
-                  height={40}
+                  width={20}
+                  height={20}
                   className={styles.thumbnailImage}
                   unoptimized
                   onError={(e) => {
@@ -257,7 +257,7 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
               </div>
             ) : (
               <div className={styles.fileIconWrapper}>
-                <Image src={assetFileIcon} alt="" width={24} height={24} className="icon-24" />
+                <Image src={assetFileIcon} alt="" width={16} height={16} className="icon-16" />
               </div>
             )}
             <Tooltip
