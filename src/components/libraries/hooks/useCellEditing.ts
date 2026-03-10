@@ -64,7 +64,7 @@ export function useCellEditing({
       if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
         return {
           isValid: false,
-          error: '数组格式错误，请使用 [ ] 包裹，元素用 , 分隔',
+          error: 'The array format is incorrect. Please use [ ] to enclose elements and use , to separate them.',
           normalizedValue: null,
         };
       }
@@ -80,7 +80,7 @@ export function useCellEditing({
         if (t === '') {
           return {
             isValid: false,
-            error: '数组格式错误，存在空元素',
+            error: 'The array format is incorrect. Empty elements are not allowed.',
             normalizedValue: null,
           };
         }
@@ -88,7 +88,7 @@ export function useCellEditing({
         if (/\s/.test(t)) {
           return {
             isValid: false,
-            error: '数组格式错误，缺少逗号分隔',
+            error: 'The array format is incorrect. Missing comma separator.',
             normalizedValue: null,
           };
         }
@@ -96,7 +96,7 @@ export function useCellEditing({
         if (Number.isNaN(num)) {
           return {
             isValid: false,
-            error: '数组格式错误，元素必须为整数',
+            error: 'The array format is incorrect. Elements must be integers.',
             normalizedValue: null,
           };
         }
@@ -111,7 +111,7 @@ export function useCellEditing({
       if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
         return {
           isValid: false,
-          error: '数组格式错误，请使用 [ ] 包裹，元素用 , 分隔',
+          error: 'The array format is incorrect. Please use [ ] to enclose elements and use , to separate them.',
           normalizedValue: null,
         };
       }
@@ -125,7 +125,7 @@ export function useCellEditing({
         if (t === '') {
           return {
             isValid: false,
-            error: '数组格式错误，存在空元素',
+            error: 'The array format is incorrect. Empty elements are not allowed.',
             normalizedValue: null,
           };
         }
@@ -133,7 +133,7 @@ export function useCellEditing({
         if (/\s/.test(t)) {
           return {
             isValid: false,
-            error: '数组格式错误，缺少逗号分隔',
+            error: 'The array format is incorrect. Missing comma separator.',
             normalizedValue: null,
           };
         }
@@ -141,7 +141,7 @@ export function useCellEditing({
         if (Number.isNaN(num)) {
           return {
             isValid: false,
-            error: '数组格式错误，元素必须为浮点数',
+            error: 'The array format is incorrect. Elements must be floats.',
             normalizedValue: null,
           };
         }
@@ -158,7 +158,7 @@ export function useCellEditing({
         if (!Array.isArray(parsed)) {
           return {
             isValid: false,
-            error: '数组格式错误，请使用 ["A","B"] 形式',
+            error: 'The array format is incorrect. Please use the format ["A","B"].',
             normalizedValue: null,
           };
         }
@@ -170,7 +170,7 @@ export function useCellEditing({
           if (typeof item !== 'string') {
             return {
               isValid: false,
-              error: '数组格式错误，元素必须为字符串',
+              error: 'The array format is incorrect. Elements must be strings.',
               normalizedValue: null,
             };
           }
@@ -181,7 +181,7 @@ export function useCellEditing({
       } catch {
         return {
           isValid: false,
-          error: '数组格式错误，请使用 ["A","B"] 形式',
+          error: 'Invalid array format. Please use the format ["A","B"].',
           normalizedValue: null,
         };
       }
