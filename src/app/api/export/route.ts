@@ -565,6 +565,16 @@ function safeFileName(name: string): string {
   return name.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'export';
 }
 
+/** Build Content-Disposition filename with UTF-8 support. */
+function buildAttachmentFileName(fileNameWithExt: string): string {
+  const fallbackAscii = fileNameWithExt
+    .replace(/[^\x20-\x7E]/g, '_')
+    .replace(/["\\]/g, '_')
+    .trim() || 'export';
+  const encoded = encodeURIComponent(fileNameWithExt);
+  return `attachment; filename="${fallbackAscii}"; filename*=UTF-8''${encoded}`;
+}
+
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get('authorization');
   const supabase = authHeader
@@ -644,7 +654,7 @@ export async function GET(request: NextRequest) {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
-        'Content-Disposition': `attachment; filename="${baseName}.json"`,
+        'Content-Disposition': buildAttachmentFileName(`${baseName}.json`),
       },
     });
   }
@@ -825,7 +835,7 @@ export async function GET(request: NextRequest) {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'Content-Disposition': `attachment; filename="${baseName}.xlsx"`,
+      'Content-Disposition': buildAttachmentFileName(`${baseName}.xlsx`),
     },
   });
 }
