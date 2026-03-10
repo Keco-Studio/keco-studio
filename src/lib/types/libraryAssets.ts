@@ -22,6 +22,8 @@ export type PropertyConfig = {
   dataType?: 'string' | 'string_array' | 'int' | 'int_array' | 'float' | 'float_array' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference' | 'multimedia' | 'audio' | 'formula';
   referenceLibraries?: string[]; // For reference type: which libraries can be referenced
   enumOptions?: string[]; // For enum type: available option values
+  /** For formula type: raw expression text using column names and operators */
+  formulaExpression?: string;
   orderIndex: number;
 };
 

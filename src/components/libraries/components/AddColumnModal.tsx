@@ -23,6 +23,8 @@ export type AddColumnFormPayload = {
   enumOptions?: string[];
   /** For reference type: allowed target library IDs */
   referenceLibraries?: string[];
+  /** For formula type: raw expression text */
+  formulaExpression?: string;
 };
 
 export type AddColumnModalProps = {
@@ -33,6 +35,8 @@ export type AddColumnModalProps = {
   onSubmit: (payload: AddColumnFormPayload) => Promise<void>;
   /** 锚点元素（如「新增列」按钮），弹窗将悬浮在该元素正下方；不传则相对视口居中 */
   anchorRef?: React.RefObject<HTMLElement | null>;
+  /** 当前库已有的字段列表，用于公式下拉中插入列名 */
+  existingProperties?: PropertyConfig[];
 };
 
 export function AddColumnModal({
@@ -40,6 +44,7 @@ export function AddColumnModal({
   onClose,
   onSubmit,
   anchorRef,
+  existingProperties,
 }: AddColumnModalProps) {
   const supabase = useSupabase();
   const params = useParams();
@@ -66,6 +71,8 @@ export function AddColumnModal({
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
   const [dataTypeSearch, setDataTypeSearch] = useState('');
   const dataTypeSearchRef = useRef<HTMLInputElement>(null);
+  const [formulaValue, setFormulaValue] = useState('');
+  const [formulaDropdownOpen, setFormulaDropdownOpen] = useState(false);
 
   const filteredFieldTypeOptions = useMemo(() => {
     if (!dataTypeSearch.trim()) return FIELD_TYPE_OPTIONS;
@@ -115,6 +122,7 @@ export function AddColumnModal({
       setDescription('');
       setEnumOptions([]);
       setReferenceLibraries([]);
+      setFormulaValue('');
       setError(null);
       setSubmitting(false);
       setShowDiscardConfirm(false);
@@ -130,8 +138,9 @@ export function AddColumnModal({
     if (description.trim()) return true;
     if (enumOptions.some((opt) => opt.trim().length > 0)) return true;
     if (referenceLibraries.length > 0) return true;
+    if (formulaValue.trim()) return true;
     return false;
-  }, [name, dataType, description, enumOptions, referenceLibraries]);
+  }, [name, dataType, description, enumOptions, referenceLibraries, formulaValue]);
 
   const handleRequestClose = useCallback(() => {
     if (hasUnsavedChanges) {
@@ -270,6 +279,13 @@ export function AddColumnModal({
       }
     }
 
+    if (dataType === 'formula') {
+      if (!formulaValue.trim()) {
+        setError('Please enter a formula expression.');
+        return;
+      }
+    }
+
     setError(null);
     setSubmitting(true);
     try {
@@ -287,6 +303,10 @@ export function AddColumnModal({
 
       if (dataType === 'reference') {
         payload.referenceLibraries = referenceLibraries;
+      }
+
+      if (dataType === 'formula') {
+        payload.formulaExpression = formulaValue.trim();
       }
 
       await onSubmit(payload);
@@ -430,6 +450,148 @@ export function AddColumnModal({
               }))}
             />
           </div>
+          {dataType === 'formula' && (
+            <div className={styles.field}>
+              <label className={styles.label} htmlFor="add-column-formula">
+                Column value<span style={{ color: '#dc2626' }}>*</span>
+              </label>
+              <div className={styles.formulaInputWrapper}>
+                <Input
+                  id="add-column-formula"
+                  value={formulaValue}
+                  onChange={(e) => setFormulaValue(e.target.value)}
+                  placeholder="INSERT EXPRESSION"
+                  className={styles.formulaInput}
+                  onFocus={() => setFormulaDropdownOpen(true)}
+                  onBlur={() => {
+                    // 轻量处理：失焦时关闭下拉；后续如需点击选项不关闭，可再调整为基于 mousedown 事件控制
+                    setTimeout(() => setFormulaDropdownOpen(false), 120);
+                  }}
+                />
+                {formulaDropdownOpen && (
+                  <div className={styles.formulaDropdown}>
+                    <div className={styles.formulaDropdownHeader}>INSERT OPERATOR OR FUNCTION</div>
+                    <div className={styles.formulaDropdownSectionLabel}>Operators</div>
+                    <div className={styles.formulaOperatorsRow}>
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + '+');
+                        }}
+                        title="Add"
+                      >
+                        +
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + '-');
+                        }}
+                        title="Subtraction"
+                      >
+                        −
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + '*');
+                        }}
+                        title="Multiplication"
+                      >
+                        *
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + '/');
+                        }}
+                        title="Division"
+                      >
+                        /
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + '(');
+                        }}
+                        title="Left parenthesis"
+                      >
+                        (
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + ')');
+                        }}
+                        title="Right parenthesis"
+                      >
+                        )
+                      </button>
+                    </div>
+                    <div className={styles.formulaDropdownSectionLabel}>Columns</div>
+                    {existingProperties && existingProperties.length > 0 ? (
+                      existingProperties.map((prop) => (
+                        <button
+                          key={prop.id}
+                          type="button"
+                          className={styles.formulaItem}
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            const token = `[${prop.name}]`;
+                            setFormulaValue((prev) => {
+                              const needsSpace = prev && !prev.endsWith(' ');
+                              return `${prev}${needsSpace ? ' ' : ''}${token}`;
+                            });
+                          }}
+                        >
+                          <div className={styles.formulaItemMain}>
+                            <span className={styles.formulaItemName}>{prop.name}</span>
+                            <span className={styles.formulaItemMeta}>column</span>
+                          </div>
+                          <span className={styles.formulaItemType}>
+                            {prop.dataType === 'int' || prop.dataType === 'float' ? 'N' : 'T'}
+                          </span>
+                        </button>
+                      ))
+                    ) : (
+                      <div className={styles.formulaEmptyHint}>No columns available.</div>
+                    )}
+                    <div className={styles.formulaDropdownSectionLabel}>Functions</div>
+                    <button type="button" className={styles.formulaItem}>
+                      <div className={styles.formulaItemMain}>
+                        <span className={styles.formulaItemName}>IUNY()</span>
+                        <span className={styles.formulaItemMeta}>function</span>
+                      </div>
+                    </button>
+                    <button type="button" className={styles.formulaItem}>
+                      <div className={styles.formulaItemMain}>
+                        <span className={styles.formulaItemName}>IASET()</span>
+                        <span className={styles.formulaItemMeta}>function</span>
+                      </div>
+                    </button>
+                    <button type="button" className={styles.formulaItem}>
+                      <div className={styles.formulaItemMain}>
+                        <span className={styles.formulaItemName}>IXCCE()</span>
+                        <span className={styles.formulaItemMeta}>function</span>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div className={styles.field}>
             <label className={`${styles.label} ${styles.labelOptional}`} htmlFor="add-column-desc">
               Description

@@ -25,6 +25,7 @@ type FieldDefinitionRow = {
   data_type: 'string' | 'string_array' | 'int' | 'int_array' | 'float' | 'boolean' | 'enum' | 'date' | 'image' | 'file' | 'reference' | 'multimedia' | 'audio' | 'formula';
   enum_options: string[] | null;
   reference_libraries: string[] | null; // Array of library IDs that can be referenced
+  formula_expression: string | null;
   required: boolean;
   order_index: number;
 };
@@ -190,6 +191,7 @@ export async function getLibrarySchema(
       dataType: row.data_type,
       referenceLibraries: row.reference_libraries || undefined,
       enumOptions: row.enum_options || undefined,
+      formulaExpression: row.formula_expression || undefined,
       orderIndex: row.order_index,
     });
   }
@@ -302,6 +304,7 @@ export async function addLibraryField(
     required?: boolean;
     enumOptions?: string[];
     referenceLibraries?: string[];
+    formulaExpression?: string;
   }
 ): Promise<{ id: string }> {
   await verifyLibraryUpdatePermission(supabase, libraryId);
@@ -338,6 +341,7 @@ export async function addLibraryField(
       label: payload.label.trim(),
       description: payload.description?.trim() || null,
       data_type: payload.dataType ?? 'string',
+      formula_expression: payload.dataType === 'formula' ? (payload.formulaExpression?.trim() || null) : null,
       required: payload.required ?? false,
       order_index: nextOrderIndex,
       enum_options: enumOptions,
@@ -385,6 +389,7 @@ export async function updateLibraryField(
     description?: string;
     enumOptions?: string[];
     referenceLibraries?: string[];
+    formulaExpression?: string;
   }
 ): Promise<void> {
   await verifyLibraryUpdatePermission(supabase, libraryId);
@@ -405,6 +410,7 @@ export async function updateLibraryField(
       label: payload.label.trim(),
       description: payload.description?.trim() || null,
       data_type: payload.dataType ?? 'string',
+      formula_expression: payload.dataType === 'formula' ? (payload.formulaExpression?.trim() || null) : null,
       enum_options: enumOptions,
       reference_libraries: referenceLibraries,
     })
