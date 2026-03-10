@@ -147,13 +147,15 @@ export function LibraryListView({
               >
                 <td className={styles.cell}>
                   <div className={styles.libraryNameCell}>
-                    <Image
-                      src={iconSrc}
-                      alt={item.type === 'folder' ? 'Folder' : 'Library'}
-                      width={36}
-                      height={36}
-                      className={`icon-36 ${styles.libraryIcon}`}
-                    />
+                    <span className={styles.libraryIconSlot}>
+                      <Image
+                        src={iconSrc}
+                        alt={item.type === 'folder' ? 'Folder' : 'Library'}
+                        width={36}
+                        height={36}
+                        className={`icon-36 ${styles.libraryIcon}`}
+                      />
+                    </span>
                     <span className={styles.libraryName}>{item.name}</span>
                   </div>
                 </td>
