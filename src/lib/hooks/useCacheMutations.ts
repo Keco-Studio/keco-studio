@@ -34,6 +34,17 @@ interface UpdateNameParams {
   libraryId?: string; // For asset updates (needed for event detail)
 }
 
+function isDuplicateNameError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+      ? error
+      : '';
+  const normalized = message.toLowerCase();
+  return normalized.includes('already exists') || normalized.includes('name exists');
+}
+
 /**
  * Hook for updating entity names with optimistic update.
  * 
@@ -141,7 +152,11 @@ export function useUpdateEntityName() {
         }
       );
       
-      console.error(`Failed to update ${context.entityType} name:`, err);
+      // Duplicate-name conflicts are expected validation failures;
+      // avoid polluting the dev overlay with console errors.
+      if (!isDuplicateNameError(err)) {
+        console.error(`Failed to update ${context.entityType} name:`, err);
+      }
     },
     
     // ON SUCCESS: Dispatch event for backward compatibility

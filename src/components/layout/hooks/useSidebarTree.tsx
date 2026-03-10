@@ -100,7 +100,7 @@ export function useSidebarTree(
                   onDoubleClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    setEditingKey(libKey);
+                    if (userRole === 'admin') setEditingKey(libKey);
                   }}
                 >
                   {truncateText(lib.name, computeMaxChars(15))}
@@ -113,6 +113,7 @@ export function useSidebarTree(
           children: undefined,
           _titleStr: lib.name,
           _nodeType: 'library',
+          _isLibraryUnderFolder: true,
         } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' };
       });
 
@@ -137,7 +138,7 @@ export function useSidebarTree(
                 onDoubleClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setEditingKey(folderKey);
+                  if (userRole === 'admin') setEditingKey(folderKey);
                 }}
               >
                 {truncateText(folder.name, computeMaxChars(20))}
@@ -197,11 +198,11 @@ export function useSidebarTree(
                 className={styles.itemText}
                 style={{ fontWeight: 500 }}
                 title={lib.name}
-onDoubleClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setEditingKey(libKey);
-              }}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (userRole === 'admin') setEditingKey(libKey);
+                }}
               >
                 {truncateText(lib.name, computeMaxChars(15))}
               </span>
@@ -213,6 +214,7 @@ onDoubleClick={(e) => {
         children: undefined,
         _titleStr: lib.name,
         _nodeType: 'library',
+        _isLibraryUnderFolder: false,
       } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' });
     });
 
@@ -233,6 +235,7 @@ onDoubleClick={(e) => {
     setError,
     setEditingKey,
     sidebarWidth,
+    userRole,
   ]);
 
   const selectedKeys = useMemo(() => {

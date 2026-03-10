@@ -257,8 +257,8 @@
 }
 
 .headerCell {
-  height: 40px;              /* match body row height (40px) */
-  padding: 0.25rem 0.5rem;
+  height: 32px;              /* match body row height (32px) */
+  padding: 0 0.5rem;
   font-weight: 600;
   border-bottom: 1px solid #e2e8f0;
   color: #0f172a;
@@ -279,7 +279,7 @@
   font-weight: 500;
   color: #475569;
   letter-spacing: 0.05em;
-  padding: 0.25rem 0.5rem;
+  padding: 0 0.5rem;
   background: #0000000D;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -295,7 +295,7 @@
   font-size: 0.875rem;
   font-weight: 500;
   color: #64748b;
-  padding: 0.25rem 0.5rem;
+  padding: 0 0.5rem;
   border-left: none;
   background: #F9FAFB;
   border-right: 1px solid #DDE1E6;
@@ -396,13 +396,13 @@
 }
 
 .row {
-  height: 40px;
+  height: 32px;
   border-bottom: 1px solid #e2e8f0;
 }
 
 .cell {
-  height: 40px;
-  padding: 0.25rem 0.5rem;
+  height: 32px;
+  padding: 0 0.5rem;
   vertical-align: middle;
   font-size: 0.875rem;
   color: #111827;
@@ -861,9 +861,9 @@ td.cellCopy.copyBorderRight:hover {
 .numberCell {
   min-width: 3.75rem;
   width: 3.75rem;
-  height: 40px;
+  height: 32px;
   text-align: center;
-  padding: 0.25rem 0.5rem;
+  padding: 0 0.5rem;
   font-size: 0.875rem;
   color: #7D7D7D;
   font-weight: 400;
@@ -974,7 +974,7 @@ td.cellCopy.copyBorderRight:hover {
 .actionsCell {
   min-width: 7.5rem;
   width: 7.5rem;
-  height: 40px;
+  height: 32px;
   text-align: center;
   padding: 0 1rem;
   vertical-align: middle;
@@ -1051,7 +1051,7 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 .editCell {
-  height: 40px;
+  height: 32px;
   padding: 0;
   vertical-align: middle;
   box-sizing: border-box;
@@ -1167,7 +1167,7 @@ td.cellCopy.copyBorderRight:hover {
 
 /* Add row styles */
 .addRow {
-  height: 40px;
+  height: 32px;
   border-bottom: 1px solid #e2e8f0;
 }
 
@@ -1417,8 +1417,8 @@ td.cellCopy.copyBorderRight:hover {
   display: flex;
   align-items: center;
   min-height: 0;
-  height: 35px;
-  max-height: 35px;
+  height: 28px;
+  max-height: 28px;
 }
 
 /* Media field display styles - fit within fixed row height */
@@ -1427,8 +1427,8 @@ td.cellCopy.copyBorderRight:hover {
   align-items: center;
   gap: 0.375rem;
   min-height: 0;
-  height: 35px;
-  max-height: 35px;
+  height: 28px;
+  max-height: 28px;
 }
 
 .mediaThumbnail {

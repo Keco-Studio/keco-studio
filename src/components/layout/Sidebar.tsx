@@ -21,8 +21,8 @@ import { EditFolderModal } from "@/components/folders/EditFolderModal";
 import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { Project, deleteProject } from "@/lib/services/projectService";
-import { Library, deleteLibrary, updateLibrary } from "@/lib/services/libraryService";
-import { Folder, deleteFolder, updateFolder } from "@/lib/services/folderService";
+import { Library, deleteLibrary } from "@/lib/services/libraryService";
+import { Folder, deleteFolder } from "@/lib/services/folderService";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
 import { useSidebarFoldersLibraries } from "./hooks/useSidebarFoldersLibraries";
 import { useSidebarModals } from "./hooks/useSidebarModals";
@@ -40,6 +40,9 @@ import { useSidebarProjectRole } from "./hooks/useSidebarProjectRole";
 import { useSidebarWindowEvents } from "./hooks/useSidebarWindowEvents";
 import { useSidebarRealtime } from "./hooks/useSidebarRealtime";
 import { useSidebarContextMenuActions } from "./hooks/useSidebarContextMenuActions";
+import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
+import { validateName } from '@/lib/utils/nameValidation';
+import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import styles from "./Sidebar.module.css";
 
 const MIN_SIDEBAR_WIDTH = 267;
@@ -128,32 +131,91 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(DEFAULT_SIDEBAR_WIDTH);
   const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
+  const updateName = useUpdateEntityName();
 
   const handleSaveRename = useCallback(
     async (key: string, newName: string) => {
       const trimmed = newName.trim();
-      if (!trimmed) return;
+      if (!trimmed) {
+        throw new Error('Name is required');
+      }
+
+      const validationError = validateName(trimmed);
+      if (validationError) {
+        showErrorToast(validationError);
+        throw new Error(validationError);
+      }
+
       try {
+        if (key.startsWith('project-')) {
+          const id = key.replace('project-', '');
+          queryClient.setQueryData<Project[]>(['projects'], (old) => {
+            if (!old) return old;
+            return old.map((project) => (project.id === id ? { ...project, name: trimmed } : project));
+          });
+          await updateName.mutateAsync({
+            id,
+            name: trimmed,
+            entityType: 'project',
+          });
+          showSuccessToast('Rename successful');
+          return;
+        }
+
+        const foldersLibrariesKey = currentIds.projectId
+          ? (['folders-libraries', currentIds.projectId] as const)
+          : null;
+
         if (key.startsWith('library-')) {
           const id = key.replace('library-', '');
-          await updateLibrary(supabase, id, { name: trimmed });
-          if (currentIds.projectId) {
-            queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+          if (foldersLibrariesKey) {
+            queryClient.setQueryData<{ folders: Folder[]; libraries: Library[] }>(foldersLibrariesKey, (old) => {
+              if (!old) return old;
+              return {
+                ...old,
+                libraries: old.libraries.map((lib) => (lib.id === id ? { ...lib, name: trimmed } : lib)),
+              };
+            });
           }
-          window.dispatchEvent(new CustomEvent('libraryUpdated', { detail: { libraryId: id } }));
+          await updateName.mutateAsync({
+            id,
+            name: trimmed,
+            entityType: 'library',
+          });
+          showSuccessToast('Rename successful');
         } else if (key.startsWith('folder-')) {
           const id = key.replace('folder-', '');
-          await updateFolder(supabase, id, { name: trimmed });
-          if (currentIds.projectId) {
-            queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+          if (foldersLibrariesKey) {
+            queryClient.setQueryData<{ folders: Folder[]; libraries: Library[] }>(foldersLibrariesKey, (old) => {
+              if (!old) return old;
+              return {
+                ...old,
+                folders: old.folders.map((folder) => (folder.id === id ? { ...folder, name: trimmed } : folder)),
+              };
+            });
           }
-          window.dispatchEvent(new CustomEvent('folderUpdated', { detail: { folderId: id } }));
+          await updateName.mutateAsync({
+            id,
+            name: trimmed,
+            entityType: 'folder',
+          });
+          showSuccessToast('Rename successful');
         }
       } catch (err: unknown) {
-        setError(err instanceof Error ? err.message : '重命名失败');
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+        if (currentIds.projectId) {
+          const foldersLibrariesKey = ['folders-libraries', currentIds.projectId] as const;
+          queryClient.invalidateQueries({ queryKey: foldersLibrariesKey });
+        }
+        const msg = err instanceof Error ? err.message : 'Rename failed';
+        const duplicateName =
+          msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('name exists');
+        showErrorToast(duplicateName ? 'Name already exists, update failed' : msg);
+        setError(msg);
+        throw err;
       }
     },
-    [supabase, queryClient, currentIds.projectId, setError]
+    [updateName, setError, currentIds.projectId, queryClient]
   );
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -820,8 +882,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           currentProjectId={currentIds.projectId}
           currentLibraryId={currentIds.libraryId}
           currentFolderId={currentIds.folderId}
+          userRole={userRole}
           onOpenNewProject={openNewProject}
           onProjectClick={handleProjectClick}
+          onSaveRename={handleSaveRename}
           onContextMenu={handleContextMenu}
         />
 

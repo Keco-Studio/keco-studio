@@ -2,8 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Input, Tree } from 'antd';
-import type { InputRef } from 'antd/es/input';
+import { Tree } from 'antd';
 import type { DataNode, EventDataNode } from 'antd/es/tree';
 import FolderCloseIcon from '@/assets/images/FolderCloseIcon.svg';
 import FolderOpenIcon from '@/assets/images/FolderOpenIcon.svg';
@@ -17,6 +16,7 @@ type SidebarTreeNodeMeta = {
   _titleStr?: string;
   _nodeType?: 'library' | 'folder';
   _hasNoLibraries?: boolean;
+  _isLibraryUnderFolder?: boolean;
 };
 
 export type SidebarTreeViewProps = {
@@ -48,6 +48,7 @@ function InlineEditRow({
   openNewLibrary,
   setError,
   currentProjectId,
+  isLibraryUnderFolder,
 }: {
   nodeKey: string;
   initialValue: string;
@@ -60,29 +61,40 @@ function InlineEditRow({
   openNewLibrary: () => void;
   setError: (msg: string | null) => void;
   currentProjectId: string | null;
+  isLibraryUnderFolder?: boolean;
 }) {
   const [value, setValue] = useState(initialValue);
-  const inputRef = useRef<InputRef>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
     // 不在此处 select()，避免触发浏览器选区工具栏（弹框）；用户仍可在输入框内手动选中
   }, []);
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback(async () => {
+    if (isSaving) return;
     const trimmed = value.trim();
-    if (trimmed) {
-      onSave(nodeKey, trimmed);
+    if (!trimmed) return;
+
+    setIsSaving(true);
+    try {
+      await Promise.resolve(onSave(nodeKey, trimmed));
+      onCancel();
+    } catch {
+      // Keep inline edit mode on save failure (e.g. duplicate name).
+      // Error feedback is handled by upper-level toast/state logic.
+    } finally {
+      setIsSaving(false);
     }
-    onCancel();
-  }, [value, nodeKey, onSave, onCancel]);
+  }, [value, nodeKey, onSave, onCancel, isSaving]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
       if (e.key === 'Enter') {
         e.preventDefault();
         e.stopPropagation();
-        handleSave();
+        void handleSave();
       } else if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
@@ -97,8 +109,9 @@ function InlineEditRow({
 
   return (
     <div
-      className={`${styles.itemRow} ${isFolder ? styles.folderRow : styles.libraryRow} ${!isFolder ? styles.rootLibraryRow : ''}`}
+      className={`${styles.itemRow} ${isFolder ? styles.folderRow : styles.libraryRow} ${!isFolder && !isLibraryUnderFolder ? styles.rootLibraryRow : ''}`}
       data-folder-row={isFolder ? true : undefined}
+      data-library-under-folder={!isFolder && isLibraryUnderFolder ? true : undefined}
       onClick={(e) => e.stopPropagation()}
     >
       <div className={styles.itemMain}>
@@ -112,15 +125,18 @@ function InlineEditRow({
             <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
           </div>
         )}
-        <Input
+        <input
           ref={inputRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
-          onBlur={handleSave}
+          onBlur={() => {
+            void handleSave();
+          }}
           onKeyDown={handleKeyDown}
-          className={styles.treeNodeInput}
-          size="small"
+          className={styles.renameInput}
+          disabled={isSaving}
           onClick={(e) => e.stopPropagation()}
+          aria-label="Rename"
         />
       </div>
       {isFolder && userRole === 'admin' && (
@@ -228,6 +244,7 @@ export function SidebarTreeView({
       const titleStr = data._titleStr;
       const nodeType = data._nodeType;
       const hasNoLibraries = data._hasNoLibraries;
+      const isLibraryUnderFolder = data._isLibraryUnderFolder;
       const defaultTitle = data.title;
 
       if (editingKey === key && titleStr != null && nodeType) {
@@ -244,6 +261,7 @@ export function SidebarTreeView({
             openNewLibrary={openNewLibrary}
             setError={setError}
             currentProjectId={currentProjectId}
+            isLibraryUnderFolder={isLibraryUnderFolder}
           />
         );
       }
