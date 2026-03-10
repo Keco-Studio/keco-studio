@@ -1,23 +1,351 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { verifyLibraryAccess } from '@/lib/services/authorizationService';
-import { getLibrary } from '@/lib/services/libraryService';
-import { getLibrarySchema, getLibraryAssetsWithProperties } from '@/lib/services/libraryAssetsService';
 import type { SectionConfig, PropertyConfig, AssetRow } from '@/lib/types/libraryAssets';
 import * as XLSX from 'xlsx';
+import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-/** Format value for export (arrays, objects, special types as readable string) */
-function formatCellValue(value: unknown): string | number | boolean | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'object' && Array.isArray(value)) {
-    return value.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ');
+function parseJsonString(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
   }
-  if (typeof value === 'object') return JSON.stringify(value);
-  return value as string | number | boolean;
+  return value;
+}
+
+type FieldDefinitionRow = {
+  id: string;
+  library_id: string;
+  section: string;
+  label: string;
+  description: string | null;
+  data_type:
+    | 'string'
+    | 'string_array'
+    | 'int'
+    | 'int_array'
+    | 'float'
+    | 'float_array'
+    | 'boolean'
+    | 'enum'
+    | 'date'
+    | 'image'
+    | 'file'
+    | 'reference'
+    | 'multimedia'
+    | 'audio'
+    | 'formula';
+  enum_options: string[] | null;
+  reference_libraries: string[] | null;
+  order_index: number;
+};
+
+type AssetRowDb = {
+  id: string;
+  library_id: string;
+  name: string;
+  created_at?: string;
+  row_index?: number;
+};
+
+type AssetValueRow = {
+  asset_id: string;
+  field_id: string;
+  value_json: unknown;
+};
+
+const normalizeValue = (input: unknown): unknown => {
+  if (input === null || input === undefined) return null;
+  if (typeof input === 'string' && input.trim() !== '') {
+    try {
+      return JSON.parse(input);
+    } catch {
+      return input;
+    }
+  }
+  return input;
+};
+
+const mapDataTypeToValueType = (
+  dataType: FieldDefinitionRow['data_type']
+): PropertyConfig['valueType'] => {
+  switch (dataType) {
+    case 'string':
+      return 'string';
+    case 'int':
+    case 'float':
+      return 'number';
+    case 'boolean':
+      return 'boolean';
+    case 'enum':
+      return 'enum';
+    case 'date':
+      return 'string';
+    default:
+      return 'other';
+  }
+};
+
+async function verifyLibraryAccessDirect(
+  supabase: any,
+  userId: string,
+  libraryId: string
+): Promise<{ name: string }> {
+  const { data: library, error: libraryError } = await supabase
+    .from('libraries')
+    .select('id, name, project_id')
+    .eq('id', libraryId)
+    .single();
+
+  if (libraryError || !library) {
+    throw new Error('Library not found');
+  }
+
+  const { data: project, error: projectError } = await supabase
+    .from('projects')
+    .select('owner_id')
+    .eq('id', library.project_id)
+    .single();
+
+  if (projectError || !project) {
+    throw new Error('Project not found');
+  }
+
+  if (project.owner_id === userId) {
+    return { name: library.name };
+  }
+
+  const { data: collaborator, error: collabError } = await supabase
+    .from('project_collaborators')
+    .select('id, accepted_at')
+    .eq('project_id', library.project_id)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (collabError || !collaborator || !collaborator.accepted_at) {
+    const authErr = new Error('Unauthorized access to this project');
+    (authErr as Error & { name: string }).name = 'AuthorizationError';
+    throw authErr;
+  }
+
+  return { name: library.name };
+}
+
+async function getLibrarySchemaDirect(
+  supabase: any,
+  libraryId: string
+): Promise<{ sections: SectionConfig[]; properties: PropertyConfig[] }> {
+  const { data, error } = await supabase
+    .from('library_field_definitions')
+    .select('*')
+    .eq('library_id', libraryId)
+    .order('section', { ascending: true })
+    .order('order_index', { ascending: true });
+
+  if (error) throw error;
+
+  const rows = (data ?? []) as FieldDefinitionRow[];
+  if (rows.length === 0) return { sections: [], properties: [] };
+
+  const sectionsByName = new Map<string, { section: SectionConfig; minOrderIndex: number }>();
+  const properties: PropertyConfig[] = [];
+
+  for (const row of rows) {
+    let grouped = sectionsByName.get(row.section);
+    if (!grouped) {
+      const sectionId = `${row.library_id}:${row.section}`;
+      grouped = {
+        section: {
+          id: sectionId,
+          libraryId: row.library_id,
+          name: row.section,
+          orderIndex: row.order_index,
+        },
+        minOrderIndex: row.order_index,
+      };
+      sectionsByName.set(row.section, grouped);
+    } else if (row.order_index < grouped.minOrderIndex) {
+      grouped.minOrderIndex = row.order_index;
+      grouped.section.orderIndex = row.order_index;
+    }
+
+    properties.push({
+      id: row.id,
+      sectionId: grouped.section.id,
+      key: row.id,
+      name: row.label,
+      description: row.description,
+      valueType: mapDataTypeToValueType(row.data_type),
+      dataType: row.data_type,
+      referenceLibraries: row.reference_libraries || undefined,
+      enumOptions: row.enum_options || undefined,
+      orderIndex: row.order_index,
+    });
+  }
+
+  const sections = Array.from(sectionsByName.values())
+    .map((entry) => entry.section)
+    .sort((a, b) => a.orderIndex - b.orderIndex);
+
+  const sectionOrderById = new Map<string, number>();
+  sections.forEach((section, index) => sectionOrderById.set(section.id, index));
+
+  properties.sort((a, b) => {
+    const sa = sectionOrderById.get(a.sectionId) ?? 0;
+    const sb = sectionOrderById.get(b.sectionId) ?? 0;
+    if (sa !== sb) return sa - sb;
+    return a.orderIndex - b.orderIndex;
+  });
+
+  return { sections, properties };
+}
+
+async function getLibraryAssetsWithPropertiesDirect(
+  supabase: any,
+  libraryId: string
+): Promise<AssetRow[]> {
+  const { data: assetData, error: assetError } = await supabase
+    .from('library_assets')
+    .select('id, library_id, name, created_at, row_index')
+    .eq('library_id', libraryId)
+    .order('row_index', { ascending: true })
+    .order('id', { ascending: true });
+
+  if (assetError) throw assetError;
+
+  const assets = (assetData ?? []) as AssetRowDb[];
+  if (assets.length === 0) return [];
+
+  const assetIds = assets.map((a) => a.id);
+  const { data: valueData, error: valueError } = await supabase
+    .from('library_asset_values')
+    .select('asset_id, field_id, value_json')
+    .in('asset_id', assetIds);
+
+  if (valueError) throw valueError;
+
+  const rowsByAssetId = new Map<string, AssetRow>();
+  for (const asset of assets) {
+    rowsByAssetId.set(asset.id, {
+      id: asset.id,
+      libraryId: asset.library_id,
+      name: asset.name,
+      slug: null,
+      figmaNodeId: null,
+      propertyValues: {},
+      created_at: asset.created_at,
+      rowIndex: asset.row_index ?? undefined,
+    });
+  }
+
+  for (const value of (valueData ?? []) as AssetValueRow[]) {
+    const row = rowsByAssetId.get(value.asset_id);
+    if (!row) continue;
+    row.propertyValues[value.field_id] = normalizeValue(value.value_json) as string | number | boolean | null;
+  }
+
+  return Array.from(rowsByAssetId.values());
+}
+
+/** Format value for export (arrays, media, reference, formula) */
+function formatCellValue(
+  value: unknown,
+  property: PropertyConfig,
+  referenceNameById: Map<string, string>
+): string | number | boolean | null {
+  if (value === null || value === undefined) return null;
+
+  const normalized = parseJsonString(value);
+
+  if (property.dataType === 'int_array' || property.dataType === 'float_array' || property.dataType === 'string_array') {
+    if (Array.isArray(normalized)) {
+      return JSON.stringify(normalized);
+    }
+    return typeof normalized === 'string' ? normalized : JSON.stringify(normalized);
+  }
+
+  if (property.dataType === 'reference') {
+    if (typeof normalized === 'string') {
+      return referenceNameById.get(normalized) || normalized;
+    }
+    if (Array.isArray(normalized)) {
+      return normalized
+        .map((item) => {
+          if (typeof item === 'string') return referenceNameById.get(item) || item;
+          if (item && typeof item === 'object') {
+            const ref = item as { id?: unknown; assetId?: unknown; name?: unknown };
+            if (typeof ref.name === 'string' && ref.name.trim()) return ref.name;
+            if (typeof ref.id === 'string') return referenceNameById.get(ref.id) || ref.id;
+            if (typeof ref.assetId === 'string') return referenceNameById.get(ref.assetId) || ref.assetId;
+          }
+          return String(item);
+        })
+        .join(', ');
+    }
+    if (normalized && typeof normalized === 'object') {
+      const ref = normalized as { id?: unknown; assetId?: unknown; name?: unknown };
+      if (typeof ref.name === 'string' && ref.name.trim()) return ref.name;
+      if (typeof ref.id === 'string') return referenceNameById.get(ref.id) || ref.id;
+      if (typeof ref.assetId === 'string') return referenceNameById.get(ref.assetId) || ref.assetId;
+    }
+    return typeof normalized === 'object' ? JSON.stringify(normalized) : String(normalized);
+  }
+
+  if (
+    property.dataType === 'image' ||
+    property.dataType === 'file' ||
+    property.dataType === 'multimedia' ||
+    property.dataType === 'audio'
+  ) {
+    if (typeof normalized === 'object' && normalized !== null && !Array.isArray(normalized)) {
+      const media = normalized as { fileName?: unknown; url?: unknown; path?: unknown };
+      const fileName = typeof media.fileName === 'string' ? media.fileName : '';
+      const url = typeof media.url === 'string' ? media.url : '';
+      const path = typeof media.path === 'string' ? media.path : '';
+      if (fileName && url) return `${fileName} | ${url}`;
+      if (fileName && path) return `${fileName} | ${path}`;
+      return fileName || url || path || JSON.stringify(normalized);
+    }
+    return typeof normalized === 'string' ? normalized : JSON.stringify(normalized);
+  }
+
+  if (property.dataType === 'formula') {
+    if (typeof normalized === 'object' && normalized !== null && !Array.isArray(normalized)) {
+      const formulaObj = normalized as { result?: unknown; value?: unknown; formula?: unknown };
+      if (formulaObj.result !== undefined && formulaObj.result !== null) {
+        return String(formulaObj.result);
+      }
+      if (formulaObj.value !== undefined && formulaObj.value !== null) {
+        return String(formulaObj.value);
+      }
+      if (formulaObj.formula !== undefined && formulaObj.formula !== null) {
+        return String(formulaObj.formula);
+      }
+      return JSON.stringify(normalized);
+    }
+    return typeof normalized === 'string' ? normalized : JSON.stringify(normalized);
+  }
+
+  if (Array.isArray(normalized)) {
+    return normalized.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ');
+  }
+  if (typeof normalized === 'object') return JSON.stringify(normalized);
+  return normalized as string | number | boolean;
 }
 
 /** YYYYMMDDHHmmss */
@@ -37,13 +365,18 @@ function safeFileName(name: string): string {
   return name.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'export';
 }
 
-export async function GET(request: Request) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+export async function GET(request: NextRequest) {
+  const authHeader = request.headers.get('authorization');
+  const supabase = authHeader
+    ? createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { persistSession: false, autoRefreshToken: false },
+      })
+    : createSupabaseServerClient(request);
+  const { data: { user }, error: authError } = authHeader
+    ? await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
+    : await supabase.auth.getUser();
+  if (authError || !user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -58,27 +391,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: 'Format must be xlsx or json' }, { status: 400 });
   }
 
+  let libraryNameFromAccess = 'table';
   try {
-    await verifyLibraryAccess(supabase, libraryId);
+    const result = await verifyLibraryAccessDirect(supabase, user.id, libraryId);
+    libraryNameFromAccess = result.name || libraryNameFromAccess;
   } catch (e: unknown) {
     const err = e as { name?: string; message?: string };
     if (err.name === 'AuthorizationError') {
       return NextResponse.json({ error: err.message }, { status: 403 });
     }
+    const msg = (err.message || '').toLowerCase();
+    if (msg.includes('not logged in') || msg.includes('jwt') || msg.includes('session')) {
+      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+    }
     return NextResponse.json({ error: (err as Error)?.message || 'Library not found' }, { status: 404 });
   }
 
-  const [library, schema, assets] = await Promise.all([
-    getLibrary(supabase, libraryId),
-    getLibrarySchema(supabase, libraryId),
-    getLibraryAssetsWithProperties(supabase, libraryId),
+  const [schema, assets] = await Promise.all([
+    getLibrarySchemaDirect(supabase, libraryId),
+    getLibraryAssetsWithPropertiesDirect(supabase, libraryId),
   ]);
 
-  if (!library) {
-    return NextResponse.json({ error: 'Library not found' }, { status: 404 });
-  }
-
-  const libraryName = library.name || 'table';
+  const libraryName = libraryNameFromAccess || 'table';
   const exportedAt = timestamp();
   const baseName = `${safeFileName(libraryName)}_${exportedAt}`;
   const sections = schema.sections;
@@ -117,6 +451,44 @@ export async function GET(request: Request) {
 
   // xlsx: one sheet, row0 = section names, row1 = label (datatype), row2+ = data
   const sectionById = new Map(sections.map((s) => [s.id, s]));
+  const referenceNameById = new Map(assets.map((row) => [row.id, row.name]));
+
+  // Reference fields may point to assets in other libraries.
+  // Resolve their names in batch to export readable values instead of raw UUID.
+  const referenceProps = properties.filter((p) => p.dataType === 'reference');
+  const referenceIds = new Set<string>();
+  for (const row of assets) {
+    for (const prop of referenceProps) {
+      const raw = row.propertyValues[prop.key];
+      const normalized = parseJsonString(raw);
+      if (typeof normalized === 'string' && isUuid(normalized)) {
+        referenceIds.add(normalized);
+      } else if (Array.isArray(normalized)) {
+        for (const item of normalized) {
+          if (typeof item === 'string' && isUuid(item)) referenceIds.add(item);
+          if (item && typeof item === 'object') {
+            const ref = item as { id?: unknown; assetId?: unknown };
+            if (typeof ref.id === 'string' && isUuid(ref.id)) referenceIds.add(ref.id);
+            if (typeof ref.assetId === 'string' && isUuid(ref.assetId)) referenceIds.add(ref.assetId);
+          }
+        }
+      } else if (normalized && typeof normalized === 'object') {
+        const ref = normalized as { id?: unknown; assetId?: unknown };
+        if (typeof ref.id === 'string' && isUuid(ref.id)) referenceIds.add(ref.id);
+        if (typeof ref.assetId === 'string' && isUuid(ref.assetId)) referenceIds.add(ref.assetId);
+      }
+    }
+  }
+
+  if (referenceIds.size > 0) {
+    const { data: refAssets } = await supabase
+      .from('library_assets')
+      .select('id, name')
+      .in('id', Array.from(referenceIds));
+    (refAssets ?? []).forEach((asset: { id: string; name: string }) => {
+      if (asset?.id && asset?.name) referenceNameById.set(asset.id, asset.name);
+    });
+  }
   const headersSection: string[] = [];
   const headersLabel: string[] = [];
   for (const p of properties) {
@@ -126,11 +498,51 @@ export async function GET(request: Request) {
   }
 
   const dataRows: (string | number | boolean | null)[][] = assets.map((row) => {
-    return properties.map((p) => formatCellValue(row.propertyValues[p.key]));
+    return properties.map((p) => formatCellValue(row.propertyValues[p.key], p, referenceNameById));
   });
 
   const wsData = [headersSection, headersLabel, ...dataRows];
   const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Merge section header cells so each section shows once across its columns.
+  const merges: XLSX.Range[] = [];
+  if (properties.length > 0) {
+    let start = 0;
+    let currentSection = headersSection[0];
+    for (let i = 1; i <= properties.length; i += 1) {
+      const sectionAtI = i < properties.length ? headersSection[i] : '__END__';
+      if (sectionAtI !== currentSection) {
+        if (currentSection && i - start > 1) {
+          merges.push({
+            s: { r: 0, c: start },
+            e: { r: 0, c: i - 1 },
+          });
+          for (let j = start + 1; j < i; j += 1) {
+            wsData[0][j] = '';
+          }
+        }
+        start = i;
+        currentSection = sectionAtI;
+      }
+    }
+  }
+
+  if (merges.length > 0) {
+    ws['!merges'] = merges;
+  }
+
+  // Auto-fit column width for readability.
+  const maxRowsForWidth = Math.min(wsData.length, 102);
+  ws['!cols'] = properties.map((_, colIdx) => {
+    let maxLen = 10;
+    for (let rowIdx = 0; rowIdx < maxRowsForWidth; rowIdx += 1) {
+      const cellValue = wsData[rowIdx]?.[colIdx];
+      const text = cellValue === null || cellValue === undefined ? '' : String(cellValue);
+      if (text.length > maxLen) maxLen = text.length;
+    }
+    return { wch: Math.min(Math.max(maxLen + 2, 12), 40) };
+  });
+
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, safeFileName(libraryName).slice(0, 31));
 
