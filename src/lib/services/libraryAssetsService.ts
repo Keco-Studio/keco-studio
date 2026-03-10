@@ -5,6 +5,7 @@ import {
   PropertyConfig,
   SectionConfig,
 } from '@/lib/types/libraryAssets';
+import { computeFormulaValuesForRow } from '@/lib/utils/formula';
 import { getLibrary } from '@/lib/services/libraryService';
 import {
   verifyLibraryAccess,
@@ -44,6 +45,13 @@ type AssetValueRow = {
   value_json: unknown;
 };
 
+type FormulaFieldMetaRow = {
+  id: string;
+  label: string;
+  data_type: string;
+  formula_expression: string | null;
+};
+
 const mapDataTypeToValueType = (
   dataType: FieldDefinitionRow['data_type']
 ): PropertyConfig['valueType'] => {
@@ -81,6 +89,72 @@ const normalizeValue = (input: unknown): any => {
   }
   return value;
 };
+
+async function getFormulaFieldMetaByLibraryId(
+  supabase: SupabaseClient,
+  libraryId: string
+): Promise<FormulaFieldMetaRow[]> {
+  const { data, error } = await supabase
+    .from('library_field_definitions')
+    .select('id, label, data_type, formula_expression')
+    .eq('library_id', libraryId);
+
+  if (error) throw error;
+  return (data ?? []) as FormulaFieldMetaRow[];
+}
+
+async function getLibraryIdByAssetId(
+  supabase: SupabaseClient,
+  assetId: string
+): Promise<string> {
+  const { data, error } = await supabase
+    .from('library_assets')
+    .select('library_id')
+    .eq('id', assetId)
+    .single();
+
+  if (error || !data?.library_id) {
+    throw error ?? new Error(`Asset ${assetId} not found`);
+  }
+  return data.library_id as string;
+}
+
+async function recalculateAndPersistFormulaFieldValues(
+  supabase: SupabaseClient,
+  libraryId: string,
+  targetFormulaFieldId: string
+): Promise<void> {
+  const formulaMeta = await getFormulaFieldMetaByLibraryId(supabase, libraryId);
+  const assets = await getLibraryAssetsWithProperties(supabase, libraryId);
+  if (assets.length === 0) return;
+
+  const evaluableFields = formulaMeta.map((f) => ({
+    id: f.id,
+    name: f.label,
+    dataType: f.data_type,
+    formulaExpression: f.formula_expression,
+  }));
+
+  const upsertRows: Array<{ asset_id: string; field_id: string; value_json: number }> = [];
+  for (const asset of assets) {
+    const computed = computeFormulaValuesForRow(evaluableFields, asset.propertyValues);
+    const value = computed[targetFormulaFieldId];
+    if (value !== null && value !== undefined && Number.isFinite(value)) {
+      upsertRows.push({
+        asset_id: asset.id,
+        field_id: targetFormulaFieldId,
+        value_json: value,
+      });
+    }
+  }
+
+  if (upsertRows.length > 0) {
+    const { error } = await supabase
+      .from('library_asset_values')
+      .upsert(upsertRows, { onConflict: 'asset_id,field_id' });
+    if (error) throw error;
+  }
+}
 
 // Small helper for debugging asset mismatches between "current view" and "version snapshots".
 // It only logs in non-production environments and prints a compact digest.
@@ -351,6 +425,11 @@ export async function addLibraryField(
     .single();
 
   if (error) throw error;
+
+  if (payload.dataType === 'formula') {
+    await recalculateAndPersistFormulaFieldValues(supabase, libraryId, inserted.id);
+  }
+
   const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
   globalRequestCache.invalidate(`field-definitions:${libraryId}`);
   return { id: inserted.id };
@@ -419,6 +498,10 @@ export async function updateLibraryField(
 
   if (error) {
     throw new Error(error.message);
+  }
+
+  if (payload.dataType === 'formula') {
+    await recalculateAndPersistFormulaFieldValues(supabase, libraryId, fieldId);
   }
 
   const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
@@ -503,6 +586,18 @@ export async function createAsset(
 ): Promise<string> {
   // verify creation permission (admin and editor can create)
   await verifyAssetCreationPermission(supabase, libraryId);
+
+  const formulaMeta = await getFormulaFieldMetaByLibraryId(supabase, libraryId);
+  const computedFormulaValues = computeFormulaValuesForRow(
+    formulaMeta.map((f) => ({
+      id: f.id,
+      name: f.label,
+      dataType: f.data_type,
+      formulaExpression: f.formula_expression,
+    })),
+    propertyValues
+  );
+  const mergedPropertyValues = { ...propertyValues, ...computedFormulaValues };
   
   // Step 1: Insert the asset
   const insertData: {
@@ -536,8 +631,8 @@ export async function createAsset(
   const assetId = assetData.id;
 
   // Step 2: Insert property values
-  if (Object.keys(propertyValues).length > 0) {
-    const valueRows = Object.entries(propertyValues)
+  if (Object.keys(mergedPropertyValues).length > 0) {
+    const valueRows = Object.entries(mergedPropertyValues)
       .filter(([_, value]) => value !== null && value !== undefined && value !== '')
       .map(([fieldId, value]) => ({
         asset_id: assetId,
@@ -611,6 +706,19 @@ export async function updateAsset(
 ): Promise<void> {
   // Verify user has permission to update asset (admin or editor)
   await verifyAssetUpdatePermission(supabase, assetId);
+
+  const libraryId = await getLibraryIdByAssetId(supabase, assetId);
+  const formulaMeta = await getFormulaFieldMetaByLibraryId(supabase, libraryId);
+  const computedFormulaValues = computeFormulaValuesForRow(
+    formulaMeta.map((f) => ({
+      id: f.id,
+      name: f.label,
+      dataType: f.data_type,
+      formulaExpression: f.formula_expression,
+    })),
+    propertyValues
+  );
+  const mergedPropertyValues = { ...propertyValues, ...computedFormulaValues };
   
   // Step 1: Update the asset name
   const { error: assetError } = await supabase
@@ -623,8 +731,8 @@ export async function updateAsset(
   }
 
   // Step 2: Upsert property values
-  if (Object.keys(propertyValues).length > 0) {
-    const valueRows = Object.entries(propertyValues).map(([fieldId, value]) => ({
+  if (Object.keys(mergedPropertyValues).length > 0) {
+    const valueRows = Object.entries(mergedPropertyValues).map(([fieldId, value]) => ({
       asset_id: assetId,
       field_id: fieldId,
       value_json: value,

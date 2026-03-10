@@ -1,0 +1,230 @@
+export type FormulaEvaluableField = {
+  id: string;
+  name: string;
+  dataType?: string | null;
+  formulaExpression?: string | null;
+};
+
+type FormulaToken =
+  | { type: 'number'; value: number }
+  | { type: 'identifier'; value: string }
+  | { type: 'operator'; value: '+' | '-' | '*' | '/' }
+  | { type: 'paren'; value: '(' | ')' };
+
+const OP_PRECEDENCE: Record<'+' | '-' | '*' | '/', number> = {
+  '+': 1,
+  '-': 1,
+  '*': 2,
+  '/': 2,
+};
+
+function isIdentStart(ch: string): boolean {
+  return (
+    (ch >= 'a' && ch <= 'z') ||
+    (ch >= 'A' && ch <= 'Z') ||
+    ch === '_' ||
+    ch === '$'
+  );
+}
+
+function isIdentPart(ch: string): boolean {
+  return isIdentStart(ch) || (ch >= '0' && ch <= '9');
+}
+
+function tokenizeFormula(expr: string): FormulaToken[] {
+  const tokens: FormulaToken[] = [];
+  const s = expr.trim();
+  let i = 0;
+
+  while (i < s.length) {
+    const ch = s[i];
+
+    if (/\s/.test(ch)) {
+      i += 1;
+      continue;
+    }
+
+    // [Column Name]
+    if (ch === '[') {
+      const end = s.indexOf(']', i + 1);
+      if (end === -1) return [];
+      const inside = s.slice(i + 1, end).trim();
+      if (!inside) return [];
+      tokens.push({ type: 'identifier', value: inside });
+      i = end + 1;
+      continue;
+    }
+
+    // 123 / 12.3 / .5
+    if ((ch >= '0' && ch <= '9') || (ch === '.' && i + 1 < s.length && s[i + 1] >= '0' && s[i + 1] <= '9')) {
+      const start = i;
+      i += 1;
+      while (i < s.length && ((s[i] >= '0' && s[i] <= '9') || s[i] === '.')) i += 1;
+      const num = Number(s.slice(start, i));
+      if (Number.isNaN(num)) return [];
+      tokens.push({ type: 'number', value: num });
+      continue;
+    }
+
+    // bare identifier: amount + tax
+    if (isIdentStart(ch)) {
+      const start = i;
+      i += 1;
+      while (i < s.length && isIdentPart(s[i])) i += 1;
+      tokens.push({ type: 'identifier', value: s.slice(start, i) });
+      continue;
+    }
+
+    if (ch === '+' || ch === '-' || ch === '*' || ch === '/') {
+      tokens.push({ type: 'operator', value: ch });
+      i += 1;
+      continue;
+    }
+
+    if (ch === '(' || ch === ')') {
+      tokens.push({ type: 'paren', value: ch });
+      i += 1;
+      continue;
+    }
+
+    return [];
+  }
+
+  return tokens;
+}
+
+function toRpn(tokens: FormulaToken[]): FormulaToken[] {
+  const output: FormulaToken[] = [];
+  const stack: FormulaToken[] = [];
+
+  for (const token of tokens) {
+    if (token.type === 'number' || token.type === 'identifier') {
+      output.push(token);
+      continue;
+    }
+
+    if (token.type === 'operator') {
+      while (stack.length > 0) {
+        const top = stack[stack.length - 1];
+        if (
+          top.type === 'operator' &&
+          OP_PRECEDENCE[top.value] >= OP_PRECEDENCE[token.value]
+        ) {
+          output.push(stack.pop() as FormulaToken);
+        } else {
+          break;
+        }
+      }
+      stack.push(token);
+      continue;
+    }
+
+    if (token.type === 'paren' && token.value === '(') {
+      stack.push(token);
+      continue;
+    }
+
+    if (token.type === 'paren' && token.value === ')') {
+      let foundLeft = false;
+      while (stack.length > 0) {
+        const top = stack.pop() as FormulaToken;
+        if (top.type === 'paren' && top.value === '(') {
+          foundLeft = true;
+          break;
+        }
+        output.push(top);
+      }
+      if (!foundLeft) return [];
+    }
+  }
+
+  while (stack.length > 0) {
+    const top = stack.pop() as FormulaToken;
+    if (top.type === 'paren') return [];
+    output.push(top);
+  }
+
+  return output;
+}
+
+function evalRpn(
+  rpn: FormulaToken[],
+  resolveIdentifier: (name: string) => number | null
+): number | null {
+  const stack: number[] = [];
+
+  for (const token of rpn) {
+    if (token.type === 'number') {
+      stack.push(token.value);
+      continue;
+    }
+
+    if (token.type === 'identifier') {
+      const v = resolveIdentifier(token.value);
+      if (v === null || Number.isNaN(v) || !Number.isFinite(v)) return null;
+      stack.push(v);
+      continue;
+    }
+
+    if (token.type === 'operator') {
+      if (stack.length < 2) return null;
+      const b = stack.pop() as number;
+      const a = stack.pop() as number;
+
+      let result: number;
+      if (token.value === '+') result = a + b;
+      else if (token.value === '-') result = a - b;
+      else if (token.value === '*') result = a * b;
+      else {
+        if (b === 0) return null;
+        result = a / b;
+      }
+
+      if (Number.isNaN(result) || !Number.isFinite(result)) return null;
+      stack.push(result);
+    }
+  }
+
+  if (stack.length !== 1) return null;
+  return stack[0];
+}
+
+export function evaluateFormulaExpression(
+  expression: string | null | undefined,
+  resolveIdentifier: (name: string) => number | null
+): number | null {
+  if (!expression || !expression.trim()) return null;
+  const tokens = tokenizeFormula(expression);
+  if (tokens.length === 0) return null;
+  const rpn = toRpn(tokens);
+  if (rpn.length === 0) return null;
+  return evalRpn(rpn, resolveIdentifier);
+}
+
+export function computeFormulaValuesForRow(
+  fields: FormulaEvaluableField[],
+  propertyValues: Record<string, any>
+): Record<string, number | null> {
+  const byName = new Map<string, FormulaEvaluableField>();
+  for (const field of fields) {
+    if (field.name) byName.set(field.name, field);
+  }
+
+  const result: Record<string, number | null> = {};
+  const formulaFields = fields.filter((f) => f.dataType === 'formula');
+
+  for (const formulaField of formulaFields) {
+    const computed = evaluateFormulaExpression(formulaField.formulaExpression, (identifier) => {
+      const targetField = byName.get(identifier);
+      if (!targetField) return null;
+      const raw = propertyValues[targetField.id];
+      if (raw === null || raw === undefined || raw === '') return null;
+      if (typeof raw === 'number') return Number.isNaN(raw) ? null : raw;
+      const num = Number(raw);
+      return Number.isNaN(num) ? null : num;
+    });
+    result[formulaField.id] = computed;
+  }
+
+  return result;
+}

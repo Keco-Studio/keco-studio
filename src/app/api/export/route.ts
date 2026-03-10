@@ -382,6 +382,9 @@ const OP_PRECEDENCE: Record<'+' | '-' | '*' | '/', number> = {
 function tokenizeFormula(expr: string): FormulaToken[] {
   const tokens: FormulaToken[] = [];
   let i = 0;
+  const isIdentStart = (ch: string) =>
+    (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_' || ch === '$';
+  const isIdentPart = (ch: string) => isIdentStart(ch) || (ch >= '0' && ch <= '9');
   while (i < expr.length) {
     const ch = expr[i];
     if (/\s/.test(ch)) {
@@ -403,6 +406,14 @@ function tokenizeFormula(expr: string): FormulaToken[] {
       const num = Number(expr.slice(i, j));
       if (Number.isNaN(num)) return [];
       tokens.push({ type: 'number', value: num });
+      i = j;
+      continue;
+    }
+    if (isIdentStart(ch)) {
+      let j = i + 1;
+      while (j < expr.length && isIdentPart(expr[j])) j += 1;
+      const ident = expr.slice(i, j);
+      tokens.push({ type: 'identifier', value: ident });
       i = j;
       continue;
     }

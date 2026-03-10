@@ -27,6 +27,7 @@ import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState, CellsBatchUpdateEvent } from '@/lib/types/collaboration';
 import { serializeError } from '@/lib/utils/errorUtils';
 import { getLibraryAssetsWithProperties } from '@/lib/services/libraryAssetsService';
+import { computeFormulaValuesForRow } from '@/lib/utils/formula';
 
 interface LibraryDataContextValue {
   // Data access
@@ -42,7 +43,6 @@ interface LibraryDataContextValue {
   
   // Bulk operations
   updateMultipleFields: (updates: Array<{ assetId: string; fieldId: string; value: any }>) => Promise<void>;
-  /** 批量更新并一次性广播，用于 Clear Content，效仿 Delete Row 的即时同步 */
   updateAssetsBatch: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   
   // Realtime collaboration
@@ -69,6 +69,13 @@ interface LibraryDataProviderProps {
   libraryId: string;
   projectId: string;
 }
+
+type FormulaFieldMetaRow = {
+  id: string;
+  label: string;
+  data_type: string;
+  formula_expression: string | null;
+};
 
 export function LibraryDataProvider({ children, libraryId, projectId }: LibraryDataProviderProps) {
   const supabase = useSupabase();
@@ -296,6 +303,16 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Batch queue for cell updates - apply in one transact so UI updates at once (fixes "one by one" disappearing)
   const cellUpdateQueueRef = useRef<CellUpdateEvent[]>([]);
   const cellUpdateFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const getFormulaFieldMeta = useCallback(async (): Promise<FormulaFieldMetaRow[]> => {
+    const { data, error } = await supabase
+      .from('library_field_definitions')
+      .select('id, label, data_type, formula_expression')
+      .eq('library_id', libraryId);
+
+    if (error) throw error;
+    return (data ?? []) as FormulaFieldMetaRow[];
+  }, [supabase, libraryId]);
   
   const flushCellUpdateQueue = useCallback(() => {
     const events = cellUpdateQueueRef.current;
@@ -492,9 +509,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     value: any,
     options?: { skipBroadcast?: boolean }
   ) => {
-    // console.log('[LibraryDataContext] updateAssetField called:', { assetId, fieldId, value, valueType: typeof value });
-    
-    // 1. Optimistic update in Yjs
+    const formulaMeta = await getFormulaFieldMeta();
     const yAsset = yAssets.get(assetId);
     if (!yAsset) {
       throw new Error(`Asset ${assetId} not found`);
@@ -504,10 +519,15 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     if (!yPropertyValues) {
       throw new Error(`propertyValues not found for asset ${assetId}`);
     }
-    
+
     const oldValue = yPropertyValues.get(fieldId);
-    // console.log('[LibraryDataContext] oldValue:', oldValue, 'oldValueType:', typeof oldValue);
-    
+    const oldFormulaValues: Record<string, any> = {};
+    for (const field of formulaMeta) {
+      if (field.data_type === 'formula') {
+        oldFormulaValues[field.id] = yPropertyValues.get(field.id);
+      }
+    }
+
     // Normalize NaN to null so it never persists (avoids "NaN" in table after Clear Content etc.)
     let valueForYjs = value;
     if (typeof value === 'number' && Number.isNaN(value)) {
@@ -515,42 +535,62 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     } else if (value !== null && typeof value === 'object') {
       // Deep clone the object to break any references
       valueForYjs = JSON.parse(JSON.stringify(value));
-      // console.log('[LibraryDataContext] Created deep copy for Yjs:', valueForYjs);
     }
-    
-    // Update the nested Y.Map (this will trigger observeDeep)
+
+    let computedFormulaValues: Record<string, number | null> = {};
     yDoc.transact(() => {
       yPropertyValues.set(fieldId, valueForYjs);
+
+      if (formulaMeta.length > 0) {
+        const currentValues: Record<string, any> = {};
+        yPropertyValues.forEach((v: any, key: string) => {
+          currentValues[key] = v;
+        });
+        computedFormulaValues = computeFormulaValuesForRow(
+          formulaMeta.map((field) => ({
+            id: field.id,
+            name: field.label,
+            dataType: field.data_type,
+            formulaExpression: field.formula_expression,
+          })),
+          currentValues
+        );
+        Object.entries(computedFormulaValues).forEach(([formulaFieldId, formulaValue]) => {
+          yPropertyValues.set(formulaFieldId, formulaValue);
+        });
+      }
     });
-    // console.log('[LibraryDataContext] ✅ Updated Yjs');
-    
-    // 2. Save to database
+
+    const valuesToPersist: Record<string, any> = {
+      [fieldId]: valueForYjs,
+      ...computedFormulaValues,
+    };
+
+    const changedFormulaEntries = Object.entries(computedFormulaValues).filter(([formulaFieldId, formulaValue]) => {
+      return JSON.stringify(oldFormulaValues[formulaFieldId]) !== JSON.stringify(formulaValue);
+    });
+
     try {
-      // Supabase jsonb column can handle objects directly, no need to stringify
-      // console.log('[LibraryDataContext] Saving to database...', { asset_id: assetId, field_id: fieldId, value_json: value });
-      const { data, error } = await supabase
+      const upsertRows = Object.entries(valuesToPersist).map(([fieldKey, fieldValue]) => ({
+        asset_id: assetId,
+        field_id: fieldKey,
+        value_json: fieldValue,
+      }));
+
+      const { error } = await supabase
         .from('library_asset_values')
-        .upsert({
-          asset_id: assetId,
-          field_id: fieldId,
-          value_json: value, // Pass the original value, Supabase handles serialization
-        }, {
+        .upsert(upsertRows, {
           onConflict: 'asset_id,field_id',
-        })
-        .select(); // Add select to get the saved data
-      
+        });
+
       if (error) throw error;
-      // console.log('[LibraryDataContext] ✅ Database save successful, returned data:', data);
-        
-      // 3. Broadcast update (unless explicitly skipped)
-      // Add a small delay to ensure database transaction is fully committed
-      // This is especially important for INSERT operations (null -> object transitions)
+
       if (!options?.skipBroadcast && realtimeConfig) {
-        // console.log('[LibraryDataContext] Broadcasting update...');
-        // Wait 100ms to ensure database transaction is committed
         await new Promise(resolve => setTimeout(resolve, 100));
         await broadcastCellUpdate(assetId, fieldId, valueForYjs, oldValue);
-        // console.log('[LibraryDataContext] ✅ Broadcast complete');
+        for (const [formulaFieldId, formulaValue] of changedFormulaEntries) {
+          await broadcastCellUpdate(assetId, formulaFieldId, formulaValue, oldFormulaValues[formulaFieldId]);
+        }
       }
     } catch (error) {
       const errMsg = serializeError(error);
@@ -560,10 +600,15 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       // Revert optimistic update on error
       yDoc.transact(() => {
         yPropertyValues.set(fieldId, oldValue);
+        for (const field of formulaMeta) {
+          if (field.data_type === 'formula') {
+            yPropertyValues.set(field.id, oldFormulaValues[field.id]);
+          }
+        }
       });
       throw error;
     }
-  }, [yAssets, yDoc, supabase, broadcastCellUpdate, realtimeConfig]);
+  }, [getFormulaFieldMeta, yAssets, yDoc, supabase, broadcastCellUpdate, realtimeConfig]);
   
   const updateAssetName = useCallback(async (
     assetId: string,
@@ -622,6 +667,18 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       nextRowIndex = maxIdx + 1;
     }
 
+    const formulaMeta = await getFormulaFieldMeta();
+    const computedFormulaValues = computeFormulaValuesForRow(
+      formulaMeta.map((field) => ({
+        id: field.id,
+        name: field.label,
+        dataType: field.data_type,
+        formulaExpression: field.formula_expression,
+      })),
+      propertyValues
+    );
+    const mergedPropertyValues = { ...propertyValues, ...computedFormulaValues };
+
     // 1. Create in database
     const { data: newAsset, error: assetError } = await supabase
       .from('library_assets')
@@ -648,7 +705,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     }
     
     // 2. Insert field values
-    const fieldValues = Object.entries(propertyValues).map(([fieldId, value]) => ({
+    const fieldValues = Object.entries(mergedPropertyValues).map(([fieldId, value]) => ({
       asset_id: assetId,
       field_id: fieldId,
       value_json: value,
@@ -672,7 +729,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       
       // Create Y.Map for propertyValues
       const yPropertyValues = new Y.Map();
-      Object.entries(propertyValues).forEach(([fieldId, value]) => {
+      Object.entries(mergedPropertyValues).forEach(([fieldId, value]) => {
         // For complex objects, use deep copy to avoid reference issues
         let valueForYjs = value;
         if (value !== null && typeof value === 'object') {
@@ -694,7 +751,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     // so collaborators start their DB query in parallel with ours (~1× instead of ~2× delay).
     if (realtimeConfig) {
       if (typeof options?.rowIndex !== 'number') {
-        await broadcastAssetCreate(assetId, name, propertyValues, {
+        await broadcastAssetCreate(assetId, name, mergedPropertyValues, {
           insertAfterRowId: options?.insertAfterRowId,
           insertBeforeRowId: options?.insertBeforeRowId,
           targetCreatedAt: options?.createdAt?.toISOString(),
@@ -720,7 +777,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     }
     
     return assetId;
-  }, [libraryId, supabase, yDoc, yAssets, broadcastAssetCreate, broadcastRowOrderChange, realtimeConfig, loadInitialData]);
+  }, [getFormulaFieldMeta, libraryId, supabase, yDoc, yAssets, broadcastAssetCreate, broadcastRowOrderChange, realtimeConfig, loadInitialData]);
   
   const deleteAsset = useCallback(async (assetId: string) => {
     const asset = assetsRef.current.get(assetId);
