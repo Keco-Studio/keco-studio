@@ -15,13 +15,14 @@ import { EditProjectModal } from "@/components/projects/EditProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
 import { EditLibraryModal } from "@/components/libraries/EditLibraryModal";
 import { DuplicateLibraryModal } from "@/components/libraries/DuplicateLibraryModal";
+import { ExportLibraryModal } from "@/components/libraries/ExportLibraryModal";
 import { NewFolderModal } from "@/components/folders/NewFolderModal";
 import { EditFolderModal } from "@/components/folders/EditFolderModal";
 import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { Project, deleteProject } from "@/lib/services/projectService";
-import { Library, deleteLibrary } from "@/lib/services/libraryService";
-import { Folder, deleteFolder } from "@/lib/services/folderService";
+import { Library, deleteLibrary, updateLibrary } from "@/lib/services/libraryService";
+import { Folder, deleteFolder, updateFolder } from "@/lib/services/folderService";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
 import { useSidebarFoldersLibraries } from "./hooks/useSidebarFoldersLibraries";
 import { useSidebarModals } from "./hooks/useSidebarModals";
@@ -88,6 +89,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     editingLibraryId,
     showDuplicateLibraryModal,
     duplicatingLibraryId,
+    showExportLibraryModal,
+    exportingLibraryId,
     showFolderModal,
     showEditFolderModal,
     editingFolderId,
@@ -103,6 +106,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     closeEditLibraryModal,
     openDuplicateLibrary,
     closeDuplicateLibraryModal,
+    openExportLibrary,
+    closeExportLibraryModal,
     openNewFolder,
     closeFolderModal,
     openEditFolder,
@@ -114,6 +119,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
@@ -121,8 +127,34 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [isResizing, setIsResizing] = useState(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(DEFAULT_SIDEBAR_WIDTH);
-
   const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
+
+  const handleSaveRename = useCallback(
+    async (key: string, newName: string) => {
+      const trimmed = newName.trim();
+      if (!trimmed) return;
+      try {
+        if (key.startsWith('library-')) {
+          const id = key.replace('library-', '');
+          await updateLibrary(supabase, id, { name: trimmed });
+          if (currentIds.projectId) {
+            queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+          }
+          window.dispatchEvent(new CustomEvent('libraryUpdated', { detail: { libraryId: id } }));
+        } else if (key.startsWith('folder-')) {
+          const id = key.replace('folder-', '');
+          await updateFolder(supabase, id, { name: trimmed });
+          if (currentIds.projectId) {
+            queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+          }
+          window.dispatchEvent(new CustomEvent('folderUpdated', { detail: { folderId: id } }));
+        }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : '重命名失败');
+      }
+    },
+    [supabase, queryClient, currentIds.projectId, setError]
+  );
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -571,6 +603,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       openNewLibrary,
       setSelectedFolderId,
       setError,
+      setEditingKey,
+      onSaveRename: handleSaveRename,
     },
     sidebarWidth
   );
@@ -623,6 +657,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openEditProject,
     openEditLibrary,
     openDuplicateLibrary,
+    openExportLibrary,
     openEditFolder,
     openEditAsset,
     supabase,
@@ -805,6 +840,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               treeData={treeData}
               selectedKeys={selectedKeys}
               expandedKeys={expandedKeys}
+              editingKey={editingKey}
+              setEditingKey={setEditingKey}
+              onSaveRename={handleSaveRename}
+              setSelectedFolderId={setSelectedFolderId}
+              openNewLibrary={openNewLibrary}
+              setError={setError}
               onSelect={onSelect}
               onExpand={onExpand}
               onBackToLibrary={() => {
@@ -881,6 +922,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               router.push(`/${currentIds.projectId}/${newLibraryId}`);
             }
           }}
+        />
+      )}
+
+      {exportingLibraryId && (
+        <ExportLibraryModal
+          open={showExportLibraryModal}
+          libraryId={exportingLibraryId}
+          libraryName={libraries.find(lib => lib.id === exportingLibraryId)?.name}
+          onClose={closeExportLibraryModal}
         />
       )}
 

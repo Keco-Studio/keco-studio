@@ -501,12 +501,36 @@
   min-width: 0;
 }
 
-/* Ensure itemText in tree node has padding to avoid overlap with delete button */
+/*
+ * 侧边栏双击编辑体验优化（Libraries 树节点）：
+ * 1. 阻止默认选中：列表项标题区域不可选中，避免双击时出现蓝色高亮选区
+ * 2. 保持编辑功能：双击仍由 onDoubleClick + setEditingKey 切换为 Input，不受 user-select 影响
+ * 3. 输入框例外：.treeNodeInput 使用 user-select: text，编辑态下输入框内文字可选中、全选
+ */
+.tree :global(.ant-tree-node-content-wrapper) .ant-tree-title {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .tree :global(.ant-tree-node-content-wrapper) .itemText {
   font-size: 1rem;
   font-family: var(--font-roboto), sans-serif;
   font-weight: 500;
-  padding-right: 2rem; /* Reserve space for delete button to avoid text overlap */
+  padding-right: 2rem;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.tree :global(.ant-tree-node-content-wrapper) .treeNodeInput,
+.treeNodeInput {
+  font-size: 1rem;
+  font-family: var(--font-roboto), sans-serif;
+  font-weight: 500;
+  padding-right: 2rem;
+  min-width: 4rem;
+  flex: 1 1 auto;
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* Hover state - background covers entire row */
@@ -602,29 +626,30 @@
   font-size: 0.75rem;
 }
 
-/* Folder switcher: two icons; show expand icon when whole row (incl. switcher) is hovered */
+/* Folder switcher: two icons stacked in same slot; show expand icon when row is hovered */
 .folderSwitcherIcons {
   position: relative;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 24px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
 }
 
 .folderSwitcherBase,
 .folderSwitcherHover {
   display: block;
   transition: opacity 0.15s ease;
-}
-
-.folderSwitcherHover {
   position: absolute;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  opacity: 0;
   pointer-events: none;
+}
+
+.folderSwitcherHover {
+  opacity: 0;
 }
 
 .tree :global(.ant-tree-treenode:hover) .folderSwitcherIcons .folderSwitcherBase {
@@ -692,6 +717,33 @@
   font-size: 1rem;
   font-weight: 500;
   padding-right: 2rem; /* Reserve space for delete button to avoid text overlap */
+}
+
+/* Inline rename input: match row height and itemText appearance, minimal border */
+.renameInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  line-height: 24px;
+  font-size: 12px;
+  font-family: var(--font-roboto), "Roboto Fallback", sans-serif;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.88);
+  padding: 0 24px 0 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  outline: none;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.renameInput:focus {
+  outline: none;
+}
+
+.renameInput::placeholder {
+  color: rgba(0, 0, 0, 0.25);
 }
 
 .itemActions {
@@ -777,9 +829,15 @@
   display: flex;
   align-items: center;
   flex-shrink: 0;
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 24px;
+  height: 24px;
   justify-content: center;
+}
+
+/* 固定侧边栏库图标为 24px，保证与容器一致、视觉居中 */
+.libraryIconContainer img {
+  width: 24px !important;
+  height: 24px !important;
 }
 
 .itemRow {

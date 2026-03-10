@@ -19,6 +19,7 @@ export type UseSidebarContextMenuActionsParams = {
   openEditProject: (id: string) => void;
   openEditLibrary: (id: string) => void;
   openDuplicateLibrary: (id: string) => void;
+  openExportLibrary: (id: string) => void;
   openEditFolder: (id: string) => void;
   openEditAsset: (id: string) => void;
   supabase: SupabaseClient;
@@ -47,6 +48,7 @@ export function useSidebarContextMenuActions({
   openEditProject,
   openEditLibrary,
   openDuplicateLibrary,
+  openExportLibrary,
   openEditFolder,
   openEditAsset,
   supabase,
@@ -98,6 +100,17 @@ export function useSidebarContextMenuActions({
           return;
         }
         // Project, Folder, Asset duplication not implemented yet
+        closeContextMenu();
+        return;
+      }
+
+      // Handle export action (library: open export modal)
+      if (action === 'export') {
+        if (contextMenu.type === 'library') {
+          openExportLibrary(contextMenu.id);
+          closeContextMenu();
+          return;
+        }
         closeContextMenu();
         return;
       }
@@ -222,6 +235,7 @@ export function useSidebarContextMenuActions({
       openEditProject,
       openEditLibrary,
       openDuplicateLibrary,
+      openExportLibrary,
       openEditFolder,
       openEditAsset,
       supabase,

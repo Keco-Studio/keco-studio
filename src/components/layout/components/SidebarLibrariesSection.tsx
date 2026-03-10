@@ -33,6 +33,12 @@ export type SidebarLibrariesSectionProps = {
   treeData: DataNode[];
   selectedKeys: React.Key[];
   expandedKeys: React.Key[];
+  editingKey: string | null;
+  setEditingKey: (key: string | null) => void;
+  onSaveRename: (key: string, newName: string) => void | Promise<void>;
+  setSelectedFolderId: (id: string | null) => void;
+  openNewLibrary: () => void;
+  setError: (msg: string | null) => void;
   onSelect: (keys: React.Key[], info: any) => void;
   onExpand: (expandedKeys: React.Key[], info: { node: any }) => void;
   onBackToLibrary: () => void;
@@ -59,6 +65,12 @@ export function SidebarLibrariesSection({
   treeData,
   selectedKeys,
   expandedKeys,
+  editingKey,
+  setEditingKey,
+  onSaveRename,
+  setSelectedFolderId,
+  openNewLibrary,
+  setError,
   onSelect,
   onExpand,
   onBackToLibrary,
@@ -89,6 +101,14 @@ export function SidebarLibrariesSection({
           treeData={treeData}
           selectedKeys={selectedKeys}
           expandedKeys={expandedKeys}
+          editingKey={editingKey}
+          setEditingKey={setEditingKey}
+          onSaveRename={onSaveRename}
+          setSelectedFolderId={setSelectedFolderId}
+          openNewLibrary={openNewLibrary}
+          setError={setError}
+          userRole={userRole}
+          currentProjectId={currentIds.projectId}
           onSelect={onSelect}
           onExpand={onExpand}
           onRightClick={onTreeRightClick}

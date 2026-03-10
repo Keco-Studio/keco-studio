@@ -27,6 +27,8 @@ export type UseSidebarTreeContext = {
   openNewLibrary: () => void;
   setSelectedFolderId: (id: string | null) => void;
   setError: (msg: string | null) => void;
+  setEditingKey: (key: string | null) => void;
+  onSaveRename: (key: string, newName: string) => void | Promise<void>;
 };
 
 /**
@@ -46,6 +48,7 @@ export function useSidebarTree(
     openNewLibrary,
     setSelectedFolderId,
     setError,
+    setEditingKey,
   } = context;
 
   const treeData: DataNode[] = useMemo(() => {
@@ -80,7 +83,7 @@ export function useSidebarTree(
       const folderLibraries = librariesByFolder.get(String(folder.id)) || [];
 
       const children: DataNode[] = folderLibraries.map((lib) => {
-        const libProjectId = lib.project_id;
+        const libKey = `library-${lib.id}`;
         return {
           title: (
             <div
@@ -91,19 +94,30 @@ export function useSidebarTree(
                 <div className={styles.libraryIconContainer}>
                   <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
                 </div>
-                <span className={styles.itemText} title={lib.name}>
+                <span
+                  className={styles.itemText}
+                  title={lib.name}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setEditingKey(libKey);
+                  }}
+                >
                   {truncateText(lib.name, computeMaxChars(15))}
                 </span>
               </div>
             </div>
           ),
-          key: `library-${lib.id}`,
+          key: libKey,
           isLeaf: true,
           children: undefined,
-        };
+          _titleStr: lib.name,
+          _nodeType: 'library',
+        } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' };
       });
 
       const hasNoLibraries = folderLibraries.length === 0;
+      const folderKey = `folder-${folder.id}`;
       return {
         title: (
           <div
@@ -116,7 +130,16 @@ export function useSidebarTree(
                   <Image src={folderCloseIcon} alt="" width={24} height={24} className="icon-24" />
                 </div>
               )}
-              <span className={styles.itemText} style={{ fontWeight: 500 }} title={folder.name}>
+              <span
+                className={styles.itemText}
+                style={{ fontWeight: 500 }}
+                title={folder.name}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setEditingKey(folderKey);
+                }}
+              >
                 {truncateText(folder.name, computeMaxChars(20))}
               </span>
             </div>
@@ -143,10 +166,13 @@ export function useSidebarTree(
             </div>
           </div>
         ),
-        key: `folder-${folder.id}`,
+        key: folderKey,
         isLeaf: children.length === 0,
         children: children.length > 0 ? children : undefined,
-      };
+        _titleStr: folder.name,
+        _nodeType: 'folder',
+        _hasNoLibraries: folderLibraries.length === 0,
+      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder'; _hasNoLibraries?: boolean };
     };
 
     const result: DataNode[] = [];
@@ -156,7 +182,7 @@ export function useSidebarTree(
 
     const rootLibraries = librariesByFolder.get('') || [];
     rootLibraries.forEach((lib) => {
-      const libProjectId = lib.project_id;
+      const libKey = `library-${lib.id}`;
       result.push({
         title: (
           <div
@@ -167,16 +193,27 @@ export function useSidebarTree(
               <div className={styles.libraryIconContainer}>
                 <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
               </div>
-              <span className={styles.itemText} style={{ fontWeight: 500 }} title={lib.name}>
+              <span
+                className={styles.itemText}
+                style={{ fontWeight: 500 }}
+                title={lib.name}
+onDoubleClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setEditingKey(libKey);
+              }}
+              >
                 {truncateText(lib.name, computeMaxChars(15))}
               </span>
             </div>
           </div>
         ),
-        key: `library-${lib.id}`,
+        key: libKey,
         isLeaf: true,
         children: undefined,
-      });
+        _titleStr: lib.name,
+        _nodeType: 'library',
+      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' });
     });
 
     return result;
@@ -194,6 +231,7 @@ export function useSidebarTree(
     openNewLibrary,
     setSelectedFolderId,
     setError,
+    setEditingKey,
     sidebarWidth,
   ]);
 

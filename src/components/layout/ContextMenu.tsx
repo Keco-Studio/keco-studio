@@ -231,6 +231,11 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
     return userRole === 'admin' || userRole === 'editor';
   };
 
+  // Export: only admin and editor can see and use
+  const canExport = () => {
+    return userRole === 'admin' || userRole === 'editor';
+  };
+
   // Render menu items based on type
   const renderMenuItems = () => {
     const showDeleteButton = canDelete();
@@ -277,18 +282,17 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
         </>
       );
     } else if (type === 'library') {
-      // Library: Export, Version history, separator, Library info (admin only), Duplicate, Move to..., separator, Delete (admin only)
+      // Library: Export (admin/editor), Version history, separator, Library info (admin only), Duplicate, Move to..., separator, Delete (admin only)
       return (
         <>
-          <button
-            className={styles.menuItem}
-            onClick={() => {
-              // Not implemented yet, just close menu
-              onClose();
-            }}
-          >
-            Export
-          </button>
+          {canExport() && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('export')}
+            >
+              Export
+            </button>
+          )}
           <button
             className={styles.menuItem}
             onClick={() => {

@@ -13,6 +13,7 @@ import { LibraryListView } from '@/components/folders/LibraryListView';
 import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { NewLibraryModal } from '@/components/libraries/NewLibraryModal';
 import { EditLibraryModal } from '@/components/libraries/EditLibraryModal';
+import { ExportLibraryModal } from '@/components/libraries/ExportLibraryModal';
 import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
 import libraryEmptyIcon from '@/assets/images/projectEmptyIcon_2.png';
@@ -34,6 +35,7 @@ export default function FolderPage() {
   const [showLibraryModal, setShowLibraryModal] = useState(false);
   const [showEditLibraryModal, setShowEditLibraryModal] = useState(false);
   const [editingLibraryId, setEditingLibraryId] = useState<string | null>(null);
+  const [exportLibraryId, setExportLibraryId] = useState<string | null>(null);
   const [assetCounts, setAssetCounts] = useState<Record<string, number>>({});
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
 
@@ -175,6 +177,9 @@ export default function FolderPage() {
 
   const handleLibraryAction = async (libraryId: string, action: ContextMenuAction) => {
     switch (action) {
+      case 'export':
+        setExportLibraryId(libraryId);
+        break;
       case 'rename':
         setEditingLibraryId(libraryId);
         setShowEditLibraryModal(true);
@@ -391,6 +396,14 @@ export default function FolderPage() {
               detail: { libraryId: editingLibraryId, projectId }
             }));
           }}
+        />
+      )}
+      {exportLibraryId && (
+        <ExportLibraryModal
+          open={!!exportLibraryId}
+          libraryId={exportLibraryId}
+          libraryName={libraries.find(l => l.id === exportLibraryId)?.name}
+          onClose={() => setExportLibraryId(null)}
         />
       )}
     </div>
