@@ -65,6 +65,209 @@ import collaborationViewNumIcon from '@/assets/images/collaborationViewNumIcon.s
 import styles from './LibraryAssetsTable.module.css';
 import addSectionIcon from '@/assets/images/addProjectIcon.svg'
 
+// ---------------- Formula evaluation helpers ----------------
+type FormulaToken =
+  | { type: 'number'; value: number }
+  | { type: 'identifier'; value: string }
+  | { type: 'operator'; value: '+' | '-' | '*' | '/' }
+  | { type: 'paren'; value: '(' | ')' };
+
+const tokenizeFormula = (expr: string): FormulaToken[] => {
+  const tokens: FormulaToken[] = [];
+  let i = 0;
+  const s = expr.trim();
+
+  const isWhitespace = (ch: string) => ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r';
+  const isDigit = (ch: string) => ch >= '0' && ch <= '9';
+  const isIdentStart = (ch: string) =>
+    (ch >= 'a' && ch <= 'z') ||
+    (ch >= 'A' && ch <= 'Z') ||
+    ch === '_' ||
+    ch === '$';
+  const isIdentPart = (ch: string) =>
+    isIdentStart(ch) || isDigit(ch);
+
+  while (i < s.length) {
+    const ch = s[i];
+    if (isWhitespace(ch)) {
+      i += 1;
+      continue;
+    }
+    if (ch === '[') {
+      // Column reference in the form [Column Name]
+      const start = i + 1;
+      let end = start;
+      while (end < s.length && s[end] !== ']') {
+        end += 1;
+      }
+      const inside = s.slice(start, end).trim();
+      if (inside) {
+        tokens.push({ type: 'identifier', value: inside });
+      }
+      i = end < s.length ? end + 1 : end;
+      continue;
+    }
+    if (isDigit(ch) || (ch === '.' && i + 1 < s.length && isDigit(s[i + 1]))) {
+      const start = i;
+      i += 1;
+      while (i < s.length && (isDigit(s[i]) || s[i] === '.')) {
+        i += 1;
+      }
+      const num = Number(s.slice(start, i));
+      if (!Number.isNaN(num)) {
+        tokens.push({ type: 'number', value: num });
+      }
+      continue;
+    }
+    if (isIdentStart(ch)) {
+      const start = i;
+      i += 1;
+      while (i < s.length && isIdentPart(s[i])) {
+        i += 1;
+      }
+      const ident = s.slice(start, i);
+      tokens.push({ type: 'identifier', value: ident });
+      continue;
+    }
+    if (ch === '+' || ch === '-' || ch === '*' || ch === '/') {
+      tokens.push({ type: 'operator', value: ch });
+      i += 1;
+      continue;
+    }
+    if (ch === '(' || ch === ')') {
+      tokens.push({ type: 'paren', value: ch });
+      i += 1;
+      continue;
+    }
+    // Unknown character – skip it to avoid breaking evaluation
+    i += 1;
+  }
+
+  return tokens;
+};
+
+const toRpn = (tokens: FormulaToken[]): FormulaToken[] => {
+  const output: FormulaToken[] = [];
+  const opStack: FormulaToken[] = [];
+
+  const precedence: Record<string, number> = { '+': 1, '-': 1, '*': 2, '/': 2 };
+
+  for (const token of tokens) {
+    if (token.type === 'number' || token.type === 'identifier') {
+      output.push(token);
+    } else if (token.type === 'operator') {
+      while (
+        opStack.length > 0 &&
+        opStack[opStack.length - 1].type === 'operator' &&
+        precedence[opStack[opStack.length - 1].value] >= precedence[token.value]
+      ) {
+        output.push(opStack.pop() as FormulaToken);
+      }
+      opStack.push(token);
+    } else if (token.type === 'paren' && token.value === '(') {
+      opStack.push(token);
+    } else if (token.type === 'paren' && token.value === ')') {
+      while (opStack.length > 0 && !(opStack[opStack.length - 1].type === 'paren' && opStack[opStack.length - 1].value === '(')) {
+        output.push(opStack.pop() as FormulaToken);
+      }
+      if (opStack.length > 0 && opStack[opStack.length - 1].type === 'paren' && opStack[opStack.length - 1].value === '(') {
+        opStack.pop();
+      }
+    }
+  }
+
+  while (opStack.length > 0) {
+    const t = opStack.pop() as FormulaToken;
+    if (t.type !== 'paren') {
+      output.push(t);
+    }
+  }
+
+  return output;
+};
+
+const evalRpn = (
+  rpn: FormulaToken[],
+  getIdentifierValue: (name: string) => number | null,
+): number | null => {
+  const stack: number[] = [];
+
+  for (const token of rpn) {
+    if (token.type === 'number') {
+      stack.push(token.value);
+    } else if (token.type === 'identifier') {
+      const v = getIdentifierValue(token.value);
+      if (v === null || Number.isNaN(v)) {
+        return null;
+      }
+      stack.push(v);
+    } else if (token.type === 'operator') {
+      if (stack.length < 2) return null;
+      const b = stack.pop() as number;
+      const a = stack.pop() as number;
+      let result: number;
+      switch (token.value) {
+        case '+':
+          result = a + b;
+          break;
+        case '-':
+          result = a - b;
+          break;
+        case '*':
+          result = a * b;
+          break;
+        case '/':
+          if (b === 0) return null;
+          result = a / b;
+          break;
+        default:
+          return null;
+      }
+      if (Number.isNaN(result) || !Number.isFinite(result)) {
+        return null;
+      }
+      stack.push(result);
+    }
+  }
+
+  if (stack.length !== 1) return null;
+  const final = stack[0];
+  if (Number.isNaN(final) || !Number.isFinite(final)) {
+    return null;
+  }
+  return final;
+};
+
+const evaluateFormulaForRow = (
+  expression: string | undefined,
+  row: AssetRow,
+  allProperties: PropertyConfig[],
+): number | null => {
+  if (!expression || !expression.trim()) return null;
+  const tokens = tokenizeFormula(expression);
+  if (tokens.length === 0) return null;
+  const rpn = toRpn(tokens);
+
+  const propertyByName = new Map<string, PropertyConfig>();
+  allProperties.forEach((p) => {
+    if (p.name) {
+      propertyByName.set(p.name, p);
+    }
+  });
+
+  return evalRpn(rpn, (name) => {
+    const prop = propertyByName.get(name);
+    if (!prop) return null;
+    const raw = row.propertyValues[prop.key];
+    if (raw === null || raw === undefined || raw === '') return null;
+    if (typeof raw === 'number') {
+      return Number.isNaN(raw) ? null : raw;
+    }
+    const num = Number(raw);
+    return Number.isNaN(num) ? null : num;
+  });
+};
+
 export type LibraryAssetsTableProps = {
   library: {
     id: string;
@@ -1186,6 +1389,25 @@ export function LibraryAssetsTable({
                       );
                     }
                     
+                    // Formula field: read-only, value derived from other numeric columns
+                    if (property.dataType === 'formula') {
+                      const formulaResult = evaluateFormulaForRow(property.formulaExpression, row, properties);
+                      const display = formulaResult === null ? '' : String(formulaResult);
+                      return (
+                        <td
+                          key={property.id}
+                          data-property-key={property.key}
+                          className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellEditing : ''}`}
+                          style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
+                        >
+                          <span className={styles.cellText}>{display}</span>
+                          {editingUsers.length > 0 && (
+                            <CellPresenceAvatars users={editingUsers} />
+                          )}
+                        </td>
+                      );
+                    }
+
                     // Media/Image/File/Multimedia/Audio field
                     if (
                       property.dataType === 'image' ||
@@ -1565,6 +1787,7 @@ export function LibraryAssetsTable({
           sectionId={activeGroup.section.id}
           sectionName={activeGroup.section.name}
           anchorRef={addColumnButtonRef}
+          existingProperties={properties}
           onSubmit={async (payload) => {
             await onAddProperty(activeGroup.section.id, activeGroup.section.name, payload);
           }}

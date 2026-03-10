@@ -471,6 +471,10 @@ export default function LibraryPage() {
           payload.dataType === 'reference'
             ? (payload.referenceLibraries ?? [])
             : undefined,
+        formulaExpression:
+          payload.dataType === 'formula'
+            ? payload.formulaExpression
+            : undefined,
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
       showSuccessToast('Column added');
