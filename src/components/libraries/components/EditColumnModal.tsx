@@ -561,7 +561,7 @@ export function EditColumnModal({
                   }))
                 }
               >
-                + Add option
+                + Add new option
               </button>
             </div>
           </div>

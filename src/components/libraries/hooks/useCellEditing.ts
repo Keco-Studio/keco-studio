@@ -64,7 +64,7 @@ export function useCellEditing({
       if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
         return {
           isValid: false,
-          error: '数组格式错误，请使用 [ ] 包裹，元素用 , 分隔',
+          error: 'The array format is incorrect. Please use [ ] to enclose elements and use , to separate them.',
           normalizedValue: null,
         };
       }
@@ -80,7 +80,7 @@ export function useCellEditing({
         if (t === '') {
           return {
             isValid: false,
-            error: '数组格式错误，存在空元素',
+            error: 'The array format is incorrect. Empty elements are not allowed.',
             normalizedValue: null,
           };
         }
@@ -88,7 +88,7 @@ export function useCellEditing({
         if (/\s/.test(t)) {
           return {
             isValid: false,
-            error: '数组格式错误，缺少逗号分隔',
+            error: 'The array format is incorrect. Missing comma separator.',
             normalizedValue: null,
           };
         }
@@ -96,7 +96,7 @@ export function useCellEditing({
         if (Number.isNaN(num)) {
           return {
             isValid: false,
-            error: '数组格式错误，元素必须为整数',
+            error: 'The array format is incorrect. Elements must be integers.',
             normalizedValue: null,
           };
         }
@@ -111,7 +111,7 @@ export function useCellEditing({
       if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
         return {
           isValid: false,
-          error: '数组格式错误，请使用 [ ] 包裹，元素用 , 分隔',
+          error: 'The array format is incorrect. Please use [ ] to enclose elements and use , to separate them.',
           normalizedValue: null,
         };
       }
@@ -125,7 +125,7 @@ export function useCellEditing({
         if (t === '') {
           return {
             isValid: false,
-            error: '数组格式错误，存在空元素',
+            error: 'The array format is incorrect. Empty elements are not allowed.',
             normalizedValue: null,
           };
         }
@@ -133,7 +133,7 @@ export function useCellEditing({
         if (/\s/.test(t)) {
           return {
             isValid: false,
-            error: '数组格式错误，缺少逗号分隔',
+            error: 'The array format is incorrect. Missing comma separator.',
             normalizedValue: null,
           };
         }
@@ -141,7 +141,7 @@ export function useCellEditing({
         if (Number.isNaN(num)) {
           return {
             isValid: false,
-            error: '数组格式错误，元素必须为浮点数',
+            error: 'The array format is incorrect. Elements must be floats.',
             normalizedValue: null,
           };
         }
@@ -152,36 +152,36 @@ export function useCellEditing({
 
     if (dataType === 'string_array') {
       const trimmed = value.trim();
-      // 直接按 JSON 数组解析，支持 ["A","B"]、["s, d","x]"] 等复杂内容
+      // Directly parse JSON arrays, supporting complex content such as ["A","B"] and ["s", "d","x"]
       try {
         const parsed = JSON.parse(trimmed);
         if (!Array.isArray(parsed)) {
           return {
             isValid: false,
-            error: '数组格式错误，请使用 ["A","B"] 形式',
+            error: 'The array format is incorrect. Please use the format ["A","B"].',
             normalizedValue: null,
           };
         }
         if (parsed.length === 0) {
           return { isValid: true, error: null, normalizedValue: '[]' };
         }
-        // 所有元素必须是字符串
+        // All elements must be strings
         for (const item of parsed) {
           if (typeof item !== 'string') {
             return {
               isValid: false,
-              error: '数组格式错误，元素必须为字符串',
+              error: 'The array format is incorrect. Elements must be strings.',
               normalizedValue: null,
             };
           }
         }
-        // 归一化为标准 JSON 字符串
+        // Normalize to standard JSON string
         const normalized = JSON.stringify(parsed);
         return { isValid: true, error: null, normalizedValue: normalized };
       } catch {
         return {
           isValid: false,
-          error: '数组格式错误，请使用 ["A","B"] 形式',
+          error: 'Invalid array format. Please use the format ["A","B"].',
           normalizedValue: null,
         };
       }

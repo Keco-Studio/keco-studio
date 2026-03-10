@@ -132,24 +132,31 @@
 .removeOptionBtn {
   padding: 0.25rem 0.5rem;
   font-size: 0.75rem;
-  border-radius: 6px;
-  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  border: 1.5px solid rgba(33, 39, 42, 1);
   background: #ffffff;
   cursor: pointer;
-  min-width: 72px;
+  min-width: 1.5rem;
+  height: 1.5rem;
   text-align: center;
   transition: background 0.2s, border-color 0.2s;
 }
 
 .addOptionBtn {
+  width: 9.94rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  font-size: 1rem;
+  font-weight: 400;
   align-self: flex-start;
+  border: 1px solid var(--border-base, rgba(188, 188, 188, 1))
 }
 
-.addOptionBtn:hover,
+/* .addOptionBtn:hover,
 .removeOptionBtn:hover {
   background: #f8fafc;
   border-color: #cbd5e1;
-}
+} */
 
 .emptyOptionsHint {
   font-size: 0.75rem;

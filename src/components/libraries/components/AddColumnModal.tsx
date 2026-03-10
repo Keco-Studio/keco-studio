@@ -487,7 +487,7 @@ export function AddColumnModal({
                   className={styles.addOptionBtn}
                   onClick={() => setEnumOptions((prev) => [...prev, ''])}
                 >
-                  + Add option
+                  + Add new option
                 </button>
               </div>
             </div>
