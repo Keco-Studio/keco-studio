@@ -8,6 +8,7 @@ import {
   verifyLibraryDeletionPermission,
   verifyLibraryCreationPermission,
   verifyLibraryUpdatePermission,
+  getUserProjectRole,
 } from './authorizationService';
 
 export type Library = {
@@ -539,8 +540,11 @@ export async function duplicateLibrary(
   const originalLib = await getLibrary(supabase, libraryId);
   if (!originalLib) throw new Error('Original library not found');
 
-  // Verify create permission
-  await verifyLibraryCreationPermission(supabase, originalLib.project_id);
+  // Duplicate permission: admin/editor only.
+  const role = await getUserProjectRole(supabase, originalLib.project_id);
+  if (role !== 'admin' && role !== 'editor') {
+    throw new Error('Only admin and editor users can duplicate libraries');
+  }
 
   // 2. Create new library
   const { data: newLib, error: newLibError } = await supabase
@@ -566,77 +570,67 @@ export async function duplicateLibrary(
   const { data: fields, error: fieldsError } = await supabase
     .from('library_field_definitions')
     .select('*')
-    .eq('library_id', libraryId);
+    .eq('library_id', libraryId)
+    .order('section', { ascending: true })
+    .order('order_index', { ascending: true })
+    .order('id', { ascending: true });
   if (fieldsError) throw fieldsError;
 
   const oldToNewFieldMap = new Map<string, string>();
   if (fields && fields.length > 0) {
-    const newFieldsToInsert = fields.map(f => {
-      const { id, created_at, updated_at, library_id, section_id, ...rest } = f;
-      // We need to generate a new section_id. Format is usually "libraryId:sectionName"
-      const newSectionId = `${newLibraryId}:${f.section}`;
-      return {
-        ...rest,
-        library_id: newLibraryId,
-        section_id: newSectionId,
-      };
-    });
-
-    const { data: insertedFields, error: insertFieldsError } = await supabase
-      .from('library_field_definitions')
-      .insert(newFieldsToInsert)
-      .select('id, section, order_index, label');
-    if (insertFieldsError) throw insertFieldsError;
-
-    // Build map
-    if (insertedFields) {
-      for (const oldF of fields) {
-        const newF = insertedFields.find(nf => nf.section === oldF.section && nf.order_index === oldF.order_index && nf.label === oldF.label);
-        if (newF) {
-          oldToNewFieldMap.set(oldF.id, newF.id);
-        }
-      }
+    for (const field of fields) {
+      const { id, created_at, updated_at, library_id, section_id, ...rest } = field;
+      const newSectionId = `${newLibraryId}:${field.section}`;
+      const { data: insertedField, error: insertFieldError } = await supabase
+        .from('library_field_definitions')
+        .insert({
+          ...rest,
+          library_id: newLibraryId,
+          section_id: newSectionId,
+        })
+        .select('id')
+        .single();
+      if (insertFieldError) throw insertFieldError;
+      oldToNewFieldMap.set(field.id, insertedField.id);
     }
   }
 
   // 4. Handle assets
   if (copyHeaderOnly) {
-    // Insert 3 empty rows
+    // Copy headers only: initialize 3 empty rows for better first-use experience.
     const emptyRows = Array.from({ length: 3 }).map((_, i) => ({
       library_id: newLibraryId,
       name: '',
-      row_index: i
+      row_index: i,
     }));
-    await supabase.from('library_assets').insert(emptyRows);
+    const { error: insertEmptyRowsError } = await supabase
+      .from('library_assets')
+      .insert(emptyRows);
+    if (insertEmptyRowsError) throw insertEmptyRowsError;
   } else {
     // Copy all assets
     const { data: assets, error: assetsError } = await supabase
       .from('library_assets')
       .select('*')
-      .eq('library_id', libraryId);
+      .eq('library_id', libraryId)
+      .order('row_index', { ascending: true })
+      .order('id', { ascending: true });
     if (assetsError) throw assetsError;
 
     if (assets && assets.length > 0) {
-      const newAssetsToInsert = assets.map(a => {
-        const { id, created_at, updated_at, library_id, ...rest } = a;
-        return {
-          ...rest,
-          library_id: newLibraryId
-        };
-      });
-
-      const { data: insertedAssets, error: insertAssetsError } = await supabase
-        .from('library_assets')
-        .insert(newAssetsToInsert)
-        .select('id, row_index, name');
-      if (insertAssetsError) throw insertAssetsError;
-
       const oldToNewAssetMap = new Map<string, string>();
-      for (const oldA of assets) {
-        const newA = insertedAssets?.find(na => na.row_index === oldA.row_index && na.name === oldA.name);
-        if (newA) {
-          oldToNewAssetMap.set(oldA.id, newA.id);
-        }
+      for (const asset of assets) {
+        const { id, created_at, updated_at, library_id, ...rest } = asset;
+        const { data: insertedAsset, error: insertAssetError } = await supabase
+          .from('library_assets')
+          .insert({
+            ...rest,
+            library_id: newLibraryId,
+          })
+          .select('id')
+          .single();
+        if (insertAssetError) throw insertAssetError;
+        oldToNewAssetMap.set(asset.id, insertedAsset.id);
       }
 
       // Fetch and copy values

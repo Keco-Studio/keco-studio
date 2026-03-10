@@ -985,6 +985,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             if (currentIds.projectId) {
               router.push(`/${currentIds.projectId}/${newLibraryId}`);
             }
+            showSuccessToast('Library duplicated successfully');
           }}
         />
       )}

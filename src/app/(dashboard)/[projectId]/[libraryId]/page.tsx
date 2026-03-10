@@ -159,6 +159,7 @@ export default function LibraryPage() {
     if (selectedVersionId && selectedVersionId !== '__current__') return;
     if (hasInitializedBlankRowsRef.current) return;
     if (userRole === 'viewer') return;
+    if (schemaLoading) return;
 
     const initDefaultData = async () => {
       try {
@@ -234,6 +235,7 @@ export default function LibraryPage() {
     contextCreateAsset,
     libraryId,
     librarySchema,
+    schemaLoading,
     queryClient,
     selectedVersionId,
     supabase,
