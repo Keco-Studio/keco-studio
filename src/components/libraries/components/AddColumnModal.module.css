@@ -385,6 +385,10 @@
 .confirmOverlay {
   position: fixed;
   inset: 0;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
   background: rgba(148, 163, 184, 0.5);
   display: flex;
   align-items: center;
@@ -396,8 +400,10 @@
   background: #ffffff;
   border-radius: 0.75rem;
   box-shadow: 0 0.5rem 1.5rem rgba(15, 23, 42, 0.18);
-  width: 38.5rem;
-  height: 12.75rem;
+  min-width: 22rem;
+  max-width: 28rem;
+  width: 90vw;
+  min-height: 11rem;
   padding: 1.1rem 1.4rem 1.1rem;
   box-sizing: border-box;
 }
@@ -419,9 +425,9 @@
 }
 
 .confirmBody {
-  height: 4.6875rem;
+  min-height: 3rem;
   font-size: 1rem;
-  line-height: 3.125rem;
+  line-height: 1.5;
   color: #475569;
   margin: 0.9rem 0 1.1rem;
 }
@@ -436,10 +442,11 @@
 }
 
 .confirmCancelBtn {
-  width: 4.5625rem;
+  min-width: 4.5625rem;
   height: 2rem;
-  font-size: 1rem;
-  padding: 0.45rem 0.9rem;
+  min-height: 2rem;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
   font-weight: 500;
   color: #0f172a;
   background: #ffffff;
@@ -447,6 +454,10 @@
   border-radius: 0.5rem;
   cursor: pointer;
   transition: background 0.2s, border-color 0.2s;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .confirmCancelBtn:hover {
@@ -455,10 +466,11 @@
 }
 
 .confirmDiscardBtn {
-  width: 4.5625rem;
+  min-width: 4.5625rem;
   height: 2rem;
-  font-size: 1rem;
-  padding: 0.45rem 0.9rem;
+  min-height: 2rem;
+  font-size: 0.875rem;
+  padding: 0.5rem 1rem;
   font-weight: 500;
   color: #ffffff;
   background: #dc2626;
@@ -466,6 +478,10 @@
   border-radius: 0.5rem;
   cursor: pointer;
   transition: background 0.2s, opacity 0.2s;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .confirmDiscardBtn:hover {
