@@ -52,6 +52,7 @@ type FieldDefinitionRow = {
     | 'formula';
   enum_options: string[] | null;
   reference_libraries: string[] | null;
+  formula_expression: string | null;
   order_index: number;
 };
 
@@ -194,6 +195,7 @@ async function getLibrarySchemaDirect(
       dataType: row.data_type,
       referenceLibraries: row.reference_libraries || undefined,
       enumOptions: row.enum_options || undefined,
+      formulaExpression: row.formula_expression || undefined,
       orderIndex: row.order_index,
     });
   }
@@ -280,13 +282,28 @@ function formatCellValue(
   }
 
   if (property.dataType === 'reference') {
+    const resolveReferenceText = (input: string): string => {
+      const trimmed = input.trim();
+      if (!trimmed) return trimmed;
+      if (isUuid(trimmed)) {
+        return referenceNameById.get(trimmed) || trimmed;
+      }
+      if (trimmed.includes(',')) {
+        const parts = trimmed.split(',').map((part) => part.trim()).filter(Boolean);
+        if (parts.length > 0 && parts.every((part) => isUuid(part))) {
+          return parts.map((part) => referenceNameById.get(part) || part).join(', ');
+        }
+      }
+      return referenceNameById.get(trimmed) || trimmed;
+    };
+
     if (typeof normalized === 'string') {
-      return referenceNameById.get(normalized) || normalized;
+      return resolveReferenceText(normalized);
     }
     if (Array.isArray(normalized)) {
       return normalized
         .map((item) => {
-          if (typeof item === 'string') return referenceNameById.get(item) || item;
+          if (typeof item === 'string') return resolveReferenceText(item);
           if (item && typeof item === 'object') {
             const ref = item as { id?: unknown; assetId?: unknown; name?: unknown };
             if (typeof ref.name === 'string' && ref.name.trim()) return ref.name;
@@ -346,6 +363,178 @@ function formatCellValue(
   }
   if (typeof normalized === 'object') return JSON.stringify(normalized);
   return normalized as string | number | boolean;
+}
+
+type FormulaToken =
+  | { type: 'number'; value: number }
+  | { type: 'identifier'; value: string }
+  | { type: 'operator'; value: '+' | '-' | '*' | '/' }
+  | { type: 'leftParen' }
+  | { type: 'rightParen' };
+
+const OP_PRECEDENCE: Record<'+' | '-' | '*' | '/', number> = {
+  '+': 1,
+  '-': 1,
+  '*': 2,
+  '/': 2,
+};
+
+function tokenizeFormula(expr: string): FormulaToken[] {
+  const tokens: FormulaToken[] = [];
+  let i = 0;
+  while (i < expr.length) {
+    const ch = expr[i];
+    if (/\s/.test(ch)) {
+      i += 1;
+      continue;
+    }
+    if (ch === '[') {
+      const end = expr.indexOf(']', i + 1);
+      if (end === -1) return [];
+      const name = expr.slice(i + 1, end).trim();
+      if (!name) return [];
+      tokens.push({ type: 'identifier', value: name });
+      i = end + 1;
+      continue;
+    }
+    if (/\d|\./.test(ch)) {
+      let j = i;
+      while (j < expr.length && /[\d.]/.test(expr[j])) j += 1;
+      const num = Number(expr.slice(i, j));
+      if (Number.isNaN(num)) return [];
+      tokens.push({ type: 'number', value: num });
+      i = j;
+      continue;
+    }
+    if (ch === '+' || ch === '-' || ch === '*' || ch === '/') {
+      tokens.push({ type: 'operator', value: ch });
+      i += 1;
+      continue;
+    }
+    if (ch === '(') {
+      tokens.push({ type: 'leftParen' });
+      i += 1;
+      continue;
+    }
+    if (ch === ')') {
+      tokens.push({ type: 'rightParen' });
+      i += 1;
+      continue;
+    }
+    return [];
+  }
+  return tokens;
+}
+
+function toRpn(tokens: FormulaToken[]): FormulaToken[] {
+  const output: FormulaToken[] = [];
+  const stack: FormulaToken[] = [];
+  for (const token of tokens) {
+    if (token.type === 'number' || token.type === 'identifier') {
+      output.push(token);
+      continue;
+    }
+    if (token.type === 'operator') {
+      while (stack.length > 0) {
+        const top = stack[stack.length - 1];
+        if (
+          top.type === 'operator' &&
+          OP_PRECEDENCE[top.value] >= OP_PRECEDENCE[token.value]
+        ) {
+          output.push(stack.pop() as FormulaToken);
+        } else {
+          break;
+        }
+      }
+      stack.push(token);
+      continue;
+    }
+    if (token.type === 'leftParen') {
+      stack.push(token);
+      continue;
+    }
+    if (token.type === 'rightParen') {
+      let foundLeft = false;
+      while (stack.length > 0) {
+        const top = stack.pop() as FormulaToken;
+        if (top.type === 'leftParen') {
+          foundLeft = true;
+          break;
+        }
+        output.push(top);
+      }
+      if (!foundLeft) return [];
+    }
+  }
+  while (stack.length > 0) {
+    const top = stack.pop() as FormulaToken;
+    if (top.type === 'leftParen' || top.type === 'rightParen') return [];
+    output.push(top);
+  }
+  return output;
+}
+
+function evalRpn(
+  rpn: FormulaToken[],
+  resolveIdentifier: (name: string) => number | null
+): number | null {
+  const stack: number[] = [];
+  for (const token of rpn) {
+    if (token.type === 'number') {
+      stack.push(token.value);
+      continue;
+    }
+    if (token.type === 'identifier') {
+      const val = resolveIdentifier(token.value);
+      if (val === null || Number.isNaN(val) || !Number.isFinite(val)) return null;
+      stack.push(val);
+      continue;
+    }
+    if (token.type === 'operator') {
+      if (stack.length < 2) return null;
+      const b = stack.pop() as number;
+      const a = stack.pop() as number;
+      let result: number;
+      if (token.value === '+') result = a + b;
+      else if (token.value === '-') result = a - b;
+      else if (token.value === '*') result = a * b;
+      else {
+        if (b === 0) return null;
+        result = a / b;
+      }
+      if (Number.isNaN(result) || !Number.isFinite(result)) return null;
+      stack.push(result);
+    }
+  }
+  if (stack.length !== 1) return null;
+  return stack[0];
+}
+
+function evaluateFormulaForRow(
+  expression: string | undefined,
+  row: AssetRow,
+  allProperties: PropertyConfig[]
+): number | null {
+  if (!expression || !expression.trim()) return null;
+  const tokens = tokenizeFormula(expression);
+  if (tokens.length === 0) return null;
+  const rpn = toRpn(tokens);
+  if (rpn.length === 0) return null;
+
+  const propertyByName = new Map<string, PropertyConfig>();
+  for (const p of allProperties) {
+    if (p.name) propertyByName.set(p.name, p);
+  }
+
+  return evalRpn(rpn, (name) => {
+    const prop = propertyByName.get(name);
+    if (!prop) return null;
+    const raw = row.propertyValues[prop.key];
+    if (raw === null || raw === undefined || raw === '') return null;
+    if (typeof raw === 'number') return Number.isNaN(raw) ? null : raw;
+    const num = Number(raw);
+    return Number.isNaN(num) ? null : num;
+  });
 }
 
 /** YYYYMMDDHHmmss */
@@ -463,6 +652,12 @@ export async function GET(request: NextRequest) {
       const normalized = parseJsonString(raw);
       if (typeof normalized === 'string' && isUuid(normalized)) {
         referenceIds.add(normalized);
+      } else if (typeof normalized === 'string' && normalized.includes(',')) {
+        normalized
+          .split(',')
+          .map((part) => part.trim())
+          .filter((part) => isUuid(part))
+          .forEach((id) => referenceIds.add(id));
       } else if (Array.isArray(normalized)) {
         for (const item of normalized) {
           if (typeof item === 'string' && isUuid(item)) referenceIds.add(item);
@@ -481,13 +676,74 @@ export async function GET(request: NextRequest) {
   }
 
   if (referenceIds.size > 0) {
+    const referenceIdList = Array.from(referenceIds);
     const { data: refAssets } = await supabase
       .from('library_assets')
-      .select('id, name')
-      .in('id', Array.from(referenceIds));
-    (refAssets ?? []).forEach((asset: { id: string; name: string }) => {
+      .select('id, name, library_id')
+      .in('id', referenceIdList);
+
+    const refAssetRows = (refAssets ?? []) as Array<{ id: string; name: string; library_id: string }>;
+    refAssetRows.forEach((asset) => {
       if (asset?.id && asset?.name) referenceNameById.set(asset.id, asset.name);
     });
+
+    // Match in-app reference display: prefer referenced library first-column value over internal asset name.
+    const targetLibraryIds = Array.from(
+      new Set(refAssetRows.map((asset) => asset.library_id).filter((v): v is string => typeof v === 'string' && v.length > 0))
+    );
+    if (targetLibraryIds.length > 0) {
+      const { data: fieldRows } = await supabase
+        .from('library_field_definitions')
+        .select('library_id, id, order_index')
+        .in('library_id', targetLibraryIds)
+        .order('order_index', { ascending: true });
+
+      const firstFieldByLibraryId = new Map<string, string>();
+      ((fieldRows ?? []) as Array<{ library_id: string; id: string; order_index: number }>).forEach((row) => {
+        if (!firstFieldByLibraryId.has(row.library_id)) {
+          firstFieldByLibraryId.set(row.library_id, row.id);
+        }
+      });
+
+      const firstFieldIds = Array.from(new Set(firstFieldByLibraryId.values()));
+      if (firstFieldIds.length > 0) {
+        const { data: firstValues } = await supabase
+          .from('library_asset_values')
+          .select('asset_id, field_id, value_json')
+          .in('asset_id', referenceIdList)
+          .in('field_id', firstFieldIds);
+
+        const firstValueByAssetId = new Map<string, unknown>();
+        ((firstValues ?? []) as Array<{ asset_id: string; field_id: string; value_json: unknown }>).forEach((row) => {
+          if (!firstValueByAssetId.has(row.asset_id)) {
+            firstValueByAssetId.set(row.asset_id, row.value_json);
+          }
+        });
+
+        refAssetRows.forEach((asset) => {
+          const expectedFirstFieldId = firstFieldByLibraryId.get(asset.library_id);
+          const raw = firstValueByAssetId.get(asset.id);
+          if (!expectedFirstFieldId || raw === undefined || raw === null) return;
+          const normalized = parseJsonString(raw);
+          let display: string | null = null;
+          if (typeof normalized === 'string') {
+            const trimmed = normalized.trim();
+            display = trimmed.length > 0 ? trimmed : null;
+          } else if (typeof normalized === 'number' || typeof normalized === 'boolean') {
+            display = String(normalized);
+          } else if (normalized && typeof normalized === 'object') {
+            const obj = normalized as { fileName?: unknown; url?: unknown; path?: unknown };
+            const fileName = typeof obj.fileName === 'string' ? obj.fileName : '';
+            const url = typeof obj.url === 'string' ? obj.url : '';
+            const path = typeof obj.path === 'string' ? obj.path : '';
+            display = fileName || url || path || JSON.stringify(normalized);
+          }
+          if (display) {
+            referenceNameById.set(asset.id, display);
+          }
+        });
+      }
+    }
   }
   const headersSection: string[] = [];
   const headersLabel: string[] = [];
@@ -498,7 +754,14 @@ export async function GET(request: NextRequest) {
   }
 
   const dataRows: (string | number | boolean | null)[][] = assets.map((row) => {
-    return properties.map((p) => formatCellValue(row.propertyValues[p.key], p, referenceNameById));
+    return properties.map((p) => {
+      const raw = row.propertyValues[p.key];
+      if (p.dataType === 'formula' && (raw === null || raw === undefined || raw === '')) {
+        const computed = evaluateFormulaForRow(p.formulaExpression, row, properties);
+        if (computed !== null) return computed;
+      }
+      return formatCellValue(raw, p, referenceNameById);
+    });
   });
 
   const wsData = [headersSection, headersLabel, ...dataRows];
