@@ -539,8 +539,64 @@ export function AddColumnModal({
                       >
                         )
                       </button>
+                      {/* Comparison operators */}
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + '>');
+                        }}
+                        title="Greater than"
+                      >
+                        &gt;
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + '<');
+                        }}
+                        title="Less than"
+                      >
+                        &lt;
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + '>=');
+                        }}
+                        title="Greater than or equal"
+                      >
+                        ≥
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + '<=');
+                        }}
+                        title="Less than or equal"
+                      >
+                        ≤
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.formulaOperatorBtn}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setFormulaValue((prev) => prev + '=');
+                        }}
+                        title="Equal"
+                      >
+                        =
+                      </button>
                     </div>
-                    <div className={styles.formulaDropdownSectionLabel}>Columns</div>
+                    {/* <div className={styles.formulaDropdownSectionLabel}>Columns</div>
                     {existingProperties && existingProperties.length > 0 ? (
                       existingProperties.map((prop) => (
                         <button
@@ -567,24 +623,114 @@ export function AddColumnModal({
                       ))
                     ) : (
                       <div className={styles.formulaEmptyHint}>No columns available.</div>
-                    )}
+                    )} */}
                     <div className={styles.formulaDropdownSectionLabel}>Functions</div>
-                    <button type="button" className={styles.formulaItem}>
+                    {/* IF(condition, value_if_true, value_if_false) */}
+                    <button
+                      type="button"
+                      className={styles.formulaItem}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const template = 'IF( , , )';
+                        setFormulaValue((prev) => {
+                          const needsSpace = prev && !prev.endsWith(' ');
+                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
+                        });
+                      }}
+                    >
                       <div className={styles.formulaItemMain}>
-                        <span className={styles.formulaItemName}>IUNY()</span>
-                        <span className={styles.formulaItemMeta}>function</span>
+                        <span className={styles.formulaItemName}>IF()</span>
+                        <span className={styles.formulaItemMeta}>condition returns different values</span>
                       </div>
                     </button>
-                    <button type="button" className={styles.formulaItem}>
+                    {/* SUM(arg1, arg2, ...) */}
+                    <button
+                      type="button"
+                      className={styles.formulaItem}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const template = 'SUM( , , )';
+                        setFormulaValue((prev) => {
+                          const needsSpace = prev && !prev.endsWith(' ');
+                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
+                        });
+                      }}
+                    >
                       <div className={styles.formulaItemMain}>
-                        <span className={styles.formulaItemName}>IASET()</span>
-                        <span className={styles.formulaItemMeta}>function</span>
+                        <span className={styles.formulaItemName}>SUM()</span>
+                        <span className={styles.formulaItemMeta}>sum of values</span>
                       </div>
                     </button>
-                    <button type="button" className={styles.formulaItem}>
+                    {/* AVERAGE(arg1, arg2, ...) */}
+                    <button
+                      type="button"
+                      className={styles.formulaItem}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const template = 'AVERAGE( , , )';
+                        setFormulaValue((prev) => {
+                          const needsSpace = prev && !prev.endsWith(' ');
+                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
+                        });
+                      }}
+                    >
                       <div className={styles.formulaItemMain}>
-                        <span className={styles.formulaItemName}>IXCCE()</span>
-                        <span className={styles.formulaItemMeta}>function</span>
+                        <span className={styles.formulaItemName}>AVERAGE()</span>
+                        <span className={styles.formulaItemMeta}>average of values</span>
+                      </div>
+                    </button>
+                    {/* MIN(arg1, arg2, ...) */}
+                    <button
+                      type="button"
+                      className={styles.formulaItem}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const template = 'MIN( , , )';
+                        setFormulaValue((prev) => {
+                          const needsSpace = prev && !prev.endsWith(' ');
+                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
+                        });
+                      }}
+                    >
+                      <div className={styles.formulaItemMain}>
+                        <span className={styles.formulaItemName}>MIN()</span>
+                        <span className={styles.formulaItemMeta}>minimum of values</span>
+                      </div>
+                    </button>
+                    {/* MAX(arg1, arg2, ...) */}
+                    <button
+                      type="button"
+                      className={styles.formulaItem}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const template = 'MAX( , , )';
+                        setFormulaValue((prev) => {
+                          const needsSpace = prev && !prev.endsWith(' ');
+                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
+                        });
+                      }}
+                    >
+                      <div className={styles.formulaItemMain}>
+                        <span className={styles.formulaItemName}>MAX()</span>
+                        <span className={styles.formulaItemMeta}>maximum of values</span>
+                      </div>
+                    </button>
+                    {/* ROUND(value, digits) */}
+                    <button
+                      type="button"
+                      className={styles.formulaItem}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        const template = 'ROUND( , 2)';
+                        setFormulaValue((prev) => {
+                          const needsSpace = prev && !prev.endsWith(' ');
+                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
+                        });
+                      }}
+                    >
+                      <div className={styles.formulaItemMain}>
+                        <span className={styles.formulaItemName}>ROUND()</span>
+                        <span className={styles.formulaItemMeta}>round number</span>
                       </div>
                     </button>
                   </div>

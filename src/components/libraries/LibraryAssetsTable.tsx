@@ -242,9 +242,16 @@ const evaluateFormulaForRow = (
   expression: string | undefined,
   row: AssetRow,
   allProperties: PropertyConfig[],
-): number | null => {
+  visited: Set<string> = new Set(),
+): any | null => {
   if (!expression || !expression.trim()) return null;
-  const tokens = tokenizeFormula(expression);
+
+  // 支持 "=SUM(A,B)" 这种前导等号
+  const trimmedExpr = expression.trim().startsWith('=')
+    ? expression.trim().slice(1)
+    : expression.trim();
+
+  const tokens = tokenizeFormula(trimmedExpr);
   if (tokens.length === 0) return null;
   const rpn = toRpn(tokens);
 
@@ -255,10 +262,31 @@ const evaluateFormulaForRow = (
     }
   });
 
-  return evalRpn(rpn, (name) => {
+  const resolvePropertyValue = (prop: PropertyConfig): any | null => {
+    // 防止公式之间循环引用
+    if (visited.has(prop.id)) return null;
+
+    if (prop.dataType === 'formula') {
+      const anyProp = prop as any;
+      if (!anyProp.formulaExpression || typeof anyProp.formulaExpression !== 'string') {
+        return null;
+      }
+      const nextVisited = new Set(visited);
+      nextVisited.add(prop.id);
+      // 递归求另一个 formula 列的结果
+      return evaluateFormulaForRow(anyProp.formulaExpression, row, allProperties, nextVisited);
+    }
+
+    const raw = row.propertyValues[prop.key];
+    if (raw === null || raw === undefined || raw === '') return null;
+    return raw;
+  };
+
+  // 先用现有数值解析器算普通算术部分（包括引用的 formula 列）
+  const numericValue = evalRpn(rpn, (name) => {
     const prop = propertyByName.get(name);
     if (!prop) return null;
-    const raw = row.propertyValues[prop.key];
+    const raw = resolvePropertyValue(prop);
     if (raw === null || raw === undefined || raw === '') return null;
     if (typeof raw === 'number') {
       return Number.isNaN(raw) ? null : raw;
@@ -266,6 +294,98 @@ const evaluateFormulaForRow = (
     const num = Number(raw);
     return Number.isNaN(num) ? null : num;
   });
+
+  if (numericValue !== null) {
+    return numericValue;
+  }
+
+  // 额外支持函数：IF, SUM, AVERAGE, MIN, MAX, ROUND
+  try {
+    const helper = {
+      IF: (condition: any, whenTrue: any, whenFalse: any) =>
+        condition ? whenTrue : whenFalse,
+      SUM: (...args: any[]) =>
+        args.reduce((acc, v) => {
+          const n = Number(v);
+          return acc + (Number.isFinite(n) ? n : 0);
+        }, 0),
+      AVERAGE: (...args: any[]) => {
+        const nums = args
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n));
+        if (nums.length === 0) return null;
+        return nums.reduce((a, b) => a + b, 0) / nums.length;
+      },
+      MIN: (...args: any[]) => {
+        const nums = args
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n));
+        return nums.length ? Math.min(...nums) : null;
+      },
+      MAX: (...args: any[]) => {
+        const nums = args
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n));
+        return nums.length ? Math.max(...nums) : null;
+      },
+      ROUND: (value: any, digits: any) => {
+        const n = Number(value);
+        const d = Number(digits);
+        if (!Number.isFinite(n) || !Number.isFinite(d)) return null;
+        const factor = 10 ** d;
+        return Math.round(n * factor) / factor;
+      },
+      // 列名 -> 当前行的值（支持 formula 列）
+      COL: (name: string) => {
+        const prop = propertyByName.get(name);
+        if (!prop) return null;
+        const raw = resolvePropertyValue(prop);
+        if (raw === null || raw === undefined || raw === '') return null;
+        if (typeof raw === 'number') {
+          return Number.isNaN(raw) ? null : raw;
+        }
+        const num = Number(raw);
+        return Number.isNaN(num) ? raw : num;
+      },
+    } as const;
+
+    const columnNames = Array.from(propertyByName.keys()).sort(
+      (a, b) => b.length - a.length,
+    );
+    let jsExpr = trimmedExpr;
+    for (const name of columnNames) {
+      const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`\\b${safeName}\\b`, 'g');
+      jsExpr = jsExpr.replace(re, `COL(${JSON.stringify(name)})`);
+    }
+
+    jsExpr = jsExpr
+      .replace(/\bIF\s*\(/g, 'IF(')
+      .replace(/\bSUM\s*\(/g, 'SUM(')
+      .replace(/\bAVERAGE\s*\(/g, 'AVERAGE(')
+      .replace(/\bMIN\s*\(/g, 'MIN(')
+      .replace(/\bMAX\s*\(/g, 'MAX(')
+      .replace(/\bROUND\s*\(/g, 'ROUND(');
+
+    // 将单个等号视为相等比较（保留 >= 和 <=）
+    jsExpr = jsExpr
+      .replace(/>=/g, '__GTE__')
+      .replace(/<=/g, '__LTE__')
+      .replace(/=/g, '==')
+      .replace(/__GTE__/g, '>=')
+      .replace(/__LTE__/g, '<=');
+
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(
+      'helper',
+      `const { IF, SUM, AVERAGE, MIN, MAX, ROUND, COL } = helper; return (${jsExpr});`,
+    );
+    const result = fn(helper);
+    if (result === undefined) return null;
+    return result;
+  } catch {
+    return null;
+  }
 };
 
 export type LibraryAssetsTableProps = {
@@ -1389,9 +1509,49 @@ export function LibraryAssetsTable({
                       );
                     }
                     
-                    // Formula field: read-only, value derived from other numeric columns
+                    // Formula field: value derived from other columns
                     if (property.dataType === 'formula') {
                       const formulaResult = evaluateFormulaForRow(property.formulaExpression, row, properties);
+
+                      // 如果结果是布尔值，则按 BooleanCell 的样式展示（只读，不可编辑）
+                      if (typeof formulaResult === 'boolean') {
+                        return (
+                          <BooleanCell
+                            key={property.id}
+                            row={row}
+                            property={property}
+                            propertyIndex={propertyIndex}
+                            actualRowIndex={actualRowIndex}
+                            checked={formulaResult}
+                            // 作为派生值，不允许手动修改，强制 viewer 模式禁用开关
+                            userRole="viewer"
+                            isSaving={isSaving}
+                            selectedCells={selectedCells}
+                            cutCells={cutCells}
+                            copyCells={copyCells}
+                            hoveredCellForExpand={hoveredCellForExpand}
+                            cutSelectionBounds={cutSelectionBounds}
+                            editingUsers={editingUsers}
+                            borderColor={borderColor}
+                            isFirstColumn={isFirstColumn}
+                            onViewAssetDetail={handleViewAssetDetail}
+                            onChange={async () => {
+                              // no-op: formula 结果只读
+                            }}
+                            onCellClick={handleCellClick}
+                            onCellContextMenu={handleCellContextMenu}
+                            onCellFillDragStart={handleCellFillDragStart}
+                            onCellDragStart={handleCellDragStart}
+                            onCellFocus={handleCellFocus}
+                            onCellBlur={handleCellBlur}
+                            setHoveredCellForExpand={setHoveredCellForExpand}
+                            getCopyBorderClasses={getCopyBorderClasses}
+                            getSelectionBorderClasses={getSelectionBorderClasses}
+                          />
+                        );
+                      }
+
+                      // 其他类型结果（数字、字符串等）按文本显示
                       const display = formulaResult === null ? '' : String(formulaResult);
                       return (
                         <td
