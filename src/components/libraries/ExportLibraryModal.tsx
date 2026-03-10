@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
+import { useSupabase } from '@/lib/SupabaseContext';
 import styles from './ExportLibraryModal.module.css';
 
 export type ExportFormat = 'xlsx' | 'json';
@@ -22,6 +23,7 @@ export function ExportLibraryModal({
   onClose,
   onExported,
 }: ExportLibraryModalProps) {
+  const supabase = useSupabase();
   const [format, setFormat] = useState<ExportFormat>('xlsx');
   const [exporting, setExporting] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -31,8 +33,17 @@ export function ExportLibraryModal({
   const handleExport = async () => {
     setExporting(true);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        throw new Error('Please sign in before exporting');
+      }
       const url = `/api/export?libraryId=${encodeURIComponent(libraryId)}&format=${format}`;
-      const res = await fetch(url, { credentials: 'include' });
+      const res = await fetch(url, {
+        credentials: 'include',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(err.error || 'Export failed');

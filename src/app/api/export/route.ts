@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { verifyLibraryAccess } from '@/lib/services/authorizationService';
 import { getLibrary } from '@/lib/services/libraryService';
@@ -6,18 +6,92 @@ import { getLibrarySchema, getLibraryAssetsWithProperties } from '@/lib/services
 import type { SectionConfig, PropertyConfig, AssetRow } from '@/lib/types/libraryAssets';
 import * as XLSX from 'xlsx';
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-/** Format value for export (arrays, objects, special types as readable string) */
-function formatCellValue(value: unknown): string | number | boolean | null {
-  if (value === null || value === undefined) return null;
-  if (typeof value === 'object' && Array.isArray(value)) {
-    return value.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ');
+function parseJsonString(value: unknown): unknown {
+  if (typeof value !== 'string') return value;
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(trimmed);
+    } catch {
+      return value;
+    }
   }
-  if (typeof value === 'object') return JSON.stringify(value);
-  return value as string | number | boolean;
+  return value;
+}
+
+/** Format value for export (arrays, media, reference, formula) */
+function formatCellValue(
+  value: unknown,
+  property: PropertyConfig,
+  assetNameById: Map<string, string>
+): string | number | boolean | null {
+  if (value === null || value === undefined) return null;
+
+  const normalized = parseJsonString(value);
+
+  if (property.dataType === 'int_array' || property.dataType === 'float_array' || property.dataType === 'string_array') {
+    if (Array.isArray(normalized)) {
+      return JSON.stringify(normalized);
+    }
+    return typeof normalized === 'string' ? normalized : JSON.stringify(normalized);
+  }
+
+  if (property.dataType === 'reference') {
+    if (typeof normalized === 'string') {
+      return assetNameById.get(normalized) || normalized;
+    }
+    return typeof normalized === 'object' ? JSON.stringify(normalized) : String(normalized);
+  }
+
+  if (
+    property.dataType === 'image' ||
+    property.dataType === 'file' ||
+    property.dataType === 'multimedia' ||
+    property.dataType === 'audio'
+  ) {
+    if (typeof normalized === 'object' && normalized !== null && !Array.isArray(normalized)) {
+      const media = normalized as { fileName?: unknown; url?: unknown; path?: unknown };
+      const fileName = typeof media.fileName === 'string' ? media.fileName : '';
+      const url = typeof media.url === 'string' ? media.url : '';
+      const path = typeof media.path === 'string' ? media.path : '';
+      return fileName || url || path || JSON.stringify(normalized);
+    }
+    return typeof normalized === 'string' ? normalized : JSON.stringify(normalized);
+  }
+
+  if (property.dataType === 'formula') {
+    if (typeof normalized === 'object' && normalized !== null && !Array.isArray(normalized)) {
+      const formulaObj = normalized as { result?: unknown; value?: unknown; formula?: unknown };
+      if (formulaObj.result !== undefined && formulaObj.result !== null) {
+        return String(formulaObj.result);
+      }
+      if (formulaObj.value !== undefined && formulaObj.value !== null) {
+        return String(formulaObj.value);
+      }
+      if (formulaObj.formula !== undefined && formulaObj.formula !== null) {
+        return String(formulaObj.formula);
+      }
+      return JSON.stringify(normalized);
+    }
+    return typeof normalized === 'string' ? normalized : JSON.stringify(normalized);
+  }
+
+  if (Array.isArray(normalized)) {
+    return normalized.map((v) => (typeof v === 'object' ? JSON.stringify(v) : String(v))).join(', ');
+  }
+  if (typeof normalized === 'object') return JSON.stringify(normalized);
+  return normalized as string | number | boolean;
 }
 
 /** YYYYMMDDHHmmss */
@@ -37,13 +111,18 @@ function safeFileName(name: string): string {
   return name.replace(/[/\\?%*:|"<>]/g, '_').trim() || 'export';
 }
 
-export async function GET(request: Request) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
+export async function GET(request: NextRequest) {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
+  }
+  const jwtToken = authHeader.replace('Bearer ', '');
+  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: { user }, error: authError } = await supabase.auth.getUser(jwtToken);
+  if (authError || !user) {
     return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
@@ -117,6 +196,7 @@ export async function GET(request: Request) {
 
   // xlsx: one sheet, row0 = section names, row1 = label (datatype), row2+ = data
   const sectionById = new Map(sections.map((s) => [s.id, s]));
+  const assetNameById = new Map(assets.map((row) => [row.id, row.name]));
   const headersSection: string[] = [];
   const headersLabel: string[] = [];
   for (const p of properties) {
@@ -126,7 +206,7 @@ export async function GET(request: Request) {
   }
 
   const dataRows: (string | number | boolean | null)[][] = assets.map((row) => {
-    return properties.map((p) => formatCellValue(row.propertyValues[p.key]));
+    return properties.map((p) => formatCellValue(row.propertyValues[p.key], p, assetNameById));
   });
 
   const wsData = [headersSection, headersLabel, ...dataRows];
