@@ -22,7 +22,8 @@ alter table public.library_field_definitions
       'float_array',
       'string_array',
       'multimedia',
-      'audio'
+      'audio',
+      'formula'
     )
   );
 
