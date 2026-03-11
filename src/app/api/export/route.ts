@@ -585,82 +585,94 @@ export async function GET(request: NextRequest) {
       }
     }
   }
-  const headersSection: string[] = [];
-  const headersLabel: string[] = [];
+  const propertiesBySection = new Map<string, PropertyConfig[]>();
+  for (const section of sections) propertiesBySection.set(section.id, []);
   for (const p of properties) {
-    const section = sectionById.get(p.sectionId);
-    headersSection.push(section?.name ?? '');
-    headersLabel.push(`${p.name} (${p.dataType ?? p.valueType ?? 'other'})`);
+    if (!propertiesBySection.has(p.sectionId)) propertiesBySection.set(p.sectionId, []);
+    propertiesBySection.get(p.sectionId)?.push(p);
   }
 
-  const dataRows: (string | number | boolean | null)[][] = assets.map((row) => {
-    const formulaFields: FormulaEvaluableField[] = properties.map((p) => ({
-      id: p.id,
-      name: p.name,
-      dataType: p.dataType,
-      formulaExpression: p.formulaExpression,
-    }));
-    const computedFormulaValues = computeFormulaValuesForRow(formulaFields, row.propertyValues);
+  const formulaFields: FormulaEvaluableField[] = properties.map((p) => ({
+    id: p.id,
+    name: p.name,
+    dataType: p.dataType,
+    formulaExpression: p.formulaExpression,
+  }));
+  const computedFormulaByRowId = new Map<string, Record<string, unknown>>();
+  for (const row of assets) {
+    computedFormulaByRowId.set(row.id, computeFormulaValuesForRow(formulaFields, row.propertyValues));
+  }
 
-    return properties.map((p) => {
-      const raw = row.propertyValues[p.key];
-      if (p.dataType === 'formula') {
-        if (raw === null || raw === undefined || raw === '') {
-          const computed = computedFormulaValues[p.id];
-          if (computed !== null && computed !== undefined) {
-            return computed as string | number | boolean;
-          }
-        }
-        return formatCellValue(raw, p, referenceNameById);
-      }
-      return formatCellValue(raw, p, referenceNameById);
-    });
-  });
-
-  const wsData = [headersSection, headersLabel, ...dataRows];
-  const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-  // Merge section header cells so each section shows once across its columns.
-  const merges: XLSX.Range[] = [];
-  if (properties.length > 0) {
-    let start = 0;
-    let currentSection = headersSection[0];
-    for (let i = 1; i <= properties.length; i += 1) {
-      const sectionAtI = i < properties.length ? headersSection[i] : '__END__';
-      if (sectionAtI !== currentSection) {
-        if (currentSection && i - start > 1) {
-          merges.push({
-            s: { r: 0, c: start },
-            e: { r: 0, c: i - 1 },
-          });
-          for (let j = start + 1; j < i; j += 1) {
-            wsData[0][j] = '';
-          }
-        }
-        start = i;
-        currentSection = sectionAtI;
-      }
+  const makeUniqueSheetName = (base: string, used: Set<string>) => {
+    const normalizedBase = (safeFileName(base).trim() || 'Section').slice(0, 31);
+    if (!used.has(normalizedBase)) {
+      used.add(normalizedBase);
+      return normalizedBase;
     }
-  }
-
-  if (merges.length > 0) {
-    ws['!merges'] = merges;
-  }
-
-  // Auto-fit column width for readability.
-  const maxRowsForWidth = Math.min(wsData.length, 102);
-  ws['!cols'] = properties.map((_, colIdx) => {
-    let maxLen = 10;
-    for (let rowIdx = 0; rowIdx < maxRowsForWidth; rowIdx += 1) {
-      const cellValue = wsData[rowIdx]?.[colIdx];
-      const text = cellValue === null || cellValue === undefined ? '' : String(cellValue);
-      if (text.length > maxLen) maxLen = text.length;
+    let i = 2;
+    while (i < 1000) {
+      const suffix = ` (${i})`;
+      const candidate = normalizedBase.slice(0, Math.max(1, 31 - suffix.length)) + suffix;
+      if (!used.has(candidate)) {
+        used.add(candidate);
+        return candidate;
+      }
+      i += 1;
     }
-    return { wch: Math.min(Math.max(maxLen + 2, 12), 40) };
-  });
+    const fallback = `${normalizedBase.slice(0, 28)}...`;
+    used.add(fallback);
+    return fallback;
+  };
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, safeFileName(libraryName).slice(0, 31));
+  const usedSheetNames = new Set<string>();
+  const exportSections =
+    sections.length > 0
+      ? sections
+      : ([{ id: '__default__', name: 'Section', libraryId, orderIndex: 0 }] as SectionConfig[]);
+
+  for (const section of exportSections) {
+    const sectionProps =
+      section.id === '__default__' ? properties : propertiesBySection.get(section.id) ?? [];
+    const headerRow = sectionProps.map(
+      (p) => `${p.name} (${p.dataType ?? p.valueType ?? 'other'})`
+    );
+    const sheetRows: (string | number | boolean | null)[][] = assets.map((row) => {
+      const computedFormulaValues = computedFormulaByRowId.get(row.id) ?? {};
+      return sectionProps.map((p) => {
+        const raw = row.propertyValues[p.key];
+        if (p.dataType === 'formula') {
+          if (raw === null || raw === undefined || raw === '') {
+            const computed = computedFormulaValues[p.id];
+            if (computed !== null && computed !== undefined) {
+              return computed as string | number | boolean;
+            }
+          }
+          return formatCellValue(raw, p, referenceNameById);
+        }
+        return formatCellValue(raw, p, referenceNameById);
+      });
+    });
+
+    const wsData = [headerRow, ...sheetRows];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+    // Auto-fit column width for readability.
+    const maxRowsForWidth = Math.min(wsData.length, 101);
+    ws['!cols'] = sectionProps.map((_, colIdx) => {
+      let maxLen = 10;
+      for (let rowIdx = 0; rowIdx < maxRowsForWidth; rowIdx += 1) {
+        const cellValue = wsData[rowIdx]?.[colIdx];
+        const text = cellValue === null || cellValue === undefined ? '' : String(cellValue);
+        if (text.length > maxLen) maxLen = text.length;
+      }
+      return { wch: Math.min(Math.max(maxLen + 2, 12), 40) };
+    });
+
+    const sectionName =
+      section.id === '__default__' ? 'Section' : sectionById.get(section.id)?.name ?? 'Section';
+    XLSX.utils.book_append_sheet(wb, ws, makeUniqueSheetName(sectionName, usedSheetNames));
+  }
 
   const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
   return new NextResponse(buf, {
