@@ -54,22 +54,26 @@ export function useCellEditing({
     error: string | null;
     normalizedValue: string | number | null;
   } => {
+    // 统一处理空值：数组类型默认为空数组 []，其他类型为 null
     if (value === '' || value === null || value === undefined) {
+      if (
+        dataType === 'int_array' ||
+        dataType === 'float_array' ||
+        dataType === 'string_array'
+      ) {
+        return { isValid: true, error: null, normalizedValue: '[]' };
+      }
       return { isValid: true, error: null, normalizedValue: null };
     }
 
     if (dataType === 'int_array') {
-      const trimmed = value.trim();
-      // must start with [ and end with ]
-      if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
-        return {
-          isValid: false,
-          error: 'The array format is incorrect. Please use [ ] to enclose elements and use , to separate them.',
-          normalizedValue: null,
-        };
+      let trimmed = value.trim();
+      // 如果用户没有手动输入 [ ]，则自动补全一对方括号
+      if (trimmed !== '' && (!trimmed.startsWith('[') || !trimmed.endsWith(']'))) {
+        trimmed = `[${trimmed}]`;
       }
       const inner = trimmed.slice(1, -1);
-      // empty array is allowed: []
+      // empty array is allowed: [] or [ ]
       if (inner.trim() === '') {
         return { isValid: true, error: null, normalizedValue: '[]' };
       }
@@ -107,13 +111,10 @@ export function useCellEditing({
     }
 
     if (dataType === 'float_array') {
-      const trimmed = value.trim();
-      if (!trimmed.startsWith('[') || !trimmed.endsWith(']')) {
-        return {
-          isValid: false,
-          error: 'The array format is incorrect. Please use [ ] to enclose elements and use , to separate them.',
-          normalizedValue: null,
-        };
+      let trimmed = value.trim();
+      // 如果用户没有手动输入 [ ]，则自动补全一对方括号
+      if (trimmed !== '' && (!trimmed.startsWith('[') || !trimmed.endsWith(']'))) {
+        trimmed = `[${trimmed}]`;
       }
       const inner = trimmed.slice(1, -1);
       if (inner.trim() === '') {
@@ -151,7 +152,11 @@ export function useCellEditing({
     }
 
     if (dataType === 'string_array') {
-      const trimmed = value.trim();
+      let trimmed = value.trim();
+      // 如果用户没有手动输入 [ ]，则自动补全一对方括号
+      if (trimmed !== '' && (!trimmed.startsWith('[') || !trimmed.endsWith(']'))) {
+        trimmed = `[${trimmed}]`;
+      }
       // Directly parse JSON arrays, supporting complex content such as ["A","B"] and ["s", "d","x"]
       try {
         const parsed = JSON.parse(trimmed);
@@ -265,6 +270,7 @@ export function useCellEditing({
     const isNameField = property && property.name === 'name' && property.dataType === 'string';
     
     // Validate value based on data type (only for non-name fields)
+    let normalizedValue: string | number | null = editingCellValue;
     if (!isNameField && property) {
       const validation = validateValueByType(editingCellValue, property.dataType);
       
@@ -279,14 +285,12 @@ export function useCellEditing({
         return;
       }
       
-      // Clear validation error if valid
+      // Clear validation error if valid，并使用规范化后的值
       setTypeValidationError(null);
+      normalizedValue = validation.normalizedValue;
     }
     
     // Update property values with normalized value
-    const normalizedValue = (!isNameField && property) 
-      ? validateValueByType(editingCellValue, property.dataType).normalizedValue
-      : editingCellValue;
     
     const updatedPropertyValues = {
       ...row.propertyValues,
@@ -425,7 +429,16 @@ export function useCellEditing({
         currentValue = row.name;
       }
     }
-    const stringValue = currentValue !== null && currentValue !== undefined ? String(currentValue) : '';
+    let stringValue = currentValue !== null && currentValue !== undefined ? String(currentValue) : '';
+    // 对数组类型，如果当前值为空，则自动填充一对方括号，方便用户直接在内部输入
+    if (
+      (property.dataType === 'int_array' ||
+        property.dataType === 'float_array' ||
+        property.dataType === 'string_array') &&
+      stringValue === ''
+    ) {
+      stringValue = '[]';
+    }
     setEditingCell({ rowId: row.id, propertyKey: property.key });
     setEditingCellValue(stringValue);
     isComposingRef.current = false;
