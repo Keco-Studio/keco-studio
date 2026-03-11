@@ -139,7 +139,8 @@ async function recalculateAndPersistFormulaFieldValues(
   for (const asset of assets) {
     const computed = computeFormulaValuesForRow(evaluableFields, asset.propertyValues);
     const value = computed[targetFormulaFieldId];
-    if (value !== null && value !== undefined && Number.isFinite(value)) {
+    // 允许持久化任意非空结果（数字、布尔或字符串），以支持 IF 等复杂公式
+    if (value !== null && value !== undefined) {
       upsertRows.push({
         asset_id: asset.id,
         field_id: targetFormulaFieldId,

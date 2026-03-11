@@ -189,40 +189,184 @@ function evalRpn(
   return stack[0];
 }
 
-export function evaluateFormulaExpression(
+/**
+ * 在一行数据上计算单个公式字段的值。
+ *
+ * 规则：
+ * 1. 先尝试使用简单的加减乘除解析器（tokenizeFormula + toRpn + evalRpn），兼容纯算术表达式；
+ * 2. 如果算不出结果，再使用“高级公式引擎”：
+ *    - 支持列名直接书写或 [Column Name] 形式；
+ *    - 支持 IF、SUM、AVERAGE、MIN、MAX、ROUND、比较运算符等；
+ *    - 支持公式列之间的相互引用，并避免循环引用。
+ */
+function evaluateFormulaForRowInternal(
   expression: string | null | undefined,
-  resolveIdentifier: (name: string) => number | null
-): number | null {
+  fields: FormulaEvaluableField[],
+  propertyValues: Record<string, any>,
+  visited: Set<string> = new Set()
+): any | null {
   if (!expression || !expression.trim()) return null;
-  const tokens = tokenizeFormula(expression);
-  if (tokens.length === 0) return null;
-  const rpn = toRpn(tokens);
-  if (rpn.length === 0) return null;
-  return evalRpn(rpn, resolveIdentifier);
+
+  const trimmedExpr = expression.trim().startsWith('=')
+    ? expression.trim().slice(1)
+    : expression.trim();
+
+  const propertyByName = new Map<string, FormulaEvaluableField>();
+  for (const field of fields) {
+    if (field.name) propertyByName.set(field.name, field);
+  }
+
+  const resolveFieldValue = (field: FormulaEvaluableField): any | null => {
+    if (!field.id) return null;
+
+    if (field.dataType === 'formula') {
+      if (visited.has(field.id)) return null;
+      const nextVisited = new Set(visited);
+      nextVisited.add(field.id);
+      if (!field.formulaExpression || typeof field.formulaExpression !== 'string') {
+        return null;
+      }
+      return evaluateFormulaForRowInternal(
+        field.formulaExpression,
+        fields,
+        propertyValues,
+        nextVisited
+      );
+    }
+
+    const raw = propertyValues[field.id];
+    if (raw === null || raw === undefined || raw === '') return null;
+    return raw;
+  };
+
+  // 1) 优先尝试简单四则运算解析（仅在 tokenize 成功时使用）
+  const tokens = tokenizeFormula(trimmedExpr);
+  if (tokens.length > 0) {
+    const rpn = toRpn(tokens);
+    if (rpn.length > 0) {
+      const numericValue = evalRpn(rpn, (name) => {
+        const field = propertyByName.get(name);
+        if (!field) return null;
+        const raw = resolveFieldValue(field);
+        if (raw === null || raw === undefined || raw === '') return null;
+        if (typeof raw === 'number') {
+          return Number.isNaN(raw) ? null : raw;
+        }
+        const num = Number(raw);
+        return Number.isNaN(num) ? null : num;
+      });
+      if (numericValue !== null) {
+        return numericValue;
+      }
+    }
+  }
+
+  // 2) 回退到高级公式引擎（支持 IF/SUM/比较等）
+  try {
+    const helper = {
+      IF: (condition: any, whenTrue: any, whenFalse: any) =>
+        condition ? whenTrue : whenFalse,
+      SUM: (...args: any[]) =>
+        args.reduce((acc, v) => {
+          const n = Number(v);
+          return acc + (Number.isFinite(n) ? n : 0);
+        }, 0),
+      AVERAGE: (...args: any[]) => {
+        const nums = args
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n));
+        if (nums.length === 0) return null;
+        return nums.reduce((a, b) => a + b, 0) / nums.length;
+      },
+      MIN: (...args: any[]) => {
+        const nums = args
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n));
+        return nums.length ? Math.min(...nums) : null;
+      },
+      MAX: (...args: any[]) => {
+        const nums = args
+          .map((v) => Number(v))
+          .filter((n) => Number.isFinite(n));
+        return nums.length ? Math.max(...nums) : null;
+      },
+      ROUND: (value: any, digits: any) => {
+        const n = Number(value);
+        const d = Number(digits);
+        if (!Number.isFinite(n) || !Number.isFinite(d)) return null;
+        const factor = 10 ** d;
+        return Math.round(n * factor) / factor;
+      },
+      COL: (name: string) => {
+        const field = propertyByName.get(name);
+        if (!field) return null;
+        const raw = resolveFieldValue(field);
+        if (raw === null || raw === undefined || raw === '') return null;
+        if (typeof raw === 'number') {
+          return Number.isNaN(raw) ? null : raw;
+        }
+        const num = Number(raw);
+        return Number.isNaN(num) ? raw : num;
+      },
+    } as const;
+
+    const columnNames = Array.from(propertyByName.keys()).sort(
+      (a, b) => b.length - a.length
+    );
+
+    let jsExpr = trimmedExpr;
+    for (const name of columnNames) {
+      const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(`\\b${safeName}\\b`, 'g');
+      jsExpr = jsExpr.replace(re, `COL(${JSON.stringify(name)})`);
+    }
+
+    jsExpr = jsExpr
+      .replace(/\bIF\s*\(/g, 'IF(')
+      .replace(/\bSUM\s*\(/g, 'SUM(')
+      .replace(/\bAVERAGE\s*\(/g, 'AVERAGE(')
+      .replace(/\bMIN\s*\(/g, 'MIN(')
+      .replace(/\bMAX\s*\(/g, 'MAX(')
+      .replace(/\bROUND\s*\(/g, 'ROUND(');
+
+    jsExpr = jsExpr
+      .replace(/>=/g, '__GTE__')
+      .replace(/<=/g, '__LTE__')
+      .replace(/=/g, '==')
+      .replace(/__GTE__/g, '>=')
+      .replace(/__LTE__/g, '<=');
+
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(
+      'helper',
+      `const { IF, SUM, AVERAGE, MIN, MAX, ROUND, COL } = helper; return (${jsExpr});`
+    );
+    const result = fn(helper);
+    if (result === undefined) return null;
+    return result;
+  } catch {
+    return null;
+  }
 }
 
 export function computeFormulaValuesForRow(
   fields: FormulaEvaluableField[],
   propertyValues: Record<string, any>
-): Record<string, number | null> {
+): Record<string, any | null> {
   const byName = new Map<string, FormulaEvaluableField>();
   for (const field of fields) {
     if (field.name) byName.set(field.name, field);
   }
 
-  const result: Record<string, number | null> = {};
+  const result: Record<string, any | null> = {};
   const formulaFields = fields.filter((f) => f.dataType === 'formula');
 
   for (const formulaField of formulaFields) {
-    const computed = evaluateFormulaExpression(formulaField.formulaExpression, (identifier) => {
-      const targetField = byName.get(identifier);
-      if (!targetField) return null;
-      const raw = propertyValues[targetField.id];
-      if (raw === null || raw === undefined || raw === '') return null;
-      if (typeof raw === 'number') return Number.isNaN(raw) ? null : raw;
-      const num = Number(raw);
-      return Number.isNaN(num) ? null : num;
-    });
+    const computed = evaluateFormulaForRowInternal(
+      formulaField.formulaExpression ?? null,
+      fields,
+      propertyValues
+    );
     result[formulaField.id] = computed;
   }
 
