@@ -51,18 +51,18 @@ export const getFieldTypeIcon = (dataType: FieldType) => {
 
 export const FIELD_TYPE_OPTIONS = [
   { label: 'String', value: 'string' },
-  { label: 'String Array', value: 'string_array' },
-  { label: 'Option', value: 'enum' },
-  { label: 'Image', value: 'image' },
-  { label: 'Multimedia', value: 'multimedia' },
-  { label: 'Audio', value: 'audio' },
-  { label: 'Formula', value: 'formula' },
-  { label: 'File', value: 'file' },
-  { label: 'Boolean', value: 'boolean' },
-  { label: 'Reference', value: 'reference' },
   { label: 'Int', value: 'int' },
-  { label: 'Int Array', value: 'int_array' },
   { label: 'Float', value: 'float' },
+  { label: 'Formula', value: 'formula' },
+  { label: 'Image', value: 'image' },
+  { label: 'Reference', value: 'reference' },
+  { label: 'Boolean', value: 'boolean' },
+  { label: 'Option', value: 'enum' },
+  { label: 'Int Array', value: 'int_array' },
   { label: 'Float Array', value: 'float_array' },
+  { label: 'String Array', value: 'string_array' },
+  { label: 'Audio', value: 'audio' },
+  { label: 'Multimedia', value: 'multimedia' },
+  { label: 'File', value: 'file' },
 ] as const;
 
