@@ -15,6 +15,7 @@ import { getFieldTypeIcon, FIELD_TYPE_OPTIONS } from '@/app/(dashboard)/[project
 import { listLibraries, type Library } from '@/lib/services/libraryService';
 import { listFolders, type Folder } from '@/lib/services/folderService';
 import styles from './EditColumnModal.module.css';
+import addColumnStyles from './AddColumnModal.module.css';
 
 type EditColumnModalProps = {
   open: boolean;
@@ -99,6 +100,7 @@ export function EditColumnModal({
   useEffect(() => {
     if (!open || !propertyId) return;
 
+    setShowOverwriteConfirm(false);
     setEditColumnModal({
       propertyId,
       name: propertyName ?? '',
@@ -133,6 +135,7 @@ export function EditColumnModal({
   // 关闭时重置内部状态
   useEffect(() => {
     if (!open) {
+      setShowOverwriteConfirm(false);
       setEditColumnModal(EMPTY_STATE);
       setReferenceFolderFilter('all');
       setReferenceSearch('');
@@ -1094,21 +1097,22 @@ export function EditColumnModal({
   const confirmOverlay =
     showOverwriteConfirm && typeof document !== 'undefined'
       ? createPortal(
-          <div className={styles.confirmOverlay}>
+          <div className={addColumnStyles.confirmOverlay}>
             <div
-              className={styles.confirmDialog}
+              className={addColumnStyles.confirmDialog}
+              style={{ height: '15.5rem' }}
               role="alertdialog"
               aria-modal="true"
               aria-labelledby="overwrite-confirm-title"
               aria-describedby="overwrite-confirm-description"
             >
-              <div className={styles.confirmHeader}>
-                <h3 id="overwrite-confirm-title" className={styles.confirmTitle}>
+              <div className={addColumnStyles.confirmHeader}>
+                <h3 id="overwrite-confirm-title" className={addColumnStyles.confirmTitle}>
                   Alert
                 </h3>
                 <button
                   type="button"
-                  className={styles.confirmCloseBtn}
+                  className={addColumnStyles.confirmCloseBtn}
                   aria-label="Close"
                   onClick={() => setShowOverwriteConfirm(false)}
                 >
@@ -1131,22 +1135,23 @@ export function EditColumnModal({
               </div>
               <div
                 id="overwrite-confirm-description"
-                className={styles.confirmBody}
+                className={addColumnStyles.confirmBody}
               >
                 This operation may overwrite the existing content in this column. Do you
                 want to continue?
               </div>
-              <div className={styles.confirmActions}>
+              <div className={addColumnStyles.confirmActions}>
                 <button
                   type="button"
-                  className={styles.confirmCancelBtn}
+                  className={addColumnStyles.confirmCancelBtn}
                   onClick={() => setShowOverwriteConfirm(false)}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  className={styles.confirmDiscardBtn}
+                  className={addColumnStyles.confirmDiscardBtn}
+                  style={{ background: '#0B99FF' }}
                   onClick={async () => {
                     setShowOverwriteConfirm(false);
                     await handleSubmit();

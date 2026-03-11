@@ -981,6 +981,7 @@ export function AddColumnModal({
       <div className={styles.confirmOverlay}>
         <div
           className={styles.confirmDialog}
+          style={{ height: '15.5rem' }}
           role="alertdialog"
           aria-modal="true"
           aria-labelledby="discard-confirm-title"
