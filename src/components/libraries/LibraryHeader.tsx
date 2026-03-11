@@ -20,6 +20,7 @@ import type { CollaboratorRole } from '@/lib/types/collaboration';
 import styles from './LibraryHeader.module.css';
 import libraryHeadMoreIcon from '@/assets/images/moreOptionsIcon.svg';
 import libraryHeadVersionControlIcon from '@/assets/images/libraryHeadVersionControlIcon.svg';
+import libraryHeadVersionClick from '@/assets/images/libraryHeadVersionClick.svg';
 import libraryHeadExpandCollaborators from '@/assets/images/libraryHeadExpandCollaborators.svg';
 import libraryHeadShareIcon from '@/assets/images/libraryHeadShareIcon.svg';
 
@@ -337,10 +338,10 @@ export function LibraryHeader({
           styles={{ root: { position: 'fixed' } }}
         >
           <button 
-            className={styles.iconButton}
+            className={`${styles.iconButton} ${isVersionControlOpen ? styles.iconButtonActive : ''}`}
             onClick={onVersionControlToggle}
           >
-            <Image src={libraryHeadVersionControlIcon}
+            <Image src={isVersionControlOpen ? libraryHeadVersionClick : libraryHeadVersionControlIcon}
               alt="Version Control"
               width={20} height={20} className="icon-20"
             />

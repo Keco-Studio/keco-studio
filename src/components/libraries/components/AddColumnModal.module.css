@@ -540,62 +540,62 @@
 
 .confirmDialog {
   background: #ffffff;
-  border-radius: 0.75rem;
-  box-shadow: 0 0.5rem 1.5rem rgba(15, 23, 42, 0.18);
-  min-width: 22rem;
-  max-width: 28rem;
-  width: 90vw;
-  min-height: 11rem;
-  padding: 1.1rem 1.4rem 1.1rem;
+  width: 38.5rem; /* 616px */
+  height: 12.75rem; /* 204px */
+  max-width: calc(100vw - 2rem);
+  border-radius: 1rem; /* 16px */
+  border: 0.0625rem solid rgba(0, 0, 0, 0.17); /* 1px */
+  box-shadow: none;
+  padding: 0;
   box-sizing: border-box;
+  overflow: hidden;
 }
 
 .confirmHeader {
-  font-size: 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding-bottom: 0.75rem;
+  height: 3.6875rem; /* 59px */
+  padding: 0 1rem;
   border-bottom: 0.0625rem solid #e2e8f0;
 }
 
 .confirmTitle {
   margin: 0;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #0f172a;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1a1a1a;
 }
 
 .confirmBody {
-  min-height: 3rem;
-  font-size: 1rem;
+  font-size: 1.25rem;
   line-height: 1.5;
-  color: #475569;
-  margin: 0.9rem 0 1.1rem;
+  color: #1a1a1a;
+  margin: 0;
+  padding: 1.5rem;
+  border-bottom: 0.0625rem solid #e2e8f0;
 }
 
 .confirmActions {
   display: flex;
   justify-content: flex-end;
-  gap: 0.75rem;
-  border-top: 0.0625rem solid #e2e8f0;
-  padding-top: 0.75rem;
-  margin-top: 0.25rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
 }
 
 .confirmCancelBtn {
-  min-width: 4.5625rem;
-  height: 2rem;
-  min-height: 2rem;
-  font-size: 0.875rem;
-  padding: 0.5rem 1rem;
+  min-width: 5rem;
+  height: 2.25rem;
+  font-size: 1.25rem;
+  padding: 0 1rem;
   font-weight: 500;
-  color: #0f172a;
+  color: #1a1a1a;
   background: #ffffff;
-  border: 0.0625rem solid #e2e8f0;
-  border-radius: 0.5rem;
+  border: 0.0625rem solid #d1d5db;
+  border-radius: 0.75rem;
   cursor: pointer;
-  transition: background 0.2s, border-color 0.2s;
+  transition: background-color 0.2s, border-color 0.2s;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -608,18 +608,17 @@
 }
 
 .confirmDiscardBtn {
-  min-width: 4.5625rem;
-  height: 2rem;
-  min-height: 2rem;
-  font-size: 0.875rem;
-  padding: 0.5rem 1rem;
+  min-width: 5rem;
+  height: 2.25rem;
+  font-size: 1.25rem;
+  padding: 0 1rem;
   font-weight: 500;
   color: #ffffff;
-  background: #dc2626;
+  background: #aa052c;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: 0.75rem;
   cursor: pointer;
-  transition: background 0.2s, opacity 0.2s;
+  transition: background-color 0.2s, opacity 0.2s;
   box-sizing: border-box;
   display: inline-flex;
   align-items: center;
@@ -627,7 +626,7 @@
 }
 
 .confirmDiscardBtn:hover {
-  background: #b91c1c;
+  background: #8c0424;
 }
 
 .confirmDiscardBtn:disabled {
