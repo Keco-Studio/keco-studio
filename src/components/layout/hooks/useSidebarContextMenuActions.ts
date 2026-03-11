@@ -35,6 +35,11 @@ export type UseSidebarContextMenuActionsParams = {
   assets: Record<string, SidebarAssetRow[]>;
   fetchAssets: (libraryId: string | null | undefined) => Promise<void>;
   onProjectDeleteViaAPI: (projectId: string) => void | Promise<void>;
+  requestDeleteConfirm: (options: {
+    title: string;
+    content: string;
+    onConfirm: () => Promise<void> | PromiseLike<void> | void;
+  }) => void;
 };
 
 /**
@@ -59,6 +64,7 @@ export function useSidebarContextMenuActions({
   assets,
   fetchAssets,
   onProjectDeleteViaAPI,
+  requestDeleteConfirm,
 }: UseSidebarContextMenuActionsParams) {
   const handleContextMenuAction = useCallback(
     (action: ContextMenuAction) => {
@@ -118,74 +124,91 @@ export function useSidebarContextMenuActions({
       // Handle delete action
       if (action === 'delete') {
         if (contextMenu.type === 'project') {
-          if (window.confirm('Delete this project? All libraries under it will be removed.')) {
-            onProjectDeleteViaAPI(contextMenu.id);
-          }
+          requestDeleteConfirm({
+            title: 'Confirm deletion',
+            content: 'Delete this project? All libraries under it will be removed.',
+            onConfirm: () => onProjectDeleteViaAPI(contextMenu.id),
+          });
+          closeContextMenu();
+          return;
         } else if (contextMenu.type === 'library') {
-          if (window.confirm('Delete this library?')) {
-            const libraryToDelete = libraries.find((lib) => lib.id === contextMenu.id);
-            const deletedFolderId = libraryToDelete?.folder_id || null;
-            deleteLibrary(supabase, contextMenu.id)
-              .then(() => {
-                if (currentIds.projectId) {
-                  queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-                }
-                window.dispatchEvent(
-                  new CustomEvent('libraryDeleted', {
-                    detail: {
-                      folderId: deletedFolderId,
-                      libraryId: contextMenu.id,
-                      projectId: currentIds.projectId,
-                    },
-                  })
-                );
-                if (currentIds.libraryId === contextMenu.id && currentIds.projectId) {
-                  router.push(`/${currentIds.projectId}`);
-                }
-              })
-              .catch((err: unknown) => {
-                setError(err instanceof Error ? err.message : 'Failed to delete library');
-              });
-          }
+          requestDeleteConfirm({
+            title: 'Confirm deletion',
+            content: 'Delete this library?',
+            onConfirm: () => {
+              const libraryToDelete = libraries.find((lib) => lib.id === contextMenu.id);
+              const deletedFolderId = libraryToDelete?.folder_id || null;
+              return deleteLibrary(supabase, contextMenu.id)
+                .then(() => {
+                  if (currentIds.projectId) {
+                    queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+                  }
+                  window.dispatchEvent(
+                    new CustomEvent('libraryDeleted', {
+                      detail: {
+                        folderId: deletedFolderId,
+                        libraryId: contextMenu.id,
+                        projectId: currentIds.projectId,
+                      },
+                    })
+                  );
+                  if (currentIds.libraryId === contextMenu.id && currentIds.projectId) {
+                    router.push(`/${currentIds.projectId}`);
+                  }
+                })
+                .catch((err: unknown) => {
+                  setError(err instanceof Error ? err.message : 'Failed to delete library');
+                });
+            },
+          });
+          closeContextMenu();
+          return;
         } else if (contextMenu.type === 'folder') {
-          if (
-            window.confirm('Delete this folder? All libraries and subfolders under it will be removed.')
-          ) {
-            const librariesInFolder = libraries.filter((lib) => lib.folder_id === contextMenu.id);
-            const isViewingLibraryInFolder = librariesInFolder.some(
-              (lib) => lib.id === currentIds.libraryId
-            );
+          requestDeleteConfirm({
+            title: 'Confirm deletion',
+            content: 'Delete this folder? All libraries and subfolders under it will be removed.',
+            onConfirm: () => {
+              const librariesInFolder = libraries.filter((lib) => lib.folder_id === contextMenu.id);
+              const isViewingLibraryInFolder = librariesInFolder.some(
+                (lib) => lib.id === currentIds.libraryId
+              );
 
-            deleteFolder(supabase, contextMenu.id)
-              .then(() => {
-                if (currentIds.projectId) {
-                  queryClient.invalidateQueries({
-                    queryKey: ['folders-libraries', currentIds.projectId],
-                  });
-                }
-                window.dispatchEvent(
-                  new CustomEvent('folderDeleted', {
-                    detail: { folderId: contextMenu.id, projectId: currentIds.projectId },
-                  })
-                );
-                if (
-                  (currentIds.folderId === contextMenu.id || isViewingLibraryInFolder) &&
-                  currentIds.projectId
-                ) {
-                  router.push(`/${currentIds.projectId}`);
-                }
-              })
-              .catch((err: unknown) => {
-                setError(err instanceof Error ? err.message : 'Failed to delete folder');
-              });
-          }
+              return deleteFolder(supabase, contextMenu.id)
+                .then(() => {
+                  if (currentIds.projectId) {
+                    queryClient.invalidateQueries({
+                      queryKey: ['folders-libraries', currentIds.projectId],
+                    });
+                  }
+                  window.dispatchEvent(
+                    new CustomEvent('folderDeleted', {
+                      detail: { folderId: contextMenu.id, projectId: currentIds.projectId },
+                    })
+                  );
+                  if (
+                    (currentIds.folderId === contextMenu.id || isViewingLibraryInFolder) &&
+                    currentIds.projectId
+                  ) {
+                    router.push(`/${currentIds.projectId}`);
+                  }
+                })
+                .catch((err: unknown) => {
+                  setError(err instanceof Error ? err.message : 'Failed to delete folder');
+                });
+            },
+          });
+          closeContextMenu();
+          return;
         } else if (contextMenu.type === 'asset') {
-          if (window.confirm('Delete this asset?')) {
-            const libraryId = Object.keys(assets).find((libId) =>
-              assets[libId].some((asset) => asset.id === contextMenu.id)
-            );
-            if (libraryId) {
-              supabase
+          requestDeleteConfirm({
+            title: 'Confirm deletion',
+            content: 'Delete this asset?',
+            onConfirm: () => {
+              const libraryId = Object.keys(assets).find((libId) =>
+                assets[libId].some((asset) => asset.id === contextMenu.id)
+              );
+              if (!libraryId) return;
+              return supabase
                 .from('library_assets')
                 .delete()
                 .eq('id', contextMenu.id)
@@ -221,8 +244,10 @@ export function useSidebarContextMenuActions({
                     }
                   }
                 });
-            }
-          }
+            },
+          });
+          closeContextMenu();
+          return;
         }
       }
 
@@ -249,6 +274,7 @@ export function useSidebarContextMenuActions({
       assets,
       fetchAssets,
       onProjectDeleteViaAPI,
+      requestDeleteConfirm,
     ]
   );
 

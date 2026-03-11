@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, usePathname } from 'next/navigation';
+import { Modal } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { queryKeys } from '@/lib/utils/queryKeys';
@@ -28,6 +29,20 @@ export default function FolderPage() {
   const pathname = usePathname();
   const supabase = useSupabase();
   const queryClient = useQueryClient();
+  const confirmDeletion = useCallback((content: string) => {
+    return new Promise<boolean>((resolve) => {
+      Modal.confirm({
+        title: 'Confirm deletion',
+        content,
+        okText: 'Delete',
+        cancelText: 'Cancel',
+        zIndex: 11000,
+        okButtonProps: { danger: true },
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+  }, []);
   const projectId = params.projectId as string;
   const folderId = params.folderId as string;
   
@@ -185,7 +200,7 @@ export default function FolderPage() {
         setShowEditLibraryModal(true);
         break;
       case 'delete':
-        if (window.confirm('Delete this library?')) {
+        if (await confirmDeletion('Delete this library?')) {
           try {
             await deleteLibrary(supabase, libraryId);
             
