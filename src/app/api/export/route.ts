@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import type { SectionConfig, PropertyConfig, AssetRow } from '@/lib/types/libraryAssets';
+import type { FormulaEvaluableField } from '@/lib/utils/formula';
+import { computeFormulaValuesForRow } from '@/lib/utils/formula';
 import * as XLSX from 'xlsx';
 import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
 
@@ -365,189 +367,6 @@ function formatCellValue(
   return normalized as string | number | boolean;
 }
 
-type FormulaToken =
-  | { type: 'number'; value: number }
-  | { type: 'identifier'; value: string }
-  | { type: 'operator'; value: '+' | '-' | '*' | '/' }
-  | { type: 'leftParen' }
-  | { type: 'rightParen' };
-
-const OP_PRECEDENCE: Record<'+' | '-' | '*' | '/', number> = {
-  '+': 1,
-  '-': 1,
-  '*': 2,
-  '/': 2,
-};
-
-function tokenizeFormula(expr: string): FormulaToken[] {
-  const tokens: FormulaToken[] = [];
-  let i = 0;
-  const isIdentStart = (ch: string) =>
-    (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || ch === '_' || ch === '$';
-  const isIdentPart = (ch: string) => isIdentStart(ch) || (ch >= '0' && ch <= '9');
-  while (i < expr.length) {
-    const ch = expr[i];
-    if (/\s/.test(ch)) {
-      i += 1;
-      continue;
-    }
-    if (ch === '[') {
-      const end = expr.indexOf(']', i + 1);
-      if (end === -1) return [];
-      const name = expr.slice(i + 1, end).trim();
-      if (!name) return [];
-      tokens.push({ type: 'identifier', value: name });
-      i = end + 1;
-      continue;
-    }
-    if (/\d|\./.test(ch)) {
-      let j = i;
-      while (j < expr.length && /[\d.]/.test(expr[j])) j += 1;
-      const num = Number(expr.slice(i, j));
-      if (Number.isNaN(num)) return [];
-      tokens.push({ type: 'number', value: num });
-      i = j;
-      continue;
-    }
-    if (isIdentStart(ch)) {
-      let j = i + 1;
-      while (j < expr.length && isIdentPart(expr[j])) j += 1;
-      const ident = expr.slice(i, j);
-      tokens.push({ type: 'identifier', value: ident });
-      i = j;
-      continue;
-    }
-    if (ch === '+' || ch === '-' || ch === '*' || ch === '/') {
-      tokens.push({ type: 'operator', value: ch });
-      i += 1;
-      continue;
-    }
-    if (ch === '(') {
-      tokens.push({ type: 'leftParen' });
-      i += 1;
-      continue;
-    }
-    if (ch === ')') {
-      tokens.push({ type: 'rightParen' });
-      i += 1;
-      continue;
-    }
-    return [];
-  }
-  return tokens;
-}
-
-function toRpn(tokens: FormulaToken[]): FormulaToken[] {
-  const output: FormulaToken[] = [];
-  const stack: FormulaToken[] = [];
-  for (const token of tokens) {
-    if (token.type === 'number' || token.type === 'identifier') {
-      output.push(token);
-      continue;
-    }
-    if (token.type === 'operator') {
-      while (stack.length > 0) {
-        const top = stack[stack.length - 1];
-        if (
-          top.type === 'operator' &&
-          OP_PRECEDENCE[top.value] >= OP_PRECEDENCE[token.value]
-        ) {
-          output.push(stack.pop() as FormulaToken);
-        } else {
-          break;
-        }
-      }
-      stack.push(token);
-      continue;
-    }
-    if (token.type === 'leftParen') {
-      stack.push(token);
-      continue;
-    }
-    if (token.type === 'rightParen') {
-      let foundLeft = false;
-      while (stack.length > 0) {
-        const top = stack.pop() as FormulaToken;
-        if (top.type === 'leftParen') {
-          foundLeft = true;
-          break;
-        }
-        output.push(top);
-      }
-      if (!foundLeft) return [];
-    }
-  }
-  while (stack.length > 0) {
-    const top = stack.pop() as FormulaToken;
-    if (top.type === 'leftParen' || top.type === 'rightParen') return [];
-    output.push(top);
-  }
-  return output;
-}
-
-function evalRpn(
-  rpn: FormulaToken[],
-  resolveIdentifier: (name: string) => number | null
-): number | null {
-  const stack: number[] = [];
-  for (const token of rpn) {
-    if (token.type === 'number') {
-      stack.push(token.value);
-      continue;
-    }
-    if (token.type === 'identifier') {
-      const val = resolveIdentifier(token.value);
-      if (val === null || Number.isNaN(val) || !Number.isFinite(val)) return null;
-      stack.push(val);
-      continue;
-    }
-    if (token.type === 'operator') {
-      if (stack.length < 2) return null;
-      const b = stack.pop() as number;
-      const a = stack.pop() as number;
-      let result: number;
-      if (token.value === '+') result = a + b;
-      else if (token.value === '-') result = a - b;
-      else if (token.value === '*') result = a * b;
-      else {
-        if (b === 0) return null;
-        result = a / b;
-      }
-      if (Number.isNaN(result) || !Number.isFinite(result)) return null;
-      stack.push(result);
-    }
-  }
-  if (stack.length !== 1) return null;
-  return stack[0];
-}
-
-function evaluateFormulaForRow(
-  expression: string | undefined,
-  row: AssetRow,
-  allProperties: PropertyConfig[]
-): number | null {
-  if (!expression || !expression.trim()) return null;
-  const tokens = tokenizeFormula(expression);
-  if (tokens.length === 0) return null;
-  const rpn = toRpn(tokens);
-  if (rpn.length === 0) return null;
-
-  const propertyByName = new Map<string, PropertyConfig>();
-  for (const p of allProperties) {
-    if (p.name) propertyByName.set(p.name, p);
-  }
-
-  return evalRpn(rpn, (name) => {
-    const prop = propertyByName.get(name);
-    if (!prop) return null;
-    const raw = row.propertyValues[prop.key];
-    if (raw === null || raw === undefined || raw === '') return null;
-    if (typeof raw === 'number') return Number.isNaN(raw) ? null : raw;
-    const num = Number(raw);
-    return Number.isNaN(num) ? null : num;
-  });
-}
-
 /** YYYYMMDDHHmmss */
 function timestamp(): string {
   const now = new Date();
@@ -765,11 +584,24 @@ export async function GET(request: NextRequest) {
   }
 
   const dataRows: (string | number | boolean | null)[][] = assets.map((row) => {
+    const formulaFields: FormulaEvaluableField[] = properties.map((p) => ({
+      id: p.id,
+      name: p.name,
+      dataType: p.dataType,
+      formulaExpression: p.formulaExpression,
+    }));
+    const computedFormulaValues = computeFormulaValuesForRow(formulaFields, row.propertyValues);
+
     return properties.map((p) => {
       const raw = row.propertyValues[p.key];
-      if (p.dataType === 'formula' && (raw === null || raw === undefined || raw === '')) {
-        const computed = evaluateFormulaForRow(p.formulaExpression, row, properties);
-        if (computed !== null) return computed;
+      if (p.dataType === 'formula') {
+        if (raw === null || raw === undefined || raw === '') {
+          const computed = computedFormulaValues[p.id];
+          if (computed !== null && computed !== undefined) {
+            return computed as string | number | boolean;
+          }
+        }
+        return formatCellValue(raw, p, referenceNameById);
       }
       return formatCellValue(raw, p, referenceNameById);
     });
