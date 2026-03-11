@@ -1255,62 +1255,62 @@ export function LibraryAssetsTable({
 
   return (
     <>
-      {hasSections && (
-        <div className={styles.sectionTabs}>
-          {groups.map((group) => (
-            editingSectionId === group.section.id ? (
-              <div key={group.section.id} className={styles.sectionTabEdit}>
-                <Input
-                  ref={sectionInputRef}
-                  value={editingSectionName}
-                  onChange={(e) => setEditingSectionName(e.target.value)}
-                  onBlur={() => handleSectionEditEnd(true)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleSectionEditEnd(true);
-                    if (e.key === 'Escape') handleSectionEditEnd(false);
+      <div className={styles.tableShell}>
+        {hasSections && (
+          <div className={styles.sectionTabs}>
+            {groups.map((group) => (
+              editingSectionId === group.section.id ? (
+                <div key={group.section.id} className={styles.sectionTabEdit}>
+                  <Input
+                    ref={sectionInputRef}
+                    value={editingSectionName}
+                    onChange={(e) => setEditingSectionName(e.target.value)}
+                    onBlur={() => handleSectionEditEnd(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSectionEditEnd(true);
+                      if (e.key === 'Escape') handleSectionEditEnd(false);
+                    }}
+                    className={styles.sectionTabInput}
+                    size="small"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </div>
+              ) : (
+                <button
+                  key={group.section.id}
+                  type="button"
+                  className={`${styles.sectionTab} ${effectiveActiveSectionId === group.section.id ? styles.sectionTabActive : ''}`}
+                  onClick={() => setActiveSectionId(group.section.id)}
+                  onDoubleClick={(e) => {
+                    e.preventDefault();
+                    handleSectionEditStart(group.section.id, group.section.name);
                   }}
-                  className={styles.sectionTabInput}
-                  size="small"
-                  onClick={(e) => e.stopPropagation()}
-                />
-              </div>
-            ) : (
-              <button
-                key={group.section.id}
-                type="button"
-                className={`${styles.sectionTab} ${effectiveActiveSectionId === group.section.id ? styles.sectionTabActive : ''}`}
-                onClick={() => setActiveSectionId(group.section.id)}
-                onDoubleClick={(e) => {
-                  e.preventDefault();
-                  handleSectionEditStart(group.section.id, group.section.name);
-                }}
-              >
-                {group.section.name}
-              </button>
-            )
-          ))}
+                >
+                  {group.section.name}
+                </button>
+              )
+            ))}
 
-          <button
-            type="button"
-            className={styles.addSectionButton}
-            onClick={async () => {
-              if (onAddSection) {
-                try {
-                  const newSectionId = await onAddSection();
-                  if (newSectionId) setActiveSectionId(newSectionId);
-                } catch (e) {
-                  message.error((e as Error)?.message ?? 'Failed to add section');
+            <button
+              type="button"
+              className={styles.addSectionButton}
+              onClick={async () => {
+                if (onAddSection) {
+                  try {
+                    const newSectionId = await onAddSection();
+                    if (newSectionId) setActiveSectionId(newSectionId);
+                  } catch (e) {
+                    message.error((e as Error)?.message ?? 'Failed to add section');
+                  }
                 }
-              }
-            }}
-            aria-label="Add section"
-          >
-            <Image src={addSectionIcon} alt="Add section" width={16} height={16} />
-          </button>
-        </div>
-
-      )}
-      <div className={styles.tableContainer} ref={tableContainerRef}>
+              }}
+              aria-label="Add section"
+            >
+              <Image src={addSectionIcon} alt="Add section" width={16} height={16} />
+            </button>
+          </div>
+        )}
+        <div className={styles.tableContainer} ref={tableContainerRef}>
         <table className={`${styles.table} ${getColumnWidthClass()}`}>
           <TableHeader
             groups={hasSections && activeGroup ? [activeGroup] : groups}
@@ -1926,6 +1926,7 @@ export function LibraryAssetsTable({
             ) : null}
           </tbody>
         </table>
+        </div>
       </div>
       
       {/* Reference Selection Modal */}

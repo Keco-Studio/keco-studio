@@ -65,15 +65,20 @@
   font-weight: 500;
 }
 
-.tableContainer {
+.tableShell {
   margin-top: 1.5rem;
-  margin-bottom: 260px; /* Add bottom margin to ensure context menu has space (increased by ~60px for one more row) */
+  margin-bottom: 260px; /* Ensure context menu has enough bottom space */
   border-radius: 0.5rem;
   border: 1px solid #0000003D;
+  background: #ffffff;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.tableContainer {
   overflow-x: auto;
   overflow-y: hidden;
   background: #ffffff;
-  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
 }
 
 .addColumnButton {
@@ -2170,6 +2175,7 @@ td.cellCopy.copyBorderRight:hover {
   border-radius: 6px;
   font-size: 16px;
   border: 1px solid  rgba(188, 188, 188, 1);
+  background-color: #ffffff;
   margin-left: 8px;
   display: flex;
   align-items: center;
