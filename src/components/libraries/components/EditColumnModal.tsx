@@ -26,6 +26,7 @@ type EditColumnModalProps = {
   propertyDataType?: PropertyConfig['dataType'];
   propertyEnumOptions?: string[];
   propertyReferenceLibraries?: string[];
+  propertyFormulaExpression?: string;
   onClose: () => void;
 };
 
@@ -36,6 +37,7 @@ type EditColumnFormState = {
   description: string;
   enumOptions: string[];
   referenceLibraries: string[];
+  formulaExpression: string;
   libraries: Library[];
   folders: Folder[];
   loadingLibraries: boolean;
@@ -50,6 +52,7 @@ const EMPTY_STATE: EditColumnFormState = {
   description: '',
   enumOptions: [],
   referenceLibraries: [],
+  formulaExpression: '',
   libraries: [],
   folders: [],
   loadingLibraries: false,
@@ -66,6 +69,7 @@ export function EditColumnModal({
   propertyDataType,
   propertyEnumOptions,
   propertyReferenceLibraries,
+  propertyFormulaExpression,
   onClose,
 }: EditColumnModalProps) {
   const supabase = useSupabase();
@@ -81,6 +85,7 @@ export function EditColumnModal({
   const [referenceDropdownOpen, setReferenceDropdownOpen] = useState(false);
   const [showOverwriteConfirm, setShowOverwriteConfirm] = useState(false);
   const [dataTypeSearch, setDataTypeSearch] = useState('');
+  const [formulaDropdownOpen, setFormulaDropdownOpen] = useState(false);
   const dataTypeSearchRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement | null>(null);
 
@@ -102,6 +107,8 @@ export function EditColumnModal({
       enumOptions: propertyDataType === 'enum' ? propertyEnumOptions ?? [] : [],
       referenceLibraries:
         propertyDataType === 'reference' ? propertyReferenceLibraries ?? [] : [],
+      formulaExpression:
+        propertyDataType === 'formula' ? propertyFormulaExpression ?? '' : '',
       libraries: [],
       folders: [],
       loadingLibraries: false,
@@ -111,6 +118,7 @@ export function EditColumnModal({
     setReferenceFolderFilter('all');
     setReferenceSearch('');
     setReferenceDropdownOpen(false);
+    setFormulaDropdownOpen(false);
   }, [
     open,
     propertyId,
@@ -119,6 +127,7 @@ export function EditColumnModal({
     propertyDataType,
     propertyEnumOptions,
     propertyReferenceLibraries,
+    propertyFormulaExpression,
   ]);
 
   // 关闭时重置内部状态
@@ -279,6 +288,16 @@ export function EditColumnModal({
       }));
       return false;
     }
+    if (
+      editColumnModal.dataType === 'formula' &&
+      !editColumnModal.formulaExpression.trim()
+    ) {
+      setEditColumnModal((prev) => ({
+        ...prev,
+        error: 'Please enter a formula expression.',
+      }));
+      return false;
+    }
 
     if (!libraryId || !editColumnModal.propertyId) {
       showErrorToast('Missing libraryId or column id, cannot save');
@@ -300,6 +319,10 @@ export function EditColumnModal({
         description: editColumnModal.description.trim() || undefined,
         enumOptions: editColumnModal.enumOptions,
         referenceLibraries: editColumnModal.referenceLibraries,
+        formulaExpression:
+          editColumnModal.dataType === 'formula'
+            ? editColumnModal.formulaExpression.trim()
+            : undefined,
       });
 
       await queryClient.invalidateQueries({
@@ -337,7 +360,10 @@ export function EditColumnModal({
       editColumnModal.referenceLibraries ?? [],
       propertyDataType === 'reference' ? propertyReferenceLibraries ?? [] : [],
     );
-    return descChanged || typeChanged || enumChanged || refChanged;
+    const formulaChanged =
+      (editColumnModal.formulaExpression ?? '').trim() !==
+      (propertyDataType === 'formula' ? propertyFormulaExpression ?? '' : '').trim();
+    return descChanged || typeChanged || enumChanged || refChanged || formulaChanged;
   };
 
   const handleSaveClick = () => {
@@ -418,12 +444,15 @@ export function EditColumnModal({
           <Select
             id="edit-column-type"
             value={editColumnModal.dataType}
-            onChange={(v) =>
+            onChange={(v) => {
+              const next = v as PropertyConfig['dataType'];
               setEditColumnModal((prev) => ({
                 ...prev,
-                dataType: v as PropertyConfig['dataType'],
-              }))
-            }
+                dataType: next,
+                formulaExpression:
+                  next === 'formula' ? propertyFormulaExpression ?? '' : '',
+              }));
+            }}
             placeholder="Select type"
             className={styles.dataTypeSelect}
             style={{ width: '100%', backgroundColor: '#ffffff' }}
@@ -488,6 +517,324 @@ export function EditColumnModal({
             }))}
           />
         </div>
+        {editColumnModal.dataType === 'formula' && (
+          <div className={styles.field}>
+            <label className={styles.label} htmlFor="edit-column-formula">
+              Column value<span style={{ color: '#dc2626' }}>*</span>
+            </label>
+            <div className={styles.formulaInputWrapper}>
+              <Input
+                id="edit-column-formula"
+                value={editColumnModal.formulaExpression}
+                onChange={(e) =>
+                  setEditColumnModal((prev) => ({
+                    ...prev,
+                    formulaExpression: e.target.value,
+                  }))
+                }
+                placeholder="INSERT EXPRESSION"
+                className={styles.formulaInput}
+                onFocus={() => setFormulaDropdownOpen(true)}
+                onBlur={() => {
+                  setTimeout(() => setFormulaDropdownOpen(false), 120);
+                }}
+              />
+              {formulaDropdownOpen && (
+                <div className={styles.formulaDropdown}>
+                  <div className={styles.formulaDropdownHeader}>
+                    INSERT OPERATOR OR FUNCTION
+                  </div>
+                  <div className={styles.formulaDropdownSectionLabel}>Operators</div>
+                  <div className={styles.formulaOperatorsRow}>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + '+',
+                        }));
+                      }}
+                      title="Add"
+                    >
+                      +
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + '-',
+                        }));
+                      }}
+                      title="Subtraction"
+                    >
+                      −
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + '*',
+                        }));
+                      }}
+                      title="Multiplication"
+                    >
+                      *
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + '/',
+                        }));
+                      }}
+                      title="Division"
+                    >
+                      /
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + '(',
+                        }));
+                      }}
+                      title="Left parenthesis"
+                    >
+                      (
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + ')',
+                        }));
+                      }}
+                      title="Right parenthesis"
+                    >
+                      )
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + '>',
+                        }));
+                      }}
+                      title="Greater than"
+                    >
+                      &gt;
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + '<',
+                        }));
+                      }}
+                      title="Less than"
+                    >
+                      &lt;
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + '>=',
+                        }));
+                      }}
+                      title="Greater than or equal"
+                    >
+                      ≥
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + '<=',
+                        }));
+                      }}
+                      title="Less than or equal"
+                    >
+                      ≤
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.formulaOperatorBtn}
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEditColumnModal((prev) => ({
+                          ...prev,
+                          formulaExpression: prev.formulaExpression + '=',
+                        }));
+                      }}
+                      title="Equal"
+                    >
+                      =
+                    </button>
+                  </div>
+                  <div className={styles.formulaDropdownSectionLabel}>Functions</div>
+                  <button
+                    type="button"
+                    className={styles.formulaItem}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const template = 'IF( , , )';
+                      setEditColumnModal((prev) => {
+                        const needsSpace =
+                          prev.formulaExpression && !prev.formulaExpression.endsWith(' ');
+                        return {
+                          ...prev,
+                          formulaExpression: `${prev.formulaExpression}${needsSpace ? ' ' : ''}${template}`,
+                        };
+                      });
+                    }}
+                  >
+                    <div className={styles.formulaItemMain}>
+                      <span className={styles.formulaItemName}>IF()</span>
+                      <span className={styles.formulaItemMeta}>
+                        condition returns different values
+                      </span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.formulaItem}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const template = 'SUM( , , )';
+                      setEditColumnModal((prev) => {
+                        const needsSpace =
+                          prev.formulaExpression && !prev.formulaExpression.endsWith(' ');
+                        return {
+                          ...prev,
+                          formulaExpression: `${prev.formulaExpression}${needsSpace ? ' ' : ''}${template}`,
+                        };
+                      });
+                    }}
+                  >
+                    <div className={styles.formulaItemMain}>
+                      <span className={styles.formulaItemName}>SUM()</span>
+                      <span className={styles.formulaItemMeta}>sum of values</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.formulaItem}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const template = 'AVERAGE( , , )';
+                      setEditColumnModal((prev) => {
+                        const needsSpace =
+                          prev.formulaExpression && !prev.formulaExpression.endsWith(' ');
+                        return {
+                          ...prev,
+                          formulaExpression: `${prev.formulaExpression}${needsSpace ? ' ' : ''}${template}`,
+                        };
+                      });
+                    }}
+                  >
+                    <div className={styles.formulaItemMain}>
+                      <span className={styles.formulaItemName}>AVERAGE()</span>
+                      <span className={styles.formulaItemMeta}>average of values</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.formulaItem}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const template = 'MIN( , , )';
+                      setEditColumnModal((prev) => {
+                        const needsSpace =
+                          prev.formulaExpression && !prev.formulaExpression.endsWith(' ');
+                        return {
+                          ...prev,
+                          formulaExpression: `${prev.formulaExpression}${needsSpace ? ' ' : ''}${template}`,
+                        };
+                      });
+                    }}
+                  >
+                    <div className={styles.formulaItemMain}>
+                      <span className={styles.formulaItemName}>MIN()</span>
+                      <span className={styles.formulaItemMeta}>minimum of values</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.formulaItem}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const template = 'MAX( , , )';
+                      setEditColumnModal((prev) => {
+                        const needsSpace =
+                          prev.formulaExpression && !prev.formulaExpression.endsWith(' ');
+                        return {
+                          ...prev,
+                          formulaExpression: `${prev.formulaExpression}${needsSpace ? ' ' : ''}${template}`,
+                        };
+                      });
+                    }}
+                  >
+                    <div className={styles.formulaItemMain}>
+                      <span className={styles.formulaItemName}>MAX()</span>
+                      <span className={styles.formulaItemMeta}>maximum of values</span>
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.formulaItem}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      const template = 'ROUND( , 2)';
+                      setEditColumnModal((prev) => {
+                        const needsSpace =
+                          prev.formulaExpression && !prev.formulaExpression.endsWith(' ');
+                        return {
+                          ...prev,
+                          formulaExpression: `${prev.formulaExpression}${needsSpace ? ' ' : ''}${template}`,
+                        };
+                      });
+                    }}
+                  >
+                    <div className={styles.formulaItemMain}>
+                      <span className={styles.formulaItemName}>ROUND()</span>
+                      <span className={styles.formulaItemMeta}>round number</span>
+                    </div>
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         {/* Description 字段保留占位，暂不持久化到后端 */}
         <div className={styles.field}>
           <label className={`${styles.label} ${styles.labelOptional}`} htmlFor="edit-column-desc">

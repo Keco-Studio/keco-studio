@@ -122,6 +122,7 @@ export function TableHeader({
     propertyDataType?: PropertyConfig['dataType'];
     propertyEnumOptions?: string[];
     propertyReferenceLibraries?: string[];
+    propertyFormulaExpression?: string;
   }>({
     visible: false,
     x: 0,
@@ -132,6 +133,7 @@ export function TableHeader({
     propertyDataType: undefined,
     propertyEnumOptions: undefined,
     propertyReferenceLibraries: undefined,
+    propertyFormulaExpression: undefined,
   });
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -153,6 +155,7 @@ export function TableHeader({
     propertyDataType?: PropertyConfig['dataType'];
     propertyEnumOptions?: string[];
     propertyReferenceLibraries?: string[];
+    propertyFormulaExpression?: string;
     anchorX?: number;
     anchorY?: number;
   }>({
@@ -203,6 +206,7 @@ export function TableHeader({
       propertyDataType: property.dataType,
       propertyEnumOptions: property.enumOptions,
       propertyReferenceLibraries: property.referenceLibraries,
+      propertyFormulaExpression: property.formulaExpression,
     });
   };
 
@@ -366,6 +370,7 @@ export function TableHeader({
                   propertyDataType: headerMenu.propertyDataType,
                   propertyEnumOptions: headerMenu.propertyEnumOptions,
                   propertyReferenceLibraries: headerMenu.propertyReferenceLibraries,
+                  propertyFormulaExpression: headerMenu.propertyFormulaExpression,
                   anchorX: headerMenu.x,
                   anchorY: headerMenu.y,
                 });
@@ -455,6 +460,7 @@ export function TableHeader({
         propertyDataType={editTarget.propertyDataType}
         propertyEnumOptions={editTarget.propertyEnumOptions}
         propertyReferenceLibraries={editTarget.propertyReferenceLibraries}
+        propertyFormulaExpression={editTarget.propertyFormulaExpression}
         onClose={() => setEditTarget({ open: false })}
       />
     </>
