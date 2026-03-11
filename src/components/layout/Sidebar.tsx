@@ -6,6 +6,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { EventDataNode } from "antd/es/tree";
+import { Modal } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@/lib/contexts/NavigationContext";
 import { useSupabase } from "@/lib/SupabaseContext";
@@ -40,6 +41,7 @@ import { useSidebarProjectRole } from "./hooks/useSidebarProjectRole";
 import { useSidebarWindowEvents } from "./hooks/useSidebarWindowEvents";
 import { useSidebarRealtime } from "./hooks/useSidebarRealtime";
 import { useSidebarContextMenuActions } from "./hooks/useSidebarContextMenuActions";
+import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
@@ -78,6 +80,20 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   );
   const supabase = useSupabase();
   const queryClient = useQueryClient();
+  const confirmDeletion = useCallback((content: string) => {
+    return new Promise<boolean>((resolve) => {
+      Modal.confirm({
+        title: 'Confirm deletion',
+        content,
+        okText: 'Delete',
+        cancelText: 'Cancel',
+        zIndex: 11000,
+        okButtonProps: { danger: true },
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+  }, []);
   
   const { userRole, isProjectOwner, refetchUserRole } = useSidebarProjectRole(currentIds.projectId, userProfile);
   const { assets, fetchAssets } = useSidebarAssets(currentIds.libraryId);
@@ -128,6 +144,19 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [isSidebarVisible, setIsSidebarVisible] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
   const [isResizing, setIsResizing] = useState(false);
+  const [deleteConfirmState, setDeleteConfirmState] = useState<{
+    open: boolean;
+    title: string;
+    content: string;
+    loading: boolean;
+    onConfirm?: () => Promise<void> | PromiseLike<void> | void;
+  }>({
+    open: false,
+    title: 'Confirm deletion',
+    content: '',
+    loading: false,
+    onConfirm: undefined,
+  });
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(DEFAULT_SIDEBAR_WIDTH);
   const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
@@ -467,7 +496,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     e: React.MouseEvent
   ) => {
     e.stopPropagation();
-    if (!window.confirm('Delete this asset?')) return;
+    const confirmed = await confirmDeletion('Delete this asset?');
+    if (!confirmed) return;
     try {
           
       await deleteAsset(supabase, assetId);
@@ -497,11 +527,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       console.error('Failed to delete asset', err);
       alert(err instanceof Error ? err.message : 'Failed to delete asset');
     }
-  }, [supabase, fetchAssets, currentIds.projectId, currentIds.assetId, queryClient, router]);
+  }, [supabase, fetchAssets, currentIds.projectId, currentIds.assetId, queryClient, router, confirmDeletion]);
 
   const handleLibraryDelete = useCallback(async (libraryId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Delete this library?')) return;
+    const confirmed = await confirmDeletion('Delete this library?');
+    if (!confirmed) return;
     try {
       // Get library info before deleting to know which folder it belongs to
       const libraryToDelete = libraries.find(lib => lib.id === libraryId);
@@ -525,11 +556,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } catch (err: any) {
       setError(err?.message || 'Failed to delete library');
     }
-  }, [supabase, currentIds.projectId, currentIds.libraryId, libraries, queryClient, router]);
+  }, [supabase, currentIds.projectId, currentIds.libraryId, libraries, queryClient, router, confirmDeletion]);
 
   const handleFolderDelete = useCallback(async (folderId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Delete this folder? All libraries and subfolders under it will be removed.')) return;
+    const confirmed = await confirmDeletion('Delete this folder? All libraries and subfolders under it will be removed.');
+    if (!confirmed) return;
     try {
       // Check if any libraries under this folder are being viewed
       const librariesInFolder = libraries.filter(lib => lib.folder_id === folderId);
@@ -550,7 +582,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } catch (err: any) {
       setError(err?.message || 'Failed to delete folder');
     }
-  }, [supabase, currentIds.projectId, currentIds.folderId, currentIds.libraryId, libraries, queryClient, router]);
+  }, [supabase, currentIds.projectId, currentIds.folderId, currentIds.libraryId, libraries, queryClient, router, confirmDeletion]);
 
   const onSelect = async (_keys: React.Key[], info: any) => {
     const key: string = info.node.key;
@@ -730,11 +762,37 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     assets,
     fetchAssets,
     onProjectDeleteViaAPI: handleProjectDeleteViaAPI,
+    requestDeleteConfirm: ({ title, content, onConfirm }) => {
+      setDeleteConfirmState({
+        open: true,
+        title,
+        content,
+        loading: false,
+        onConfirm,
+      });
+    },
   });
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!deleteConfirmState.onConfirm) return;
+    setDeleteConfirmState((prev) => ({ ...prev, loading: true }));
+    try {
+      await deleteConfirmState.onConfirm();
+    } finally {
+      setDeleteConfirmState({
+        open: false,
+        title: 'Confirm deletion',
+        content: '',
+        loading: false,
+        onConfirm: undefined,
+      });
+    }
+  }, [deleteConfirmState]);
 
   const handleProjectDelete = async (projectId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!window.confirm('Delete this project? All libraries under it will be removed.')) return;
+    const confirmed = await confirmDeletion('Delete this project? All libraries under it will be removed.');
+    if (!confirmed) return;
     handleProjectDeleteViaAPI(projectId);
   };
 
@@ -1048,6 +1106,23 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           elementRef={contextMenu.elementRef}
         />
       )}
+
+      <DeleteConfirmDialog
+        open={deleteConfirmState.open}
+        title={deleteConfirmState.title}
+        content={deleteConfirmState.content}
+        confirmLoading={deleteConfirmState.loading}
+        onConfirm={handleDeleteConfirm}
+        onCancel={() =>
+          setDeleteConfirmState({
+            open: false,
+            title: 'Confirm deletion',
+            content: '',
+            loading: false,
+            onConfirm: undefined,
+          })
+        }
+      />
 
       {isSidebarVisible && (
         <div

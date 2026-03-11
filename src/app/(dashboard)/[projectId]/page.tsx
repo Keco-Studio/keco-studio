@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter, usePathname } from 'next/navigation';
+import { Modal } from 'antd';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { queryKeys } from '@/lib/utils/queryKeys';
@@ -34,6 +35,20 @@ export default function ProjectPage() {
   const pathname = usePathname();
   const supabase = useSupabase();
   const queryClient = useQueryClient();
+  const confirmDeletion = useCallback((content: string) => {
+    return new Promise<boolean>((resolve) => {
+      Modal.confirm({
+        title: 'Confirm deletion',
+        content,
+        okText: 'Delete',
+        cancelText: 'Cancel',
+        zIndex: 11000,
+        okButtonProps: { danger: true },
+        onOk: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+  }, []);
   const projectId = params.projectId as string;
     
   const [viewMode, setViewMode] = useState<'list' | 'grid'>('grid');
@@ -328,7 +343,7 @@ export default function ProjectPage() {
         setShowEditLibraryModal(true);
         break;
       case 'delete':
-        if (window.confirm('Delete this library?')) {
+        if (await confirmDeletion('Delete this library?')) {
           try {
             // Get library info before deleting to notify proper events
             const libraryToDelete = libraries.find(lib => lib.id === libraryId);
@@ -370,7 +385,7 @@ export default function ProjectPage() {
         setShowEditFolderModal(true);
         break;
       case 'delete':
-        if (window.confirm('Delete this folder? All libraries under it will be removed.')) {
+        if (await confirmDeletion('Delete this folder? All libraries under it will be removed.')) {
           try {
             await deleteFolder(supabase, folderId);
             
