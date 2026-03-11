@@ -23,6 +23,8 @@ import { LibraryToolbar } from '@/components/folders/LibraryToolbar';
 import { LibraryHeader } from '@/components/libraries/LibraryHeader';
 import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration';
 import searchIcon from "@/assets/images/searchIcon.svg";
+import { useSidebarProjects } from './hooks/useSidebarProjects';
+import { useSidebarFoldersLibraries } from './hooks/useSidebarFoldersLibraries';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -55,6 +57,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
   const [libraryViewMode, setLibraryViewMode] = useState<'list' | 'grid'>('grid');
   const [libraryVersionControlOpen, setLibraryVersionControlOpen] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
+  const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library'>('all');
+  const searchContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Resolve display name: prefer username, then full_name, then email
   const displayName =
@@ -65,6 +72,149 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const userAvatarColor = useMemo(() => {
     return userProfile?.id ? getUserAvatarColor(userProfile.id) : '#999999';
   }, [userProfile?.id]);
+
+  const { projects } = useSidebarProjects(userProfile?.id);
+  const { folders, libraries } = useSidebarFoldersLibraries(currentProjectId);
+
+  type SearchResultType = 'project' | 'folder' | 'library';
+
+  type SearchResult = {
+    type: SearchResultType;
+    id: string;
+    projectId: string;
+    name: string;
+    hierarchy?: string | null;
+    createdAt?: string | null;
+  };
+
+  const searchResults = useMemo<SearchResult[]>(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+
+    const projectResults: SearchResult[] = projects
+      .filter((p) => p.name.toLowerCase().includes(q))
+      .map((p) => ({
+        type: 'project' as const,
+        id: p.id,
+        projectId: p.id,
+        name: p.name,
+        hierarchy: null,
+        createdAt: p.created_at ?? null,
+      }));
+
+    const folderResults: SearchResult[] = folders
+      .filter((f) => f.name.toLowerCase().includes(q))
+      .map((f) => {
+        const parentProject = projects.find((p) => p.id === f.project_id);
+        const projectName = parentProject?.name ?? '';
+        const path =
+          projectName && f.name ? `${projectName} / ${f.name}` : projectName || f.name;
+        return {
+          type: 'folder' as const,
+          id: f.id,
+          projectId: f.project_id,
+          name: f.name,
+          hierarchy: path || null,
+          createdAt: f.created_at ?? null,
+        };
+      });
+
+    const libraryResults: SearchResult[] = libraries
+      .filter((l) => l.name.toLowerCase().includes(q))
+      .map((l) => {
+        const parentProject = projects.find((p) => p.id === l.project_id);
+        const parentFolder = l.folder_id
+          ? folders.find((f) => f.id === l.folder_id)
+          : null;
+        const segments: string[] = [];
+        if (parentProject?.name) segments.push(parentProject.name);
+        if (parentFolder?.name) segments.push(parentFolder.name);
+        const path = segments.join(' / ');
+        return {
+          type: 'library' as const,
+          id: l.id,
+          projectId: l.project_id,
+          name: l.name,
+          hierarchy: path || null,
+          createdAt: l.created_at ?? null,
+        };
+      });
+
+    // 限制总结果数量，避免下拉太长
+    const all = [...projectResults, ...folderResults, ...libraryResults];
+    return all.slice(0, 20);
+  }, [searchQuery, projects, folders, libraries]);
+
+  const filteredSearchResults = useMemo(() => {
+    if (searchFilter === 'all') return searchResults;
+    return searchResults.filter((item) => item.type === searchFilter);
+  }, [searchResults, searchFilter]);
+
+  const formatCreatedAtLabel = (createdAt?: string | null) => {
+    if (!createdAt) return '';
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return '';
+
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMinutes = Math.floor(diffMs / (1000 * 60));
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    // 同一天内：显示时间，如 11:41
+    const isSameDay =
+      date.getFullYear() === now.getFullYear() &&
+      date.getMonth() === now.getMonth() &&
+      date.getDate() === now.getDate();
+    if (isSameDay) {
+      return date.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    }
+
+    // 24 小时内：用 "x hours ago"
+    if (diffHours < 24) {
+      return `${Math.max(diffHours, 1)} hours ago`;
+    }
+
+    // 7 天内：用 "x days ago"
+    if (diffDays < 7) {
+      return `${diffDays} days ago`;
+    }
+
+    // 超过 7 天：用日期，例如 "2025-03-11"
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const highlightMatch = (text: string | null | undefined, query: string) => {
+    if (!text) return null;
+    const q = query.trim();
+    if (!q) return text;
+
+    const lowerText = text.toLowerCase();
+    const lowerQuery = q.toLowerCase();
+    const index = lowerText.indexOf(lowerQuery);
+
+    if (index === -1) {
+      return text;
+    }
+
+    const before = text.slice(0, index);
+    const match = text.slice(index, index + q.length);
+    const after = text.slice(index + q.length);
+
+    return (
+      <>
+        {before}
+        <span className={styles.searchResultHighlight}>{match}</span>
+        {after}
+      </>
+    );
+  };
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -82,6 +232,24 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [showUserMenu]);
+
+  // Close search dropdown when clicking outside
+  useEffect(() => {
+    const handler = (event: MouseEvent) => {
+      if (
+        searchContainerRef.current &&
+        !searchContainerRef.current.contains(event.target as Node)
+      ) {
+        setIsSearchFocused(false);
+        setIsSearchDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handler);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+    };
+  }, []);
 
   // Reset asset mode when navigating to a different asset
   useEffect(() => {
@@ -431,6 +599,120 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     }
   };
 
+  const handleSearchResultClick = (result: SearchResult) => {
+    setIsSearchDropdownOpen(false);
+    setIsSearchFocused(false);
+
+    if (!result.projectId || !result.id) return;
+
+    if (result.type === 'project') {
+      router.push(`/${result.projectId}`);
+      return;
+    }
+
+    if (result.type === 'folder') {
+      router.push(`/${result.projectId}/folder/${result.id}`);
+      return;
+    }
+
+    if (result.type === 'library') {
+      router.push(`/${result.projectId}/${result.id}`);
+    }
+  };
+
+  const renderSearchResultIcon = (type: SearchResultType) => {
+    if (type === 'project') {
+      return (
+        <svg
+          width="30"
+          height="30"
+          viewBox="0 0 30 30"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className={styles.searchResultIconSvg}
+        >
+          <rect
+            width="30"
+            height="30"
+            rx="15"
+            fill="#0B99FF"
+            fillOpacity="0.08"
+          />
+          <path
+            d="M9.12836 11.5836L14.9983 14.9791L20.8681 11.5836"
+            stroke="#070707"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M14.9983 21.75V14.9724"
+            stroke="#21272A"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+          <path
+            d="M15 8.25L20.8457 11.625V18.375L15 21.75L9.15433 18.375V11.625L15 8.25Z"
+            stroke="black"
+            strokeWidth="1.5"
+          />
+        </svg>
+      );
+    }
+
+    if (type === 'folder') {
+      return (
+        <svg
+          width="30"
+          height="30"
+          viewBox="0 0 30 30"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className={styles.searchResultIconSvg}
+        >
+          <rect
+            width="30"
+            height="30"
+            rx="15"
+            fill="#0B99FF"
+            fillOpacity="0.08"
+          />
+          <path
+            d="M14.8623 9.03809L15.9873 9.41309L16.3174 9.52344L16.4463 9.84668L17.0078 11.25H22.5V21H8.25V9H14.7471L14.8623 9.03809ZM9.75 19.5H21V12.75H15.9922L15.8037 12.2783L15.1826 10.7266L14.502 10.5H9.75V19.5ZM13.875 13.125H10.875V11.625H13.875V13.125Z"
+            fill="black"
+            fillOpacity="0.9"
+          />
+        </svg>
+      );
+    }
+
+    // library
+    return (
+      <svg
+        width="30"
+        height="30"
+        viewBox="0 0 30 30"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className={styles.searchResultIconSvg}
+      >
+        <rect
+          width="30"
+          height="30"
+          rx="15"
+          fill="#0B99FF"
+          fillOpacity="0.08"
+        />
+        <path
+          d="M15.0791 10.6254C17.1378 9.46389 19.6542 9.46389 21.7129 10.6254L22.1602 10.8774C22.1736 10.885 22.1864 10.8935 22.1992 10.9018C22.2048 10.9054 22.2104 10.9088 22.2158 10.9125C22.2486 10.935 22.2776 10.9611 22.3057 10.9877C22.3203 11.0016 22.3332 11.0167 22.3467 11.0317C22.3643 11.0513 22.3822 11.0701 22.3975 11.0912C22.4122 11.1116 22.4238 11.1339 22.4365 11.1557C22.448 11.1755 22.4602 11.1946 22.4697 11.2153C22.4808 11.239 22.4895 11.2635 22.498 11.2885C22.5051 11.3092 22.5114 11.3298 22.5166 11.351C22.5255 11.387 22.5337 11.4235 22.5371 11.4614C22.5379 11.4695 22.5376 11.4776 22.5381 11.4858C22.539 11.5005 22.541 11.5157 22.541 11.5307V20.4711C22.541 20.5394 22.5288 20.6046 22.5117 20.6674C22.5044 20.6943 22.4968 20.7212 22.4863 20.7475C22.4836 20.7543 22.4814 20.7613 22.4785 20.768C22.4681 20.7921 22.4575 20.8169 22.4443 20.8403C22.4141 20.8937 22.3762 20.94 22.3359 20.9829C22.3196 21.0002 22.3021 21.0159 22.2842 21.0317C22.2658 21.0479 22.2473 21.0634 22.2275 21.0776C22.2103 21.09 22.1922 21.1008 22.1738 21.1118C22.1495 21.1262 22.1253 21.1402 22.0996 21.1518C22.0821 21.1597 22.0641 21.1657 22.0459 21.1723C22.0188 21.1821 21.9919 21.191 21.9639 21.1977C21.9269 21.2064 21.8895 21.2142 21.8506 21.2172H21.8486C21.8296 21.2187 21.8104 21.2211 21.791 21.2211C21.763 21.2211 21.7353 21.2193 21.708 21.2162C21.705 21.2159 21.7022 21.2147 21.6992 21.2143C21.6657 21.2102 21.6336 21.2012 21.6016 21.1928C21.5409 21.1768 21.4801 21.1567 21.4229 21.1245L20.9756 20.8725C19.3742 19.9689 17.4168 19.9688 15.8154 20.8725L15.3691 21.1245C15.3452 21.1379 15.3198 21.148 15.2949 21.1586C15.2932 21.1594 15.2918 21.1608 15.29 21.1616C15.2484 21.179 15.2056 21.192 15.1621 21.2016C15.1479 21.2047 15.1337 21.2081 15.1191 21.2104C15.1078 21.2122 15.0964 21.214 15.085 21.2153C15.0571 21.2184 15.0288 21.2211 15 21.2211L14.9229 21.2172C14.8925 21.2141 14.8631 21.2072 14.834 21.2006C14.7925 21.1912 14.7516 21.1791 14.7119 21.1625C14.7069 21.1605 14.7022 21.1579 14.6973 21.1557C14.6753 21.146 14.653 21.1364 14.6318 21.1245L14.1846 20.8725C12.5833 19.969 10.6257 19.969 9.02441 20.8725L8.57715 21.1245C8.5202 21.1565 8.4598 21.1768 8.39941 21.1928C8.36678 21.2014 8.33402 21.2102 8.2998 21.2143C8.29684 21.2147 8.29398 21.2159 8.29102 21.2162C8.26407 21.2192 8.23671 21.2211 8.20898 21.2211C8.18926 21.2211 8.16973 21.2187 8.15039 21.2172H8.14844C8.10959 21.2141 8.07211 21.2065 8.03516 21.1977C8.00718 21.191 7.98016 21.1821 7.95312 21.1723C7.93527 21.1658 7.91758 21.1596 7.90039 21.1518C7.87165 21.1388 7.84441 21.1235 7.81738 21.1069C7.80403 21.0986 7.79013 21.0915 7.77734 21.0825C7.75297 21.0653 7.73038 21.046 7.70801 21.0258C7.69275 21.012 7.67814 20.9978 7.66406 20.9829C7.62383 20.94 7.58588 20.8937 7.55566 20.8403C7.54247 20.8169 7.53192 20.7921 7.52148 20.768C7.51922 20.7628 7.51679 20.7577 7.51465 20.7524C7.5014 20.7198 7.49276 20.6862 7.48438 20.6528C7.47706 20.6236 7.4696 20.5943 7.46582 20.5639C7.46533 20.56 7.46429 20.5561 7.46387 20.5522C7.46099 20.5255 7.459 20.4985 7.45898 20.4711V11.5307C7.45898 11.5157 7.46105 11.5005 7.46191 11.4858C7.46241 11.4776 7.46213 11.4695 7.46289 11.4614C7.46612 11.4259 7.47345 11.3917 7.48145 11.3579C7.48762 11.3319 7.496 11.3068 7.50488 11.2817C7.51284 11.2591 7.52028 11.2368 7.53027 11.2153C7.53985 11.1946 7.55201 11.1755 7.56348 11.1557C7.57618 11.1339 7.58777 11.1116 7.60254 11.0912C7.61688 11.0714 7.63304 11.0531 7.64941 11.0346C7.66459 11.0175 7.67963 11.0005 7.69629 10.9848C7.72432 10.9585 7.75354 10.9328 7.78613 10.9106C7.78963 10.9082 7.79333 10.9061 7.79688 10.9037C7.81106 10.8944 7.82583 10.8858 7.84082 10.8774L8.28809 10.6254C10.3468 9.46395 12.8632 9.4639 14.9219 10.6254L15 10.6694L15.0791 10.6254ZM14.1846 11.9311C12.5833 11.0277 10.6256 11.0277 9.02441 11.9311L8.95898 11.9672V19.2368C10.6487 18.5165 12.5603 18.5164 14.25 19.2368V11.9672L14.1846 11.9311ZM20.9756 11.9311C19.3744 11.0277 17.4166 11.0277 15.8154 11.9311L15.75 11.9672V19.2368C17.4398 18.5164 19.3512 18.5163 21.041 19.2368V11.9672L20.9756 11.9311Z"
+          fill="black"
+          fillOpacity="0.9"
+        />
+      </svg>
+    );
+  };
+
   const renderRightContent = () => {
     if (isPredefine) {
       return (
@@ -595,6 +877,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             {displayBreadcrumbs.map((item, index) => {
               const isLast = index === displayBreadcrumbs.length - 1;
               const label = isLast && isAssetDetail ? 'asset' : item.label;
+              const displayLabel =
+                label && label.length > 25 ? `${label.slice(0, 25)}...` : label;
 
               return (
                 <span key={index}>
@@ -605,7 +889,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                     onClick={() => handleBreadcrumbClick(item.path, index)}
                     disabled={isLast}
                   >
-                    {label}
+                    {displayLabel}
                   </button>
                   {index < displayBreadcrumbs.length - 1 && (
                     <span className={styles.breadcrumbSeparator}> / </span>
@@ -616,8 +900,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </div>
         )}
       </div>
-      <div className={styles.searchContainer}>
-        <label className={styles.searchLabel}>
+      <div className={styles.searchContainer} ref={searchContainerRef}>
+        <label
+          className={`${styles.searchLabel} ${
+            isSearchFocused ? styles.searchLabelFocused : ''
+          }`}
+        >
           <Image
             src={searchIcon}
             alt="Search"
@@ -628,8 +916,80 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           <input
             placeholder="Search for..."
             className={styles.searchInput}
+            value={searchQuery}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSearchQuery(value);
+              if (value.trim()) {
+                setIsSearchDropdownOpen(true);
+              } else {
+                setIsSearchDropdownOpen(false);
+              }
+            }}
+            onFocus={() => {
+              setIsSearchFocused(true);
+              if (searchQuery.trim()) {
+                setIsSearchDropdownOpen(true);
+              }
+            }}
           />
         </label>
+        {isSearchDropdownOpen && searchResults.length > 0 && (
+          <div className={styles.searchDropdown}>
+            <div className={styles.searchTabs}>
+              {[
+                { key: 'all', label: 'All' },
+                { key: 'project', label: 'Project' },
+                { key: 'folder', label: 'Folder' },
+                { key: 'library', label: 'Library' },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  type="button"
+                  className={`${styles.searchTab} ${
+                    searchFilter === tab.key ? styles.searchTabActive : ''
+                  }`}
+                  onClick={() =>
+                    setSearchFilter(tab.key as 'all' | 'project' | 'folder' | 'library')
+                  }
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className={styles.searchResultSectionLabel}>RESULT</div>
+            <div className={styles.searchDropdownInner}>
+              {filteredSearchResults.map((item) => (
+                <button
+                  key={`${item.type}-${item.id}`}
+                  type="button"
+                  className={styles.searchResultItem}
+                  onClick={() => handleSearchResultClick(item)}
+                >
+                  <div className={styles.searchResultLeft}>
+                    {renderSearchResultIcon(item.type)}
+                    <div className={styles.searchResultMain}>
+                      <span className={styles.searchResultName}>
+                        {highlightMatch(
+                          item.name && item.name.length > 30
+                            ? `${item.name.slice(0, 30)}...`
+                            : item.name,
+                          searchQuery
+                        )}
+                      </span>
+                      {item.type !== 'project' && item.hierarchy && (
+                        <span className={styles.searchResultParent}>{item.hierarchy}</span>
+                      )}
+                    </div>
+                  </div>
+                  <span className={styles.searchResultType}>
+                    {formatCreatedAtLabel(item.createdAt)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       <div className={styles.right}>
