@@ -521,9 +521,6 @@
   justify-content: center;
 }
 
-.confirmDiscardBtn:hover {
-  
-}
 
 .confirmDiscardBtn:disabled {
   opacity: 0.5;

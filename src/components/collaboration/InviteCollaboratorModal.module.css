@@ -5,14 +5,6 @@
  * Follows design system conventions with proper spacing and typography.
  */
 
-.modal {
-  /* Override Ant Design modal styles if needed */
-}
-
-.modal {
-  /* Override Ant Design modal styles if needed */
-}
-
 .content {
   padding: 0.5rem 0;
 }
@@ -50,7 +42,6 @@
   margin: 0;
 }
 
-/* Responsive adjustments */
 @media (max-width: 768px) {
   .modal :global(.ant-modal) {
     width: 90% !important;

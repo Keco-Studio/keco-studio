@@ -187,7 +187,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             name: trimmed,
             entityType: 'project',
           });
-          showSuccessToast('Rename successful');
+          showSuccessToast('Project name updated');
           return;
         }
 
@@ -211,7 +211,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             name: trimmed,
             entityType: 'library',
           });
-          showSuccessToast('Rename successful');
+          showSuccessToast('Library name updated');
         } else if (key.startsWith('folder-')) {
           const id = key.replace('folder-', '');
           if (foldersLibrariesKey) {
@@ -228,7 +228,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             name: trimmed,
             entityType: 'folder',
           });
-          showSuccessToast('Rename successful');
+          showSuccessToast('Folder name updated');
         }
       } catch (err: unknown) {
         queryClient.invalidateQueries({ queryKey: ['projects'] });

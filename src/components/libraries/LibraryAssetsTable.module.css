@@ -1826,6 +1826,139 @@ td.cellCopy.copyBorderRight:hover {
   animation: fadeIn 0.2s ease-in;
 }
 
+/* Custom confirm overlay/dialog (same structure as AddColumnModal alert) */
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  left: 0;
+  top: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(148, 163, 184, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1100;
+}
+
+.confirmDialog {
+  background: #ffffff;
+  width: 38.5rem; /* 616px */
+  height: 12.75rem; /* 204px */
+  max-width: calc(100vw - 2rem);
+  border-radius: 1rem; /* 16px */
+  border: 0.0625rem solid rgba(0, 0, 0, 0.17); /* 1px */
+  box-shadow: none;
+  padding: 0;
+  box-sizing: border-box;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.confirmHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 3.6875rem; /* 59px */
+  padding: 0 1rem;
+  border-bottom: 0.0625rem solid #e2e8f0;
+}
+
+.confirmTitle {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.confirmBody {
+  font-size: 1.25rem;
+  line-height: 1.5;
+  color: #1a1a1a;
+  margin: 0;
+  padding: 1.5rem;
+  border-bottom: none;
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: auto;
+  border-top: 0.0625rem solid #e2e8f0;
+  padding: 0.75rem 1.5rem 1rem;
+}
+
+.confirmCancelBtn {
+  min-width: 5rem;
+  height: 2.25rem;
+  font-size: 1.25rem;
+  padding: 0 1rem;
+  font-weight: 500;
+  color: #1a1a1a;
+  background: #ffffff;
+  border: 0.0625rem solid #d1d5db;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirmCancelBtn:hover {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+}
+
+.confirmDiscardBtn {
+  min-width: 5rem;
+  height: 2.25rem;
+  font-size: 1.25rem;
+  padding: 0 1rem;
+  font-weight: 500;
+  color: #ffffff;
+  background: #aa052c;
+  border: none;
+  border-radius: 0.75rem;
+  cursor: pointer;
+  transition: background-color 0.2s, opacity 0.2s;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.confirmDiscardBtn:hover {
+  background: #8c0424;
+}
+
+.confirmDiscardBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.confirmCloseBtn {
+  padding: 0.25rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: #64748b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  transition: color 0.2s, background 0.2s;
+}
+
+.confirmCloseBtn:hover {
+  color: #0f172a;
+  background: #f1f5f9;
+}
+
 /* Toast animation */
 @keyframes fadeIn {
   from {
