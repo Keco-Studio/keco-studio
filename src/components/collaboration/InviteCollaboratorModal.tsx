@@ -168,14 +168,12 @@ export function InviteCollaboratorModal({
       open={open}
       onCancel={handleCancel}
       footer={[
-        <Button key="cancel" onClick={handleCancel} disabled={loading}>
-          Cancel
-        </Button>,
         <Button key="submit" type="primary" loading={loading} onClick={handleSubmit}>
           Send Invitation
         </Button>,
       ]}
-      width={480}
+      width="38.5rem"
+      centered
       destroyOnHidden
       className={styles.modal}
     >
@@ -201,6 +199,7 @@ export function InviteCollaboratorModal({
           <Form.Item
             name="email"
             label="Email"
+            className={styles.formItem}
             rules={[
               { required: true, message: 'Please enter an email address' },
               { type: 'email', message: 'Please enter a valid email address' },
@@ -217,6 +216,7 @@ export function InviteCollaboratorModal({
           <Form.Item
             name="role"
             label="Role type"
+            className={`${styles.formItem} ${styles.roleItem}`}
             rules={[{ required: true, message: 'Please select a role' }]}
           >
             <Select

@@ -9,12 +9,12 @@
   /* Override Ant Design modal styles if needed */
 }
 
-.content {
-  padding: 0.5rem 0;
+.modal {
+  /* Override Ant Design modal styles if needed */
 }
 
-.form {
-  /* Form container */
+.content {
+  padding: 0.5rem 0;
 }
 
 .roleOption {

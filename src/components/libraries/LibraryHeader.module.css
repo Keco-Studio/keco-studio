@@ -55,6 +55,12 @@
   border-color: #cbd5e1;
 }
 
+.iconButtonActive,
+.iconButtonActive:hover {
+  background: #0B99FF14;
+  border-color: transparent;
+}
+
 /* Share Section */
 .shareSection {
   display: flex;
