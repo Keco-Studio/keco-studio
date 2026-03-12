@@ -9,7 +9,6 @@
   box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.12);
   border: 0.0625rem solid rgba(11, 153, 255, 0.35);
   min-width: 24.25rem;
-  max-width: 30rem;
   min-height: 15.5rem;
   max-height: 75vh;
   display: flex;
