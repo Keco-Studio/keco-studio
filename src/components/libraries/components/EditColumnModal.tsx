@@ -154,8 +154,8 @@ export function EditColumnModal({
       // 如果当前显示覆盖式 Alert，对话框内及其遮罩区域的点击都不触发关闭
       if (showOverwriteConfirm) {
         if (
-          target.closest(`.${styles.confirmOverlay}`) ||
-          target.closest(`.${styles.confirmDialog}`)
+          target.closest(`.${addColumnStyles.confirmOverlay}`) ||
+          target.closest(`.${addColumnStyles.confirmDialog}`)
         ) {
           return;
         }
