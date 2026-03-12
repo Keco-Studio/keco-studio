@@ -2,14 +2,14 @@
 .popup {
   position: fixed;
   z-index: 1050;
-  top: 163px;
-  left: 1110px;
+  top: 163px; 
+  left: 1110px; 
   background: #ffffff;
-  border-radius: 12px;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
-  border: 1px solid rgba(11, 153, 255, 0.35);
+  border-radius: 0.75rem;
+  box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.12);
+  border: 0.0625rem solid rgba(11, 153, 255, 0.35);
   min-width: 24.25rem;
-  min-height: 21.125rem;
+  min-height: 15.5rem;
   max-height: 75vh;
   display: flex;
   flex-direction: column;
@@ -57,7 +57,7 @@
   padding: 1.25rem 1.25rem 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: .625rem;
 }
 
 .scrollBody {
