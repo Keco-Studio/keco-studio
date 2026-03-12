@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import Image from 'next/image';
-import { Checkbox, Modal, Tooltip } from 'antd';
+import { Checkbox, Tooltip } from 'antd';
 import { useParams } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useQueryClient } from '@tanstack/react-query';
@@ -119,6 +119,8 @@ export function TableHeader({
     visible: boolean;
     x: number;
     y: number;
+    popupAnchorX?: number;
+    canDeleteColumn?: boolean;
     propertyId?: string;
     propertyName?: string;
     propertyDescription?: string | null;
@@ -137,6 +139,7 @@ export function TableHeader({
     propertyEnumOptions: undefined,
     propertyReferenceLibraries: undefined,
     propertyFormulaExpression: undefined,
+    canDeleteColumn: false,
   });
   const menuRef = useRef<HTMLDivElement | null>(null);
 
@@ -144,10 +147,12 @@ export function TableHeader({
     open: boolean;
     propertyId?: string;
     propertyName?: string;
+    loading?: boolean;
   }>({
     open: false,
     propertyId: undefined,
     propertyName: undefined,
+    loading: false,
   });
 
   const [editTarget, setEditTarget] = useState<{
@@ -197,12 +202,19 @@ export function TableHeader({
     };
   }, [headerMenu.visible]);
 
-  const openHeaderMenu = (anchorEl: HTMLDivElement, property: PropertyConfig) => {
+  const openHeaderMenu = (
+    anchorEl: HTMLDivElement,
+    property: PropertyConfig,
+    sectionColumnCount: number,
+  ) => {
     const rect = anchorEl.getBoundingClientRect();
     setHeaderMenu({
       visible: true,
-      x: rect.left + rect.width / 2,
+      // Align panel's right edge with current column's right edge.
+      x: rect.right,
       y: rect.bottom + 8,
+      popupAnchorX: rect.right,
+      canDeleteColumn: sectionColumnCount > 1,
       propertyId: property.id,
       propertyName: property.name,
       propertyDescription: property.description,
@@ -265,7 +277,11 @@ export function TableHeader({
                 className={styles.propertyHeaderContent}
                 onContextMenu={(e) => {
                   e.preventDefault();
-                  openHeaderMenu(e.currentTarget as HTMLDivElement, property);
+                  openHeaderMenu(
+                    e.currentTarget as HTMLDivElement,
+                    property,
+                    group.properties.length,
+                  );
                 }}
               >
                 <div className={styles.propertyHeaderMain}>
@@ -305,7 +321,9 @@ export function TableHeader({
                       const contentEl = (e.currentTarget as HTMLElement).closest(
                         `.${styles.propertyHeaderContent}`
                       ) as HTMLDivElement | null;
-                      if (contentEl) openHeaderMenu(contentEl, property);
+                      if (contentEl) {
+                        openHeaderMenu(contentEl, property, group.properties.length);
+                      }
                     }}
                   >
                     <Image
@@ -356,7 +374,7 @@ export function TableHeader({
             style={{
               top: headerMenu.y,
               left: headerMenu.x,
-              transform: 'translateX(-50%)',
+              transform: 'translateX(-100%)',
             }}
           >
             <div className={styles.headerContextMenuLabel}>OPTION</div>
@@ -374,7 +392,7 @@ export function TableHeader({
                   propertyEnumOptions: headerMenu.propertyEnumOptions,
                   propertyReferenceLibraries: headerMenu.propertyReferenceLibraries,
                   propertyFormulaExpression: headerMenu.propertyFormulaExpression,
-                  anchorX: headerMenu.x,
+                  anchorX: headerMenu.popupAnchorX ?? headerMenu.x,
                   anchorY: headerMenu.y,
                 });
                 setHeaderMenu((prev) => ({ ...prev, visible: false }));
@@ -382,24 +400,115 @@ export function TableHeader({
             >
               Edit column
             </button>
-            <button
-              type="button"
-              className={styles.headerContextMenuButton}
-              onClick={() => {
-                if (!headerMenu.propertyId) {
-                  showErrorToast('Missing column id');
-                  return;
-                }
-                setDeleteColumnConfirm({
-                  open: true,
-                  propertyId: headerMenu.propertyId,
-                  propertyName: headerMenu.propertyName,
-                });
-                setHeaderMenu((prev) => ({ ...prev, visible: false }));
-              }}
+            {headerMenu.canDeleteColumn && (
+              <button
+                type="button"
+                className={styles.headerContextMenuButton}
+                onClick={() => {
+                  if (!headerMenu.propertyId) {
+                    showErrorToast('Missing column id');
+                    return;
+                  }
+                  setDeleteColumnConfirm({
+                    open: true,
+                    propertyId: headerMenu.propertyId,
+                    propertyName: headerMenu.propertyName,
+                    loading: false,
+                  });
+                  setHeaderMenu((prev) => ({ ...prev, visible: false }));
+                }}
+              >
+                Delete column
+              </button>
+            )}
+          </div>,
+          document.body,
+        )
+      : null;
+
+  const deleteColumnConfirmOverlay =
+    deleteColumnConfirm.open && typeof document !== 'undefined'
+      ? createPortal(
+          <div className={styles.confirmOverlay}>
+            <div
+              className={styles.confirmDialog}
+              style={{ height: '15.5rem' }}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-column-confirm-title"
+              aria-describedby="delete-column-confirm-description"
             >
-              Delete column
-            </button>
+              <div className={styles.confirmHeader}>
+                <h3 id="delete-column-confirm-title" className={styles.confirmTitle}>
+                  Delete column
+                </h3>
+                <button
+                  type="button"
+                  className={styles.confirmCloseBtn}
+                  aria-label="Close"
+                  onClick={() =>
+                    setDeleteColumnConfirm({
+                      open: false,
+                      propertyId: undefined,
+                      propertyName: undefined,
+                      loading: false,
+                    })
+                  }
+                >
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 4L4 12M4 4l8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              </div>
+              <div id="delete-column-confirm-description" className={styles.confirmBody}>
+                Are you sure you want to delete this column?
+              </div>
+              <div className={styles.confirmActions}>
+                <button
+                  type="button"
+                  className={styles.confirmCancelBtn}
+                  onClick={() =>
+                    setDeleteColumnConfirm({
+                      open: false,
+                      propertyId: undefined,
+                      propertyName: undefined,
+                      loading: false,
+                    })
+                  }
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.confirmDiscardBtn}
+                  disabled={Boolean(deleteColumnConfirm.loading)}
+                  onClick={async () => {
+                    if (!libraryId || !deleteColumnConfirm.propertyId) {
+                      showErrorToast('Missing libraryId or column id, cannot delete');
+                      return;
+                    }
+                    setDeleteColumnConfirm((prev) => ({ ...prev, loading: true }));
+                    try {
+                      await deleteLibraryField(supabase, libraryId, deleteColumnConfirm.propertyId);
+                      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+                      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+                      showSuccessToast('Column deleted');
+                    } catch (e: any) {
+                      showErrorToast(e?.message || 'Failed to delete column');
+                    } finally {
+                      setDeleteColumnConfirm({
+                        open: false,
+                        propertyId: undefined,
+                        propertyName: undefined,
+                        loading: false,
+                      });
+                    }
+                  }}
+                >
+                  {deleteColumnConfirm.loading ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
           </div>,
           document.body,
         )
@@ -409,47 +518,7 @@ export function TableHeader({
     <>
       {header}
       {menu}
-      {/* Delete column confirm modal */}
-      <Modal
-        open={deleteColumnConfirm.open}
-        title="Alert"
-        onCancel={() =>
-          setDeleteColumnConfirm({
-            open: false,
-            propertyId: undefined,
-            propertyName: undefined,
-          })
-        }
-        onOk={async () => {
-          if (!libraryId || !deleteColumnConfirm.propertyId) {
-            showErrorToast('Missing libraryId or column id, cannot delete');
-            return;
-          }
-          try {
-            await deleteLibraryField(supabase, libraryId, deleteColumnConfirm.propertyId);
-            await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-            await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-            showSuccessToast('Column deleted');
-          } catch (e: any) {
-            showErrorToast(e?.message || 'Failed to delete column');
-          } finally {
-            setDeleteColumnConfirm({
-              open: false,
-              propertyId: undefined,
-              propertyName: undefined,
-            });
-          }
-        }}
-        okText="Overwrite"
-        cancelText="Cancel"
-        centered
-        width={480}
-        className={styles.confirmModal}
-        wrapClassName={styles.confirmModalWrap}
-        maskClosable={false}
-      >
-        <p>This operation may overwrite the existing content in this column. Do you want to continue?</p>
-      </Modal>
+      {deleteColumnConfirmOverlay}
       <EditColumnModal
         open={editTarget.open}
         anchorPosition={

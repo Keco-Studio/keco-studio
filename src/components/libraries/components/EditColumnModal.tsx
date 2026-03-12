@@ -406,9 +406,9 @@ export function EditColumnModal({
   const style: React.CSSProperties = {
     position: 'fixed',
     top: anchorPosition?.y,
-    // Move the entire popup 40px to the left on the anchor point (left shift on the original "centered on the column header" basis)
-    left: anchorPosition ? anchorPosition.x - 40 : undefined,
-    transform: 'translateX(-50%)',
+    // Align the popup's right edge to the current column's right edge.
+    left: anchorPosition?.x,
+    transform: 'translateX(-100%)',
     zIndex: 1100,
   };
 

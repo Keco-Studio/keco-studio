@@ -253,7 +253,7 @@
 }
 
 .headerRowTop {
-  background: #0000000D;
+  background: #0000001A;
   border-bottom: 2px solid #e2e8f0;
 }
 
@@ -285,7 +285,7 @@
   color: #475569;
   letter-spacing: 0.05em;
   padding: 0 0.5rem;
-  background: #0000000D;
+  background: #0000001A;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -854,7 +854,7 @@ td.cellCopy.copyBorderRight:hover {
 
 /* Number column header in first row (empty, should match section header background) */
 .headerRowTop .numberColumnHeader {
-  background: #0000000D;
+  background: #0000001A;
 }
 
 /* Number column header in second row (# symbol, should match property header background) */
