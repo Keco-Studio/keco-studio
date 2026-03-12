@@ -1,3 +1,15 @@
+import {
+  add as mathAdd,
+  subtract as mathSubtract,
+  multiply as mathMultiply,
+  divide as mathDivide,
+  sum as mathSum,
+  mean as mathMean,
+  min as mathMin,
+  max as mathMax,
+  round as mathRound,
+} from 'mathjs';
+
 export type FormulaEvaluableField = {
   id: string;
   name: string;
@@ -172,12 +184,12 @@ function evalRpn(
       const a = stack.pop() as number;
 
       let result: number;
-      if (token.value === '+') result = a + b;
-      else if (token.value === '-') result = a - b;
-      else if (token.value === '*') result = a * b;
+      if (token.value === '+') result = Number(mathAdd(a, b));
+      else if (token.value === '-') result = Number(mathSubtract(a, b));
+      else if (token.value === '*') result = Number(mathMultiply(a, b));
       else {
         if (b === 0) return null;
-        result = a / b;
+        result = Number(mathDivide(a, b));
       }
 
       if (Number.isNaN(result) || !Number.isFinite(result)) return null;
@@ -267,35 +279,37 @@ function evaluateFormulaForRowInternal(
       IF: (condition: any, whenTrue: any, whenFalse: any) =>
         condition ? whenTrue : whenFalse,
       SUM: (...args: any[]) =>
-        args.reduce((acc, v) => {
-          const n = Number(v);
-          return acc + (Number.isFinite(n) ? n : 0);
-        }, 0),
+        (() => {
+          const nums = args
+            .map((v) => Number(v))
+            .filter((n) => Number.isFinite(n));
+          if (nums.length === 0) return 0;
+          return Number(mathSum(nums));
+        })(),
       AVERAGE: (...args: any[]) => {
         const nums = args
           .map((v) => Number(v))
           .filter((n) => Number.isFinite(n));
         if (nums.length === 0) return null;
-        return nums.reduce((a, b) => a + b, 0) / nums.length;
+        return Number(mathMean(nums));
       },
       MIN: (...args: any[]) => {
         const nums = args
           .map((v) => Number(v))
           .filter((n) => Number.isFinite(n));
-        return nums.length ? Math.min(...nums) : null;
+        return nums.length ? Number(mathMin(nums)) : null;
       },
       MAX: (...args: any[]) => {
         const nums = args
           .map((v) => Number(v))
           .filter((n) => Number.isFinite(n));
-        return nums.length ? Math.max(...nums) : null;
+        return nums.length ? Number(mathMax(nums)) : null;
       },
       ROUND: (value: any, digits: any) => {
         const n = Number(value);
         const d = Number(digits);
         if (!Number.isFinite(n) || !Number.isFinite(d)) return null;
-        const factor = 10 ** d;
-        return Math.round(n * factor) / factor;
+        return Number(mathRound(n, d));
       },
       COL: (name: string) => {
         const field = propertyByName.get(name);
