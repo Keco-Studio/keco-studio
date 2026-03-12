@@ -2,10 +2,9 @@
 .popup {
   position: fixed;
   z-index: 1050;
-  top: 163px; /* 位置保持不同 */
-  left: 1110px; /* 位置保持不同 */
+  top: 163px; 
+  left: 1110px; 
   background: #ffffff;
-  /* 宽高相关视觉效果与 AddColumnModal 保持一致 */
   border-radius: 0.75rem;
   box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.12);
   border: 0.0625rem solid rgba(11, 153, 255, 0.35);

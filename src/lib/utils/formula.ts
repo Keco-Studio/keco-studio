@@ -30,6 +30,13 @@ const OP_PRECEDENCE: Record<'+' | '-' | '*' | '/', number> = {
   '/': 2,
 };
 
+const FORMULA_DECIMAL_DIGITS = 4;
+
+function roundFormulaNumber(n: number): number {
+  if (!Number.isFinite(n)) return n;
+  return Number(mathRound(n, FORMULA_DECIMAL_DIGITS));
+}
+
 function isIdentStart(ch: string): boolean {
   return (
     (ch >= 'a' && ch <= 'z') ||
@@ -193,7 +200,7 @@ function evalRpn(
       }
 
       if (Number.isNaN(result) || !Number.isFinite(result)) return null;
-      stack.push(result);
+      stack.push(roundFormulaNumber(result));
     }
   }
 
@@ -268,7 +275,7 @@ function evaluateFormulaForRowInternal(
         return Number.isNaN(num) ? null : num;
       });
       if (numericValue !== null) {
-        return numericValue;
+        return roundFormulaNumber(numericValue);
       }
     }
   }
@@ -357,6 +364,9 @@ function evaluateFormulaForRowInternal(
     );
     const result = fn(helper);
     if (result === undefined) return null;
+    if (typeof result === 'number') {
+      return roundFormulaNumber(result);
+    }
     return result;
   } catch {
     return null;

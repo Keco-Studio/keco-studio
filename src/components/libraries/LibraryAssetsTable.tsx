@@ -72,6 +72,14 @@ type FormulaToken =
   | { type: 'operator'; value: '+' | '-' | '*' | '/' }
   | { type: 'paren'; value: '(' | ')' };
 
+const FORMULA_DECIMAL_DIGITS = 4;
+
+const roundFormulaNumber = (n: number): number => {
+  if (!Number.isFinite(n)) return n;
+  const factor = 10 ** FORMULA_DECIMAL_DIGITS;
+  return Math.round(n * factor) / factor;
+};
+
 const tokenizeFormula = (expr: string): FormulaToken[] => {
   const tokens: FormulaToken[] = [];
   let i = 0;
@@ -226,7 +234,7 @@ const evalRpn = (
       if (Number.isNaN(result) || !Number.isFinite(result)) {
         return null;
       }
-      stack.push(result);
+      stack.push(roundFormulaNumber(result));
     }
   }
 
@@ -235,7 +243,7 @@ const evalRpn = (
   if (Number.isNaN(final) || !Number.isFinite(final)) {
     return null;
   }
-  return final;
+  return roundFormulaNumber(final);
 };
 
 const evaluateFormulaForRow = (
@@ -296,7 +304,7 @@ const evaluateFormulaForRow = (
   });
 
   if (numericValue !== null) {
-    return numericValue;
+    return roundFormulaNumber(numericValue);
   }
 
   // 额外支持函数：IF, SUM, AVERAGE, MIN, MAX, ROUND
@@ -382,6 +390,9 @@ const evaluateFormulaForRow = (
     );
     const result = fn(helper);
     if (result === undefined) return null;
+    if (typeof result === 'number') {
+      return roundFormulaNumber(result);
+    }
     return result;
   } catch {
     return null;
