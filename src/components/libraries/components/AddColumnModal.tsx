@@ -10,6 +10,11 @@ import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { listLibraries, type Library } from '@/lib/services/libraryService';
 import { listFolders, type Folder } from '@/lib/services/folderService';
+import {
+  isFormulaExpressionValid,
+  type FormulaEvaluableField,
+  hasFormulaCircularReference,
+} from '@/lib/utils/formula';
 import styles from './AddColumnModal.module.css';
 
 const DESCRIPTION_MAX = 250;
@@ -292,6 +297,38 @@ export function AddColumnModal({
       if (!formulaValue.trim()) {
         setError('Please enter a formula expression.');
         return;
+      }
+
+      const isValid = isFormulaExpressionValid(formulaValue);
+      if (!isValid) {
+        setError('Formula contains an error');
+        return;
+      }
+
+      // Circular reference detection between formula columns.
+      // We simulate the future schema after adding this new formula column,
+      // and run a static graph cycle check based on column names.
+      if (existingProperties && existingProperties.length > 0) {
+        const fields: FormulaEvaluableField[] = existingProperties.map((prop) => ({
+          id: prop.id ?? prop.key ?? prop.name ?? '',
+          name: prop.name,
+          dataType: prop.dataType ?? null,
+          // formulaExpression is stored on PropertyConfig at runtime (for formula columns only)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          formulaExpression: (prop as any).formulaExpression ?? null,
+        }));
+
+        fields.push({
+          id: '__NEW_FORMULA_COLUMN__',
+          name: trimmedName,
+          dataType: 'formula',
+          formulaExpression: formulaValue.trim(),
+        });
+
+        if (hasFormulaCircularReference(fields)) {
+          setError('Formula has circular reference');
+          return;
+        }
       }
     }
 

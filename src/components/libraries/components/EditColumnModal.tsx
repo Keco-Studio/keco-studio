@@ -14,6 +14,11 @@ import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { getFieldTypeIcon, FIELD_TYPE_OPTIONS } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
 import { listLibraries, type Library } from '@/lib/services/libraryService';
 import { listFolders, type Folder } from '@/lib/services/folderService';
+import {
+  isFormulaExpressionValid,
+  type FormulaEvaluableField,
+  hasFormulaCircularReference,
+} from '@/lib/utils/formula';
 import styles from './EditColumnModal.module.css';
 import addColumnStyles from './AddColumnModal.module.css';
 
@@ -318,6 +323,41 @@ export function EditColumnModal({
         error: 'Please enter a formula expression.',
       }));
       return false;
+    }
+
+    if (editColumnModal.dataType === 'formula') {
+      const expr = editColumnModal.formulaExpression.trim();
+      if (!isFormulaExpressionValid(expr)) {
+        setEditColumnModal((prev) => ({
+          ...prev,
+          error: 'Formula contains an error',
+        }));
+        return false;
+      }
+
+      // Circular reference detection for editing an existing formula column.
+      // We construct the prospective schema after this change, then run a static
+      // cycle check between all formula columns by column name.
+      if (existingProperties && existingProperties.length > 0 && editColumnModal.propertyId) {
+        const fields: FormulaEvaluableField[] = existingProperties.map((prop) => ({
+          id: prop.id,
+          name: prop.name,
+          dataType: prop.dataType ?? null,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          formulaExpression:
+            prop.id === editColumnModal.propertyId
+              ? expr
+              : ((prop as any).formulaExpression ?? null),
+        }));
+
+        if (hasFormulaCircularReference(fields)) {
+          setEditColumnModal((prev) => ({
+            ...prev,
+            error: 'Formula has circular reference',
+          }));
+          return false;
+        }
+      }
     }
 
     if (!libraryId || !editColumnModal.propertyId) {

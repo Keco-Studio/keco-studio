@@ -37,6 +37,49 @@ function roundFormulaNumber(n: number): number {
   return Number(mathRound(n, FORMULA_DECIMAL_DIGITS));
 }
 
+function extractIdentifiersFromFormulaExpression(
+  expression: string | null | undefined
+): string[] {
+  if (!expression || !expression.trim()) return [];
+
+  const trimmedExpr = expression.trim().startsWith('=')
+    ? expression.trim().slice(1)
+    : expression.trim();
+  if (!trimmedExpr) return [];
+
+  const identifiers = new Set<string>();
+
+  // 1) [Column Name] 形式，直接抓中括号里的列名
+  const bracketRegex = /\[([^\]]+)\]/g;
+  let m: RegExpExecArray | null;
+  while ((m = bracketRegex.exec(trimmedExpr)) !== null) {
+    const name = m[1].trim();
+    if (name) {
+      identifiers.add(name);
+    }
+  }
+
+  // 2) 裸标识符：排除内置函数名，只保留可能是列名的标识符
+  const FUNCTION_NAMES = new Set([
+    'IF',
+    'SUM',
+    'AVERAGE',
+    'MIN',
+    'MAX',
+    'ROUND',
+  ]);
+
+  const identRegex = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+  while ((m = identRegex.exec(trimmedExpr)) !== null) {
+    const raw = m[0];
+    const upper = raw.toUpperCase();
+    if (FUNCTION_NAMES.has(upper)) continue;
+    identifiers.add(raw);
+  }
+
+  return Array.from(identifiers);
+}
+
 function isIdentStart(ch: string): boolean {
   return (
     (ch >= 'a' && ch <= 'z') ||
@@ -209,14 +252,14 @@ function evalRpn(
 }
 
 /**
- * 在一行数据上计算单个公式字段的值。
+ * Calculate the value of a single formula field on a row of data.
  *
- * 规则：
- * 1. 先尝试使用简单的加减乘除解析器（tokenizeFormula + toRpn + evalRpn），兼容纯算术表达式；
- * 2. 如果算不出结果，再使用“高级公式引擎”：
- *    - 支持列名直接书写或 [Column Name] 形式；
- *    - 支持 IF、SUM、AVERAGE、MIN、MAX、ROUND、比较运算符等；
- *    - 支持公式列之间的相互引用，并避免循环引用。
+ * Rules:
+ * 1. First try to use a simple arithmetic operations parser (tokenizeFormula + toRpn + evalRpn), compatible with pure arithmetic expressions;
+ * 2. If it cannot calculate the result, then use the "advanced formula engine":
+ *    - Support direct writing of column names or [Column Name] form;
+ *    - Support IF, SUM, AVERAGE, MIN, MAX, ROUND, comparison operators, etc.;
+ *    - Support mutual reference between formula columns and avoid circular references.
  */
 function evaluateFormulaForRowInternal(
   expression: string | null | undefined,
@@ -280,7 +323,7 @@ function evaluateFormulaForRowInternal(
     }
   }
 
-  // 2) 回退到高级公式引擎（支持 IF/SUM/比较等）
+  // 2) 
   try {
     const helper = {
       IF: (condition: any, whenTrue: any, whenFalse: any) =>
@@ -395,4 +438,144 @@ export function computeFormulaValuesForRow(
   }
 
   return result;
+}
+
+/**
+ * Detect whether there is any circular reference between formula fields.
+ *
+ * The detection is purely based on column names and formulaExpression strings,
+ * independent of actual row data.
+ *
+ * Rules:
+ * - Each formula field may reference other columns via bare identifiers or [Column Name] form;
+ * - A directed edge A -> B means "formula of A depends on column B";
+ * - If the dependency graph contains a cycle (e.g. A -> C -> A), this function returns true.
+ */
+export function hasFormulaCircularReference(
+  fields: FormulaEvaluableField[]
+): boolean {
+  if (!fields || fields.length === 0) return false;
+
+  const byName = new Map<string, FormulaEvaluableField>();
+  for (const field of fields) {
+    if (field.name) {
+      byName.set(field.name, field);
+    }
+  }
+
+  // Build adjacency list: fieldName -> set of referenced fieldNames
+  const adjacency = new Map<string, Set<string>>();
+
+  for (const field of fields) {
+    if (!field.name) continue;
+    if (field.dataType !== 'formula') continue;
+
+    const refs = extractIdentifiersFromFormulaExpression(field.formulaExpression);
+    if (!refs.length) continue;
+
+    for (const refName of refs) {
+      if (!byName.has(refName)) {
+        // Referencing a non-existing column is a separate validation concern;
+        // we simply ignore it for circular dependency detection.
+        continue;
+      }
+      if (!adjacency.has(field.name)) {
+        adjacency.set(field.name, new Set());
+      }
+      adjacency.get(field.name)!.add(refName);
+    }
+  }
+
+  const VISITING = 1;
+  const VISITED = 2;
+  const state = new Map<string, number>();
+
+  const dfs = (name: string): boolean => {
+    const current = state.get(name);
+    if (current === VISITING) return true; // found a back edge => cycle
+    if (current === VISITED) return false;
+
+    state.set(name, VISITING);
+    const neighbors = adjacency.get(name);
+    if (neighbors) {
+      for (const next of neighbors) {
+        if (dfs(next)) return true;
+      }
+    }
+    state.set(name, VISITED);
+    return false;
+  };
+
+  for (const name of byName.keys()) {
+    if (!state.has(name)) {
+      if (dfs(name)) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Only perform syntactic validation, without relying on specific columns or data.
+ *
+ * Rules:
+ * 1. First try to use simple arithmetic operations analysis (tokenizeFormula + toRpn), if it can successfully generate RPN, then consider the syntax valid;
+ * 2. Otherwise, take the "advanced formula" path, only do string replacement through the new Function constructor body:
+ *    - If an error occurs when constructing the function, it is considered a syntax error;
+ *    - If the function can be successfully constructed (not executed), then consider the syntax valid.If the function can be successfully constructed (not executed), then consider the syntax valid.
+ */
+export function isFormulaExpressionValid(expression: string | null | undefined): boolean {
+  if (!expression || !expression.trim()) return false;
+
+  const trimmedExpr = expression.trim().startsWith('=')
+    ? expression.trim().slice(1)
+    : expression.trim();
+
+  if (!trimmedExpr) return false;
+
+  // 1) Attempting Simple Arithmetic Operations Analysis 
+  const tokens = tokenizeFormula(trimmedExpr);
+  if (tokens.length > 0) {
+    const rpn = toRpn(tokens);
+    if (rpn.length > 0) {
+      const numericValue = evalRpn(rpn, () => 1);
+      if (numericValue !== null) {
+        return true;
+      }
+    }
+  }
+
+  // 2) Advanced formula syntax validation, only check if the JS syntax can be constructed
+  try {
+    let jsExpr = trimmedExpr;
+
+    // Normalize built-in function names (consistent with evaluateFormulaForRowInternal)
+    jsExpr = jsExpr
+      .replace(/\bIF\s*\(/g, 'IF(')
+      .replace(/\bSUM\s*\(/g, 'SUM(')
+      .replace(/\bAVERAGE\s*\(/g, 'AVERAGE(')
+      .replace(/\bMIN\s*\(/g, 'MIN(')
+      .replace(/\bMAX\s*\(/g, 'MAX(')
+      .replace(/\bROUND\s*\(/g, 'ROUND(');
+
+    // Process comparison operators and equals (consistent with evaluateFormulaForRowInternal)
+    jsExpr = jsExpr
+      .replace(/>=/g, '__GTE__')
+      .replace(/<=/g, '__LTE__')
+      .replace(/=/g, '==')
+      .replace(/__GTE__/g, '>=')
+      .replace(/__LTE__/g, '<=');
+
+    // Here we only do syntax checking: construct the function but do not execute
+    // eslint-disable-next-line no-new-func
+    // eslint-disable-next-line @typescript-eslint/no-implied-eval
+    new Function(
+      'helper',
+      'const { IF, SUM, AVERAGE, MIN, MAX, ROUND, COL } = helper; return (' + jsExpr + ');'
+    );
+
+    return true;
+  } catch {
+    return false;
+  }
 }
