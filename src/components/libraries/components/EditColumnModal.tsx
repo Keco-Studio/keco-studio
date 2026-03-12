@@ -28,6 +28,8 @@ type EditColumnModalProps = {
   propertyEnumOptions?: string[];
   propertyReferenceLibraries?: string[];
   propertyFormulaExpression?: string;
+  /** 当前库已有的字段列表，用于校验重名 */
+  existingProperties?: PropertyConfig[];
   onClose: () => void;
 };
 
@@ -71,6 +73,7 @@ export function EditColumnModal({
   propertyEnumOptions,
   propertyReferenceLibraries,
   propertyFormulaExpression,
+  existingProperties,
   onClose,
 }: EditColumnModalProps) {
   const supabase = useSupabase();
@@ -96,7 +99,7 @@ export function EditColumnModal({
     return FIELD_TYPE_OPTIONS.filter((opt) => opt.label.toLowerCase().includes(q));
   }, [dataTypeSearch]);
 
-  // 每次打开时，用当前列配置初始化表单状态
+  // Initialize form state with current column configuration when modal opens
   useEffect(() => {
     if (!open || !propertyId) return;
 
@@ -143,7 +146,7 @@ export function EditColumnModal({
     }
   }, [open]);
 
-  // 点击弹窗外部关闭（但在覆盖 Alert 弹框时，点击任意区域都不关闭）
+  // Click outside to close the modal (but does not close when clicking on the overlay of the Alert dialog)
   useEffect(() => {
     if (!open) return;
 
@@ -151,7 +154,7 @@ export function EditColumnModal({
       const target = event.target as HTMLElement | null;
       if (!target) return;
 
-      // 如果当前显示覆盖式 Alert，对话框内及其遮罩区域的点击都不触发关闭
+      // If the Alert dialog is currently displayed, clicking anywhere inside the dialog or its overlay does not trigger close
       if (showOverwriteConfirm) {
         if (
           target.closest(`.${addColumnStyles.confirmOverlay}`) ||
@@ -173,7 +176,7 @@ export function EditColumnModal({
     };
   }, [open, onClose, showOverwriteConfirm]);
 
-  // 当编辑弹窗打开并选择 reference 类型时，加载可选库列表与文件夹
+  // When the edit popup opens and the reference type is selected, load the list of optional libraries and folders
   useEffect(() => {
     if (!open || editColumnModal.dataType !== 'reference' || !projectId) return;
     let cancelled = false;
@@ -256,11 +259,26 @@ export function EditColumnModal({
   }, [editColumnModal.libraries, referenceFolderFilter, referenceSearch, foldersById]);
 
   const validateForm = () => {
-    // 前端校验：名称和类型必填，enum/reference 需配置完整
-    if (!editColumnModal.name.trim()) {
+    // Frontend validation: name and type are required, enum/reference need to be configured completely
+    const trimmedName = editColumnModal.name.trim();
+    if (!trimmedName) {
       setEditColumnModal((prev) => ({
         ...prev,
         error: 'Header name is required.',
+      }));
+      return false;
+    }
+    if (
+      existingProperties &&
+      existingProperties.some(
+        (prop) =>
+          prop.id !== editColumnModal.propertyId &&
+          prop.name.trim().toLowerCase() === trimmedName.toLowerCase(),
+      )
+    ) {
+      setEditColumnModal((prev) => ({
+        ...prev,
+        error: 'Header name already exists.',
       }));
       return false;
     }
@@ -341,7 +359,7 @@ export function EditColumnModal({
     }
   };
 
-  /** 判断两个字符串数组是否相等（顺序与元素一致） */
+  /** Check if two string arrays are equal (order and elements match) */
   const stringArraysEqual = (a: string[], b: string[] | undefined): boolean => {
     const left = a ?? [];
     const right = b ?? [];
@@ -349,7 +367,7 @@ export function EditColumnModal({
     return left.every((v, i) => v === right[i]);
   };
 
-  /** 是否有“会覆盖列内数据”的修改：类型、枚举、引用库、描述等；仅改列名不算 */
+  /** Whether there are modifications that will overwrite the column data: type, enum, reference library, description, etc.; only changing the column name does not count */
   const hasOverwriteRelevantChanges = (): boolean => {
     const nameChanged = (editColumnModal.name ?? '').trim() !== (propertyName ?? '').trim();
     const descChanged =
@@ -373,7 +391,7 @@ export function EditColumnModal({
     if (!validateForm()) {
       return;
     }
-    // 无任何修改，或仅修改了列名：直接保存，不弹出 overwrite 确认
+    // No modifications, or only modified the column name: save directly, without showing the overwrite confirmation
     if (!hasOverwriteRelevantChanges()) {
       void handleSubmit();
       return;
@@ -388,7 +406,7 @@ export function EditColumnModal({
   const style: React.CSSProperties = {
     position: 'fixed',
     top: anchorPosition?.y,
-    // 将弹窗整体在锚点基础上左移 40px（在原来“居中于列头”基础上再左移）
+    // Move the entire popup 40px to the left on the anchor point (left shift on the original "centered on the column header" basis)
     left: anchorPosition ? anchorPosition.x - 40 : undefined,
     transform: 'translateX(-50%)',
     zIndex: 1100,
@@ -421,7 +439,7 @@ export function EditColumnModal({
           </svg>
         </button>
       </div>
-      {/* 与 AddColumnModal 一致：上半部分可滚动，底部按钮固定 */}
+        {/* Same as AddColumnModal: the top part is scrollable, the bottom button is fixed */}
       <div className={`${styles.body} ${styles.scrollBody}`}>
         <div className={styles.field}>
           <label className={styles.label} htmlFor="edit-column-name">

@@ -1390,6 +1390,7 @@ export function LibraryAssetsTable({
             allRowsSelected={headerAllRowsSelected}
             hasSomeRowsSelected={headerHasSomeRowsSelected}
             onToggleSelectAll={handleToggleSelectAllRows}
+            existingProperties={properties}
             showSectionRow={!hasSections}
             showAddColumn={userRole === 'admin' || userRole === 'editor'}
             onAddColumnClick={handleAddColumnClick}
