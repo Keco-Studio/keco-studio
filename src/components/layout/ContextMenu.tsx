@@ -246,6 +246,13 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
       // Project: Project info (admin only), Collaborators, Duplicate, separator, Delete (admin only)
       return (
         <>
+          <button
+            className={styles.menuItem}
+            onClick={() => handleAction('collaborators')}
+          >
+            Collaborators
+          </button>
+          <div className={styles.separator} />
           {showEditButton && (
             <button
               className={styles.menuItem}
@@ -254,12 +261,12 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
               Project info
             </button>
           )}
-          <button
+          {/* <button
             className={styles.menuItem}
             onClick={() => handleAction('collaborators')}
           >
             Collaborators
-          </button>
+          </button> */}
           {showDuplicateButton && (
             <button
               className={styles.menuItem}
