@@ -821,6 +821,15 @@ export function LibraryAssetsTable({
 
   // Section tab: which section's columns to show (default first section)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
+  const [preferredSectionNameAfterRename, setPreferredSectionNameAfterRename] = useState<string | null>(null);
+  const sectionStateStorageKey = useMemo(
+    () => `keco-active-section:${library?.id ?? 'unknown'}`,
+    [library?.id]
+  );
+  const sectionRenameHintStorageKey = useMemo(
+    () => `keco-active-section-rename-hint:${library?.id ?? 'unknown'}`,
+    [library?.id]
+  );
   const effectiveActiveSectionId = activeSectionId ?? groups[0]?.section.id ?? null;
 
   // Double-click the section TAB to enter editing: The section id currently being edited and the content of the input box
@@ -835,11 +844,60 @@ export function LibraryAssetsTable({
   );
   const activeProperties = activeGroup ? activeGroup.properties : orderedProperties;
   useEffect(() => {
-    if (groups.length > 0) {
-      if (!activeSectionId) setActiveSectionId(groups[0].section.id);
-      else if (!groups.some((g) => g.section.id === activeSectionId)) setActiveSectionId(groups[0].section.id);
+    if (groups.length === 0) return;
+
+    // Active section still exists: keep current focus.
+    if (activeSectionId && groups.some((g) => g.section.id === activeSectionId)) {
+      if (typeof window !== 'undefined') {
+        window.sessionStorage.setItem(sectionStateStorageKey, activeSectionId);
+      }
+      if (preferredSectionNameAfterRename) {
+        setPreferredSectionNameAfterRename(null);
+      }
+      return;
     }
-  }, [groups, activeSectionId]);
+
+    // On remount/re-render, restore from persisted active section id first.
+    if (typeof window !== 'undefined') {
+      const storedSectionId = window.sessionStorage.getItem(sectionStateStorageKey);
+      if (storedSectionId && groups.some((g) => g.section.id === storedSectionId)) {
+        setActiveSectionId(storedSectionId);
+        return;
+      }
+    }
+
+    // After rename/update, id may change in some backends.
+    // Prefer matching by the new name before falling back to the first tab.
+    const preferredName =
+      preferredSectionNameAfterRename ||
+      (typeof window !== 'undefined'
+        ? window.sessionStorage.getItem(sectionRenameHintStorageKey)
+        : null);
+
+    if (preferredName) {
+      const matched = groups.find((g) => g.section.name === preferredName);
+      if (matched) {
+        setActiveSectionId(matched.section.id);
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(sectionStateStorageKey, matched.section.id);
+          window.sessionStorage.removeItem(sectionRenameHintStorageKey);
+        }
+        setPreferredSectionNameAfterRename(null);
+        return;
+      }
+    }
+
+    setActiveSectionId(groups[0].section.id);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(sectionStateStorageKey, groups[0].section.id);
+    }
+  }, [
+    groups,
+    activeSectionId,
+    preferredSectionNameAfterRename,
+    sectionStateStorageKey,
+    sectionRenameHintStorageKey,
+  ]);
 
   const handlePredefineClick = () => {
     const projectId = params.projectId as string;
@@ -853,11 +911,15 @@ export function LibraryAssetsTable({
   };
 
   const handleSectionEditStart = useCallback((sectionId: string, currentName: string) => {
+    setActiveSectionId(sectionId);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(sectionStateStorageKey, sectionId);
+    }
     setEditingSectionId(sectionId);
     setEditingSectionName(currentName);
     setEditingSectionOriginalName(currentName);
     setTimeout(() => sectionInputRef.current?.focus(), 0);
-  }, []);
+  }, [sectionStateStorageKey]);
 
   const handleSectionEditEnd = useCallback(async (submit: boolean) => {
     if (!editingSectionId) return;
@@ -866,6 +928,10 @@ export function LibraryAssetsTable({
     const hasChanged = trimmed !== originalTrimmed;
     if (submit && trimmed && hasChanged && onUpdateSection) {
       try {
+        setPreferredSectionNameAfterRename(trimmed);
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.setItem(sectionRenameHintStorageKey, trimmed);
+        }
         await onUpdateSection(editingSectionId, trimmed);
         setToastMessage({
           message: 'Section name updated',
@@ -879,7 +945,14 @@ export function LibraryAssetsTable({
     setEditingSectionId(null);
     setEditingSectionName('');
     setEditingSectionOriginalName('');
-  }, [editingSectionId, editingSectionName, editingSectionOriginalName, onUpdateSection, message]);
+  }, [
+    editingSectionId,
+    editingSectionName,
+    editingSectionOriginalName,
+    onUpdateSection,
+    message,
+    sectionRenameHintStorageKey,
+  ]);
 
   const getAllRowsForCellSelection = useCallback(() => {
     return dataManager.getRowsWithOptimisticUpdates();
