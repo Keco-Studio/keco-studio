@@ -864,16 +864,20 @@ export function EditColumnModal({
           <Input.TextArea
             id="edit-column-desc"
             value={editColumnModal.description}
-            onChange={(e) =>
+            onChange={(e) => {
+              const nextDescription = e.target.value;
+              if (nextDescription.length > 250) {
+                showErrorToast('Comment cannot exceed 250 characters.');
+                return;
+              }
               setEditColumnModal((prev) => ({
                 ...prev,
-                description: e.target.value.slice(0, 250),
-              }))
-            }
+                description: nextDescription,
+              }));
+            }}
             placeholder="Type..."
             className={styles.textarea}
             rows={2}
-            maxLength={250}
             showCount={false}
           />
           <span className={styles.hint}>(250 characters limit)</span>
