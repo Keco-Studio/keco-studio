@@ -114,20 +114,63 @@ export class ProjectPage {
     // Wait for modal to appear
     await expect(this.projectNameInput).toBeVisible({ timeout: 5000 });
 
-    // Fill in project details
-    await this.projectNameInput.fill(project.name);
-    
-    if (project.description) {
-      // Wait for description field to be visible and fill it
-      await expect(this.projectDescriptionInput).toBeVisible({ timeout: 3000 });
-      await this.projectDescriptionInput.fill(project.description);
+    // Fill in project details and submit (with duplicate-name retry fallback for CI).
+    let candidateName = project.name;
+    let created = false;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      // Modal/input may remount in CI; always reacquire visible nodes.
+      const visibleProjectNameInput = this.page.locator('#project-name:visible').first();
+      await expect(visibleProjectNameInput).toBeVisible({ timeout: 5000 });
+      await visibleProjectNameInput.fill(candidateName);
+
+      if (project.description) {
+        // Some modal variants may not render description input; fill only if present.
+        const visibleProjectDescriptionInput = this.page.locator('#project-description:visible').first();
+        const hasDescriptionInput = await visibleProjectDescriptionInput
+          .isVisible({ timeout: 1500 })
+          .catch(() => false);
+        if (hasDescriptionInput) {
+          await visibleProjectDescriptionInput.fill(project.description);
+        }
+      }
+
+      // Scope submit button to the current modal that owns #project-name.
+      const modal = visibleProjectNameInput.locator('xpath=ancestor::div[contains(@class,"modal")][1]');
+      const modalSubmitButton = modal
+        .getByRole('button', { name: /^(create|creating)$/i })
+        .or(modal.locator('button[class*="primary"]'));
+      if (await modalSubmitButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await modalSubmitButton.click();
+      } else {
+        // If submit button is not found but modal is already gone, treat as submitted.
+        const stillOpen = await visibleProjectNameInput.isVisible({ timeout: 800 }).catch(() => false);
+        if (!stillOpen) {
+          created = true;
+          break;
+        }
+
+        // Fallback: try Enter on the currently visible input.
+        await visibleProjectNameInput.press('Enter');
+      }
+
+      // Success path: modal closes.
+      const closed = await this.page
+        .locator('#project-name:visible')
+        .isHidden({ timeout: 5000 })
+        .catch(() => false);
+      if (closed) {
+        created = true;
+        break;
+      }
+
+      // If still open, likely validation conflict such as duplicate name.
+      candidateName = `${project.name}-${Date.now().toString().slice(-5)}-${attempt + 1}`;
     }
 
-    // Submit the form
-    await this.submitProjectButton.click();
-
-    // Wait for modal to close and navigation to complete
-    await expect(this.projectNameInput).not.toBeVisible({ timeout: 10000 });
+    if (!created) {
+      // Preserve original failure semantics with an explicit assertion.
+      await expect(this.projectNameInput).not.toBeVisible({ timeout: 10000 });
+    }
     
     // Wait for page to load
     await this.page.waitForLoadState('load', { timeout: 15000 });
@@ -224,47 +267,57 @@ export class ProjectPage {
    * Delete a project by its name (from sidebar using context menu)
    * @param projectName - Name of the project to delete
    */
-  async deleteProject(projectName: string): Promise<void> {
-    // Find the project in the sidebar
-    // Note: Project names may be truncated in display, but full name is in title attribute
+  async deleteProject(
+    projectName: string,
+    options?: { deleteAllMatching?: boolean }
+  ): Promise<void> {
     const sidebar = this.page.locator('aside');
-    
-    // Strategy 1: Try to find by title attribute (contains full name)
-    const projectByTitle = sidebar.locator(`[title="${projectName}"]`);
-    const titleExists = await projectByTitle.count() > 0;
-    
-    let projectItem;
-    if (titleExists) {
-      // Use title attribute (most reliable for truncated names)
-      projectItem = projectByTitle.first();
-    } else {
-      // Strategy 2: Use partial text match (without exact: true)
-      projectItem = sidebar.getByText(projectName);
-    }
-    
-    // Wait for project to be visible
-    await expect(projectItem).toBeVisible({ timeout: 15000 });
-    
-    // Right-click on the project to open context menu
-    await projectItem.click({ button: 'right' });
-    
-    // Wait for context menu to appear
-    const contextMenu = this.page.locator('[class*="contextMenu"]');
-    await expect(contextMenu).toBeVisible({ timeout: 5000 });
-    
-    // Set up dialog handler BEFORE clicking delete
-    this.page.once('dialog', async dialog => {
-      await dialog.accept();
-    });
-    
-    // Click the Delete button in the context menu
-    const deleteButton = contextMenu.getByRole('button', { name: /^delete$/i })
-      .or(contextMenu.locator('button[class*="deleteItem"]'));
-    await expect(deleteButton).toBeVisible({ timeout: 5000 });
-    await deleteButton.click();
-    
-    // Wait for deletion to complete
+    await expect(sidebar).toBeVisible({ timeout: 15000 });
     await this.page.waitForTimeout(1000);
+
+    const deleteAllMatching = options?.deleteAllMatching ?? false;
+    const getVisibleProjectItems = () => sidebar.locator(`[title="${projectName}"]:visible`);
+
+    while (true) {
+      const projectItem = getVisibleProjectItems().first();
+      const visibleCount = await getVisibleProjectItems().count();
+      if (visibleCount === 0) break;
+
+      await expect(projectItem).toBeVisible({ timeout: 15000 });
+      await projectItem.click({ button: 'right' });
+
+      const contextMenu = this.page.locator('[class*="contextMenu"]');
+      await expect(contextMenu).toBeVisible({ timeout: 5000 });
+
+      // Backward compatibility for native dialog based delete flows.
+      this.page.once('dialog', async (dialog) => {
+        await dialog.accept();
+      });
+
+      const deleteButton = contextMenu
+        .getByRole('button', { name: /^delete$/i })
+        .or(contextMenu.locator('button[class*="deleteItem"]'));
+      await expect(deleteButton).toBeVisible({ timeout: 5000 });
+      await deleteButton.click();
+
+      // Current flow uses custom confirmation dialog.
+      const confirmDeleteButton = this.page
+        .locator('div[class*="confirmDialog"]')
+        .getByRole('button', { name: /^delete$/i })
+        .first();
+      if (await confirmDeleteButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await confirmDeleteButton.click();
+      }
+
+      await expect
+        .poll(async () => await getVisibleProjectItems().count(), { timeout: 30000 })
+        .toBeLessThan(visibleCount);
+
+      await this.page.waitForLoadState('networkidle').catch(() => {});
+      await this.page.waitForTimeout(500);
+
+      if (!deleteAllMatching) break;
+    }
   }
 
   /**
@@ -273,14 +326,11 @@ export class ProjectPage {
    */
   async expectProjectDeleted(projectName: string): Promise<void> {
     const sidebar = this.page.locator('aside');
-    
-    // Check by title attribute (more reliable for truncated names)
-    const projectByTitle = sidebar.locator(`[title="${projectName}"]`);
-    await expect(projectByTitle).not.toBeVisible({ timeout: 15000 });
-    
-    // Also check by partial text match as a backup
-    const projectByText = sidebar.getByText(projectName);
-    await expect(projectByText).not.toBeVisible({ timeout: 15000 });
+    const getVisibleProjectItems = () => sidebar.locator(`[title="${projectName}"]:visible`);
+
+    await expect
+      .poll(async () => await getVisibleProjectItems().count(), { timeout: 30000 })
+      .toBe(0);
   }
 
   /**

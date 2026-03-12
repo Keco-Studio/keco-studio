@@ -5,7 +5,7 @@ import { PredefinedPage } from '../pages/predefined.page';
 import { AssetPage } from '../pages/asset.page';
 import { LoginPage } from '../pages/login.page';
 
-import { projects } from '../fixures/projects';
+import { generateProjectData } from '../fixures/projects';
 import { libraries } from '../fixures/libraries';
 import { DEFAULT_RESOURCE_FOLDER, folders } from '../fixures/folders';
 import { predefinedTemplates } from '../fixures/predefined';
@@ -72,11 +72,13 @@ test.describe('Happy Path - Complete User Journey', () => {
     // After adding authorization checks, operations may take longer
     test.setTimeout(180000); // 3 minutes
     
+    const testProject = generateProjectData();
+
     // ==========================================
     // STEP 1: Create a new project
     // ==========================================
     await test.step('Create a new project', async () => {
-      await projectPage.createProject(projects.happyPath);
+      await projectPage.createProject(testProject);
       await projectPage.expectProjectCreated();
       // Project creation automatically navigates to project detail page
       await libraryPage.waitForPageLoad();
