@@ -73,6 +73,8 @@ type FormulaToken =
   | { type: 'paren'; value: '(' | ')' };
 
 const FORMULA_DECIMAL_DIGITS = 4;
+const FORMULA_REF_ERROR = '#REF!';
+const FORMULA_DIV0_ERROR = '#DIV/0!';
 
 const roundFormulaNumber = (n: number): number => {
   if (!Number.isFinite(n)) return n;
@@ -197,6 +199,7 @@ const toRpn = (tokens: FormulaToken[]): FormulaToken[] => {
 const evalRpn = (
   rpn: FormulaToken[],
   getIdentifierValue: (name: string) => number | null,
+  errorInfo?: { divByZero?: boolean },
 ): number | null => {
   const stack: number[] = [];
 
@@ -225,7 +228,12 @@ const evalRpn = (
           result = a * b;
           break;
         case '/':
-          if (b === 0) return null;
+          if (b === 0) {
+            if (errorInfo) {
+              errorInfo.divByZero = true;
+            }
+            return null;
+          }
           result = a / b;
           break;
         default:
@@ -261,7 +269,13 @@ const evaluateFormulaForRow = (
 
   const tokens = tokenizeFormula(trimmedExpr);
   if (tokens.length === 0) return null;
-  const rpn = toRpn(tokens);
+
+  // 如果包含函数名（SUM / IF / AVERAGE / MIN / MAX / ROUND），
+  // 直接走高级公式引擎，避免在简单四则运算路径里把函数名当作列名导致 #REF!。
+  const FUNCTION_NAMES = new Set(['SUM', 'IF', 'AVERAGE', 'MIN', 'MAX', 'ROUND']);
+  const hasFunctionIdentifier = tokens.some(
+    (t) => t.type === 'identifier' && FUNCTION_NAMES.has(t.value.toUpperCase())
+  );
 
   const propertyByName = new Map<string, PropertyConfig>();
   allProperties.forEach((p) => {
@@ -269,6 +283,18 @@ const evaluateFormulaForRow = (
       propertyByName.set(p.name, p);
     }
   });
+
+  // 如果存在非函数名的标识符，但在当前列列表中找不到对应列名，则视为引用错误，直接返回 #REF!。
+  for (const token of tokens) {
+    if (token.type !== 'identifier') continue;
+    const upper = token.value.toUpperCase();
+    if (FUNCTION_NAMES.has(upper)) continue;
+    if (!propertyByName.has(token.value)) {
+      return FORMULA_REF_ERROR;
+    }
+  }
+
+  const rpn = hasFunctionIdentifier ? [] : toRpn(tokens);
 
   const resolvePropertyValue = (prop: PropertyConfig): any | null => {
     // 防止公式之间循环引用
@@ -290,21 +316,37 @@ const evaluateFormulaForRow = (
     return raw;
   };
 
-  // 先用现有数值解析器算普通算术部分（包括引用的 formula 列）
-  const numericValue = evalRpn(rpn, (name) => {
-    const prop = propertyByName.get(name);
-    if (!prop) return null;
-    const raw = resolvePropertyValue(prop);
-    if (raw === null || raw === undefined || raw === '') return null;
-    if (typeof raw === 'number') {
-      return Number.isNaN(raw) ? null : raw;
-    }
-    const num = Number(raw);
-    return Number.isNaN(num) ? null : num;
-  });
+  // 先用现有数值解析器算普通算术部分（包括引用的 formula 列）。
+  // 仅在没有函数调用时启用该路径。
+  if (rpn.length > 0) {
+    let hasRefError = false;
+    const errorInfo: { divByZero?: boolean } = {};
+    const numericValue = evalRpn(rpn, (name) => {
+      const prop = propertyByName.get(name);
+      if (!prop) {
+        hasRefError = true;
+        return null;
+      }
+      const raw = resolvePropertyValue(prop);
+      if (raw === null || raw === undefined || raw === '') return null;
+      if (typeof raw === 'number') {
+        return Number.isNaN(raw) ? null : raw;
+      }
+      const num = Number(raw);
+      return Number.isNaN(num) ? null : num;
+    }, errorInfo);
 
-  if (numericValue !== null) {
-    return roundFormulaNumber(numericValue);
+    if (errorInfo.divByZero) {
+      return FORMULA_DIV0_ERROR;
+    }
+
+    if (hasRefError) {
+      return FORMULA_REF_ERROR;
+    }
+
+    if (numericValue !== null) {
+      return roundFormulaNumber(numericValue);
+    }
   }
 
   // 额外支持函数：IF, SUM, AVERAGE, MIN, MAX, ROUND
@@ -346,7 +388,10 @@ const evaluateFormulaForRow = (
       // 列名 -> 当前行的值（支持 formula 列）
       COL: (name: string) => {
         const prop = propertyByName.get(name);
-        if (!prop) return null;
+        if (!prop) {
+          // 显式抛出，用于区分「引用不存在」错误
+          throw new Error(FORMULA_REF_ERROR);
+        }
         const raw = resolvePropertyValue(prop);
         if (raw === null || raw === undefined || raw === '') return null;
         if (typeof raw === 'number') {
@@ -391,10 +436,16 @@ const evaluateFormulaForRow = (
     const result = fn(helper);
     if (result === undefined) return null;
     if (typeof result === 'number') {
+      if (!Number.isFinite(result)) {
+        return FORMULA_DIV0_ERROR;
+      }
       return roundFormulaNumber(result);
     }
     return result;
-  } catch {
+  } catch (err) {
+    if (err instanceof Error && err.message === FORMULA_REF_ERROR) {
+      return FORMULA_REF_ERROR;
+    }
     return null;
   }
 };
