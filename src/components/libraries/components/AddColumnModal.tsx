@@ -757,7 +757,7 @@ export function AddColumnModal({
               onChange={(e) => setDescription(e.target.value.slice(0, DESCRIPTION_MAX))}
               placeholder="Type..."
               className={styles.textarea}
-              rows={1}
+              rows={2}
               maxLength={DESCRIPTION_MAX}
               showCount={false}
             />
