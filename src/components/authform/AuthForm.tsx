@@ -171,7 +171,7 @@ function AuthFormContent() {
       if (error) throw error;
       // OAuth 登录会重定向到 Google，所以这里不需要设置成功消息
     } catch (err: any) {
-      setErrorMsg(err?.message || "Google 登录失败");
+      setErrorMsg(err?.message || "Google login failed");
       setGoogleLoading(false);
     }
   };
