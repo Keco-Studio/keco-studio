@@ -18,7 +18,7 @@ jobs:
   check-migrations:
     runs-on: ubuntu-latest
     name: Check for Migration Changes
-    if: github.repository == 'xzy1124/keco-studio'
+    if: github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio'
     outputs:
       has-migrations: ${{ steps.check.outputs.has-migrations }}
     
@@ -112,7 +112,7 @@ jobs:
     # 对于 main 和 release 分支，总是运行迁移（supabase db push 是幂等的，只会应用未应用的迁移）
     # 这样可以确保即使之前的迁移失败，也能重新应用
     if: |
-      github.repository == 'xzy1124/keco-studio' && (
+      (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') && (
         needs.check-migrations.outputs.has-migrations == 'true' ||
         github.ref == 'refs/heads/main' ||
         github.ref == 'refs/heads/master' ||
@@ -214,7 +214,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [check-migrations, migrate-database]  
-    if: github.repository == 'xzy1124/keco-studio' && always() && (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')
+    if: (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') && always() && (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')
     name: Deploy to Vercel
     
     steps:
@@ -288,15 +288,21 @@ jobs:
             echo "🚀 部署到 Production 环境..."
             vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
           elif [[ "${{ github.ref }}" =~ ^refs/heads/release/ ]]; then
-            # Release 分支部署到 Preview 环境，使用固定域名 keco-release.vercel.app
+            # Release 分支部署到 Preview 环境，可通过 Secret 自定义固定域名
             BRANCH_NAME=${GITHUB_REF#refs/heads/}
             echo "🚀 部署到 Preview 环境 (Branch: $BRANCH_NAME)..."
             DEPLOYMENT_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
             echo "📦 部署 URL: $DEPLOYMENT_URL"
-            echo "🔗 设置别名 keco-release.vercel.app..."
-            vercel alias set "$DEPLOYMENT_URL" keco-release.vercel.app --token=${{ secrets.VERCEL_TOKEN }}
+            if [ -n "${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}" ]; then
+              echo "🔗 设置别名 ${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}..."
+              vercel alias set "$DEPLOYMENT_URL" "${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}" --token=${{ secrets.VERCEL_TOKEN }}
+            else
+              echo "ℹ️ 未配置 VERCEL_PREVIEW_ALIAS_DOMAIN，跳过固定域名 alias"
+            fi
             echo "✅ Release 部署完成，Branch: $BRANCH_NAME"
-            echo "🌐 Release URL: https://keco-release.vercel.app"
+            if [ -n "${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}" ]; then
+              echo "🌐 Release URL: https://${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}"
+            fi
           else
             # 其他 Preview 部署（PR 等）
             echo "🚀 部署到 Preview 环境..."
