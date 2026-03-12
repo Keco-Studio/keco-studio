@@ -5,7 +5,7 @@ import predefineTypeOptIcon from '@/assets/images/predefineTypeOptIcon.svg';
 import predefineTypeRefIcon from '@/assets/images/predefineTypeRefIcon.svg';
 import predefineTypeMediaIcon from '@/assets/images/predefineTypeMediaIcon.svg';
 import predefineTypeBoolenIcon from '@/assets/images/predefineTypeBoolenIcon.svg';
-import predefineTypeFloatIcon from '@/assets/images/predefineTypeFloatIcon.svg';
+import predefineTypeFloatIcon from '@/assets/images/predefineTypeFloatIcon_2.svg';
 import predefineTypeFileIcon from '@/assets/images/predefineTypeFileIcon.svg';
 import predefineTypeIntArrayIcon from '@/assets/images/predefineTypeIntArrayIcon.svg';
 import predefineTypeFloatArrayIcon from '@/assets/images/predefineTypeFloatArrayIcon.svg';
