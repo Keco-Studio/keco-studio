@@ -429,7 +429,23 @@ export function useCellEditing({
         currentValue = row.name;
       }
     }
-    let stringValue = currentValue !== null && currentValue !== undefined ? String(currentValue) : '';
+    let stringValue = '';
+    if (currentValue !== null && currentValue !== undefined) {
+      // 数组类型需要特殊处理，确保编辑态下的文本格式与展示/校验逻辑一致
+      if (property.dataType === 'int_array' && Array.isArray(currentValue)) {
+        // 规范化为 "[1,2,3]" 格式
+        stringValue = `[${currentValue.join(',')}]`;
+      } else if (property.dataType === 'float_array' && Array.isArray(currentValue)) {
+        // 规范化为 "[1.1,2.2]" 格式
+        stringValue = `[${currentValue.join(',')}]`;
+      } else if (property.dataType === 'string_array' && Array.isArray(currentValue)) {
+        // 使用 JSON.stringify，确保元素带有引号：["A","B"]
+        stringValue = JSON.stringify(currentValue);
+      } else {
+        // 其他情况沿用默认字符串化
+        stringValue = String(currentValue);
+      }
+    }
     // 对数组类型，如果当前值为空，则自动填充一对方括号，方便用户直接在内部输入
     if (
       (property.dataType === 'int_array' ||

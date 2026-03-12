@@ -771,6 +771,7 @@ export function LibraryAssetsTable({
     setOptimisticNewAssets,
     editingCell,
     editingCellValue,
+    editingCellRef,
     setEditingCell,
     setEditingCellValue,
     setCurrentFocusedCell,
@@ -779,6 +780,8 @@ export function LibraryAssetsTable({
     yRows,
     setOptimisticEditUpdates,
     presenceTracking,
+    validateValueByType,
+    setTypeValidationError,
   });
 
   // Calculate ordered properties early
