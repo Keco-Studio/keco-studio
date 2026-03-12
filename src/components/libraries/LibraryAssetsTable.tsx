@@ -1390,6 +1390,7 @@ export function LibraryAssetsTable({
             allRowsSelected={headerAllRowsSelected}
             hasSomeRowsSelected={headerHasSomeRowsSelected}
             onToggleSelectAll={handleToggleSelectAllRows}
+            existingProperties={properties}
             showSectionRow={!hasSections}
             showAddColumn={userRole === 'admin' || userRole === 'editor'}
             onAddColumnClick={handleAddColumnClick}
@@ -1693,6 +1694,10 @@ export function LibraryAssetsTable({
                           getSelectionBorderClasses={getSelectionBorderClasses}
                           isFirstColumn={isFirstColumn}
                           onViewAssetDetail={handleViewAssetDetail}
+                          onShowToast={(msg, type = 'error') => {
+                            setToastMessage({ message: msg, type });
+                            setTimeout(() => setToastMessage(null), 2000);
+                          }}
                         />
                       );
                     }

@@ -65,6 +65,8 @@ export interface MediaCellProps {
   // View detail (first column only)
   isFirstColumn?: boolean;
   onViewAssetDetail?: (row: AssetRow, e: React.MouseEvent) => void;
+  // 统一表格 toast（TableToast）
+  onShowToast?: (message: string, type?: 'success' | 'error' | 'default') => void;
 }
 
 /**
@@ -99,6 +101,7 @@ export const MediaCell: React.FC<MediaCellProps> = ({
   getSelectionBorderClasses,
   isFirstColumn,
   onViewAssetDetail,
+  onShowToast,
 }) => {
   const cellKey: CellKey = `${row.id}-${property.key}`;
   const isCellSelected = selectedCells.has(cellKey);
@@ -195,6 +198,7 @@ export const MediaCell: React.FC<MediaCellProps> = ({
               fieldType={property.dataType as 'image' | 'file' | 'multimedia' | 'audio'}
               onFocus={() => onCellFocus(row.id, property.key)}
               onBlur={onCellBlur}
+              onShowToast={onShowToast}
             />
           </div>
           <button
@@ -218,6 +222,7 @@ export const MediaCell: React.FC<MediaCellProps> = ({
             fieldType={property.dataType as 'image' | 'file' | 'multimedia' | 'audio'}
             onFocus={() => onCellFocus(row.id, property.key)}
             onBlur={onCellBlur}
+            onShowToast={onShowToast}
           />
         </div>
       )}

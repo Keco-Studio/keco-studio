@@ -259,6 +259,15 @@ export function AddColumnModal({
       setError('Header name is required.');
       return;
     }
+    if (
+      existingProperties &&
+      existingProperties.some(
+        (prop) => prop.name.trim().toLowerCase() === trimmedName.toLowerCase()
+      )
+    ) {
+      setError('Header name already exists.');
+      return;
+    }
     if (!dataType) {
       setError('Data type is required.');
       return;
@@ -464,7 +473,7 @@ export function AddColumnModal({
                   className={styles.formulaInput}
                   onFocus={() => setFormulaDropdownOpen(true)}
                   onBlur={() => {
-                    // 轻量处理：失焦时关闭下拉；后续如需点击选项不关闭，可再调整为基于 mousedown 事件控制
+                    
                     setTimeout(() => setFormulaDropdownOpen(false), 120);
                   }}
                 />
@@ -748,7 +757,7 @@ export function AddColumnModal({
               onChange={(e) => setDescription(e.target.value.slice(0, DESCRIPTION_MAX))}
               placeholder="Type..."
               className={styles.textarea}
-              rows={1}
+              rows={2}
               maxLength={DESCRIPTION_MAX}
               showCount={false}
             />

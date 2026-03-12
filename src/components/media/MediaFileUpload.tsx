@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Image from 'next/image';
-import { Tooltip } from 'antd';
+import { Tooltip, App } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getCurrentUserId } from '@/lib/services/authorizationService';
@@ -26,11 +26,22 @@ interface MediaFileUploadProps {
   fieldType?: 'image' | 'file' | 'multimedia' | 'audio';
   onFocus?: () => void;
   onBlur?: () => void;
+  // 可选：由父级控制的统一 toast（例如 LibraryAssetsTable 的 TableToast）
+  onShowToast?: (message: string, type?: 'success' | 'error' | 'default') => void;
 }
 
-export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image', onFocus, onBlur }: MediaFileUploadProps) {
+export function MediaFileUpload({
+  value,
+  onChange,
+  disabled,
+  fieldType = 'image',
+  onFocus,
+  onBlur,
+  onShowToast,
+}: MediaFileUploadProps) {
   const supabase = useSupabase();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { message } = App.useApp();
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -55,21 +66,82 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
 
     setError(null);
 
-    // Validate file
+    // Validate file (size、基础类型等)
     const validation = validateMediaFile(file);
     if (!validation.ok) {
-      setError(validation.error || 'Invalid file');
+      const msg = validation.error || 'Invalid file';
+      setError(msg);
+      if (onShowToast) {
+        onShowToast(msg, 'error');
+      } else {
+        message.error(msg);
+      }
+      return;
+    }
+
+    // 根据当前字段类型进行更细粒度的类型校验
+    const fileType = file.type;
+    const fileName = file.name.toLowerCase();
+    let typeError: string | null = null;
+
+    if (fieldType === 'image') {
+      if (!fileType.startsWith('image/')) {
+        typeError = 'Please upload an image file';
+      }
+    } else if (fieldType === 'multimedia') {
+      // 目前 accept 只允许 mp4
+      if (fileType !== 'video/mp4') {
+        typeError = 'Please upload an MP4 video file';
+      }
+    } else if (fieldType === 'audio') {
+      const isAudioMime = fileType.startsWith('audio/');
+      const audioExts = ['.mp3', '.m4a', '.wav', '.ogg'];
+      const hasAllowedExt = audioExts.some((ext) => fileName.endsWith(ext));
+      if (!isAudioMime && !hasAllowedExt) {
+        typeError = 'Please upload an audio file';
+      }
+    } else if (fieldType === 'file') {
+      const allowedExts = ['.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.txt', '.csv'];
+      const hasAllowedExt = allowedExts.some((ext) => fileName.endsWith(ext));
+      if (!hasAllowedExt) {
+        typeError = 'Please upload a supported document file';
+      }
+    }
+
+    if (typeError) {
+      setError(typeError);
+      if (onShowToast) {
+        onShowToast(typeError, 'error');
+      } else {
+        message.error(typeError);
+      }
+      // 重置 input，避免选择同一个错误文件时 onChange 不触发
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       return;
     }
 
     // Check authentication status
     if (authLoading) {
-      setError('Please wait while we verify your authentication...');
+      const msg = 'Please wait while we verify your authentication...';
+      setError(msg);
+      if (onShowToast) {
+        onShowToast(msg, 'error');
+      } else {
+        message.error(msg);
+      }
       return;
     }
 
     if (!isAuthenticated) {
-      setError('Please sign in to upload files');
+      const msg = 'Please sign in to upload files';
+      setError(msg);
+      if (onShowToast) {
+        onShowToast(msg, 'error');
+      } else {
+        message.error(msg);
+      }
       return;
     }
 
@@ -90,7 +162,13 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
         onBlur?.();
       }, 2000);
     } catch (e: any) {
-      setError(e?.message || 'Upload failed');
+      const msg = e?.message || 'Upload failed';
+      setError(msg);
+      if (onShowToast) {
+        onShowToast(msg, 'error');
+      } else {
+        message.error(msg);
+      }
       setUploadProgress('');
       // Delay blur even on error to show the error state
       setTimeout(() => {
@@ -127,7 +205,13 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
       onChange(null);
       setUploadProgress('');
     } catch (e: any) {
-      setError(e?.message || 'Failed to delete file');
+      const msg = e?.message || 'Failed to delete file';
+      setError(msg);
+      if (onShowToast) {
+        onShowToast(msg, 'error');
+      } else {
+        message.error(msg);
+      }
       setUploadProgress('');
     } finally {
       setUploading(false);
@@ -149,7 +233,7 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
     onFocus?.();
     fileInputRef.current?.click();
   };
-  
+
   const handleFileInputChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
     // Handle file selection (blur will be called after upload completes)
     await handleFileSelect(event);
@@ -280,7 +364,7 @@ export function MediaFileUpload({ value, onChange, disabled, fieldType = 'image'
         </div>
       )}
 
-      {error && <div className={styles.errorMessage}>{error}</div>}
+      {/* 使用全局 toast 提示错误，这里不再单独渲染错误文本 */}
 
       {/* Image Preview Modal */}
       {showImagePreview && value && isImageFile(value.fileType) && (

@@ -86,6 +86,8 @@ export type TableHeaderProps = {
   allRowsSelected: boolean;
   hasSomeRowsSelected: boolean;
   onToggleSelectAll: (checked: boolean) => void;
+  /** 当前库的全部字段列表，用于下钻到 EditColumnModal 做重名校验 */
+  existingProperties?: PropertyConfig[];
   /** When true (e.g. section tabs mode), hide the section name row and only show property names */
   showSectionRow?: boolean;
   /** Whether to show the "add column" button column at the right side of header */
@@ -101,6 +103,7 @@ export function TableHeader({
   allRowsSelected,
   hasSomeRowsSelected,
   onToggleSelectAll,
+  existingProperties,
   showSectionRow = true,
   showAddColumn = false,
   onAddColumnClick,
@@ -461,6 +464,7 @@ export function TableHeader({
         propertyEnumOptions={editTarget.propertyEnumOptions}
         propertyReferenceLibraries={editTarget.propertyReferenceLibraries}
         propertyFormulaExpression={editTarget.propertyFormulaExpression}
+        existingProperties={existingProperties}
         onClose={() => setEditTarget({ open: false })}
       />
     </>
