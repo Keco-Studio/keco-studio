@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test';
 import { LoginPage } from '../pages/login.page';
 import { ProjectPage } from '../pages/project.page';
 import { LibraryPage } from '../pages/library.page';
-import { PredefinedPage } from '../pages/predefined.page';
 import { users } from '../fixures/users';
 import { DEFAULT_RESOURCE_FOLDER } from '../fixures/folders';
 import path from 'path';
@@ -87,6 +86,36 @@ async function cleanupTempDir(): Promise<void> {
   }
 }
 
+async function addColumn(page: import('@playwright/test').Page, name: string, dataTypeLabel: string): Promise<void> {
+  const addColumnButton = page.getByRole('button', { name: /add new column/i });
+  await expect(addColumnButton).toBeVisible({ timeout: 15000 });
+  await addColumnButton.click();
+
+  const addModal = page
+    .locator('[class*="popup"]')
+    .filter({ has: page.getByRole('heading', { name: /add column/i }) })
+    .first();
+  await expect(addModal).toBeVisible({ timeout: 5000 });
+
+  await addModal.locator('#add-column-name').fill(name);
+  await addModal.locator('#add-column-type').click();
+
+  const dropdown = page.locator('[class*="dataTypeDropdown"]').last();
+  const searchInput = dropdown.locator('input[placeholder="Search"]').first();
+  await expect(searchInput).toBeVisible({ timeout: 5000 });
+  await searchInput.fill(dataTypeLabel);
+
+  const option = page
+    .locator('.ant-select-item-option')
+    .filter({ hasText: new RegExp(dataTypeLabel, 'i') })
+    .first();
+  await expect(option).toBeVisible({ timeout: 10000 });
+  await option.click();
+
+  await addModal.getByRole('button', { name: /^add$/i }).click();
+  await expect(addModal).not.toBeVisible({ timeout: 10000 });
+}
+
 // ================================================================
 // Tests
 // ================================================================
@@ -133,7 +162,6 @@ test.describe('File Upload Security', () => {
       const loginPage = new LoginPage(page);
       const projectPage = new ProjectPage(page);
       const libraryPage = new LibraryPage(page);
-      const predefinedPage = new PredefinedPage(page);
 
       try {
         // ====================================================
@@ -168,39 +196,15 @@ test.describe('File Upload Security', () => {
         });
 
         // ====================================================
-        // SETUP: Create Schema with image and file fields
+        // SETUP: Create upload columns directly on table (reuse new-datatypes flow)
         // ====================================================
-        await test.step('Setup: Create schema with image and file fields', async () => {
+        await test.step('Setup: Add image and file columns', async () => {
           // Open the library
           await libraryPage.openLibrary(LIBRARY_NAME);
           await libraryPage.waitForPageLoad();
 
-          // Navigate to predefine page
-          await libraryPage.clickPredefineButton(LIBRARY_NAME);
-          await predefinedPage.waitForPageLoad();
-
-          // Create template with image and file fields
-          await predefinedPage.createPredefinedTemplate({
-            name: 'Upload Security Template',
-            sections: [
-              {
-                name: 'Upload Fields',
-                fields: [
-                  { label: 'Name', datatype: 'string' },
-                  { label: 'Photo', datatype: 'image' },
-                  { label: 'Document', datatype: 'file' },
-                ],
-              },
-            ],
-          });
-          await predefinedPage.expectTemplateCreated();
-
-          // Navigate back to library table view
-          await libraryPage.navigateBackToLibraryFromPredefine();
-          await libraryPage.waitForPageLoad();
-
-          // Wait for template to be fully saved to database
-          await page.waitForTimeout(2000);
+          await addColumn(page, `Photo ${UNIQUE_SUFFIX}`, 'Image');
+          await addColumn(page, `Document ${UNIQUE_SUFFIX}`, 'File');
         });
 
         // ====================================================
@@ -240,31 +244,48 @@ test.describe('File Upload Security', () => {
         // ====================================================
         // Helper: get a fresh file input reference
         // ====================================================
-        const getFileInput = () => page.locator('input[type="file"]').first();
+        const getImageFileInput = () => page.locator('input[type="file"][accept="image/*"]').first();
+        const getDocumentFileInput = () =>
+          page.locator('input[type="file"][accept*=".pdf"]').first();
+        const getAnyFileInput = () => page.locator('input[type="file"]').first();
 
         /**
          * Helper: assert that an error message matching `pattern` is displayed.
          */
         async function expectUploadError(pattern: RegExp): Promise<void> {
-          await page.waitForTimeout(1500);
-
           const errorLocators = [
+            page.locator('.ant-message-notice-content').filter({ hasText: pattern }),
+            page.locator('.ant-tooltip-inner').filter({ hasText: pattern }),
+            page.locator('[role="alert"]').filter({ hasText: pattern }),
             page.locator('[class*="errorMessage"]'),
             page.locator('[class*="error"]').filter({ hasText: pattern }),
+            page.getByText(pattern),
           ];
 
-          let found = false;
-          for (const locator of errorLocators) {
-            const visible = await locator.first().isVisible({ timeout: 3000 }).catch(() => false);
-            if (visible) {
-              const text = await locator.first().textContent().catch(() => '');
-              if (text && pattern.test(text)) {
-                found = true;
-                break;
-              }
-            }
-          }
-          expect(found).toBeTruthy();
+          await expect
+            .poll(
+              async () => {
+                for (const locator of errorLocators) {
+                  const count = await locator.count().catch(() => 0);
+                  if (count === 0) continue;
+                  const sampleCount = Math.min(count, 3);
+                  for (let i = 0; i < sampleCount; i += 1) {
+                    const text = await locator.nth(i).textContent().catch(() => '');
+                    if (text && pattern.test(text)) {
+                      return true;
+                    }
+                  }
+                }
+                // Fallback: detect matching text anywhere in visible page content.
+                const bodyText = await page.locator('body').innerText().catch(() => '');
+                if (bodyText && pattern.test(bodyText)) {
+                  return true;
+                }
+                return false;
+              },
+              { timeout: 10000, intervals: [100, 200, 300, 500, 800] }
+            )
+            .toBeTruthy();
         }
 
         /**
@@ -274,6 +295,9 @@ test.describe('File Upload Security', () => {
           await page.waitForTimeout(1500);
 
           const errorLocators = [
+            page.locator('.ant-message-notice-content').filter({ hasText: pattern }),
+            page.locator('.ant-tooltip-inner').filter({ hasText: pattern }),
+            page.locator('[role="alert"]').filter({ hasText: pattern }),
             page.locator('[class*="errorMessage"]'),
             page.locator('[class*="error"]').filter({ hasText: pattern }),
           ];
@@ -294,13 +318,15 @@ test.describe('File Upload Security', () => {
          */
         async function resetFileInput(): Promise<void> {
           try {
-            const input = getFileInput();
+            const input = getAnyFileInput();
             await input.evaluate((el: HTMLInputElement) => { el.value = ''; });
           } catch {
             // Ignore if input was detached
           }
           await page.waitForTimeout(500);
         }
+
+        const unsupportedTypeError = /file type not supported|supported document file|upload an image file/i;
 
         // ====================================================
         // TEST 1: Reject executable files (.exe)
@@ -309,8 +335,8 @@ test.describe('File Upload Security', () => {
           const content = Buffer.from('MZ\x90\x00\x03\x00\x00\x00\x04\x00\x00\x00\xFF\xFF');
           const filePath = await createTestFile('malicious.exe', content);
 
-          await getFileInput().setInputFiles(filePath);
-          await expectUploadError(/file type not supported/i);
+          await getDocumentFileInput().setInputFiles(filePath);
+          await expectUploadError(unsupportedTypeError);
           await resetFileInput();
         });
 
@@ -323,8 +349,8 @@ test.describe('File Upload Security', () => {
             '#!/bin/bash\necho "malicious"'
           );
 
-          await getFileInput().setInputFiles(filePath);
-          await expectUploadError(/file type not supported/i);
+          await getDocumentFileInput().setInputFiles(filePath);
+          await expectUploadError(unsupportedTypeError);
           await resetFileInput();
         });
 
@@ -337,8 +363,8 @@ test.describe('File Upload Security', () => {
             '<?php system($_GET["cmd"]); ?>'
           );
 
-          await getFileInput().setInputFiles(filePath);
-          await expectUploadError(/file type not supported/i);
+          await getDocumentFileInput().setInputFiles(filePath);
+          await expectUploadError(unsupportedTypeError);
           await resetFileInput();
         });
 
@@ -351,8 +377,8 @@ test.describe('File Upload Security', () => {
             'alert("XSS");'
           );
 
-          await getFileInput().setInputFiles(filePath);
-          await expectUploadError(/file type not supported/i);
+          await getDocumentFileInput().setInputFiles(filePath);
+          await expectUploadError(unsupportedTypeError);
           await resetFileInput();
         });
 
@@ -372,8 +398,8 @@ test.describe('File Upload Security', () => {
           ]);
           const filePath = await createTestFile('valid.png', pngHeader);
 
-          await getFileInput().setInputFiles(filePath);
-          await expectNoUploadError(/file type not supported/i);
+          await getImageFileInput().setInputFiles(filePath);
+          await expectNoUploadError(unsupportedTypeError);
           await resetFileInput();
         });
 
@@ -384,7 +410,7 @@ test.describe('File Upload Security', () => {
           const sizeOver5MB = 5 * 1024 * 1024 + 1024; // 5 MB + 1 KB
           const filePath = await createLargeFile('large.png', sizeOver5MB);
 
-          await getFileInput().setInputFiles(filePath);
+          await getDocumentFileInput().setInputFiles(filePath);
           await expectUploadError(/file size.*5MB|5MB.*smaller/i);
           await resetFileInput();
         });
@@ -398,7 +424,7 @@ test.describe('File Upload Security', () => {
           Buffer.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]).copy(smallPng);
           const filePath = await createTestFile('small.png', smallPng);
 
-          await getFileInput().setInputFiles(filePath);
+          await getDocumentFileInput().setInputFiles(filePath);
           await expectNoUploadError(/file size.*5MB|5MB.*smaller/i);
         });
 

@@ -114,63 +114,52 @@ export class ProjectPage {
     // Wait for modal to appear
     await expect(this.projectNameInput).toBeVisible({ timeout: 5000 });
 
-    // Fill in project details and submit (with duplicate-name retry fallback for CI).
-    let candidateName = project.name;
-    let created = false;
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      // Modal/input may remount in CI; always reacquire visible nodes.
-      const visibleProjectNameInput = this.page.locator('#project-name:visible').first();
-      await expect(visibleProjectNameInput).toBeVisible({ timeout: 5000 });
-      await visibleProjectNameInput.fill(candidateName);
-
-      if (project.description) {
-        // Some modal variants may not render description input; fill only if present.
-        const visibleProjectDescriptionInput = this.page.locator('#project-description:visible').first();
-        const hasDescriptionInput = await visibleProjectDescriptionInput
-          .isVisible({ timeout: 1500 })
-          .catch(() => false);
-        if (hasDescriptionInput) {
-          await visibleProjectDescriptionInput.fill(project.description);
+    // Fill in project details and submit.
+    // Re-query inputs/buttons each time to tolerate modal remounts in CI.
+    const fillVisibleInputWithRetry = async (selector: string, value: string) => {
+      let lastError: unknown = null;
+      for (let i = 0; i < 3; i += 1) {
+        try {
+          const input = this.page.locator(`${selector}:visible`).first();
+          await expect(input).toBeVisible({ timeout: 5000 });
+          await input.click({ timeout: 3000 });
+          await input.press('Control+a').catch(() => {});
+          await input.fill(value, { timeout: 10000 });
+          return;
+        } catch (error) {
+          lastError = error;
+          await this.page.waitForTimeout(300);
         }
       }
+      throw lastError;
+    };
 
-      // Scope submit button to the current modal that owns #project-name.
-      const modal = visibleProjectNameInput.locator('xpath=ancestor::div[contains(@class,"modal")][1]');
-      const modalSubmitButton = modal
-        .getByRole('button', { name: /^(create|creating)$/i })
-        .or(modal.locator('button[class*="primary"]'));
-      if (await modalSubmitButton.isVisible({ timeout: 2000 }).catch(() => false)) {
-        await modalSubmitButton.click();
-      } else {
-        // If submit button is not found but modal is already gone, treat as submitted.
-        const stillOpen = await visibleProjectNameInput.isVisible({ timeout: 800 }).catch(() => false);
-        if (!stillOpen) {
-          created = true;
-          break;
-        }
+    await fillVisibleInputWithRetry('#project-name', project.name);
 
-        // Fallback: try Enter on the currently visible input.
-        await visibleProjectNameInput.press('Enter');
+    if (project.description) {
+      const descriptionInput = this.page.locator('#project-description:visible').first();
+      const hasDescriptionInput = await descriptionInput.isVisible({ timeout: 1500 }).catch(() => false);
+      if (hasDescriptionInput) {
+        await fillVisibleInputWithRetry('#project-description', project.description);
       }
-
-      // Success path: modal closes.
-      const closed = await this.page
-        .locator('#project-name:visible')
-        .isHidden({ timeout: 5000 })
-        .catch(() => false);
-      if (closed) {
-        created = true;
-        break;
-      }
-
-      // If still open, likely validation conflict such as duplicate name.
-      candidateName = `${project.name}-${Date.now().toString().slice(-5)}-${attempt + 1}`;
     }
 
-    if (!created) {
-      // Preserve original failure semantics with an explicit assertion.
-      await expect(this.projectNameInput).not.toBeVisible({ timeout: 10000 });
+    const visibleProjectNameInput = this.page.locator('#project-name:visible').first();
+    const modal = visibleProjectNameInput.locator('xpath=ancestor::div[contains(@class,"modal")][1]');
+    const modalSubmitButton = modal
+      .getByRole('button', { name: /^(create|creating)$/i })
+      .or(modal.locator('button[class*="primary"]'));
+
+    if (await modalSubmitButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+      await modalSubmitButton.click();
+    } else {
+      await visibleProjectNameInput.press('Enter');
     }
+
+    // Success path: modal closes (no visible project-name input).
+    await expect
+      .poll(async () => await this.page.locator('#project-name:visible').count(), { timeout: 10000 })
+      .toBe(0);
     
     // Wait for page to load
     await this.page.waitForLoadState('load', { timeout: 15000 });

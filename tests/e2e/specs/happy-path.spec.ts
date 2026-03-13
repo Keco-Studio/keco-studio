@@ -1,14 +1,12 @@
 import { test, expect } from '@playwright/test';
 import { ProjectPage } from '../pages/project.page';
 import { LibraryPage } from '../pages/library.page';
-import { PredefinedPage } from '../pages/predefined.page';
 import { AssetPage } from '../pages/asset.page';
 import { LoginPage } from '../pages/login.page';
 
 import { generateProjectData } from '../fixures/projects';
 import { libraries } from '../fixures/libraries';
 import { DEFAULT_RESOURCE_FOLDER, folders } from '../fixures/folders';
-import { predefinedTemplates } from '../fixures/predefined';
 import { assets } from '../fixures/assets';
 import { users } from '../fixures/users';
 
@@ -45,14 +43,12 @@ import { users } from '../fixures/users';
 test.describe('Happy Path - Complete User Journey', () => {
   let projectPage: ProjectPage;
   let libraryPage: LibraryPage;
-  let predefinedPage: PredefinedPage;
   let assetPage: AssetPage;
 
   test.beforeEach(async ({ page }) => {
     // Initialize Page Objects
     projectPage = new ProjectPage(page);
     libraryPage = new LibraryPage(page);
-    predefinedPage = new PredefinedPage(page);
     assetPage = new AssetPage(page);
 
     // Authenticate user before navigating to projects
@@ -111,24 +107,14 @@ test.describe('Happy Path - Complete User Journey', () => {
       await libraryPage.openLibrary(libraries.breed.name);
       await libraryPage.waitForPageLoad();
       
-      // Click the predefine button in the sidebar to navigate to predefine page
-      await libraryPage.clickPredefineButton(libraries.breed.name);
-      await predefinedPage.waitForPageLoad();
-      
-      // Create breed schema
-      await predefinedPage.createPredefinedTemplate(predefinedTemplates.breed);
-      await predefinedPage.expectTemplateCreated();
-      
-      // Navigate back to library page to create asset
-      // Note: In predefine page, sidebar doesn't show library tree, so we navigate via URL
-      await libraryPage.navigateBackToLibraryFromPredefine();
-      await libraryPage.waitForPageLoad();
+      // Current UI schema entry: table right-side "+" (Add new column), not /predefine route.
+      await libraryPage.addColumnFromTableSchemaEntry(libraries.breed.name, 'Origin', 'String');
       
       // Wait for template to be fully saved to database (critical in parallel execution)
       await libraryPage.page.waitForTimeout(2000);
       
       // Create breed asset
-      await assetPage.createAsset(predefinedTemplates.breed.name, assets.breed);
+      await assetPage.createAsset('Breed Template', assets.breed);
       await assetPage.expectAssetCreated();
     });
 

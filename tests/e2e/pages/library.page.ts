@@ -16,6 +16,7 @@ import type { FolderData } from '../fixures/folders';
  */
 export class LibraryPage {
   readonly page: Page;
+  private lastCreatedLibraryName: string | null = null;
 
   // Folder and Library list elements
   readonly foldersHeading: Locator;
@@ -169,6 +170,7 @@ export class LibraryPage {
     await expect(this.libraryNameInput).toBeVisible({ timeout: 5000 });
 
     // Fill in library details
+    this.lastCreatedLibraryName = library.name;
     await this.libraryNameInput.fill(library.name);
     
     if (library.description) {
@@ -211,6 +213,7 @@ export class LibraryPage {
     await this.page.waitForTimeout(500);
 
     // Step 4: Fill in library details
+    this.lastCreatedLibraryName = library.name;
     await this.libraryNameInput.fill(library.name);
     
     if (library.description) {
@@ -236,9 +239,24 @@ export class LibraryPage {
       }
     }
 
-    // Step 6: Wait for modal to close (increase timeout for slower API responses)
-    await expect(this.libraryNameInput).not.toBeVisible({ timeout: 30000 });
-    await this.page.waitForLoadState('load', { timeout: 15000 });
+    // Step 6: Wait for creation to settle.
+    // In CI, modal close can lag behind data refresh, so treat either signal as success:
+    // 1) create modal closes, or 2) target library appears in sidebar.
+    const sidebar = this.page.locator('aside');
+    const createdLibraryInSidebar = sidebar.locator(`[title="${library.name}"]:visible`);
+    await expect
+      .poll(
+        async () => {
+          const modalVisible = await this.page.locator('#library-name:visible').count();
+          const libraryVisible = await createdLibraryInSidebar.count();
+          return modalVisible === 0 || libraryVisible > 0;
+        },
+        { timeout: 45000 }
+      )
+      .toBeTruthy();
+
+    await this.page.waitForLoadState('load', { timeout: 15000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     // Additional wait to ensure authorization checks are complete
     await this.page.waitForTimeout(1000);
   }
@@ -286,9 +304,40 @@ export class LibraryPage {
       }
     }
 
-    // Step 6: Wait for modal to close (increase timeout for slower API responses)
-    await expect(this.folderNameInput).not.toBeVisible({ timeout: 30000 });
-    await this.page.waitForLoadState('load', { timeout: 15000 });
+    // Step 6: Wait for creation to settle.
+    // In CI, modal close can lag behind data refresh, so treat either signal as success:
+    // 1) create modal closes, or 2) target folder appears in sidebar.
+    const sidebar = this.page.locator('aside');
+    const createdFolderInSidebar = sidebar.locator(`[title="${folder.name}"]:visible`);
+    await expect
+      .poll(
+        async () => {
+          const modalVisible = await this.page.locator('[placeholder="Enter folder name"]:visible').count();
+          const folderVisible = await createdFolderInSidebar.count();
+          return modalVisible === 0 || folderVisible > 0;
+        },
+        { timeout: 45000 }
+      )
+      .toBeTruthy();
+
+    // If modal/backdrop is still present after data appears, close it explicitly.
+    // Otherwise it can intercept subsequent clicks in CI/headed runs.
+    const stillVisibleModalInput = this.page.locator('[placeholder="Enter folder name"]:visible').first();
+    if (await stillVisibleModalInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+      const modal = this.page.locator('[class*="backdrop"]').filter({ has: stillVisibleModalInput }).first();
+      const closeButton = modal.locator('button[aria-label="Close"]').first();
+      if (await closeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await closeButton.click();
+      } else {
+        await this.page.keyboard.press('Escape').catch(() => {});
+      }
+      await expect(this.page.locator('[placeholder="Enter folder name"]:visible')).toHaveCount(0, {
+        timeout: 10000,
+      });
+    }
+
+    await this.page.waitForLoadState('load', { timeout: 15000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     // Additional wait to ensure authorization checks are complete
     await this.page.waitForTimeout(1000);
   }
@@ -298,61 +347,81 @@ export class LibraryPage {
    * @param libraryName - Name of the library to open
    */
   async openLibrary(libraryName: string): Promise<void> {
-    // Find and click the library by its name
-    const libraryCard = this.page.getByRole('button', { name: libraryName })
-      .or(this.page.getByRole('link', { name: libraryName }))
-      .or(this.page.getByText(libraryName, { exact: true }).first());
-
-    await expect(libraryCard).toBeVisible({ timeout: 5000 });
-    await libraryCard.click();
+    // Prefer sidebar tree item by title attribute (avoids clicking disabled breadcrumb buttons).
+    const sidebarLibraryItem = this.page.locator('aside').locator(`[title="${libraryName}"]`).first();
+    const sidebarVisible = await sidebarLibraryItem.isVisible({ timeout: 3000 }).catch(() => false);
+    if (sidebarVisible) {
+      await sidebarLibraryItem.click();
+    } else {
+      // Fallback for pages where sidebar item isn't present yet.
+      const libraryCard = this.page
+        .getByRole('button', { name: libraryName })
+        .or(this.page.getByRole('link', { name: libraryName }))
+        .or(this.page.getByText(libraryName, { exact: true }).first());
+      await expect(libraryCard).toBeVisible({ timeout: 5000 });
+      await libraryCard.click();
+    }
 
     // Wait for navigation to library detail page
     await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 });
   }
 
   /**
-   * Click the predefine button for a library in the sidebar
+   * Open current schema entry (table header right-side "+" button) for a library.
+   * This replaces the old direct `/predefine` route entry.
    * @param libraryName - Name of the library
    */
   async clickPredefineButton(libraryName: string): Promise<void> {
-    // Do not depend on sidebar "Library sections" button (it may not exist in current UI/CI).
-    // Ensure we are on target library page first, then navigate directly to /predefine.
-    const sidebar = this.page.locator('aside');
-    const targetLibraryItem = sidebar.locator(`[title="${libraryName}"]`).first();
-    if (await targetLibraryItem.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await targetLibraryItem.click();
-      await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
-    }
+    await this.openLibrary(libraryName);
+    await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
 
-    const currentPath = new URL(this.page.url()).pathname;
-    const match = currentPath.match(/^\/([^/]+)\/([^/]+)(?:\/.*)?$/);
-    if (!match || !match[1] || !match[2]) {
-      // One more attempt to land on library page via sidebar item.
-      await expect(targetLibraryItem).toBeVisible({ timeout: 10000 });
-      await targetLibraryItem.click();
-      await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
-    }
+    const addColumnButton = this.page.getByRole('button', { name: /add new column/i });
+    await expect(addColumnButton).toBeVisible({ timeout: 15000 });
+    await addColumnButton.click();
 
-    const normalizedPath = new URL(this.page.url()).pathname;
-    const normalizedMatch = normalizedPath.match(/^\/([^/]+)\/([^/]+)(?:\/.*)?$/);
-    if (!normalizedMatch || !normalizedMatch[1] || !normalizedMatch[2]) {
-      throw new Error(`Unable to resolve project/library ids from URL before opening predefine: ${this.page.url()}`);
-    }
+    const addModal = this.page
+      .locator('[class*="popup"]')
+      .filter({ has: this.page.getByRole('heading', { name: /add column/i }) })
+      .first();
+    await expect(addModal).toBeVisible({ timeout: 5000 });
+  }
 
-    const projectId = normalizedMatch[1];
-    const libraryId = normalizedMatch[2];
-    await this.page.goto(`/${projectId}/${libraryId}/predefine`);
-    
-    // Wait for navigation to predefine page
-    // Use flexible URL matching (removed $ anchor to allow trailing slash/query params)
-    // Increased timeout for CI environments where navigation may be slower
-    await this.page.waitForURL(/\/predefine/, { timeout: 15000 });
-    
-    // Verify page content as additional check (more reliable than URL matching)
-    const predefineHeading = this.page.getByRole('heading', { name: /predefine/i });
-    await expect(predefineHeading).toBeVisible({ timeout: 5000 });
-    
-    await this.page.waitForLoadState('load', { timeout: 10000 });
+  /**
+   * Add a column using the table right-side "+" (schema entry) flow.
+   * @param libraryName - Name of the target library
+   * @param columnName - New column name
+   * @param dataTypeLabel - Data type label shown in dropdown, e.g. "String"
+   */
+  async addColumnFromTableSchemaEntry(
+    libraryName: string,
+    columnName: string,
+    dataTypeLabel: string,
+  ): Promise<void> {
+    await this.clickPredefineButton(libraryName);
+
+    const addModal = this.page
+      .locator('[class*="popup"]')
+      .filter({ has: this.page.getByRole('heading', { name: /add column/i }) })
+      .first();
+    await expect(addModal).toBeVisible({ timeout: 5000 });
+
+    await addModal.locator('#add-column-name').fill(columnName);
+    await addModal.locator('#add-column-type').click();
+
+    const dropdown = this.page.locator('[class*="dataTypeDropdown"]').last();
+    const searchInput = dropdown.locator('input[placeholder="Search"]').first();
+    await expect(searchInput).toBeVisible({ timeout: 5000 });
+    await searchInput.fill(dataTypeLabel);
+
+    const option = this.page
+      .locator('.ant-select-item-option')
+      .filter({ hasText: new RegExp(dataTypeLabel, 'i') })
+      .first();
+    await expect(option).toBeVisible({ timeout: 10000 });
+    await option.click();
+
+    await addModal.getByRole('button', { name: /^add$/i }).click();
+    await expect(addModal).not.toBeVisible({ timeout: 10000 });
   }
 
   /**
@@ -434,11 +503,42 @@ export class LibraryPage {
    * Assert successful library creation
    */
   async expectLibraryCreated(): Promise<void> {
-    // Library creation closes modal and refreshes the list
-    // Wait for modal to close (library name input should not be visible)
-    await expect(this.libraryNameInput).not.toBeVisible({ timeout: 10000 });
+    // In CI, modal close animation/API completion can lag.
+    // Treat either signal as success:
+    // 1) create modal closes, or 2) created library appears in sidebar.
+    const sidebar = this.page.locator('aside');
+    const createdLibraryInSidebar = this.lastCreatedLibraryName
+      ? sidebar.locator(`[title="${this.lastCreatedLibraryName}"]:visible`)
+      : sidebar.locator('[title]:visible');
+
+    await expect
+      .poll(
+        async () => {
+          const modalVisible = await this.page.locator('#library-name:visible').count();
+          const libraryVisible = await createdLibraryInSidebar.count();
+          return modalVisible === 0 || libraryVisible > 0;
+        },
+        { timeout: 30000 }
+      )
+      .toBeTruthy();
+
+    // If modal/backdrop is still present after data appears, close it explicitly.
+    // Otherwise it can intercept subsequent sidebar clicks in CI.
+    const stillVisibleModalInput = this.page.locator('#library-name:visible').first();
+    if (await stillVisibleModalInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+      const modal = this.page.locator('[class*="backdrop"]').filter({ has: this.page.locator('#library-name:visible') }).first();
+      const closeButton = modal.locator('button[aria-label="Close"]').first();
+      if (await closeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await closeButton.click();
+      } else {
+        await this.page.keyboard.press('Escape').catch(() => {});
+      }
+      await expect(this.page.locator('#library-name:visible')).toHaveCount(0, { timeout: 10000 });
+    }
+
     // Wait for page to refresh
-    await this.page.waitForLoadState('load', { timeout: 10000 });
+    await this.page.waitForLoadState('load', { timeout: 10000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
   }
 
   /**

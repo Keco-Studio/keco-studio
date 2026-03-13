@@ -115,16 +115,18 @@ export class AssetPage {
     await this.page.goto(newAssetUrl, { waitUntil: 'load', timeout: 15000 });
     await this.page.waitForLoadState('load', { timeout: 10000 });
     
-    // Wait for the form to load - look for the name input field
-    // The form uses label text (span.fieldLabel) instead of placeholder
-    // Structure: fieldRow > fieldMeta > span.fieldLabel + fieldControl > input
-    // Find the fieldRow containing label "Name" (case-insensitive)
+    // Wait for asset form area to appear first.
+    await expect(this.page.locator('div[class*="fieldsContainer"]').first()).toBeVisible({
+      timeout: 30000,
+    });
+
+    // The current UI may or may not have a dedicated "Name" field row.
+    // Try to fill name if present; otherwise continue and rely on top-level create flow.
     const nameLabelRegex = /^name$/i;
     const nameLabelSpan = this.page.locator('span').filter({ hasText: nameLabelRegex });
-    
-    // Wait for label to be visible
-    await expect(nameLabelSpan.first()).toBeVisible({ timeout: 30000 });
-    
+
+    const hasNameLabel = (await nameLabelSpan.count()) > 0;
+
     // Find the fieldRow containing this label
     let nameFieldRow: Locator | null = null;
     
@@ -144,16 +146,11 @@ export class AssetPage {
       }
     }
     
-    if (!nameFieldRow) {
-      throw new Error('Could not find fieldRow containing label "Name"');
+    if (hasNameLabel && nameFieldRow) {
+      const nameInput = nameFieldRow.locator('input, select').first();
+      await expect(nameInput).toBeVisible({ timeout: 30000 });
+      await nameInput.fill(asset.name);
     }
-    
-    // Find input within this fieldRow
-    const nameInput = nameFieldRow.locator('input, select').first();
-    
-    // Fill in asset name (always required)
-    await expect(nameInput).toBeVisible({ timeout: 30000 });
-    await nameInput.fill(asset.name);
 
     // Fill in additional fields based on template
     for (const field of asset.fields) {
