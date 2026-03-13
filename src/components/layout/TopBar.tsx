@@ -140,7 +140,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         };
       });
 
-    // 限制总结果数量，避免下拉太长
+    // Limit the total number of results to prevent the dropdown from becoming excessively long.
     const all = [...projectResults, ...folderResults, ...libraryResults];
     return all.slice(0, 20);
   }, [searchQuery, projects, folders, libraries]);
@@ -151,7 +151,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         ? searchResults
         : searchResults.filter((item) => item.type === searchFilter);
 
-    // 按创建时间从新到旧排序（createdAt 越晚越靠前）
+    // Sort by creation time from newest to oldest
     return [...baseResults].sort((a, b) => {
       const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
       const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
@@ -182,17 +182,17 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       });
     }
 
-    // 24 小时内：用 "x hours ago"
+    // Within 24 hours: use "x hours ago"
     if (diffHours < 24) {
       return `${Math.max(diffHours, 1)} hours ago`;
     }
 
-    // 7 天内：用 "x days ago"
+    // Within 7 days: use "x days ago"
     if (diffDays < 7) {
       return `${diffDays} days ago`;
     }
 
-    // 超过 7 天：用日期，例如 "2025-03-11"
+    // More than 7 days: use the date, e.g. "2025-03-11"
     const year = date.getFullYear();
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const day = String(date.getDate()).padStart(2, '0');
