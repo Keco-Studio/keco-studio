@@ -89,15 +89,34 @@ async function cleanupTempDir(): Promise<void> {
 async function addColumn(page: import('@playwright/test').Page, name: string, dataTypeLabel: string): Promise<void> {
   const addColumnButton = page.getByRole('button', { name: /add new column/i });
   await expect(addColumnButton).toBeVisible({ timeout: 15000 });
+  const addModal = page.getByRole('dialog', { name: /add column/i }).first();
   await addColumnButton.click();
-
-  const addModal = page
-    .locator('[class*="popup"]')
-    .filter({ has: page.getByRole('heading', { name: /add column/i }) })
-    .first();
+  if (!(await addModal.isVisible({ timeout: 1200 }).catch(() => false))) {
+    await addColumnButton.click({ force: true });
+  }
   await expect(addModal).toBeVisible({ timeout: 5000 });
 
-  await addModal.locator('#add-column-name').fill(name);
+  const nameInput = addModal.locator('#add-column-name:visible').first();
+  await expect(nameInput).toBeVisible({ timeout: 5000 });
+  for (let i = 0; i < 3; i += 1) {
+    await nameInput.click();
+    await nameInput.fill('');
+    await nameInput.type(name, { delay: 20 });
+    let current = await nameInput.inputValue();
+    if (current === name) break;
+    await nameInput.evaluate((el, v) => {
+      const node = el as HTMLInputElement;
+      node.value = v;
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+    }, name);
+    current = await nameInput.inputValue();
+    if (current === name) break;
+    if (i === 2) {
+      throw new Error('Failed to persist header name while adding column.');
+    }
+  }
+
   await addModal.locator('#add-column-type').click();
 
   const dropdown = page.locator('[class*="dataTypeDropdown"]').last();
@@ -113,6 +132,12 @@ async function addColumn(page: import('@playwright/test').Page, name: string, da
   await option.click();
 
   await addModal.getByRole('button', { name: /^add$/i }).click();
+  // Transient rerender may clear header just before submit; refill once and retry submit.
+  if (await addModal.locator('[class*="errorText"]').getByText(/header name is required\./i).isVisible({ timeout: 1200 }).catch(() => false)) {
+    await nameInput.click();
+    await nameInput.fill(name);
+    await addModal.getByRole('button', { name: /^add$/i }).click();
+  }
   await expect(addModal).not.toBeVisible({ timeout: 10000 });
 }
 
