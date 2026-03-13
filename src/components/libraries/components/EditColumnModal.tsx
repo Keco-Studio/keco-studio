@@ -69,6 +69,8 @@ const EMPTY_STATE: EditColumnFormState = {
   error: null,
 };
 
+const HEADER_NAME_PATTERN = /^[A-Za-z0-9_]+$/;
+
 export function EditColumnModal({
   open,
   anchorPosition,
@@ -331,6 +333,13 @@ export function EditColumnModal({
       }));
       return false;
     }
+    if (!HEADER_NAME_PATTERN.test(trimmedName)) {
+      setEditColumnModal((prev) => ({
+        ...prev,
+        error: 'Header name can only contain letters, numbers, and _ .',
+      }));
+      return false;
+    }
     if (
       existingProperties &&
       existingProperties.some(
@@ -582,12 +591,21 @@ export function EditColumnModal({
           <Input
             id="edit-column-name"
             value={editColumnModal.name}
-            onChange={(e) =>
-              setEditColumnModal((prev) => ({
-                ...prev,
-                name: e.target.value,
-              }))
-            }
+            onChange={(e) => {
+              const value = e.target.value;
+              if (!value || HEADER_NAME_PATTERN.test(value)) {
+                setEditColumnModal((prev) => ({
+                  ...prev,
+                  name: value,
+                  error: null,
+                }));
+              } else {
+                setEditColumnModal((prev) => ({
+                  ...prev,
+                  error: 'Header name can only contain letters, numbers, and underscores.',
+                }));
+              }
+            }}
             maxLength={200}
             className={styles.input}
           />
