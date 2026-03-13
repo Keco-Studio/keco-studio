@@ -409,7 +409,18 @@ const evaluateFormulaForRow = (
     const columnNames = Array.from(propertyByName.keys()).sort(
       (a, b) => b.length - a.length,
     );
-    let jsExpr = trimmedExpr;
+
+    // 在进行列名替换之前，先用占位符暂存字符串字面量，避免把字符串中的内容当作列名替换掉
+    const stringLiterals: string[] = [];
+    let jsExpr = trimmedExpr.replace(
+      /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g,
+      (match) => {
+        const idx = stringLiterals.length;
+        stringLiterals.push(match);
+        return `__STR_LITERAL_${idx}__`;
+      },
+    );
+
     for (const name of columnNames) {
       const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       const re = new RegExp(`\\b${safeName}\\b`, 'g');
@@ -431,6 +442,14 @@ const evaluateFormulaForRow = (
       .replace(/=/g, '==')
       .replace(/__GTE__/g, '>=')
       .replace(/__LTE__/g, '<=');
+
+    // 将之前暂存的字符串字面量占位符还原回去
+    jsExpr = jsExpr.replace(/__STR_LITERAL_(\d+)__/g, (_, indexStr) => {
+      const index = Number(indexStr);
+      return Number.isFinite(index) && stringLiterals[index] !== undefined
+        ? stringLiterals[index]
+        : '';
+    });
 
     // eslint-disable-next-line no-new-func
     const fn = new Function(
@@ -809,9 +828,6 @@ export function LibraryAssetsTable({
     setOptimisticEditUpdates,
   });
 
-  const hasProperties = properties.length > 0;
-  const hasRows = rows.length > 0;
-  
   const broadcastCellUpdateIfEnabled = useCallback(async (
     assetId: string,
     propertyKey: string,
@@ -1361,10 +1377,6 @@ export function LibraryAssetsTable({
       fillDragStartCell.propertyKey
     );
   }, [fillDragStartCell, selectedCells, getAllRowsForCellSelection, getIntSequencePreviewValues]);
-
-  if (!hasProperties) {
-    return <EmptyState userRole={userRole} onPredefineClick={handlePredefineClick} />;
-  }
 
   const totalColumns = 1 + activeProperties.length;
 
