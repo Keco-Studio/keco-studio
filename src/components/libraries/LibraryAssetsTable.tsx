@@ -284,13 +284,17 @@ const evaluateFormulaForRow = (
     }
   });
 
-  // 如果存在非函数名的标识符，但在当前列列表中找不到对应列名，则视为引用错误，直接返回 #REF!。
-  for (const token of tokens) {
-    if (token.type !== 'identifier') continue;
-    const upper = token.value.toUpperCase();
-    if (FUNCTION_NAMES.has(upper)) continue;
-    if (!propertyByName.has(token.value)) {
-      return FORMULA_REF_ERROR;
+  // 对于不包含函数调用的简单表达式，提前校验列引用是否存在；
+  // 对于包含 IF / SUM 等函数的高级表达式，交由 COL 帮助函数在运行期处理，
+  // 以避免将字符串常量（例如 "true" / "false"）误判为列名导致 #REF!。
+  if (!hasFunctionIdentifier) {
+    for (const token of tokens) {
+      if (token.type !== 'identifier') continue;
+      const upper = token.value.toUpperCase();
+      if (FUNCTION_NAMES.has(upper)) continue;
+      if (!propertyByName.has(token.value)) {
+        return FORMULA_REF_ERROR;
+      }
     }
   }
 

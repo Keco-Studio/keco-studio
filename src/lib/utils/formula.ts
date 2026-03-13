@@ -47,12 +47,20 @@ function extractIdentifiersFromFormulaExpression(
     : expression.trim();
   if (!trimmedExpr) return [];
 
+  // 为了避免把字符串字面量中的内容（例如 "true" / "sdas"）误识别为列名，
+  // 在后续用正则提取标识符之前，先用占位符替换掉所有字符串字面量。
+  // 支持双引号和单引号，简单处理转义字符。
+  const exprWithoutStrings = trimmedExpr.replace(
+    /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g,
+    '""'
+  );
+
   const identifiers = new Set<string>();
 
   // 1) [Column Name] 形式，直接抓中括号里的列名
   const bracketRegex = /\[([^\]]+)\]/g;
   let m: RegExpExecArray | null;
-  while ((m = bracketRegex.exec(trimmedExpr)) !== null) {
+  while ((m = bracketRegex.exec(exprWithoutStrings)) !== null) {
     const name = m[1].trim();
     if (name) {
       identifiers.add(name);
@@ -70,7 +78,7 @@ function extractIdentifiersFromFormulaExpression(
   ]);
 
   const identRegex = /[A-Za-z_$][A-Za-z0-9_$]*/g;
-  while ((m = identRegex.exec(trimmedExpr)) !== null) {
+  while ((m = identRegex.exec(exprWithoutStrings)) !== null) {
     const raw = m[0];
     const upper = raw.toUpperCase();
     if (FUNCTION_NAMES.has(upper)) continue;
