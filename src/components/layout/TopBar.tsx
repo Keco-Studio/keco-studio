@@ -146,8 +146,17 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   }, [searchQuery, projects, folders, libraries]);
 
   const filteredSearchResults = useMemo(() => {
-    if (searchFilter === 'all') return searchResults;
-    return searchResults.filter((item) => item.type === searchFilter);
+    const baseResults =
+      searchFilter === 'all'
+        ? searchResults
+        : searchResults.filter((item) => item.type === searchFilter);
+
+    // 按创建时间从新到旧排序（createdAt 越晚越靠前）
+    return [...baseResults].sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
   }, [searchResults, searchFilter]);
 
   const formatCreatedAtLabel = (createdAt?: string | null) => {
