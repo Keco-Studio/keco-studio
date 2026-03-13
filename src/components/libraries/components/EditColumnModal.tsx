@@ -18,6 +18,7 @@ import {
   isFormulaExpressionValid,
   type FormulaEvaluableField,
   hasFormulaCircularReference,
+  getFormulaReferencedFieldNames,
 } from '@/lib/utils/formula';
 import styles from './EditColumnModal.module.css';
 import addColumnStyles from './AddColumnModal.module.css';
@@ -333,6 +334,33 @@ export function EditColumnModal({
           error: 'Formula contains an error',
         }));
         return false;
+      }
+
+      // Validate that the formula does not reference non-calculable columns.
+      // Only numeric or formula columns are allowed to participate in calculations.
+      if (existingProperties && existingProperties.length > 0) {
+        const referencedNames = getFormulaReferencedFieldNames(expr);
+        if (referencedNames.length > 0) {
+          const nonCalculable = referencedNames
+            .map((name) =>
+              existingProperties.find(
+                (prop) => prop.name.trim().toLowerCase() === name.trim().toLowerCase()
+              )
+            )
+            .filter(
+              (prop): prop is PropertyConfig =>
+                !!prop &&
+                !['int', 'float', 'formula'].includes((prop.dataType ?? '').toString())
+            );
+
+          if (nonCalculable.length > 0) {
+            setEditColumnModal((prev) => ({
+              ...prev,
+              error: 'This column cannot be calculated',
+            }));
+            return false;
+          }
+        }
       }
 
       // Circular reference detection for editing an existing formula column.
