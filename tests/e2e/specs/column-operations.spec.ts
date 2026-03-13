@@ -45,6 +45,19 @@ async function saveEditColumnModal(page: Page, modal: Locator): Promise<void> {
   await expect(modal).not.toBeVisible({ timeout: 10000 });
 }
 
+async function openAddColumnModal(page: Page): Promise<Locator> {
+  const addColumnButton = page.getByRole('button', { name: /add new column/i });
+  await expect(addColumnButton).toBeVisible({ timeout: 15000 });
+  await addColumnButton.click();
+
+  const addModal = page
+    .locator('[class*="popup"]')
+    .filter({ has: page.getByRole('heading', { name: /add column/i }) })
+    .first();
+  await expect(addModal).toBeVisible({ timeout: 5000 });
+  return addModal;
+}
+
 async function loginAsSeedEmpty(page: Page): Promise<void> {
   const loginPage = new LoginPage(page);
   await loginPage.goto();
@@ -80,6 +93,50 @@ async function createAndOpenLibrary(page: Page): Promise<{
 }
 
 test.describe('Column operations and double-click rename', () => {
+  test('Add column validation - header name is required', async ({ page }) => {
+    test.setTimeout(120000);
+
+    await loginAsSeedEmpty(page);
+    await createAndOpenLibrary(page);
+
+    const addModal = await openAddColumnModal(page);
+    await addModal.getByRole('button', { name: /^add$/i }).click();
+
+    await expect(addModal).toBeVisible({ timeout: 5000 });
+    await expect(addModal.getByText('Header name is required.')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Add column validation - data type is required', async ({ page }) => {
+    test.setTimeout(120000);
+
+    await loginAsSeedEmpty(page);
+    await createAndOpenLibrary(page);
+
+    const addModal = await openAddColumnModal(page);
+    await addModal.locator('#add-column-name').fill(`Auto Header ${Date.now()}`);
+    await addModal.getByRole('button', { name: /^add$/i }).click();
+
+    await expect(addModal).toBeVisible({ timeout: 5000 });
+    await expect(addModal.getByText('Data type is required.')).toBeVisible({ timeout: 5000 });
+  });
+
+  test('Add column popup closes by outside click when unchanged', async ({ page }) => {
+    test.setTimeout(120000);
+
+    await loginAsSeedEmpty(page);
+    await createAndOpenLibrary(page);
+
+    const addModal = await openAddColumnModal(page);
+
+    // Unchanged popup should close directly when clicking outside, without discard confirm.
+    await page.mouse.click(8, 8);
+
+    await expect(addModal).not.toBeVisible({ timeout: 5000 });
+    await expect(
+      page.getByText('Are you sure you want to discard the changes?'),
+    ).not.toBeVisible({ timeout: 2000 });
+  });
+
   test('Column comment - edit, tooltip display, and clear', async ({ page }) => {
     test.setTimeout(120000);
 
