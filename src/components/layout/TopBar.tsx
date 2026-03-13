@@ -84,7 +84,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     projectId: string;
     name: string;
     hierarchy?: string | null;
-    createdAt?: string | null;
+    updatedAt?: string | null;
   };
 
   const searchResults = useMemo<SearchResult[]>(() => {
@@ -99,7 +99,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         projectId: p.id,
         name: p.name,
         hierarchy: null,
-        createdAt: p.created_at ?? null,
+        updatedAt: (p as any).updated_at ?? (p as any).created_at ?? null,
       }));
 
     const folderResults: SearchResult[] = folders
@@ -115,7 +115,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           projectId: f.project_id,
           name: f.name,
           hierarchy: path || null,
-          createdAt: f.created_at ?? null,
+          updatedAt: (f as any).updated_at ?? (f as any).created_at ?? null,
         };
       });
 
@@ -136,7 +136,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           projectId: l.project_id,
           name: l.name,
           hierarchy: path || null,
-          createdAt: l.created_at ?? null,
+          updatedAt: (l as any).updated_at ?? (l as any).created_at ?? null,
         };
       });
 
@@ -151,17 +151,17 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         ? searchResults
         : searchResults.filter((item) => item.type === searchFilter);
 
-    // Sort by creation time from newest to oldest
+    // Sort by last modified time from newest to oldest
     return [...baseResults].sort((a, b) => {
-      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
       return bTime - aTime;
     });
   }, [searchResults, searchFilter]);
 
-  const formatCreatedAtLabel = (createdAt?: string | null) => {
-    if (!createdAt) return '';
-    const date = new Date(createdAt);
+  const formatUpdatedAtLabel = (updatedAt?: string | null) => {
+    if (!updatedAt) return '';
+    const date = new Date(updatedAt);
     if (Number.isNaN(date.getTime())) return '';
 
     const now = new Date();
@@ -992,7 +992,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                     </div>
                   </div>
                   <span className={styles.searchResultType}>
-                    {formatCreatedAtLabel(item.createdAt)}
+                    {formatUpdatedAtLabel(item.updatedAt)}
                   </span>
                 </button>
               ))}

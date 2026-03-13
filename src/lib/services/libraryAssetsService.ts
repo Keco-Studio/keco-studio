@@ -52,6 +52,21 @@ type FormulaFieldMetaRow = {
   formula_expression: string | null;
 };
 
+// 当库内数据/结构发生变化时，顺便刷新 libraries.updated_at
+async function touchLibraryUpdatedAt(supabase: SupabaseClient, libraryId: string) {
+  if (!libraryId) return;
+  try {
+    await supabase
+      .from('libraries')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', libraryId);
+  } catch (error) {
+    // 不要因为更新时间失败而影响主流程
+    // eslint-disable-next-line no-console
+    console.warn('[Libraries] Failed to touch updated_at for library', libraryId, error);
+  }
+}
+
 const mapDataTypeToValueType = (
   dataType: FieldDefinitionRow['data_type']
 ): PropertyConfig['valueType'] => {
@@ -312,6 +327,8 @@ export async function updateSectionName(
     .eq('section', oldName);
 
   if (error) throw error;
+
+  await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
 /** 新增一个 section（在 library_field_definitions 中插入一个默认字段以创建新区块，参考 predefine 的 handleSaveNewSection）。 */
@@ -363,6 +380,8 @@ export async function addLibrarySection(
 
   const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
   globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+
+  await touchLibraryUpdatedAt(supabase, libraryId);
   return { sectionId, sectionName, fieldId: inserted.id as string };
 }
 
@@ -433,6 +452,7 @@ export async function addLibraryField(
 
   const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
   globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+  await touchLibraryUpdatedAt(supabase, libraryId);
   return { id: inserted.id };
 }
 
@@ -456,6 +476,7 @@ export async function deleteLibraryField(
 
   const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
   globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+  await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
 /** 更新单个字段（列）的基础信息和类型配置 */
@@ -507,6 +528,7 @@ export async function updateLibraryField(
 
   const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
   globalRequestCache.invalidate(`field-definitions:${libraryId}`);
+  await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
 // T009: Load assets and property values for a library and aggregate into AssetRow[].
@@ -654,6 +676,7 @@ export async function createAsset(
     }
   }
 
+  await touchLibraryUpdatedAt(supabase, libraryId);
   return assetId;
 }
 
@@ -696,6 +719,8 @@ export async function shiftRowIndices(
       throw new Error(`Failed to shift row_index for asset ${row.id}: ${updateError.message}`);
     }
   }
+
+  await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
 // T011: Update an existing asset and its property values
@@ -749,6 +774,8 @@ export async function updateAsset(
       throw valuesError;
     }
   }
+
+  await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
 // T012: Delete an asset and its property values
@@ -757,11 +784,14 @@ export async function deleteAsset(
   assetId: string
 ): Promise<void> {
   await verifyAssetDeletionPermission(supabase, assetId);
+  const libraryId = await getLibraryIdByAssetId(supabase, assetId);
   const { error } = await supabase
     .from('library_assets')
     .delete()
     .eq('id', assetId);
   if (error) throw error;
+
+  await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
 /** Batch delete (Supabase .delete().in()). One permission check, one round-trip. */
@@ -775,10 +805,14 @@ export async function deleteAssets(
     return;
   }
   await verifyAssetsDeletionPermission(supabase, assetIds);
+  // 约定：批量删除时，这些资产都来自同一个库
+  const libraryId = await getLibraryIdByAssetId(supabase, assetIds[0]);
   const { error } = await supabase
     .from('library_assets')
     .delete()
     .in('id', assetIds);
   if (error) throw error;
+
+  await touchLibraryUpdatedAt(supabase, libraryId);
 }
 

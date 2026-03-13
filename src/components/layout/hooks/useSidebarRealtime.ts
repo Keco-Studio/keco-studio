@@ -80,8 +80,12 @@ export function useSidebarRealtime({
         }
       )
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) console.error('[Sidebar] Projects channel ERROR:', err);
-        else if (status === 'TIMED_OUT') console.error('[Sidebar] Projects channel TIMED OUT');
+        if (status === 'CHANNEL_ERROR' && err) {
+          console.error('[Sidebar] Projects channel ERROR:', err);
+        } else if (status === 'TIMED_OUT') {
+          // Use warn instead of error to avoid noisy dev overlay
+          console.warn('[Sidebar] Projects channel TIMED OUT');
+        }
       });
 
     return () => {
@@ -132,8 +136,11 @@ export function useSidebarRealtime({
         }
       )
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) console.error('[Sidebar] Libraries channel ERROR:', err);
-        else if (status === 'TIMED_OUT') console.error('[Sidebar] Libraries channel TIMED OUT');
+        if (status === 'CHANNEL_ERROR' && err) {
+          console.error('[Sidebar] Libraries channel ERROR:', err);
+        } else if (status === 'TIMED_OUT') {
+          console.warn('[Sidebar] Libraries channel TIMED OUT');
+        }
       });
 
     return () => {
@@ -183,8 +190,11 @@ export function useSidebarRealtime({
         }
       )
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) console.error('[Sidebar] Folders channel ERROR:', err);
-        else if (status === 'TIMED_OUT') console.error('[Sidebar] Folders channel TIMED OUT');
+        if (status === 'CHANNEL_ERROR' && err) {
+          console.error('[Sidebar] Folders channel ERROR:', err);
+        } else if (status === 'TIMED_OUT') {
+          console.warn('[Sidebar] Folders channel TIMED OUT');
+        }
       });
 
     return () => {
@@ -268,8 +278,11 @@ export function useSidebarRealtime({
         }
       )
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) console.error('[Sidebar] Collaborators channel ERROR:', err);
-        else if (status === 'TIMED_OUT') console.error('[Sidebar] Collaborators channel TIMED OUT');
+        if (status === 'CHANNEL_ERROR' && err) {
+          console.error('[Sidebar] Collaborators channel ERROR:', err);
+        } else if (status === 'TIMED_OUT') {
+          console.warn('[Sidebar] Collaborators channel TIMED OUT');
+        }
       });
 
     return () => {
@@ -300,8 +313,11 @@ export function useSidebarRealtime({
         }
       )
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) console.error('[Sidebar] Predefine channel ERROR:', err);
-        else if (status === 'TIMED_OUT') console.error('[Sidebar] Predefine channel TIMED OUT');
+        if (status === 'CHANNEL_ERROR' && err) {
+          console.error('[Sidebar] Predefine channel ERROR:', err);
+        } else if (status === 'TIMED_OUT') {
+          console.warn('[Sidebar] Predefine channel TIMED OUT');
+        }
       });
 
     return () => {
