@@ -167,11 +167,11 @@ test.describe('Destructive Tests - Delete Operations', () => {
       // No need to navigate back
       
       // Delete breed library
-      await libraryPage.deleteLibrary(libraries.breed.name);
+      await libraryPage.deleteLibrary(libraries.breed.name, { deleteAllMatching: true });
       await libraryPage.expectLibraryDeleted(libraries.breed.name);
       
       // Delete direct library
-      await libraryPage.deleteLibrary(libraries.directLibrary.name);
+      await libraryPage.deleteLibrary(libraries.directLibrary.name, { deleteAllMatching: true });
       await libraryPage.expectLibraryDeleted(libraries.directLibrary.name);
     });
 
@@ -179,7 +179,7 @@ test.describe('Destructive Tests - Delete Operations', () => {
     // STEP 3: Delete Folder
     // ==========================================
     await test.step('Delete direct folder', async () => {
-      await libraryPage.deleteFolder(folders.directFolder.name);
+      await libraryPage.deleteFolder(folders.directFolder.name, { deleteAllMatching: true });
       await libraryPage.expectFolderDeleted(folders.directFolder.name);
     });
 
@@ -201,7 +201,7 @@ test.describe('Destructive Tests - Delete Operations', () => {
       await libraryPage.page.waitForTimeout(1000);
       
       // Delete the project from sidebar
-      await projectPage.deleteProject(projects.happyPath.name);
+      await projectPage.deleteProject(projects.happyPath.name, { deleteAllMatching: true });
       await projectPage.expectProjectDeleted(projects.happyPath.name);
       
       // Verify navigation to home page (which redirects to /projects)

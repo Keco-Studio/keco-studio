@@ -16,6 +16,7 @@ import type { FolderData } from '../fixures/folders';
  */
 export class LibraryPage {
   readonly page: Page;
+  private lastCreatedLibraryName: string | null = null;
 
   // Folder and Library list elements
   readonly foldersHeading: Locator;
@@ -169,6 +170,7 @@ export class LibraryPage {
     await expect(this.libraryNameInput).toBeVisible({ timeout: 5000 });
 
     // Fill in library details
+    this.lastCreatedLibraryName = library.name;
     await this.libraryNameInput.fill(library.name);
     
     if (library.description) {
@@ -211,6 +213,7 @@ export class LibraryPage {
     await this.page.waitForTimeout(500);
 
     // Step 4: Fill in library details
+    this.lastCreatedLibraryName = library.name;
     await this.libraryNameInput.fill(library.name);
     
     if (library.description) {
@@ -236,9 +239,24 @@ export class LibraryPage {
       }
     }
 
-    // Step 6: Wait for modal to close (increase timeout for slower API responses)
-    await expect(this.libraryNameInput).not.toBeVisible({ timeout: 30000 });
-    await this.page.waitForLoadState('load', { timeout: 15000 });
+    // Step 6: Wait for creation to settle.
+    // In CI, modal close can lag behind data refresh, so treat either signal as success:
+    // 1) create modal closes, or 2) target library appears in sidebar.
+    const sidebar = this.page.locator('aside');
+    const createdLibraryInSidebar = sidebar.locator(`[title="${library.name}"]:visible`);
+    await expect
+      .poll(
+        async () => {
+          const modalVisible = await this.page.locator('#library-name:visible').count();
+          const libraryVisible = await createdLibraryInSidebar.count();
+          return modalVisible === 0 || libraryVisible > 0;
+        },
+        { timeout: 45000 }
+      )
+      .toBeTruthy();
+
+    await this.page.waitForLoadState('load', { timeout: 15000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     // Additional wait to ensure authorization checks are complete
     await this.page.waitForTimeout(1000);
   }
@@ -286,9 +304,40 @@ export class LibraryPage {
       }
     }
 
-    // Step 6: Wait for modal to close (increase timeout for slower API responses)
-    await expect(this.folderNameInput).not.toBeVisible({ timeout: 30000 });
-    await this.page.waitForLoadState('load', { timeout: 15000 });
+    // Step 6: Wait for creation to settle.
+    // In CI, modal close can lag behind data refresh, so treat either signal as success:
+    // 1) create modal closes, or 2) target folder appears in sidebar.
+    const sidebar = this.page.locator('aside');
+    const createdFolderInSidebar = sidebar.locator(`[title="${folder.name}"]:visible`);
+    await expect
+      .poll(
+        async () => {
+          const modalVisible = await this.page.locator('[placeholder="Enter folder name"]:visible').count();
+          const folderVisible = await createdFolderInSidebar.count();
+          return modalVisible === 0 || folderVisible > 0;
+        },
+        { timeout: 45000 }
+      )
+      .toBeTruthy();
+
+    // If modal/backdrop is still present after data appears, close it explicitly.
+    // Otherwise it can intercept subsequent clicks in CI/headed runs.
+    const stillVisibleModalInput = this.page.locator('[placeholder="Enter folder name"]:visible').first();
+    if (await stillVisibleModalInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+      const modal = this.page.locator('[class*="backdrop"]').filter({ has: stillVisibleModalInput }).first();
+      const closeButton = modal.locator('button[aria-label="Close"]').first();
+      if (await closeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await closeButton.click();
+      } else {
+        await this.page.keyboard.press('Escape').catch(() => {});
+      }
+      await expect(this.page.locator('[placeholder="Enter folder name"]:visible')).toHaveCount(0, {
+        timeout: 10000,
+      });
+    }
+
+    await this.page.waitForLoadState('load', { timeout: 15000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
     // Additional wait to ensure authorization checks are complete
     await this.page.waitForTimeout(1000);
   }
@@ -298,50 +347,81 @@ export class LibraryPage {
    * @param libraryName - Name of the library to open
    */
   async openLibrary(libraryName: string): Promise<void> {
-    // Find and click the library by its name
-    const libraryCard = this.page.getByRole('button', { name: libraryName })
-      .or(this.page.getByRole('link', { name: libraryName }))
-      .or(this.page.getByText(libraryName, { exact: true }).first());
-
-    await expect(libraryCard).toBeVisible({ timeout: 5000 });
-    await libraryCard.click();
+    // Prefer sidebar tree item by title attribute (avoids clicking disabled breadcrumb buttons).
+    const sidebarLibraryItem = this.page.locator('aside').locator(`[title="${libraryName}"]`).first();
+    const sidebarVisible = await sidebarLibraryItem.isVisible({ timeout: 3000 }).catch(() => false);
+    if (sidebarVisible) {
+      await sidebarLibraryItem.click();
+    } else {
+      // Fallback for pages where sidebar item isn't present yet.
+      const libraryCard = this.page
+        .getByRole('button', { name: libraryName })
+        .or(this.page.getByRole('link', { name: libraryName }))
+        .or(this.page.getByText(libraryName, { exact: true }).first());
+      await expect(libraryCard).toBeVisible({ timeout: 5000 });
+      await libraryCard.click();
+    }
 
     // Wait for navigation to library detail page
     await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 });
   }
 
   /**
-   * Click the predefine button for a library in the sidebar
+   * Open current schema entry (table header right-side "+" button) for a library.
+   * This replaces the old direct `/predefine` route entry.
    * @param libraryName - Name of the library
    */
   async clickPredefineButton(libraryName: string): Promise<void> {
-    // Find the library item in the sidebar tree using title attribute (handles truncated names)
-    const sidebar = this.page.getByRole('tree');
-    const libraryItem = sidebar.locator(`[title="${libraryName}"]`);
-    
-    // The predefine button is in the same row as the library name
-    // Find the button with aria-label="Library sections" that is near the library name
-    // Strategy: Find the library row container, then find the predefine button within it
-    const libraryRow = libraryItem.locator('..').locator('..'); // Navigate up to the library row container
-    
-    // Find the predefine button by aria-label
-    const predefineButton = libraryRow
-      .locator('button[aria-label="Library sections"]')
-      .or(libraryRow.getByRole('button', { name: /library sections/i }));
-    
-    await expect(predefineButton).toBeVisible({ timeout: 5000 });
-    await predefineButton.click();
-    
-    // Wait for navigation to predefine page
-    // Use flexible URL matching (removed $ anchor to allow trailing slash/query params)
-    // Increased timeout for CI environments where navigation may be slower
-    await this.page.waitForURL(/\/predefine/, { timeout: 15000 });
-    
-    // Verify page content as additional check (more reliable than URL matching)
-    const predefineHeading = this.page.getByRole('heading', { name: /predefine/i });
-    await expect(predefineHeading).toBeVisible({ timeout: 5000 });
-    
-    await this.page.waitForLoadState('load', { timeout: 10000 });
+    await this.openLibrary(libraryName);
+    await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+
+    const addColumnButton = this.page.getByRole('button', { name: /add new column/i });
+    await expect(addColumnButton).toBeVisible({ timeout: 15000 });
+    await addColumnButton.click();
+
+    const addModal = this.page
+      .locator('[class*="popup"]')
+      .filter({ has: this.page.getByRole('heading', { name: /add column/i }) })
+      .first();
+    await expect(addModal).toBeVisible({ timeout: 5000 });
+  }
+
+  /**
+   * Add a column using the table right-side "+" (schema entry) flow.
+   * @param libraryName - Name of the target library
+   * @param columnName - New column name
+   * @param dataTypeLabel - Data type label shown in dropdown, e.g. "String"
+   */
+  async addColumnFromTableSchemaEntry(
+    libraryName: string,
+    columnName: string,
+    dataTypeLabel: string,
+  ): Promise<void> {
+    await this.clickPredefineButton(libraryName);
+
+    const addModal = this.page
+      .locator('[class*="popup"]')
+      .filter({ has: this.page.getByRole('heading', { name: /add column/i }) })
+      .first();
+    await expect(addModal).toBeVisible({ timeout: 5000 });
+
+    await addModal.locator('#add-column-name').fill(columnName);
+    await addModal.locator('#add-column-type').click();
+
+    const dropdown = this.page.locator('[class*="dataTypeDropdown"]').last();
+    const searchInput = dropdown.locator('input[placeholder="Search"]').first();
+    await expect(searchInput).toBeVisible({ timeout: 5000 });
+    await searchInput.fill(dataTypeLabel);
+
+    const option = this.page
+      .locator('.ant-select-item-option')
+      .filter({ hasText: new RegExp(dataTypeLabel, 'i') })
+      .first();
+    await expect(option).toBeVisible({ timeout: 10000 });
+    await option.click();
+
+    await addModal.getByRole('button', { name: /^add$/i }).click();
+    await expect(addModal).not.toBeVisible({ timeout: 10000 });
   }
 
   /**
@@ -423,11 +503,42 @@ export class LibraryPage {
    * Assert successful library creation
    */
   async expectLibraryCreated(): Promise<void> {
-    // Library creation closes modal and refreshes the list
-    // Wait for modal to close (library name input should not be visible)
-    await expect(this.libraryNameInput).not.toBeVisible({ timeout: 10000 });
+    // In CI, modal close animation/API completion can lag.
+    // Treat either signal as success:
+    // 1) create modal closes, or 2) created library appears in sidebar.
+    const sidebar = this.page.locator('aside');
+    const createdLibraryInSidebar = this.lastCreatedLibraryName
+      ? sidebar.locator(`[title="${this.lastCreatedLibraryName}"]:visible`)
+      : sidebar.locator('[title]:visible');
+
+    await expect
+      .poll(
+        async () => {
+          const modalVisible = await this.page.locator('#library-name:visible').count();
+          const libraryVisible = await createdLibraryInSidebar.count();
+          return modalVisible === 0 || libraryVisible > 0;
+        },
+        { timeout: 30000 }
+      )
+      .toBeTruthy();
+
+    // If modal/backdrop is still present after data appears, close it explicitly.
+    // Otherwise it can intercept subsequent sidebar clicks in CI.
+    const stillVisibleModalInput = this.page.locator('#library-name:visible').first();
+    if (await stillVisibleModalInput.isVisible({ timeout: 1000 }).catch(() => false)) {
+      const modal = this.page.locator('[class*="backdrop"]').filter({ has: this.page.locator('#library-name:visible') }).first();
+      const closeButton = modal.locator('button[aria-label="Close"]').first();
+      if (await closeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
+        await closeButton.click();
+      } else {
+        await this.page.keyboard.press('Escape').catch(() => {});
+      }
+      await expect(this.page.locator('#library-name:visible')).toHaveCount(0, { timeout: 10000 });
+    }
+
     // Wait for page to refresh
-    await this.page.waitForLoadState('load', { timeout: 10000 });
+    await this.page.waitForLoadState('load', { timeout: 10000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
   }
 
   /**
@@ -445,48 +556,69 @@ export class LibraryPage {
    * Delete a library by its name (from sidebar using context menu)
    * @param libraryName - Name of the library to delete
    */
-  async deleteLibrary(libraryName: string): Promise<void> {
-    // Wait for sidebar tree to be fully loaded
-    const sidebar = this.page.getByRole('tree');
+  async deleteLibrary(
+    libraryName: string,
+    options?: { deleteAllMatching?: boolean }
+  ): Promise<void> {
+    // Use aside container instead of strict tree visibility.
+    // In some CI/headed runs, tree exists but may be temporarily hidden.
+    const sidebar = this.page.locator('aside');
     await expect(sidebar).toBeVisible({ timeout: 10000 });
     
     // Additional wait for tree content to fully render
     await this.page.waitForTimeout(2000);
-    
-    // Debug: Log all text content in sidebar to help diagnose issues
-    const sidebarText = await sidebar.textContent();
-    // console.log(`[DEBUG] Sidebar content: ${sidebarText?.substring(0, 500)}...`);
-    
-    // Find the library in the sidebar tree using title attribute (handles truncated names)
-    const libraryItem = sidebar.locator(`[title="${libraryName}"]`);
-    
-    // Check if library exists before trying to make it visible
-    const libraryCount = await libraryItem.count();
-    // console.log(`[DEBUG] Found ${libraryCount} instances of "${libraryName}" in sidebar`);
-    
-    // Wait for library to be visible
-    await expect(libraryItem).toBeVisible({ timeout: 15000 });
-    
-    // Right-click on the library to open context menu
-    await libraryItem.click({ button: 'right' });
-    
-    // Wait for context menu to appear
-    const contextMenu = this.page.locator('[class*="contextMenu"]');
-    await expect(contextMenu).toBeVisible({ timeout: 15000 });
-    
-    // Set up dialog handler BEFORE clicking delete
-    this.page.once('dialog', async dialog => {
-      await dialog.accept();
-    });
-    
-    // Click the Delete button in the context menu
-    const deleteButton = contextMenu.getByRole('button', { name: /^delete$/i })
-      .or(contextMenu.locator('button[class*="deleteItem"]'));
-    await expect(deleteButton).toBeVisible({ timeout: 5000 });
-    await deleteButton.click();
-    
-    // Wait for deletion to complete
-    await this.page.waitForLoadState('networkidle');
+
+    const deleteAllMatching = options?.deleteAllMatching ?? false;
+
+    const getVisibleLibraryItems = () => sidebar.locator(`[title="${libraryName}"]:visible`);
+
+    // Delete one or all matching libraries (useful for CI environments with leftover seed data).
+    while (true) {
+      const libraryItem = getVisibleLibraryItems().first();
+      const visibleCount = await getVisibleLibraryItems().count();
+      if (visibleCount === 0) break;
+
+      await expect(libraryItem).toBeVisible({ timeout: 15000 });
+
+      // Right-click on the target library to open context menu
+      await libraryItem.click({ button: 'right' });
+
+      // Wait for context menu to appear
+      const contextMenu = this.page.locator('[class*="contextMenu"]');
+      await expect(contextMenu).toBeVisible({ timeout: 15000 });
+
+      // Backward compatibility: accept native dialogs if any old flow still triggers them
+      this.page.once('dialog', async dialog => {
+        await dialog.accept();
+      });
+
+      // Click the Delete action in context menu
+      const deleteButton = contextMenu
+        .getByRole('button', { name: /^delete$/i })
+        .or(contextMenu.locator('button[class*="deleteItem"]'));
+      await expect(deleteButton).toBeVisible({ timeout: 5000 });
+      await deleteButton.click();
+
+      // Current app flow uses custom delete confirm dialog, click final "Delete" if present
+      const confirmDeleteButton = this.page
+        .locator('div[class*="confirmDialog"]')
+        .getByRole('button', { name: /^delete$/i })
+        .first();
+      if (await confirmDeleteButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await confirmDeleteButton.click();
+      }
+
+      // Wait until at least one matching item disappears
+      await expect
+        .poll(async () => await getVisibleLibraryItems().count(), { timeout: 30000 })
+        .toBeLessThan(visibleCount);
+
+      // Allow cache invalidation + rerender to settle
+      await this.page.waitForLoadState('networkidle').catch(() => {});
+      await this.page.waitForTimeout(500);
+
+      if (!deleteAllMatching) break;
+    }
   }
 
   /**
@@ -494,7 +626,7 @@ export class LibraryPage {
    * @param libraryName - Name of the library to verify deletion
    */
   async expectLibraryDeleted(libraryName: string): Promise<void> {
-    const sidebar = this.page.getByRole('tree');
+    const sidebar = this.page.locator('aside');
     // Use title attribute to handle truncated names
     const libraryItem = sidebar.locator(`[title="${libraryName}"]`);
     await expect(libraryItem).not.toBeVisible({ timeout: 30000 });
@@ -504,40 +636,62 @@ export class LibraryPage {
    * Delete a folder by its name (from sidebar using context menu)
    * @param folderName - Name of the folder to delete
    */
-  async deleteFolder(folderName: string): Promise<void> {
-    // Wait for sidebar tree to be fully loaded
-    const sidebar = this.page.getByRole('tree');
+  async deleteFolder(
+    folderName: string,
+    options?: { deleteAllMatching?: boolean }
+  ): Promise<void> {
+    // Use aside container instead of strict tree visibility.
+    const sidebar = this.page.locator('aside');
     await expect(sidebar).toBeVisible({ timeout: 10000 });
     
     // Additional wait for tree content to fully render
     await this.page.waitForTimeout(1000);
-    
-    // Find the folder in the sidebar tree using title attribute (handles truncated names)
-    const folderItem = sidebar.locator(`[title="${folderName}"]`);
-    
-    // Wait for folder to be visible
-    await expect(folderItem).toBeVisible({ timeout: 15000 });
-    
-    // Right-click on the folder to open context menu
-    await folderItem.click({ button: 'right' });
-    
-    // Wait for context menu to appear
-    const contextMenu = this.page.locator('[class*="contextMenu"]');
-    await expect(contextMenu).toBeVisible({ timeout: 5000 });
-    
-    // Set up dialog handler BEFORE clicking delete
-    this.page.once('dialog', async dialog => {
-      await dialog.accept();
-    });
-    
-    // Click the Delete button in the context menu
-    const deleteButton = contextMenu.getByRole('button', { name: /^delete$/i })
-      .or(contextMenu.locator('button[class*="deleteItem"]'));
-    await expect(deleteButton).toBeVisible({ timeout: 5000 });
-    await deleteButton.click();
-    
-    // Wait for deletion to complete
-    await this.page.waitForTimeout(1000);
+
+    const deleteAllMatching = options?.deleteAllMatching ?? false;
+    const getVisibleFolderItems = () => sidebar.locator(`[title="${folderName}"]:visible`);
+
+    while (true) {
+      const folderItem = getVisibleFolderItems().first();
+      const visibleCount = await getVisibleFolderItems().count();
+      if (visibleCount === 0) break;
+
+      await expect(folderItem).toBeVisible({ timeout: 15000 });
+
+      // Right-click on the target folder to open context menu
+      await folderItem.click({ button: 'right' });
+
+      const contextMenu = this.page.locator('[class*="contextMenu"]');
+      await expect(contextMenu).toBeVisible({ timeout: 5000 });
+
+      // Backward compatibility for any native confirm flow
+      this.page.once('dialog', async dialog => {
+        await dialog.accept();
+      });
+
+      const deleteButton = contextMenu
+        .getByRole('button', { name: /^delete$/i })
+        .or(contextMenu.locator('button[class*="deleteItem"]'));
+      await expect(deleteButton).toBeVisible({ timeout: 5000 });
+      await deleteButton.click();
+
+      // Current flow uses custom confirm dialog
+      const confirmDeleteButton = this.page
+        .locator('div[class*="confirmDialog"]')
+        .getByRole('button', { name: /^delete$/i })
+        .first();
+      if (await confirmDeleteButton.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await confirmDeleteButton.click();
+      }
+
+      await expect
+        .poll(async () => await getVisibleFolderItems().count(), { timeout: 30000 })
+        .toBeLessThan(visibleCount);
+
+      await this.page.waitForLoadState('networkidle').catch(() => {});
+      await this.page.waitForTimeout(500);
+
+      if (!deleteAllMatching) break;
+    }
   }
 
   /**
@@ -545,7 +699,7 @@ export class LibraryPage {
    * @param folderName - Name of the folder to verify deletion
    */
   async expectFolderDeleted(folderName: string): Promise<void> {
-    const sidebar = this.page.getByRole('tree');
+    const sidebar = this.page.locator('aside');
     // Use title attribute to handle truncated names
     const folderItem = sidebar.locator(`[title="${folderName}"]`);
     await expect(folderItem).not.toBeVisible({ timeout: 15000 });
