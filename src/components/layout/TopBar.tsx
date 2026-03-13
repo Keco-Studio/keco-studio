@@ -87,12 +87,17 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     updatedAt?: string | null;
   };
 
+  const normalizeSearchString = (value: string) => {
+    return value.toLowerCase().replace(/[\s_]+/g, '');
+  };
+
   const searchResults = useMemo<SearchResult[]>(() => {
-    const q = searchQuery.trim().toLowerCase();
-    if (!q) return [];
+    const q = searchQuery.trim();
+    const normalizedQuery = normalizeSearchString(q);
+    if (!normalizedQuery) return [];
 
     const projectResults: SearchResult[] = projects
-      .filter((p) => p.name.toLowerCase().includes(q))
+      .filter((p) => normalizeSearchString(p.name).includes(normalizedQuery))
       .map((p) => ({
         type: 'project' as const,
         id: p.id,
@@ -103,7 +108,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       }));
 
     const folderResults: SearchResult[] = folders
-      .filter((f) => f.name.toLowerCase().includes(q))
+      .filter((f) => normalizeSearchString(f.name).includes(normalizedQuery))
       .map((f) => {
         const parentProject = projects.find((p) => p.id === f.project_id);
         const projectName = parentProject?.name ?? '';
@@ -120,7 +125,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       });
 
     const libraryResults: SearchResult[] = libraries
-      .filter((l) => l.name.toLowerCase().includes(q))
+      .filter((l) => normalizeSearchString(l.name).includes(normalizedQuery))
       .map((l) => {
         const parentProject = projects.find((p) => p.id === l.project_id);
         const parentFolder = l.folder_id
@@ -145,19 +150,106 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return all.slice(0, 20);
   }, [searchQuery, projects, folders, libraries]);
 
-  const filteredSearchResults = useMemo(() => {
-    const baseResults =
-      searchFilter === 'all'
-        ? searchResults
-        : searchResults.filter((item) => item.type === searchFilter);
+  // 最近 7 天内有活动的项目 / 文件夹 / Library（基于 updatedAt 或 createdAt）
+  const recentResults = useMemo<SearchResult[]>(() => {
+    const now = Date.now();
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const cutoff = now - sevenDaysMs;
 
-    // Sort by last modified time from newest to oldest
-    return [...baseResults].sort((a, b) => {
+    const projectResults: SearchResult[] = projects
+      .map((p) => {
+        const updatedAt: string | null =
+          (p as any).updated_at ?? (p as any).created_at ?? null;
+        return {
+          type: 'project' as const,
+          id: p.id,
+          projectId: p.id,
+          name: p.name,
+          hierarchy: null,
+          updatedAt,
+        };
+      })
+      .filter((item) => {
+        if (!item.updatedAt) return false;
+        const time = new Date(item.updatedAt).getTime();
+        return !Number.isNaN(time) && time >= cutoff;
+      });
+
+    const folderResults: SearchResult[] = folders
+      .map((f) => {
+        const parentProject = projects.find((p) => p.id === f.project_id);
+        const projectName = parentProject?.name ?? '';
+        const path =
+          projectName && f.name ? `${projectName} / ${f.name}` : projectName || f.name;
+        const updatedAt: string | null =
+          (f as any).updated_at ?? (f as any).created_at ?? null;
+        return {
+          type: 'folder' as const,
+          id: f.id,
+          projectId: f.project_id,
+          name: f.name,
+          hierarchy: path || null,
+          updatedAt,
+        };
+      })
+      .filter((item) => {
+        if (!item.updatedAt) return false;
+        const time = new Date(item.updatedAt).getTime();
+        return !Number.isNaN(time) && time >= cutoff;
+      });
+
+    const libraryResults: SearchResult[] = libraries
+      .map((l) => {
+        const parentProject = projects.find((p) => p.id === l.project_id);
+        const parentFolder = l.folder_id ? folders.find((f) => f.id === l.folder_id) : null;
+        const segments: string[] = [];
+        if (parentProject?.name) segments.push(parentProject.name);
+        if (parentFolder?.name) segments.push(parentFolder.name);
+        const path = segments.join(' / ');
+        const updatedAt: string | null =
+          (l as any).updated_at ?? (l as any).created_at ?? null;
+        return {
+          type: 'library' as const,
+          id: l.id,
+          projectId: l.project_id,
+          name: l.name,
+          hierarchy: path || null,
+          updatedAt,
+        };
+      })
+      .filter((item) => {
+        if (!item.updatedAt) return false;
+        const time = new Date(item.updatedAt).getTime();
+        return !Number.isNaN(time) && time >= cutoff;
+      });
+
+    const all = [...projectResults, ...folderResults, ...libraryResults];
+    // 统一按时间从近到远排序，并限制条数
+    const sorted = all.sort((a, b) => {
       const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
       const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
       return bTime - aTime;
     });
-  }, [searchResults, searchFilter]);
+
+    return sorted.slice(0, 20);
+  }, [projects, folders, libraries]);
+
+  const filteredSearchResults = useMemo(() => {
+    const hasQuery = searchQuery.trim().length > 0;
+    const baseResults = hasQuery ? searchResults : recentResults;
+
+    const filtered =
+      searchFilter === 'all'
+        ? baseResults
+        : baseResults.filter((item) => item.type === searchFilter);
+
+    // Sort by last modified time from newest to oldest
+    return [...filtered].sort((a, b) => {
+      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+      return bTime - aTime;
+    });
+  }, [searchResults, recentResults, searchFilter, searchQuery]);
 
   const formatUpdatedAtLabel = (updatedAt?: string | null) => {
     if (!updatedAt) return '';
@@ -199,22 +291,44 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return `${year}-${month}-${day}`;
   };
 
+  const buildNormalizedIndexMap = (text: string) => {
+    const normalizedChars: string[] = [];
+    const indexMap: number[] = [];
+
+    for (let i = 0; i < text.length; i += 1) {
+      const ch = text[i];
+      if (ch === ' ' || ch === '_') {
+        continue;
+      }
+      normalizedChars.push(ch.toLowerCase());
+      indexMap.push(i);
+    }
+
+    return {
+      normalized: normalizedChars.join(''),
+      indexMap,
+    };
+  };
+
   const highlightMatch = (text: string | null | undefined, query: string) => {
     if (!text) return null;
     const q = query.trim();
     if (!q) return text;
 
-    const lowerText = text.toLowerCase();
-    const lowerQuery = q.toLowerCase();
-    const index = lowerText.indexOf(lowerQuery);
+    const { normalized, indexMap } = buildNormalizedIndexMap(text);
+    const normalizedQuery = normalizeSearchString(q);
+    if (!normalizedQuery) return text;
 
-    if (index === -1) {
+    const index = normalized.indexOf(normalizedQuery);
+    if (index === -1 || indexMap.length === 0) {
       return text;
     }
+    const start = indexMap[index];
+    const end = indexMap[index + normalizedQuery.length - 1] + 1;
 
-    const before = text.slice(0, index);
-    const match = text.slice(index, index + q.length);
-    const after = text.slice(index + q.length);
+    const before = text.slice(0, start);
+    const match = text.slice(start, end);
+    const after = text.slice(end);
 
     return (
       <>
@@ -929,21 +1043,17 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             onChange={(e) => {
               const value = e.target.value;
               setSearchQuery(value);
-              if (value.trim()) {
-                setIsSearchDropdownOpen(true);
-              } else {
-                setIsSearchDropdownOpen(false);
-              }
+              // 有输入时展示搜索结果；无输入时展示最近 7 天记录
+              setIsSearchDropdownOpen(true);
             }}
             onFocus={() => {
               setIsSearchFocused(true);
-              if (searchQuery.trim()) {
-                setIsSearchDropdownOpen(true);
-              }
+              // 聚焦时，如果有搜索词就展示匹配结果，否则展示最近 7 天记录
+              setIsSearchDropdownOpen(true);
             }}
           />
         </label>
-        {isSearchDropdownOpen && searchResults.length > 0 && (
+        {isSearchDropdownOpen && filteredSearchResults.length > 0 && (
           <div className={styles.searchDropdown}>
             <div className={styles.searchTabs}>
               {[

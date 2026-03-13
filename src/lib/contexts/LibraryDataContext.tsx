@@ -77,21 +77,53 @@ type FormulaFieldMetaRow = {
   formula_expression: string | null;
 };
 
-// Helper: when library content changes, bump libraries.updated_at so TopBar search can sort by latest edits.
+// Helper: when library content changes, bump its own updated_at
+// and also the updated_at of its parent folder (if any) and project.
 async function touchLibraryUpdatedAt(
   supabase: ReturnType<typeof useSupabase>,
-  libraryId: string
+  libraryId: string,
+  projectId: string
 ) {
   if (!supabase || !libraryId) return;
+  const now = new Date().toISOString();
+
   try {
-    await supabase
+    // Update library and also fetch its folder_id / project_id in one round-trip
+    const { data, error } = await supabase
       .from('libraries')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', libraryId);
+      .update({ updated_at: now })
+      .eq('id', libraryId)
+      .select('folder_id, project_id')
+      .single();
+
+    if (error) throw error;
+
+    const effectiveProjectId = projectId || (data as any)?.project_id;
+
+    // Update parent project time
+    if (effectiveProjectId) {
+      await supabase
+        .from('projects')
+        .update({ updated_at: now })
+        .eq('id', effectiveProjectId);
+    }
+
+    // Update parent folder time (if library is inside a folder)
+    const folderId = (data as any)?.folder_id as string | null | undefined;
+    if (folderId) {
+      await supabase
+        .from('folders')
+        .update({ updated_at: now })
+        .eq('id', folderId);
+    }
   } catch (error) {
     // Do not break editing flow if this fails
     // eslint-disable-next-line no-console
-    console.warn('[LibraryDataContext] Failed to touch libraries.updated_at for', libraryId, error);
+    console.warn(
+      '[LibraryDataContext] Failed to touch updated_at for library/folder/project',
+      { libraryId, projectId },
+      error
+    );
   }
 }
 
@@ -603,8 +635,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
       if (error) throw error;
 
-      // 更新库内单元格成功后，刷新 libraries.updated_at，供 TopBar 搜索排序使用
-      await touchLibraryUpdatedAt(supabase, libraryId);
+      // 更新库内单元格成功后，刷新 library / folder / project 的 updated_at，供 TopBar 搜索排序使用
+      await touchLibraryUpdatedAt(supabase, libraryId, projectId);
 
       if (!options?.skipBroadcast && realtimeConfig) {
         await new Promise(resolve => setTimeout(resolve, 100));
@@ -656,8 +688,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         .eq('id', assetId);
       
       if (error) throw error;
-
-      await touchLibraryUpdatedAt(supabase, libraryId);
+      
+      await touchLibraryUpdatedAt(supabase, libraryId, projectId);
       
       // 3. Broadcast as field update (name is a special field)
       if (!options?.skipBroadcast && realtimeConfig) {
@@ -742,8 +774,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       if (valuesError) throw valuesError;
     }
     
-    // 额外：库内新增行，刷新 libraries.updated_at
-    await touchLibraryUpdatedAt(supabase, libraryId);
+    // 额外：库内新增行，刷新 library / folder / project 的 updated_at
+    await touchLibraryUpdatedAt(supabase, libraryId, projectId);
 
     // 3. Add to Yjs (using Y.Map for propertyValues)
     // 对于纯追加（没有显式 rowIndex）的场景，可以直接在本地插入 Yjs 记录，立即看到新行。

@@ -52,18 +52,43 @@ type FormulaFieldMetaRow = {
   formula_expression: string | null;
 };
 
-// 当库内数据/结构发生变化时，顺便刷新 libraries.updated_at
+// 当库内数据/结构发生变化时，顺便刷新 libraries.updated_at，
+// 以及其所在的 folder / project 的 updated_at，供顶部搜索排序使用。
 async function touchLibraryUpdatedAt(supabase: SupabaseClient, libraryId: string) {
   if (!libraryId) return;
   try {
-    await supabase
+    const now = new Date().toISOString();
+
+    // 更新 library 并取回所属 project / folder
+    const { data, error } = await supabase
       .from('libraries')
-      .update({ updated_at: new Date().toISOString() })
-      .eq('id', libraryId);
+      .update({ updated_at: now })
+      .eq('id', libraryId)
+      .select('project_id, folder_id')
+      .single();
+
+    if (error) throw error;
+
+    const projectId = (data as any)?.project_id as string | undefined;
+    const folderId = (data as any)?.folder_id as string | undefined | null;
+
+    if (projectId) {
+      await supabase
+        .from('projects')
+        .update({ updated_at: now })
+        .eq('id', projectId);
+    }
+
+    if (folderId) {
+      await supabase
+        .from('folders')
+        .update({ updated_at: now })
+        .eq('id', folderId);
+    }
   } catch (error) {
     // 不要因为更新时间失败而影响主流程
     // eslint-disable-next-line no-console
-    console.warn('[Libraries] Failed to touch updated_at for library', libraryId, error);
+    console.warn('[Libraries] Failed to touch updated_at for library/folder/project', libraryId, error);
   }
 }
 
