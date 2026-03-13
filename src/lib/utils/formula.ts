@@ -516,6 +516,19 @@ export function hasFormulaCircularReference(
 }
 
 /**
+ * Public helper: extract all column names referenced in a formula expression.
+ *
+ * This is a thin wrapper around the internal identifier extractor, and is used
+ * by UI code (e.g. Add / Edit column modals) to perform validation such as
+ * "non-calculable columns cannot be used in formulas".
+ */
+export function getFormulaReferencedFieldNames(
+  expression: string | null | undefined
+): string[] {
+  return extractIdentifiersFromFormulaExpression(expression);
+}
+
+/**
  * Only perform syntactic validation, without relying on specific columns or data.
  *
  * Rules:
