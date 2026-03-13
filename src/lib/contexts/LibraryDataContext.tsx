@@ -77,6 +77,24 @@ type FormulaFieldMetaRow = {
   formula_expression: string | null;
 };
 
+// Helper: when library content changes, bump libraries.updated_at so TopBar search can sort by latest edits.
+async function touchLibraryUpdatedAt(
+  supabase: ReturnType<typeof useSupabase>,
+  libraryId: string
+) {
+  if (!supabase || !libraryId) return;
+  try {
+    await supabase
+      .from('libraries')
+      .update({ updated_at: new Date().toISOString() })
+      .eq('id', libraryId);
+  } catch (error) {
+    // Do not break editing flow if this fails
+    // eslint-disable-next-line no-console
+    console.warn('[LibraryDataContext] Failed to touch libraries.updated_at for', libraryId, error);
+  }
+}
+
 export function LibraryDataProvider({ children, libraryId, projectId }: LibraryDataProviderProps) {
   const supabase = useSupabase();
   const { userProfile } = useAuth();
@@ -585,6 +603,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
       if (error) throw error;
 
+      // 更新库内单元格成功后，刷新 libraries.updated_at，供 TopBar 搜索排序使用
+      await touchLibraryUpdatedAt(supabase, libraryId);
+
       if (!options?.skipBroadcast && realtimeConfig) {
         await new Promise(resolve => setTimeout(resolve, 100));
         await broadcastCellUpdate(assetId, fieldId, valueForYjs, oldValue);
@@ -635,6 +656,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         .eq('id', assetId);
       
       if (error) throw error;
+
+      await touchLibraryUpdatedAt(supabase, libraryId);
       
       // 3. Broadcast as field update (name is a special field)
       if (!options?.skipBroadcast && realtimeConfig) {
@@ -719,6 +742,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       if (valuesError) throw valuesError;
     }
     
+    // 额外：库内新增行，刷新 libraries.updated_at
+    await touchLibraryUpdatedAt(supabase, libraryId);
+
     // 3. Add to Yjs (using Y.Map for propertyValues)
     // 对于纯追加（没有显式 rowIndex）的场景，可以直接在本地插入 Yjs 记录，立即看到新行。
     // 对于带 rowIndex 的场景（Add Row / Insert Above/Below / Paste 新行），我们后面会通过 loadInitialData()

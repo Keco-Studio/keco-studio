@@ -69,6 +69,7 @@ export function AddColumnModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const nameInputRef = useRef<any>(null);
+  const formulaInputRef = useRef<HTMLInputElement | null>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const [popupStyle, setPopupStyle] = useState<React.CSSProperties>({});
   const [referenceFolderFilter, setReferenceFolderFilter] = useState<'all' | 'root' | string>('all');
@@ -79,6 +80,63 @@ export function AddColumnModal({
   const dataTypeSearchRef = useRef<HTMLInputElement>(null);
   const [formulaValue, setFormulaValue] = useState('');
   const [formulaDropdownOpen, setFormulaDropdownOpen] = useState(false);
+  const [formulaSelection, setFormulaSelection] = useState<{ start: number; end: number }>({
+    start: 0,
+    end: 0,
+  });
+
+  const insertFormulaTokenAtCursor = useCallback(
+    (rawToken: string) => {
+      setFormulaValue((prev) => {
+        const current = prev ?? '';
+        const { start, end } = formulaSelection;
+        const safeStart = Number.isFinite(start) ? Math.max(0, Math.min(start, current.length)) : current.length;
+        const safeEnd = Number.isFinite(end) ? Math.max(safeStart, Math.min(end, current.length)) : safeStart;
+        const next = current.slice(0, safeStart) + rawToken + current.slice(safeEnd);
+        const cursorPos = safeStart + rawToken.length;
+
+        // 更新输入框中的光标位置
+        setTimeout(() => {
+          const inputEl = formulaInputRef.current;
+          if (inputEl && typeof inputEl.setSelectionRange === 'function') {
+            inputEl.focus();
+            inputEl.setSelectionRange(cursorPos, cursorPos);
+          }
+          setFormulaSelection({ start: cursorPos, end: cursorPos });
+        }, 0);
+
+        return next;
+      });
+    },
+    [formulaSelection],
+  );
+
+  const insertFormulaTemplateAtCursor = useCallback(
+    (template: string) => {
+      setFormulaValue((prev) => {
+        const current = prev ?? '';
+        const needsSpace = current && !current.endsWith(' ');
+        const token = `${needsSpace ? ' ' : ''}${template}`;
+        const { start, end } = formulaSelection;
+        const safeStart = Number.isFinite(start) ? Math.max(0, Math.min(start, current.length)) : current.length;
+        const safeEnd = Number.isFinite(end) ? Math.max(safeStart, Math.min(end, current.length)) : safeStart;
+        const next = current.slice(0, safeStart) + token + current.slice(safeEnd);
+        const cursorPos = safeStart + token.length;
+
+        setTimeout(() => {
+          const inputEl = formulaInputRef.current;
+          if (inputEl && typeof inputEl.setSelectionRange === 'function') {
+            inputEl.focus();
+            inputEl.setSelectionRange(cursorPos, cursorPos);
+          }
+          setFormulaSelection({ start: cursorPos, end: cursorPos });
+        }, 0);
+
+        return next;
+      });
+    },
+    [formulaSelection],
+  );
 
   const filteredFieldTypeOptions = useMemo(() => {
     if (!dataTypeSearch.trim()) return FIELD_TYPE_OPTIONS;
@@ -306,22 +364,28 @@ export function AddColumnModal({
         return;
       }
 
-      // Validate that the formula does not reference non-calculable columns.
-      // Only numeric or formula columns are allowed to participate in calculations.
       if (existingProperties && existingProperties.length > 0) {
         const referencedNames = getFormulaReferencedFieldNames(formulaValue);
         if (referencedNames.length > 0) {
-          const nonCalculable = referencedNames
-            .map((name) =>
-              existingProperties.find(
-                (prop) => prop.name.trim().toLowerCase() === name.trim().toLowerCase()
-              )
+          const referencedProps = referencedNames.map((name) =>
+            existingProperties.find(
+              (prop) => prop.name.trim().toLowerCase() === name.trim().toLowerCase()
             )
-            .filter(
-              (prop): prop is PropertyConfig =>
-                !!prop &&
-                !['int', 'float', 'formula'].includes((prop.dataType ?? '').toString())
-            );
+          );
+
+          // 先检查是否有「引用了不存在的列」
+          const missingRefs = referencedNames.filter((_, idx) => !referencedProps[idx]);
+          if (missingRefs.length > 0) {
+            setError('Formula references a non-existing column');
+            return;
+          }
+
+          // 再检查是否引用了非可计算列：仅允许 int / float / formula
+          const nonCalculable = referencedProps.filter(
+            (prop): prop is PropertyConfig =>
+              !!prop &&
+              !['int', 'float', 'formula'].includes((prop.dataType ?? '').toString())
+          );
 
           if (nonCalculable.length > 0) {
             setError('This column cannot be calculated');
@@ -529,10 +593,17 @@ export function AddColumnModal({
               <div className={styles.formulaInputWrapper}>
                 <Input
                   id="add-column-formula"
+                  ref={formulaInputRef}
                   value={formulaValue}
                   onChange={(e) => setFormulaValue(e.target.value)}
                   placeholder="INSERT EXPRESSION"
                   className={styles.formulaInput}
+                  onSelect={(e) => {
+                    const target = e.target as HTMLInputElement;
+                    const start = target.selectionStart ?? target.value.length;
+                    const end = target.selectionEnd ?? start;
+                    setFormulaSelection({ start, end });
+                  }}
                   onFocus={() => setFormulaDropdownOpen(true)}
                   onBlur={() => {
                     
@@ -549,7 +620,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + '+');
+                          insertFormulaTokenAtCursor('+');
                         }}
                         title="Add"
                       >
@@ -560,7 +631,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + '-');
+                          insertFormulaTokenAtCursor('-');
                         }}
                         title="Subtraction"
                       >
@@ -571,7 +642,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + '*');
+                          insertFormulaTokenAtCursor('*');
                         }}
                         title="Multiplication"
                       >
@@ -582,7 +653,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + '/');
+                          insertFormulaTokenAtCursor('/');
                         }}
                         title="Division"
                       >
@@ -593,7 +664,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + '(');
+                          insertFormulaTokenAtCursor('(');
                         }}
                         title="Left parenthesis"
                       >
@@ -604,7 +675,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + ')');
+                          insertFormulaTokenAtCursor(')');
                         }}
                         title="Right parenthesis"
                       >
@@ -616,7 +687,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + '>');
+                          insertFormulaTokenAtCursor('>');
                         }}
                         title="Greater than"
                       >
@@ -627,7 +698,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + '<');
+                          insertFormulaTokenAtCursor('<');
                         }}
                         title="Less than"
                       >
@@ -638,7 +709,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + '>=');
+                          insertFormulaTokenAtCursor('>=');
                         }}
                         title="Greater than or equal"
                       >
@@ -649,7 +720,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + '<=');
+                          insertFormulaTokenAtCursor('<=');
                         }}
                         title="Less than or equal"
                       >
@@ -660,7 +731,7 @@ export function AddColumnModal({
                         className={styles.formulaOperatorBtn}
                         onMouseDown={(e) => {
                           e.preventDefault();
-                          setFormulaValue((prev) => prev + '=');
+                          insertFormulaTokenAtCursor('=');
                         }}
                         title="Equal"
                       >
@@ -703,10 +774,7 @@ export function AddColumnModal({
                       onMouseDown={(e) => {
                         e.preventDefault();
                         const template = 'IF( , , )';
-                        setFormulaValue((prev) => {
-                          const needsSpace = prev && !prev.endsWith(' ');
-                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
-                        });
+                        insertFormulaTemplateAtCursor(template);
                       }}
                     >
                       <div className={styles.formulaItemMain}>
@@ -721,10 +789,7 @@ export function AddColumnModal({
                       onMouseDown={(e) => {
                         e.preventDefault();
                         const template = 'SUM( , , )';
-                        setFormulaValue((prev) => {
-                          const needsSpace = prev && !prev.endsWith(' ');
-                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
-                        });
+                        insertFormulaTemplateAtCursor(template);
                       }}
                     >
                       <div className={styles.formulaItemMain}>
@@ -739,10 +804,7 @@ export function AddColumnModal({
                       onMouseDown={(e) => {
                         e.preventDefault();
                         const template = 'AVERAGE( , , )';
-                        setFormulaValue((prev) => {
-                          const needsSpace = prev && !prev.endsWith(' ');
-                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
-                        });
+                        insertFormulaTemplateAtCursor(template);
                       }}
                     >
                       <div className={styles.formulaItemMain}>
@@ -757,10 +819,7 @@ export function AddColumnModal({
                       onMouseDown={(e) => {
                         e.preventDefault();
                         const template = 'MIN( , , )';
-                        setFormulaValue((prev) => {
-                          const needsSpace = prev && !prev.endsWith(' ');
-                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
-                        });
+                        insertFormulaTemplateAtCursor(template);
                       }}
                     >
                       <div className={styles.formulaItemMain}>
@@ -775,10 +834,7 @@ export function AddColumnModal({
                       onMouseDown={(e) => {
                         e.preventDefault();
                         const template = 'MAX( , , )';
-                        setFormulaValue((prev) => {
-                          const needsSpace = prev && !prev.endsWith(' ');
-                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
-                        });
+                        insertFormulaTemplateAtCursor(template);
                       }}
                     >
                       <div className={styles.formulaItemMain}>
@@ -793,10 +849,7 @@ export function AddColumnModal({
                       onMouseDown={(e) => {
                         e.preventDefault();
                         const template = 'ROUND( , 2)';
-                        setFormulaValue((prev) => {
-                          const needsSpace = prev && !prev.endsWith(' ');
-                          return `${prev}${needsSpace ? ' ' : ''}${template}`;
-                        });
+                        insertFormulaTemplateAtCursor(template);
                       }}
                     >
                       <div className={styles.formulaItemMain}>
