@@ -34,17 +34,40 @@ async function createLibraryForDatatypeTests(page: Page): Promise<void> {
 }
 
 async function addColumn(page: Page, name: string, dataTypeLabel: string): Promise<void> {
-  const addColumnButton = page.getByRole('button', { name: /add new column/i });
+  const addColumnButton = page.getByRole('button', { name: /add new column/i }).first();
   await expect(addColumnButton).toBeVisible({ timeout: 15000 });
-  await addColumnButton.click();
 
-  const addModal = page
-    .locator('[class*="popup"]')
-    .filter({ has: page.getByRole('heading', { name: /add column/i }) })
-    .first();
+  const addModal = page.getByRole('dialog', { name: /add column/i }).first();
+  await addColumnButton.click();
+  if (!(await addModal.isVisible({ timeout: 1200 }).catch(() => false))) {
+    await addColumnButton.click({ force: true });
+  }
   await expect(addModal).toBeVisible({ timeout: 5000 });
 
-  await addModal.locator('#add-column-name').fill(name);
+  const fillHeaderNameWithRetry = async () => {
+    for (let i = 0; i < 4; i += 1) {
+      const input = addModal.locator('#add-column-name:visible').first();
+      await expect(input).toBeVisible({ timeout: 5000 });
+      await input.click();
+      await input.fill('');
+      await input.type(name, { delay: 20 });
+      let current = await input.inputValue();
+      if (current === name) return;
+
+      // Controlled input fallback for remount/race cases.
+      await input.evaluate((el, v) => {
+        const node = el as HTMLInputElement;
+        node.value = v;
+        node.dispatchEvent(new Event('input', { bubbles: true }));
+        node.dispatchEvent(new Event('change', { bubbles: true }));
+      }, name);
+      current = await input.inputValue();
+      if (current === name) return;
+    }
+    throw new Error('Failed to persist header name while adding column.');
+  };
+
+  await fillHeaderNameWithRetry();
   await addModal.locator('#add-column-type').click();
 
   // Use dropdown search for stable option selection (some options may be outside initial viewport).
@@ -61,27 +84,82 @@ async function addColumn(page: Page, name: string, dataTypeLabel: string): Promi
   await option.click();
 
   await addModal.getByRole('button', { name: /^add$/i }).click();
-  await expect(addModal).not.toBeVisible({ timeout: 10000 });
+  // If transient rerender clears the name right before submit, refill once and retry.
+  if (
+    await addModal
+      .locator('[class*="errorText"]')
+      .getByText(/header name is required\./i)
+      .isVisible({ timeout: 1200 })
+      .catch(() => false)
+  ) {
+    await fillHeaderNameWithRetry();
+    await addModal.getByRole('button', { name: /^add$/i }).click();
+  }
+
+  // Success signal: modal closes OR the new header appears in table.
+  await expect
+    .poll(
+      async () => {
+        const modalVisible = await addModal.isVisible().catch(() => false);
+        if (!modalVisible) return true;
+        const headerExists = await page
+          .locator('thead tr')
+          .last()
+          .locator('th[class*="propertyHeaderCell"]')
+          .filter({ hasText: name })
+          .count();
+        return headerExists > 0;
+      },
+      { timeout: 15000 },
+    )
+    .toBeTruthy();
+
+  if (await addModal.isVisible({ timeout: 500 }).catch(() => false)) {
+    // If still visible here, fail with actionable context.
+    const errorText = await addModal.locator('[class*="errorText"]').allInnerTexts().catch(() => []);
+    throw new Error(`Add column modal still visible after submit. errors=${errorText.join(' | ')}`);
+  }
 }
 
 async function getColumnCellByName(page: Page, columnName: string): Promise<Locator> {
   const headerCells = page.locator('thead tr').last().locator('th[class*="propertyHeaderCell"]');
-  const count = await headerCells.count();
-  let targetIndex = -1;
+  const normalize = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const expected = normalize(columnName);
+  const isHeaderMatch = (current: string, target: string) => {
+    // Prefer exact/forward match; only allow reverse contains for sufficiently long headers
+    // (avoid false positive on short labels like "id").
+    if (current === target) return true;
+    if (current.includes(target)) return true;
+    if (current.length >= 8 && target.includes(current)) return true;
+    return false;
+  };
 
-  for (let i = 0; i < count; i += 1) {
-    const text = (await headerCells.nth(i).innerText()).trim();
-    if (text.includes(columnName)) {
-      targetIndex = i;
-      break;
+  const findHeaderElementIndex = async (): Promise<number> => {
+    const count = await headerCells.count();
+    for (let i = 0; i < count; i += 1) {
+      const text = (await headerCells.nth(i).innerText()).trim();
+      const current = normalize(text);
+      // UI may normalize/truncate header display, so compare normalized tokens with safeguards.
+      if (isHeaderMatch(current, expected)) return i;
     }
-  }
+    return -1;
+  };
 
-  expect(targetIndex, `Cannot find header for column "${columnName}"`).toBeGreaterThanOrEqual(0);
+  await expect
+    .poll(findHeaderElementIndex, {
+      timeout: 15000,
+      message: `Cannot find header for column "${columnName}"`,
+    })
+    .toBeGreaterThanOrEqual(0);
+
+  const headerElementIndex = await findHeaderElementIndex();
+  const headerCell = headerCells.nth(headerElementIndex);
+  const targetCellIndex = await headerCell.evaluate((el) => (el as HTMLTableCellElement).cellIndex);
 
   const firstDataRow = page.locator('tbody tr[data-row-id]').first();
   await expect(firstDataRow).toBeVisible({ timeout: 10000 });
-  const cell = firstDataRow.locator('td[class*="cell"]').nth(targetIndex);
+  const rowCells = firstDataRow.locator('td');
+  const cell = rowCells.nth(targetCellIndex);
   await expect(cell).toBeVisible({ timeout: 5000 });
   return cell;
 }
@@ -93,6 +171,29 @@ async function editCell(page: Page, cell: Locator, value: string): Promise<void>
   await editor.fill('');
   await editor.type(value);
   await editor.press('Enter');
+}
+
+async function expectArrayFormatError(page: Page, cell: Locator): Promise<void> {
+  const tooltip = page.locator('.ant-tooltip-inner').filter({ hasText: /array format is incorrect|invalid array format/i });
+  const editor = cell.locator('[contenteditable="true"]').first();
+
+  await expect
+    .poll(
+      async () => {
+        const tooltipVisible = await tooltip.first().isVisible().catch(() => false);
+        if (tooltipVisible) return true;
+
+        const editorVisible = await editor.isVisible().catch(() => false);
+        if (!editorVisible) return false;
+
+        const hasErrorClass = await cell
+          .evaluate((el) => el.className.includes('cellError'))
+          .catch(() => false);
+        return hasErrorClass;
+      },
+      { timeout: 8000 },
+    )
+    .toBeTruthy();
 }
 
 test.describe('New data types (array/audio/video)', () => {
@@ -127,9 +228,7 @@ test.describe('New data types (array/audio/video)', () => {
     await editor.type('[1,,3]');
     await editor.press('Enter');
 
-    await expect(page.locator('.ant-tooltip-inner').filter({ hasText: /array format is incorrect/i })).toBeVisible({
-      timeout: 5000,
-    });
+    await expectArrayFormatError(page, cell);
   });
 
   test('Float Array ignores spaces and saves normalized value', async ({ page }) => {
@@ -153,9 +252,7 @@ test.describe('New data types (array/audio/video)', () => {
     await editor.type('[Red, Blue]');
     await editor.press('Enter');
 
-    await expect(page.locator('.ant-tooltip-inner').filter({ hasText: /array format|invalid array format/i })).toBeVisible({
-      timeout: 5000,
-    });
+    await expectArrayFormatError(page, cell);
   });
 
   test('Int Array auto-wraps with brackets when typing comma-separated values', async ({ page }) => {

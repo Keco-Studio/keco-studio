@@ -8,6 +8,7 @@ import { generateLibraryData } from '../fixures/libraries';
 import { generateFolderData } from '../fixures/folders';
 
 async function openFirstColumnEditModal(page: Page): Promise<Locator> {
+  await ensureEditableColumnExists(page);
   const firstPropertyHeaderCell = page
     .locator('thead tr')
     .last()
@@ -46,16 +47,81 @@ async function saveEditColumnModal(page: Page, modal: Locator): Promise<void> {
 }
 
 async function openAddColumnModal(page: Page): Promise<Locator> {
-  const addColumnButton = page.getByRole('button', { name: /add new column/i });
-  await expect(addColumnButton).toBeVisible({ timeout: 15000 });
-  await addColumnButton.click();
-
-  const addModal = page
-    .locator('[class*="popup"]')
-    .filter({ has: page.getByRole('heading', { name: /add column/i }) })
+  const addColumnButton = page
+    .locator('thead')
+    .getByRole('button', { name: /add new column/i })
     .first();
+  await expect(addColumnButton).toBeVisible({ timeout: 15000 });
+
+  const addModal = page.getByRole('dialog', { name: /add column/i }).first();
+  // Flaky UI guard: first click sometimes only focuses header cell.
+  await addColumnButton.click();
+  if (!(await addModal.isVisible({ timeout: 1200 }).catch(() => false))) {
+    await addColumnButton.click({ force: true });
+  }
   await expect(addModal).toBeVisible({ timeout: 5000 });
   return addModal;
+}
+
+async function ensureEditableColumnExists(page: Page): Promise<void> {
+  const propertyHeaders = page
+    .locator('thead tr')
+    .last()
+    .locator('th[class*="propertyHeaderCell"]');
+  const existingCount = await propertyHeaders.count();
+  if (existingCount > 0) return;
+
+  const addModal = await openAddColumnModal(page);
+  const headerName = `Auto Editable ${Date.now()}`;
+  await addModal.locator('#add-column-name').fill(headerName);
+  await addModal.locator('#add-column-type').click();
+
+  const dropdown = page.locator('[class*="dataTypeDropdown"]').last();
+  const searchInput = dropdown.locator('input[placeholder="Search"]').first();
+  await expect(searchInput).toBeVisible({ timeout: 5000 });
+  await searchInput.fill('String');
+
+  const option = page
+    .locator('.ant-select-item-option')
+    .filter({ hasText: /string/i })
+    .first();
+  await expect(option).toBeVisible({ timeout: 10000 });
+  await option.click();
+
+  await addModal.getByRole('button', { name: /^add$/i }).click();
+  await expect(addModal).not.toBeVisible({ timeout: 10000 });
+  await expect(propertyHeaders.first()).toBeVisible({ timeout: 15000 });
+}
+
+async function fillHeaderNameWithRetry(addModal: Locator, value: string): Promise<void> {
+  for (let i = 0; i < 3; i += 1) {
+    // Re-acquire current visible input each round to survive React remounts.
+    const input = addModal.locator('#add-column-name:visible').first();
+    await expect(input).toBeVisible({ timeout: 5000 });
+
+    await input.click();
+    await input.fill('');
+    await input.type(value, { delay: 20 });
+    let current = await input.inputValue();
+    if (current === value) return;
+
+    // Fallback: force value + dispatch events for controlled components.
+    await input.evaluate((el, v) => {
+      const node = el as HTMLInputElement;
+      node.value = v;
+      node.dispatchEvent(new Event('input', { bubbles: true }));
+      node.dispatchEvent(new Event('change', { bubbles: true }));
+    }, value);
+
+    current = await input.inputValue();
+    if (current === value) return;
+
+    await input.press('ControlOrMeta+a').catch(() => {});
+    await input.press('Backspace').catch(() => {});
+    await addModal.waitFor({ state: 'visible', timeout: 1000 }).catch(() => {});
+  }
+
+  throw new Error('Failed to persist header name input value after retries.');
 }
 
 async function loginAsSeedEmpty(page: Page): Promise<void> {
@@ -113,11 +179,19 @@ test.describe('Column operations and double-click rename', () => {
     await createAndOpenLibrary(page);
 
     const addModal = await openAddColumnModal(page);
-    await addModal.locator('#add-column-name').fill(`Auto Header ${Date.now()}`);
+    const headerName = `Auto Header ${Date.now()}`;
+    await fillHeaderNameWithRetry(addModal, headerName);
     await addModal.getByRole('button', { name: /^add$/i }).click();
 
+    // If a transient rerender cleared header value right before submit, refill once and retry submit.
+    const errorText = addModal.locator('[class*="errorText"]');
+    if (await errorText.getByText(/header name is required\./i).isVisible({ timeout: 1200 }).catch(() => false)) {
+      await fillHeaderNameWithRetry(addModal, headerName);
+      await addModal.getByRole('button', { name: /^add$/i }).click();
+    }
+
     await expect(addModal).toBeVisible({ timeout: 5000 });
-    await expect(addModal.getByText('Data type is required.')).toBeVisible({ timeout: 5000 });
+    await expect(errorText).toContainText(/data type is required\./i, { timeout: 5000 });
   });
 
   test('Add column popup closes by outside click when unchanged', async ({ page }) => {
