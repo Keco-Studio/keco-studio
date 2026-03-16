@@ -62,6 +62,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
   const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library'>('all');
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
+  const [topbarPresenceUsers, setTopbarPresenceUsers] = useState<PresenceState[]>([]);
 
   // Resolve display name: prefer username, then full_name, then email
   const displayName =
@@ -561,11 +562,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const isPredefine = isPredefinePage;
   const isAssetDetail = !!currentAssetId;
-  const isLibraryTopLevelPage = isLibraryPage && !!currentLibraryId && !currentAssetId && !isPredefine;
   const isProjectRootPage =
     !!currentProjectId && !currentFolderId && !currentLibraryId && !currentAssetId && !isPredefine;
   const isFolderPage =
     !!currentProjectId && !!currentFolderId && !currentLibraryId && !currentAssetId && !isPredefine;
+  const isLibraryTopLevelPage =
+    isLibraryPage && !!currentLibraryId && !currentAssetId && !isPredefine;
 
   // Sync view mode from page-level LibraryToolbar to TopBar
   useEffect(() => {
@@ -622,6 +624,34 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return () => {
       if (typeof window !== 'undefined') {
         window.removeEventListener('library-version-control-state', handler as EventListener);
+      }
+    };
+  }, [currentProjectId, currentLibraryId]);
+
+  // Receive presence updates from LibraryPage (LibraryDataContext) so TopBar
+  // can render LibraryHeader with real-time collaborators in the top row.
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{
+        projectId?: string;
+        libraryId?: string;
+        presenceUsers?: PresenceState[];
+      }>;
+
+      const detail = custom.detail;
+      if (!detail) return;
+      if (detail.projectId !== currentProjectId || detail.libraryId !== currentLibraryId) return;
+
+      setTopbarPresenceUsers(detail.presenceUsers || []);
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('library-presence-update', handler as EventListener);
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('library-presence-update', handler as EventListener);
       }
     };
   }, [currentProjectId, currentLibraryId]);
@@ -886,19 +916,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       const lastBreadcrumb = displayBreadcrumbs[displayBreadcrumbs.length - 1];
       const libraryName = lastBreadcrumb?.label || 'Library';
 
-      const presenceUsers: PresenceState[] = [
-        {
-          userId: userProfile.id,
-          userName: displayName,
-          userEmail: userProfile.email || '',
-          avatarColor: userAvatarColor,
-          activeCell: null,
-          cursorPosition: null,
-          lastActivity: new Date().toISOString(),
-          connectionStatus: 'online',
-        },
-      ];
-
       return (
         <LibraryHeader
           libraryId={currentLibraryId}
@@ -910,7 +927,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           currentUserEmail={userProfile.email || ''}
           currentUserAvatarColor={userAvatarColor}
           userRole={(userRole || 'viewer') as CollaboratorRole}
-          presenceUsers={presenceUsers}
+          presenceUsers={topbarPresenceUsers}
           isVersionControlOpen={libraryVersionControlOpen}
           onVersionControlToggle={handleTopbarVersionControlToggle}
         />

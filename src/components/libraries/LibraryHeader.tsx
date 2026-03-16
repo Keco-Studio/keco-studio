@@ -17,6 +17,7 @@ import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollab
 import { showSuccessToast } from '@/lib/utils/toast';
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
+import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
 import styles from './LibraryHeader.module.css';
 import libraryHeadMoreIcon from '@/assets/images/moreOptionsIcon.svg';
 import libraryHeadVersionControlIcon from '@/assets/images/libraryHeadVersionControlIcon.svg';
@@ -72,9 +73,24 @@ export function LibraryHeader({
     }
   };
 
+  // Prefer presence from LibraryDataContext when available (single source of truth),
+  // otherwise fall back to the presenceUsers prop (e.g. in TopBar or tests).
+  const presenceSource: PresenceState[] = (() => {
+    try {
+      const { presenceUsers: ctxPresence } = useLibraryData();
+      if (ctxPresence && ctxPresence.length > 0) {
+        return ctxPresence;
+      }
+      return presenceUsers;
+    } catch {
+      // Not inside LibraryDataProvider – use props only.
+      return presenceUsers;
+    }
+  })();
+
   // Sort presence users: current user first, then by last activity
   const sortedPresenceUsers = useMemo(() => {
-    let users = [...presenceUsers];
+    let users = [...presenceSource];
     
     // Check if current user is in the list
     const hasCurrentUser = users.some(u => u.userId === currentUserId);
@@ -101,38 +117,12 @@ export function LibraryHeader({
       // Then sort by last activity (most recent first)
       return new Date(b.lastActivity).getTime() - new Date(a.lastActivity).getTime();
     });
-  }, [presenceUsers, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor]);
+  }, [presenceSource, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor]);
 
-  // Get users for avatar display (max 2)
-  // Memoized more aggressively to avoid flickering
+  // Get users for avatar display – show all sorted users
   const displayUsers = useMemo(() => {
-    const result = [];
-    
-    // Find current user in sorted list
-    const currentUserInList = sortedPresenceUsers.find(u => u.userId === currentUserId);
-    
-    // Use existing user object if available, otherwise create stable placeholder
-    const currentUser = currentUserInList || {
-      userId: currentUserId,
-      userName: currentUserName,
-      userEmail: currentUserEmail,
-      avatarColor: currentUserAvatarColor,
-      activeCell: null,
-      cursorPosition: null,
-      lastActivity: new Date().toISOString(),
-      connectionStatus: 'online' as const,
-    };
-    
-    result.push(currentUser);
-    
-    // Second: most recent other user
-    const otherUsers = sortedPresenceUsers.filter(u => u.userId !== currentUserId);
-    if (otherUsers.length > 0) {
-      result.push(otherUsers[0]);
-    }
-    
-    return result;
-  }, [sortedPresenceUsers, currentUserId, currentUserName, currentUserEmail, currentUserAvatarColor]);
+    return sortedPresenceUsers;
+  }, [sortedPresenceUsers]);
 
   // Get remaining count (excluding displayed users)
   // If current user is displayed, count should exclude them
