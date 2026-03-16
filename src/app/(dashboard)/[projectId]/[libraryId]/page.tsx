@@ -154,6 +154,22 @@ export default function LibraryPage() {
   // Get presence and asset operations from LibraryDataContext (single source of truth)
   const { presenceUsers, createAsset: contextCreateAsset } = useLibraryData();
 
+  // Broadcast presence to TopBar so it can render LibraryHeader in the global top row
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!projectId || !libraryId) return;
+
+    window.dispatchEvent(
+      new CustomEvent('library-presence-update', {
+        detail: {
+          projectId,
+          libraryId,
+          presenceUsers,
+        },
+      }),
+    );
+  }, [projectId, libraryId, presenceUsers]);
+
   useEffect(() => {
     if (!libraryId) return;
     if (selectedVersionId && selectedVersionId !== '__current__') return;
@@ -729,24 +745,6 @@ export default function LibraryPage() {
 
   return (
     <div className={styles.container}>
-      {/* Library Header with members and share functionality */}
-      {/* {userProfile && (
-        <LibraryHeader
-          libraryId={libraryId}
-          libraryName={library.name}
-          libraryDescription={library.description}
-          projectId={projectId}
-          currentUserId={userProfile.id}
-          currentUserName={userProfile.username || userProfile.full_name || userProfile.email || 'You'}
-          currentUserEmail={userProfile.email || ''}
-          currentUserAvatarColor={userAvatarColor}
-          userRole={userRole}
-          presenceUsers={presenceUsers}
-          isVersionControlOpen={isVersionControlOpen}
-          onVersionControlToggle={() => setIsVersionControlOpen(!isVersionControlOpen)}
-        />
-      )} */}
-
       {/* Main content area: Table and Version Control Sidebar side by side */}
       <div className={styles.mainContent}>
         {/* Phase 2: Library assets table preview (placeholder data).
