@@ -156,8 +156,25 @@ export function useCellSelection({
       if (selectedCells.has(cellKey) && target.closest('[data-reference-background="true"]')) {
         return;
       }
+      // UX fix: switch active cell immediately on mousedown (not waiting for click/mouseup).
+      // This matches spreadsheet behavior and avoids stale selection during quick drag interactions.
       if (!selectedCells.has(cellKey) || selectedCells.size !== 1) {
-        return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (
+          currentFocusedCell &&
+          (currentFocusedCell.assetId !== rowId || currentFocusedCell.propertyKey !== propertyKey)
+        ) {
+          handleCellBlur();
+        }
+        if (selectedRowIds.size > 0) {
+          setSelectedRowIds(new Set());
+        }
+        setSelectedCells(new Set<CellKey>([cellKey]));
+        setDragStartCell({ rowId, propertyKey });
+        setDragCurrentCell(null);
+        // Do not return here: if user keeps pressing and drags,
+        // we should start rectangle selection from the newly switched cell.
       }
       if (e.button !== 0) {
         return;
@@ -238,7 +255,14 @@ export function useCellSelection({
       document.addEventListener('mouseup', dragEndHandler);
       document.body.style.userSelect = 'none';
     },
-    [selectedCells, getAllRowsForCellSelection, orderedProperties]
+    [
+      selectedCells,
+      selectedRowIds,
+      currentFocusedCell,
+      handleCellBlur,
+      getAllRowsForCellSelection,
+      orderedProperties,
+    ]
   );
 
   // Handle cell fill drag start (from expand icon - Excel-like fill down)
@@ -283,7 +307,77 @@ export function useCellSelection({
       let isClick = true;
       const DRAG_THRESHOLD = 5;
 
+      const resolveFillTargetCell = (clientX: number, clientY: number): { rowId: string; propertyKey: string } | null => {
+        const getRowAndPropertyFromElement = (el: Element | null) => {
+          if (!el) return null;
+          const cellElement = el.closest('td');
+          if (!cellElement) return null;
+          const rowElement = cellElement.closest('tr');
+          if (
+            !rowElement ||
+            rowElement.classList.contains('headerRowTop') ||
+            rowElement.classList.contains('headerRowBottom') ||
+            rowElement.classList.contains('editRow') ||
+            rowElement.classList.contains('addRow')
+          ) {
+            return null;
+          }
+          const resolvedRowId = rowElement.getAttribute('data-row-id');
+          const resolvedPropertyKey = cellElement.getAttribute('data-property-key');
+          if (!resolvedRowId || !resolvedPropertyKey) return null;
+          return { rowId: resolvedRowId, propertyKey: resolvedPropertyKey };
+        };
+
+        // Primary path: pointer is on a concrete cell.
+        const elementBelow = document.elementFromPoint(clientX, clientY);
+        const direct = getRowAndPropertyFromElement(elementBelow);
+        if (direct && direct.propertyKey === startPropertyKey) {
+          return direct;
+        }
+
+        // Fallback path: pointer left cell bounds.
+        // Snap to nearest visible cell in the same column (Airtable-like behavior).
+        const sameColumnCells = Array.from(
+          document.querySelectorAll(`td[data-property-key="${startPropertyKey}"]`)
+        ) as HTMLTableCellElement[];
+        if (sameColumnCells.length === 0) return null;
+
+        let nearest: { rowId: string; propertyKey: string } | null = null;
+        let minDistance = Number.POSITIVE_INFINITY;
+
+        for (const cell of sameColumnCells) {
+          const rowElement = cell.closest('tr');
+          if (
+            !rowElement ||
+            rowElement.classList.contains('headerRowTop') ||
+            rowElement.classList.contains('headerRowBottom') ||
+            rowElement.classList.contains('editRow') ||
+            rowElement.classList.contains('addRow')
+          ) {
+            continue;
+          }
+
+          const rowIdAttr = rowElement.getAttribute('data-row-id');
+          const propertyKeyAttr = cell.getAttribute('data-property-key');
+          if (!rowIdAttr || !propertyKeyAttr) continue;
+
+          const rect = cell.getBoundingClientRect();
+          const distance =
+            clientY < rect.top ? rect.top - clientY :
+            clientY > rect.bottom ? clientY - rect.bottom :
+            0;
+
+          if (distance < minDistance) {
+            minDistance = distance;
+            nearest = { rowId: rowIdAttr, propertyKey: propertyKeyAttr };
+          }
+        }
+
+        return nearest;
+      };
+
       const fillDragMoveHandler = (moveEvent: MouseEvent) => {
+        moveEvent.preventDefault();
         const deltaX = Math.abs(moveEvent.clientX - startX);
         const deltaY = Math.abs(moveEvent.clientY - startY);
         if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
@@ -299,26 +393,12 @@ export function useCellSelection({
         }
         if (!hasMoved || !isFillingCellsRef.current) return;
         document.body.style.cursor = 'crosshair';
-        const elementBelow = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
-        if (!elementBelow) return;
-        const cellElement = elementBelow.closest('td');
-        if (!cellElement) return;
-        const rowElement = cellElement.closest('tr');
-        if (
-          !rowElement ||
-          rowElement.classList.contains('headerRowTop') ||
-          rowElement.classList.contains('headerRowBottom') ||
-          rowElement.classList.contains('editRow') ||
-          rowElement.classList.contains('addRow')
-        ) {
-          return;
-        }
-        const currentRowId = rowElement.getAttribute('data-row-id');
-        const currentPropertyKey = cellElement.getAttribute('data-property-key');
-        if (currentRowId && currentPropertyKey && currentPropertyKey === startPropertyKey) {
+        const targetCell = resolveFillTargetCell(moveEvent.clientX, moveEvent.clientY);
+        if (!targetCell) return;
+        if (targetCell.propertyKey === startPropertyKey) {
           const allRowsForSelection = getAllRowsForCellSelection();
           const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-          const currentRowIndex = allRowsForSelection.findIndex(r => r.id === currentRowId);
+          const currentRowIndex = allRowsForSelection.findIndex(r => r.id === targetCell.rowId);
           if (startRowIndex === -1 || currentRowIndex === -1) return;
           if (currentRowIndex > startRowIndex) {
             const cellsToSelect = new Set<CellKey>();
@@ -346,29 +426,9 @@ export function useCellSelection({
           if (!isFillingCellsRef.current) return;
           const allRowsForSelection = getAllRowsForCellSelection();
           const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-          const elementBelow = document.elementFromPoint(endEvent.clientX, endEvent.clientY);
-          if (!elementBelow) {
-            setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-            return;
-          }
-          const cellElement = elementBelow.closest('td');
-          if (!cellElement) {
-            setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-            return;
-          }
-          const rowElement = cellElement.closest('tr');
-          if (
-            !rowElement ||
-            rowElement.classList.contains('headerRowTop') ||
-            rowElement.classList.contains('headerRowBottom') ||
-            rowElement.classList.contains('editRow') ||
-            rowElement.classList.contains('addRow')
-          ) {
-            setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
-            return;
-          }
-          const endRowId = rowElement.getAttribute('data-row-id');
-          const endPropertyKey = cellElement.getAttribute('data-property-key');
+          const targetCell = resolveFillTargetCell(endEvent.clientX, endEvent.clientY);
+          const endRowId = targetCell?.rowId ?? null;
+          const endPropertyKey = targetCell?.propertyKey ?? null;
           if (!endRowId || !endPropertyKey || endPropertyKey !== startPropertyKey) {
             setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
             return;
