@@ -173,6 +173,24 @@ export function useClipboardOperations({
         }
       } else if (property.dataType === 'string') {
         value = String(rawValue);
+      } else if (property.dataType === 'int_array') {
+        if (Array.isArray(rawValue)) {
+          value = `[${rawValue.map((v) => parseInt(String(v), 10)).join(',')}]`;
+        } else {
+          value = String(rawValue);
+        }
+      } else if (property.dataType === 'float_array') {
+        if (Array.isArray(rawValue)) {
+          value = `[${rawValue.map((v) => parseFloat(String(v))).join(',')}]`;
+        } else {
+          value = String(rawValue);
+        }
+      } else if (property.dataType === 'string_array') {
+        if (Array.isArray(rawValue)) {
+          value = JSON.stringify(rawValue.map((v) => String(v)));
+        } else {
+          value = String(rawValue);
+        }
       }
     }
     
@@ -224,12 +242,12 @@ export function useClipboardOperations({
         return;
       }
       
-      // Check if data type is supported (string, int, float)
+      // Check if data type is supported
       if (!foundProperty.dataType) {
         return;
       }
       
-      const supportedTypes = ['string', 'int', 'float'];
+      const supportedTypes = ['string', 'int', 'float', 'int_array', 'float_array', 'string_array'];
       if (!supportedTypes.includes(foundProperty.dataType)) {
         return; // Skip unsupported types
       }
@@ -265,7 +283,7 @@ export function useClipboardOperations({
 
     if (validCells.length === 0) {
       // Still show feedback even if no valid cells
-      setToastMessage({ message: 'No cells with supported types (string, int, float) selected', type: 'default' });
+      setToastMessage({ message: 'No cells with supported types selected', type: 'default' });
       setTimeout(() => {
         setToastMessage(null);
       }, 2000);
@@ -503,12 +521,12 @@ export function useClipboardOperations({
         return;
       }
       
-      // Check if data type is supported (string, int, float)
+      // Check if data type is supported
       if (!foundProperty.dataType) {
         return;
       }
       
-      const supportedTypes = ['string', 'int', 'float'];
+      const supportedTypes = ['string', 'int', 'float', 'int_array', 'float_array', 'string_array'];
       if (!supportedTypes.includes(foundProperty.dataType)) {
         return; // Skip unsupported types
       }
@@ -543,7 +561,7 @@ export function useClipboardOperations({
     });
 
     if (validCells.length === 0) {
-      setToastMessage({ message: 'No cells with supported types (string, int, float) selected', type: 'default' });
+      setToastMessage({ message: 'No cells with supported types selected', type: 'default' });
       setTimeout(() => {
         setToastMessage(null);
       }, 2000);
