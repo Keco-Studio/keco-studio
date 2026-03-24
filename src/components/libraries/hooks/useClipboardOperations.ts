@@ -2,6 +2,12 @@ import { useCallback, useRef } from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { useTableDataManager } from './useTableDataManager';
 import { applyPasteToRows } from './batchOperations';
+import {
+  clearLibraryClipboard,
+  parseClipboardTsvToMatrix,
+  persistLibraryClipboard,
+  readLibraryClipboard,
+} from './libraryClipboardStorage';
 
 type CellKey = `${string}-${string}`; // Format: "rowId-propertyKey"
 
@@ -173,6 +179,24 @@ export function useClipboardOperations({
         }
       } else if (property.dataType === 'string') {
         value = String(rawValue);
+      } else if (property.dataType === 'int_array') {
+        if (Array.isArray(rawValue)) {
+          value = `[${rawValue.map((v) => parseInt(String(v), 10)).join(',')}]`;
+        } else {
+          value = String(rawValue);
+        }
+      } else if (property.dataType === 'float_array') {
+        if (Array.isArray(rawValue)) {
+          value = `[${rawValue.map((v) => parseFloat(String(v))).join(',')}]`;
+        } else {
+          value = String(rawValue);
+        }
+      } else if (property.dataType === 'string_array') {
+        if (Array.isArray(rawValue)) {
+          value = JSON.stringify(rawValue.map((v) => String(v)));
+        } else {
+          value = String(rawValue);
+        }
       }
     }
     
@@ -224,12 +248,12 @@ export function useClipboardOperations({
         return;
       }
       
-      // Check if data type is supported (string, int, float)
+      // Check if data type is supported
       if (!foundProperty.dataType) {
         return;
       }
       
-      const supportedTypes = ['string', 'int', 'float'];
+      const supportedTypes = ['string', 'int', 'float', 'int_array', 'float_array', 'string_array'];
       if (!supportedTypes.includes(foundProperty.dataType)) {
         return; // Skip unsupported types
       }
@@ -265,7 +289,7 @@ export function useClipboardOperations({
 
     if (validCells.length === 0) {
       // Still show feedback even if no valid cells
-      setToastMessage({ message: 'No cells with supported types (string, int, float) selected', type: 'default' });
+      setToastMessage({ message: 'No cells with supported types selected', type: 'default' });
       setTimeout(() => {
         setToastMessage(null);
       }, 2000);
@@ -338,6 +362,18 @@ export function useClipboardOperations({
         console.error('Failed to copy to clipboard:', err);
       });
     }
+
+    const propertyDataTypes = sortedPropertyKeys.map((k) =>
+      orderedProperties.find((p) => p.key === k)?.dataType,
+    );
+    persistLibraryClipboard({
+      matrix: clipboardArray,
+      propertyKeys: sortedPropertyKeys,
+      propertyDataTypes,
+      isCut: true,
+      sourceLibraryId: library?.id ?? null,
+      tsvSignature: clipboardText,
+    });
     
     // Store clipboard data and mark as cut operation
     setClipboardData(clipboardArray);
@@ -468,6 +504,7 @@ export function useClipboardOperations({
     setToastMessage,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
+    library,
   ]);
 
   /**
@@ -503,12 +540,12 @@ export function useClipboardOperations({
         return;
       }
       
-      // Check if data type is supported (string, int, float)
+      // Check if data type is supported
       if (!foundProperty.dataType) {
         return;
       }
       
-      const supportedTypes = ['string', 'int', 'float'];
+      const supportedTypes = ['string', 'int', 'float', 'int_array', 'float_array', 'string_array'];
       if (!supportedTypes.includes(foundProperty.dataType)) {
         return; // Skip unsupported types
       }
@@ -543,7 +580,7 @@ export function useClipboardOperations({
     });
 
     if (validCells.length === 0) {
-      setToastMessage({ message: 'No cells with supported types (string, int, float) selected', type: 'default' });
+      setToastMessage({ message: 'No cells with supported types selected', type: 'default' });
       setTimeout(() => {
         setToastMessage(null);
       }, 2000);
@@ -613,6 +650,18 @@ export function useClipboardOperations({
         console.error('Failed to copy to clipboard:', err);
       });
     }
+
+    const copyPropertyDataTypes = sortedPropertyKeys.map((k) =>
+      orderedProperties.find((p) => p.key === k)?.dataType,
+    );
+    persistLibraryClipboard({
+      matrix: clipboardArray,
+      propertyKeys: sortedPropertyKeys,
+      propertyDataTypes: copyPropertyDataTypes,
+      isCut: false,
+      sourceLibraryId: library?.id ?? null,
+      tsvSignature: clipboardText,
+    });
     
     // Store clipboard data and mark as copy operation
     setClipboardData(clipboardArray);
@@ -661,6 +710,7 @@ export function useClipboardOperations({
     setToastMessage,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
+    library,
   ]);
 
   /**
@@ -668,8 +718,50 @@ export function useClipboardOperations({
    * This is a complex operation that handles both updating existing rows and creating new rows
    */
   const handlePaste = useCallback(async () => {
-    // Check if there is clipboard data (from props)
-    if (!clipboardData || clipboardData.length === 0 || clipboardData[0].length === 0) {
+    let matrix = clipboardData;
+    let sourcePropertyKeysForPaste =
+      (isCutOperation ? cutSelectionBounds : copySelectionBounds)?.propertyKeys ?? [];
+    let sourceDataTypesForPaste: (string | undefined)[] | undefined;
+
+    const hasLocalMatrix = !!(matrix && matrix.length > 0 && matrix[0]?.length);
+
+    if (!hasLocalMatrix) {
+      const persisted = readLibraryClipboard();
+      let clipboardText = '';
+      if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+        try {
+          clipboardText = await navigator.clipboard.readText();
+        } catch {
+          /* Clipboard read may require permission or user gesture */
+        }
+      }
+      const trimmed = clipboardText.trim();
+      const sig = persisted?.tsvSignature?.trim() ?? '';
+
+      if (persisted?.matrix?.length) {
+        if (trimmed === sig || trimmed === '') {
+          matrix = persisted.matrix;
+          sourcePropertyKeysForPaste = persisted.propertyKeys;
+          sourceDataTypesForPaste = persisted.propertyDataTypes;
+        } else if (trimmed) {
+          const parsed = parseClipboardTsvToMatrix(clipboardText);
+          if (parsed.length && parsed[0]?.length) {
+            matrix = parsed;
+            sourcePropertyKeysForPaste = [];
+            sourceDataTypesForPaste = undefined;
+          }
+        }
+      } else if (trimmed) {
+        const parsed = parseClipboardTsvToMatrix(clipboardText);
+        if (parsed.length && parsed[0]?.length) {
+          matrix = parsed;
+          sourcePropertyKeysForPaste = [];
+          sourceDataTypesForPaste = undefined;
+        }
+      }
+    }
+
+    if (!matrix || matrix.length === 0 || !matrix[0]?.length) {
       setBatchEditMenuVisible(false);
       setBatchEditMenuPosition(null);
       setToastMessage({ message: 'No content to paste. Please copy or cut cells first.', type: 'default' });
@@ -725,13 +817,15 @@ export function useClipboardOperations({
     const startRowIndex = bestRowIndex;
     const startPropertyIndex = bestPropertyIndex;
 
-    const sourcePropertyKeys = (isCutOperation ? cutSelectionBounds : copySelectionBounds)?.propertyKeys ?? [];
+    const keysForApply =
+      sourcePropertyKeysForPaste.length > 0 ? sourcePropertyKeysForPaste : undefined;
     const result = applyPasteToRows(
       viewRows,
       orderedProperties,
       { rowIndex: startRowIndex, colIndex: startPropertyIndex },
-      clipboardData,
-      sourcePropertyKeys.length > 0 ? sourcePropertyKeys : undefined
+      matrix,
+      keysForApply,
+      sourceDataTypesForPaste,
     );
 
     if (result.typeMismatch) {
@@ -844,7 +938,8 @@ export function useClipboardOperations({
         setIsSaving(false);
       }
     }
-    
+
+    clearLibraryClipboard();
     setSelectedCells(new Set());
     setSelectedRowIds(new Set());
     } finally {

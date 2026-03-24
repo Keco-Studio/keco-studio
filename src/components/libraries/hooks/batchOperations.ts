@@ -16,7 +16,78 @@ export type ApplyPasteResult = {
   typeMismatch: boolean;
 };
 
-const SUPPORTED_TYPES = ['string', 'int', 'float'] as const;
+const SUPPORTED_TYPES = ['string', 'int', 'float', 'int_array', 'float_array', 'string_array'] as const;
+
+function normalizeIntArrayInput(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return '[]';
+  const inner =
+    trimmed.startsWith('[') && trimmed.endsWith(']')
+      ? trimmed.slice(1, -1)
+      : trimmed;
+  if (inner.trim() === '') return '[]';
+  const hasComma = inner.includes(',');
+  const hasPipe = inner.includes('|');
+  if (hasComma && hasPipe) return null;
+  const sep = hasPipe ? '|' : ',';
+  const parts = inner.split(sep).map((p) => p.trim());
+  if (parts.some((p) => p === '' || /\s/.test(p))) return null;
+  const nums = parts.map((p) => parseInt(p, 10));
+  if (nums.some((n) => Number.isNaN(n))) return null;
+  return `[${nums.join(',')}]`;
+}
+
+function normalizeFloatArrayInput(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return '[]';
+  const inner =
+    trimmed.startsWith('[') && trimmed.endsWith(']')
+      ? trimmed.slice(1, -1)
+      : trimmed;
+  if (inner.trim() === '') return '[]';
+  const hasComma = inner.includes(',');
+  const hasPipe = inner.includes('|');
+  if (hasComma && hasPipe) return null;
+  const sep = hasPipe ? '|' : ',';
+  const parts = inner.split(sep).map((p) => p.trim());
+  if (parts.some((p) => p === '' || /\s/.test(p))) return null;
+  const nums = parts.map((p) => parseFloat(p));
+  if (nums.some((n) => Number.isNaN(n))) return null;
+  return `[${nums.join(',')}]`;
+}
+
+function normalizeStringArrayInput(raw: string): string | null {
+  const trimmed = raw.trim();
+  if (trimmed === '') return '[]';
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (!Array.isArray(parsed)) return null;
+    if (parsed.some((v) => typeof v !== 'string')) return null;
+    return JSON.stringify(parsed);
+  } catch {
+    const inner =
+      trimmed.startsWith('[') && trimmed.endsWith(']')
+        ? trimmed.slice(1, -1)
+        : trimmed;
+    if (inner.trim() === '') return '[]';
+    const hasComma = inner.includes(',');
+    const hasPipe = inner.includes('|');
+    if (hasComma && hasPipe) return null;
+    const sep = hasPipe ? '|' : ',';
+    const parts = inner.split(sep).map((p) => p.trim());
+    if (parts.some((p) => p === '')) return null;
+    const normalized = parts.map((p) => {
+      if (
+        (p.startsWith('"') && p.endsWith('"')) ||
+        (p.startsWith("'") && p.endsWith("'"))
+      ) {
+        return p.slice(1, -1);
+      }
+      return p;
+    });
+    return JSON.stringify(normalized);
+  }
+}
 
 function isTypeCompatible(
   sourceType: string | null | undefined,
@@ -44,6 +115,18 @@ function convertCellValue(
     return isNaN(n) ? null : n;
   }
   if (property.dataType === 'string') return String(cellValue);
+  if (property.dataType === 'int_array') {
+    const normalized = normalizeIntArrayInput(String(cellValue));
+    return normalized;
+  }
+  if (property.dataType === 'float_array') {
+    const normalized = normalizeFloatArrayInput(String(cellValue));
+    return normalized;
+  }
+  if (property.dataType === 'string_array') {
+    const normalized = normalizeStringArrayInput(String(cellValue));
+    return normalized;
+  }
   return null;
 }
 
@@ -56,13 +139,15 @@ function convertCellValue(
  * @param anchor Paste start { rowIndex, colIndex }
  * @param matrix Clipboard 2D array
  * @param sourcePropertyKeys Optional; column key order from copy, for type compatibility check
+ * @param sourceDataTypes Optional; parallel to matrix columns — used when keys differ (e.g. cross-library)
  */
 export function applyPasteToRows(
   rows: AssetRow[],
   properties: PropertyConfig[],
   anchor: PasteAnchor,
   matrix: ClipboardMatrix,
-  sourcePropertyKeys?: string[]
+  sourcePropertyKeys?: string[],
+  sourceDataTypes?: (string | undefined)[],
 ): ApplyPasteResult {
   const nameFieldKey = properties.find((p) => p.name === 'name' && p.dataType === 'string')?.key;
   const updatesByRowIndex = new Map<
@@ -88,14 +173,22 @@ export function applyPasteToRows(
         targetProperty.dataType && SUPPORTED_TYPES.includes(targetProperty.dataType as any);
       if (!typeSupported && !isNameField) continue;
 
-      if (!isNameField && sourcePropertyKeys && sourcePropertyKeys[c] !== undefined) {
-        const sourceKey = sourcePropertyKeys[c];
-        const sourceProp = properties.find((p) => p.key === sourceKey);
-        if (sourceProp?.dataType && targetProperty.dataType) {
-          if (!isTypeCompatible(sourceProp.dataType, targetProperty.dataType)) {
-            typeMismatch = true;
-            continue;
+      if (!isNameField) {
+        let typeCompatible = true;
+        if (sourcePropertyKeys && sourcePropertyKeys[c] !== undefined) {
+          const sourceKey = sourcePropertyKeys[c];
+          const sourceProp = properties.find((p) => p.key === sourceKey);
+          if (sourceProp?.dataType && targetProperty.dataType) {
+            typeCompatible = isTypeCompatible(sourceProp.dataType, targetProperty.dataType);
+          } else if (sourceDataTypes?.[c] && targetProperty.dataType) {
+            typeCompatible = isTypeCompatible(sourceDataTypes[c]!, targetProperty.dataType);
           }
+        } else if (sourceDataTypes?.[c] && targetProperty.dataType) {
+          typeCompatible = isTypeCompatible(sourceDataTypes[c]!, targetProperty.dataType);
+        }
+        if (!typeCompatible) {
+          typeMismatch = true;
+          continue;
         }
       }
 

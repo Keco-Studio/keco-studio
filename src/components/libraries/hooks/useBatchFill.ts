@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { useTableDataManager } from './useTableDataManager';
 import { serializeError } from '@/lib/utils/errorUtils';
@@ -31,6 +31,40 @@ export function useBatchFill({
   setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, { name: string; propertyValues: Record<string, any> }>>>;
   optimisticEditUpdates: Map<string, { name: string; propertyValues: Record<string, any> }>;
 }) {
+  // Prevent duplicated/concurrent fill requests caused by drag edge jitter.
+  const activeFillPromiseRef = useRef<Promise<void> | null>(null);
+  const activeFillSignatureRef = useRef<string | null>(null);
+
+  const runFillSafely = useCallback(async (signature: string, operation: () => Promise<void>) => {
+    const activeFillPromise = activeFillPromiseRef.current;
+    const activeSignature = activeFillSignatureRef.current;
+
+    // Same operation is already running; reuse the current promise.
+    if (activeFillPromise && activeSignature === signature) {
+      await activeFillPromise;
+      return;
+    }
+
+    // Another fill is in-flight; drop this one to avoid concurrent backend updates.
+    if (activeFillPromise) {
+      console.warn('Skip fill request because another fill operation is still running');
+      return;
+    }
+
+    activeFillSignatureRef.current = signature;
+    const promise = operation();
+    activeFillPromiseRef.current = promise;
+
+    try {
+      await promise;
+    } finally {
+      if (activeFillPromiseRef.current === promise) {
+        activeFillPromiseRef.current = null;
+        activeFillSignatureRef.current = null;
+      }
+    }
+  }, []);
+
   /**
    * Fill down - Fill cells from start row to end row with source value
    * This is the main fill operation used in the current implementation
@@ -40,6 +74,8 @@ export function useBatchFill({
     endRowId: string,
     propertyKey: string
   ): Promise<void> => {
+    const signature = `fillDown:${startRowId}:${endRowId}:${propertyKey}`;
+    await runFillSafely(signature, async () => {
     if (!onUpdateAsset) {
       console.warn('onUpdateAsset is not provided');
       return;
@@ -274,6 +310,7 @@ export function useBatchFill({
         console.warn(`Batch fill completed with ${failures.length} failures out of ${updates.length} updates`);
       }
     }
+    });
   }, [
     dataManager,
     orderedProperties,
@@ -282,6 +319,7 @@ export function useBatchFill({
     onUpdateAssets,
     setOptimisticEditUpdates,
     optimisticEditUpdates,
+    runFillSafely,
   ]);
 
   /**
@@ -334,6 +372,8 @@ export function useBatchFill({
     endRowId: string,
     propertyKey: string
   ): Promise<void> => {
+    const signature = `fillDownIntSequence:${startRowId}:${secondRowId}:${endRowId}:${propertyKey}`;
+    await runFillSafely(signature, async () => {
     if (!onUpdateAsset) {
       console.warn('onUpdateAsset is not provided');
       return;
@@ -481,6 +521,7 @@ export function useBatchFill({
       });
       await Promise.allSettled(updates);
     }
+    });
   }, [
     dataManager,
     orderedProperties,
@@ -490,6 +531,7 @@ export function useBatchFill({
     setOptimisticEditUpdates,
     optimisticEditUpdates,
     parseIntValue,
+    runFillSafely,
   ]);
 
   return {

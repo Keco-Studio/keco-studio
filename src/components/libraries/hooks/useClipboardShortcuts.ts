@@ -7,7 +7,6 @@ export function useClipboardShortcuts({
   editingCell,
   selectedCells,
   selectedRowIds,
-  clipboardData,
   onCut,
   onCopy,
   onPaste,
@@ -16,7 +15,6 @@ export function useClipboardShortcuts({
   editingCell: unknown;
   selectedCells: Set<unknown>;
   selectedRowIds: Set<string>;
-  clipboardData: Array<Array<string | number | null>> | null;
   onCut: () => void;
   onCopy: () => void;
   onPaste: () => void;
@@ -72,7 +70,8 @@ export function useClipboardShortcuts({
       if (e.key === 'v' || e.key === 'V') {
         e.preventDefault();
         e.stopPropagation();
-        if (clipboardData?.length && clipboardData[0]?.length) onPaste();
+        // Paste may use in-memory data, sessionStorage (cross-library), or system clipboard (TSV).
+        if (hasSelection) void onPaste();
       }
     };
 
@@ -82,7 +81,6 @@ export function useClipboardShortcuts({
     editingCell,
     selectedCells,
     selectedRowIds,
-    clipboardData,
     onCut,
     onCopy,
     onPaste,

@@ -77,7 +77,17 @@ export function useCellEditing({
       if (inner.trim() === '') {
         return { isValid: true, error: null, normalizedValue: '[]' };
       }
-      const parts = inner.split(',');
+      const hasComma = inner.includes(',');
+      const hasPipe = inner.includes('|');
+      if (hasComma && hasPipe) {
+        return {
+          isValid: false,
+          error: 'The array format is incorrect. Please use only one separator: comma (,) or vertical bar (|).',
+          normalizedValue: null,
+        };
+      }
+      const separator = hasPipe ? '|' : ',';
+      const parts = inner.split(separator);
       // any empty item after trimming is illegal
       for (const part of parts) {
         const t = part.trim();
@@ -105,7 +115,7 @@ export function useCellEditing({
           };
         }
       }
-      // normalized string: [1,2,3]
+      // normalized string is always comma-separated: [1,2,3]
       const normalized = `[${parts.map((p) => parseInt(p.trim(), 10)).join(',')}]`;
       return { isValid: true, error: null, normalizedValue: normalized };
     }
@@ -120,7 +130,17 @@ export function useCellEditing({
       if (inner.trim() === '') {
         return { isValid: true, error: null, normalizedValue: '[]' };
       }
-      const parts = inner.split(',');
+      const hasComma = inner.includes(',');
+      const hasPipe = inner.includes('|');
+      if (hasComma && hasPipe) {
+        return {
+          isValid: false,
+          error: 'The array format is incorrect. Please use only one separator: comma (,) or vertical bar (|).',
+          normalizedValue: null,
+        };
+      }
+      const separator = hasPipe ? '|' : ',';
+      const parts = inner.split(separator);
       for (const part of parts) {
         const t = part.trim();
         if (t === '') {
@@ -147,6 +167,7 @@ export function useCellEditing({
           };
         }
       }
+      // normalized string is always comma-separated: [1.1,2.2,3.3]
       const normalized = `[${parts.map((p) => parseFloat(p.trim())).join(',')}]`;
       return { isValid: true, error: null, normalizedValue: normalized };
     }
@@ -184,10 +205,46 @@ export function useCellEditing({
         const normalized = JSON.stringify(parsed);
         return { isValid: true, error: null, normalizedValue: normalized };
       } catch {
+        // Fallback: support plain separator style such as a|b|c or a,b,c
+        const inner = trimmed.slice(1, -1);
+        if (inner.trim() === '') {
+          return { isValid: true, error: null, normalizedValue: '[]' };
+        }
+
+        const hasComma = inner.includes(',');
+        const hasPipe = inner.includes('|');
+        if (hasComma && hasPipe) {
+          return {
+            isValid: false,
+            error: 'The array format is incorrect. Please use only one separator: comma (,) or vertical bar (|).',
+            normalizedValue: null,
+          };
+        }
+
+        const separator = hasPipe ? '|' : ',';
+        const parts = inner.split(separator).map((p) => p.trim());
+        if (parts.some((p) => p === '')) {
+          return {
+            isValid: false,
+            error: 'The array format is incorrect. Empty elements are not allowed.',
+            normalizedValue: null,
+          };
+        }
+
+        const normalizedParts = parts.map((p) => {
+          if (
+            (p.startsWith('"') && p.endsWith('"')) ||
+            (p.startsWith("'") && p.endsWith("'"))
+          ) {
+            return p.slice(1, -1);
+          }
+          return p;
+        });
+
         return {
-          isValid: false,
-          error: 'Invalid array format. Please use the format ["A","B"].',
-          normalizedValue: null,
+          isValid: true,
+          error: null,
+          normalizedValue: JSON.stringify(normalizedParts),
         };
       }
     }
