@@ -628,6 +628,11 @@ export function LibraryAssetsTable({
   const broadcastAssetCreate = async () => {};
   const broadcastAssetDelete = async () => {};
 
+  // Keep latest editing handlers/state in refs so selection-driven blur can auto-save
+  // even when mousedown uses preventDefault and native blur does not fire.
+  const saveEditedCellRef = useRef<(() => void) | null>(null);
+  const editingCellStateRef = useRef<{ rowId: string; propertyKey: string } | null>(null);
+
   // Presence tracking helpers
   const handleCellFocus = useCallback((assetId: string, propertyKey: string) => {
     setCurrentFocusedCell({ assetId, propertyKey });
@@ -637,6 +642,9 @@ export function LibraryAssetsTable({
   }, [presenceTracking, currentUser]);
 
   const handleCellBlur = useCallback(() => {
+    if (editingCellStateRef.current && saveEditedCellRef.current) {
+      saveEditedCellRef.current();
+    }
     setCurrentFocusedCell(null);
     if (presenceTracking) {
       presenceTracking.updateActiveCell(null, null);
@@ -805,6 +813,9 @@ export function LibraryAssetsTable({
     handleCancelEditing,
     validateValueByType,
   } = cellEditing;
+
+  editingCellStateRef.current = editingCell;
+  saveEditedCellRef.current = handleSaveEditedCell;
 
   const {
     referenceModalOpen,
