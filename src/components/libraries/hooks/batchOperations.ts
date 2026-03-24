@@ -139,13 +139,15 @@ function convertCellValue(
  * @param anchor Paste start { rowIndex, colIndex }
  * @param matrix Clipboard 2D array
  * @param sourcePropertyKeys Optional; column key order from copy, for type compatibility check
+ * @param sourceDataTypes Optional; parallel to matrix columns — used when keys differ (e.g. cross-library)
  */
 export function applyPasteToRows(
   rows: AssetRow[],
   properties: PropertyConfig[],
   anchor: PasteAnchor,
   matrix: ClipboardMatrix,
-  sourcePropertyKeys?: string[]
+  sourcePropertyKeys?: string[],
+  sourceDataTypes?: (string | undefined)[],
 ): ApplyPasteResult {
   const nameFieldKey = properties.find((p) => p.name === 'name' && p.dataType === 'string')?.key;
   const updatesByRowIndex = new Map<
@@ -171,14 +173,22 @@ export function applyPasteToRows(
         targetProperty.dataType && SUPPORTED_TYPES.includes(targetProperty.dataType as any);
       if (!typeSupported && !isNameField) continue;
 
-      if (!isNameField && sourcePropertyKeys && sourcePropertyKeys[c] !== undefined) {
-        const sourceKey = sourcePropertyKeys[c];
-        const sourceProp = properties.find((p) => p.key === sourceKey);
-        if (sourceProp?.dataType && targetProperty.dataType) {
-          if (!isTypeCompatible(sourceProp.dataType, targetProperty.dataType)) {
-            typeMismatch = true;
-            continue;
+      if (!isNameField) {
+        let typeCompatible = true;
+        if (sourcePropertyKeys && sourcePropertyKeys[c] !== undefined) {
+          const sourceKey = sourcePropertyKeys[c];
+          const sourceProp = properties.find((p) => p.key === sourceKey);
+          if (sourceProp?.dataType && targetProperty.dataType) {
+            typeCompatible = isTypeCompatible(sourceProp.dataType, targetProperty.dataType);
+          } else if (sourceDataTypes?.[c] && targetProperty.dataType) {
+            typeCompatible = isTypeCompatible(sourceDataTypes[c]!, targetProperty.dataType);
           }
+        } else if (sourceDataTypes?.[c] && targetProperty.dataType) {
+          typeCompatible = isTypeCompatible(sourceDataTypes[c]!, targetProperty.dataType);
+        }
+        if (!typeCompatible) {
+          typeMismatch = true;
+          continue;
         }
       }
 

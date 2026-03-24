@@ -1230,7 +1230,6 @@ export function LibraryAssetsTable({
     editingCell,
     selectedCells,
     selectedRowIds,
-    clipboardData,
     onCut: handleCut,
     onCopy: handleCopy,
     onPaste: handlePaste,
