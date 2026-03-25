@@ -60,7 +60,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
-  const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library'>('all');
+  const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library' | 'cell'>('cell');
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const [topbarPresenceUsers, setTopbarPresenceUsers] = useState<PresenceState[]>([]);
 
@@ -151,6 +151,112 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return all.slice(0, 20);
   }, [searchQuery, projects, folders, libraries]);
 
+  type CellSearchHit = {
+    projectId: string;
+    libraryId: string;
+    libraryName: string;
+    assetId: string;
+    assetName: string;
+    sectionId: string;
+    fieldLabel: string;
+    valueSnippet: string;
+    assetUpdatedAt?: string | null;
+  };
+
+  type CellSearchLibraryGroup = {
+    libraryId: string;
+    libraryName: string;
+    projectId: string;
+    hits: CellSearchHit[];
+  };
+
+  const [cellSearchLoading, setCellSearchLoading] = useState(false);
+  const [cellSearchHits, setCellSearchHits] = useState<CellSearchHit[]>([]);
+
+  const cellSearchGroups = useMemo<CellSearchLibraryGroup[]>(() => {
+    const map = new Map<string, CellSearchLibraryGroup>();
+    for (const hit of cellSearchHits) {
+      const key = hit.libraryId;
+      const group = map.get(key);
+      if (group) {
+        group.hits.push(hit);
+      } else {
+        map.set(key, {
+          libraryId: hit.libraryId,
+          libraryName: hit.libraryName,
+          projectId: hit.projectId,
+          hits: [hit],
+        });
+      }
+    }
+    return Array.from(map.values());
+  }, [cellSearchHits]);
+
+  useEffect(() => {
+    if (searchFilter !== 'cell') {
+      setCellSearchHits([]);
+      setCellSearchLoading(false);
+      return;
+    }
+
+    const q = searchQuery.trim();
+    if (!q) {
+      setCellSearchHits([]);
+      setCellSearchLoading(false);
+      return;
+    }
+
+    let aborted = false;
+    const controller = new AbortController();
+    setCellSearchLoading(true);
+
+    const t = window.setTimeout(async () => {
+      try {
+        const sessionRes = await supabase.auth.getSession();
+        const token = sessionRes.data?.session?.access_token;
+
+        const res = await fetch(`/api/search/cell-values?q=${encodeURIComponent(q)}&limit=80`, {
+          signal: controller.signal,
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+
+        if (!res.ok) {
+          if (aborted) return;
+          setCellSearchHits([]);
+          return;
+        }
+
+        const payload = await res.json();
+        const results: any[] = Array.isArray(payload?.results) ? payload.results : [];
+        if (aborted) return;
+        setCellSearchHits(
+          results.map((r) => ({
+            projectId: String(r.project_id ?? r.projectId ?? ''),
+            libraryId: String(r.library_id ?? r.libraryId ?? ''),
+            libraryName: String(r.library_name ?? r.libraryName ?? ''),
+            assetId: String(r.asset_id ?? r.assetId ?? ''),
+            assetName: String(r.asset_name ?? r.assetName ?? ''),
+            sectionId: String(r.section_id ?? r.sectionId ?? ''),
+            fieldLabel: String(r.field_label ?? r.fieldLabel ?? ''),
+            valueSnippet: String(r.value_snippet ?? r.valueSnippet ?? ''),
+            assetUpdatedAt: r.asset_updated_at ?? r.assetUpdatedAt ?? null,
+          }))
+        );
+      } catch {
+        if (aborted) return;
+        setCellSearchHits([]);
+      } finally {
+        if (!aborted) setCellSearchLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      aborted = true;
+      window.clearTimeout(t);
+      controller.abort();
+    };
+  }, [searchFilter, searchQuery, supabase]);
+
   // 最近 7 天内有活动的项目 / 文件夹 / Library（基于 updatedAt 或 createdAt）
   const recentResults = useMemo<SearchResult[]>(() => {
     const now = Date.now();
@@ -240,16 +346,20 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     const baseResults = hasQuery ? searchResults : recentResults;
 
     const filtered =
-      searchFilter === 'all'
+      searchFilter === 'cell'
+        ? []
+        : searchFilter === 'all'
         ? baseResults
         : baseResults.filter((item) => item.type === searchFilter);
 
     // Sort by last modified time from newest to oldest
-    return [...filtered].sort((a, b) => {
+    return [...filtered]
+      .sort((a, b) => {
       const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
       const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
       return bTime - aTime;
-    });
+      })
+      .slice(0, 20);
   }, [searchResults, recentResults, searchFilter, searchQuery]);
 
   const formatUpdatedAtLabel = (updatedAt?: string | null) => {
@@ -330,6 +440,30 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     const before = text.slice(0, start);
     const match = text.slice(start, end);
     const after = text.slice(end);
+
+    return (
+      <>
+        {before}
+        <span className={styles.searchResultHighlight}>{match}</span>
+        {after}
+      </>
+    );
+  };
+
+  // Highlight for cell-value snippets (simple case-insensitive substring).
+  const highlightCellValue = (text: string | null | undefined, query: string) => {
+    if (text === null || text === undefined) return null;
+    const q = query.trim();
+    if (!q) return text;
+
+    const lowerText = text.toLowerCase();
+    const lowerQ = q.toLowerCase();
+    const idx = lowerText.indexOf(lowerQ);
+    if (idx === -1) return text;
+
+    const before = text.slice(0, idx);
+    const match = text.slice(idx, idx + q.length);
+    const after = text.slice(idx + q.length);
 
     return (
       <>
@@ -770,6 +904,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
     if (result.type === 'library') {
       router.push(`/${result.projectId}/${result.id}`);
+      return;
     }
   };
 
@@ -1070,7 +1205,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             }}
           />
         </label>
-        {isSearchDropdownOpen && filteredSearchResults.length > 0 && (
+        {isSearchDropdownOpen && (filteredSearchResults.length > 0 || searchFilter === 'cell') && (
           <div className={styles.searchDropdown}>
             <div className={styles.searchTabs}>
               {[
@@ -1078,6 +1213,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                 { key: 'project', label: 'Project' },
                 { key: 'folder', label: 'Folder' },
                 { key: 'library', label: 'Library' },
+                { key: 'cell', label: 'Table Cells' },
               ].map((tab) => (
                 <button
                   key={tab.key}
@@ -1086,7 +1222,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                     searchFilter === tab.key ? styles.searchTabActive : ''
                   }`}
                   onClick={() =>
-                    setSearchFilter(tab.key as 'all' | 'project' | 'folder' | 'library')
+                    setSearchFilter(tab.key as 'all' | 'project' | 'folder' | 'library' | 'cell')
                   }
                 >
                   {tab.label}
@@ -1095,34 +1231,100 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             </div>
             <div className={styles.searchResultSectionLabel}>RESULT</div>
             <div className={styles.searchDropdownInner}>
-              {filteredSearchResults.map((item) => (
-                <button
-                  key={`${item.type}-${item.id}`}
-                  type="button"
-                  className={styles.searchResultItem}
-                  onClick={() => handleSearchResultClick(item)}
-                >
-                  <div className={styles.searchResultLeft}>
-                    {renderSearchResultIcon(item.type)}
-                    <div className={styles.searchResultMain}>
-                      <span className={styles.searchResultName}>
-                        {highlightMatch(
-                          item.name && item.name.length > 30
-                            ? `${item.name.slice(0, 30)}...`
-                            : item.name,
-                          searchQuery
-                        )}
-                      </span>
-                      {item.type !== 'project' && item.hierarchy && (
-                        <span className={styles.searchResultParent}>{item.hierarchy}</span>
-                      )}
+              {searchFilter === 'cell' ? (
+                cellSearchLoading ? (
+                  <div style={{ padding: '0.75rem 0.5rem', color: '#6b7280' }}>Searching...</div>
+                ) : cellSearchGroups.length > 0 ? (
+                  cellSearchGroups.map((group) => (
+                    <div key={group.libraryId} style={{ padding: '0.25rem 0.25rem 0.6rem 0.25rem' }}>
+                      <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
+                        {group.libraryName}
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem' }}>
+                        {group.hits.slice(0, 6).map((hit) => (
+                          <button
+                            key={`${hit.assetId}-${hit.fieldLabel}-${hit.valueSnippet}`}
+                            type="button"
+                            className={styles.searchResultItem}
+                            style={{
+                              flexDirection: 'column',
+                              alignItems: 'flex-start',
+                              justifyContent: 'flex-start',
+                              padding: '0.6rem 0.7rem',
+                              background: 'rgba(15, 23, 42, 0.03)',
+                              borderRadius: '0.6rem',
+                            }}
+                            onClick={() => {
+                              setIsSearchDropdownOpen(false);
+                              setIsSearchFocused(false);
+                              const focusSectionId = hit.sectionId?.trim();
+                              if (focusSectionId) {
+                                router.push(
+                                  `/${hit.projectId}/${hit.libraryId}?focusSectionId=${encodeURIComponent(
+                                    focusSectionId
+                                  )}`
+                                );
+                              } else {
+                                router.push(`/${hit.projectId}/${hit.libraryId}`);
+                              }
+                            }}
+                          >
+                            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
+                              {hit.assetName?.trim() ? (
+                                <div className={styles.searchResultName} style={{ maxWidth: '12rem' }}>
+                                  {hit.assetName}
+                                </div>
+                              ) : (
+                                <div />
+                              )}
+                              <span className={styles.searchResultType} style={{ padding: '0.125rem 0.35rem' }}>
+                                {formatUpdatedAtLabel(hit.assetUpdatedAt)}
+                              </span>
+                            </div>
+                            <div style={{ width: '100%', color: '#6b7280', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                              {hit.fieldLabel}
+                            </div>
+                            <div style={{ width: '100%', color: '#0f172a', fontSize: '0.8rem', marginTop: '0.25rem', lineHeight: 1.2 }}>
+                              {highlightCellValue(hit.valueSnippet, searchQuery)}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                  <span className={styles.searchResultType}>
-                    {formatUpdatedAtLabel(item.updatedAt)}
-                  </span>
-                </button>
-              ))}
+                  ))
+                ) : (
+                  <div style={{ padding: '0.75rem 0.5rem', color: '#6b7280' }}>No matches.</div>
+                )
+              ) : (
+                filteredSearchResults.map((item) => (
+                  <button
+                    key={`${item.type}-${item.id}`}
+                    type="button"
+                    className={styles.searchResultItem}
+                    onClick={() => handleSearchResultClick(item)}
+                  >
+                    <div className={styles.searchResultLeft}>
+                      {renderSearchResultIcon(item.type)}
+                      <div className={styles.searchResultMain}>
+                        <span className={styles.searchResultName}>
+                          {highlightMatch(
+                            item.name && item.name.length > 30
+                              ? `${item.name.slice(0, 30)}...`
+                              : item.name,
+                            searchQuery
+                          )}
+                        </span>
+                        {item.type !== 'project' && item.hierarchy && (
+                          <span className={styles.searchResultParent}>{item.hierarchy}</span>
+                        )}
+                      </div>
+                    </div>
+                    <span className={styles.searchResultType}>
+                      {formatUpdatedAtLabel(item.updatedAt)}
+                    </span>
+                  </button>
+                ))
+              )}
             </div>
           </div>
         )}
