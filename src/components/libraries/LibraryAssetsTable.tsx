@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Input, Select, Button, Avatar, Checkbox, Dropdown, Modal, Switch, App } from 'antd';
 import Image from 'next/image';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   AssetRow,
   PropertyConfig,
@@ -723,6 +723,8 @@ export function LibraryAssetsTable({
   const contextMenuRowIdRef = useRef<string | null>(null);
   const router = useRouter();
   const params = useParams();
+  const searchParams = useSearchParams();
+  const focusSectionIdFromQuery = searchParams.get('focusSectionId');
   const supabase = useSupabase();
   const {
     hoveredAssetId,
@@ -994,6 +996,18 @@ export function LibraryAssetsTable({
     sectionStateStorageKey,
     sectionRenameHintStorageKey,
   ]);
+
+  // If coming from global search, allow query param to force-switch section tab.
+  useEffect(() => {
+    if (!focusSectionIdFromQuery) return;
+    if (groups.length === 0) return;
+    const exists = groups.some((g) => g.section.id === focusSectionIdFromQuery);
+    if (!exists) return;
+    setActiveSectionId(focusSectionIdFromQuery);
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.setItem(sectionStateStorageKey, focusSectionIdFromQuery);
+    }
+  }, [focusSectionIdFromQuery, groups, sectionStateStorageKey]);
 
   const handlePredefineClick = () => {
     const projectId = params.projectId as string;
