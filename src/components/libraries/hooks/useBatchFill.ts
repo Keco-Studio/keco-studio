@@ -5,6 +5,16 @@ import { serializeError } from '@/lib/utils/errorUtils';
 
 type DataManager = ReturnType<typeof useTableDataManager>;
 
+function cloneFillValueForProperty(value: unknown, dataType: string | undefined): unknown {
+  if (
+    (dataType === 'int_array' || dataType === 'float_array' || dataType === 'string_array') &&
+    Array.isArray(value)
+  ) {
+    return [...value];
+  }
+  return value;
+}
+
 /**
  * useBatchFill - Handle batch fill operations (fill down, fill up, fill right, fill left)
  * 
@@ -123,7 +133,7 @@ export function useBatchFill({
       fillUpdates.push({
         rowId: targetRow.id,
         propertyKey: propertyKey,
-        value: sourceValue
+        value: cloneFillValueForProperty(sourceValue, sourceProperty.dataType),
       });
     }
     
