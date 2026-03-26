@@ -1,7 +1,9 @@
 -- Re-apply search function with latest return shape.
 -- Why: editing an already-applied migration does not re-run in Supabase migration workflows.
 
-create or replace function public.search_library_cell_values(
+drop function if exists public.search_library_cell_values(text, integer);
+
+create function public.search_library_cell_values(
   p_query text,
   p_limit int default 30
 )
