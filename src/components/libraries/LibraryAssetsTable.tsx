@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Input, Select, Button, Avatar, Checkbox, Dropdown, Modal, Switch, App } from 'antd';
 import Image from 'next/image';
-import { useRouter, useParams, usePathname, useSearchParams } from 'next/navigation';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   AssetRow,
   PropertyConfig,
@@ -722,12 +722,12 @@ export function LibraryAssetsTable({
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const contextMenuRowIdRef = useRef<string | null>(null);
   const router = useRouter();
-  const pathname = usePathname();
   const params = useParams();
   const searchParams = useSearchParams();
   const focusSectionIdFromQuery = searchParams.get('focusSectionId');
   const focusAssetIdFromQuery = searchParams.get('focusAssetId');
   const focusFieldIdFromQuery = searchParams.get('focusFieldId');
+  const cellSearchQFromQuery = searchParams.get('cellSearchQ');
   const supabase = useSupabase();
   const {
     hoveredAssetId,
@@ -939,21 +939,16 @@ export function LibraryAssetsTable({
   const [editingSectionName, setEditingSectionName] = useState('');
   const [editingSectionOriginalName, setEditingSectionOriginalName] = useState('');
   const sectionInputRef = useRef<HTMLInputElement>(null);
-  const clearSearchFocusParamsFromUrl = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    const nextParams = new URLSearchParams(window.location.search);
-    nextParams.delete('focusSectionId');
-    nextParams.delete('focusAssetId');
-    nextParams.delete('focusFieldId');
-    const nextQuery = nextParams.toString();
-    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
-  }, [pathname, router]);
-
   const activeGroup = useMemo(
     () => groups.find((g) => g.section.id === effectiveActiveSectionId) ?? groups[0],
     [groups, effectiveActiveSectionId]
   );
   const activeProperties = activeGroup ? activeGroup.properties : orderedProperties;
+  const [searchHighlightedCells, setSearchHighlightedCells] = useState<
+    Array<{ assetId: string; fieldId: string }>
+  >([]);
+  const appliedFocusSectionRef = useRef<string | null>(null);
+  const appliedFocusCellRef = useRef<string | null>(null);
   useEffect(() => {
     if (groups.length === 0) return;
 
@@ -1025,24 +1020,67 @@ export function LibraryAssetsTable({
 
   // If coming from global search, allow query param to force-switch section tab.
   useEffect(() => {
+    if (!cellSearchQFromQuery || !library?.id) {
+      setSearchHighlightedCells([]);
+      return;
+    }
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.sessionStorage.getItem(`keco-cell-search:${cellSearchQFromQuery}`);
+      if (!raw) {
+        setSearchHighlightedCells([]);
+        return;
+      }
+      const parsed = JSON.parse(raw) as Array<{
+        libraryId?: string;
+        assetId?: string;
+        fieldId?: string;
+      }>;
+      if (!Array.isArray(parsed)) {
+        setSearchHighlightedCells([]);
+        return;
+      }
+      const cells = parsed
+        .filter((h) => String(h.libraryId ?? '') === library.id)
+        .map((h) => ({
+          assetId: String(h.assetId ?? ''),
+          fieldId: String(h.fieldId ?? ''),
+        }))
+        .filter((h) => h.assetId.length > 0 && h.fieldId.length > 0);
+      setSearchHighlightedCells(cells);
+    } catch {
+      setSearchHighlightedCells([]);
+    }
+  }, [cellSearchQFromQuery, library?.id]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const current = Array.from(document.querySelectorAll(`.${styles.searchCellHit}`));
+    current.forEach((el) => el.classList.remove(styles.searchCellHit));
+    if (searchHighlightedCells.length === 0) return;
+    searchHighlightedCells.forEach(({ assetId, fieldId }) => {
+      const el = document.querySelector(
+        `tr[data-row-id="${assetId}"] td[data-property-key="${fieldId}"]`
+      ) as HTMLElement | null;
+      el?.classList.add(styles.searchCellHit);
+    });
+  }, [searchHighlightedCells, activeProperties, resolvedRows]);
+
+  useEffect(() => {
     if (!focusSectionIdFromQuery) return;
     if (groups.length === 0) return;
+    if (appliedFocusSectionRef.current === focusSectionIdFromQuery) return;
     const exists = groups.some((g) => g.section.id === focusSectionIdFromQuery);
     if (!exists) return;
     setActiveSectionId(focusSectionIdFromQuery);
+    appliedFocusSectionRef.current = focusSectionIdFromQuery;
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem(sectionStateStorageKey, focusSectionIdFromQuery);
     }
-    if (!focusAssetIdFromQuery || !focusFieldIdFromQuery) {
-      clearSearchFocusParamsFromUrl();
-    }
   }, [
     focusSectionIdFromQuery,
-    focusAssetIdFromQuery,
-    focusFieldIdFromQuery,
     groups,
     sectionStateStorageKey,
-    clearSearchFocusParamsFromUrl,
   ]);
 
   const handlePredefineClick = () => {
@@ -1150,10 +1188,15 @@ export function LibraryAssetsTable({
 
   // If coming from global search, highlight the specific asset+field cell.
   useEffect(() => {
-    if (!focusAssetIdFromQuery || !focusFieldIdFromQuery) return;
+    if (!focusAssetIdFromQuery || !focusFieldIdFromQuery) {
+      appliedFocusCellRef.current = null;
+      return;
+    }
     if (!groups.length) return;
-    const cellKey: CellKey = `${focusAssetIdFromQuery}-${focusFieldIdFromQuery}` as CellKey;
-    setSelectedCells(new Set<CellKey>([cellKey]));
+
+    const focusCellKey = `${focusAssetIdFromQuery}-${focusFieldIdFromQuery}`;
+    if (appliedFocusCellRef.current === focusCellKey) return;
+    appliedFocusCellRef.current = focusCellKey;
 
     // Scroll to the cell after render.
     setTimeout(() => {
@@ -1161,16 +1204,12 @@ export function LibraryAssetsTable({
         `tr[data-row-id="${focusAssetIdFromQuery}"] td[data-property-key="${focusFieldIdFromQuery}"]`
       ) as HTMLElement | null;
       el?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-      clearSearchFocusParamsFromUrl();
     }, 0);
   }, [
     focusAssetIdFromQuery,
     focusFieldIdFromQuery,
     groups,
     activeProperties,
-    setSelectedCells,
-    setSelectedRowIds,
-    clearSearchFocusParamsFromUrl,
   ]);
 
   const { handleCut, handleCopy, handlePaste } = useClipboardOperations({

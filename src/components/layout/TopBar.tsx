@@ -64,7 +64,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library' | 'cell'>('cell');
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const [topbarPresenceUsers, setTopbarPresenceUsers] = useState<PresenceState[]>([]);
-  const [activeCellHitKey, setActiveCellHitKey] = useState<string | null>(null);
 
   // Resolve display name: prefer username, then full_name, then email
   const displayName =
@@ -175,12 +174,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const [cellSearchLoading, setCellSearchLoading] = useState(false);
   const [cellSearchHits, setCellSearchHits] = useState<CellSearchHit[]>([]);
-  const currentLibraryCellHits = useMemo(() => {
-    if (!currentProjectId || !currentLibraryId) return [] as CellSearchHit[];
-    return cellSearchHits.filter(
-      (hit) => hit.projectId === currentProjectId && hit.libraryId === currentLibraryId
-    );
-  }, [cellSearchHits, currentProjectId, currentLibraryId]);
 
   const cellSearchGroups = useMemo<CellSearchLibraryGroup[]>(() => {
     const map = new Map<string, CellSearchLibraryGroup>();
@@ -252,6 +245,19 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         }));
 
         setCellSearchHits(mapped);
+        try {
+          const storeKey = `keco-cell-search:${q}`;
+          const minimal = mapped.map((h) => ({
+            projectId: h.projectId,
+            libraryId: h.libraryId,
+            assetId: h.assetId,
+            fieldId: h.fieldId,
+            sectionId: h.sectionId,
+          }));
+          window.sessionStorage.setItem(storeKey, JSON.stringify(minimal));
+        } catch {
+          // Ignore storage failures.
+        }
 
       } catch {
         if (aborted) return;
@@ -520,44 +526,22 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     };
   }, []);
 
-  useEffect(() => {
-    setActiveCellHitKey(null);
-  }, [searchQuery, searchFilter]);
-
   const navigateToCellHit = (hit: CellSearchHit) => {
+    const encodedQ = encodeURIComponent(searchQuery.trim());
     const focusSectionId = hit.sectionId?.trim();
     if (focusSectionId) {
       router.push(
         `/${hit.projectId}/${hit.libraryId}?focusSectionId=${encodeURIComponent(
           focusSectionId
-        )}&focusAssetId=${encodeURIComponent(hit.assetId)}&focusFieldId=${encodeURIComponent(hit.fieldId)}`
+        )}&focusAssetId=${encodeURIComponent(hit.assetId)}&focusFieldId=${encodeURIComponent(hit.fieldId)}&cellSearchQ=${encodedQ}`
       );
     } else {
       router.push(
         `/${hit.projectId}/${hit.libraryId}?focusAssetId=${encodeURIComponent(
           hit.assetId
-        )}&focusFieldId=${encodeURIComponent(hit.fieldId)}`
+        )}&focusFieldId=${encodeURIComponent(hit.fieldId)}&cellSearchQ=${encodedQ}`
       );
     }
-    setActiveCellHitKey(`${hit.projectId}:${hit.libraryId}:${hit.assetId}:${hit.fieldId}`);
-  };
-
-  const handleNextCellHit = () => {
-    if (searchFilter !== 'cell') {
-      setSearchFilter('cell');
-      return;
-    }
-
-    const hits = currentLibraryCellHits.length > 0 ? currentLibraryCellHits : cellSearchHits;
-    if (hits.length === 0) return;
-
-    const currentIndex = activeCellHitKey
-      ? hits.findIndex(
-          (hit) => `${hit.projectId}:${hit.libraryId}:${hit.assetId}:${hit.fieldId}` === activeCellHitKey
-        )
-      : -1;
-    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % hits.length : 0;
-    navigateToCellHit(hits[nextIndex]);
   };
 
   // Reset asset mode when navigating to a different asset
@@ -1256,49 +1240,36 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             }}
           />
           <div className={styles.searchActions}>
-            {searchQuery.trim().length > 0 && (
-              <button
-                type="button"
-                className={styles.searchActionButton}
-                aria-label="Clear search"
-                title="Clear search"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  setSearchQuery('');
-                  setActiveCellHitKey(null);
-                  setIsSearchDropdownOpen(true);
-                  if (typeof window !== 'undefined') {
-                    const nextParams = new URLSearchParams(window.location.search);
-                    nextParams.delete('focusSectionId');
-                    nextParams.delete('focusAssetId');
-                    nextParams.delete('focusFieldId');
-                    const nextQuery = nextParams.toString();
-                    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
-                  }
-                }}
-              >
-                ×
-              </button>
-            )}
             <button
               type="button"
               className={styles.searchActionButton}
-              aria-label="Next search match"
-              title="Next match"
+              aria-label="Clear search"
+              title="Clear search"
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                handleNextCellHit();
+                setSearchQuery('');
+                setIsSearchDropdownOpen(true);
+                if (typeof window !== 'undefined') {
+                  const nextParams = new URLSearchParams(window.location.search);
+                  nextParams.delete('focusSectionId');
+                  nextParams.delete('focusAssetId');
+                  nextParams.delete('focusFieldId');
+                  nextParams.delete('cellSearchQ');
+                  const clearKeys: string[] = [];
+                  for (let i = 0; i < window.sessionStorage.length; i += 1) {
+                    const key = window.sessionStorage.key(i);
+                    if (key && key.startsWith('keco-cell-search:')) {
+                      clearKeys.push(key);
+                    }
+                  }
+                  clearKeys.forEach((key) => window.sessionStorage.removeItem(key));
+                  const nextQuery = nextParams.toString();
+                  router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+                }
               }}
-              disabled={
-                searchFilter === 'cell' &&
-                searchQuery.trim().length > 0 &&
-                !cellSearchLoading &&
-                cellSearchHits.length === 0
-              }
             >
-              ▾
+              ×
             </button>
           </div>
         </label>
