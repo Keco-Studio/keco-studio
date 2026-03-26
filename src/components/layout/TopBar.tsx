@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -35,6 +35,7 @@ type AssetMode = 'view' | 'edit';
 
 export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowCreateProjectBreadcrumb }: TopBarProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const {
     breadcrumbs,
     currentAssetId,
@@ -63,6 +64,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library' | 'cell'>('cell');
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const [topbarPresenceUsers, setTopbarPresenceUsers] = useState<PresenceState[]>([]);
+  const [activeCellHitKey, setActiveCellHitKey] = useState<string | null>(null);
 
   // Resolve display name: prefer username, then full_name, then email
   const displayName =
@@ -158,6 +160,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     assetId: string;
     assetName: string;
     sectionId: string;
+    fieldId: string;
     fieldLabel: string;
     valueSnippet: string;
     assetUpdatedAt?: string | null;
@@ -172,6 +175,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const [cellSearchLoading, setCellSearchLoading] = useState(false);
   const [cellSearchHits, setCellSearchHits] = useState<CellSearchHit[]>([]);
+  const currentLibraryCellHits = useMemo(() => {
+    if (!currentProjectId || !currentLibraryId) return [] as CellSearchHit[];
+    return cellSearchHits.filter(
+      (hit) => hit.projectId === currentProjectId && hit.libraryId === currentLibraryId
+    );
+  }, [cellSearchHits, currentProjectId, currentLibraryId]);
 
   const cellSearchGroups = useMemo<CellSearchLibraryGroup[]>(() => {
     const map = new Map<string, CellSearchLibraryGroup>();
@@ -229,19 +238,21 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         const payload = await res.json();
         const results: any[] = Array.isArray(payload?.results) ? payload.results : [];
         if (aborted) return;
-        setCellSearchHits(
-          results.map((r) => ({
-            projectId: String(r.project_id ?? r.projectId ?? ''),
-            libraryId: String(r.library_id ?? r.libraryId ?? ''),
-            libraryName: String(r.library_name ?? r.libraryName ?? ''),
-            assetId: String(r.asset_id ?? r.assetId ?? ''),
-            assetName: String(r.asset_name ?? r.assetName ?? ''),
-            sectionId: String(r.section_id ?? r.sectionId ?? ''),
-            fieldLabel: String(r.field_label ?? r.fieldLabel ?? ''),
-            valueSnippet: String(r.value_snippet ?? r.valueSnippet ?? ''),
-            assetUpdatedAt: r.asset_updated_at ?? r.assetUpdatedAt ?? null,
-          }))
-        );
+        const mapped = results.map((r) => ({
+          projectId: String(r.project_id ?? r.projectId ?? ''),
+          libraryId: String(r.library_id ?? r.libraryId ?? ''),
+          libraryName: String(r.library_name ?? r.libraryName ?? ''),
+          assetId: String(r.asset_id ?? r.assetId ?? ''),
+          assetName: String(r.asset_name ?? r.assetName ?? ''),
+          sectionId: String(r.section_id ?? r.sectionId ?? ''),
+          fieldId: String(r.field_id ?? r.fieldId ?? ''),
+          fieldLabel: String(r.field_label ?? r.fieldLabel ?? ''),
+          valueSnippet: String(r.value_snippet ?? r.valueSnippet ?? ''),
+          assetUpdatedAt: r.asset_updated_at ?? r.assetUpdatedAt ?? null,
+        }));
+
+        setCellSearchHits(mapped);
+
       } catch {
         if (aborted) return;
         setCellSearchHits([]);
@@ -508,6 +519,46 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       document.removeEventListener('mousedown', handler);
     };
   }, []);
+
+  useEffect(() => {
+    setActiveCellHitKey(null);
+  }, [searchQuery, searchFilter]);
+
+  const navigateToCellHit = (hit: CellSearchHit) => {
+    const focusSectionId = hit.sectionId?.trim();
+    if (focusSectionId) {
+      router.push(
+        `/${hit.projectId}/${hit.libraryId}?focusSectionId=${encodeURIComponent(
+          focusSectionId
+        )}&focusAssetId=${encodeURIComponent(hit.assetId)}&focusFieldId=${encodeURIComponent(hit.fieldId)}`
+      );
+    } else {
+      router.push(
+        `/${hit.projectId}/${hit.libraryId}?focusAssetId=${encodeURIComponent(
+          hit.assetId
+        )}&focusFieldId=${encodeURIComponent(hit.fieldId)}`
+      );
+    }
+    setActiveCellHitKey(`${hit.projectId}:${hit.libraryId}:${hit.assetId}:${hit.fieldId}`);
+  };
+
+  const handleNextCellHit = () => {
+    if (searchFilter !== 'cell') {
+      setSearchFilter('cell');
+      return;
+    }
+
+    const hits = currentLibraryCellHits.length > 0 ? currentLibraryCellHits : cellSearchHits;
+    if (hits.length === 0) return;
+
+    const currentIndex = activeCellHitKey
+      ? hits.findIndex(
+          (hit) => `${hit.projectId}:${hit.libraryId}:${hit.assetId}:${hit.fieldId}` === activeCellHitKey
+        )
+      : -1;
+    const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % hits.length : 0;
+    navigateToCellHit(hits[nextIndex]);
+  };
 
   // Reset asset mode when navigating to a different asset
   useEffect(() => {
@@ -1204,6 +1255,52 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               setIsSearchDropdownOpen(true);
             }}
           />
+          <div className={styles.searchActions}>
+            {searchQuery.trim().length > 0 && (
+              <button
+                type="button"
+                className={styles.searchActionButton}
+                aria-label="Clear search"
+                title="Clear search"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSearchQuery('');
+                  setActiveCellHitKey(null);
+                  setIsSearchDropdownOpen(true);
+                  if (typeof window !== 'undefined') {
+                    const nextParams = new URLSearchParams(window.location.search);
+                    nextParams.delete('focusSectionId');
+                    nextParams.delete('focusAssetId');
+                    nextParams.delete('focusFieldId');
+                    const nextQuery = nextParams.toString();
+                    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+                  }
+                }}
+              >
+                ×
+              </button>
+            )}
+            <button
+              type="button"
+              className={styles.searchActionButton}
+              aria-label="Next search match"
+              title="Next match"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleNextCellHit();
+              }}
+              disabled={
+                searchFilter === 'cell' &&
+                searchQuery.trim().length > 0 &&
+                !cellSearchLoading &&
+                cellSearchHits.length === 0
+              }
+            >
+              ▾
+            </button>
+          </div>
         </label>
         {isSearchDropdownOpen && (filteredSearchResults.length > 0 || searchFilter === 'cell') && (
           <div className={styles.searchDropdown}>
@@ -1257,16 +1354,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                             onClick={() => {
                               setIsSearchDropdownOpen(false);
                               setIsSearchFocused(false);
-                              const focusSectionId = hit.sectionId?.trim();
-                              if (focusSectionId) {
-                                router.push(
-                                  `/${hit.projectId}/${hit.libraryId}?focusSectionId=${encodeURIComponent(
-                                    focusSectionId
-                                  )}`
-                                );
-                              } else {
-                                router.push(`/${hit.projectId}/${hit.libraryId}`);
-                              }
+                              navigateToCellHit(hit);
                             }}
                           >
                             <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>

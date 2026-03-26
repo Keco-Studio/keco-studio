@@ -218,7 +218,7 @@
   border-radius: 88px;
   border: 1px solid #e2e8f0;
   background-color: rgba(248, 250, 252, 0.8);
-  padding: 0 16px 0 40px;
+  padding: 0 92px 0 40px;
   font-size: 1rem;
   color: #334155;
   outline: none;
@@ -228,6 +228,38 @@
 .searchInput:focus {
   border-color: rgba(11, 153, 255, 1);
   background-color: white;
+}
+
+.searchActions {
+  position: absolute;
+  right: 0.7rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.searchActionButton {
+  width: 1.5rem;
+  height: 1.5rem;
+  border: none;
+  background: transparent;
+  border-radius: 999px;
+  color: #64748b;
+  font-size: 0.95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.searchActionButton:hover:not(:disabled) {
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+}
+
+.searchActionButton:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .createProjectBreadcrumb {

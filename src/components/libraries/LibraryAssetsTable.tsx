@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Input, Select, Button, Avatar, Checkbox, Dropdown, Modal, Switch, App } from 'antd';
 import Image from 'next/image';
-import { useRouter, useParams, useSearchParams } from 'next/navigation';
+import { useRouter, useParams, usePathname, useSearchParams } from 'next/navigation';
 import {
   AssetRow,
   PropertyConfig,
@@ -62,8 +62,8 @@ import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelect
 import batchEditAddIcon from '@/assets/images/BatchEditAddIcon.svg';
 import tableAssetDetailIcon from '@/assets/images/ProjectDescIcon.svg';
 import collaborationViewNumIcon from '@/assets/images/collaborationViewNumIcon.svg';
-import styles from './LibraryAssetsTable.module.css';
 import addSectionIcon from '@/assets/images/addProjectIcon.svg'
+import styles from './LibraryAssetsTable.module.css';
 
 // ---------------- Formula evaluation helpers ----------------
 type FormulaToken =
@@ -722,9 +722,12 @@ export function LibraryAssetsTable({
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
   const contextMenuRowIdRef = useRef<string | null>(null);
   const router = useRouter();
+  const pathname = usePathname();
   const params = useParams();
   const searchParams = useSearchParams();
   const focusSectionIdFromQuery = searchParams.get('focusSectionId');
+  const focusAssetIdFromQuery = searchParams.get('focusAssetId');
+  const focusFieldIdFromQuery = searchParams.get('focusFieldId');
   const supabase = useSupabase();
   const {
     hoveredAssetId,
@@ -920,6 +923,7 @@ export function LibraryAssetsTable({
   // Section tab: which section's columns to show (default first section)
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
   const [preferredSectionNameAfterRename, setPreferredSectionNameAfterRename] = useState<string | null>(null);
+  const pendingNewSectionIdRef = useRef<string | null>(null);
   const sectionStateStorageKey = useMemo(
     () => `keco-active-section:${library?.id ?? 'unknown'}`,
     [library?.id]
@@ -935,6 +939,15 @@ export function LibraryAssetsTable({
   const [editingSectionName, setEditingSectionName] = useState('');
   const [editingSectionOriginalName, setEditingSectionOriginalName] = useState('');
   const sectionInputRef = useRef<HTMLInputElement>(null);
+  const clearSearchFocusParamsFromUrl = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const nextParams = new URLSearchParams(window.location.search);
+    nextParams.delete('focusSectionId');
+    nextParams.delete('focusAssetId');
+    nextParams.delete('focusFieldId');
+    const nextQuery = nextParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+  }, [pathname, router]);
 
   const activeGroup = useMemo(
     () => groups.find((g) => g.section.id === effectiveActiveSectionId) ?? groups[0],
@@ -949,9 +962,20 @@ export function LibraryAssetsTable({
       if (typeof window !== 'undefined') {
         window.sessionStorage.setItem(sectionStateStorageKey, activeSectionId);
       }
-      if (preferredSectionNameAfterRename) {
-        setPreferredSectionNameAfterRename(null);
+      if (pendingNewSectionIdRef.current === activeSectionId) {
+        pendingNewSectionIdRef.current = null;
       }
+      if (preferredSectionNameAfterRename) {
+        const activeSection = groups.find((g) => g.section.id === activeSectionId);
+        if (activeSection?.section.name === preferredSectionNameAfterRename) {
+          setPreferredSectionNameAfterRename(null);
+        }
+      }
+      return;
+    }
+
+    // New section may not be reflected in groups yet (async refresh). Keep waiting.
+    if (activeSectionId && pendingNewSectionIdRef.current === activeSectionId) {
       return;
     }
 
@@ -983,6 +1007,8 @@ export function LibraryAssetsTable({
         setPreferredSectionNameAfterRename(null);
         return;
       }
+      // Rename is likely still propagating; avoid jumping to the first section.
+      return;
     }
 
     setActiveSectionId(groups[0].section.id);
@@ -1007,7 +1033,17 @@ export function LibraryAssetsTable({
     if (typeof window !== 'undefined') {
       window.sessionStorage.setItem(sectionStateStorageKey, focusSectionIdFromQuery);
     }
-  }, [focusSectionIdFromQuery, groups, sectionStateStorageKey]);
+    if (!focusAssetIdFromQuery || !focusFieldIdFromQuery) {
+      clearSearchFocusParamsFromUrl();
+    }
+  }, [
+    focusSectionIdFromQuery,
+    focusAssetIdFromQuery,
+    focusFieldIdFromQuery,
+    groups,
+    sectionStateStorageKey,
+    clearSearchFocusParamsFromUrl,
+  ]);
 
   const handlePredefineClick = () => {
     const projectId = params.projectId as string;
@@ -1049,6 +1085,10 @@ export function LibraryAssetsTable({
         });
         setTimeout(() => setToastMessage(null), 2000);
       } catch (e) {
+        setPreferredSectionNameAfterRename(null);
+        if (typeof window !== 'undefined') {
+          window.sessionStorage.removeItem(sectionRenameHintStorageKey);
+        }
         message.error('Update failed');
       }
     }
@@ -1107,6 +1147,31 @@ export function LibraryAssetsTable({
       selectionBorderRight: styles.selectionBorderRight,
     },
   });
+
+  // If coming from global search, highlight the specific asset+field cell.
+  useEffect(() => {
+    if (!focusAssetIdFromQuery || !focusFieldIdFromQuery) return;
+    if (!groups.length) return;
+    const cellKey: CellKey = `${focusAssetIdFromQuery}-${focusFieldIdFromQuery}` as CellKey;
+    setSelectedCells(new Set<CellKey>([cellKey]));
+
+    // Scroll to the cell after render.
+    setTimeout(() => {
+      const el = document.querySelector(
+        `tr[data-row-id="${focusAssetIdFromQuery}"] td[data-property-key="${focusFieldIdFromQuery}"]`
+      ) as HTMLElement | null;
+      el?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
+      clearSearchFocusParamsFromUrl();
+    }, 0);
+  }, [
+    focusAssetIdFromQuery,
+    focusFieldIdFromQuery,
+    groups,
+    activeProperties,
+    setSelectedCells,
+    setSelectedRowIds,
+    clearSearchFocusParamsFromUrl,
+  ]);
 
   const { handleCut, handleCopy, handlePaste } = useClipboardOperations({
     dataManager,
@@ -1473,13 +1538,15 @@ export function LibraryAssetsTable({
               type="button"
               className={styles.addSectionButton}
               onClick={async () => {
-                if (onAddSection) {
-                  try {
-                    const newSectionId = await onAddSection();
-                    if (newSectionId) setActiveSectionId(newSectionId);
-                  } catch (e) {
-                    message.error((e as Error)?.message ?? 'Failed to add section');
+                if (!onAddSection) return;
+                try {
+                  const newSectionId = await onAddSection();
+                  if (newSectionId) {
+                    pendingNewSectionIdRef.current = newSectionId;
+                    setActiveSectionId(newSectionId);
                   }
+                } catch (e) {
+                  message.error((e as Error)?.message ?? 'Failed to add section');
                 }
               }}
               aria-label="Add section"
