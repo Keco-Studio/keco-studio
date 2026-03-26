@@ -458,6 +458,10 @@ type UpdateLibraryInput = {
   description?: string;
 };
 
+type MoveLibraryTargetInput = {
+  folderId: string | null;
+};
+
 export async function updateLibrary(
   supabase: SupabaseClient,
   libraryId: string,
@@ -527,6 +531,87 @@ export async function updateLibrary(
     globalRequestCache.invalidate(`libraries:list:${library.project_id}:${library.folder_id}`);
   } else {
     globalRequestCache.invalidate(`libraries:list:${library.project_id}:root`);
+  }
+}
+
+export async function moveLibraryToFolder(
+  supabase: SupabaseClient,
+  libraryId: string,
+  input: MoveLibraryTargetInput
+): Promise<void> {
+  const library = await getLibrary(supabase, libraryId);
+  if (!library) {
+    throw new Error('Library not found');
+  }
+
+  await verifyLibraryUpdatePermission(supabase, libraryId);
+
+  const targetFolderId = input.folderId;
+  if (targetFolderId !== null && !isUuid(targetFolderId)) {
+    throw new Error('Invalid folder ID format');
+  }
+
+  if (targetFolderId !== null) {
+    const { data: folderData, error: folderError } = await supabase
+      .from('folders')
+      .select('project_id')
+      .eq('id', targetFolderId)
+      .single();
+
+    if (folderError || !folderData || folderData.project_id !== library.project_id) {
+      throw new Error('Target folder not found or does not belong to the same project');
+    }
+  }
+
+  if ((library.folder_id ?? null) === targetFolderId) {
+    return;
+  }
+
+  let nameCheckQuery = supabase
+    .from('libraries')
+    .select('id')
+    .eq('project_id', library.project_id)
+    .eq('name', library.name)
+    .neq('id', libraryId)
+    .limit(1);
+
+  if (targetFolderId) {
+    nameCheckQuery = nameCheckQuery.eq('folder_id', targetFolderId);
+  } else {
+    nameCheckQuery = nameCheckQuery.is('folder_id', null);
+  }
+
+  const { data: conflictingLibraries, error: nameCheckError } = await nameCheckQuery;
+  if (nameCheckError) {
+    throw new Error('Failed to verify library name in target location');
+  }
+  if (conflictingLibraries && conflictingLibraries.length > 0) {
+    throw new Error(
+      `Library name ${library.name} already exists in the target ${targetFolderId ? 'folder' : 'project root'}`
+    );
+  }
+
+  const { error } = await supabase
+    .from('libraries')
+    .update({
+      folder_id: targetFolderId,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', libraryId);
+
+  if (error) {
+    throw error;
+  }
+
+  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
+  globalRequestCache.invalidate(`library:${libraryId}`);
+  globalRequestCache.invalidate(`libraries:list:${library.project_id}:all`);
+  globalRequestCache.invalidate(`libraries:list:${library.project_id}:root`);
+  if (library.folder_id) {
+    globalRequestCache.invalidate(`libraries:list:${library.project_id}:${library.folder_id}`);
+  }
+  if (targetFolderId) {
+    globalRequestCache.invalidate(`libraries:list:${library.project_id}:${targetFolderId}`);
   }
 }
 

@@ -12,7 +12,6 @@ export type ContextMenuAction =
   | 'collaborators'
   | 'duplicate'
   | 'move-to'
-  | 'collaborators'
   | 'delete';
 
 type ContextMenuProps = {
@@ -330,10 +329,7 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
           )}
           <button
             className={styles.menuItem}
-            onClick={() => {
-              // Not implemented yet, just close menu
-              onClose();
-            }}
+            onClick={() => handleAction('move-to')}
           >
             Move to...
           </button>

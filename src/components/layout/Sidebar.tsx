@@ -6,7 +6,7 @@ import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { EventDataNode } from "antd/es/tree";
-import { Modal } from "antd";
+import { Modal, Select } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@/lib/contexts/NavigationContext";
 import { useSupabase } from "@/lib/SupabaseContext";
@@ -22,7 +22,7 @@ import { EditFolderModal } from "@/components/folders/EditFolderModal";
 import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { Project, deleteProject } from "@/lib/services/projectService";
-import { Library, deleteLibrary } from "@/lib/services/libraryService";
+import { Library, deleteLibrary, moveLibraryToFolder } from "@/lib/services/libraryService";
 import { Folder, deleteFolder } from "@/lib/services/folderService";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
 import { useSidebarFoldersLibraries } from "./hooks/useSidebarFoldersLibraries";
@@ -157,6 +157,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     loading: false,
     onConfirm: undefined,
   });
+  const [showMoveLibraryModal, setShowMoveLibraryModal] = useState(false);
+  const [movingLibraryId, setMovingLibraryId] = useState<string | null>(null);
+  const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
+  const [isMovingLibrary, setIsMovingLibrary] = useState(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(DEFAULT_SIDEBAR_WIDTH);
   const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
@@ -744,6 +748,44 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     [supabase, queryClient, currentIds.projectId, router, setError]
   );
 
+  const openMoveLibrary = useCallback((libraryId: string) => {
+    const lib = libraries.find((item) => item.id === libraryId);
+    if (!lib) return;
+    setMovingLibraryId(libraryId);
+    setTargetFolderId(lib.folder_id ?? null);
+    setShowMoveLibraryModal(true);
+  }, [libraries]);
+
+  const handleConfirmMoveLibrary = useCallback(async () => {
+    if (!movingLibraryId) return;
+    setIsMovingLibrary(true);
+    try {
+      await moveLibraryToFolder(supabase, movingLibraryId, { folderId: targetFolderId });
+      if (currentIds.projectId) {
+        queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
+      }
+      window.dispatchEvent(
+        new CustomEvent('libraryUpdated', {
+          detail: {
+            projectId: currentIds.projectId,
+            libraryId: movingLibraryId,
+            folderId: targetFolderId,
+          },
+        })
+      );
+      showSuccessToast('Library moved successfully');
+      setShowMoveLibraryModal(false);
+      setMovingLibraryId(null);
+      setTargetFolderId(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to move library';
+      setError(msg);
+      showErrorToast(msg);
+    } finally {
+      setIsMovingLibrary(false);
+    }
+  }, [movingLibraryId, targetFolderId, supabase, currentIds.projectId, queryClient]);
+
   const { handleContextMenuAction } = useSidebarContextMenuActions({
     contextMenu,
     closeContextMenu,
@@ -762,6 +804,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     assets,
     fetchAssets,
     onProjectDeleteViaAPI: handleProjectDeleteViaAPI,
+    openMoveLibrary,
     requestDeleteConfirm: ({ title, content, onConfirm }) => {
       setDeleteConfirmState({
         open: true,
@@ -1106,6 +1149,34 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           elementRef={contextMenu.elementRef}
         />
       )}
+
+      <Modal
+        title="Move library"
+        open={showMoveLibraryModal}
+        onCancel={() => {
+          if (isMovingLibrary) return;
+          setShowMoveLibraryModal(false);
+          setMovingLibraryId(null);
+          setTargetFolderId(null);
+        }}
+        onOk={handleConfirmMoveLibrary}
+        okText="Move"
+        confirmLoading={isMovingLibrary}
+        destroyOnHidden
+      >
+        <div style={{ marginBottom: 8, color: '#64748b', fontSize: 13 }}>
+          Move to a folder in this project or to project root.
+        </div>
+        <Select
+          style={{ width: '100%' }}
+          value={targetFolderId ?? '__ROOT__'}
+          onChange={(value) => setTargetFolderId(value === '__ROOT__' ? null : value)}
+          options={[
+            { value: '__ROOT__', label: 'Project root (outside folders)' },
+            ...folders.map((folder) => ({ value: folder.id, label: folder.name })),
+          ]}
+        />
+      </Modal>
 
       <DeleteConfirmDialog
         open={deleteConfirmState.open}
