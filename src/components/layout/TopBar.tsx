@@ -32,6 +32,7 @@ type TopBarProps = {
 };
 
 type AssetMode = 'view' | 'edit';
+const CELL_SEARCH_PAGE_SIZE = 10;
 
 export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowCreateProjectBreadcrumb }: TopBarProps) {
   const router = useRouter();
@@ -174,10 +175,20 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const [cellSearchLoading, setCellSearchLoading] = useState(false);
   const [cellSearchHits, setCellSearchHits] = useState<CellSearchHit[]>([]);
+  const [cellSearchPage, setCellSearchPage] = useState(1);
+
+  const cellSearchTotalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(cellSearchHits.length / CELL_SEARCH_PAGE_SIZE));
+  }, [cellSearchHits.length]);
+
+  const pagedCellSearchHits = useMemo(() => {
+    const start = (cellSearchPage - 1) * CELL_SEARCH_PAGE_SIZE;
+    return cellSearchHits.slice(start, start + CELL_SEARCH_PAGE_SIZE);
+  }, [cellSearchHits, cellSearchPage]);
 
   const cellSearchGroups = useMemo<CellSearchLibraryGroup[]>(() => {
     const map = new Map<string, CellSearchLibraryGroup>();
-    for (const hit of cellSearchHits) {
+    for (const hit of pagedCellSearchHits) {
       const key = hit.libraryId;
       const group = map.get(key);
       if (group) {
@@ -192,7 +203,17 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       }
     }
     return Array.from(map.values());
-  }, [cellSearchHits]);
+  }, [pagedCellSearchHits]);
+
+  useEffect(() => {
+    setCellSearchPage(1);
+  }, [searchQuery, searchFilter]);
+
+  useEffect(() => {
+    if (cellSearchPage > cellSearchTotalPages) {
+      setCellSearchPage(cellSearchTotalPages);
+    }
+  }, [cellSearchPage, cellSearchTotalPages]);
 
   useEffect(() => {
     if (searchFilter !== 'cell') {
@@ -1309,7 +1330,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                         {group.libraryName}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem' }}>
-                        {group.hits.slice(0, 6).map((hit) => (
+                        {group.hits.map((hit) => (
                           <button
                             key={`${hit.assetId}-${hit.fieldLabel}-${hit.valueSnippet}`}
                             type="button"
@@ -1385,6 +1406,37 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                 ))
               )}
             </div>
+            {searchFilter === 'cell' && !cellSearchLoading && cellSearchHits.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderTop: '1px solid #e5e7eb',
+                  padding: '0.5rem 0.75rem',
+                }}
+              >
+                <button
+                  type="button"
+                  className={styles.searchTab}
+                  onClick={() => setCellSearchPage((p) => Math.max(1, p - 1))}
+                  disabled={cellSearchPage <= 1}
+                >
+                  Prev
+                </button>
+                <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                  {cellSearchPage} / {cellSearchTotalPages}
+                </span>
+                <button
+                  type="button"
+                  className={styles.searchTab}
+                  onClick={() => setCellSearchPage((p) => Math.min(cellSearchTotalPages, p + 1))}
+                  disabled={cellSearchPage >= cellSearchTotalPages}
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
