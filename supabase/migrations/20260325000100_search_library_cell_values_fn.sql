@@ -12,6 +12,7 @@ returns table (
   asset_id uuid,
   asset_name text,
   section_id text,
+  field_id uuid,
   field_label text,
   value_snippet text,
   asset_updated_at timestamptz
@@ -29,6 +30,7 @@ as $$
       l.name as library_name,
       la.id as asset_id,
       la.name as asset_name,
+      lav.field_id as field_id,
       coalesce(lfd.label, '') as field_label,
       -- Must match frontend's SectionConfig.id format: `${library_id}:${sectionName}`
       (lfd.library_id::text || ':' || coalesce(lfd.section, '')) as section_id,
@@ -51,6 +53,7 @@ as $$
     asset_id,
     asset_name,
     section_id,
+    field_id,
     field_label,
     -- Produce a snippet around the first match (case-insensitive).
     substring(

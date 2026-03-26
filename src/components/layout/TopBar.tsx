@@ -1,6 +1,6 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -32,9 +32,11 @@ type TopBarProps = {
 };
 
 type AssetMode = 'view' | 'edit';
+const CELL_SEARCH_PAGE_SIZE = 10;
 
 export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowCreateProjectBreadcrumb }: TopBarProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const {
     breadcrumbs,
     currentAssetId,
@@ -60,7 +62,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const [isSearchFocused, setIsSearchFocused] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
-  const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library' | 'cell'>('cell');
+  const [searchFilter, setSearchFilter] = useState<'all' | 'project' | 'folder' | 'library' | 'cell'>('all');
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
   const [topbarPresenceUsers, setTopbarPresenceUsers] = useState<PresenceState[]>([]);
 
@@ -158,6 +160,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     assetId: string;
     assetName: string;
     sectionId: string;
+    fieldId: string;
     fieldLabel: string;
     valueSnippet: string;
     assetUpdatedAt?: string | null;
@@ -172,10 +175,20 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
   const [cellSearchLoading, setCellSearchLoading] = useState(false);
   const [cellSearchHits, setCellSearchHits] = useState<CellSearchHit[]>([]);
+  const [cellSearchPage, setCellSearchPage] = useState(1);
+
+  const cellSearchTotalPages = useMemo(() => {
+    return Math.max(1, Math.ceil(cellSearchHits.length / CELL_SEARCH_PAGE_SIZE));
+  }, [cellSearchHits.length]);
+
+  const pagedCellSearchHits = useMemo(() => {
+    const start = (cellSearchPage - 1) * CELL_SEARCH_PAGE_SIZE;
+    return cellSearchHits.slice(start, start + CELL_SEARCH_PAGE_SIZE);
+  }, [cellSearchHits, cellSearchPage]);
 
   const cellSearchGroups = useMemo<CellSearchLibraryGroup[]>(() => {
     const map = new Map<string, CellSearchLibraryGroup>();
-    for (const hit of cellSearchHits) {
+    for (const hit of pagedCellSearchHits) {
       const key = hit.libraryId;
       const group = map.get(key);
       if (group) {
@@ -190,7 +203,17 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       }
     }
     return Array.from(map.values());
-  }, [cellSearchHits]);
+  }, [pagedCellSearchHits]);
+
+  useEffect(() => {
+    setCellSearchPage(1);
+  }, [searchQuery, searchFilter]);
+
+  useEffect(() => {
+    if (cellSearchPage > cellSearchTotalPages) {
+      setCellSearchPage(cellSearchTotalPages);
+    }
+  }, [cellSearchPage, cellSearchTotalPages]);
 
   useEffect(() => {
     if (searchFilter !== 'cell') {
@@ -229,19 +252,34 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         const payload = await res.json();
         const results: any[] = Array.isArray(payload?.results) ? payload.results : [];
         if (aborted) return;
-        setCellSearchHits(
-          results.map((r) => ({
-            projectId: String(r.project_id ?? r.projectId ?? ''),
-            libraryId: String(r.library_id ?? r.libraryId ?? ''),
-            libraryName: String(r.library_name ?? r.libraryName ?? ''),
-            assetId: String(r.asset_id ?? r.assetId ?? ''),
-            assetName: String(r.asset_name ?? r.assetName ?? ''),
-            sectionId: String(r.section_id ?? r.sectionId ?? ''),
-            fieldLabel: String(r.field_label ?? r.fieldLabel ?? ''),
-            valueSnippet: String(r.value_snippet ?? r.valueSnippet ?? ''),
-            assetUpdatedAt: r.asset_updated_at ?? r.assetUpdatedAt ?? null,
-          }))
-        );
+        const mapped = results.map((r) => ({
+          projectId: String(r.project_id ?? r.projectId ?? ''),
+          libraryId: String(r.library_id ?? r.libraryId ?? ''),
+          libraryName: String(r.library_name ?? r.libraryName ?? ''),
+          assetId: String(r.asset_id ?? r.assetId ?? ''),
+          assetName: String(r.asset_name ?? r.assetName ?? ''),
+          sectionId: String(r.section_id ?? r.sectionId ?? ''),
+          fieldId: String(r.field_id ?? r.fieldId ?? ''),
+          fieldLabel: String(r.field_label ?? r.fieldLabel ?? ''),
+          valueSnippet: String(r.value_snippet ?? r.valueSnippet ?? ''),
+          assetUpdatedAt: r.asset_updated_at ?? r.assetUpdatedAt ?? null,
+        }));
+
+        setCellSearchHits(mapped);
+        try {
+          const storeKey = `keco-cell-search:${q}`;
+          const minimal = mapped.map((h) => ({
+            projectId: h.projectId,
+            libraryId: h.libraryId,
+            assetId: h.assetId,
+            fieldId: h.fieldId,
+            sectionId: h.sectionId,
+          }));
+          window.sessionStorage.setItem(storeKey, JSON.stringify(minimal));
+        } catch {
+          // Ignore storage failures.
+        }
+
       } catch {
         if (aborted) return;
         setCellSearchHits([]);
@@ -508,6 +546,24 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       document.removeEventListener('mousedown', handler);
     };
   }, []);
+
+  const navigateToCellHit = (hit: CellSearchHit) => {
+    const encodedQ = encodeURIComponent(searchQuery.trim());
+    const focusSectionId = hit.sectionId?.trim();
+    if (focusSectionId) {
+      router.push(
+        `/${hit.projectId}/${hit.libraryId}?focusSectionId=${encodeURIComponent(
+          focusSectionId
+        )}&focusAssetId=${encodeURIComponent(hit.assetId)}&focusFieldId=${encodeURIComponent(hit.fieldId)}&cellSearchQ=${encodedQ}`
+      );
+    } else {
+      router.push(
+        `/${hit.projectId}/${hit.libraryId}?focusAssetId=${encodeURIComponent(
+          hit.assetId
+        )}&focusFieldId=${encodeURIComponent(hit.fieldId)}&cellSearchQ=${encodedQ}`
+      );
+    }
+  };
 
   // Reset asset mode when navigating to a different asset
   useEffect(() => {
@@ -1204,6 +1260,39 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               setIsSearchDropdownOpen(true);
             }}
           />
+          <div className={styles.searchActions}>
+            <button
+              type="button"
+              className={styles.searchActionButton}
+              aria-label="Clear search"
+              title="Clear search"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSearchQuery('');
+                setIsSearchDropdownOpen(true);
+                if (typeof window !== 'undefined') {
+                  const nextParams = new URLSearchParams(window.location.search);
+                  nextParams.delete('focusSectionId');
+                  nextParams.delete('focusAssetId');
+                  nextParams.delete('focusFieldId');
+                  nextParams.delete('cellSearchQ');
+                  const clearKeys: string[] = [];
+                  for (let i = 0; i < window.sessionStorage.length; i += 1) {
+                    const key = window.sessionStorage.key(i);
+                    if (key && key.startsWith('keco-cell-search:')) {
+                      clearKeys.push(key);
+                    }
+                  }
+                  clearKeys.forEach((key) => window.sessionStorage.removeItem(key));
+                  const nextQuery = nextParams.toString();
+                  router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+                }
+              }}
+            >
+              ×
+            </button>
+          </div>
         </label>
         {isSearchDropdownOpen && (filteredSearchResults.length > 0 || searchFilter === 'cell') && (
           <div className={styles.searchDropdown}>
@@ -1241,7 +1330,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                         {group.libraryName}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem' }}>
-                        {group.hits.slice(0, 6).map((hit) => (
+                        {group.hits.map((hit) => (
                           <button
                             key={`${hit.assetId}-${hit.fieldLabel}-${hit.valueSnippet}`}
                             type="button"
@@ -1257,16 +1346,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                             onClick={() => {
                               setIsSearchDropdownOpen(false);
                               setIsSearchFocused(false);
-                              const focusSectionId = hit.sectionId?.trim();
-                              if (focusSectionId) {
-                                router.push(
-                                  `/${hit.projectId}/${hit.libraryId}?focusSectionId=${encodeURIComponent(
-                                    focusSectionId
-                                  )}`
-                                );
-                              } else {
-                                router.push(`/${hit.projectId}/${hit.libraryId}`);
-                              }
+                              navigateToCellHit(hit);
                             }}
                           >
                             <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
@@ -1326,6 +1406,37 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                 ))
               )}
             </div>
+            {searchFilter === 'cell' && !cellSearchLoading && cellSearchHits.length > 0 && (
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  borderTop: '1px solid #e5e7eb',
+                  padding: '0.5rem 0.75rem',
+                }}
+              >
+                <button
+                  type="button"
+                  className={styles.searchTab}
+                  onClick={() => setCellSearchPage((p) => Math.max(1, p - 1))}
+                  disabled={cellSearchPage <= 1}
+                >
+                  Prev
+                </button>
+                <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                  {cellSearchPage} / {cellSearchTotalPages}
+                </span>
+                <button
+                  type="button"
+                  className={styles.searchTab}
+                  onClick={() => setCellSearchPage((p) => Math.min(cellSearchTotalPages, p + 1))}
+                  disabled={cellSearchPage >= cellSearchTotalPages}
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>

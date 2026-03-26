@@ -35,6 +35,7 @@ export type UseSidebarContextMenuActionsParams = {
   assets: Record<string, SidebarAssetRow[]>;
   fetchAssets: (libraryId: string | null | undefined) => Promise<void>;
   onProjectDeleteViaAPI: (projectId: string) => void | Promise<void>;
+  openMoveLibrary: (libraryId: string) => void;
   requestDeleteConfirm: (options: {
     title: string;
     content: string;
@@ -64,6 +65,7 @@ export function useSidebarContextMenuActions({
   assets,
   fetchAssets,
   onProjectDeleteViaAPI,
+  openMoveLibrary,
   requestDeleteConfirm,
 }: UseSidebarContextMenuActionsParams) {
   const handleContextMenuAction = useCallback(
@@ -106,6 +108,16 @@ export function useSidebarContextMenuActions({
           return;
         }
         // Project, Folder, Asset duplication not implemented yet
+        closeContextMenu();
+        return;
+      }
+
+      if (action === 'move-to') {
+        if (contextMenu.type === 'library') {
+          openMoveLibrary(contextMenu.id);
+          closeContextMenu();
+          return;
+        }
         closeContextMenu();
         return;
       }
@@ -274,6 +286,7 @@ export function useSidebarContextMenuActions({
       assets,
       fetchAssets,
       onProjectDeleteViaAPI,
+      openMoveLibrary,
       requestDeleteConfirm,
     ]
   );

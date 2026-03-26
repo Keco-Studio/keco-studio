@@ -902,6 +902,14 @@ td.cellCopy.copyBorderRight:hover {
   background: #0000000D !important;
 }
 
+.searchCellHit {
+  background: #fff6cc !important;
+}
+
+.searchCellHit:hover {
+  background: #ffefad !important;
+}
+
 .checkboxContainer {
   display: inline-flex;
   align-items: center;
