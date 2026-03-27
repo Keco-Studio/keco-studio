@@ -1153,6 +1153,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       <Modal
         title="Move library"
         open={showMoveLibraryModal}
+        width={420}
+        centered
+        styles={{
+          mask: { background: 'rgba(15, 23, 42, 0.35)' },
+          content: {
+            borderRadius: '12px',
+            padding: '20px',
+            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.2)',
+          },
+        }}
         onCancel={() => {
           if (isMovingLibrary) return;
           setShowMoveLibraryModal(false);
