@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Input, Select, Button, Avatar, Checkbox, Dropdown, Modal, Switch, App } from 'antd';
+import { Input, Select, Button, Avatar, Checkbox, Dropdown, Switch, App, Tooltip } from 'antd';
 import Image from 'next/image';
+import { createPortal } from 'react-dom';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   AssetRow,
@@ -63,6 +64,7 @@ import batchEditAddIcon from '@/assets/images/BatchEditAddIcon.svg';
 import tableAssetDetailIcon from '@/assets/images/ProjectDescIcon.svg';
 import collaborationViewNumIcon from '@/assets/images/collaborationViewNumIcon.svg';
 import addSectionIcon from '@/assets/images/addProjectIcon.svg'
+import formulaIcon from '@/assets/images/formula.svg';
 import styles from './LibraryAssetsTable.module.css';
 
 // ---------------- Formula evaluation helpers ----------------
@@ -473,6 +475,26 @@ const evaluateFormulaForRow = (
   }
 };
 
+const getCustomFormulaExpressionFromCellValue = (rawValue: unknown): string | null => {
+  if (typeof rawValue === 'string') {
+    const trimmed = rawValue.trim();
+    return trimmed.startsWith('=') ? trimmed : null;
+  }
+  if (rawValue && typeof rawValue === 'object') {
+    const maybeObj = rawValue as { expression?: unknown; customExpression?: unknown };
+    const expression = typeof maybeObj.customExpression === 'string'
+      ? maybeObj.customExpression
+      : typeof maybeObj.expression === 'string'
+        ? maybeObj.expression
+        : null;
+    if (expression) {
+      const trimmed = expression.trim();
+      return trimmed.startsWith('=') ? trimmed : `=${trimmed}`;
+    }
+  }
+  return null;
+};
+
 export type LibraryAssetsTableProps = {
   library: {
     id: string;
@@ -597,6 +619,11 @@ export function LibraryAssetsTable({
   
   // Delete row confirmation modal state
   const [deleteRowConfirmVisible, setDeleteRowConfirmVisible] = useState(false);
+  const [formulaModalOpen, setFormulaModalOpen] = useState(false);
+  const [formulaModalRowId, setFormulaModalRowId] = useState<string | null>(null);
+  const [formulaModalPropertyKey, setFormulaModalPropertyKey] = useState<string | null>(null);
+  const [formulaInputValue, setFormulaInputValue] = useState('');
+  const [formulaPanelPosition, setFormulaPanelPosition] = useState<{ top: number; left: number } | null>(null);
   
   // Optimistic update: track deleted asset IDs to hide them immediately
   const [deletedAssetIds, setDeletedAssetIds] = useState<Set<string>>(new Set());
@@ -1402,6 +1429,97 @@ export function LibraryAssetsTable({
     }
   }, [onUpdateAsset, yRows, setOptimisticEditUpdates, setIsSaving]);
 
+  const openFormulaEditor = useCallback((rowId: string, propertyKey: string) => {
+    const row = rows.find((r) => r.id === rowId);
+    const property = properties.find((p) => p.key === propertyKey);
+    if (!row || !property || property.dataType !== 'formula') return;
+    const existingCustom = getCustomFormulaExpressionFromCellValue(row.propertyValues[propertyKey]);
+    const fallback = property.formulaExpression?.trim() ?? '';
+    const initial = existingCustom ? existingCustom.replace(/^=/, '') : fallback.replace(/^=/, '');
+    setFormulaModalRowId(rowId);
+    setFormulaModalPropertyKey(propertyKey);
+    setFormulaInputValue(initial);
+    const panelWidth = 388;
+    const panelHeight = 255;
+    if (typeof document !== 'undefined') {
+      const cell = document.querySelector(
+        `tr[data-row-id="${rowId}"] td[data-property-key="${propertyKey}"]`
+      ) as HTMLElement | null;
+      if (cell) {
+        const rect = cell.getBoundingClientRect();
+        const margin = 8;
+        const maxLeft = Math.max(8, window.innerWidth - panelWidth - 8);
+        const left = Math.min(Math.max(8, rect.left), maxLeft);
+        const preferredTop = rect.bottom + margin;
+        const top =
+          preferredTop + panelHeight > window.innerHeight - 8
+            ? Math.max(8, rect.top - panelHeight - margin)
+            : preferredTop;
+        setFormulaPanelPosition({ top, left });
+      } else {
+        setFormulaPanelPosition({
+          top: Math.max(8, window.innerHeight / 2 - panelHeight / 2),
+          left: Math.max(8, window.innerWidth / 2 - panelWidth / 2),
+        });
+      }
+    }
+    setFormulaModalOpen(true);
+  }, [rows, properties]);
+
+  const handleSaveCustomFormula = useCallback(async () => {
+    if (!onUpdateAsset || !formulaModalRowId || !formulaModalPropertyKey) return;
+    const row = rows.find((r) => r.id === formulaModalRowId);
+    if (!row) return;
+    const trimmed = formulaInputValue.trim();
+    const normalizedFormula = trimmed ? (trimmed.startsWith('=') ? trimmed : `=${trimmed}`) : null;
+    const updatedPropertyValues = {
+      ...row.propertyValues,
+      [formulaModalPropertyKey]: normalizedFormula,
+    };
+    const allRows = yRows.toArray();
+    const rowIndex = allRows.findIndex((r) => r.id === formulaModalRowId);
+    if (rowIndex >= 0) {
+      const existingRow = allRows[rowIndex];
+      const updatedRow = {
+        ...existingRow,
+        propertyValues: updatedPropertyValues,
+      };
+      yRows.delete(rowIndex, 1);
+      yRows.insert(rowIndex, [updatedRow]);
+    }
+    setOptimisticEditUpdates((prev) => {
+      const newMap = new Map(prev);
+      newMap.set(formulaModalRowId, {
+        name: row.name || 'Untitled',
+        propertyValues: updatedPropertyValues,
+      });
+      return newMap;
+    });
+    setIsSaving(true);
+    try {
+      await onUpdateAsset(formulaModalRowId, row.name || 'Untitled', updatedPropertyValues);
+      setFormulaModalOpen(false);
+      setFormulaPanelPosition(null);
+      setTimeout(() => {
+        setOptimisticEditUpdates((prev) => {
+          const newMap = new Map(prev);
+          newMap.delete(formulaModalRowId);
+          return newMap;
+        });
+      }, 500);
+    } catch (err) {
+      console.error('Failed to save custom formula:', err);
+      setOptimisticEditUpdates((prev) => {
+        const newMap = new Map(prev);
+        newMap.delete(formulaModalRowId);
+        return newMap;
+      });
+      message.error('Failed to save formula.');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [formulaModalRowId, formulaModalPropertyKey, formulaInputValue, onUpdateAsset, rows, yRows, setOptimisticEditUpdates, message]);
+
   // Handle view asset detail: Ctrl/Cmd = new tab; else open right-side drawer
   const handleViewAssetDetail = (row: AssetRow, e: React.MouseEvent) => {
     const projectId = params.projectId as string;
@@ -1481,6 +1599,45 @@ export function LibraryAssetsTable({
     batchEditMenuVisible,
     contextMenuRowId
   ]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== '=' || formulaModalOpen || editingCell) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        !target ||
+        target.tagName === 'INPUT' ||
+        target.tagName === 'TEXTAREA' ||
+        target.tagName === 'SELECT' ||
+        target.isContentEditable ||
+        !!target.closest('.ant-modal') ||
+        !!target.closest('[contenteditable="true"]')
+      ) {
+        return;
+      }
+      if (!currentFocusedCell || selectedCells.size !== 1) return;
+      const property = properties.find((p) => p.key === currentFocusedCell.propertyKey);
+      if (!property || property.dataType !== 'formula') return;
+      event.preventDefault();
+      event.stopPropagation();
+      openFormulaEditor(currentFocusedCell.assetId, currentFocusedCell.propertyKey);
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [formulaModalOpen, editingCell, currentFocusedCell, selectedCells.size, properties, openFormulaEditor]);
+
+  useEffect(() => {
+    if (!formulaModalOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest(`.${styles.formulaPanel}`)) return;
+      setFormulaModalOpen(false);
+      setFormulaPanelPosition(null);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [formulaModalOpen]);
 
   // Int 序列填充预览：拖动填充柄时待填充格显示的预填值（仅 Int 且两格连续时）
   // 必须在任何条件 return 之前调用，否则会违反 React Hooks 调用顺序
@@ -1796,7 +1953,13 @@ export function LibraryAssetsTable({
                     
                     // Formula field: value derived from other columns
                     if (property.dataType === 'formula') {
-                      const formulaResult = evaluateFormulaForRow(property.formulaExpression, row, properties);
+                      const cellKey: CellKey = `${row.id}-${property.key}`;
+                      const isCellSelected = selectedCells.has(cellKey);
+                      const customFormulaExpression = getCustomFormulaExpressionFromCellValue(row.propertyValues[property.key]);
+                      const effectiveFormulaExpression = customFormulaExpression ?? property.formulaExpression;
+                      const formulaResult = evaluateFormulaForRow(effectiveFormulaExpression, row, properties);
+                      const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
+                      const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
 
                       // 如果结果是布尔值，则按 BooleanCell 的样式展示（只读，不可编辑）
                       if (typeof formulaResult === 'boolean') {
@@ -1842,13 +2005,40 @@ export function LibraryAssetsTable({
                         <td
                           key={property.id}
                           data-property-key={property.key}
-                          className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellEditing : ''}`}
+                          className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellEditing : (selectedCells.size === 1 && isCellSelected ? styles.cellSelected : '')} ${selectedCells.size > 1 && isCellSelected && editingUsers.length === 0 ? styles.cellMultipleSelected : ''} ${cutCells.has(cellKey) ? styles.cellCut : ''} ${selectionBorderClass} ${copyBorderClass}`}
                           style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
+                          onClick={(e) => {
+                            handleCellFocus(row.id, property.key);
+                            handleCellClick(row.id, property.key, e);
+                          }}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            openFormulaEditor(row.id, property.key);
+                          }}
+                          onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
+                          onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
                         >
-                          <span className={styles.cellText}>{display}</span>
+                          <span className={`${styles.cellText} ${customFormulaExpression ? styles.customFormulaValue : ''}`}>
+                            {display}
+                          </span>
+                          {customFormulaExpression && (
+                            <Tooltip title={customFormulaExpression.replace(/^=/, '')} placement="top">
+                              <Image
+                                src={formulaIcon}
+                                alt="Custom formula"
+                                width={16}
+                                height={16}
+                                className={styles.customFormulaIcon}
+                              />
+                            </Tooltip>
+                          )}
                           {editingUsers.length > 0 && (
                             <CellPresenceAvatars users={editingUsers} />
                           )}
+                          <div
+                            className={`${styles.cellExpandIcon} ${isCellSelected ? '' : styles.cellExpandIconHidden}`}
+                            onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
+                          />
                         </td>
                       );
                     }
@@ -2243,6 +2433,58 @@ export function LibraryAssetsTable({
           }}
         />
       )}
+
+      {formulaModalOpen && formulaPanelPosition && typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className={styles.formulaPanel}
+            style={{ top: `${formulaPanelPosition.top}px`, left: `${formulaPanelPosition.left}px` }}
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+            <div className={styles.formulaPanelHeader}>
+              <div className={styles.formulaPanelTitle}>CELL FORMULA</div>
+              <button
+                type="button"
+                className={styles.formulaPanelClose}
+                onClick={() => {
+                  setFormulaModalOpen(false);
+                  setFormulaPanelPosition(null);
+                }}
+                aria-label="Close formula panel"
+              >
+                ×
+              </button>
+            </div>
+            <div className={styles.formulaPanelBody}>
+              <div className={styles.formulaPanelLabel}>
+                Input formula<span className={styles.formulaPanelRequired}>*</span>
+              </div>
+              <Input.TextArea
+                value={formulaInputValue}
+                onChange={(e) => setFormulaInputValue(e.target.value)}
+                placeholder="e.g. ID + ID2"
+                autoSize={{ minRows: 5, maxRows: 5 }}
+                className={styles.formulaPanelTextarea}
+              />
+            </div>
+            <div className={styles.formulaPanelFooter}>
+              <button
+                type="button"
+                className={styles.formulaPanelCancel}
+                onClick={() => {
+                  setFormulaModalOpen(false);
+                  setFormulaPanelPosition(null);
+                }}
+              >
+                Cancel
+              </button>
+              <button type="button" className={styles.formulaPanelSave} onClick={handleSaveCustomFormula}>
+                Save
+              </button>
+            </div>
+          </div>,
+          document.body
+        )}
 
       <AssetCardPanel
         visible={!!(hoveredAssetId && hoveredAvatarPosition)}

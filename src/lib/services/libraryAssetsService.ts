@@ -52,6 +52,52 @@ type FormulaFieldMetaRow = {
   formula_expression: string | null;
 };
 
+const isCustomFormulaCellValue = (value: unknown): boolean => {
+  if (typeof value === 'string') {
+    return value.trim().startsWith('=');
+  }
+  if (value && typeof value === 'object') {
+    const maybe = value as { customExpression?: unknown; expression?: unknown };
+    if (typeof maybe.customExpression === 'string' && maybe.customExpression.trim() !== '') {
+      return true;
+    }
+    if (typeof maybe.expression === 'string' && maybe.expression.trim() !== '') {
+      return true;
+    }
+  }
+  return false;
+};
+
+const mergeFormulaValuesPreservingCustom = (
+  formulaMeta: FormulaFieldMetaRow[],
+  propertyValues: Record<string, any>
+): Record<string, any> => {
+  const computedFormulaValues = computeFormulaValuesForRow(
+    formulaMeta.map((f) => ({
+      id: f.id,
+      name: f.label,
+      dataType: f.data_type,
+      formulaExpression: f.formula_expression,
+    })),
+    propertyValues
+  );
+
+  const merged: Record<string, any> = { ...propertyValues };
+  for (const formulaField of formulaMeta) {
+    const fieldId = formulaField.id;
+    const inputValue = propertyValues[fieldId];
+    if (isCustomFormulaCellValue(inputValue)) {
+      // Keep cell-level custom expression as-is; do not overwrite with column-level formula result.
+      merged[fieldId] = inputValue;
+      continue;
+    }
+    if (Object.prototype.hasOwnProperty.call(computedFormulaValues, fieldId)) {
+      merged[fieldId] = computedFormulaValues[fieldId];
+    }
+  }
+  return merged;
+};
+
 // 当库内数据/结构发生变化时，顺便刷新 libraries.updated_at，
 // 以及其所在的 folder / project 的 updated_at，供顶部搜索排序使用。
 async function touchLibraryUpdatedAt(supabase: SupabaseClient, libraryId: string) {
@@ -177,6 +223,11 @@ async function recalculateAndPersistFormulaFieldValues(
 
   const upsertRows: Array<{ asset_id: string; field_id: string; value_json: number }> = [];
   for (const asset of assets) {
+    const existingTargetValue = asset.propertyValues?.[targetFormulaFieldId];
+    if (isCustomFormulaCellValue(existingTargetValue)) {
+      // Respect cell-level custom formulas: schema-level recalculation should not overwrite them.
+      continue;
+    }
     const computed = computeFormulaValuesForRow(evaluableFields, asset.propertyValues);
     const value = computed[targetFormulaFieldId];
     // 允许持久化任意非空结果（数字、布尔或字符串），以支持 IF 等复杂公式
@@ -636,16 +687,7 @@ export async function createAsset(
   await verifyAssetCreationPermission(supabase, libraryId);
 
   const formulaMeta = await getFormulaFieldMetaByLibraryId(supabase, libraryId);
-  const computedFormulaValues = computeFormulaValuesForRow(
-    formulaMeta.map((f) => ({
-      id: f.id,
-      name: f.label,
-      dataType: f.data_type,
-      formulaExpression: f.formula_expression,
-    })),
-    propertyValues
-  );
-  const mergedPropertyValues = { ...propertyValues, ...computedFormulaValues };
+  const mergedPropertyValues = mergeFormulaValuesPreservingCustom(formulaMeta, propertyValues);
   
   // Step 1: Insert the asset
   const insertData: {
@@ -760,16 +802,7 @@ export async function updateAsset(
 
   const libraryId = await getLibraryIdByAssetId(supabase, assetId);
   const formulaMeta = await getFormulaFieldMetaByLibraryId(supabase, libraryId);
-  const computedFormulaValues = computeFormulaValuesForRow(
-    formulaMeta.map((f) => ({
-      id: f.id,
-      name: f.label,
-      dataType: f.data_type,
-      formulaExpression: f.formula_expression,
-    })),
-    propertyValues
-  );
-  const mergedPropertyValues = { ...propertyValues, ...computedFormulaValues };
+  const mergedPropertyValues = mergeFormulaValuesPreservingCustom(formulaMeta, propertyValues);
   
   // Step 1: Update the asset name
   const { error: assetError } = await supabase
