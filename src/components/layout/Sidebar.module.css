@@ -298,6 +298,241 @@
   text-transform: capitalize;
 }
 
+.moveToOverlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 12000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.moveToModal {
+  width: 616px;
+  height: min(620px, calc(100vh - 120px));
+  border-radius: 16px;
+  background: #ffffff;
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px 12px;
+  box-sizing: border-box;
+}
+
+.moveToHeader {
+  width: 100%;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.moveToTitle {
+  font-family: Roboto, sans-serif;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 100%;
+  color: #1a1a1a;
+}
+
+.moveToClose {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.moveToSearchWrap {
+  width: 584px;
+  height: 32px;
+  border-radius: 8px;
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #f5f5f7;
+  padding: 0 12px;
+  box-sizing: border-box;
+}
+
+.moveToSearchIcon {
+  flex-shrink: 0;
+  color: #999;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.moveToSearchInput {
+  border: none;
+  outline: none;
+  background: transparent;
+  width: 100%;
+  font-family: "SF Pro Text", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-weight: 400;
+  font-size: 17px;
+  line-height: 22px;
+  letter-spacing: -0.41px;
+  color: #1a1a1a;
+}
+
+.moveToSearchInput::placeholder {
+  color: #a2a2a2;
+}
+
+.moveToProjectText {
+  margin-top: 14px;
+  font-family: Roboto, sans-serif;
+  font-weight: 600;
+  font-size: 16px;
+  line-height: 150%;
+  color: #7d7d7d;
+}
+
+.moveToIndependentRow {
+  margin-top: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 12px;
+  font-family: Roboto, sans-serif;
+  font-size: 14px;
+  color: #666;
+}
+
+.moveToSwitch {
+  width: 34px;
+  height: 20px;
+  border: none;
+  border-radius: 999px;
+  background: #d1d5db;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.moveToSwitchOn {
+  background: #4aa3ff;
+}
+
+.moveToSwitchKnob {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: white;
+  transform: translateX(0);
+  transition: transform 0.2s ease;
+}
+
+.moveToSwitchOn .moveToSwitchKnob {
+  transform: translateX(14px);
+}
+
+.moveToFolderList {
+  margin-top: 12px;
+  border-top: 1px solid #ececec;
+  border-bottom: 1px solid #ececec;
+  flex: 1;
+  overflow: auto;
+}
+
+.moveToFolderItem {
+  width: 100%;
+  height: 40px;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.moveToFolderItem:hover {
+  background: #f7f9fc;
+}
+
+.moveToFolderItemSelected {
+  background: #eaf3ff;
+  border-radius: 8px;
+}
+
+.moveToFolderItemDisabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.moveToCurrentFolderItem {
+  background: #ffffff;
+  cursor: default;
+}
+
+.moveToFolderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: Roboto, sans-serif;
+  font-weight: 500;
+  font-size: 16px;
+  line-height: 100%;
+  letter-spacing: 0%;
+  color: #1a1a1a;
+}
+
+.moveToFolderLeftCurrent {
+  color: #21272a;
+  opacity: 0.52;
+}
+
+.moveToCheckGlyph {
+  color: #4aa3ff;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 700;
+}
+
+.moveToFooter {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.moveToCancel,
+.moveToConfirm {
+  height: 28px;
+  border-radius: 8px;
+  padding: 0 14px;
+  border: 1px solid #d5d7db;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.moveToCancel {
+  background: white;
+  color: #3a3a3a;
+}
+
+.moveToConfirm {
+  background: #1ca7ff;
+  border-color: #1ca7ff;
+  color: white;
+}
+
+.moveToConfirm:disabled {
+  background: #a9d8ff;
+  border-color: #a9d8ff;
+  cursor: not-allowed;
+}
+
 .addButton {
   background: none;
   border: none;

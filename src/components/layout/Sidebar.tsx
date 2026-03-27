@@ -2,11 +2,17 @@
 
 import loginProductIcon from "@/assets/images/loginProductIcon.svg";
 import searchIcon from "@/assets/images/searchIcon.svg";
+import moveToSearchIcon from "@/assets/images/moveToSearch.svg";
+import moveToCloseIcon from "@/assets/images/moveToClose.svg";
+import moveToFolderIcon from "@/assets/images/moveToFolder.svg";
+import moveToFolderDisabledIcon from "@/assets/images/moveToFolder2.svg";
+import moveToSelectIcon from "@/assets/images/moveToSelect.svg";
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
 import { EventDataNode } from "antd/es/tree";
-import { Modal, Select } from "antd";
+import { Modal } from "antd";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@/lib/contexts/NavigationContext";
 import { useSupabase } from "@/lib/SupabaseContext";
@@ -161,6 +167,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [movingLibraryId, setMovingLibraryId] = useState<string | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string | null>(null);
   const [isMovingLibrary, setIsMovingLibrary] = useState(false);
+  const [moveFolderSearch, setMoveFolderSearch] = useState('');
+  const [useIndependentLibrary, setUseIndependentLibrary] = useState(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(DEFAULT_SIDEBAR_WIDTH);
   const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
@@ -753,14 +761,21 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (!lib) return;
     setMovingLibraryId(libraryId);
     setTargetFolderId(lib.folder_id ?? null);
+    setUseIndependentLibrary(false);
+    setMoveFolderSearch('');
     setShowMoveLibraryModal(true);
   }, [libraries]);
 
   const handleConfirmMoveLibrary = useCallback(async () => {
     if (!movingLibraryId) return;
+    const finalTargetFolderId = useIndependentLibrary ? null : targetFolderId;
+    if (!useIndependentLibrary && !finalTargetFolderId) {
+      showErrorToast('Please select a destination folder or enable independent library.');
+      return;
+    }
     setIsMovingLibrary(true);
     try {
-      await moveLibraryToFolder(supabase, movingLibraryId, { folderId: targetFolderId });
+      await moveLibraryToFolder(supabase, movingLibraryId, { folderId: finalTargetFolderId });
       if (currentIds.projectId) {
         queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
       }
@@ -769,7 +784,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           detail: {
             projectId: currentIds.projectId,
             libraryId: movingLibraryId,
-            folderId: targetFolderId,
+            folderId: finalTargetFolderId,
           },
         })
       );
@@ -777,6 +792,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       setShowMoveLibraryModal(false);
       setMovingLibraryId(null);
       setTargetFolderId(null);
+      setMoveFolderSearch('');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to move library';
       setError(msg);
@@ -784,7 +800,33 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } finally {
       setIsMovingLibrary(false);
     }
-  }, [movingLibraryId, targetFolderId, supabase, currentIds.projectId, queryClient]);
+  }, [movingLibraryId, targetFolderId, useIndependentLibrary, supabase, currentIds.projectId, queryClient]);
+
+  const movingLibrary = useMemo(
+    () => libraries.find((lib) => lib.id === movingLibraryId) ?? null,
+    [libraries, movingLibraryId]
+  );
+
+  const currentProjectName = useMemo(
+    () => projects.find((p) => p.id === currentIds.projectId)?.name ?? 'project',
+    [projects, currentIds.projectId]
+  );
+
+  const filteredMoveFolders = useMemo(() => {
+    const q = moveFolderSearch.trim().toLowerCase();
+    if (!q) return folders;
+    return folders.filter((folder) => folder.name.toLowerCase().includes(q));
+  }, [folders, moveFolderSearch]);
+
+  const currentFolder = useMemo(
+    () => folders.find((folder) => folder.id === movingLibrary?.folder_id) ?? null,
+    [folders, movingLibrary?.folder_id]
+  );
+
+  const selectableMoveFolders = useMemo(
+    () => filteredMoveFolders.filter((folder) => folder.id !== movingLibrary?.folder_id),
+    [filteredMoveFolders, movingLibrary?.folder_id]
+  );
 
   const { handleContextMenuAction } = useSidebarContextMenuActions({
     contextMenu,
@@ -1150,43 +1192,128 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         />
       )}
 
-      <Modal
-        title="Move library"
-        open={showMoveLibraryModal}
-        width={420}
-        centered
-        styles={{
-          mask: { background: 'rgba(15, 23, 42, 0.35)' },
-          content: {
-            borderRadius: '12px',
-            padding: '20px',
-            boxShadow: '0 20px 50px rgba(0, 0, 0, 0.2)',
-          },
-        }}
-        onCancel={() => {
-          if (isMovingLibrary) return;
-          setShowMoveLibraryModal(false);
-          setMovingLibraryId(null);
-          setTargetFolderId(null);
-        }}
-        onOk={handleConfirmMoveLibrary}
-        okText="Move"
-        confirmLoading={isMovingLibrary}
-        destroyOnHidden
-      >
-        <div style={{ marginBottom: 8, color: '#64748b', fontSize: 13 }}>
-          Move to a folder in this project or to project root.
+      {showMoveLibraryModal && typeof document !== 'undefined' && createPortal(
+        <div
+          className={styles.moveToOverlay}
+          onClick={() => {
+            if (isMovingLibrary) return;
+            setShowMoveLibraryModal(false);
+            setMovingLibraryId(null);
+            setTargetFolderId(null);
+            setMoveFolderSearch('');
+          }}
+        >
+          <div className={styles.moveToModal} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.moveToHeader}>
+              <div className={styles.moveToTitle}>Move library</div>
+              <button
+                type="button"
+                className={styles.moveToClose}
+                aria-label="Close"
+                onClick={() => {
+                  if (isMovingLibrary) return;
+                  setShowMoveLibraryModal(false);
+                  setMovingLibraryId(null);
+                  setTargetFolderId(null);
+                  setMoveFolderSearch('');
+                }}
+              >
+                <Image src={moveToCloseIcon} alt="Close" width={18} height={18} />
+              </button>
+            </div>
+
+            <div className={styles.moveToSearchWrap}>
+              <Image src={moveToSearchIcon} alt="Search" width={16} height={16} className={styles.moveToSearchIcon} />
+              <input
+                className={styles.moveToSearchInput}
+                placeholder="Search folder"
+                value={moveFolderSearch}
+                onChange={(e) => setMoveFolderSearch(e.target.value)}
+              />
+            </div>
+
+            <div className={styles.moveToProjectText}>Folder in "{currentProjectName}"</div>
+
+            <label className={styles.moveToIndependentRow}>
+              <span>Use as independent library</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={useIndependentLibrary}
+                className={`${styles.moveToSwitch} ${useIndependentLibrary ? styles.moveToSwitchOn : ''}`}
+                onClick={() => setUseIndependentLibrary((prev) => !prev)}
+              >
+                <span className={styles.moveToSwitchKnob} />
+              </button>
+            </label>
+
+            <div className={styles.moveToFolderList}>
+              {currentFolder && (
+                <div className={`${styles.moveToFolderItem} ${styles.moveToCurrentFolderItem}`} aria-disabled="true">
+                  <div className={`${styles.moveToFolderLeft} ${styles.moveToFolderLeftCurrent}`}>
+                    <Image src={moveToFolderDisabledIcon} alt="" width={18} height={18} aria-hidden />
+                    <span>
+                      {currentFolder.name} (current folder)
+                    </span>
+                  </div>
+                </div>
+              )}
+              {selectableMoveFolders.map((folder) => {
+                const isSelected = targetFolderId === folder.id && !useIndependentLibrary;
+                return (
+                  <button
+                    key={folder.id}
+                    type="button"
+                    disabled={useIndependentLibrary}
+                    className={`${styles.moveToFolderItem} ${isSelected ? styles.moveToFolderItemSelected : ''} ${useIndependentLibrary ? styles.moveToFolderItemDisabled : ''}`}
+                    onClick={() => setTargetFolderId(folder.id)}
+                  >
+                    <div className={styles.moveToFolderLeft}>
+                      <Image
+                        src={moveToFolderIcon}
+                        alt=""
+                        width={18}
+                        height={18}
+                        aria-hidden
+                      />
+                      <span>
+                        {folder.name}
+                      </span>
+                    </div>
+                    {isSelected && (
+                      <Image src={moveToSelectIcon} alt="Selected" width={18} height={18} aria-hidden />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className={styles.moveToFooter}>
+              <button
+                type="button"
+                className={styles.moveToCancel}
+                onClick={() => {
+                  if (isMovingLibrary) return;
+                  setShowMoveLibraryModal(false);
+                  setMovingLibraryId(null);
+                  setTargetFolderId(null);
+                  setMoveFolderSearch('');
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={styles.moveToConfirm}
+                disabled={isMovingLibrary || (!useIndependentLibrary && !targetFolderId)}
+                onClick={handleConfirmMoveLibrary}
+              >
+                {isMovingLibrary ? 'Moving...' : 'Move'}
+              </button>
+            </div>
+          </div>
         </div>
-        <Select
-          style={{ width: '100%' }}
-          value={targetFolderId ?? '__ROOT__'}
-          onChange={(value) => setTargetFolderId(value === '__ROOT__' ? null : value)}
-          options={[
-            { value: '__ROOT__', label: 'Project root (outside folders)' },
-            ...folders.map((folder) => ({ value: folder.id, label: folder.name })),
-          ]}
-        />
-      </Modal>
+      , document.body)}
 
       <DeleteConfirmDialog
         open={deleteConfirmState.open}
