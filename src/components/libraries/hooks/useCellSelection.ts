@@ -141,6 +141,11 @@ export function useCellSelection({
   const handleCellFillDragStart = useCallback(
     (rowId: string, propertyKey: string, e: React.MouseEvent) => {
       const target = e.target as HTMLElement;
+      // Only left-click should alter selection state for drag/select behavior.
+      // Right-click is reserved for context menu and must keep current row/cell selection.
+      if (e.button !== 0) {
+        return;
+      }
       if (
         target.closest('button') ||
         target.closest('.ant-checkbox') ||
@@ -175,9 +180,6 @@ export function useCellSelection({
         setDragCurrentCell(null);
         // Do not return here: if user keeps pressing and drags,
         // we should start rectangle selection from the newly switched cell.
-      }
-      if (e.button !== 0) {
-        return;
       }
       e.preventDefault();
       e.stopPropagation();
