@@ -703,6 +703,124 @@ td.cellCopy.copyBorderRight:hover {
   min-width: 0;
 }
 
+.customFormulaValue {
+  color: #7c3aed;
+  font-weight: 500;
+}
+
+.customFormulaIcon {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.72;
+}
+
+.formulaPanel {
+  position: fixed;
+  width: 388px;
+  height: 255px;
+  opacity: 1;
+  border-radius: 8px;
+  border: 1px solid #c4d0e0;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.18);
+  z-index: 2100;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.formulaPanelHeader {
+  height: 48px;
+  background: #0B99FF14;
+  border-bottom: 1px solid #d8e4f4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+}
+
+.formulaPanelTitle {
+  font-family: Roboto, sans-serif;
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 100%;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: #1c1d20;
+}
+
+.formulaPanelClose {
+  border: none;
+  background: transparent;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  color: #1f2937;
+}
+
+.formulaPanelBody {
+  padding: 10px 12px 8px;
+  flex: 1;
+}
+
+.formulaPanelLabel {
+  font-family: var(--font-geist-sans, "Inter", "Segoe UI", sans-serif);
+  font-weight: 500;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0;
+  color: #0a0a0a;
+  margin-bottom: 8px;
+}
+
+.formulaPanelRequired {
+  color: #ef4444;
+  margin-left: 2px;
+}
+
+.formulaPanelTextarea :global(.ant-input) {
+  border-radius: 8px;
+  border: 1px solid #d1d5db;
+  font-family: var(--font-geist-mono, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);
+  font-weight: 400;
+  font-size: 14px;
+  line-height: 20px;
+  letter-spacing: 0;
+  color: #0f9d58;
+}
+
+.formulaPanelFooter {
+  height: 56px;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px;
+}
+
+.formulaPanelCancel,
+.formulaPanelSave {
+  height: 34px;
+  border-radius: 12px;
+  padding: 0 20px;
+  font-size: 16px;
+  border: 1px solid #d1d5db;
+  cursor: pointer;
+}
+
+.formulaPanelCancel {
+  background: #fff;
+  color: #1f2937;
+}
+
+.formulaPanelSave {
+  background: #1296f3;
+  border-color: #1296f3;
+  color: #fff;
+}
+
 /* Editable text cell with scrolling */
 .cellText[contenteditable="true"] {
   overflow-x: auto;

@@ -5,7 +5,7 @@ import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useSupabase } from '@/lib/SupabaseContext';
 import Image from 'next/image';
-import { useRef, useState, useEffect, useMemo } from 'react';
+import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { Avatar } from 'antd';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import styles from './TopBar.module.css';
@@ -1057,6 +1057,25 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     );
   };
 
+  const clearCellSearchFocusState = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    const nextParams = new URLSearchParams(window.location.search);
+    nextParams.delete('focusSectionId');
+    nextParams.delete('focusAssetId');
+    nextParams.delete('focusFieldId');
+    nextParams.delete('cellSearchQ');
+    const clearKeys: string[] = [];
+    for (let i = 0; i < window.sessionStorage.length; i += 1) {
+      const key = window.sessionStorage.key(i);
+      if (key && key.startsWith('keco-cell-search:')) {
+        clearKeys.push(key);
+      }
+    }
+    clearKeys.forEach((key) => window.sessionStorage.removeItem(key));
+    const nextQuery = nextParams.toString();
+    router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
+  }, [pathname, router]);
+
   const renderRightContent = () => {
     if (isPredefine) {
       return (
@@ -1250,7 +1269,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             value={searchQuery}
             onChange={(e) => {
               const value = e.target.value;
+              const wasNonEmpty = searchQuery.trim().length > 0;
+              const isNowEmpty = value.trim().length === 0;
               setSearchQuery(value);
+              if (wasNonEmpty && isNowEmpty) {
+                clearCellSearchFocusState();
+              }
               // 有输入时展示搜索结果；无输入时展示最近 7 天记录
               setIsSearchDropdownOpen(true);
             }}
@@ -1260,39 +1284,25 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               setIsSearchDropdownOpen(true);
             }}
           />
-          <div className={styles.searchActions}>
-            <button
-              type="button"
-              className={styles.searchActionButton}
-              aria-label="Clear search"
-              title="Clear search"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setSearchQuery('');
-                setIsSearchDropdownOpen(true);
-                if (typeof window !== 'undefined') {
-                  const nextParams = new URLSearchParams(window.location.search);
-                  nextParams.delete('focusSectionId');
-                  nextParams.delete('focusAssetId');
-                  nextParams.delete('focusFieldId');
-                  nextParams.delete('cellSearchQ');
-                  const clearKeys: string[] = [];
-                  for (let i = 0; i < window.sessionStorage.length; i += 1) {
-                    const key = window.sessionStorage.key(i);
-                    if (key && key.startsWith('keco-cell-search:')) {
-                      clearKeys.push(key);
-                    }
-                  }
-                  clearKeys.forEach((key) => window.sessionStorage.removeItem(key));
-                  const nextQuery = nextParams.toString();
-                  router.replace(nextQuery ? `${pathname}?${nextQuery}` : pathname);
-                }
-              }}
-            >
-              ×
-            </button>
-          </div>
+          {searchQuery.trim().length > 0 && (
+            <div className={styles.searchActions}>
+              <button
+                type="button"
+                className={styles.searchActionButton}
+                aria-label="Clear search"
+                title="Clear search"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setSearchQuery('');
+                  setIsSearchDropdownOpen(true);
+                  clearCellSearchFocusState();
+                }}
+              >
+                ×
+              </button>
+            </div>
+          )}
         </label>
         {isSearchDropdownOpen && (filteredSearchResults.length > 0 || searchFilter === 'cell') && (
           <div className={styles.searchDropdown}>

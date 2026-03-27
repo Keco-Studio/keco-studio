@@ -77,6 +77,18 @@ type FormulaFieldMetaRow = {
   formula_expression: string | null;
 };
 
+const isCustomFormulaCellValue = (value: unknown): boolean => {
+  if (typeof value === 'string') {
+    return value.trim().startsWith('=');
+  }
+  if (value && typeof value === 'object') {
+    const maybe = value as { customExpression?: unknown; expression?: unknown };
+    if (typeof maybe.customExpression === 'string' && maybe.customExpression.trim() !== '') return true;
+    if (typeof maybe.expression === 'string' && maybe.expression.trim() !== '') return true;
+  }
+  return false;
+};
+
 // Helper: when library content changes, bump its own updated_at
 // and also the updated_at of its parent folder (if any) and project.
 async function touchLibraryUpdatedAt(
@@ -587,7 +599,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       valueForYjs = JSON.parse(JSON.stringify(value));
     }
 
-    let computedFormulaValues: Record<string, number | null> = {};
+    let computedFormulaValues: Record<string, any> = {};
     yDoc.transact(() => {
       yPropertyValues.set(fieldId, valueForYjs);
 
@@ -596,7 +608,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         yPropertyValues.forEach((v: any, key: string) => {
           currentValues[key] = v;
         });
-        computedFormulaValues = computeFormulaValuesForRow(
+        const rawComputed = computeFormulaValuesForRow(
           formulaMeta.map((field) => ({
             id: field.id,
             name: field.label,
@@ -605,9 +617,21 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
           })),
           currentValues
         );
-        Object.entries(computedFormulaValues).forEach(([formulaFieldId, formulaValue]) => {
-          yPropertyValues.set(formulaFieldId, formulaValue);
-        });
+        computedFormulaValues = {};
+        for (const field of formulaMeta) {
+          if (field.data_type !== 'formula') continue;
+          const formulaFieldId = field.id;
+          const currentFormulaValue = currentValues[formulaFieldId];
+          if (isCustomFormulaCellValue(currentFormulaValue)) {
+            // Preserve cell-level custom expression; do not overwrite with schema-level computed value.
+            computedFormulaValues[formulaFieldId] = currentFormulaValue;
+            yPropertyValues.set(formulaFieldId, currentFormulaValue);
+          } else {
+            const formulaValue = rawComputed[formulaFieldId];
+            computedFormulaValues[formulaFieldId] = formulaValue;
+            yPropertyValues.set(formulaFieldId, formulaValue);
+          }
+        }
       }
     });
 
@@ -723,7 +747,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     }
 
     const formulaMeta = await getFormulaFieldMeta();
-    const computedFormulaValues = computeFormulaValuesForRow(
+    const rawComputedFormulaValues = computeFormulaValuesForRow(
       formulaMeta.map((field) => ({
         id: field.id,
         name: field.label,
@@ -732,7 +756,17 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       })),
       propertyValues
     );
-    const mergedPropertyValues = { ...propertyValues, ...computedFormulaValues };
+    const mergedPropertyValues: Record<string, any> = { ...propertyValues };
+    for (const field of formulaMeta) {
+      if (field.data_type !== 'formula') continue;
+      const fieldId = field.id;
+      const inputValue = propertyValues[fieldId];
+      if (isCustomFormulaCellValue(inputValue)) {
+        mergedPropertyValues[fieldId] = inputValue;
+      } else {
+        mergedPropertyValues[fieldId] = rawComputedFormulaValues[fieldId];
+      }
+    }
 
     // 1. Create in database
     const { data: newAsset, error: assetError } = await supabase

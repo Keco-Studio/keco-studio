@@ -222,6 +222,7 @@ export function useClipboardOperations({
   const handleCut = useCallback(() => {
     // If rows are selected but cells are not, convert rows to cells
     let cellsToCut = selectedCells;
+    const isRowSelectionCut = selectedCells.size === 0 && selectedRowIds.size > 0;
     if (selectedCells.size === 0 && selectedRowIds.size > 0) {
       const convertedCells = convertRowsToCells(selectedRowIds);
       cellsToCut = convertedCells;
@@ -308,20 +309,23 @@ export function useClipboardOperations({
         propertyKeys.add(propertyKey);
       }
     });
-    
+
     // Sort rows by their index in allRowsForSelection
     rowIds.sort((a, b) => {
       const indexA = allRowsForSelection.findIndex(r => r.id === a);
       const indexB = allRowsForSelection.findIndex(r => r.id === b);
       return indexA - indexB;
     });
-    
-    // Sort properties by their index in orderedProperties
-    const sortedPropertyKeys = Array.from(propertyKeys).sort((a, b) => {
-      const indexA = orderedProperties.findIndex(p => p.key === a);
-      const indexB = orderedProperties.findIndex(p => p.key === b);
-      return indexA - indexB;
-    });
+
+    // Keep original column positions for row-based copy/cut.
+    // Unsupported columns are left as null placeholders to avoid column shift on paste.
+    const sortedPropertyKeys = isRowSelectionCut
+      ? orderedProperties.map((p) => p.key)
+      : Array.from(propertyKeys).sort((a, b) => {
+          const indexA = orderedProperties.findIndex(p => p.key === a);
+          const indexB = orderedProperties.findIndex(p => p.key === b);
+          return indexA - indexB;
+        });
     
     // Calculate selection bounds for border rendering (only show outer border)
     const rowIndices = rowIds.map(rowId => {
@@ -514,6 +518,7 @@ export function useClipboardOperations({
   const handleCopy = useCallback(() => {
     // If rows are selected but cells are not, convert rows to cells
     let cellsToCopy = selectedCells;
+    const isRowSelectionCopy = selectedCells.size === 0 && selectedRowIds.size > 0;
     if (selectedCells.size === 0 && selectedRowIds.size > 0) {
       const convertedCells = convertRowsToCells(selectedRowIds);
       cellsToCopy = convertedCells;
@@ -598,19 +603,22 @@ export function useClipboardOperations({
         propertyKeys.add(propertyKey);
       }
     });
-    
+
     // Sort rows and properties
     rowIds.sort((a, b) => {
       const indexA = allRowsForSelection.findIndex(r => r.id === a);
       const indexB = allRowsForSelection.findIndex(r => r.id === b);
       return indexA - indexB;
     });
-    
-    const sortedPropertyKeys = Array.from(propertyKeys).sort((a, b) => {
-      const indexA = orderedProperties.findIndex(p => p.key === a);
-      const indexB = orderedProperties.findIndex(p => p.key === b);
-      return indexA - indexB;
-    });
+
+    // Keep original column positions for row-based copy to prevent column shift/mismatch.
+    const sortedPropertyKeys = isRowSelectionCopy
+      ? orderedProperties.map((p) => p.key)
+      : Array.from(propertyKeys).sort((a, b) => {
+          const indexA = orderedProperties.findIndex(p => p.key === a);
+          const indexB = orderedProperties.findIndex(p => p.key === b);
+          return indexA - indexB;
+        });
     
     // Calculate selection bounds
     const rowIndices = rowIds.map(rowId => {
