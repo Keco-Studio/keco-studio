@@ -3,6 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 import type { SectionConfig, PropertyConfig, AssetRow } from '@/lib/types/libraryAssets';
 import type { FormulaEvaluableField } from '@/lib/utils/formula';
 import { computeFormulaValuesForRow } from '@/lib/utils/formula';
+import {
+  evaluateFormulaForRow,
+  getCustomFormulaExpressionFromCellValue,
+} from '@/components/libraries/utils/formulaEvaluation';
 import * as XLSX from 'xlsx';
 import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
 
@@ -448,6 +452,11 @@ export async function GET(request: NextRequest) {
   const properties = schema.properties;
 
   if (format === 'json') {
+    // For formula cells, export computed values.
+    // Custom formula cells may store an expression string like "=a + b" in `propertyValues`,
+    // so we must evaluate it before returning JSON.
+    const formulaProps = properties.filter((p) => p.dataType === 'formula');
+
     const payload = {
       libraryName,
       exportedAt,
@@ -460,13 +469,24 @@ export async function GET(request: NextRequest) {
         dataType: p.dataType,
         orderIndex: p.orderIndex,
       })),
-      rows: assets.map((row: AssetRow) => ({
+      rows: assets.map((row: AssetRow) => {
+        const exportPropertyValues: Record<string, any> = { ...(row.propertyValues ?? {}) };
+        for (const p of formulaProps) {
+          const raw = row.propertyValues?.[p.key];
+          const customExpression = getCustomFormulaExpressionFromCellValue(raw);
+          if (customExpression) {
+            const computed = evaluateFormulaForRow(customExpression, row, properties);
+            exportPropertyValues[p.key] = computed;
+          }
+        }
+        return {
         id: row.id,
         name: row.name,
-        propertyValues: row.propertyValues,
+        propertyValues: exportPropertyValues,
         created_at: row.created_at,
         rowIndex: row.rowIndex,
-      })),
+      };
+      }),
     };
     const json = JSON.stringify(payload, null, 2);
     return new NextResponse(json, {
@@ -642,12 +662,24 @@ export async function GET(request: NextRequest) {
       return sectionProps.map((p) => {
         const raw = row.propertyValues[p.key];
         if (p.dataType === 'formula') {
+          // If formula cell stores a custom expression (e.g. "=a + b"),
+          // export the computed result instead of exporting the expression itself.
+          const customExpression = getCustomFormulaExpressionFromCellValue(raw);
+          if (customExpression) {
+            const computed = evaluateFormulaForRow(customExpression, row, properties);
+            if (computed === null || computed === undefined) return null;
+            // Force string output so Excel uses left alignment (numbers are right-aligned by default).
+            return String(computed);
+          }
+
           if (raw === null || raw === undefined || raw === '') {
             const computed = computedFormulaValues[p.id];
             if (computed !== null && computed !== undefined) {
-              return computed as string | number | boolean;
+              // Force string output so Excel uses left alignment.
+              return String(computed);
             }
           }
+
           return formatCellValue(raw, p, referenceNameById);
         }
         return formatCellValue(raw, p, referenceNameById);

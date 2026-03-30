@@ -31,7 +31,7 @@ type Library = {
 };
 
 interface AssetReferenceSelectorProps {
-  value?: string | null; // asset ID
+  value?: string | string[] | null; // asset ID (single) or multiple ids (compat)
   onChange?: (value: string | null) => void;
   referenceLibraries?: string[]; // library IDs that can be referenced
   disabled?: boolean;
@@ -65,6 +65,11 @@ export function AssetReferenceSelector({
   const [hoverPosition, setHoverPosition] = useState<{ top: number; left: number } | null>(null);
   const [firstColumnFieldId, setFirstColumnFieldId] = useState<string | null>(null);
   const [firstColumnLabel, setFirstColumnLabel] = useState<string>('Name');
+
+  // Backward/forward compatibility:
+  // reference field used to store a single assetId (string), now may store string[] from the table multi-select modal.
+  // This selector UI is still single-select, so we resolve to the first id to avoid runtime query crashes.
+  const resolvedValue = Array.isArray(value) ? (value[0] ?? null) : value ?? null;
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputContainerRef = useRef<HTMLDivElement>(null);
@@ -225,7 +230,7 @@ export function AssetReferenceSelector({
 
   // Load selected asset info
   useEffect(() => {
-    if (!value) {
+    if (!resolvedValue) {
       setSelectedAsset(null);
       return;
     }
@@ -235,7 +240,7 @@ export function AssetReferenceSelector({
         const { data, error } = await supabase
           .from('library_assets')
           .select('id, name, library_id, libraries(name)')
-          .eq('id', value)
+          .eq('id', resolvedValue)
           .single();
 
         if (error) throw error;
@@ -256,7 +261,7 @@ export function AssetReferenceSelector({
             const { data: valueData } = await supabase
               .from('library_asset_values')
               .select('value_json')
-              .eq('asset_id', value)
+              .eq('asset_id', resolvedValue)
               .eq('field_id', firstFieldId)
               .single();
 
@@ -283,7 +288,7 @@ export function AssetReferenceSelector({
     };
 
     loadSelectedAsset();
-  }, [value, supabase]);
+  }, [resolvedValue, supabase]);
 
   // Filter assets based on search text
   useEffect(() => {
@@ -377,7 +382,7 @@ export function AssetReferenceSelector({
   };
 
   const handleExpand = async () => {
-    if (!value) return;
+    if (!resolvedValue) return;
     
     setShowExpandedInfo(!showExpandedInfo);
     
@@ -385,8 +390,8 @@ export function AssetReferenceSelector({
       // Load asset details
       try {
         const [{ data: asset }, { data: values }, { data: fields }] = await Promise.all([
-          supabase.from('library_assets').select('*').eq('id', value).single(),
-          supabase.from('library_asset_values').select('field_id, value_json').eq('asset_id', value),
+          supabase.from('library_assets').select('*').eq('id', resolvedValue).single(),
+          supabase.from('library_asset_values').select('field_id, value_json').eq('asset_id', resolvedValue),
           supabase.from('library_field_definitions').select('*').eq('library_id', selectedAsset?.library_id),
         ]);
 

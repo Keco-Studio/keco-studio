@@ -17,6 +17,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigation } from "@/lib/contexts/NavigationContext";
 import { useSupabase } from "@/lib/SupabaseContext";
 import { queryKeys } from "@/lib/utils/queryKeys";
+import { normalizeSearchString } from "@/lib/utils/normalizeSearchString";
 import { NewProjectModal } from "@/components/projects/NewProjectModal";
 import { EditProjectModal } from "@/components/projects/EditProjectModal";
 import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
@@ -768,6 +769,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   const handleConfirmMoveLibrary = useCallback(async () => {
     if (!movingLibraryId) return;
+    if (useIndependentLibrary) {
+      const lib = libraries.find((l) => l.id === movingLibraryId);
+      if (lib?.folder_id == null) return;
+    }
     const finalTargetFolderId = useIndependentLibrary ? null : targetFolderId;
     if (!useIndependentLibrary && !finalTargetFolderId) {
       showErrorToast('Please select a destination folder or enable independent library.');
@@ -800,7 +805,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } finally {
       setIsMovingLibrary(false);
     }
-  }, [movingLibraryId, targetFolderId, useIndependentLibrary, supabase, currentIds.projectId, queryClient]);
+  }, [movingLibraryId, targetFolderId, useIndependentLibrary, libraries, supabase, currentIds.projectId, queryClient]);
 
   const movingLibrary = useMemo(
     () => libraries.find((lib) => lib.id === movingLibraryId) ?? null,
@@ -813,9 +818,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   );
 
   const filteredMoveFolders = useMemo(() => {
-    const q = moveFolderSearch.trim().toLowerCase();
-    if (!q) return folders;
-    return folders.filter((folder) => folder.name.toLowerCase().includes(q));
+    const q = moveFolderSearch.trim();
+    const normalizedQuery = normalizeSearchString(q);
+    if (!normalizedQuery) return folders;
+    return folders.filter((folder) =>
+      normalizeSearchString(folder.name).includes(normalizedQuery)
+    );
   }, [folders, moveFolderSearch]);
 
   const currentFolder = useMemo(
@@ -827,6 +835,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     () => filteredMoveFolders.filter((folder) => folder.id !== movingLibrary?.folder_id),
     [filteredMoveFolders, movingLibrary?.folder_id]
   );
+
+  /** Independent = root; no-op if already at root with the switch on */
+  const isMoveLibraryConfirmDisabled =
+    isMovingLibrary ||
+    (!useIndependentLibrary && !targetFolderId) ||
+    (useIndependentLibrary && movingLibrary?.folder_id == null);
 
   const { handleContextMenuAction } = useSidebarContextMenuActions({
     contextMenu,
@@ -1305,7 +1319,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               <button
                 type="button"
                 className={styles.moveToConfirm}
-                disabled={isMovingLibrary || (!useIndependentLibrary && !targetFolderId)}
+                disabled={isMoveLibraryConfirmDisabled}
                 onClick={handleConfirmMoveLibrary}
               >
                 {isMovingLibrary ? 'Moving...' : 'Move'}

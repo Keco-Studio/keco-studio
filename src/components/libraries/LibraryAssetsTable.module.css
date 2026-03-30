@@ -1456,6 +1456,26 @@ td.cellCopy.copyBorderRight:hover {
   box-sizing: border-box;
 }
 
+/* Multi-select avatar stack within the fixed cell width.
+ * Extra avatars are overlapped to the "right/back" to avoid squeezing to the left. */
+.referenceAvatarsStack {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.referenceAvatarStackItem {
+  position: relative;
+  flex-shrink: 0;
+  width: 1.375rem; /* match .referenceIconTile */
+  height: 1.375rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  background: #EEEEEE;
+}
+
 .referenceSelectedAssetLeft:hover {
   background: #0B99FF14;
 }
@@ -2410,6 +2430,22 @@ td.cellCopy.copyBorderRight:hover {
 
 .detailDrawerInputWrap {
   width: 100%;
+}
+
+.detailDrawerFormulaWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.detailDrawerFormulaWrap :global(.ant-input) {
+  flex: 1;
+  min-width: 0;
+}
+
+.detailDrawerFormulaInput {
+  cursor: not-allowed;
 }
 
 .detailDrawerInput {

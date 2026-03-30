@@ -161,6 +161,7 @@
   transition: all 0.2s;
   background: transparent;
   border: 2px solid transparent;
+  position: relative;
 }
 
 .assetIcon {
@@ -182,6 +183,23 @@
   background: #E5E5E5;
   border-color: #0B99FF;
   border-width: 2px;
+}
+
+.assetCardCheck {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #0B99FF;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  pointer-events: none;
 }
 
 .assetName {

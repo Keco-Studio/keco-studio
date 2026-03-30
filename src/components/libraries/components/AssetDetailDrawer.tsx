@@ -8,7 +8,10 @@ import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { ReferenceField } from './ReferenceField';
 import { getFieldTypeIcon } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
+import { evaluateFormulaForRow, getCustomFormulaExpressionFromCellValue } from '@/components/libraries/utils/formulaEvaluation';
+import formulaIcon from '@/assets/images/formula.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
+import { normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
 
 export type AssetDetailDrawerProps = {
   open: boolean;
@@ -18,7 +21,7 @@ export type AssetDetailDrawerProps = {
   userRole: 'admin' | 'editor' | 'viewer' | null;
   onUpdateRow: (assetId: string, name: string, propertyValues: Record<string, any>) => Promise<void>;
   onMediaFileChange: (rowId: string, propertyKey: string, value: MediaFileMetadata | null) => void;
-  onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
+  onOpenReferenceModal: (property: PropertyConfig, currentValue: string[] | null, rowId: string) => void;
   assetNamesCache: Record<string, string>;
   avatarRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
   onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
@@ -48,6 +51,8 @@ function getTypeBadgeLabel(property: PropertyConfig): string {
       return 'File';
     case 'date':
       return 'Date';
+    case 'formula':
+      return 'Formula';
     default:
       return 'String';
   }
@@ -204,8 +209,12 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
     if (!firstProp || firstValue === null || firstValue === undefined || firstValue === '')
       return row.name || 'Untitled';
     const val = firstValue;
-    if (firstProp.dataType === 'reference' && typeof val === 'string') {
-      return (assetNamesCache[val] ?? val) || (row.name || 'Untitled');
+    if (firstProp.dataType === 'reference') {
+      const firstRefId =
+        typeof val === 'string' ? val : Array.isArray(val) ? (val[0] as string | undefined) ?? null : null;
+      if (firstRefId) {
+        return (assetNamesCache[firstRefId] ?? firstRefId) || (row.name || 'Untitled');
+      }
     }
     if (val && typeof val === 'object' && 'fileName' in (val as object)) {
       return ((val as MediaFileMetadata).fileName ?? row.name) || 'Untitled';
@@ -252,7 +261,7 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                 : '';
 
             if (property.dataType === 'reference' && property.referenceLibraries) {
-              const assetId = value ? String(value) : null;
+              const assetIds = normalizeReferenceValueToAssetIds(value);
               return (
                 <div key={property.id} className={styles.detailDrawerField}>
                   <div className={styles.detailDrawerFieldHeader}>
@@ -272,7 +281,7 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                   <div className={styles.detailDrawerInputWrap}>
                     <ReferenceField
                       property={property}
-                      assetId={assetId}
+                      assetIds={assetIds}
                       rowId={row.id}
                       assetNamesCache={assetNamesCache}
                       isCellSelected={true}
@@ -388,6 +397,113 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                       getPopupContainer={(n) => n.parentElement ?? document.body}
                       options={property.enumOptions.map((opt) => ({ label: opt, value: opt }))}
                     />
+                  </div>
+                </div>
+              );
+            }
+
+            if (property.dataType === 'formula') {
+              const customFormulaExpression = getCustomFormulaExpressionFromCellValue(
+                row.propertyValues[property.key]
+              );
+              const effectiveFormulaExpression =
+                customFormulaExpression ?? property.formulaExpression;
+              const formulaResult = evaluateFormulaForRow(
+                effectiveFormulaExpression,
+                row,
+                orderedProperties
+              );
+
+              if (typeof formulaResult === 'boolean') {
+                return (
+                  <div key={property.id} className={styles.detailDrawerField}>
+                    <div className={styles.detailDrawerFieldHeader}>
+                      <label className={styles.detailDrawerLabel}>{property.name}</label>
+                      <span className={styles.detailDrawerTypeBadge}>
+                        <Image
+                          src={getFieldTypeIcon(property.dataType as any)}
+                          alt={property.dataType}
+                          width={16}
+                          height={16}
+                          className="icon-16"
+                          style={{ marginRight: 4 }}
+                        />
+                        {getTypeBadgeLabel(property)}
+                      </span>
+                    </div>
+                    <div className={`${styles.detailDrawerInputWrap} ${styles.detailDrawerFormulaWrap}`}>
+                      <Switch checked={formulaResult} disabled />
+                      {customFormulaExpression ? (
+                        <Tooltip
+                          title={customFormulaExpression.replace(/^=/, '')}
+                          zIndex={2100}
+                          getPopupContainer={(triggerNode) =>
+                            triggerNode.parentElement ?? document.body
+                          }
+                        >
+                          <Image
+                            src={formulaIcon}
+                            alt="Custom formula"
+                            width={16}
+                            height={16}
+                            className={styles.customFormulaIcon}
+                          />
+                        </Tooltip>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              }
+
+              const formulaDisplay =
+                formulaResult === null || formulaResult === undefined ? '' : String(formulaResult);
+              return (
+                <div key={property.id} className={styles.detailDrawerField}>
+                  <div className={styles.detailDrawerFieldHeader}>
+                    <label className={styles.detailDrawerLabel}>{property.name}</label>
+                    <span className={styles.detailDrawerTypeBadge}>
+                      <Image
+                        src={getFieldTypeIcon(property.dataType as any)}
+                        alt={property.dataType}
+                        width={16}
+                        height={16}
+                        className="icon-16"
+                        style={{ marginRight: 4 }}
+                      />
+                      {getTypeBadgeLabel(property)}
+                    </span>
+                  </div>
+                  <div className={`${styles.detailDrawerInputWrap} ${styles.detailDrawerFormulaWrap}`}>
+                    <Tooltip
+                      title={formulaDisplay}
+                      zIndex={2100}
+                      getPopupContainer={(triggerNode) =>
+                        triggerNode.parentElement ?? document.body
+                      }
+                    >
+                      <Input
+                        value={formulaDisplay}
+                        disabled
+                        className={`${styles.detailDrawerInput} ${styles.detailDrawerFormulaInput}`}
+                      />
+                    </Tooltip>
+                    {customFormulaExpression ? (
+                      <Tooltip
+                        title={customFormulaExpression.replace(/^=/, '')}
+                        zIndex={2100}
+                        getPopupContainer={(triggerNode) =>
+                          triggerNode.parentElement ?? document.body
+                        }
+                      >
+                        <Image
+                          src={formulaIcon}
+                          alt="Custom formula"
+                          width={16}
+                          height={16}
+                          className={styles.customFormulaIcon}
+                        />
+                      </Tooltip>
+                    ) : null}
                   </div>
                 </div>
               );

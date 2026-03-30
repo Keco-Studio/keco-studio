@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { normalizeReferenceValueToAssetIds, assetIdsToReferenceValue } from '@/lib/utils/referenceValue';
 
 // Compatible interface for yRows (supports both Y.Array and mock objects)
 interface YRowsLike {
@@ -44,7 +45,7 @@ export function useReferenceModal(params: UseReferenceModalParams) {
 
   const [referenceModalOpen, setReferenceModalOpen] = useState(false);
   const [referenceModalProperty, setReferenceModalProperty] = useState<PropertyConfig | null>(null);
-  const [referenceModalValue, setReferenceModalValue] = useState<string | null>(null);
+  const [referenceModalValue, setReferenceModalValue] = useState<string[] | null>(null);
   const [referenceModalRowId, setReferenceModalRowId] = useState<string | null>(null);
   const [assetNamesCache, setAssetNamesCache] = useState<Record<string, string>>({});
 
@@ -56,7 +57,7 @@ export function useReferenceModal(params: UseReferenceModalParams) {
         properties.forEach((prop) => {
           if (prop.dataType === 'reference') {
             const value = row.propertyValues[prop.key];
-            if (value && typeof value === 'string') assetIds.add(value);
+            normalizeReferenceValueToAssetIds(value).forEach((id) => assetIds.add(id));
           }
         });
       });
@@ -64,7 +65,7 @@ export function useReferenceModal(params: UseReferenceModalParams) {
         properties.forEach((prop) => {
           if (prop.dataType === 'reference') {
             const value = newRowData[prop.key];
-            if (value && typeof value === 'string') assetIds.add(value);
+            normalizeReferenceValueToAssetIds(value).forEach((id) => assetIds.add(id));
           }
         });
       }
@@ -182,28 +183,36 @@ export function useReferenceModal(params: UseReferenceModalParams) {
     return () => window.removeEventListener('assetUpdated', handleAssetUpdated as EventListener);
   }, [supabase]);
 
-  const handleOpenReferenceModal = useCallback((property: PropertyConfig, currentValue: string | null, rowId: string) => {
+  const handleOpenReferenceModal = useCallback((property: PropertyConfig, currentValue: string[] | null, rowId: string) => {
     setReferenceModalProperty(property);
     setReferenceModalValue(currentValue);
     setReferenceModalRowId(rowId);
     setReferenceModalOpen(true);
   }, []);
 
-  const handleApplyReference = useCallback(async (assetId: string | null) => {
+  const handleApplyReference = useCallback(async (assetIds: string[] | null) => {
     if (!referenceModalProperty || !referenceModalRowId) return;
     if (referenceModalRowId === 'new') {
-      setNewRowData((prev) => ({ ...prev, [referenceModalProperty.key]: assetId }));
+      const nextValue = assetIdsToReferenceValue(assetIds ?? []);
+      setNewRowData((prev) => ({ ...prev, [referenceModalProperty.key]: nextValue }));
     } else {
       const row = allRowsSource.find((r) => r.id === referenceModalRowId);
       if (row && onUpdateAsset) {
+        const nextValue = assetIdsToReferenceValue(assetIds ?? []);
         const arr = yRows.toArray();
         const rowIndex = arr.findIndex((r) => r.id === referenceModalRowId);
         if (rowIndex >= 0) {
-          const updatedPropertyValues = { ...row.propertyValues, [referenceModalProperty.key]: assetId };
+          const updatedPropertyValues: Record<string, any> = {
+            ...row.propertyValues,
+            [referenceModalProperty.key]: nextValue,
+          };
           yRows.delete(rowIndex, 1);
           yRows.insert(rowIndex, [{ ...row, propertyValues: updatedPropertyValues }]);
         }
-        const toSave = { ...row.propertyValues, [referenceModalProperty.key]: assetId };
+        const toSave: Record<string, any> = {
+          ...row.propertyValues,
+          [referenceModalProperty.key]: nextValue,
+        };
         await onUpdateAsset(row.id, row.name, toSave);
       }
     }
