@@ -58,13 +58,14 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
               className={styles.editCell}
               onMouseEnter={(e) => {
                 // Show ASSET CARD when hovering over cell with assetId
-                if (assetId) {
-                  handleAvatarMouseEnter(assetId, e.currentTarget);
+                if (assetIds.length > 0) {
+                  // Keep hover card behavior single-avatar: show the first selected asset.
+                  handleAvatarMouseEnter(assetIds[0], e.currentTarget);
                 }
               }}
               onMouseLeave={(e) => {
                 // Hide ASSET CARD when leaving cell
-                if (assetId) {
+                if (assetIds.length > 0) {
                   handleAvatarMouseLeave();
                 }
               }}
