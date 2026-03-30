@@ -25,6 +25,7 @@ import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration'
 import searchIcon from "@/assets/images/searchIcon.svg";
 import { useSidebarProjects } from './hooks/useSidebarProjects';
 import { useSidebarFoldersLibraries } from './hooks/useSidebarFoldersLibraries';
+import { normalizeSearchString } from '@/lib/utils/normalizeSearchString';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -88,10 +89,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     name: string;
     hierarchy?: string | null;
     updatedAt?: string | null;
-  };
-
-  const normalizeSearchString = (value: string) => {
-    return value.toLowerCase().replace(/[\s_]+/g, '');
   };
 
   const searchResults = useMemo<SearchResult[]>(() => {

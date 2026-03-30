@@ -2412,6 +2412,22 @@ td.cellCopy.copyBorderRight:hover {
   width: 100%;
 }
 
+.detailDrawerFormulaWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.detailDrawerFormulaWrap :global(.ant-input) {
+  flex: 1;
+  min-width: 0;
+}
+
+.detailDrawerFormulaInput {
+  cursor: not-allowed;
+}
+
 .detailDrawerInput {
   border-radius: 0.375rem;
   border: 1px solid #e2e8f0;

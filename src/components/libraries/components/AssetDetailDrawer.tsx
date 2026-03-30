@@ -8,6 +8,8 @@ import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { ReferenceField } from './ReferenceField';
 import { getFieldTypeIcon } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
+import { evaluateFormulaForRow, getCustomFormulaExpressionFromCellValue } from '@/components/libraries/utils/formulaEvaluation';
+import formulaIcon from '@/assets/images/formula.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type AssetDetailDrawerProps = {
@@ -48,6 +50,8 @@ function getTypeBadgeLabel(property: PropertyConfig): string {
       return 'File';
     case 'date':
       return 'Date';
+    case 'formula':
+      return 'Formula';
     default:
       return 'String';
   }
@@ -388,6 +392,113 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                       getPopupContainer={(n) => n.parentElement ?? document.body}
                       options={property.enumOptions.map((opt) => ({ label: opt, value: opt }))}
                     />
+                  </div>
+                </div>
+              );
+            }
+
+            if (property.dataType === 'formula') {
+              const customFormulaExpression = getCustomFormulaExpressionFromCellValue(
+                row.propertyValues[property.key]
+              );
+              const effectiveFormulaExpression =
+                customFormulaExpression ?? property.formulaExpression;
+              const formulaResult = evaluateFormulaForRow(
+                effectiveFormulaExpression,
+                row,
+                orderedProperties
+              );
+
+              if (typeof formulaResult === 'boolean') {
+                return (
+                  <div key={property.id} className={styles.detailDrawerField}>
+                    <div className={styles.detailDrawerFieldHeader}>
+                      <label className={styles.detailDrawerLabel}>{property.name}</label>
+                      <span className={styles.detailDrawerTypeBadge}>
+                        <Image
+                          src={getFieldTypeIcon(property.dataType as any)}
+                          alt={property.dataType}
+                          width={16}
+                          height={16}
+                          className="icon-16"
+                          style={{ marginRight: 4 }}
+                        />
+                        {getTypeBadgeLabel(property)}
+                      </span>
+                    </div>
+                    <div className={`${styles.detailDrawerInputWrap} ${styles.detailDrawerFormulaWrap}`}>
+                      <Switch checked={formulaResult} disabled />
+                      {customFormulaExpression ? (
+                        <Tooltip
+                          title={customFormulaExpression.replace(/^=/, '')}
+                          zIndex={2100}
+                          getPopupContainer={(triggerNode) =>
+                            triggerNode.parentElement ?? document.body
+                          }
+                        >
+                          <Image
+                            src={formulaIcon}
+                            alt="Custom formula"
+                            width={16}
+                            height={16}
+                            className={styles.customFormulaIcon}
+                          />
+                        </Tooltip>
+                      ) : null}
+                    </div>
+                  </div>
+                );
+              }
+
+              const formulaDisplay =
+                formulaResult === null || formulaResult === undefined ? '' : String(formulaResult);
+              return (
+                <div key={property.id} className={styles.detailDrawerField}>
+                  <div className={styles.detailDrawerFieldHeader}>
+                    <label className={styles.detailDrawerLabel}>{property.name}</label>
+                    <span className={styles.detailDrawerTypeBadge}>
+                      <Image
+                        src={getFieldTypeIcon(property.dataType as any)}
+                        alt={property.dataType}
+                        width={16}
+                        height={16}
+                        className="icon-16"
+                        style={{ marginRight: 4 }}
+                      />
+                      {getTypeBadgeLabel(property)}
+                    </span>
+                  </div>
+                  <div className={`${styles.detailDrawerInputWrap} ${styles.detailDrawerFormulaWrap}`}>
+                    <Tooltip
+                      title={formulaDisplay}
+                      zIndex={2100}
+                      getPopupContainer={(triggerNode) =>
+                        triggerNode.parentElement ?? document.body
+                      }
+                    >
+                      <Input
+                        value={formulaDisplay}
+                        disabled
+                        className={`${styles.detailDrawerInput} ${styles.detailDrawerFormulaInput}`}
+                      />
+                    </Tooltip>
+                    {customFormulaExpression ? (
+                      <Tooltip
+                        title={customFormulaExpression.replace(/^=/, '')}
+                        zIndex={2100}
+                        getPopupContainer={(triggerNode) =>
+                          triggerNode.parentElement ?? document.body
+                        }
+                      >
+                        <Image
+                          src={formulaIcon}
+                          alt="Custom formula"
+                          width={16}
+                          height={16}
+                          className={styles.customFormulaIcon}
+                        />
+                      </Tooltip>
+                    ) : null}
                   </div>
                 </div>
               );
