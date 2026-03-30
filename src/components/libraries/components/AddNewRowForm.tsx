@@ -7,6 +7,7 @@ import { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { ReferenceField } from './ReferenceField';
 import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
+import { normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
 
 export interface AddNewRowFormProps {
   orderedProperties: PropertyConfig[];
@@ -19,7 +20,7 @@ export interface AddNewRowFormProps {
   // Event handlers
   handleInputChange: (key: string, value: any) => void;
   handleMediaFileChange: (key: string, value: MediaFileMetadata | null) => void;
-  handleOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
+  handleOpenReferenceModal: (property: PropertyConfig, currentValue: string[] | null, rowId: string) => void;
   handleAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
   handleAvatarMouseLeave: () => void;
   setOpenEnumSelects: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
@@ -49,7 +50,7 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
       {orderedProperties.map((property) => {
         // Check if this is a reference type field
         if (property.dataType === 'reference' && property.referenceLibraries) {
-          const assetId = newRowData[property.key] ? String(newRowData[property.key]) : null;
+          const assetIds = normalizeReferenceValueToAssetIds(newRowData[property.key]);
           
           return (
             <td 
@@ -71,7 +72,7 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
               <div className={styles.referenceInputContainer}>
                 <ReferenceField
                   property={property}
-                  assetId={assetId}
+                  assetIds={assetIds}
                   rowId="new"
                   assetNamesCache={assetNamesCache}
                   isCellSelected={false}

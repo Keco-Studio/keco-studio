@@ -1,31 +1,30 @@
 'use client';
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useCallback } from 'react';
 import Image from 'next/image';
 import { Avatar } from 'antd';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import { getAssetAvatarColor, getAssetAvatarText } from '@/components/libraries/utils/libraryAssetUtils';
-import libraryAssetTable7Icon from '@/assets/images/LibraryAssetTable7.svg';
-import libraryAssetTable8Icon from '@/assets/images/LibraryAssetTable8.svg';
+import referenceAddIcon from '@/assets/images/referenceAdd.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type ReferenceFieldProps = {
   property: PropertyConfig;
-  assetId: string | null;
+  assetIds: string[];
   rowId: string;
   assetNamesCache: Record<string, string>;
   isCellSelected: boolean;
   avatarRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
   onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
   onAvatarMouseLeave: () => void;
-  onOpenReferenceModal: (property: PropertyConfig, currentValue: string | null, rowId: string) => void;
+  onOpenReferenceModal: (property: PropertyConfig, currentValue: string[] | null, rowId: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
 };
 
 export const ReferenceField = React.memo<ReferenceFieldProps>(function ReferenceField({
   property,
-  assetId,
+  assetIds,
   rowId,
   assetNamesCache,
   isCellSelected,
@@ -36,21 +35,30 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
   onFocus,
   onBlur,
 }) {
-  const hasValue = assetId != null && assetId.trim() !== '';
-  const assetName = hasValue ? (assetNamesCache[assetId] ?? assetId) : '';
-  const [isHovered, setIsHovered] = useState(false);
-  const avatarRef = useRef<HTMLDivElement | null>(null);
+  const hasValues = assetIds.length > 0;
+  const selectedAssetIds = assetIds.slice(0, 2);
+  const extraCount = Math.max(0, assetIds.length - selectedAssetIds.length);
+
+  const getAssetName = (id: string) => assetNamesCache[id] ?? id;
+
+  // Avoid squeezing: when showing 2 avatars, expand the pill width by one tile.
+  const pillWidthStyle: React.CSSProperties | undefined =
+    selectedAssetIds.length <= 1
+      ? undefined
+      : {
+          width: 'calc(3.25rem + 1.375rem)',
+        };
 
   const setAvatarRef = useCallback(
-    (el: HTMLDivElement | null) => {
-      if (el && assetId) {
-        avatarRef.current = el;
+    (assetId: string) => (el: HTMLDivElement | null) => {
+      if (el) {
         avatarRefs.current.set(assetId, el);
-      } else if (!el && assetId && avatarRefs.current.get(assetId) === avatarRef.current) {
-        avatarRefs.current.delete(assetId);
+        return;
       }
+      const existing = avatarRefs.current.get(assetId);
+      if (existing) avatarRefs.current.delete(assetId);
     },
-    [assetId, avatarRefs]
+    [avatarRefs]
   );
 
   const handleClick = (e: React.MouseEvent) => {
@@ -59,7 +67,7 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
       e.preventDefault();
       // Call onFocus when opening reference modal
       onFocus?.();
-      onOpenReferenceModal(property, assetId, rowId);
+      onOpenReferenceModal(property, hasValues ? assetIds : null, rowId);
     }
   };
 
@@ -71,60 +79,71 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
     e.stopPropagation();
   };
 
-  const handleMouseLeave = (e: React.MouseEvent) => {
-    const relatedTarget = e.relatedTarget as HTMLElement;
-    if (!relatedTarget || !e.currentTarget.contains(relatedTarget)) {
-      setIsHovered(false);
-    }
-  };
-
   return (
     <div
       className={styles.referenceFieldWrapper}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={handleMouseLeave}
     >
-      {hasValue && assetId ? (
+      {hasValues ? (
         <div
           className={styles.referenceSelectedAssetLeft}
           data-reference-background="true"
+          style={pillWidthStyle}
           onClick={handleClick}
           onMouseDown={handleMouseDown}
           onDoubleClick={handleDoubleClick}
         >
-          <div className={`${styles.referenceIconTile} ${styles.referenceAvatarTile}`}>
-            <div
-              ref={setAvatarRef}
-              onMouseEnter={(e) => {
-                e.stopPropagation();
-                setIsHovered(true);
-              }}
-              onMouseLeave={(e) => {
-                e.stopPropagation();
-                handleMouseLeave(e);
-              }}
-              className={styles.referenceAvatarWrapper}
-            >
-              <Avatar
-                size={16}
-                style={{
-                  backgroundColor: getAssetAvatarColor(assetId, assetName),
-                  borderRadius: '2.4px',
-                }}
-                className={styles.referenceAvatar}
-              >
-                {getAssetAvatarText(assetName)}
-              </Avatar>
-            </div>
+          <div className={styles.referenceAvatarsStack}>
+            {selectedAssetIds.map((id, idx) => {
+              const name = getAssetName(id);
+              return (
+                <div
+                  key={id}
+                  ref={setAvatarRef(id)}
+                  onMouseEnter={(e) => {
+                    e.stopPropagation();
+                  }}
+                  onMouseLeave={(e) => {
+                    e.stopPropagation();
+                  }}
+                  className={`${styles.referenceAvatarWrapper} ${styles.referenceAvatarStackItem}`}
+                  style={{}}
+                >
+                  <Avatar
+                    size={16}
+                    style={{
+                      backgroundColor: getAssetAvatarColor(id, name),
+                      borderRadius: '2.4px',
+                    }}
+                    className={styles.referenceAvatar}
+                  >
+                    {getAssetAvatarText(name)}
+                  </Avatar>
+                  {idx === selectedAssetIds.length - 1 && extraCount > 0 ? (
+                    <span
+                      style={{
+                        position: 'absolute',
+                        top: -6,
+                        right: -8,
+                        fontSize: 10,
+                        color: '#0B99FF',
+                        fontWeight: 700,
+                        pointerEvents: 'none',
+                      }}
+                    >
+                      +{extraCount}
+                    </span>
+                  ) : null}
+                </div>
+              );
+            })}
           </div>
           <div className={`${styles.referenceIconTile} ${styles.referenceArrowTile}`}>
             <Image
-              src={isHovered ? libraryAssetTable7Icon : libraryAssetTable8Icon}
+              src={referenceAddIcon}
               alt=""
               width={16}
               height={16}
               className={styles.referenceExpandIcon}
-              onMouseEnter={() => setIsHovered(true)}
             />
           </div>
         </div>
@@ -136,12 +155,11 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
           onDoubleClick={handleDoubleClick}
         >
           <Image
-            src={isHovered ? libraryAssetTable7Icon : libraryAssetTable8Icon}
+            src={referenceAddIcon}
             alt=""
             width={16}
             height={16}
             className={styles.referenceArrowIcon}
-            onMouseEnter={() => setIsHovered(true)}
           />
         </div>
       )}

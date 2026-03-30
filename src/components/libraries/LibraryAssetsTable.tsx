@@ -41,6 +41,7 @@ import { useOptimisticUpdates } from './hooks/useOptimisticUpdates';
 import { useMediaFileUpdate } from './hooks/useMediaFileUpdate';
 import { useContextMenu } from './hooks/useContextMenu';
 import { ReferenceField } from './components/ReferenceField';
+import { normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
 import { CellEditor } from './components/CellEditor';
 import { CellPresenceAvatars } from './components/CellPresenceAvatars';
 import { TableToast } from './components/TableToast';
@@ -1274,7 +1275,8 @@ export function LibraryAssetsTable({
                     // Reference field
                     if (property.dataType === 'reference' && property.referenceLibraries) {
                       const value = row.propertyValues[property.key];
-                      const assetId = value ? String(value) : null;
+                      const assetIds = normalizeReferenceValueToAssetIds(value);
+                      const firstAssetId = assetIds[0] ?? null;
                       const cellKey: CellKey = `${row.id}-${property.key}`;
                       const isCellSelected = selectedCells.has(cellKey);
                       
@@ -1291,12 +1293,12 @@ export function LibraryAssetsTable({
                           onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
                           onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
                           onMouseEnter={(e) => {
-                            if (assetId && !isCellSelected) {
-                              handleAvatarMouseEnter(assetId, e.currentTarget);
+                            if (firstAssetId && !isCellSelected) {
+                              handleAvatarMouseEnter(firstAssetId, e.currentTarget);
                             }
                           }}
                           onMouseLeave={(e) => {
-                            if (assetId && !isCellSelected) {
+                            if (firstAssetId && !isCellSelected) {
                               handleAvatarMouseLeave();
                             }
                             if (hoveredCellForExpand?.rowId === row.id && hoveredCellForExpand?.propertyKey === property.key) {
@@ -1321,7 +1323,7 @@ export function LibraryAssetsTable({
                             <div className={styles.cellContent}>
                               <ReferenceField
                                 property={property}
-                                assetId={assetId}
+                                assetIds={assetIds}
                                 rowId={row.id}
                                 assetNamesCache={assetNamesCache}
                                 isCellSelected={isCellSelected}
@@ -1340,13 +1342,13 @@ export function LibraryAssetsTable({
                                   height={16}
                                   className={styles.referenceDetailIcon}
                                   onMouseEnter={(e) => {
-                                    if (assetId) {
+                                    if (firstAssetId) {
                                       e.stopPropagation();
-                                      handleAvatarMouseEnter(assetId, e.currentTarget);
+                                      handleAvatarMouseEnter(firstAssetId, e.currentTarget);
                                     }
                                   }}
                                   onMouseLeave={(e) => {
-                                    if (assetId) {
+                                    if (firstAssetId) {
                                       e.stopPropagation();
                                       handleAvatarMouseLeave();
                                     }
@@ -1369,7 +1371,7 @@ export function LibraryAssetsTable({
                             <>
                               <ReferenceField
                             property={property}
-                            assetId={assetId}
+                            assetIds={assetIds}
                             rowId={row.id}
                             assetNamesCache={assetNamesCache}
                             isCellSelected={isCellSelected}
@@ -1388,13 +1390,13 @@ export function LibraryAssetsTable({
                               height={16}
                               className={styles.referenceDetailIcon}
                               onMouseEnter={(e) => {
-                                if (assetId) {
+                                if (firstAssetId) {
                                   e.stopPropagation();
-                                  handleAvatarMouseEnter(assetId, e.currentTarget);
+                                  handleAvatarMouseEnter(firstAssetId, e.currentTarget);
                                 }
                               }}
                               onMouseLeave={(e) => {
-                                if (assetId) {
+                                if (firstAssetId) {
                                   e.stopPropagation();
                                   handleAvatarMouseLeave();
                                 }

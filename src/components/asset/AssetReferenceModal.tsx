@@ -15,7 +15,7 @@ import applyReference2Icon from '@/assets/images/ApplyReference2.svg';
 import applyReference3Icon from '@/assets/images/ApplyReference3.svg';
 import applyReference4Icon from '@/assets/images/ApplyReference4.svg';
 import projectIcon from '@/assets/images/projectIcon.svg';
-import assetRefMenuLibIcon from '@/assets/images/assetRefMenuLibIcon.svg';
+import referenceLibIcon from '@/assets/images/referenceLib.svg';
 import assetRefMenuGridIcon from '@/assets/images/assetRefMenuGridIcon.svg';
 import assetRefDetailLibIcon from '@/assets/images/assetRefDetailLibIcon.svg';
 import assetRefDetailLibExpandIcon from '@/assets/images/assetRefDetailLibExpandIcon.svg';
@@ -43,10 +43,10 @@ type FieldDefinition = {
 
 interface AssetReferenceModalProps {
   open: boolean;
-  value?: string | null; // asset ID
+  value?: string[] | null; // selected asset IDs
   referenceLibraries?: string[]; // library IDs that can be referenced
   onClose: () => void;
-  onApply: (assetId: string | null) => void;
+  onApply: (assetIds: string[] | null) => void;
 }
 
 export function AssetReferenceModal({
@@ -65,7 +65,7 @@ export function AssetReferenceModal({
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [tempSelectedAssetId, setTempSelectedAssetId] = useState<string | null>(value || null);
+  const [tempSelectedAssetIds, setTempSelectedAssetIds] = useState<string[]>(value ?? []);
   const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
   const [hoveredAssetDetails, setHoveredAssetDetails] = useState<{
     name: string;
@@ -283,7 +283,7 @@ export function AssetReferenceModal({
   // Reset temp selection when modal opens
   useEffect(() => {
     if (open) {
-      setTempSelectedAssetId(value || null);
+      setTempSelectedAssetIds(value ?? []);
       setSearchText('');
     }
   }, [open, value]);
@@ -302,17 +302,21 @@ export function AssetReferenceModal({
     }
   }, [open]);
 
-  const handleAssetSelect = (asset: Asset) => {
-    setTempSelectedAssetId(asset.id);
+  const handleAssetToggle = (asset: Asset) => {
+    setTempSelectedAssetIds((prev) => {
+      const exists = prev.includes(asset.id);
+      if (exists) return prev.filter((id) => id !== asset.id);
+      return [...prev, asset.id];
+    });
   };
 
   const handleApply = () => {
-    onApply(tempSelectedAssetId);
+    onApply(tempSelectedAssetIds.length ? tempSelectedAssetIds : null);
     onClose();
   };
 
   const handleCancel = () => {
-    setTempSelectedAssetId(value || null);
+    setTempSelectedAssetIds(value ?? []);
     onClose();
   };
 
@@ -492,7 +496,7 @@ export function AssetReferenceModal({
                 {libraries.map((lib) => (
                   <Select.Option key={lib.id} value={lib.id}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <Image src={assetRefMenuLibIcon} alt="" width={16} height={16} className="icon-16" />
+                      <Image src={referenceLibIcon} alt="" width={16} height={16} className="icon-16" />
                       <span>{lib.name}</span>
                     </div>
                   </Select.Option>
@@ -514,9 +518,9 @@ export function AssetReferenceModal({
                 <div
                   key={asset.id}
                   className={`${styles.assetCard} ${
-                    tempSelectedAssetId === asset.id ? styles.assetCardSelected : ''
+                    tempSelectedAssetIds.includes(asset.id) ? styles.assetCardSelected : ''
                   }`}
-                  onClick={() => handleAssetSelect(asset)}
+                  onClick={() => handleAssetToggle(asset)}
                   onMouseEnter={() => handleAssetMouseEnter(asset.id)}
                   onMouseLeave={handleAssetMouseLeave}
                 >
@@ -529,6 +533,9 @@ export function AssetReferenceModal({
                   >
                     {getAvatarText(asset.firstColumnValue || 'Untitled')}
                   </Avatar>
+                  {tempSelectedAssetIds.includes(asset.id) ? (
+                    <span className={styles.assetCardCheck}>✓</span>
+                  ) : null}
                 </div>
               ))
             )}

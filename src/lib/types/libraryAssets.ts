@@ -33,7 +33,8 @@ export type AssetRow = {
   name: string;
   slug?: string | null;
   figmaNodeId?: string | null;
-  propertyValues: Record<string, string | number | boolean | null>;
+  // value_json from DB is flexible (string/null/objects/arrays) depending on field type.
+  propertyValues: Record<string, any>;
   created_at?: string; // ISO timestamp for ordering assets
   rowIndex?: number; // explicit row order per library
 };
