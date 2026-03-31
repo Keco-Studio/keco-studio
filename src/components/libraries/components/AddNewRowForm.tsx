@@ -62,6 +62,7 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
                   // Keep hover card behavior single-avatar: show the first selected asset.
                   handleAvatarMouseEnter(assetIds[0], e.currentTarget);
                 }
+                // 改动
               }}
               onMouseLeave={(e) => {
                 // Hide ASSET CARD when leaving cell
