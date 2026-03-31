@@ -540,6 +540,13 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return '?';
   };
 
+  const getCellValuePreview = (text: string | null | undefined, maxLength = 88) => {
+    if (text === null || text === undefined) return '';
+    const trimmed = String(text).trim();
+    if (trimmed.length <= maxLength) return trimmed;
+    return `${trimmed.slice(0, maxLength)}...`;
+  };
+
   // Close user menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -1384,6 +1391,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                               padding: '0.6rem 0.7rem',
                               background: 'rgba(15, 23, 42, 0.03)',
                               borderRadius: '0.6rem',
+                              position: 'relative',
                             }}
                             onClick={() => {
                               setIsSearchDropdownOpen(false);
@@ -1406,17 +1414,27 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                               >
                                 {getCellAvatarText(hit)}
                               </Avatar>
-                              <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem' }}>
-                                <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
-                                  <div className={styles.searchResultParent} style={{ marginTop: 0, fontSize: '0.72rem' }}>
-                                    {hit.fieldLabel}
-                                  </div>
-                                  <span className={styles.searchResultType} style={{ padding: '0.125rem 0.35rem' }}>
-                                    {formatUpdatedAtLabel(hit.assetUpdatedAt)}
-                                  </span>
+                              <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem', width: '100%' }}>
+                                <span
+                                  className={styles.searchResultType}
+                                  style={{
+                                    padding: '0.125rem 0.35rem',
+                                    position: 'absolute',
+                                    top: '0.55rem',
+                                    right: '0.65rem',
+                                  }}
+                                >
+                                  {formatUpdatedAtLabel(hit.assetUpdatedAt)}
+                                </span>
+                                <div className={styles.searchResultParent} style={{ marginTop: 0, fontSize: '0.72rem', paddingRight: '5.2rem' }}>
+                                  {hit.fieldLabel}
                                 </div>
                                 <div style={{ width: '100%', color: '#0f172a', fontSize: '0.8rem', lineHeight: 1.2, textAlign: 'left' }}>
-                                  &quot;{highlightCellValue(hit.valueSnippet, searchQuery)}&quot;
+                                  &quot;
+                                  <span style={{ wordBreak: 'break-all' }}>
+                                    {highlightCellValue(getCellValuePreview(hit.valueSnippet), searchQuery)}
+                                  </span>
+                                  &quot;
                                 </div>
                               </div>
                             </div>
