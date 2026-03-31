@@ -1407,8 +1407,13 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                                 {getCellAvatarText(hit)}
                               </Avatar>
                               <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem' }}>
-                                <div className={styles.searchResultParent} style={{ marginTop: 0, fontSize: '0.72rem' }}>
-                                  {hit.fieldLabel}
+                                <div style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+                                  <div className={styles.searchResultParent} style={{ marginTop: 0, fontSize: '0.72rem' }}>
+                                    {hit.fieldLabel}
+                                  </div>
+                                  <span className={styles.searchResultType} style={{ padding: '0.125rem 0.35rem' }}>
+                                    {formatUpdatedAtLabel(hit.assetUpdatedAt)}
+                                  </span>
                                 </div>
                                 <div style={{ width: '100%', color: '#0f172a', fontSize: '0.8rem', lineHeight: 1.2, textAlign: 'left' }}>
                                   &quot;{highlightCellValue(hit.valueSnippet, searchQuery)}&quot;
