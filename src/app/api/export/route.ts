@@ -231,7 +231,8 @@ async function getLibraryAssetsWithPropertiesDirect(
     .from('library_assets')
     .select('id, library_id, name, created_at, row_index')
     .eq('library_id', libraryId)
-    .order('row_index', { ascending: true })
+    .order('row_index', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
     .order('id', { ascending: true });
 
   if (assetError) throw assetError;
@@ -307,21 +308,41 @@ function formatCellValue(
       return resolveReferenceText(normalized);
     }
     if (Array.isArray(normalized)) {
-      return normalized
+      const resolved = normalized
         .map((item) => {
           if (typeof item === 'string') return resolveReferenceText(item);
           if (item && typeof item === 'object') {
-            const ref = item as { id?: unknown; assetId?: unknown; name?: unknown };
+            const ref = item as {
+              id?: unknown;
+              assetId?: unknown;
+              name?: unknown;
+              displayValue?: unknown;
+              fieldLabel?: unknown;
+            };
+            if (typeof ref.displayValue === 'string' && ref.displayValue.trim()) {
+              // New reference format: one asset can map to multiple selected cells.
+              // Export should preserve the selected cell display value(s) instead of
+              // collapsing to the asset first-column name.
+              return ref.displayValue.trim();
+            }
             if (typeof ref.name === 'string' && ref.name.trim()) return ref.name;
             if (typeof ref.id === 'string') return referenceNameById.get(ref.id) || ref.id;
             if (typeof ref.assetId === 'string') return referenceNameById.get(ref.assetId) || ref.assetId;
           }
           return String(item);
-        })
-        .join(', ');
+        });
+      // Final guard for dirty historical data: stable de-dup before export.
+      const uniqueResolved = Array.from(new Set(resolved.map((v) => String(v).trim()).filter(Boolean)));
+      return uniqueResolved.join(', ');
     }
     if (normalized && typeof normalized === 'object') {
-      const ref = normalized as { id?: unknown; assetId?: unknown; name?: unknown };
+      const ref = normalized as {
+        id?: unknown;
+        assetId?: unknown;
+        name?: unknown;
+        displayValue?: unknown;
+      };
+      if (typeof ref.displayValue === 'string' && ref.displayValue.trim()) return ref.displayValue.trim();
       if (typeof ref.name === 'string' && ref.name.trim()) return ref.name;
       if (typeof ref.id === 'string') return referenceNameById.get(ref.id) || ref.id;
       if (typeof ref.assetId === 'string') return referenceNameById.get(ref.assetId) || ref.assetId;

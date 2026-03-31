@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import { isFormulaExpressionValid } from '@/lib/utils/formula';
 
 type CellRef = { assetId: string; propertyKey: string } | null;
 
@@ -37,10 +38,12 @@ export function useFormulaCellCustomization({
   const [formulaModalPropertyKey, setFormulaModalPropertyKey] = useState<string | null>(null);
   const [formulaInputValue, setFormulaInputValue] = useState('');
   const [formulaPanelPosition, setFormulaPanelPosition] = useState<{ top: number; left: number } | null>(null);
+  const [formulaValidationError, setFormulaValidationError] = useState<string | null>(null);
 
   const closeFormulaEditor = useCallback(() => {
     setFormulaModalOpen(false);
     setFormulaPanelPosition(null);
+    setFormulaValidationError(null);
   }, []);
 
   const openFormulaEditor = useCallback((rowId: string, propertyKey: string) => {
@@ -54,6 +57,7 @@ export function useFormulaCellCustomization({
     setFormulaModalRowId(rowId);
     setFormulaModalPropertyKey(propertyKey);
     setFormulaInputValue(initial);
+    setFormulaValidationError(null);
 
     const panelWidth = 388;
     const panelHeight = 255;
@@ -88,6 +92,11 @@ export function useFormulaCellCustomization({
     if (!row) return;
 
     const trimmed = formulaInputValue.trim();
+    if (trimmed && !isFormulaExpressionValid(trimmed)) {
+      setFormulaValidationError('Invalid formula syntax.');
+      return;
+    }
+    setFormulaValidationError(null);
     const normalizedFormula = trimmed ? (trimmed.startsWith('=') ? trimmed : `=${trimmed}`) : null;
     const updatedPropertyValues = {
       ...row.propertyValues,
@@ -180,8 +189,14 @@ export function useFormulaCellCustomization({
   return {
     formulaModalOpen,
     formulaInputValue,
+    formulaValidationError,
     formulaPanelPosition,
-    setFormulaInputValue,
+    setFormulaInputValue: (value: string) => {
+      setFormulaInputValue(value);
+      if (formulaValidationError) {
+        setFormulaValidationError(null);
+      }
+    },
     openFormulaEditor,
     closeFormulaEditor,
     handleSaveCustomFormula,

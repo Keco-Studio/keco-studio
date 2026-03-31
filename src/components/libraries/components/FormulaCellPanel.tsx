@@ -7,6 +7,7 @@ type FormulaCellPanelProps = {
   open: boolean;
   position: { top: number; left: number } | null;
   value: string;
+  errorMessage?: string | null;
   onChange: (value: string) => void;
   onClose: () => void;
   onSave: () => void;
@@ -16,6 +17,7 @@ export function FormulaCellPanel({
   open,
   position,
   value,
+  errorMessage,
   onChange,
   onClose,
   onSave,
@@ -49,13 +51,21 @@ export function FormulaCellPanel({
           placeholder="e.g. ID + ID2"
           autoSize={{ minRows: 5, maxRows: 5 }}
           className={styles.formulaPanelTextarea}
+          status={errorMessage ? 'error' : ''}
         />
+        {errorMessage ? (
+          <div style={{ marginTop: '0.35rem', fontSize: '0.75rem', color: '#ef4444' }}>{errorMessage}</div>
+        ) : null}
       </div>
       <div className={styles.formulaPanelFooter}>
         <button type="button" className={styles.formulaPanelCancel} onClick={onClose}>
           Cancel
         </button>
-        <button type="button" className={styles.formulaPanelSave} onClick={onSave}>
+        <button
+          type="button"
+          className={styles.formulaPanelSave}
+          onClick={onSave}
+        >
           Save
         </button>
       </div>

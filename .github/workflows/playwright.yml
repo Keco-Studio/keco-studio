@@ -33,7 +33,7 @@ jobs:
     
     # Install dependencies with caching
     - name: Install dependencies
-      run: npm ci
+      run: npm ci --ignore-scripts
     
     # Install Supabase CLI using official method
     - name: Setup Supabase CLI
@@ -207,8 +207,12 @@ jobs:
     - name: Stop Supabase
       if: always()
       run: |
-        supabase stop
-        echo "✅ Supabase stopped"
+        if command -v supabase >/dev/null 2>&1; then
+          supabase stop
+          echo "✅ Supabase stopped"
+        else
+          echo "ℹ️ Supabase CLI not found, skip stop"
+        fi
     
     # Upload test results for each shard
     - uses: actions/upload-artifact@v4

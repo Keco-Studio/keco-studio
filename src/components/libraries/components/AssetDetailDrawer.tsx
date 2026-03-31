@@ -11,7 +11,7 @@ import { getFieldTypeIcon } from '@/app/(dashboard)/[projectId]/[libraryId]/pred
 import { evaluateFormulaForRow, getCustomFormulaExpressionFromCellValue } from '@/components/libraries/utils/formulaEvaluation';
 import formulaIcon from '@/assets/images/formula.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
-import { normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
+import { normalizeReferenceSelections, normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
 
 export type AssetDetailDrawerProps = {
   open: boolean;
@@ -21,10 +21,14 @@ export type AssetDetailDrawerProps = {
   userRole: 'admin' | 'editor' | 'viewer' | null;
   onUpdateRow: (assetId: string, name: string, propertyValues: Record<string, any>) => Promise<void>;
   onMediaFileChange: (rowId: string, propertyKey: string, value: MediaFileMetadata | null) => void;
-  onOpenReferenceModal: (property: PropertyConfig, currentValue: string[] | null, rowId: string) => void;
+  onOpenReferenceModal: (property: PropertyConfig, currentValue: unknown, rowId: string) => void;
   assetNamesCache: Record<string, string>;
   avatarRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
-  onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
+  onAvatarMouseEnter: (
+    assetId: string,
+    element: HTMLDivElement,
+    selection?: { fieldLabel?: string | null; displayValue?: string | null }
+  ) => void;
   onAvatarMouseLeave: () => void;
 };
 
@@ -210,10 +214,13 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
       return row.name || 'Untitled';
     const val = firstValue;
     if (firstProp.dataType === 'reference') {
-      const firstRefId =
-        typeof val === 'string' ? val : Array.isArray(val) ? (val[0] as string | undefined) ?? null : null;
-      if (firstRefId) {
-        return (assetNamesCache[firstRefId] ?? firstRefId) || (row.name || 'Untitled');
+      const selections = normalizeReferenceSelections(val);
+      const firstSelection = selections[0];
+      if (firstSelection) {
+        if (firstSelection.displayValue && String(firstSelection.displayValue).trim() !== '') {
+          return String(firstSelection.displayValue);
+        }
+        return (assetNamesCache[firstSelection.assetId] ?? firstSelection.assetId) || (row.name || 'Untitled');
       }
     }
     if (val && typeof val === 'object' && 'fileName' in (val as object)) {
@@ -282,6 +289,7 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
                     <ReferenceField
                       property={property}
                       assetIds={assetIds}
+                      currentValue={value}
                       rowId={row.id}
                       assetNamesCache={assetNamesCache}
                       isCellSelected={true}

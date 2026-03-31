@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { normalizeReferenceValueToAssetIds, assetIdsToReferenceValue } from '@/lib/utils/referenceValue';
+import {
+  normalizeReferenceValueToAssetIds,
+  normalizeReferenceSelections,
+  referenceSelectionsToValue,
+  type ReferenceSelection,
+} from '@/lib/utils/referenceValue';
 
 // Compatible interface for yRows (supports both Y.Array and mock objects)
 interface YRowsLike {
@@ -45,7 +50,7 @@ export function useReferenceModal(params: UseReferenceModalParams) {
 
   const [referenceModalOpen, setReferenceModalOpen] = useState(false);
   const [referenceModalProperty, setReferenceModalProperty] = useState<PropertyConfig | null>(null);
-  const [referenceModalValue, setReferenceModalValue] = useState<string[] | null>(null);
+  const [referenceModalValue, setReferenceModalValue] = useState<unknown>(null);
   const [referenceModalRowId, setReferenceModalRowId] = useState<string | null>(null);
   const [assetNamesCache, setAssetNamesCache] = useState<Record<string, string>>({});
 
@@ -183,22 +188,22 @@ export function useReferenceModal(params: UseReferenceModalParams) {
     return () => window.removeEventListener('assetUpdated', handleAssetUpdated as EventListener);
   }, [supabase]);
 
-  const handleOpenReferenceModal = useCallback((property: PropertyConfig, currentValue: string[] | null, rowId: string) => {
+  const handleOpenReferenceModal = useCallback((property: PropertyConfig, currentValue: unknown, rowId: string) => {
     setReferenceModalProperty(property);
     setReferenceModalValue(currentValue);
     setReferenceModalRowId(rowId);
     setReferenceModalOpen(true);
   }, []);
 
-  const handleApplyReference = useCallback(async (assetIds: string[] | null) => {
+  const handleApplyReference = useCallback(async (selections: ReferenceSelection[] | null) => {
     if (!referenceModalProperty || !referenceModalRowId) return;
+    const normalizedSelections = normalizeReferenceSelections(selections);
+    const nextValue = referenceSelectionsToValue(normalizedSelections);
     if (referenceModalRowId === 'new') {
-      const nextValue = assetIdsToReferenceValue(assetIds ?? []);
       setNewRowData((prev) => ({ ...prev, [referenceModalProperty.key]: nextValue }));
     } else {
       const row = allRowsSource.find((r) => r.id === referenceModalRowId);
       if (row && onUpdateAsset) {
-        const nextValue = assetIdsToReferenceValue(assetIds ?? []);
         const arr = yRows.toArray();
         const rowIndex = arr.findIndex((r) => r.id === referenceModalRowId);
         if (rowIndex >= 0) {

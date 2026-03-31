@@ -7,13 +7,22 @@ export type AssetHoverDetails = {
   firstColumnLabel?: string;
 };
 
+type HoverReferenceSelection = {
+  fieldLabel?: string | null;
+  displayValue?: string | null;
+};
+
 export function useAssetHover(supabase: any): {
   hoveredAssetId: string | null;
   setHoveredAssetId: React.Dispatch<React.SetStateAction<string | null>>;
   hoveredAssetDetails: AssetHoverDetails | null;
   loadingAssetDetails: boolean;
   hoveredAvatarPosition: { x: number; y: number } | null;
-  handleAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
+  handleAvatarMouseEnter: (
+    assetId: string,
+    element: HTMLDivElement,
+    selection?: HoverReferenceSelection
+  ) => void;
   handleAvatarMouseLeave: () => void;
   handleAssetCardMouseEnter: () => void;
   handleAssetCardMouseLeave: () => void;
@@ -26,6 +35,7 @@ export function useAssetHover(supabase: any): {
   const [hoveredAvatarPosition, setHoveredAvatarPosition] = useState<{ x: number; y: number } | null>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const selectedReferenceByAssetId = useRef<Map<string, HoverReferenceSelection>>(new Map());
 
   useEffect(() => {
     if (!hoveredAssetId) {
@@ -52,6 +62,10 @@ export function useAssetHover(supabase: any): {
         if (error) throw error;
 
         if (data) {
+          const selectedReference = selectedReferenceByAssetId.current.get(hoveredAssetId);
+          const selectedDisplayValue = selectedReference?.displayValue?.trim();
+          const selectedFieldLabel = selectedReference?.fieldLabel?.trim();
+
           // Get the first column field definition for this asset's library
           const { data: fieldDefs, error: fieldError } = await supabase
             .from('library_field_definitions')
@@ -64,9 +78,10 @@ export function useAssetHover(supabase: any): {
           const firstFieldId = firstField?.id || null;
           const firstFieldLabel = firstField?.label || 'Name';
 
-          // Get the first column value for this asset
-          let firstColumnValue = data.name; // Fallback to name
-          if (firstFieldId) {
+          // Get the display value: prefer the selected reference cell from modal,
+          // otherwise fall back to the first column value.
+          let firstColumnValue = selectedDisplayValue || data.name;
+          if (!selectedDisplayValue && firstFieldId) {
             const { data: valueData, error: valueError } = await supabase
               .from('library_asset_values')
               .select('value_json')
@@ -87,7 +102,7 @@ export function useAssetHover(supabase: any): {
             name: firstColumnValue || 'Untitled',
             libraryName: (data.libraries as any)?.name || 'Unknown Library',
             libraryId: data.library_id,
-            firstColumnLabel: firstFieldLabel,
+            firstColumnLabel: selectedFieldLabel || firstFieldLabel,
           });
         }
       } catch (error) {
@@ -146,7 +161,11 @@ export function useAssetHover(supabase: any): {
     };
   }, []);
 
-  const handleAvatarMouseEnter = useCallback((assetId: string, element: HTMLDivElement) => {
+  const handleAvatarMouseEnter = useCallback((
+    assetId: string,
+    element: HTMLDivElement,
+    selection?: HoverReferenceSelection
+  ) => {
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
       hideTimeoutRef.current = null;
@@ -154,6 +173,11 @@ export function useAssetHover(supabase: any): {
 
     if (avatarRefs.current.get(assetId) !== element) {
       avatarRefs.current.set(assetId, element);
+    }
+    if (selection && (selection.displayValue || selection.fieldLabel)) {
+      selectedReferenceByAssetId.current.set(assetId, selection);
+    } else {
+      selectedReferenceByAssetId.current.delete(assetId);
     }
 
     const updatePosition = () => {

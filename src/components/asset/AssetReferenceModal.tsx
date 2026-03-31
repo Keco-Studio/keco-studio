@@ -19,6 +19,11 @@ import referenceLibIcon from '@/assets/images/referenceLib.svg';
 import assetRefMenuGridIcon from '@/assets/images/assetRefMenuGridIcon.svg';
 import assetRefDetailLibIcon from '@/assets/images/assetRefDetailLibIcon.svg';
 import assetRefDetailLibExpandIcon from '@/assets/images/assetRefDetailLibExpandIcon.svg';
+import {
+  normalizeReferenceSelections,
+  referenceSelectionsToValue,
+  type ReferenceSelection,
+} from '@/lib/utils/referenceValue';
 import styles from './AssetReferenceModal.module.css';
 
 type Asset = {
@@ -43,11 +48,17 @@ type FieldDefinition = {
 
 interface AssetReferenceModalProps {
   open: boolean;
-  value?: string[] | null; // selected asset IDs
+  value?: unknown;
   referenceLibraries?: string[]; // library IDs that can be referenced
   onClose: () => void;
-  onApply: (assetIds: string[] | null) => void;
+  onApply: (selections: ReferenceSelection[] | null) => void;
 }
+
+type AssetCardFieldValue = {
+  fieldId: string;
+  fieldLabel: string;
+  displayValue: string;
+};
 
 export function AssetReferenceModal({
   open,
@@ -65,8 +76,9 @@ export function AssetReferenceModal({
   const [selectedLibraryId, setSelectedLibraryId] = useState<string | null>(null);
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [tempSelectedAssetIds, setTempSelectedAssetIds] = useState<string[]>(value ?? []);
-  const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
+  const [tempSelectedAssetIds, setTempSelectedAssetIds] = useState<string[]>([]);
+  const [selectedFieldsByAsset, setSelectedFieldsByAsset] = useState<Record<string, AssetCardFieldValue[]>>({});
+  const [activeAssetId, setActiveAssetId] = useState<string | null>(null);
   const [hoveredAssetDetails, setHoveredAssetDetails] = useState<{
     name: string;
     libraryName: string;
@@ -76,9 +88,10 @@ export function AssetReferenceModal({
   const [loadingAssetDetails, setLoadingAssetDetails] = useState(false);
   const [firstColumnFieldId, setFirstColumnFieldId] = useState<string | null>(null);
   const [firstColumnLabel, setFirstColumnLabel] = useState<string>('Name');
+  const [fieldsByLibrary, setFieldsByLibrary] = useState<Record<string, FieldDefinition[]>>({});
+  const [assetValuesByAsset, setAssetValuesByAsset] = useState<Record<string, Record<string, any>>>({});
+  const [activeAssetFields, setActiveAssetFields] = useState<AssetCardFieldValue[]>([]);
   const modalRef = useRef<HTMLDivElement>(null);
-  const hideTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const assetCardRef = useRef<HTMLDivElement>(null);
 
   // Load libraries
   useEffect(() => {
@@ -283,10 +296,28 @@ export function AssetReferenceModal({
   // Reset temp selection when modal opens
   useEffect(() => {
     if (open) {
-      setTempSelectedAssetIds(value ?? []);
+      const normalizedSelections = normalizeReferenceSelections(value);
+      setTempSelectedAssetIds(normalizedSelections.map((s) => s.assetId));
+      const fieldMap: Record<string, AssetCardFieldValue[]> = {};
+      normalizedSelections.forEach((s) => {
+        if (s.fieldId && s.displayValue !== null && s.displayValue !== undefined) {
+          const nextField = {
+            fieldId: s.fieldId,
+            fieldLabel: s.fieldLabel || firstColumnLabel,
+            displayValue: String(s.displayValue),
+          };
+          if (!fieldMap[s.assetId]) {
+            fieldMap[s.assetId] = [nextField];
+          } else if (!fieldMap[s.assetId].some((f) => f.fieldId === nextField.fieldId)) {
+            fieldMap[s.assetId].push(nextField);
+          }
+        }
+      });
+      setSelectedFieldsByAsset(fieldMap);
+      setActiveAssetId(normalizedSelections[0]?.assetId ?? null);
       setSearchText('');
     }
-  }, [open, value]);
+  }, [open, value, firstColumnLabel]);
 
   // Handle clicking outside modal
   useEffect(() => {
@@ -305,18 +336,51 @@ export function AssetReferenceModal({
   const handleAssetToggle = (asset: Asset) => {
     setTempSelectedAssetIds((prev) => {
       const exists = prev.includes(asset.id);
-      if (exists) return prev.filter((id) => id !== asset.id);
+      if (exists) {
+        setSelectedFieldsByAsset((fieldPrev) => {
+          const next = { ...fieldPrev };
+          delete next[asset.id];
+          return next;
+        });
+        const nextIds = prev.filter((id) => id !== asset.id);
+        setActiveAssetId((current) => {
+          if (current !== asset.id) return current;
+          return nextIds[0] ?? null;
+        });
+        return nextIds;
+      }
+      setActiveAssetId(asset.id);
       return [...prev, asset.id];
     });
   };
 
   const handleApply = () => {
-    onApply(tempSelectedAssetIds.length ? tempSelectedAssetIds : null);
+    const selections: ReferenceSelection[] = tempSelectedAssetIds.map((assetId) => {
+      const selectedFields = selectedFieldsByAsset[assetId];
+      if (selectedFields && selectedFields.length > 0) {
+        return selectedFields.map((selectedField) => ({
+          assetId,
+          fieldId: selectedField.fieldId,
+          fieldLabel: selectedField.fieldLabel,
+          displayValue: selectedField.displayValue,
+        }));
+      }
+      const asset = assets.find((a) => a.id === assetId);
+      return [{
+        assetId,
+        fieldId: firstColumnFieldId,
+        fieldLabel: firstColumnLabel,
+        displayValue: asset?.firstColumnValue || 'Untitled',
+      }];
+    }).flat();
+    onApply(referenceSelectionsToValue(selections));
     onClose();
   };
 
   const handleCancel = () => {
-    setTempSelectedAssetIds(value ?? []);
+    const normalizedSelections = normalizeReferenceSelections(value);
+    setTempSelectedAssetIds(normalizedSelections.map((s) => s.assetId));
+    setActiveAssetId(normalizedSelections[0]?.assetId ?? null);
     onClose();
   };
 
@@ -343,17 +407,12 @@ export function AssetReferenceModal({
     return assetColorPalette[index];
   };
 
-  // Load asset details when hovering
+  // Load asset details for the active selected asset.
   useEffect(() => {
-    if (!hoveredAssetId) {
+    if (!activeAssetId) {
       setHoveredAssetDetails(null);
+      setActiveAssetFields([]);
       return;
-    }
-
-    // Clear any pending hide timeout
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-      hideTimeoutRef.current = null;
     }
 
     const loadAssetDetails = async () => {
@@ -362,14 +421,14 @@ export function AssetReferenceModal({
         const { data, error } = await supabase
           .from('library_assets')
           .select('id, name, library_id, libraries(name)')
-          .eq('id', hoveredAssetId)
+          .eq('id', activeAssetId)
           .single();
 
         if (error) throw error;
         
         if (data) {
           // Find the asset in our loaded assets to get the first column value and label
-          const asset = assets.find(a => a.id === hoveredAssetId);
+          const asset = assets.find(a => a.id === activeAssetId);
           
           const detailsToSet = {
             name: asset?.firstColumnValue || 'Untitled',
@@ -379,7 +438,7 @@ export function AssetReferenceModal({
           };
           
           console.log('[AssetReferenceModal] loadAssetDetails:', {
-            hoveredAssetId,
+            activeAssetId,
             asset,
             firstColumnLabel,
             firstColumnValue: asset?.firstColumnValue,
@@ -388,63 +447,66 @@ export function AssetReferenceModal({
           });
           
           setHoveredAssetDetails(detailsToSet);
+
+          const libraryId = data.library_id;
+          let fields = fieldsByLibrary[libraryId];
+          if (!fields) {
+            const { data: fieldDefs, error: fieldError } = await supabase
+              .from('library_field_definitions')
+              .select('id, library_id, label, order_index')
+              .eq('library_id', libraryId)
+              .order('order_index', { ascending: true });
+            if (!fieldError) {
+              fields = (fieldDefs || []) as FieldDefinition[];
+              setFieldsByLibrary((prev) => ({ ...prev, [libraryId]: fields || [] }));
+            } else {
+              fields = [];
+            }
+          }
+
+          let valueMap = assetValuesByAsset[activeAssetId];
+          if (!valueMap) {
+            const { data: valueRows, error: valueError } = await supabase
+              .from('library_asset_values')
+              .select('field_id, value_json')
+              .eq('asset_id', activeAssetId);
+            if (!valueError) {
+              valueMap = {};
+              (valueRows || []).forEach((row: any) => {
+                valueMap[row.field_id] = row.value_json;
+              });
+              setAssetValuesByAsset((prev) => ({ ...prev, [activeAssetId]: valueMap || {} }));
+            } else {
+              valueMap = {};
+            }
+          }
+
+          const normalizedFields: AssetCardFieldValue[] = (fields || [])
+            .map((f) => {
+              const raw = valueMap ? valueMap[f.id] : null;
+              if (raw === null || raw === undefined) return null;
+              const text = String(raw).trim();
+              if (!text || text === 'null' || text === 'undefined') return null;
+              return {
+                fieldId: f.id,
+                fieldLabel: f.label || 'Field',
+                displayValue: text,
+              } as AssetCardFieldValue;
+            })
+            .filter((item): item is AssetCardFieldValue => Boolean(item));
+          setActiveAssetFields(normalizedFields);
         }
       } catch (error) {
         console.error('Failed to load asset details:', error);
         setHoveredAssetDetails(null);
+        setActiveAssetFields([]);
       } finally {
         setLoadingAssetDetails(false);
       }
     };
 
     loadAssetDetails();
-  }, [hoveredAssetId, supabase, assets, firstColumnLabel]);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (hideTimeoutRef.current) {
-        clearTimeout(hideTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Handle mouse enter on asset card
-  const handleAssetMouseEnter = (assetId: string) => {
-    // Clear any pending hide timeout
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-      hideTimeoutRef.current = null;
-    }
-    setHoveredAssetId(assetId);
-  };
-
-  // Handle mouse leave on asset card with delay
-  const handleAssetMouseLeave = () => {
-    // Set a delay before hiding
-    hideTimeoutRef.current = setTimeout(() => {
-      setHoveredAssetId(null);
-      hideTimeoutRef.current = null;
-    }, 200); // 200ms delay
-  };
-
-  // Handle mouse enter on asset card panel
-  const handleAssetCardMouseEnter = () => {
-    // Clear any pending hide timeout
-    if (hideTimeoutRef.current) {
-      clearTimeout(hideTimeoutRef.current);
-      hideTimeoutRef.current = null;
-    }
-  };
-
-  // Handle mouse leave on asset card panel with delay
-  const handleAssetCardMouseLeave = () => {
-    // Set a delay before hiding
-    hideTimeoutRef.current = setTimeout(() => {
-      setHoveredAssetId(null);
-      hideTimeoutRef.current = null;
-    }, 200); // 200ms delay
-  };
+  }, [activeAssetId, supabase, assets, firstColumnLabel, fieldsByLibrary, assetValuesByAsset]);
 
   console.log('[AssetReferenceModal] Render:', { open, assetsCount: assets.length, selectedLibraryId });
   
@@ -521,8 +583,6 @@ export function AssetReferenceModal({
                     tempSelectedAssetIds.includes(asset.id) ? styles.assetCardSelected : ''
                   }`}
                   onClick={() => handleAssetToggle(asset)}
-                  onMouseEnter={() => handleAssetMouseEnter(asset.id)}
-                  onMouseLeave={handleAssetMouseLeave}
                 >
                   <Avatar
                     style={{ 
@@ -554,24 +614,12 @@ export function AssetReferenceModal({
 
       {/* Asset Card Panel */}
       {hoveredAssetDetails && (
-        <>
-          {/* Invisible bridge to prevent mouse from leaving */}
-          <div
-            className={styles.assetCardBridge}
-            onMouseEnter={handleAssetCardMouseEnter}
-            onMouseLeave={handleAssetCardMouseLeave}
-          />
-          <div
-            ref={assetCardRef}
-            className={styles.assetCardPanel}
-            onMouseEnter={handleAssetCardMouseEnter}
-            onMouseLeave={handleAssetCardMouseLeave}
-          >
+          <div className={styles.assetCardPanel}>
           <div className={styles.assetCardHeader}>
             <div className={styles.assetCardTitle}>ASSET CARD</div>
             <button
               className={styles.assetCardCloseButton}
-              onClick={() => setHoveredAssetId(null)}
+              onClick={() => setActiveAssetId(null)}
               aria-label="Close"
             >
               ×
@@ -592,7 +640,7 @@ export function AssetReferenceModal({
                         <Avatar
                           size={48}
                           style={{ 
-                            backgroundColor: hoveredAssetId ? getAvatarColor(hoveredAssetId, hoveredAssetDetails.name || 'Untitled') : '#FF6CAA',
+                            backgroundColor: activeAssetId ? getAvatarColor(activeAssetId, hoveredAssetDetails.name || 'Untitled') : '#FF6CAA',
                             borderRadius: '6px'
                           }}
                           className={styles.assetCardIconAvatar}
@@ -642,11 +690,96 @@ export function AssetReferenceModal({
                     </div>
                   </div>
                 </div>
+                <div className={styles.assetCardDetailsSection} style={{ paddingTop: 0 }}>
+                  <div className={styles.assetCardDetailsLabel}>Choose Cell</div>
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '0.5rem',
+                      maxHeight: '20rem',
+                      overflowY: 'auto',
+                      paddingRight: '0.25rem',
+                    }}
+                  >
+                    {activeAssetFields.length > 0 ? (
+                      activeAssetFields.map((field) => {
+                        const isSelectedAsset = activeAssetId ? tempSelectedAssetIds.includes(activeAssetId) : false;
+                        const selectedFields = activeAssetId ? selectedFieldsByAsset[activeAssetId] : null;
+                        const isSelectedField = Boolean(
+                          activeAssetId &&
+                            isSelectedAsset &&
+                            selectedFields &&
+                            selectedFields.some((f) => f.fieldId === field.fieldId)
+                        );
+                        return (
+                          <button
+                            key={field.fieldId}
+                            type="button"
+                            onClick={() => {
+                              if (!activeAssetId) return;
+                              if (!tempSelectedAssetIds.includes(activeAssetId)) {
+                                setTempSelectedAssetIds((prev) => [...prev, activeAssetId]);
+                              }
+      setSelectedFieldsByAsset((prev) => {
+        const existing = prev[activeAssetId] || [];
+        const alreadySelected = existing.some((f) => f.fieldId === field.fieldId);
+        const nextForAsset = alreadySelected
+          ? existing.filter((f) => f.fieldId !== field.fieldId)
+          : [...existing, field];
+        return {
+          ...prev,
+          [activeAssetId]: nextForAsset,
+        };
+      });
+                            }}
+                            style={{
+                              width: '100%',
+                              textAlign: 'left',
+                              borderRadius: '10px',
+                              border: isSelectedField ? '1px solid #0B99FF' : '1px solid #d1d5db',
+                              background: '#fff',
+                              padding: '0.5rem 0.6rem',
+                              cursor: 'pointer',
+                              position: 'relative',
+                            }}
+                          >
+                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>{field.fieldLabel}</div>
+                            <div style={{ fontSize: '0.9rem', color: '#0f172a', fontWeight: 500 }}>
+                              {field.displayValue}
+                            </div>
+                            {isSelectedField ? (
+                              <span
+                                style={{
+                                  position: 'absolute',
+                                  right: '0.45rem',
+                                  top: '0.45rem',
+                                  width: '1rem',
+                                  height: '1rem',
+                                  borderRadius: '999px',
+                                  background: '#0B99FF',
+                                  color: '#fff',
+                                  fontSize: '0.7rem',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                }}
+                              >
+                                ✓
+                              </span>
+                            ) : null}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div style={{ color: '#9ca3af', fontSize: '0.8rem' }}>No non-empty cells.</div>
+                    )}
+                  </div>
+                </div>
               </>
             ) : null}
           </div>
         </div>
-        </>
       )}
       </div>
     </div>,
