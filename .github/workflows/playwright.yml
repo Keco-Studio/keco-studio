@@ -33,10 +33,7 @@ jobs:
     
     # Install dependencies with caching
     - name: Install dependencies
-      env:
-        # Avoid flaky CI failures caused by ngrok binary download 5xx
-        NGROK_SKIP_DOWNLOAD: "true"
-      run: npm ci
+      run: npm ci --ignore-scripts
     
     # Install Supabase CLI using official method
     - name: Setup Supabase CLI

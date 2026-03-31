@@ -28,10 +28,7 @@ jobs:
           cache: 'npm'
       
       - name: 安装依赖
-        env:
-          # ngrok 二进制下载偶发 5xx，CI 构建不依赖它，跳过下载避免外部波动导致失败
-          NGROK_SKIP_DOWNLOAD: "true"
-        run: npm ci
+        run: npm ci --ignore-scripts
       
       - name: 构建项目
         env:
