@@ -446,7 +446,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
     // Within 7 days: use "x days ago"
     if (diffDays < 7) {
-      return `${diffDays} days ago`;
+      return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
     }
 
     // More than 7 days: use the date, e.g. "2025-03-11"
