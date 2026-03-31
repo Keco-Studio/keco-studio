@@ -13,6 +13,7 @@ export type AssetCardDetails = {
   libraryId: string;
   libraryName: string;
   firstColumnLabel?: string; // Label of the first column
+  selectedCells?: Array<{ fieldLabel: string; displayValue: string }>;
 };
 
 export type AssetCardPanelProps = {
@@ -121,6 +122,16 @@ export function AssetCardPanel({
                     </div>
                   </div>
                 </div>
+                {details.selectedCells && details.selectedCells.length > 1 ? (
+                  <div style={{ marginTop: '0.75rem', display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                    {details.selectedCells.map((cell, idx) => (
+                      <div key={`${cell.fieldLabel}-${cell.displayValue}-${idx}`} className={styles.assetCardDetailItem}>
+                        <span className={styles.assetCardDetailLabel}>{cell.fieldLabel || 'Field'}</span>
+                        <span className={styles.assetCardDetailValue}>{cell.displayValue || '-'}</span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
               </div>
             </div>
           ) : null}

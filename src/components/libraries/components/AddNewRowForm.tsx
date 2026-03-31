@@ -24,7 +24,7 @@ export interface AddNewRowFormProps {
   handleAvatarMouseEnter: (
     assetId: string,
     element: HTMLDivElement,
-    selection?: { fieldLabel?: string | null; displayValue?: string | null }
+    selections?: Array<{ fieldLabel?: string | null; displayValue?: string | null }>
   ) => void;
   handleAvatarMouseLeave: () => void;
   setOpenEnumSelects: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;

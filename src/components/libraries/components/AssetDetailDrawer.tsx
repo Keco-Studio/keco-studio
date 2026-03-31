@@ -27,7 +27,7 @@ export type AssetDetailDrawerProps = {
   onAvatarMouseEnter: (
     assetId: string,
     element: HTMLDivElement,
-    selection?: { fieldLabel?: string | null; displayValue?: string | null }
+    selections?: Array<{ fieldLabel?: string | null; displayValue?: string | null }>
   ) => void;
   onAvatarMouseLeave: () => void;
 };

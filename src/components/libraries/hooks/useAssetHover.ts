@@ -5,6 +5,7 @@ export type AssetHoverDetails = {
   libraryName: string;
   libraryId: string;
   firstColumnLabel?: string;
+  selectedCells?: Array<{ fieldLabel: string; displayValue: string }>;
 };
 
 type HoverReferenceSelection = {
@@ -21,7 +22,7 @@ export function useAssetHover(supabase: any): {
   handleAvatarMouseEnter: (
     assetId: string,
     element: HTMLDivElement,
-    selection?: HoverReferenceSelection
+    selections?: HoverReferenceSelection[]
   ) => void;
   handleAvatarMouseLeave: () => void;
   handleAssetCardMouseEnter: () => void;
@@ -35,7 +36,7 @@ export function useAssetHover(supabase: any): {
   const [hoveredAvatarPosition, setHoveredAvatarPosition] = useState<{ x: number; y: number } | null>(null);
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const avatarRefs = useRef<Map<string, HTMLDivElement>>(new Map());
-  const selectedReferenceByAssetId = useRef<Map<string, HoverReferenceSelection>>(new Map());
+  const selectedReferenceByAssetId = useRef<Map<string, HoverReferenceSelection[]>>(new Map());
 
   useEffect(() => {
     if (!hoveredAssetId) {
@@ -62,9 +63,15 @@ export function useAssetHover(supabase: any): {
         if (error) throw error;
 
         if (data) {
-          const selectedReference = selectedReferenceByAssetId.current.get(hoveredAssetId);
-          const selectedDisplayValue = selectedReference?.displayValue?.trim();
-          const selectedFieldLabel = selectedReference?.fieldLabel?.trim();
+          const selectedReferences = selectedReferenceByAssetId.current.get(hoveredAssetId) ?? [];
+          const normalizedSelectedCells = selectedReferences
+            .map((s) => ({
+              fieldLabel: (s.fieldLabel || '').trim(),
+              displayValue: (s.displayValue || '').trim(),
+            }))
+            .filter((s) => s.fieldLabel || s.displayValue);
+          const selectedDisplayValue = normalizedSelectedCells[0]?.displayValue;
+          const selectedFieldLabel = normalizedSelectedCells[0]?.fieldLabel;
 
           // Get the first column field definition for this asset's library
           const { data: fieldDefs, error: fieldError } = await supabase
@@ -103,6 +110,7 @@ export function useAssetHover(supabase: any): {
             libraryName: (data.libraries as any)?.name || 'Unknown Library',
             libraryId: data.library_id,
             firstColumnLabel: selectedFieldLabel || firstFieldLabel,
+            selectedCells: normalizedSelectedCells.length > 0 ? normalizedSelectedCells : undefined,
           });
         }
       } catch (error) {
@@ -164,7 +172,7 @@ export function useAssetHover(supabase: any): {
   const handleAvatarMouseEnter = useCallback((
     assetId: string,
     element: HTMLDivElement,
-    selection?: HoverReferenceSelection
+    selections?: HoverReferenceSelection[]
   ) => {
     if (hideTimeoutRef.current) {
       clearTimeout(hideTimeoutRef.current);
@@ -174,8 +182,8 @@ export function useAssetHover(supabase: any): {
     if (avatarRefs.current.get(assetId) !== element) {
       avatarRefs.current.set(assetId, element);
     }
-    if (selection && (selection.displayValue || selection.fieldLabel)) {
-      selectedReferenceByAssetId.current.set(assetId, selection);
+    if (selections && selections.some((s) => s && (s.displayValue || s.fieldLabel))) {
+      selectedReferenceByAssetId.current.set(assetId, selections);
     } else {
       selectedReferenceByAssetId.current.delete(assetId);
     }

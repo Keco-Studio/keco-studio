@@ -1277,7 +1277,8 @@ export function LibraryAssetsTable({
                     if (property.dataType === 'reference' && property.referenceLibraries) {
                       const value = row.propertyValues[property.key];
                       const assetIds = normalizeReferenceValueToAssetIds(value);
-                      const firstSelection = normalizeReferenceSelections(value)[0];
+                      const selections = normalizeReferenceSelections(value);
+                      const firstSelection = selections[0];
                       const firstAssetId = assetIds[0] ?? null;
                       const cellKey: CellKey = `${row.id}-${property.key}`;
                       const isCellSelected = selectedCells.has(cellKey);
@@ -1296,10 +1297,24 @@ export function LibraryAssetsTable({
                           onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
                           onMouseEnter={(e) => {
                             if (firstAssetId && !isCellSelected) {
-                              handleAvatarMouseEnter(firstAssetId, e.currentTarget, firstSelection ? {
-                                fieldLabel: firstSelection.fieldLabel,
-                                displayValue: firstSelection.displayValue,
-                              } : undefined);
+                              const selectionsForAsset = selections
+                                .filter((s) => s.assetId === firstAssetId)
+                                .map((s) => ({
+                                  fieldLabel: s.fieldLabel,
+                                  displayValue: s.displayValue,
+                                }));
+                              handleAvatarMouseEnter(
+                                firstAssetId,
+                                e.currentTarget,
+                                selectionsForAsset.length > 0
+                                  ? selectionsForAsset
+                                  : firstSelection
+                                    ? [{
+                                        fieldLabel: firstSelection.fieldLabel,
+                                        displayValue: firstSelection.displayValue,
+                                      }]
+                                    : undefined
+                              );
                             }
                           }}
                           onMouseLeave={(e) => {
@@ -1350,10 +1365,24 @@ export function LibraryAssetsTable({
                                   onMouseEnter={(e) => {
                                     if (firstAssetId) {
                                       e.stopPropagation();
-                                      handleAvatarMouseEnter(firstAssetId, e.currentTarget, firstSelection ? {
-                                        fieldLabel: firstSelection.fieldLabel,
-                                        displayValue: firstSelection.displayValue,
-                                      } : undefined);
+                                      const selectionsForAsset = selections
+                                        .filter((s) => s.assetId === firstAssetId)
+                                        .map((s) => ({
+                                          fieldLabel: s.fieldLabel,
+                                          displayValue: s.displayValue,
+                                        }));
+                                      handleAvatarMouseEnter(
+                                        firstAssetId,
+                                        e.currentTarget,
+                                        selectionsForAsset.length > 0
+                                          ? selectionsForAsset
+                                          : firstSelection
+                                            ? [{
+                                                fieldLabel: firstSelection.fieldLabel,
+                                                displayValue: firstSelection.displayValue,
+                                              }]
+                                            : undefined
+                                      );
                                     }
                                   }}
                                   onMouseLeave={(e) => {
@@ -1402,10 +1431,24 @@ export function LibraryAssetsTable({
                               onMouseEnter={(e) => {
                                 if (firstAssetId) {
                                   e.stopPropagation();
-                                  handleAvatarMouseEnter(firstAssetId, e.currentTarget, firstSelection ? {
-                                    fieldLabel: firstSelection.fieldLabel,
-                                    displayValue: firstSelection.displayValue,
-                                  } : undefined);
+                                  const selectionsForAsset = selections
+                                    .filter((s) => s.assetId === firstAssetId)
+                                    .map((s) => ({
+                                      fieldLabel: s.fieldLabel,
+                                      displayValue: s.displayValue,
+                                    }));
+                                  handleAvatarMouseEnter(
+                                    firstAssetId,
+                                    e.currentTarget,
+                                    selectionsForAsset.length > 0
+                                      ? selectionsForAsset
+                                      : firstSelection
+                                        ? [{
+                                            fieldLabel: firstSelection.fieldLabel,
+                                            displayValue: firstSelection.displayValue,
+                                          }]
+                                        : undefined
+                                  );
                                 }
                               }}
                               onMouseLeave={(e) => {
@@ -1874,7 +1917,8 @@ export function LibraryAssetsTable({
           name: hoveredAssetDetails.name, 
           libraryId: hoveredAssetDetails.libraryId, 
           libraryName: hoveredAssetDetails.libraryName,
-          firstColumnLabel: hoveredAssetDetails.firstColumnLabel
+          firstColumnLabel: hoveredAssetDetails.firstColumnLabel,
+          selectedCells: hoveredAssetDetails.selectedCells,
         } : null}
         loading={loadingAssetDetails}
         onClose={() => setHoveredAssetId(null)}
