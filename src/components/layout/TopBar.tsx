@@ -202,6 +202,25 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return Array.from(map.values());
   }, [pagedCellSearchHits]);
 
+  const cellSearchLibraryHierarchyMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const lib of libraries) {
+      const projectName = projects.find((p) => p.id === lib.project_id)?.name?.trim() || '';
+      const folderName = lib.folder_id
+        ? folders.find((f) => f.id === lib.folder_id)?.name?.trim() || ''
+        : '';
+
+      if (projectName && folderName) {
+        map.set(lib.id, `${projectName} / ${folderName}`);
+      } else if (projectName) {
+        map.set(lib.id, projectName);
+      } else if (folderName) {
+        map.set(lib.id, folderName);
+      }
+    }
+    return map;
+  }, [libraries, projects, folders]);
+
   useEffect(() => {
     setCellSearchPage(1);
   }, [searchQuery, searchFilter]);
@@ -507,6 +526,18 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         {after}
       </>
     );
+  };
+
+  const getCellAvatarText = (hit: CellSearchHit) => {
+    const snippet = (hit.valueSnippet || '').trim();
+    const snippetNoQuotes = snippet.replace(/^["'\s]+|["'\s]+$/g, '');
+    const fromSnippet = snippetNoQuotes.charAt(0);
+    if (fromSnippet) return fromSnippet;
+
+    const fromAssetName = (hit.assetName || '').trim().charAt(0);
+    if (fromAssetName) return fromAssetName;
+
+    return '?';
   };
 
   // Close user menu when clicking outside
@@ -1335,6 +1366,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                     <div key={group.libraryId} style={{ padding: '0.25rem 0.25rem 0.6rem 0.25rem' }}>
                       <div style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.85rem', marginBottom: '0.5rem' }}>
                         {group.libraryName}
+                        {cellSearchLibraryHierarchyMap.get(group.libraryId) ? (
+                          <div style={{ marginTop: '0.2rem', color: '#6b7280', fontWeight: 400, fontSize: '0.75rem' }}>
+                            {cellSearchLibraryHierarchyMap.get(group.libraryId)}
+                          </div>
+                        ) : null}
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: '0.5rem' }}>
                         {group.hits.map((hit) => (
@@ -1343,8 +1379,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                             type="button"
                             className={styles.searchResultItem}
                             style={{
-                              flexDirection: 'column',
-                              alignItems: 'flex-start',
+                              alignItems: 'stretch',
                               justifyContent: 'flex-start',
                               padding: '0.6rem 0.7rem',
                               background: 'rgba(15, 23, 42, 0.03)',
@@ -1356,23 +1391,29 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                               navigateToCellHit(hit);
                             }}
                           >
-                            <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', gap: '0.5rem' }}>
-                              {hit.assetName?.trim() ? (
-                                <div className={styles.searchResultName} style={{ maxWidth: '12rem' }}>
-                                  {hit.assetName}
+                            <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: '0.7rem', minWidth: 0 }}>
+                              <Avatar
+                                size={56}
+                                style={{
+                                  flexShrink: 0,
+                                  backgroundColor: getUserAvatarColor(hit.assetId || hit.assetName || hit.fieldId),
+                                  borderRadius: '16px',
+                                  color: '#ffffff',
+                                  fontSize: '1.8rem',
+                                  fontWeight: 500,
+                                  textTransform: 'uppercase',
+                                }}
+                              >
+                                {getCellAvatarText(hit)}
+                              </Avatar>
+                              <div style={{ minWidth: 0, display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.25rem' }}>
+                                <div className={styles.searchResultParent} style={{ marginTop: 0, fontSize: '0.72rem' }}>
+                                  {hit.fieldLabel}
                                 </div>
-                              ) : (
-                                <div />
-                              )}
-                              <span className={styles.searchResultType} style={{ padding: '0.125rem 0.35rem' }}>
-                                {formatUpdatedAtLabel(hit.assetUpdatedAt)}
-                              </span>
-                            </div>
-                            <div style={{ width: '100%', color: '#6b7280', fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                              {hit.fieldLabel}
-                            </div>
-                            <div style={{ width: '100%', color: '#0f172a', fontSize: '0.8rem', marginTop: '0.25rem', lineHeight: 1.2 }}>
-                              {highlightCellValue(hit.valueSnippet, searchQuery)}
+                                <div style={{ width: '100%', color: '#0f172a', fontSize: '0.8rem', lineHeight: 1.2, textAlign: 'left' }}>
+                                  &quot;{highlightCellValue(hit.valueSnippet, searchQuery)}&quot;
+                                </div>
+                              </div>
                             </div>
                           </button>
                         ))}

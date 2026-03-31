@@ -1002,6 +1002,7 @@ export function LibraryAssetsTable({
   const {
     formulaModalOpen,
     formulaInputValue,
+    formulaValidationError,
     formulaPanelPosition,
     setFormulaInputValue,
     openFormulaEditor,
@@ -1847,6 +1848,7 @@ export function LibraryAssetsTable({
         open={formulaModalOpen}
         position={formulaPanelPosition}
         value={formulaInputValue}
+        errorMessage={formulaValidationError}
         onChange={setFormulaInputValue}
         onClose={closeFormulaEditor}
         onSave={handleSaveCustomFormula}
