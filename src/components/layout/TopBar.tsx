@@ -1422,11 +1422,25 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                                     position: 'absolute',
                                     top: '0.55rem',
                                     right: '0.65rem',
+                                    maxWidth: '5.2rem',
+                                    whiteSpace: 'nowrap',
                                   }}
                                 >
                                   {formatUpdatedAtLabel(hit.assetUpdatedAt)}
                                 </span>
-                                <div className={styles.searchResultParent} style={{ marginTop: 0, fontSize: '0.72rem', paddingRight: '5.2rem' }}>
+                                <div
+                                  className={styles.searchResultParent}
+                                  style={{
+                                    marginTop: 0,
+                                    fontSize: '0.72rem',
+                                    paddingRight: '5.2rem',
+                                    width: '100%',
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                  }}
+                                  title={hit.fieldLabel}
+                                >
                                   {hit.fieldLabel}
                                 </div>
                                 <div style={{ width: '100%', color: '#0f172a', fontSize: '0.8rem', lineHeight: 1.2, textAlign: 'left' }}>
