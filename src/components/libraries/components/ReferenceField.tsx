@@ -20,7 +20,7 @@ export type ReferenceFieldProps = {
   onAvatarMouseEnter: (
     assetId: string,
     element: HTMLDivElement,
-    selection?: { fieldLabel?: string | null; displayValue?: string | null }
+    selections?: Array<{ fieldLabel?: string | null; displayValue?: string | null }>
   ) => void;
   onAvatarMouseLeave: () => void;
   onOpenReferenceModal: (property: PropertyConfig, currentValue: unknown, rowId: string) => void;
@@ -47,8 +47,13 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
   const extraCount = Math.max(0, assetIds.length - selectedAssetIds.length);
 
   const selections = normalizeReferenceSelections(currentValue);
-  const selectionById = new Map(selections.map((s) => [s.assetId, s]));
-  const getAssetName = (id: string) => selectionById.get(id)?.displayValue || assetNamesCache[id] || id;
+  const firstSelectionById = new Map<string, (typeof selections)[number]>();
+  selections.forEach((s) => {
+    if (!firstSelectionById.has(s.assetId)) {
+      firstSelectionById.set(s.assetId, s);
+    }
+  });
+  const getAssetName = (id: string) => firstSelectionById.get(id)?.displayValue || assetNamesCache[id] || id;
 
   // Avoid squeezing: when showing 2 avatars, expand the pill width by one tile.
   const pillWidthStyle: React.CSSProperties | undefined =
@@ -110,11 +115,17 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
                   ref={setAvatarRef(id)}
                   onMouseEnter={(e) => {
                     e.stopPropagation();
-                    const selection = selectionById.get(id);
-                    onAvatarMouseEnter(id, e.currentTarget, selection ? {
-                      fieldLabel: selection.fieldLabel,
-                      displayValue: selection.displayValue,
-                    } : undefined);
+                    const selectionsForAsset = selections.filter((s) => s.assetId === id);
+                    onAvatarMouseEnter(
+                      id,
+                      e.currentTarget,
+                      selectionsForAsset.length > 0
+                        ? selectionsForAsset.map((s) => ({
+                            fieldLabel: s.fieldLabel,
+                            displayValue: s.displayValue,
+                          }))
+                        : undefined
+                    );
                   }}
                   onMouseLeave={(e) => {
                     e.stopPropagation();
