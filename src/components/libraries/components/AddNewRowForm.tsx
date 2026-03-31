@@ -20,8 +20,12 @@ export interface AddNewRowFormProps {
   // Event handlers
   handleInputChange: (key: string, value: any) => void;
   handleMediaFileChange: (key: string, value: MediaFileMetadata | null) => void;
-  handleOpenReferenceModal: (property: PropertyConfig, currentValue: string[] | null, rowId: string) => void;
-  handleAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
+  handleOpenReferenceModal: (property: PropertyConfig, currentValue: unknown, rowId: string) => void;
+  handleAvatarMouseEnter: (
+    assetId: string,
+    element: HTMLDivElement,
+    selection?: { fieldLabel?: string | null; displayValue?: string | null }
+  ) => void;
   handleAvatarMouseLeave: () => void;
   setOpenEnumSelects: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
 }
@@ -74,6 +78,7 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
                 <ReferenceField
                   property={property}
                   assetIds={assetIds}
+                  currentValue={newRowData[property.key]}
                   rowId="new"
                   assetNamesCache={assetNamesCache}
                   isCellSelected={false}

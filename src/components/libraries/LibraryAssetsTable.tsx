@@ -41,7 +41,7 @@ import { useOptimisticUpdates } from './hooks/useOptimisticUpdates';
 import { useMediaFileUpdate } from './hooks/useMediaFileUpdate';
 import { useContextMenu } from './hooks/useContextMenu';
 import { ReferenceField } from './components/ReferenceField';
-import { normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
+import { normalizeReferenceSelections, normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
 import { CellEditor } from './components/CellEditor';
 import { CellPresenceAvatars } from './components/CellPresenceAvatars';
 import { TableToast } from './components/TableToast';
@@ -1277,6 +1277,7 @@ export function LibraryAssetsTable({
                     if (property.dataType === 'reference' && property.referenceLibraries) {
                       const value = row.propertyValues[property.key];
                       const assetIds = normalizeReferenceValueToAssetIds(value);
+                      const firstSelection = normalizeReferenceSelections(value)[0];
                       const firstAssetId = assetIds[0] ?? null;
                       const cellKey: CellKey = `${row.id}-${property.key}`;
                       const isCellSelected = selectedCells.has(cellKey);
@@ -1295,7 +1296,10 @@ export function LibraryAssetsTable({
                           onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
                           onMouseEnter={(e) => {
                             if (firstAssetId && !isCellSelected) {
-                              handleAvatarMouseEnter(firstAssetId, e.currentTarget);
+                              handleAvatarMouseEnter(firstAssetId, e.currentTarget, firstSelection ? {
+                                fieldLabel: firstSelection.fieldLabel,
+                                displayValue: firstSelection.displayValue,
+                              } : undefined);
                             }
                           }}
                           onMouseLeave={(e) => {
@@ -1325,6 +1329,7 @@ export function LibraryAssetsTable({
                               <ReferenceField
                                 property={property}
                                 assetIds={assetIds}
+                                currentValue={value}
                                 rowId={row.id}
                                 assetNamesCache={assetNamesCache}
                                 isCellSelected={isCellSelected}
@@ -1345,7 +1350,10 @@ export function LibraryAssetsTable({
                                   onMouseEnter={(e) => {
                                     if (firstAssetId) {
                                       e.stopPropagation();
-                                      handleAvatarMouseEnter(firstAssetId, e.currentTarget);
+                                      handleAvatarMouseEnter(firstAssetId, e.currentTarget, firstSelection ? {
+                                        fieldLabel: firstSelection.fieldLabel,
+                                        displayValue: firstSelection.displayValue,
+                                      } : undefined);
                                     }
                                   }}
                                   onMouseLeave={(e) => {
@@ -1373,6 +1381,7 @@ export function LibraryAssetsTable({
                               <ReferenceField
                             property={property}
                             assetIds={assetIds}
+                                currentValue={value}
                             rowId={row.id}
                             assetNamesCache={assetNamesCache}
                             isCellSelected={isCellSelected}
@@ -1393,7 +1402,10 @@ export function LibraryAssetsTable({
                               onMouseEnter={(e) => {
                                 if (firstAssetId) {
                                   e.stopPropagation();
-                                  handleAvatarMouseEnter(firstAssetId, e.currentTarget);
+                                  handleAvatarMouseEnter(firstAssetId, e.currentTarget, firstSelection ? {
+                                    fieldLabel: firstSelection.fieldLabel,
+                                    displayValue: firstSelection.displayValue,
+                                  } : undefined);
                                 }
                               }}
                               onMouseLeave={(e) => {

@@ -5,19 +5,25 @@ import Image from 'next/image';
 import { Avatar } from 'antd';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import { getAssetAvatarColor, getAssetAvatarText } from '@/components/libraries/utils/libraryAssetUtils';
+import { normalizeReferenceSelections } from '@/lib/utils/referenceValue';
 import referenceAddIcon from '@/assets/images/referenceAdd.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 
 export type ReferenceFieldProps = {
   property: PropertyConfig;
   assetIds: string[];
+  currentValue?: unknown;
   rowId: string;
   assetNamesCache: Record<string, string>;
   isCellSelected: boolean;
   avatarRefs: React.MutableRefObject<Map<string, HTMLDivElement>>;
-  onAvatarMouseEnter: (assetId: string, element: HTMLDivElement) => void;
+  onAvatarMouseEnter: (
+    assetId: string,
+    element: HTMLDivElement,
+    selection?: { fieldLabel?: string | null; displayValue?: string | null }
+  ) => void;
   onAvatarMouseLeave: () => void;
-  onOpenReferenceModal: (property: PropertyConfig, currentValue: string[] | null, rowId: string) => void;
+  onOpenReferenceModal: (property: PropertyConfig, currentValue: unknown, rowId: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
 };
@@ -25,6 +31,7 @@ export type ReferenceFieldProps = {
 export const ReferenceField = React.memo<ReferenceFieldProps>(function ReferenceField({
   property,
   assetIds,
+  currentValue,
   rowId,
   assetNamesCache,
   isCellSelected,
@@ -36,10 +43,12 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
   onBlur,
 }) {
   const hasValues = assetIds.length > 0;
-  const selectedAssetIds = assetIds.slice(0, 2);
+  const selectedAssetIds = assetIds.slice(0, 5);
   const extraCount = Math.max(0, assetIds.length - selectedAssetIds.length);
 
-  const getAssetName = (id: string) => assetNamesCache[id] ?? id;
+  const selections = normalizeReferenceSelections(currentValue);
+  const selectionById = new Map(selections.map((s) => [s.assetId, s]));
+  const getAssetName = (id: string) => selectionById.get(id)?.displayValue || assetNamesCache[id] || id;
 
   // Avoid squeezing: when showing 2 avatars, expand the pill width by one tile.
   const pillWidthStyle: React.CSSProperties | undefined =
@@ -67,7 +76,7 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
       e.preventDefault();
       // Call onFocus when opening reference modal
       onFocus?.();
-      onOpenReferenceModal(property, hasValues ? assetIds : null, rowId);
+      onOpenReferenceModal(property, currentValue ?? null, rowId);
     }
   };
 
@@ -101,6 +110,11 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
                   ref={setAvatarRef(id)}
                   onMouseEnter={(e) => {
                     e.stopPropagation();
+                    const selection = selectionById.get(id);
+                    onAvatarMouseEnter(id, e.currentTarget, selection ? {
+                      fieldLabel: selection.fieldLabel,
+                      displayValue: selection.displayValue,
+                    } : undefined);
                   }}
                   onMouseLeave={(e) => {
                     e.stopPropagation();
