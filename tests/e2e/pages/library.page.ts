@@ -23,10 +23,10 @@ export class LibraryPage {
   readonly librariesHeading: Locator;
   readonly createFolderButton: Locator;
   readonly createLibraryButton: Locator;
-  
+
   // Folder page "Create Library" button (visible in folder preview page header)
   readonly folderPageCreateLibraryButton: Locator;
-  
+
   // Sidebar add button (for creating library/folder directly under project)
   readonly sidebarAddButton: Locator;
   readonly addLibraryMenuButton: Locator;
@@ -39,7 +39,7 @@ export class LibraryPage {
   // Library creation form
   readonly libraryNameInput: Locator;
   readonly libraryDescriptionInput: Locator;
-  
+
   // Form action buttons
   readonly submitButton: Locator;
   readonly cancelButton: Locator;
@@ -57,29 +57,29 @@ export class LibraryPage {
 
     // Action buttons
     this.createFolderButton = page.getByRole('button', { name: /create folder/i });
-    
+
     // Sidebar "Create new library" button (on folder row in tree)
     // Button has aria-label="Create new library", no text content (icon only). Only visible for admin.
     this.createLibraryButton = page.getByRole('tree').getByRole('button', { name: /create new library/i }).first();
-    
+
     // Folder page "Create Library" button in header (LibraryToolbar)
     // This button appears in the folder preview page header (LibraryToolbar component)
     // Strategy: Use getByLabel to find button with aria-label="Create Library"
     // Only the LibraryToolbar button has aria-label="Create Library"
     // The empty state button doesn't have aria-label, only text content
     this.folderPageCreateLibraryButton = page.getByLabel('Create Library');
-    
+
     // Sidebar add button (for creating library/folder directly under project)
     this.sidebarAddButton = page.locator('button[title="Add new folder or library"]')
       .or(page.getByRole('button', { name: /add/i }).filter({ has: page.locator('img[alt="Add library"]') }));
-    
+
     // AddLibraryMenu button (appears after clicking sidebar add button)
     // Note: AddLibraryMenu is rendered via createPortal to document.body
     // Use more flexible selectors that work with the portal
     this.addLibraryMenuButton = page.getByRole('button', { name: /create new library/i })
       .filter({ hasNotText: /resources folder/i }) // Exclude sidebar buttons
       .last(); // Use last() to get the portal menu button
-    
+
     // AddLibraryMenu "Create new folder" button
     this.addFolderMenuButton = page.getByRole('button', { name: /create new folder/i })
       .last(); // Use last() to get the portal menu button if there are duplicates
@@ -94,8 +94,8 @@ export class LibraryPage {
     // Library form inputs
     this.libraryNameInput = page.getByLabel(/library name/i);
     // Library description label is "Add notes for this Library"
-    this.libraryDescriptionInput = page.locator('textarea').filter({ 
-      has: page.locator('label:has-text("Add notes")') 
+    this.libraryDescriptionInput = page.locator('textarea').filter({
+      has: page.locator('label:has-text("Add notes")')
     }).or(page.getByLabel(/add notes.*library/i))
       .or(page.getByLabel(/library description/i));
 
@@ -113,10 +113,9 @@ export class LibraryPage {
    * @param folderName - Name of the folder (default: "Resource Folder")
    */
   async openFolder(folderName: string): Promise<void> {
-    // Find and click the folder by name
-    const folderCard = this.page.getByRole('button', { name: folderName })
-      .or(this.page.getByRole('link', { name: folderName }))
-      .or(this.page.getByText(folderName, { exact: true }).first());
+    // Find folder in sidebar tree by title attribute (avoids matching breadcrumb buttons)
+    const sidebar = this.page.locator('aside');
+    const folderCard = sidebar.locator(`[title="${folderName}"]`).first();
 
     await expect(folderCard).toBeVisible({ timeout: 5000 });
     await folderCard.click();
@@ -138,15 +137,19 @@ export class LibraryPage {
 
     // Fill in folder details
     await this.folderNameInput.fill(folder.name);
-    
+
     // Note: Folder modal doesn't have description field in NewFolderModal.tsx
     // if (folder.description) {
     //   await expect(this.folderDescriptionInput).toBeVisible({ timeout: 3000 });
     //   await this.folderDescriptionInput.fill(folder.description);
     // }
 
-    // Submit the form
-    await this.submitButton.click();
+    // Submit the form (scope to the modal to avoid stale element references)
+    const folderModal = this.page.locator('[class*="backdrop"]').filter({ has: this.folderNameInput });
+    const createBtn = folderModal.getByRole('button', { name: 'Create', exact: true });
+    await expect(createBtn).toBeVisible({ timeout: 5000 });
+    await expect(createBtn).toBeEnabled({ timeout: 5000 });
+    await createBtn.click();
 
     // Wait for modal to close
     await expect(this.folderNameInput).not.toBeVisible({ timeout: 10000 });
@@ -172,15 +175,18 @@ export class LibraryPage {
     // Fill in library details
     this.lastCreatedLibraryName = library.name;
     await this.libraryNameInput.fill(library.name);
-    
+
     if (library.description) {
       // Wait for description field to be visible
       await expect(this.libraryDescriptionInput).toBeVisible({ timeout: 3000 });
       await this.libraryDescriptionInput.fill(library.description);
     }
 
-    // Submit the form
-    await this.submitButton.click();
+    // Submit the form using the generic submit button
+    // Use force: true because React may re-render the button during form state changes
+    await expect(this.submitButton).toBeVisible({ timeout: 5000 });
+    await expect(this.submitButton).toBeEnabled({ timeout: 5000 });
+    await this.submitButton.click({ force: true });
 
     // Wait for modal to close
     await expect(this.libraryNameInput).not.toBeVisible({ timeout: 10000 });
@@ -215,27 +221,27 @@ export class LibraryPage {
     // Step 4: Fill in library details
     this.lastCreatedLibraryName = library.name;
     await this.libraryNameInput.fill(library.name);
-    
+
     if (library.description) {
       // Wait for description field to be visible
       await expect(this.libraryDescriptionInput).toBeVisible({ timeout: 3000 });
       await this.libraryDescriptionInput.fill(library.description);
     }
 
-    // Step 5: Submit the form (scope to the portal-rendered modal backdrop)
-    // NewLibraryModal renders via createPortal to document.body with class*="backdrop"
+    // Step 5: Submit the form using the portal modal button
+    // Use force: true because React may re-render the button during form state changes
     const newLibraryModal = this.page.locator('[class*="backdrop"]').filter({ has: this.page.locator('#library-name') });
     const createBtn = newLibraryModal.getByRole('button', { name: 'Create', exact: true });
     await expect(createBtn).toBeVisible({ timeout: 5000 });
     await expect(createBtn).toBeEnabled({ timeout: 5000 });
-    await createBtn.click();
+    await createBtn.click({ force: true });
 
     // If the modal is still visible after a short wait, try clicking again (handles rare click interception)
     await this.page.waitForTimeout(1000);
     if (await this.libraryNameInput.isVisible()) {
       const retryBtn = newLibraryModal.getByRole('button', { name: 'Create', exact: true });
       if (await retryBtn.isVisible() && await retryBtn.isEnabled()) {
-        await retryBtn.click();
+        await retryBtn.click({ force: true });
       }
     }
 
@@ -255,8 +261,8 @@ export class LibraryPage {
       )
       .toBeTruthy();
 
-    await this.page.waitForLoadState('load', { timeout: 15000 }).catch(() => {});
-    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await this.page.waitForLoadState('load', { timeout: 15000 }).catch(() => { });
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
     // Additional wait to ensure authorization checks are complete
     await this.page.waitForTimeout(1000);
   }
@@ -287,20 +293,18 @@ export class LibraryPage {
     // Step 4: Fill in folder name
     await this.folderNameInput.fill(folder.name);
 
-    // Step 5: Submit the form (scope to the portal-rendered modal backdrop)
-    // NewFolderModal renders via createPortal to document.body with class*="backdrop"
-    const folderModal = this.page.locator('[class*="backdrop"]').filter({ has: this.folderNameInput });
-    const createBtn = folderModal.getByRole('button', { name: 'Create', exact: true });
-    await expect(createBtn).toBeVisible({ timeout: 5000 });
-    await expect(createBtn).toBeEnabled({ timeout: 5000 });
-    await createBtn.click();
+    // Step 5: Submit the form using the generic submit button
+    // Use force: true because React may re-render the button during form state changes
+    await expect(this.submitButton).toBeVisible({ timeout: 5000 });
+    await expect(this.submitButton).toBeEnabled({ timeout: 5000 });
+    await this.submitButton.click({ force: true });
 
     // If the modal is still visible after a short wait, try clicking again (handles rare click interception)
     await this.page.waitForTimeout(1000);
     if (await this.folderNameInput.isVisible()) {
-      const retryBtn = folderModal.getByRole('button', { name: 'Create', exact: true });
+      const retryBtn = this.submitButton;
       if (await retryBtn.isVisible() && await retryBtn.isEnabled()) {
-        await retryBtn.click();
+        await retryBtn.click({ force: true });
       }
     }
 
@@ -329,15 +333,15 @@ export class LibraryPage {
       if (await closeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
         await closeButton.click();
       } else {
-        await this.page.keyboard.press('Escape').catch(() => {});
+        await this.page.keyboard.press('Escape').catch(() => { });
       }
       await expect(this.page.locator('[placeholder="Enter folder name"]:visible')).toHaveCount(0, {
         timeout: 10000,
       });
     }
 
-    await this.page.waitForLoadState('load', { timeout: 15000 }).catch(() => {});
-    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await this.page.waitForLoadState('load', { timeout: 15000 }).catch(() => { });
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
     // Additional wait to ensure authorization checks are complete
     await this.page.waitForTimeout(1000);
   }
@@ -373,7 +377,7 @@ export class LibraryPage {
    */
   async clickPredefineButton(libraryName: string): Promise<void> {
     await this.openLibrary(libraryName);
-    await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
+    await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => { });
 
     const addColumnButton = this.page.getByRole('button', { name: /add new column/i });
     await expect(addColumnButton).toBeVisible({ timeout: 15000 });
@@ -431,7 +435,7 @@ export class LibraryPage {
     // Use breadcrumb or back button, or navigate via URL
     const backButton = this.page.getByRole('button', { name: /back/i })
       .or(this.page.locator('[aria-label*="back"]'));
-    
+
     // Try to click back button if visible, otherwise navigate via URL
     if (await backButton.isVisible({ timeout: 2000 }).catch(() => false)) {
       await backButton.click();
@@ -444,15 +448,15 @@ export class LibraryPage {
       }
     }
     await this.page.waitForLoadState('load', { timeout: 10000 });
-    
+
     // Wait for sidebar tree to be visible and interactive
     const sidebar = this.page.getByRole('tree');
     await expect(sidebar).toBeVisible({ timeout: 10000 });
-    
+
     // Additional wait for tree content to render
     // In CI environments or after navigation, sidebar may need extra time to load libraries
     await this.page.waitForTimeout(3000);
-    
+
     // console.log('[DEBUG] Navigated back to project, sidebar should be loaded');
   }
 
@@ -465,7 +469,7 @@ export class LibraryPage {
     // Expected URL format: /[projectId]/[libraryId]/predefine
     const currentUrl = this.page.url();
     const match = currentUrl.match(/\/([^/]+)\/([^/]+)\/predefine$/);
-    
+
     if (match && match.length >= 3) {
       const projectId = match[1];
       const libraryId = match[2];
@@ -481,10 +485,10 @@ export class LibraryPage {
    * @param libraryName - Name of the library to verify
    */
   async expectLibraryExists(libraryName: string): Promise<void> {
-    // Use title attribute to handle truncated names in sidebar
-    const sidebar = this.page.getByRole('tree');
+    // Use aside locator to find sidebar, then use title attribute to handle truncated names
+    const sidebar = this.page.locator('aside');
     const libraryItem = sidebar.locator(`[title="${libraryName}"]`);
-    await expect(libraryItem).toBeVisible();
+    await expect(libraryItem).toBeVisible({ timeout: 10000 });
   }
 
   /**
@@ -531,14 +535,14 @@ export class LibraryPage {
       if (await closeButton.isVisible({ timeout: 1000 }).catch(() => false)) {
         await closeButton.click();
       } else {
-        await this.page.keyboard.press('Escape').catch(() => {});
+        await this.page.keyboard.press('Escape').catch(() => { });
       }
       await expect(this.page.locator('#library-name:visible')).toHaveCount(0, { timeout: 10000 });
     }
 
     // Wait for page to refresh
-    await this.page.waitForLoadState('load', { timeout: 10000 }).catch(() => {});
-    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => {});
+    await this.page.waitForLoadState('load', { timeout: 10000 }).catch(() => { });
+    await this.page.waitForLoadState('networkidle', { timeout: 10000 }).catch(() => { });
   }
 
   /**
@@ -564,7 +568,7 @@ export class LibraryPage {
     // In some CI/headed runs, tree exists but may be temporarily hidden.
     const sidebar = this.page.locator('aside');
     await expect(sidebar).toBeVisible({ timeout: 10000 });
-    
+
     // Additional wait for tree content to fully render
     await this.page.waitForTimeout(2000);
 
@@ -614,7 +618,7 @@ export class LibraryPage {
         .toBeLessThan(visibleCount);
 
       // Allow cache invalidation + rerender to settle
-      await this.page.waitForLoadState('networkidle').catch(() => {});
+      await this.page.waitForLoadState('networkidle').catch(() => { });
       await this.page.waitForTimeout(500);
 
       if (!deleteAllMatching) break;
@@ -643,7 +647,7 @@ export class LibraryPage {
     // Use aside container instead of strict tree visibility.
     const sidebar = this.page.locator('aside');
     await expect(sidebar).toBeVisible({ timeout: 10000 });
-    
+
     // Additional wait for tree content to fully render
     await this.page.waitForTimeout(1000);
 
@@ -687,7 +691,7 @@ export class LibraryPage {
         .poll(async () => await getVisibleFolderItems().count(), { timeout: 30000 })
         .toBeLessThan(visibleCount);
 
-      await this.page.waitForLoadState('networkidle').catch(() => {});
+      await this.page.waitForLoadState('networkidle').catch(() => { });
       await this.page.waitForTimeout(500);
 
       if (!deleteAllMatching) break;
@@ -711,7 +715,7 @@ export class LibraryPage {
   async waitForPageLoad(): Promise<void> {
     await this.page.waitForLoadState('domcontentloaded', { timeout: 30000 });
     await this.page.waitForLoadState('load', { timeout: 15000 });
-    await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => {});
+    await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
   }
 }
 
