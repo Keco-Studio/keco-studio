@@ -36,6 +36,7 @@ export type UseSidebarContextMenuActionsParams = {
   fetchAssets: (libraryId: string | null | undefined) => Promise<void>;
   onProjectDeleteViaAPI: (projectId: string) => void | Promise<void>;
   openMoveLibrary: (libraryId: string) => void;
+  userRole: 'admin' | 'editor' | 'viewer' | null;
   requestDeleteConfirm: (options: {
     title: string;
     content: string;
@@ -66,6 +67,7 @@ export function useSidebarContextMenuActions({
   fetchAssets,
   onProjectDeleteViaAPI,
   openMoveLibrary,
+  userRole,
   requestDeleteConfirm,
 }: UseSidebarContextMenuActionsParams) {
   const handleContextMenuAction = useCallback(
@@ -114,6 +116,10 @@ export function useSidebarContextMenuActions({
 
       if (action === 'move-to') {
         if (contextMenu.type === 'library') {
+          if (userRole !== 'admin') {
+            closeContextMenu();
+            return;
+          }
           openMoveLibrary(contextMenu.id);
           closeContextMenu();
           return;
@@ -287,6 +293,7 @@ export function useSidebarContextMenuActions({
       fetchAssets,
       onProjectDeleteViaAPI,
       openMoveLibrary,
+      userRole,
       requestDeleteConfirm,
     ]
   );

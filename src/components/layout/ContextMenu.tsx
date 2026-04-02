@@ -235,6 +235,9 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
     return userRole === 'admin' || userRole === 'editor';
   };
 
+  // Move library between folders: admin only (editor/viewer cannot)
+  const canMoveLibrary = () => userRole === 'admin';
+
   // Render menu items based on type
   const renderMenuItems = () => {
     const showDeleteButton = canDelete();
@@ -288,7 +291,7 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
         </>
       );
     } else if (type === 'library') {
-      // Library: Export (admin/editor), Version history, separator, Library info (admin only), Duplicate, Move to..., separator, Delete (admin only)
+      // Library: Export (admin/editor), Version history, separator, Library info (admin only), Duplicate, Move to... (admin only), separator, Delete (admin only)
       return (
         <>
           {canExport() && (
@@ -327,12 +330,14 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
               Duplicate
             </button>
           )}
-          <button
-            className={styles.menuItem}
-            onClick={() => handleAction('move-to')}
-          >
-            Move to...
-          </button>
+          {canMoveLibrary() && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('move-to')}
+            >
+              Move to...
+            </button>
+          )}
           {showDeleteButton && (
             <>
               <div className={styles.separator} />
@@ -448,12 +453,14 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
         >
           Duplicate
         </button>
-        <button
-          className={styles.menuItem}
-          onClick={() => handleAction('move-to')}
-        >
-          Move to...
-        </button>
+        {(!type || type !== 'library' || canMoveLibrary()) && (
+          <button
+            className={styles.menuItem}
+            onClick={() => handleAction('move-to')}
+          >
+            Move to...
+          </button>
+        )}
         <div className={styles.separator} />
         <button
           className={`${styles.menuItem} ${styles.deleteItem}`}
