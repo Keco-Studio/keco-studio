@@ -16,7 +16,6 @@ import applyReference3Icon from '@/assets/images/ApplyReference3.svg';
 import applyReference4Icon from '@/assets/images/ApplyReference4.svg';
 import projectIcon from '@/assets/images/projectIcon.svg';
 import referenceLibIcon from '@/assets/images/referenceLib.svg';
-import assetRefMenuGridIcon from '@/assets/images/assetRefMenuGridIcon.svg';
 import assetRefDetailLibIcon from '@/assets/images/assetRefDetailLibIcon.svg';
 import assetRefDetailLibExpandIcon from '@/assets/images/assetRefDetailLibExpandIcon.svg';
 import {
@@ -564,8 +563,7 @@ export function AssetReferenceModal({
                   </Select.Option>
                 ))}
               </Select>
-              <Image src={assetRefMenuGridIcon} alt="Expand" width={22} height={22} className="icon-22" />
-            </div>
+              </div>
           </div>
 
           <div className={styles.assetsGrid}>

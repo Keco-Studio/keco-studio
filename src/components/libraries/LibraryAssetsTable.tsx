@@ -1048,6 +1048,7 @@ export function LibraryAssetsTable({
       // Don't clear if clicking on modals, dropdowns, drawer, or interactive components
       if (
         target.closest('[role="dialog"]') ||
+        target.closest('[role="alertdialog"]') ||
         target.closest('.ant-modal') ||
         target.closest('.ant-modal-root') ||
         target.closest('.ant-modal-mask') ||
@@ -1079,9 +1080,9 @@ export function LibraryAssetsTable({
       // Clear selection state only if not clicking on context menu buttons
       // Context menus should handle selection clearing themselves after action
       if (selectedCells.size > 0 || selectedRowIds.size > 0) {
-        // Don't clear selection if context menu or batch edit menu is visible
+        // Don't clear selection if context menu, batch edit menu, or row-delete confirm is open
         // The menu actions will clear selection after they complete
-        if (!batchEditMenuVisible && !contextMenuRowId) {
+        if (!batchEditMenuVisible && !contextMenuRowId && !deleteRowConfirmVisible) {
           setSelectedCells(new Set());
           setSelectedRowIds(new Set());
         }
@@ -1100,7 +1101,8 @@ export function LibraryAssetsTable({
     setSelectedCells, 
     setSelectedRowIds,
     batchEditMenuVisible,
-    contextMenuRowId
+    contextMenuRowId,
+    deleteRowConfirmVisible,
   ]);
 
 
