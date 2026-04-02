@@ -1730,6 +1730,13 @@ td.cellCopy.copyBorderRight:hover {
   padding: 2.5rem 20px;
 }
 
+.assetCardDeletedMessage {
+  padding: 1.25rem 20px 1.5rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #6b7280;
+}
+
 .assetCardDetailsSection {
   padding: 1.25rem;
 }

@@ -758,6 +758,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   );
 
   const openMoveLibrary = useCallback((libraryId: string) => {
+    if (userRole !== 'admin') return;
     const lib = libraries.find((item) => item.id === libraryId);
     if (!lib) return;
     setMovingLibraryId(libraryId);
@@ -765,7 +766,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setUseIndependentLibrary(false);
     setMoveFolderSearch('');
     setShowMoveLibraryModal(true);
-  }, [libraries]);
+  }, [libraries, userRole]);
 
   const handleConfirmMoveLibrary = useCallback(async () => {
     if (!movingLibraryId) return;
@@ -861,6 +862,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     fetchAssets,
     onProjectDeleteViaAPI: handleProjectDeleteViaAPI,
     openMoveLibrary,
+    userRole,
     requestDeleteConfirm: ({ title, content, onConfirm }) => {
       setDeleteConfirmState({
         open: true,

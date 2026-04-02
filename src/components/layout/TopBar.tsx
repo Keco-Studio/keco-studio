@@ -504,29 +504,9 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     );
   };
 
-  // Highlight for cell-value snippets (simple case-insensitive substring).
-  const highlightCellValue = (text: string | null | undefined, query: string) => {
-    if (text === null || text === undefined) return null;
-    const q = query.trim();
-    if (!q) return text;
-
-    const lowerText = text.toLowerCase();
-    const lowerQ = q.toLowerCase();
-    const idx = lowerText.indexOf(lowerQ);
-    if (idx === -1) return text;
-
-    const before = text.slice(0, idx);
-    const match = text.slice(idx, idx + q.length);
-    const after = text.slice(idx + q.length);
-
-    return (
-      <>
-        {before}
-        <span className={styles.searchResultHighlight}>{match}</span>
-        {after}
-      </>
-    );
-  };
+  // Same normalized match as project/folder/library + highlightMatch (strip spaces/underscores).
+  const highlightCellValue = (text: string | null | undefined, query: string) =>
+    highlightMatch(text, query);
 
   const getCellAvatarText = (hit: CellSearchHit) => {
     const snippet = (hit.valueSnippet || '').trim();

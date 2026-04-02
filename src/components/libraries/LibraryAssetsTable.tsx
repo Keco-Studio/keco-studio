@@ -1916,11 +1916,12 @@ export function LibraryAssetsTable({
         position={hoveredAvatarPosition ?? { x: 0, y: 0 }}
         assetId={hoveredAssetId}
         details={hoveredAssetDetails ? { 
-          name: hoveredAssetDetails.name, 
-          libraryId: hoveredAssetDetails.libraryId, 
-          libraryName: hoveredAssetDetails.libraryName,
+          name: hoveredAssetDetails.name ?? '',
+          libraryId: hoveredAssetDetails.libraryId ?? '',
+          libraryName: hoveredAssetDetails.libraryName ?? '',
           firstColumnLabel: hoveredAssetDetails.firstColumnLabel,
           selectedCells: hoveredAssetDetails.selectedCells,
+          sourceLibraryDeleted: hoveredAssetDetails.sourceLibraryDeleted,
         } : null}
         loading={loadingAssetDetails}
         onClose={() => setHoveredAssetId(null)}
