@@ -14,6 +14,8 @@ export type AssetCardDetails = {
   libraryName: string;
   firstColumnLabel?: string; // Label of the first column
   selectedCells?: Array<{ fieldLabel: string; displayValue: string }>;
+  /** Source library no longer exists — show empty-state copy instead of details. */
+  sourceLibraryDeleted?: boolean;
 };
 
 export type AssetCardPanelProps = {
@@ -73,6 +75,10 @@ export function AssetCardPanel({
           {loading ? (
             <div className={styles.assetCardLoading}>
               <Spin />
+            </div>
+          ) : details?.sourceLibraryDeleted ? (
+            <div className={styles.assetCardDeletedMessage}>
+              The source library has been deleted.
             </div>
           ) : details ? (
             <div className={styles.assetCardDetailsSection}>

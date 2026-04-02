@@ -1,11 +1,13 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 
 export type AssetHoverDetails = {
-  name: string;
-  libraryName: string;
-  libraryId: string;
+  name?: string;
+  libraryName?: string;
+  libraryId?: string;
   firstColumnLabel?: string;
   selectedCells?: Array<{ fieldLabel: string; displayValue: string }>;
+  /** True when the referenced asset/library row is missing (e.g. source library deleted). */
+  sourceLibraryDeleted?: boolean;
 };
 
 type HoverReferenceSelection = {
@@ -63,6 +65,11 @@ export function useAssetHover(supabase: any): {
         if (error) throw error;
 
         if (data) {
+          const librariesRow = data.libraries as { name?: string } | null | undefined;
+          const sourceLibraryDeleted =
+            librariesRow == null ||
+            (typeof librariesRow === 'object' && !librariesRow.name);
+
           const selectedReferences = selectedReferenceByAssetId.current.get(hoveredAssetId) ?? [];
           const normalizedSelectedCells = selectedReferences
             .map((s) => ({
@@ -106,8 +113,9 @@ export function useAssetHover(supabase: any): {
           }
 
           setHoveredAssetDetails({
+            sourceLibraryDeleted,
             name: firstColumnValue || 'Untitled',
-            libraryName: (data.libraries as any)?.name || 'Unknown Library',
+            libraryName: (data.libraries as { name?: string } | null)?.name ?? '',
             libraryId: data.library_id,
             firstColumnLabel: selectedFieldLabel || firstFieldLabel,
             selectedCells: normalizedSelectedCells.length > 0 ? normalizedSelectedCells : undefined,
@@ -115,7 +123,7 @@ export function useAssetHover(supabase: any): {
         }
       } catch (error) {
         console.error('Failed to load asset details:', error);
-        setHoveredAssetDetails(null);
+        setHoveredAssetDetails({ sourceLibraryDeleted: true });
       } finally {
         setLoadingAssetDetails(false);
       }
