@@ -57,6 +57,7 @@ import { TextCell, type TextCellProps } from './components/TextCell';
 import { AssetDetailDrawer } from './components/AssetDetailDrawer';
 import { AddNewRowForm } from './components/AddNewRowForm';
 import { AddColumnModal, type AddColumnFormPayload } from './components/AddColumnModal';
+import { AiPredictModal } from './components/AiPredictModal';
 import { FormulaCellPanel } from './components/FormulaCellPanel';
 import { FormulaCell } from './components/FormulaCell';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
@@ -69,6 +70,7 @@ import addSectionIcon from '@/assets/images/addProjectIcon.svg'
 import styles from './LibraryAssetsTable.module.css';
 import { useFormulaCellCustomization } from './hooks/useFormulaCellCustomization';
 import { evaluateFormulaForRow, getCustomFormulaExpressionFromCellValue } from './utils/formulaEvaluation';
+import { useAiPredictNext } from './hooks/useAiPredictNext';
 
 export type LibraryAssetsTableProps = {
   library: {
@@ -541,6 +543,7 @@ export function LibraryAssetsTable({
     [groups, effectiveActiveSectionId]
   );
   const activeProperties = activeGroup ? activeGroup.properties : orderedProperties;
+  const [isGeneratingAiRows, setIsGeneratingAiRows] = useState(false);
   const [searchHighlightedCells, setSearchHighlightedCells] = useState<
     Array<{ assetId: string; fieldId: string }>
   >([]);
@@ -614,6 +617,127 @@ export function LibraryAssetsTable({
     sectionStateStorageKey,
     sectionRenameHintStorageKey,
   ]);
+
+  const handleGenerateAiRows = useCallback(async () => {
+    if (!library || !onSaveAsset) return;
+    if (userRole === 'viewer') return;
+    if (editingCell) {
+      message.warning('Please finish editing the current cell first.');
+      return;
+    }
+
+    const instruction = window.prompt('Describe what rows to generate');
+    if (!instruction || instruction.trim().length === 0) return;
+
+    setIsGeneratingAiRows(true);
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      const requestHeaders: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (session?.access_token) {
+        requestHeaders.Authorization = `Bearer ${session.access_token}`;
+      }
+
+      const response = await fetch('/api/ai/generate-rows', {
+        method: 'POST',
+        headers: requestHeaders,
+        body: JSON.stringify({
+          instruction: instruction.trim(),
+          count: 3,
+          properties: activeProperties.map((property) => ({
+            key: property.key,
+            name: property.name,
+            dataType: property.dataType,
+            enumOptions: property.enumOptions ?? [],
+          })),
+          sampleRows: resolvedRows.slice(0, 30).map((row) => row.propertyValues ?? {}),
+        }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload?.error || 'Failed to generate rows');
+      }
+
+      const generatedRows = Array.isArray(payload?.rows) ? payload.rows : [];
+      if (generatedRows.length === 0) {
+        message.warning('No rows generated. Try a more specific prompt.');
+        return;
+      }
+
+      const confirmed = window.confirm(`Generated ${generatedRows.length} rows. Insert now?`);
+      if (!confirmed) return;
+
+      setIsSaving(true);
+      const isEmptyCellValue = (value: unknown, dataType?: PropertyConfig['dataType']) => {
+        if (value === null || value === undefined || value === '') return true;
+        if (Array.isArray(value)) return value.length === 0;
+        if (dataType === 'boolean') return value === false || String(value).toLowerCase() === 'false';
+        return false;
+      };
+
+      const emptyRows = resolvedRows.filter((row) => {
+        if (row.id.startsWith('temp-')) return false;
+        return activeProperties.every((property) =>
+          isEmptyCellValue(row.propertyValues?.[property.key], property.dataType),
+        );
+      });
+
+      const updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }> = [];
+      let filledExistingCount = 0;
+      for (let i = 0; i < generatedRows.length && i < emptyRows.length; i++) {
+        const rowValues = generatedRows[i] as Record<string, any>;
+        const firstColumnKey = properties[0]?.key;
+        const firstColumnId = properties[0]?.id;
+        const generatedName =
+          (firstColumnKey && rowValues?.[firstColumnKey]) ||
+          (firstColumnId && rowValues?.[firstColumnId]) ||
+          `Generated Row ${Date.now()}`;
+        updates.push({
+          assetId: emptyRows[i].id,
+          assetName: String(generatedName),
+          propertyValues: rowValues,
+        });
+        filledExistingCount += 1;
+      }
+
+      if (updates.length > 1 && onUpdateAssets) {
+        await onUpdateAssets(updates);
+      } else if (updates.length === 1 && onUpdateAsset) {
+        const first = updates[0];
+        await onUpdateAsset(first.assetId, first.assetName, first.propertyValues);
+      } else if (updates.length > 0 && onUpdateAsset) {
+        for (const u of updates) {
+          await onUpdateAsset(u.assetId, u.assetName, u.propertyValues);
+        }
+      }
+
+      let insertedNewCount = 0;
+      for (let i = filledExistingCount; i < generatedRows.length; i++) {
+        const rowValues = generatedRows[i] as Record<string, any>;
+        const firstColumnKey = properties[0]?.key;
+        const firstColumnId = properties[0]?.id;
+        const generatedName =
+          (firstColumnKey && rowValues?.[firstColumnKey]) ||
+          (firstColumnId && rowValues?.[firstColumnId]) ||
+          `Generated Row ${Date.now()}`;
+        await onSaveAsset(String(generatedName), rowValues);
+        insertedNewCount += 1;
+      }
+
+      message.success(`AI rows applied: filled ${filledExistingCount}, inserted ${insertedNewCount}.`);
+    } catch (error) {
+      console.error('Failed to generate AI rows:', error);
+      message.error('Failed to generate AI rows. Please try again.');
+    } finally {
+      setIsSaving(false);
+      setIsGeneratingAiRows(false);
+    }
+  }, [library, onSaveAsset, onUpdateAsset, onUpdateAssets, userRole, editingCell, message, activeProperties, properties, resolvedRows]);
 
   // If coming from global search, allow query param to force-switch section tab.
   useEffect(() => {
@@ -743,6 +867,7 @@ export function LibraryAssetsTable({
     return dataManager.getRowsWithOptimisticUpdates();
   }, [dataManager]);
 
+
   const { fillDown, fillDownIntSequence, getIntSequencePreviewValues } = useBatchFill({
     dataManager,
     orderedProperties,
@@ -781,6 +906,22 @@ export function LibraryAssetsTable({
       selectionBorderLeft: styles.selectionBorderLeft,
       selectionBorderRight: styles.selectionBorderRight,
     },
+  });
+
+  const aiPredict = useAiPredictNext({
+    selectedCells,
+    orderedProperties,
+    resolvedRows,
+    rows,
+    library,
+    supabase,
+    onUpdateAsset,
+    onUpdateAssets,
+    onSaveAsset,
+    setIsSaving,
+    yRows,
+    setOptimisticNewAssets,
+    setOptimisticInsertIndices,
   });
 
   // If coming from global search, highlight the specific asset+field cell.
@@ -1048,6 +1189,7 @@ export function LibraryAssetsTable({
       // Don't clear if clicking on modals, dropdowns, drawer, or interactive components
       if (
         target.closest('[role="dialog"]') ||
+        target.closest('[role="alertdialog"]') ||
         target.closest('.ant-modal') ||
         target.closest('.ant-modal-root') ||
         target.closest('.ant-modal-mask') ||
@@ -1063,6 +1205,8 @@ export function LibraryAssetsTable({
         target.closest('[class*="mediaFileUpload"]') ||
         target.closest('[class*="detailDrawer"]') ||
         target.closest('[class*="detailDrawerOverlay"]') ||
+        target.closest('[class*="confirmDialog"]') ||
+        target.closest('[class*="confirmOverlay"]') ||
         // Don't clear if clicking on context menus (BatchEditMenu or RowContextMenu)
         target.closest('.batchEditMenu') ||
         // Check if the click target has fixed positioning (context menus use fixed positioning)
@@ -1735,6 +1879,14 @@ export function LibraryAssetsTable({
                         Array.isArray(value)
                       ) {
                         display = `[${value.map((v) => JSON.stringify(v)).join(',')}]`;
+                      } else if (property.dataType === 'float') {
+                        const numeric = typeof value === 'number' ? value : Number(value);
+                        if (Number.isFinite(numeric)) {
+                          // Keep a trailing ".0" for integer-like float values.
+                          display = Number.isInteger(numeric) ? numeric.toFixed(1) : String(value);
+                        } else {
+                          display = String(value);
+                        }
                       } else {
                         display = String(value);
                       }
@@ -1822,8 +1974,9 @@ export function LibraryAssetsTable({
                   const target = e.target as HTMLElement;
                   const isClickOnNumberCell = target.closest(`.${styles.numberCell}`);
                   const isClickOnButton = target.closest(`.${styles.addButton}`);
+                  const isClickOnAiButton = target.closest(`.${styles.aiAddButton}`);
                   
-                  if (!isClickOnNumberCell && !isClickOnButton && target.tagName === 'TD') {
+                  if (!isClickOnNumberCell && !isClickOnButton && !isClickOnAiButton && target.tagName === 'TD') {
                     if (editingCell) {
                       alert('Please finish editing the current cell first.');
                       return;
@@ -1844,23 +1997,37 @@ export function LibraryAssetsTable({
                   }}
                   style={{ cursor: 'pointer' }}
                 >
-                  <button
-                    className={styles.addButton}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (editingCell) {
-                        alert('Please finish editing the current cell first.');
-                        return;
-                      }
-                      handleAddRowDirect();
-                    }}
-                    disabled={editingCell !== null}
-                  >
-                    <Image src={libraryAssetTableAddIcon}
-                      alt="Add new asset"
-                      width={16} height={16} className="icon-16"
-                    />
-                  </button>
+                  <div className={styles.addButtonGroup}>
+                    <button
+                      className={styles.addButton}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (editingCell) {
+                          alert('Please finish editing the current cell first.');
+                          return;
+                        }
+                        handleAddRowDirect();
+                      }}
+                      disabled={editingCell !== null}
+                    >
+                      <Image src={libraryAssetTableAddIcon}
+                        alt="Add new asset"
+                        width={16} height={16} className="icon-16"
+                      />
+                    </button>
+                    <button
+                      className={styles.aiAddButton}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        void handleGenerateAiRows();
+                      }}
+                      disabled={editingCell !== null || isGeneratingAiRows || isSaving}
+                      title="Generate rows with AI"
+                      aria-label="Generate rows with AI"
+                    >
+                      AI
+                    </button>
+                  </div>
                 </td>
                 {activeProperties.map((property) => (
                   <td key={property.id} className={styles.cell}></td>
@@ -1994,12 +2161,19 @@ export function LibraryAssetsTable({
           setBatchEditMenuPosition(null);
           setClearContentsConfirmVisible(true);
         }}
+        showAiPredictNext={aiPredict.showAiPredictNext}
+        onAiPredictNext={() => {
+          setBatchEditMenuVisible(false);
+          setBatchEditMenuPosition(null);
+          aiPredict.openModal();
+        }}
         onDeleteRow={() => {
           setBatchEditMenuVisible(false);
           setBatchEditMenuPosition(null);
           setDeleteRowConfirmVisible(true);
         }}
       />
+      <AiPredictModal {...aiPredict.modal} />
       <TableToast message={toastMessage?.message ?? null} type={toastMessage?.type ?? 'default'} />
       <DeleteAssetModal
         open={deleteConfirmVisible}

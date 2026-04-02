@@ -14,6 +14,8 @@ export type BatchEditMenuProps = {
   onInsertRowBelow: () => void;
   onClearContents: () => void;
   onDeleteRow: () => void;
+  showAiPredictNext?: boolean;
+  onAiPredictNext?: () => void;
 };
 
 const hoverBg = (el: HTMLElement, bg: string) => {
@@ -34,6 +36,8 @@ export function BatchEditMenu({
   onInsertRowBelow,
   onClearContents,
   onDeleteRow,
+  showAiPredictNext = false,
+  onAiPredictNext,
 }: BatchEditMenuProps) {
   if (!visible || typeof document === 'undefined') return null;
 
@@ -112,6 +116,16 @@ export function BatchEditMenu({
       >
         <span className={styles.batchEditMenuText}>Clear contents</span>
       </div>
+      {showAiPredictNext && onAiPredictNext && (
+        <div
+          className={styles.batchEditMenuItem}
+          onMouseEnter={(e) => hoverBg(e.currentTarget, '#f3f4f6')}
+          onMouseLeave={(e) => hoverReset(e.currentTarget)}
+          onClick={onAiPredictNext}
+        >
+          <span className={styles.batchEditMenuText}>AI Predict Next...</span>
+        </div>
+      )}
 
       <div className={styles.batchEditMenuDivider} />
 

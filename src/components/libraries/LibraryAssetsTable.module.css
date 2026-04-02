@@ -1323,8 +1323,8 @@ td.cellCopy.copyBorderRight:hover {
   align-items: center;
   justify-content: center;
   transition: opacity 0.2s;
-  width: 100%;
-  height: 100%;
+  width: 20px;
+  height: 20px;
 }
 
 .addButton:hover {
@@ -1342,6 +1342,29 @@ td.cellCopy.copyBorderRight:hover {
 
 .addButton:disabled:hover {
   opacity: 0.3;
+}
+
+.addButtonGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.aiAddButton {
+  border: 1px solid #0b99ff;
+  color: #0b99ff;
+  background: #eef7ff;
+  border-radius: 10px;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 600;
+  padding: 2px 6px;
+  cursor: pointer;
+}
+
+.aiAddButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* Modal styles */
