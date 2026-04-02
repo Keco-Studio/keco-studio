@@ -327,12 +327,14 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
               Duplicate
             </button>
           )}
-          <button
-            className={styles.menuItem}
-            onClick={() => handleAction('move-to')}
-          >
-            Move to...
-          </button>
+          {(userRole === 'admin' || userRole === 'editor') && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('move-to')}
+            >
+              Move to...
+            </button>
+          )}
           {showDeleteButton && (
             <>
               <div className={styles.separator} />
