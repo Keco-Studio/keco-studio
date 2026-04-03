@@ -9,6 +9,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'settings',
   'members',
   'projects',
+  'battle-simulator',
 ] as const;
 
 export type RouteParamsResult = {
@@ -25,7 +26,20 @@ export function parseRouteParams(
   _params?: Record<string, string | string[] | undefined>
 ): RouteParamsResult {
   const parts = pathname.split('/').filter(Boolean);
-  const projectId = parts[0] && parts[0] !== 'projects' ? parts[0] : null;
+  
+  // 根路径特殊页面 (没有项目上下文的路由)
+  if (parts.length === 1 && SPECIAL_ROUTE_SEGMENTS.includes(parts[0] as (typeof SPECIAL_ROUTE_SEGMENTS)[number])) {
+    return {
+      projectId: null,
+      libraryId: null,
+      folderId: null,
+      assetId: null,
+      isPredefinePage: false,
+      isLibraryPage: false,
+    };
+  }
+  
+  const projectId = parts[0] && parts[0] !== 'projects' && parts[0] !== 'battle-simulator' ? parts[0] : null;
   let libraryId: string | null = null;
   let folderId: string | null = null;
   let isPredefinePage = false;
