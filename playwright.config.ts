@@ -21,6 +21,12 @@ dotenv.config({
 
 export default defineConfig({
   testDir: './tests',
+  /**
+   * Only run Playwright E2E specs. Unit tests under tests/unit (e.g. *.test.ts for Jest)
+   * must not match Playwright's default *test.ts pattern — they use describe/it globals
+   * from Jest, not @playwright/test.
+   */
+  testMatch: 'e2e/**/*.spec.ts',
   /* Run tests in files in parallel */
   fullyParallel: true, // Enable parallel execution for better performance
   /* Fail the build on CI if you accidentally left test.only in the source code. */

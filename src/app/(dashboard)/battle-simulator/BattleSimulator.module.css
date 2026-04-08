@@ -1,0 +1,428 @@
+/**
+ * Battle Simulator Styles
+ */
+
+/* Main Layout */
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.headerTitle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.headerIcon {
+  font-size: 24px;
+}
+
+.mainContent {
+  display: flex;
+  flex: 1;
+  gap: 24px;
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* Config Panel */
+.configPanel {
+  width: 360px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.configCard {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.configCardTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.playerIcon {
+  color: #1890ff;
+}
+
+.monsterIcon {
+  color: #ff4d4f;
+}
+
+/* Stats Input */
+.statsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.statItemFull {
+  grid-column: 1 / -1;
+}
+
+.statLabel {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.nameInput {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #d9d9d9;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: border-color 0.2s;
+}
+
+.nameInput:focus {
+  border-color: #1890ff;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.1);
+}
+
+/* Import Section */
+.importSection {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed #d9d9d9;
+}
+
+.importTitle {
+  font-size: 13px;
+  color: #595959;
+  margin-bottom: 12px;
+}
+
+.mappingGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mappingItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mappingField {
+  flex: 1;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.monstersPreview {
+  margin-top: 12px;
+  max-height: 120px;
+  overflow-y: auto;
+  background: #fafafa;
+  border-radius: 4px;
+  padding: 8px;
+}
+
+.monsterPreviewItem {
+  font-size: 12px;
+  color: #595959;
+  padding: 4px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.monsterPreviewItem:last-child {
+  border-bottom: none;
+}
+
+/* Action Buttons */
+.actionButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.actionButton {
+  height: 40px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.batchControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.progressSection {
+  margin-top: 8px;
+}
+
+/* Results Panel */
+.resultsPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+
+/* Stats Cards */
+.statsCardsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.statCard {
+  background: #fff;
+  border-radius: 8px;
+  padding: 16px;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.statCardValue {
+  font-size: 24px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 4px;
+}
+
+.statCardLabel {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.statCardHighlight {
+  background: linear-gradient(135deg, #1890ff 0%, #0958d9 100%);
+  color: #fff;
+}
+
+.statCardHighlight .statCardLabel {
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Difficulty Chart */
+.difficultyCard {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.difficultyCardTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+}
+
+.difficultyBars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.difficultyBar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.difficultyLabel {
+  width: 60px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #595959;
+}
+
+.difficultyBarTrack {
+  flex: 1;
+  height: 24px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.difficultyBarFill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  display: flex;
+  align-items: center;
+  padding-left: 8px;
+  min-width: 40px;
+}
+
+.difficultyBarText {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.difficultyPercent {
+  width: 50px;
+  text-align: right;
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+/* Battle Log */
+.battleLogCard {
+  background: #fff;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.battleLogTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+}
+
+.battleLogContent {
+  max-height: 300px;
+  overflow-y: auto;
+  background: #1e1e1e;
+  border-radius: 6px;
+  padding: 12px;
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.battleLogEmpty {
+  text-align: center;
+  color: #8c8c8c;
+  padding: 40px 20px;
+}
+
+.battleLogEmptyIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+  opacity: 0.5;
+}
+
+.battleLogLine {
+  color: #d4d4d4;
+  margin: 2px 0;
+}
+
+.battleLogTurn {
+  color: #569cd6;
+}
+
+.battleLogPlayer {
+  color: #4ec9b0;
+}
+
+.battleLogMonster {
+  color: #ce9178;
+}
+
+.battleLogDamage {
+  color: #ce9178;
+}
+
+.battleLogResult {
+  color: #dcdcaa;
+  font-weight: 600;
+  margin-top: 8px;
+}
+
+/* Empty State */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  background: #fff;
+  border-radius: 8px;
+  text-align: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.emptyStateIcon {
+  font-size: 64px;
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+
+.emptyStateTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 8px;
+}
+
+.emptyStateDesc {
+  font-size: 14px;
+  color: #8c8c8c;
+}
+
+/* Progress */
+.progressSection {
+  margin-top: 16px;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .mainContent {
+    flex-direction: column;
+  }
+
+  .configPanel {
+    width: 100%;
+  }
+
+  .statsCardsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .mainContent {
+    padding: 12px;
+  }
+
+  .statsCardsGrid {
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+}

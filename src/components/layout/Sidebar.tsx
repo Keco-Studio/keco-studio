@@ -38,6 +38,7 @@ import { useSidebarContextMenu } from "./hooks/useSidebarContextMenu";
 import { SidebarTreeView } from "./components/SidebarTreeView";
 import { SidebarProjectsList } from "./components/SidebarProjectsList";
 import { SidebarLibrariesSection } from "./components/SidebarLibrariesSection";
+import { SidebarBattleSimulatorEntry } from "./components/SidebarBattleSimulatorEntry";
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ContextMenu } from "./ContextMenu";
@@ -1035,6 +1036,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       </div> */}
 
       <div className={styles.content}>
+        {/* 战斗模拟器入口 */}
+        <SidebarBattleSimulatorEntry />
+
         <SidebarProjectsList
           projects={projects}
           loadingProjects={loadingProjects}
