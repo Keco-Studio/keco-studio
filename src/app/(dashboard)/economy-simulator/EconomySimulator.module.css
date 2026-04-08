@@ -1,0 +1,391 @@
+/**
+ * 经济模拟系统样式 - 自然简约风格
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #fafaf8;
+}
+
+/* 顶部导航 */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 32px;
+  background: #ffffff;
+  border-bottom: 1px solid #eaeaeb;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.headerIcon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #f7f5f0 0%, #eeebe3 100%);
+  border-radius: 10px;
+  font-size: 22px;
+  color: #8b7355;
+}
+
+.headerTitle h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2d2a26;
+  letter-spacing: -0.02em;
+}
+
+.headerTitle p {
+  margin: 3px 0 0 0;
+  font-size: 12px;
+  color: #9c9890;
+  font-weight: 400;
+}
+
+/* 主内容区 */
+.mainContent {
+  flex: 1;
+  padding: 28px 32px;
+  display: flex;
+  gap: 24px;
+}
+
+/* 侧边导航 */
+.sidebar {
+  width: 200px;
+  flex-shrink: 0;
+}
+
+.sidebarTitle {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #b5b0a8;
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
+.moduleNav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.moduleItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #5c5852;
+  font-size: 13px;
+  transition: all 0.15s ease;
+  position: relative;
+}
+
+.moduleItem:hover {
+  background: #f3f1eb;
+  color: #2d2a26;
+}
+
+.moduleItem::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 0;
+  background: var(--module-color, #8b7355);
+  border-radius: 0 2px 2px 0;
+  transition: height 0.15s ease;
+}
+
+.moduleItem:hover::before {
+  height: 20px;
+}
+
+.moduleIcon {
+  font-size: 16px;
+  opacity: 0.85;
+}
+
+.moduleText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.moduleNameCn {
+  font-weight: 500;
+  line-height: 1.3;
+}
+
+.moduleNameEn {
+  font-size: 11px;
+  color: #a8a49c;
+}
+
+/* 内容区域 */
+.content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* 系统介绍卡片 */
+.introCard {
+  background: linear-gradient(135deg, #fdfcfa 0%, #f8f6f1 100%);
+  border: 1px solid #e8e4db !important;
+  border-radius: 12px !important;
+  padding: 20px 24px !important;
+}
+
+.introHeader {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.introIcon {
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+}
+
+.introTitle h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #2d2a26;
+}
+
+.introTitle p {
+  margin: 2px 0 0 0;
+  font-size: 11px;
+  color: #9c9890;
+}
+
+.introDesc {
+  margin: 0;
+  font-size: 13px;
+  color: #6b6560;
+  line-height: 1.6;
+}
+
+/* 统计卡片网格 */
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.statCard {
+  background: #ffffff;
+  border: 1px solid #eaeaeb !important;
+  border-radius: 10px !important;
+  padding: 16px 20px !important;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.statCard:hover {
+  border-color: #d4cfc6 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.statValue {
+  font-size: 26px;
+  font-weight: 700;
+  color: #2d2a26;
+  line-height: 1.2;
+  margin-bottom: 6px;
+}
+
+.statLabel {
+  font-size: 11px;
+  color: #9c9890;
+  line-height: 1.4;
+}
+
+/* 模块卡片网格 */
+.moduleGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.moduleCard {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 18px;
+  background: #ffffff;
+  border: 1px solid #eaeaeb;
+  border-radius: 10px;
+  text-decoration: none;
+  transition: all 0.2s ease;
+}
+
+.moduleCard:hover {
+  border-color: #d4cfc6;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+  transform: translateY(-1px);
+}
+
+.moduleCardIcon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 18px;
+  flex-shrink: 0;
+  opacity: 0.9;
+}
+
+.moduleCardContent {
+  flex: 1;
+  min-width: 0;
+}
+
+.moduleCardTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2d2a26;
+  margin-bottom: 3px;
+}
+
+.moduleCardDesc {
+  font-size: 11px;
+  color: #9c9890;
+  line-height: 1.4;
+}
+
+/* 系统说明卡片 */
+.infoCard {
+  background: #ffffff !important;
+  border: 1px solid #eaeaeb !important;
+  border-radius: 10px !important;
+  padding: 20px 24px !important;
+}
+
+.infoTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: #2d2a26;
+  margin: 0 0 14px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.infoContent {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px 24px;
+}
+
+.infoContent > p {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  color: #6b6560;
+  line-height: 1.6;
+  grid-column: 1 / -1;
+}
+
+.infoList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: contents;
+}
+
+.infoList li {
+  font-size: 12px;
+  color: #5c5852;
+  line-height: 1.5;
+}
+
+.infoList li strong {
+  color: #2d2a26;
+  font-weight: 500;
+}
+
+/* 响应式设计 */
+@media (max-width: 1100px) {
+  .moduleGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 900px) {
+  .mainContent {
+    flex-direction: column;
+    padding: 20px;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+
+  .moduleNav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .moduleItem {
+    padding: 8px 12px;
+  }
+
+  .moduleItem::before {
+    display: none;
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .header {
+    padding: 16px 20px;
+  }
+
+  .mainContent {
+    padding: 16px;
+  }
+
+  .moduleGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .statsGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .infoContent {
+    grid-template-columns: 1fr;
+  }
+}

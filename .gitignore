@@ -17,6 +17,6 @@ Thumbs.db
 supabase_linux_amd64.tar.gz
 .gitignore
 .vercel
-
+.csv
 # TypeScript build info
 *.tsbuildinfo

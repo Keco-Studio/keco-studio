@@ -1,0 +1,211 @@
+/**
+ * 关卡系统样式
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: #f5f5f5;
+}
+
+/* 面包屑 */
+.breadcrumb {
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+/* 主内容 */
+.mainContent {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* 配置卡片 */
+.configCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.configCard :global(.ant-card-head) {
+  border-bottom: 1px solid #f0f0f0;
+  min-height: auto;
+  padding: 12px 16px;
+}
+
+.configCard :global(.ant-card-head-title) {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.configCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+/* 配置项 */
+.configSection {
+  margin-bottom: 16px;
+}
+
+.configSection:last-child {
+  margin-bottom: 0;
+}
+
+.configLabel {
+  display: block;
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-bottom: 6px;
+}
+
+/* 类型信息 */
+.typeInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #fafafa;
+  border-radius: 6px;
+}
+
+.typeStats {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* 操作按钮 */
+.actionButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* 配置信息 */
+.configInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: #595959;
+}
+
+/* 统计卡片 */
+.statCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.statCard :global(.ant-statistic-title) {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.statCard :global(.ant-statistic-content) {
+  font-size: 24px;
+}
+
+/* 结果卡片 */
+.resultCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.resultCard :global(.ant-card-head) {
+  border-bottom: 1px solid #f0f0f0;
+  min-height: auto;
+  padding: 12px 16px;
+}
+
+.resultCard :global(.ant-card-head-title) {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.resultCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.resultHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+}
+
+/* 收益项 */
+.rewardItem {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: linear-gradient(135deg, #fafafa 0%, #fff 100%);
+  border-radius: 8px;
+  border: 1px solid #f0f0f0;
+}
+
+.rewardIcon {
+  font-size: 24px;
+  color: #595959;
+}
+
+.rewardValue {
+  font-size: 20px;
+  font-weight: 700;
+  color: #262626;
+  line-height: 1.2;
+}
+
+.rewardLabel {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+/* 表格卡片 */
+.tableCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.tableCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.filterBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+/* 响应式 */
+@media (max-width: 1024px) {
+  .mainContent {
+    padding: 16px;
+  }
+
+  .filterBar {
+    flex-direction: column;
+    gap: 12px;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .mainContent :global(.ant-col) {
+    flex: 0 0 100%;
+    max-width: 100%;
+  }
+}
