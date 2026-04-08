@@ -1,8 +1,8 @@
 import type { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: '战斗模拟器 - Keco Studio',
-  description: 'PVE 回合制战斗模拟和难度评估工具',
+  title: 'Battle Simulator - Keco Studio',
+  description: 'PVE turn-based battle simulation and difficulty assessment tool',
 };
 
 export default function BattleSimulatorLayout({

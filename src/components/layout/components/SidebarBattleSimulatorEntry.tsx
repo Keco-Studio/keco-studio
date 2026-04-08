@@ -17,16 +17,16 @@ export function SidebarBattleSimulatorEntry() {
   return (
     <>
       <div className={styles.sectionTitle}>
-        <span>工具</span>
+        <span>Tools</span>
       </div>
       <div
         className={`${styles.item} ${styles.itemInactive}`}
         onClick={handleClick}
-        title="战斗模拟器 - PVE 回合制战斗模拟和难度评估"
+        title="Battle Simulator - PVE turn-based battle simulation and difficulty assessment"
         style={{ cursor: 'pointer' }}
       >
         <span style={{ fontSize: '18px', marginRight: '8px' }}>⚔️</span>
-        <span className={styles.itemText}>战斗模拟器</span>
+        <span className={styles.itemText}>Battle Simulator</span>
       </div>
     </>
   );
