@@ -86,6 +86,7 @@ export const AddNewRowForm: React.FC<AddNewRowFormProps> = ({
                   onAvatarMouseEnter={handleAvatarMouseEnter}
                   onAvatarMouseLeave={handleAvatarMouseLeave}
                   onOpenReferenceModal={handleOpenReferenceModal}
+                  inTableForm
                 />
               </div>
             </td>

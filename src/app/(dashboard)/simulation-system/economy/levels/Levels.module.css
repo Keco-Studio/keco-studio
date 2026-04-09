@@ -1,0 +1,305 @@
+/**
+ * 关卡系统样式 - Battle Simulator 风格
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background-color: #f5f5f5;
+}
+
+.breadcrumb {
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.breadcrumb :global(.ant-breadcrumb-link) {
+  color: #595959;
+}
+
+.breadcrumb :global(.ant-breadcrumb-link a) {
+  color: #1890ff;
+  text-decoration: none;
+}
+
+.breadcrumb :global(.ant-breadcrumb-link a:hover) {
+  color: #40a9ff;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerIcon {
+  font-size: 28px;
+}
+
+.headerTitle h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.headerTitle p {
+  margin: 2px 0 0 0;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.backButton {
+  padding: 8px 16px;
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  color: #595959;
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.backButton:hover {
+  color: #1890ff;
+  border-color: #1890ff;
+}
+
+.mainContent {
+  flex: 1;
+  padding: 24px;
+}
+
+.calcContent {
+  display: flex;
+  gap: 24px;
+}
+
+.calcPanel {
+  width: 360px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.configCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.configCard :global(.ant-card-head) {
+  border-bottom: 1px solid #f0f0f0;
+  min-height: auto;
+  padding: 12px 16px;
+}
+
+.configCard :global(.ant-card-head-title) {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.configCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.inputItem {
+  margin-bottom: 16px;
+}
+
+.inputItem:last-child {
+  margin-bottom: 0;
+}
+
+.inputItem label {
+  display: block;
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-bottom: 6px;
+}
+
+.sliderItem {
+  margin-bottom: 20px;
+}
+
+.sliderItem:last-child {
+  margin-bottom: 0;
+}
+
+.sliderLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #595959;
+}
+
+.sliderLabel strong {
+  font-size: 14px;
+  color: #1890ff;
+}
+
+.calcResults {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.resultCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.resultCard :global(.ant-card-head) {
+  border-bottom: 1px solid #f0f0f0;
+  min-height: auto;
+  padding: 12px 16px;
+}
+
+.resultCard :global(.ant-card-head-title) {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.resultCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.rewardHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+}
+
+.rewardIcon {
+  color: #fa8c16;
+  font-size: 18px;
+}
+
+.expIcon {
+  color: #1890ff;
+  font-size: 18px;
+}
+
+.goldIcon {
+  color: #722ed1;
+  font-size: 18px;
+}
+
+.rewardGrid {
+  display: flex;
+  gap: 16px;
+}
+
+.rewardItem {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.rewardContent {
+  flex: 1;
+}
+
+.rewardValue {
+  font-size: 20px;
+  font-weight: 700;
+  color: #262626;
+  line-height: 1.2;
+}
+
+.rewardLabel {
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-top: 2px;
+}
+
+.summaryCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.summaryCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.summaryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+}
+
+.summaryGrid {
+  display: flex;
+  gap: 16px;
+}
+
+.summaryItem {
+  flex: 1;
+  text-align: center;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.summaryValue {
+  font-size: 24px;
+  font-weight: 700;
+  color: #262626;
+  line-height: 1.2;
+}
+
+.summaryLabel {
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-top: 4px;
+}
+
+.tableCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.tableCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+@media (max-width: 1024px) {
+  .calcContent {
+    flex-direction: column;
+  }
+
+  .calcPanel {
+    width: 100%;
+  }
+}

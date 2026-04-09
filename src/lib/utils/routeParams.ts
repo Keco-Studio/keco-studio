@@ -11,6 +11,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'projects',
   'battle-simulator',
   'economy-simulator',
+  'simulation-system',
 ] as const;
 
 export type RouteParamsResult = {
@@ -40,8 +41,44 @@ export function parseRouteParams(
     };
   }
 
-  // economy-simulator 及其子路由也是特殊页面
-  if (parts[0] === 'economy-simulator') {
+  // simulation-system 及其子路由也是特殊页面（不涉及项目授权）- 优化：提前返回
+  if (parts[0] === 'simulation-system') {
+    // economy 子路由
+    if (parts[1] === 'economy') {
+      const subPage = parts[2];
+      // 直接子页面（概览等）
+      if (!subPage || subPage === 'overview') {
+        return {
+          projectId: null,
+          libraryId: null,
+          folderId: null,
+          assetId: null,
+          isPredefinePage: true,
+          isLibraryPage: false,
+        };
+      }
+      // 子模块页面
+      return {
+        projectId: null,
+        libraryId: null,
+        folderId: null,
+        assetId: null,
+        isPredefinePage: true,
+        isLibraryPage: false,
+      };
+    }
+    // battle 子路由
+    if (parts[1] === 'battle') {
+      return {
+        projectId: null,
+        libraryId: null,
+        folderId: null,
+        assetId: null,
+        isPredefinePage: true,
+        isLibraryPage: false,
+      };
+    }
+    // simulation-system 自身
     return {
       projectId: null,
       libraryId: null,
@@ -52,7 +89,7 @@ export function parseRouteParams(
     };
   }
 
-  const projectId = parts[0] && parts[0] !== 'projects' && parts[0] !== 'battle-simulator' ? parts[0] : null;
+  const projectId = parts[0] && parts[0] !== 'projects' ? parts[0] : null;
   let libraryId: string | null = null;
   let folderId: string | null = null;
   let isPredefinePage = false;
