@@ -158,6 +158,7 @@
   color: var(--text-primary);
   transition: color 0.3s ease;
 }
+
 .playerCard.inCombat .configCardTitle {
   color: var(--damage-color);
 }
@@ -172,6 +173,7 @@
   color: var(--text-primary);
   transition: color 0.3s ease;
 }
+
 .monsterCard.inCombat .configCardTitle {
   color: var(--damage-color);
 }

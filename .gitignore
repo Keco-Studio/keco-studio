@@ -20,3 +20,4 @@ supabase_linux_amd64.tar.gz
 .csv
 # TypeScript build info
 *.tsbuildinfo
+.md
