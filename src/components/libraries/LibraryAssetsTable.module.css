@@ -67,7 +67,8 @@
 
 .tableShell {
   margin-top: 1.5rem;
-  margin-bottom: 260px; /* Ensure context menu has enough bottom space */
+  margin-bottom: 260px;
+  /* Ensure context menu has enough bottom space */
   border-radius: 0.5rem;
   border: 1px solid #0000003D;
   background: #ffffff;
@@ -262,7 +263,8 @@
 }
 
 .headerCell {
-  height: 32px;              /* match body row height (32px) */
+  height: 32px;
+  /* match body row height (32px) */
   padding: 0 0.5rem;
   font-weight: 600;
   border-bottom: 1px solid #e2e8f0;
@@ -317,14 +319,14 @@
   width: 100%;
 }
 
-.propertyHeaderMain{
+.propertyHeaderMain {
   display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
 }
 
-.properIconContent{
+.properIconContent {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -337,7 +339,7 @@
   white-space: nowrap;
 }
 
-.propertyHeaderTypeIcon{
+.propertyHeaderTypeIcon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
@@ -460,7 +462,8 @@
 .cellEditing {
   background-color: transparent !important;
   position: relative;
-  z-index: 2; /* Higher than selected state */
+  z-index: 2;
+  /* Higher than selected state */
 }
 
 .cellEditing:hover {
@@ -1447,11 +1450,14 @@ td.cellCopy.copyBorderRight:hover {
   display: flex;
   align-items: center;
   gap: 0.25rem;
-  width: 3.25rem;   /* 52px, slightly larger than 46px */
-  height: 1.5rem;   /* 24px */
+  width: 3.25rem;
+  /* 52px, slightly larger than 46px */
+  height: 1.5rem;
+  /* 24px */
   background: #EEEEEE;
   border-radius: 5px;
-  padding: 0.0625rem; /* 1px: centers 22px tiles in 24px container */
+  padding: 0.0625rem;
+  /* 1px: centers 22px tiles in 24px container */
   cursor: pointer;
   box-sizing: border-box;
 }
@@ -1467,7 +1473,8 @@ td.cellCopy.copyBorderRight:hover {
 .referenceAvatarStackItem {
   position: relative;
   flex-shrink: 0;
-  width: 1.375rem; /* match .referenceIconTile */
+  width: 1.375rem;
+  /* match .referenceIconTile */
   height: 1.375rem;
   display: inline-flex;
   align-items: center;
@@ -1484,7 +1491,8 @@ td.cellCopy.copyBorderRight:hover {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 1.375rem;  /* 22px: fits 16px icon + padding */
+  width: 1.375rem;
+  /* 22px: fits 16px icon + padding */
   height: 1.375rem;
   border-radius: 0.5rem;
   background: #EEEEEE;
@@ -1835,9 +1843,12 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 @keyframes realtimePulse {
-  0%, 100% {
+
+  0%,
+  100% {
     background-color: inherit;
   }
+
   50% {
     background-color: rgba(82, 196, 26, 0.15);
   }
@@ -1879,9 +1890,12 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 @keyframes conflictHighlight {
-  0%, 100% {
+
+  0%,
+  100% {
     background-color: rgba(250, 173, 20, 0.1);
   }
+
   50% {
     background-color: rgba(250, 173, 20, 0.25);
   }
@@ -1899,10 +1913,12 @@ td.cellCopy.copyBorderRight:hover {
   right: -1px;
   z-index: 5;
   display: flex;
-  flex-direction: row-reverse; /* Right to left: first user on right */
+  flex-direction: row-reverse;
+  /* Right to left: first user on right */
   align-items: center;
   gap: 0;
-  pointer-events: none; /* Allow clicks to pass through */
+  pointer-events: none;
+  /* Allow clicks to pass through */
 }
 
 .cellPresenceAvatar {
@@ -1917,7 +1933,8 @@ td.cellCopy.copyBorderRight:hover {
   color: white;
   border: none;
   box-shadow: none;
-  pointer-events: auto; /* But avatars themselves can be hovered */
+  pointer-events: auto;
+  /* But avatars themselves can be hovered */
   transition: transform 0.15s ease;
   flex-shrink: 0;
 }
@@ -2004,11 +2021,15 @@ td.cellCopy.copyBorderRight:hover {
 
 .confirmDialog {
   background: #ffffff;
-  width: 38.5rem; /* 616px */
-  height: 12.75rem; /* 204px */
+  width: 38.5rem;
+  /* 616px */
+  height: 12.75rem;
+  /* 204px */
   max-width: calc(100vw - 2rem);
-  border-radius: 1rem; /* 16px */
-  border: 0.0625rem solid rgba(0, 0, 0, 0.17); /* 1px */
+  border-radius: 1rem;
+  /* 16px */
+  border: 0.0625rem solid rgba(0, 0, 0, 0.17);
+  /* 1px */
   box-shadow: none;
   padding: 0;
   box-sizing: border-box;
@@ -2021,7 +2042,8 @@ td.cellCopy.copyBorderRight:hover {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 3.6875rem; /* 59px */
+  height: 3.6875rem;
+  /* 59px */
   padding: 0 1rem;
   border-bottom: 0.0625rem solid #e2e8f0;
 }
@@ -2126,6 +2148,7 @@ td.cellCopy.copyBorderRight:hover {
     opacity: 0;
     transform: translateX(-50%) translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateX(-50%) translateY(0);
@@ -2338,13 +2361,23 @@ td.cellCopy.copyBorderRight:hover {
 }
 
 @keyframes detailDrawerFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes detailDrawerSlideIn {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+  from {
+    transform: translateX(100%);
+  }
+
+  to {
+    transform: translateX(0);
+  }
 }
 
 .detailDrawerHeader {
@@ -2433,8 +2466,8 @@ td.cellCopy.copyBorderRight:hover {
   border-radius: 8px;
   padding: 2px 8px;
 } */
-.detailDrawerTypeBadge{
-  background-color: rgba(238, 238, 238, 1) ;
+.detailDrawerTypeBadge {
+  background-color: rgba(238, 238, 238, 1);
   border-radius: 5px;
   padding: 2px 8px;
 }
@@ -2479,16 +2512,15 @@ td.cellCopy.copyBorderRight:hover {
   margin: 0;
 }
 
-.addSectionButton{
+.addSectionButton {
   width: 24px;
   height: 24px;
   border-radius: 6px;
   font-size: 16px;
-  border: 1px solid  rgba(188, 188, 188, 1);
+  border: 1px solid rgba(188, 188, 188, 1);
   background-color: #ffffff;
   margin-left: 8px;
   display: flex;
   align-items: center;
   justify-content: center;
 }
-

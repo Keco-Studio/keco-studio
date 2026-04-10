@@ -204,7 +204,7 @@ export default function SimulationSystemPage() {
 
             {/* 经济模拟 */}
             <Link
-              href="/simulation-system/economy/characters"
+              href="/simulation-system/economy/overview"
               className={styles.systemCard}
             >
               <div
