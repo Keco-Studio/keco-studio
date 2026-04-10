@@ -1,0 +1,13 @@
+﻿装备ID,装备名,装备资质,装备属性,获取方式
+Equip_ID,Equip_name,Equip_int,Equip_prop,Equip_obtain
+200001,血战利斧,10,characters_atk+1950,神装商店
+200002,血战长靴,10,characters_life+37500,神装商店
+200003,血战锁甲,10,characters_def+975,神装商店
+200004,血战头盔,10,characters_mdf+975,神装商店
+200005,烈焰弓,8,characters_atk+600,神装商店
+200006,烈焰鞋,8,characters_life+12000,神装商店
+200007,烈焰甲,8,characters_def+300,神装商店
+200008,烈焰盔,8,characters_mdf+300,神装商店
+200009,百炼刀,6,characters_atk+200,关卡获取
+200010,百炼甲,6,characters_life+100,关卡获取
+200011,百炼盔,6,characters_def+100,关卡获取

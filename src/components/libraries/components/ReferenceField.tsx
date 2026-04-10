@@ -26,6 +26,8 @@ export type ReferenceFieldProps = {
   onOpenReferenceModal: (property: PropertyConfig, currentValue: unknown, rowId: string) => void;
   onFocus?: () => void;
   onBlur?: () => void;
+  /** When true (e.g. in AddNewRowForm), the empty '+' button has no border-radius to match table cells */
+  inTableForm?: boolean;
 };
 
 export const ReferenceField = React.memo<ReferenceFieldProps>(function ReferenceField({
@@ -41,6 +43,7 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
   onOpenReferenceModal,
   onFocus,
   onBlur,
+  inTableForm = false,
 }) {
   const hasValues = assetIds.length > 0;
   const selectedAssetIds = assetIds.slice(0, 5);
@@ -55,12 +58,12 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
   });
   const getAssetName = (id: string) => firstSelectionById.get(id)?.displayValue || assetNamesCache[id] || id;
 
-  // Avoid squeezing: when showing 2 avatars, expand the pill width by one tile.
+  // Expand pill so each avatar tile (1.375rem) fits; base 3.25rem covers 1 avatar + "+" tile.
   const pillWidthStyle: React.CSSProperties | undefined =
     selectedAssetIds.length <= 1
       ? undefined
       : {
-          width: 'calc(3.25rem + 1.375rem)',
+          width: `calc(3.25rem + ${selectedAssetIds.length - 1} * 1.375rem)`,
         };
 
   const setAvatarRef = useCallback(
@@ -174,7 +177,7 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
         </div>
       ) : (
         <div
-          className={`${styles.referenceIconTile} ${styles.referenceArrowTile} ${styles.referenceSingleIcon}`}
+          className={`${styles.referenceIconTile} ${styles.referenceArrowTile} ${styles.referenceSingleIcon}${inTableForm ? ` ${styles.referenceSingleIconNoRadius}` : ''}`}
           onClick={handleClick}
           onMouseDown={handleMouseDown}
           onDoubleClick={handleDoubleClick}

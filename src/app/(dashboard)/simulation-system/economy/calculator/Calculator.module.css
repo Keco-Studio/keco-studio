@@ -1,0 +1,412 @@
+/**
+ * 综合计算器样式 - Battle Simulator 风格
+ */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  background-color: #f5f5f5;
+}
+
+.breadcrumb {
+  padding: 12px 24px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.breadcrumb :global(.ant-breadcrumb-link) {
+  color: #595959;
+}
+
+.breadcrumb :global(.ant-breadcrumb-link a) {
+  color: #1890ff;
+  text-decoration: none;
+}
+
+.breadcrumb :global(.ant-breadcrumb-link a:hover) {
+  color: #40a9ff;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerIcon {
+  font-size: 28px;
+}
+
+.headerTitle h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #262626;
+}
+
+.headerTitle p {
+  margin: 2px 0 0 0;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.backButton {
+  padding: 8px 16px;
+  background: #fff;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  color: #595959;
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.backButton:hover {
+  color: #1890ff;
+  border-color: #1890ff;
+}
+
+.mainContent {
+  flex: 1;
+  padding: 24px;
+}
+
+.calcContent {
+  display: flex;
+  gap: 24px;
+}
+
+.calcPanel {
+  width: 360px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.configCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.configCard :global(.ant-card-head) {
+  border-bottom: 1px solid #f0f0f0;
+  min-height: auto;
+  padding: 12px 16px;
+}
+
+.configCard :global(.ant-card-head-title) {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.configCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.inputItem {
+  margin-bottom: 16px;
+}
+
+.inputItem:last-child {
+  margin-bottom: 0;
+}
+
+.inputItem label {
+  display: block;
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-bottom: 6px;
+}
+
+/* 关卡选择信息 */
+.levelInfo {
+  margin-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+.sliderItem {
+  margin-bottom: 20px;
+}
+
+.sliderItem:last-child {
+  margin-bottom: 0;
+}
+
+.sliderLabel {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #595959;
+}
+
+.sliderLabel strong {
+  font-size: 14px;
+  color: #1890ff;
+}
+
+.calcResults {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.summaryCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.summaryCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.summaryHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+}
+
+.staminaNote {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+  font-size: 12px;
+  color: #8c8c8c;
+  text-align: center;
+}
+
+/* 图表卡片 */
+.chartCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.chartCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.chartHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+}
+
+.chartsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.chartsGrid4 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.chartItem {
+  min-height: 200px;
+}
+
+.chart {
+  width: 100%;
+  height: 200px;
+}
+
+/* 统计项 */
+.statItem {
+  text-align: center;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.statValue {
+  font-size: 24px;
+  font-weight: 700;
+  color: #262626;
+  line-height: 1.2;
+}
+
+.statLabel {
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-top: 4px;
+}
+
+.simCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.simCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.simHeader {
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+}
+
+.simItem {
+  text-align: center;
+  padding: 12px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.simValue {
+  font-size: 18px;
+  font-weight: 700;
+  color: #262626;
+  line-height: 1.2;
+}
+
+.simLabel {
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-top: 4px;
+}
+
+.simNote {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #f0f0f0;
+  font-size: 12px;
+  color: #8c8c8c;
+  text-align: center;
+}
+
+.detailCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.detailCard :global(.ant-card-head) {
+  border-bottom: 1px solid #f0f0f0;
+  min-height: auto;
+  padding: 12px 16px;
+}
+
+.detailCard :global(.ant-card-head-title) {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.detailCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+}
+
+.growthCard {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03), 0 2px 6px rgba(0, 0, 0, 0.02);
+}
+
+.growthCard :global(.ant-card-head) {
+  border-bottom: 1px solid #f0f0f0;
+  min-height: auto;
+  padding: 12px 16px;
+}
+
+.growthCard :global(.ant-card-head-title) {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.growthCard :global(.ant-card-body) {
+  padding: 16px;
+}
+
+.growthHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #262626;
+  margin-bottom: 16px;
+}
+
+.growthContent {
+  display: flex;
+  gap: 16px;
+}
+
+.growthItem {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: #fafafa;
+  border-radius: 8px;
+}
+
+.growthValue {
+  font-size: 24px;
+  font-weight: 700;
+  color: #262626;
+}
+
+.growthNote {
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+@media (max-width: 1024px) {
+  .calcContent {
+    flex-direction: column;
+  }
+
+  .calcPanel {
+    width: 100%;
+  }
+}
+
+@media (max-width: 768px) {
+  .growthContent {
+    flex-direction: column;
+  }
+}

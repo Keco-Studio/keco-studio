@@ -1,0 +1,874 @@
+/**
+ * Battle Simulator Styles
+ * 战斗系统样式 - 暗黑主题
+ */
+
+/* ==================== 变量定义 ==================== */
+:root {
+  /* 背景色 */
+  --bg-primary: #0d1117;
+  --bg-secondary: #161b22;
+  --bg-card: #21262d;
+  --bg-card-hover: #30363d;
+
+  /* 文字色 */
+  --text-primary: #e6edf3;
+  --text-secondary: #8b949e;
+  --text-muted: #6e7681;
+
+  /* 元素色 */
+  --element-fire: #ff6b35;
+  --element-water: #4dabf7;
+  --element-thunder: #ffd43b;
+  --element-grass: #51cf66;
+  --element-ice: #74c0fc;
+
+  /* 功能色 */
+  --hp-color: #51cf66;
+  --hp-low-color: #ff6b6b;
+  --mp-color: #845ef7;
+  --damage-color: #ff6b6b;
+  --heal-color: #69db7c;
+
+  /* 状态色 */
+  --buff-color: #69db7c;
+  --debuff-color: #ff8787;
+  --reaction-color: #ffd43b;
+  --freeze-color: #74c0fc;
+
+  /* 边框色 */
+  --border-color: #30363d;
+  --border-accent: #58a6ff;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+/* ==================== 主容器 ==================== */
+.container {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* ==================== 头部 ==================== */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.headerIcon {
+  font-size: 28px;
+}
+
+.headerTitle h1 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+
+.headerTitle p {
+  margin: 3px 0 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 400;
+}
+
+.backButton {
+  padding: 8px 16px;
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.2s;
+  border: 1px solid var(--border-color);
+}
+
+.backButton:hover {
+  background: var(--bg-card-hover);
+  color: var(--text-primary);
+  border-color: var(--border-accent);
+}
+
+/* ==================== 主内容区 ==================== */
+.mainContent {
+  display: flex;
+  flex: 1;
+  gap: 20px;
+  padding: 20px;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ==================== 属性面板 ==================== */
+.configPanel {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.configCard {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+}
+
+.configCardTitle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.playerIcon {
+  color: var(--element-water);
+  font-size: 18px;
+}
+
+/* 玩家属性颜色 - 战前白色/战斗后红色 */
+.playerCard .configCardTitle {
+  color: var(--text-primary);
+  transition: color 0.3s ease;
+}
+
+.playerCard.inCombat .configCardTitle {
+  color: var(--damage-color);
+}
+
+.monsterIcon {
+  color: var(--element-fire);
+  font-size: 18px;
+}
+
+/* 敌人属性颜色 - 战前白色/战斗后红色 */
+.monsterCard .configCardTitle {
+  color: var(--text-primary);
+  transition: color 0.3s ease;
+}
+
+.monsterCard.inCombat .configCardTitle {
+  color: var(--damage-color);
+}
+
+/* 属性网格 */
+.statsGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.statItemFull {
+  grid-column: 1 / -1;
+}
+
+.statLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.nameInput {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  transition: all 0.2s;
+}
+
+.nameInput:focus {
+  border-color: var(--border-accent);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(88, 166, 255, 0.15);
+}
+
+/* 属性输入框 */
+.statInput {
+  width: 100%;
+}
+
+/* MP 输入框特殊样式 */
+.mpSection {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.mpSection .statItem {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 元素预设 */
+.elementPreset {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.elementPresetTitle {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.elementButtons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.elementButton {
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.elementButton:hover {
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
+.elementButtonActive {
+  border-color: var(--border-accent);
+  background: rgba(88, 166, 255, 0.1);
+  color: var(--border-accent);
+}
+
+/* ==================== 战斗舞台 ==================== */
+.battleStage {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+/* 战斗者状态卡片 */
+.combatantStatus {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+}
+
+.statusHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.statusName {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.statusTurn {
+  font-size: 12px;
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border-radius: 12px;
+}
+
+/* 进度条 */
+.progressBars {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.progressItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progressLabel {
+  width: 30px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.progressBar {
+  flex: 1;
+  height: 16px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 8px;
+  transition: width 0.3s ease;
+}
+
+.hpFill {
+  background: linear-gradient(90deg, var(--hp-color) 0%, #3fb950 100%);
+}
+
+.hpFillLow {
+  background: linear-gradient(90deg, var(--hp-low-color) 0%, #ff4545 100%);
+}
+
+.mpFill {
+  background: linear-gradient(90deg, var(--mp-color) 0%, #9d7dea 100%);
+}
+
+.progressValue {
+  width: 80px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+/* 状态标签 */
+.statusTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.statusTag {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+}
+
+.elementTag {
+  border-color: currentColor;
+}
+
+.dotTag {
+  color: var(--element-fire);
+  border-color: var(--element-fire);
+}
+
+.buffTag {
+  color: var(--buff-color);
+  border-color: var(--buff-color);
+}
+
+.debuffTag {
+  color: var(--debuff-color);
+  border-color: var(--debuff-color);
+}
+
+.freezeTag {
+  color: var(--freeze-color);
+  border-color: var(--freeze-color);
+  background: rgba(116, 192, 252, 0.1);
+}
+
+/* VS 分隔器 */
+.vsDivider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.vsText {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+/* ==================== 技能选择器 ==================== */
+.skillSelector {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+}
+
+.skillSelectorTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 12px;
+}
+
+/* 元素标签 */
+.elementTabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.elementTab {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.elementTab:hover {
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
+.elementTabActive {
+  border-color: var(--border-accent);
+  background: rgba(88, 166, 255, 0.1);
+  color: var(--border-accent);
+}
+
+.elementTabFire.active {
+  border-color: var(--element-fire);
+  background: rgba(255, 107, 53, 0.1);
+  color: var(--element-fire);
+}
+
+.elementTabWater.active {
+  border-color: var(--element-water);
+  background: rgba(77, 171, 247, 0.1);
+  color: var(--element-water);
+}
+
+.elementTabThunder.active {
+  border-color: var(--element-thunder);
+  background: rgba(255, 212, 59, 0.1);
+  color: var(--element-thunder);
+}
+
+.elementTabGrass.active {
+  border-color: var(--element-grass);
+  background: rgba(81, 207, 102, 0.1);
+  color: var(--element-grass);
+}
+
+.elementTabIce.active {
+  border-color: var(--element-ice);
+  background: rgba(116, 192, 252, 0.1);
+  color: var(--element-ice);
+}
+
+/* 技能网格 */
+.skillGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+/* 技能卡片 */
+.skillCard {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 14px;
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.skillCard:hover {
+  border-color: var(--border-accent);
+  background: var(--bg-card-hover);
+}
+
+.skillCardSelected {
+  border-color: var(--border-accent);
+  background: rgba(88, 166, 255, 0.1);
+  box-shadow: 0 0 0 2px rgba(88, 166, 255, 0.2);
+}
+
+.skillCardDisabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.skillCardCooldown {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.skillCardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 8px;
+}
+
+.skillName {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.skillMp {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mp-color);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.skillCardStats {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.skillDamage {
+  color: var(--damage-color);
+}
+
+.skillCooldown {
+  color: var(--text-muted);
+}
+
+.skillElement {
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.skillReaction {
+  font-size: 11px;
+  color: var(--reaction-color);
+  margin-top: 6px;
+}
+
+/* ==================== 战斗日志 ==================== */
+.battleLog {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-height: 300px;
+}
+
+.battleLogHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.battleLogTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.battleLogContent {
+  flex: 1;
+  overflow-y: auto;
+  background: #0d1117;
+  border-radius: 8px;
+  padding: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Monaco', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.battleLogLine {
+  padding: 2px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.battleLogLine:last-child {
+  border-bottom: none;
+}
+
+.logTurn {
+  color: #569cd6;
+  font-weight: 600;
+}
+
+.logActor {
+  font-weight: 600;
+}
+
+.logActorPlayer {
+  color: #4ec9b0;
+}
+
+.logActorMonster {
+  color: #ce9178;
+}
+
+.logDamage {
+  color: var(--damage-color);
+}
+
+.logHeal {
+  color: var(--heal-color);
+}
+
+.logMp {
+  color: var(--mp-color);
+}
+
+.logReaction {
+  color: var(--reaction-color);
+  font-weight: 600;
+}
+
+.logElement {
+  font-weight: 600;
+}
+
+.logStatus {
+  color: var(--text-secondary);
+}
+
+.logResult {
+  color: #dcdcaa;
+  font-weight: 700;
+  text-align: center;
+  padding: 10px 0;
+}
+
+/* ==================== 操作按钮 ==================== */
+.actionButtons {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.startButton {
+  flex: 1;
+  height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--element-grass) 0%, #3fb950 100%);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.startButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(81, 207, 102, 0.3);
+}
+
+.startButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.executeButton {
+  flex: 1;
+  height: 44px;
+  font-size: 15px;
+  font-weight: 600;
+  background: linear-gradient(135deg, var(--element-water) 0%, #339af0 100%);
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.executeButton:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(77, 171, 247, 0.3);
+}
+
+.executeButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.resetButton {
+  height: 44px;
+  padding: 0 20px;
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.resetButton:hover {
+  border-color: var(--border-accent);
+  color: var(--text-primary);
+}
+
+/* ==================== 结果展示 ==================== */
+.battleResult {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.resultIcon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.resultTitle {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.resultPlayerWin {
+  color: var(--hp-color);
+}
+
+.resultMonsterWin {
+  color: var(--damage-color);
+}
+
+.resultDraw {
+  color: var(--reaction-color);
+}
+
+.resultStats {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-top: 16px;
+}
+
+/* ==================== 空状态 ==================== */
+.emptyState {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  text-align: center;
+}
+
+.emptyStateIcon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+
+.emptyStateTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.emptyStateDesc {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+/* ==================== 响应式 ==================== */
+@media (max-width: 1200px) {
+  .mainContent {
+    flex-direction: column;
+  }
+
+  .configPanel {
+    width: 100%;
+  }
+
+  .skillGrid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 768px) {
+  .mainContent {
+    padding: 12px;
+  }
+
+  .header {
+    padding: 12px 16px;
+  }
+
+  .headerTitle h1 {
+    font-size: 16px;
+  }
+
+  .skillGrid {
+    grid-template-columns: 1fr 1fr;
+  }
+}

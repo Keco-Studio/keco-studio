@@ -1499,6 +1499,11 @@ td.cellCopy.copyBorderRight:hover {
   background: #EEEEEE;
 }
 
+/* When used inside AddNewRowForm: remove radius to match other table cells */
+.referenceSingleIconNoRadius {
+  border-radius: 0 !important;
+}
+
 .referenceSelectedAssetLeft .referenceDiamondIcon {
   flex-shrink: 0;
 }
