@@ -11,9 +11,6 @@ import styles from '../Sidebar.module.css';
 export function SidebarSimulationSystemEntry() {
   return (
     <>
-      <div className={styles.sectionTitle}>
-        <span>工具 / Tools</span>
-      </div>
       <Link
         href="/simulation-system"
         className={`${styles.item} ${styles.itemInactive}`}

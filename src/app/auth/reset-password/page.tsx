@@ -117,11 +117,8 @@ export default function ResetPasswordPage() {
         <header className={styles.header}>
           <div className={styles.headerLeft}>
             <div className={styles.headerLogo}>
-              <Image src={loginProductIcon} alt="Logo" width={32} height={32} className="icon-32" />
-              <div className={styles.headerBrand}>
-                <div className={styles.brandName}>Keco Studio</div>
-                <div className={styles.brandSlogan}>for game designers</div>
-              </div>
+              <Image src={loginProductIcon} alt="Logo" width={112} height={48} />
+              <div className={styles.brandSlogan}>for game designers</div>
             </div>
           </div>
           <div className={styles.headerRight}>
@@ -198,11 +195,8 @@ export default function ResetPasswordPage() {
       <header className={styles.header}>
         <div className={styles.headerLeft}>
           <div className={styles.headerLogo}>
-            <Image src={loginProductIcon} alt="Logo" width={32} height={32} className="icon-32" />
-            <div className={styles.headerBrand}>
-              <div className={styles.brandName}>Keco Studio</div>
-              <div className={styles.brandSlogan}>for game designers</div>
-            </div>
+            <Image src={loginProductIcon} alt="Logo" width={112} height={48} />
+            <div className={styles.brandSlogan}>for game designers</div>
           </div>
         </div>
         <div className={styles.headerRight}>

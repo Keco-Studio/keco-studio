@@ -41,6 +41,7 @@ export function InviteCollaboratorModal({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRole, setSelectedRole] = useState<CollaboratorRole | null>(null);
 
   // Get available roles based on user's role
   const availableRoles: { value: CollaboratorRole; label: string; description: string }[] = [
@@ -69,6 +70,7 @@ export function InviteCollaboratorModal({
     if (open) {
       form.resetFields();
       form.setFieldsValue({ role: defaultRole });
+      setSelectedRole(defaultRole);
       setError(null);
     }
   }, [open, form, defaultRole]);
@@ -77,14 +79,14 @@ export function InviteCollaboratorModal({
     try {
       setError(null);
       setLoading(true);
-      
+
       // Validate form
       const values = await form.validateFields();
       const { email, role } = values;
 
       // Get current session for authorization header
       const { data: { session } } = await supabase.auth.getSession();
-      
+
       if (!session) {
         setError('You must be logged in to send invitations');
         setLoading(false);
@@ -109,10 +111,10 @@ export function InviteCollaboratorModal({
 
       if (result.success) {
         const invitedEmail = email.trim().toLowerCase();
-        const successMessage = result.autoAccepted 
+        const successMessage = result.autoAccepted
           ? (result.message || 'Collaborator added successfully!')
           : 'Invite sent';
-        
+
         // Clear caches and trigger events when user is auto-accepted
         if (result.autoAccepted) {
           // Clear caches when user is auto-accepted as collaborator          
@@ -127,16 +129,16 @@ export function InviteCollaboratorModal({
           } catch (error) {
             console.error('[InviteCollaboratorModal] Error clearing cache:', error);
           }
-          
+
           // 2. Dispatch event to trigger React Query cache refresh
           // This will refresh the inviter's Sidebar, but won't affect the invited user's browser
           window.dispatchEvent(new CustomEvent('projectCreated'));
         }
-        
+
         // Reset form and close modal
         form.resetFields();
         onClose();
-        
+
         // Call onSuccess callback with message to display
         // Pass message to parent component for display
         onSuccess?.(invitedEmail, successMessage, result.autoAccepted);
@@ -225,15 +227,18 @@ export function InviteCollaboratorModal({
               disabled={loading}
               options={availableRoles.map((roleOption) => ({
                 value: roleOption.value,
-                label: (
-                  <div className={styles.roleOption}>
-                    <div className={styles.roleLabel}>{roleOption.label}</div>
-                    <div className={styles.roleDescription}>{roleOption.description}</div>
-                  </div>
-                ),
+                label: roleOption.label,
               }))}
+              onChange={(value) => {
+                form.validateFields(['role']);
+                setSelectedRole(value);
+              }}
             />
           </Form.Item>
+          {(() => {
+            const desc = availableRoles.find(r => r.value === selectedRole)?.description;
+            return desc ? <div className={styles.roleDescription}>{desc}</div> : null;
+          })()}
         </Form>
       </div>
     </Modal>

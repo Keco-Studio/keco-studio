@@ -9,22 +9,20 @@
   padding: 0.5rem 0;
 }
 
-.roleOption {
-  padding: 0.25rem 0;
+.roleItem {
+  margin-bottom: 0;
 }
 
-.roleLabel {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: #1a1a1a;
-  line-height: 1.5;
+/* 下拉框白色背景 */
+.roleItem :global(.ant-select-selector) {
+  background-color: #ffffff !important;
 }
 
 .roleDescription {
   font-size: 0.75rem;
   color: #737373;
   line-height: 1.4;
-  margin-top: 0.125rem;
+  margin-top: 0.25rem;
 }
 
 .infoBox {
