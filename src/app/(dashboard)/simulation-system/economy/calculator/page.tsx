@@ -24,7 +24,7 @@ import {
   calculateLevelReward,
   parseLevelCost,
 } from '../data/levels';
-import type { Level } from '../data/types';
+import type { Level } from '../types';
 import styles from './Calculator.module.css';
 
 type EChartsInstance = echarts.ECharts;
@@ -293,7 +293,7 @@ export default function CalculatorPage() {
         ],
       };
 
-      chart.setOption(option);
+      chart.setOption(option as any);
     };
 
     initChart(silverChartRef, silverChartInstance, '银币累积收益', simulationData.silverData, '#fa8c16', (val) => `银币: ${val.toLocaleString()}`);

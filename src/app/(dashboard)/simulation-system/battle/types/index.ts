@@ -83,7 +83,7 @@ export type ReactionType =
 export const REACTION_CONFIG: Record<ReactionType, {
   name: string;
   emoji: string;
-  multiplier: number;  // 倍率（增幅反应）
+  multiplier?: number;  // 倍率（增幅反应）
   extraDamage?: number;  // 额外伤害（剧变反应）
   description: string;
 }> = {

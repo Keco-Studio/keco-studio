@@ -461,7 +461,6 @@ export default function BattleSimulatorPage() {
     const newTurn = newState.currentTurn + 1;
     logs.push(addLog(newState, {
       type: 'turn_start',
-      turn: newTurn,
       statusText: `回合 ${newTurn} 开始`,
       color: '#569cd6',
     }));
