@@ -54,8 +54,7 @@
 
 .searchLabelFocused .searchIcon {
   /* 把图标颜色调整为与边框相近的蓝色 */
-  filter: brightness(0) saturate(100%) invert(46%) sepia(96%) saturate(1708%) hue-rotate(182deg)
-    brightness(101%) contrast(99%);
+  filter: brightness(0) saturate(100%) invert(46%) sepia(96%) saturate(1708%) hue-rotate(182deg) brightness(101%) contrast(99%);
 }
 
 .searchDropdown {
@@ -82,11 +81,16 @@
 
 .searchTabs {
   display: flex;
-  align-items: center;
-  height: 3.375rem;
-  gap: 0.25rem;
+  flex-direction: column;
+  gap: 0.35rem;
   padding: 0.4rem 0.5rem 0.25rem 0.5rem;
   border-bottom: 1px solid #e5e7eb;
+}
+
+.searchTabsRow {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
 }
 
 .searchTab {
@@ -108,6 +112,50 @@
 .searchTabActive {
   background-color: rgba(11, 153, 255, 0.08);
   color: rgba(11, 153, 255, 1);
+}
+
+.searchTabCell {
+  flex: 0 0 auto;
+  min-width: 3.2rem;
+  height: 2rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: .5rem;
+  border: none;
+  background: #e5e7eb;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #374151;
+  font-size: .875rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  display: flex;
+  align-items: center;
+}
+
+.searchTabCell:hover {
+  background: #d1d5db;
+}
+
+.searchTabCellActive {
+  flex: 0 0 auto;
+  min-width: 3.2rem;
+  height: 2rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: .5rem;
+  border: none;
+  background: #0B99FF;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #ffffff;
+  font-size: .875rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+  display: flex;
+  align-items: center;
+}
+
+.searchTabCellActive:hover {
+  background: #0090ee;
 }
 
 .searchResultSectionLabel {
@@ -147,14 +195,11 @@
   flex-shrink: 0;
 }
 
-.searchResultIconProject {
-}
+.searchResultIconProject {}
 
-.searchResultIconFolder {
-}
+.searchResultIconFolder {}
 
-.searchResultIconLibrary {
-}
+.searchResultIconLibrary {}
 
 .searchResultMain {
   display: flex;
@@ -355,8 +400,7 @@
 }
 
 
-.topbarPillButton:hover {
-}
+.topbarPillButton:hover {}
 
 .topbarPillIcon {
   display: flex;
@@ -387,7 +431,7 @@
 }
 
 .assetModeButtonActive {
-  background-color:  #5E00FF14;
+  background-color: #5E00FF14;
   color: #4c1d95;
 }
 
@@ -493,8 +537,3 @@
   font-size: 0.875rem;
   color: #334155;
 }
-
-
-
-
-
