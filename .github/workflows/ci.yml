@@ -38,15 +38,15 @@ jobs:
       - name: 启动 Supabase 本地服务
         run: |
           # 启动 Supabase 服务（后台运行）
-          supabase start
-          # 等待服务就绪（最多等待 60 秒）
+          supabase start --ignore-health-check
+          # 等待服务就绪（最多等待 90 秒）
           echo "等待 Supabase 服务启动..."
-          for i in {1..60}; do
+          for i in {1..90}; do
             if curl -s http://127.0.0.1:54321/rest/v1/ > /dev/null 2>&1; then
               echo "Supabase 服务已就绪"
               break
             fi
-            echo "等待中... ($i/60)"
+            echo "等待中... ($i/90)"
             sleep 1
           done
         env:
@@ -56,10 +56,18 @@ jobs:
 
       - name: 重置数据库
         run: |
-          # 使用 --no-seed 先重置，避免种子数据问题
-          supabase db reset --no-seed
-          # 单独执行种子脚本
-          supabase db seed
+          # 重试机制：数据库 reset 可能因容器重启问题失败
+          for attempt in 1 2 3; do
+            echo "尝试重置数据库 (第 $attempt 次)..."
+            if supabase db reset; then
+              echo "数据库重置成功"
+              exit 0
+            fi
+            echo "数据库重置失败，等待后重试..."
+            sleep 5
+          done
+          echo "数据库重置最终失败"
+          exit 1
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
