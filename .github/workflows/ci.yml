@@ -38,7 +38,7 @@ jobs:
       - name: 启动 Supabase 本地服务
         run: |
           # 启动 Supabase 服务（后台运行）
-          supabase start --no-backup
+          supabase start
           # 等待服务就绪（最多等待 60 秒）
           echo "等待 Supabase 服务启动..."
           for i in {1..60}; do
