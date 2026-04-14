@@ -200,24 +200,41 @@ export function useReferenceModal(params: UseReferenceModalParams) {
     const normalizedSelections = normalizeReferenceSelections(selections);
     const nextValue = referenceSelectionsToValue(normalizedSelections);
     if (referenceModalRowId === 'new') {
-      setNewRowData((prev) => ({ ...prev, [referenceModalProperty.key]: nextValue }));
+      // Deep copy to avoid sharing references with newRowData
+      setNewRowData((prev) => ({ ...prev, [referenceModalProperty.key]: nextValue ? JSON.parse(JSON.stringify(nextValue)) : nextValue }));
     } else {
       const row = allRowsSource.find((r) => r.id === referenceModalRowId);
       if (row && onUpdateAsset) {
         const arr = yRows.toArray();
         const rowIndex = arr.findIndex((r) => r.id === referenceModalRowId);
+
+        // Deep copy propertyValues to avoid shared references between assets
+        const deepCopiedPropertyValues: Record<string, any> = {};
+        Object.entries(row.propertyValues).forEach(([key, val]) => {
+          if (val !== null && typeof val === 'object') {
+            deepCopiedPropertyValues[key] = JSON.parse(JSON.stringify(val));
+          } else {
+            deepCopiedPropertyValues[key] = val;
+          }
+        });
+        // Deep copy nextValue to ensure no shared references
+        const deepCopiedNextValue = nextValue ? JSON.parse(JSON.stringify(nextValue)) : nextValue;
+        deepCopiedPropertyValues[referenceModalProperty.key] = deepCopiedNextValue;
+
         if (rowIndex >= 0) {
-          const updatedPropertyValues: Record<string, any> = {
-            ...row.propertyValues,
-            [referenceModalProperty.key]: nextValue,
-          };
           yRows.delete(rowIndex, 1);
-          yRows.insert(rowIndex, [{ ...row, propertyValues: updatedPropertyValues }]);
+          yRows.insert(rowIndex, [{ ...row, propertyValues: deepCopiedPropertyValues }]);
         }
-        const toSave: Record<string, any> = {
-          ...row.propertyValues,
-          [referenceModalProperty.key]: nextValue,
-        };
+        // Deep copy again for toSave to ensure no shared references
+        const toSave: Record<string, any> = {};
+        Object.entries(row.propertyValues).forEach(([key, val]) => {
+          if (val !== null && typeof val === 'object') {
+            toSave[key] = JSON.parse(JSON.stringify(val));
+          } else {
+            toSave[key] = val;
+          }
+        });
+        toSave[referenceModalProperty.key] = nextValue ? JSON.parse(JSON.stringify(nextValue)) : nextValue;
         await onUpdateAsset(row.id, row.name, toSave);
       }
     }

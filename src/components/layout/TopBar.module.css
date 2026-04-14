@@ -54,8 +54,7 @@
 
 .searchLabelFocused .searchIcon {
   /* 把图标颜色调整为与边框相近的蓝色 */
-  filter: brightness(0) saturate(100%) invert(46%) sepia(96%) saturate(1708%) hue-rotate(182deg)
-    brightness(101%) contrast(99%);
+  filter: brightness(0) saturate(100%) invert(46%) sepia(96%) saturate(1708%) hue-rotate(182deg) brightness(101%) contrast(99%);
 }
 
 .searchDropdown {
@@ -82,8 +81,7 @@
 
 .searchTabs {
   display: flex;
-  align-items: center;
-  height: 3.375rem;
+  align-items: flex-start;
   gap: 0.25rem;
   padding: 0.4rem 0.5rem 0.25rem 0.5rem;
   border-bottom: 1px solid #e5e7eb;
@@ -147,14 +145,11 @@
   flex-shrink: 0;
 }
 
-.searchResultIconProject {
-}
+.searchResultIconProject {}
 
-.searchResultIconFolder {
-}
+.searchResultIconFolder {}
 
-.searchResultIconLibrary {
-}
+.searchResultIconLibrary {}
 
 .searchResultMain {
   display: flex;
@@ -355,8 +350,7 @@
 }
 
 
-.topbarPillButton:hover {
-}
+.topbarPillButton:hover {}
 
 .topbarPillIcon {
   display: flex;
@@ -387,7 +381,7 @@
 }
 
 .assetModeButtonActive {
-  background-color:  #5E00FF14;
+  background-color: #5E00FF14;
   color: #4c1d95;
 }
 
@@ -493,8 +487,3 @@
   font-size: 0.875rem;
   color: #334155;
 }
-
-
-
-
-

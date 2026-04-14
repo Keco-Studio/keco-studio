@@ -70,7 +70,7 @@ export function AssetReferenceModal({
   const [valuesByAsset, setValuesByAsset] = useState<Record<string, Record<string, unknown>>>({});
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [tempSelectedAssetIds, setTempSelectedAssetIds] = useState<string[]>([]);
+  const [tempSelectedAssets, setTempSelectedAssets] = useState<Array<{ id: string; libraryId: string; fieldId: string; fieldLabel: string; displayValue: string }>>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -79,6 +79,32 @@ export function AssetReferenceModal({
 
     const loadLibraries = async () => {
       try {
+        // First, get the library IDs for the currently selected assets
+        const normalizedSelections = normalizeReferenceSelections(value);
+        const selectedAssetIds = normalizedSelections.map((s) => s.assetId);
+
+        let libraryIdToSelect: string | null = null;
+
+        // If there are selected assets, find which library they belong to
+        if (selectedAssetIds.length > 0) {
+          const { data: assetLibData, error: assetLibError } = await supabase
+            .from('library_assets')
+            .select('id, library_id')
+            .in('id', selectedAssetIds);
+
+          if (!assetLibError && assetLibData && assetLibData.length > 0) {
+            // Find the first library that contains a selected asset and is in referenceLibraries
+            const assetLibraryMap = new Map(assetLibData.map((a) => [a.id, a.library_id]));
+            for (const assetId of selectedAssetIds) {
+              const libId = assetLibraryMap.get(assetId);
+              if (libId && referenceLibraries.includes(libId)) {
+                libraryIdToSelect = libId;
+                break;
+              }
+            }
+          }
+        }
+
         const { data, error } = await supabase
           .from('libraries')
           .select('id, name')
@@ -86,8 +112,14 @@ export function AssetReferenceModal({
 
         if (error) throw error;
         setLibraries(data || []);
+
+        // Use the library containing selected assets if found, otherwise use first library
         if (data && data.length > 0) {
-          setSelectedLibraryId(data[0].id);
+          if (libraryIdToSelect && data.some((lib) => lib.id === libraryIdToSelect)) {
+            setSelectedLibraryId(libraryIdToSelect);
+          } else {
+            setSelectedLibraryId(data[0].id);
+          }
         }
       } catch (error) {
         console.error('[AssetReferenceModal] Failed to load libraries:', error);
@@ -95,7 +127,7 @@ export function AssetReferenceModal({
     };
 
     loadLibraries();
-  }, [open, referenceLibraries, supabase]);
+  }, [open, referenceLibraries, supabase, value]);
 
   useEffect(() => {
     if (!open || !selectedLibraryId) {
@@ -215,57 +247,190 @@ export function AssetReferenceModal({
 
   const filteredAssets = useMemo(() => {
     const q = searchText.trim().toLowerCase();
-    if (!q) return assetsWithDisplay;
-    return assetsWithDisplay.filter((asset) =>
+
+    // Merge: current library's assets + already-selected assets from other libraries
+    // Deduplicate by id: prefer assetsWithDisplay version (has complete data)
+    const otherLibrarySelectedAssets = tempSelectedAssets
+      .filter((a) => a.libraryId !== '' && a.libraryId !== selectedLibraryId)
+      .map((a) => ({
+        id: a.id,
+        name: a.displayValue || 'Untitled',
+        library_id: a.libraryId,
+        library_name: libraries.find((l) => l.id === a.libraryId)?.name || '',
+        displayValue: a.displayValue || 'Untitled',
+      }));
+
+    // Build a deduped map: id -> asset (assetsWithDisplay takes priority)
+    const assetMap = new Map<string, Asset>();
+    for (const asset of assetsWithDisplay) {
+      assetMap.set(asset.id, asset);
+    }
+    for (const asset of otherLibrarySelectedAssets) {
+      if (!assetMap.has(asset.id)) {
+        assetMap.set(asset.id, asset);
+      }
+    }
+    const allAssets = Array.from(assetMap.values());
+
+    if (!q) return allAssets;
+    return allAssets.filter((asset) =>
       (asset.displayValue || 'Untitled').toLowerCase().includes(q)
     );
-  }, [searchText, assetsWithDisplay]);
+  }, [searchText, assetsWithDisplay, tempSelectedAssets, selectedLibraryId, libraries]);
 
   const selectedColumnLabel = useMemo(() => {
     const f = libraryFields.find((x) => x.id === selectedColumnFieldId);
     return f?.label || 'Column';
   }, [libraryFields, selectedColumnFieldId]);
 
+  // Track if we've restored selections at least once in current modal session
+  // to avoid overwriting user changes if supabase instance changes mid-session
+  const hasRestoredRef = useRef(false);
+
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      // Reset restoration flag when modal closes
+      hasRestoredRef.current = false;
+      return;
+    }
+
+    // Only restore on first open (hasRestoredRef is false) or when explicitly opening
+    // This prevents overwriting user changes if supabase changes during an open modal
+    if (hasRestoredRef.current) {
+      return;
+    }
+
     const normalizedSelections = normalizeReferenceSelections(value);
-    setTempSelectedAssetIds(normalizedSelections.map((s) => s.assetId));
+
+    // Build fromExisting using composite key (assetId::fieldId) to preserve
+    // selections of the same asset in different columns
+    const fromExisting = new Map<string, { fieldId: string; fieldLabel: string; displayValue: string }>();
+    for (const sel of normalizedSelections) {
+      const key = `${sel.assetId}::${sel.fieldId || ''}`;
+      if (!fromExisting.has(key)) {
+        fromExisting.set(key, {
+          fieldId: sel.fieldId || '',
+          fieldLabel: sel.fieldLabel || '',
+          displayValue: sel.displayValue || '',
+        });
+      }
+    }
+
+    // Get unique entries preserving all assetId::fieldId combinations
+    const uniqueEntries = Array.from(fromExisting.entries());
+    const uniqueAssetIds = [...new Set(uniqueEntries.map(([key]) => key.split('::')[0]))];
+
+    // Query library_id for each selected asset, then set tempSelectedAssets
+    const restoreSelections = async () => {
+      if (uniqueAssetIds.length === 0) {
+        setTempSelectedAssets([]);
+        hasRestoredRef.current = true;
+        return;
+      }
+      const { data, error } = await supabase
+        .from('library_assets')
+        .select('id, library_id')
+        .in('id', uniqueAssetIds);
+
+      if (error || !data) {
+        // Fallback: set with empty libraryId
+        setTempSelectedAssets(
+          uniqueEntries.map(([key, val]) => ({
+            id: key.split('::')[0],
+            libraryId: '',
+            fieldId: val.fieldId,
+            fieldLabel: val.fieldLabel,
+            displayValue: val.displayValue,
+          }))
+        );
+        hasRestoredRef.current = true;
+        return;
+      }
+      const libraryMap = new Map(data.map((a) => [a.id, a.library_id]));
+      setTempSelectedAssets(
+        uniqueEntries.map(([key, val]) => ({
+          id: key.split('::')[0],
+          libraryId: libraryMap.get(key.split('::')[0]) || '',
+          fieldId: val.fieldId,
+          fieldLabel: val.fieldLabel,
+          displayValue: val.displayValue,
+        }))
+      );
+      hasRestoredRef.current = true;
+    };
+
+    restoreSelections();
     setSearchText('');
     setViewMode('grid');
-  }, [open, value]);
+  }, [open, value, supabase]);
 
   const handleAssetToggle = (asset: Asset) => {
-    setTempSelectedAssetIds((prev) => {
-      const exists = prev.includes(asset.id);
-      if (exists) return prev.filter((id) => id !== asset.id);
-      return [...prev, asset.id];
+    // Note: we only check by id, NOT by fieldId. Once selected, the asset's fieldId
+    // stays as-is. Changing column dropdown should NOT affect existing selections.
+    setTempSelectedAssets((prev) => {
+      const existingIndex = prev.findIndex((a) => a.id === asset.id);
+      if (existingIndex !== -1) {
+        // Already selected: remove it (toggle off)
+        return prev.filter((a) => a.id !== asset.id);
+      }
+      // Not selected: add it (column info will be from the current dropdown)
+      return [...prev, {
+        id: asset.id,
+        libraryId: asset.library_id,
+        fieldId: selectedColumnFieldId || '',
+        fieldLabel: selectedColumnLabel || '',
+        displayValue: asset.displayValue || 'Untitled',
+      }];
     });
   };
 
+  const handleLibraryChange = (newLibraryId: string) => {
+    setSelectedLibraryId(newLibraryId);
+    // Note: do NOT filter tempSelectedAssets by library here.
+    // Users can select assets from multiple libraries and all should be kept until Apply.
+    // selectedColumnFieldId will be auto-reset to the new library's first field by the useEffect below.
+  };
+
   const handleApply = () => {
-    if (!selectedColumnFieldId) {
-      onApply(null);
-      onClose();
-      return;
-    }
-    const selections: ReferenceSelection[] = tempSelectedAssetIds.map((assetId) => {
-      const vals = valuesByAsset[assetId] || {};
-      const displayRaw = vals[selectedColumnFieldId];
-      const displayValue = cellDisplayString(displayRaw) || 'Untitled';
-      return {
-        assetId,
-        fieldId: selectedColumnFieldId,
-        fieldLabel: selectedColumnLabel,
-        displayValue,
-      };
-    });
+    // Use stored fieldId, fieldLabel and displayValue directly for all selected assets
+    const selections: ReferenceSelection[] = tempSelectedAssets
+      .filter((a) => a.fieldId)
+      .map((asset) => ({
+        assetId: asset.id,
+        fieldId: asset.fieldId,
+        fieldLabel: asset.fieldLabel,
+        displayValue: asset.displayValue,
+      }));
     onApply(referenceSelectionsToValue(selections));
     onClose();
   };
 
   const handleCancel = () => {
     const normalizedSelections = normalizeReferenceSelections(value);
-    setTempSelectedAssetIds(normalizedSelections.map((s) => s.assetId));
+    // Build fromExisting using composite key (assetId::fieldId) to preserve
+    // selections of the same asset in different columns
+    // Note: We don't know libraryId here, will be resolved on modal open
+    const fromExisting = new Map<string, { fieldId: string; fieldLabel: string; displayValue: string }>();
+    for (const sel of normalizedSelections) {
+      const key = `${sel.assetId}::${sel.fieldId || ''}`;
+      if (!fromExisting.has(key)) {
+        fromExisting.set(key, {
+          fieldId: sel.fieldId || '',
+          fieldLabel: sel.fieldLabel || '',
+          displayValue: sel.displayValue || '',
+        });
+      }
+    }
+    const uniqueEntries = Array.from(fromExisting.entries());
+    setTempSelectedAssets(
+      uniqueEntries.map(([key, val]) => ({
+        id: key.split('::')[0],
+        libraryId: '',
+        fieldId: val.fieldId,
+        fieldLabel: val.fieldLabel,
+        displayValue: val.displayValue,
+      }))
+    );
     onClose();
   };
 
@@ -314,7 +479,7 @@ export function AssetReferenceModal({
               <div className={styles.parallelSelects}>
                 <Select
                   value={selectedLibraryId}
-                  onChange={setSelectedLibraryId}
+                  onChange={handleLibraryChange}
                   className={styles.toolbarSelect}
                   placeholder={libraries.length === 0 ? 'No libraries' : 'Select library'}
                   disabled={libraries.length === 0}
@@ -388,7 +553,7 @@ export function AssetReferenceModal({
                     <div
                       key={asset.id}
                       className={`${styles.assetCard} ${
-                        tempSelectedAssetIds.includes(asset.id) ? styles.assetCardSelected : ''
+                        tempSelectedAssets.some((a) => a.id === asset.id) ? styles.assetCardSelected : ''
                       }`}
                       onClick={() => handleAssetToggle(asset)}
                     >
@@ -401,7 +566,7 @@ export function AssetReferenceModal({
                       >
                         {getAvatarText(asset.displayValue || 'Untitled')}
                       </Avatar>
-                      {tempSelectedAssetIds.includes(asset.id) ? (
+                      {tempSelectedAssets.some((a) => a.id === asset.id) ? (
                         <span className={styles.assetCardCheck}>✓</span>
                       ) : null}
                     </div>
@@ -422,7 +587,7 @@ export function AssetReferenceModal({
                       key={asset.id}
                       type="button"
                       className={`${styles.assetListRow} ${
-                        tempSelectedAssetIds.includes(asset.id) ? styles.assetListRowSelected : ''
+                        tempSelectedAssets.some((a) => a.id === asset.id) ? styles.assetListRowSelected : ''
                       }`}
                       onClick={() => handleAssetToggle(asset)}
                     >
@@ -436,7 +601,7 @@ export function AssetReferenceModal({
                         {getAvatarText(asset.displayValue || 'Untitled')}
                       </Avatar>
                       <span className={styles.assetListLabel}>{asset.displayValue || 'Untitled'}</span>
-                      {tempSelectedAssetIds.includes(asset.id) ? (
+                      {tempSelectedAssets.some((a) => a.id === asset.id) ? (
                         <span className={styles.assetListCheck}>✓</span>
                       ) : null}
                     </button>
@@ -450,7 +615,11 @@ export function AssetReferenceModal({
             <button className={styles.cancelButton} onClick={handleCancel}>
               Cancel
             </button>
-            <button className={styles.applyButton} onClick={handleApply}>
+            <button
+              className={styles.applyButton}
+              onClick={handleApply}
+              style={{ opacity: tempSelectedAssets.length === 0 ? 0.5 : 1, cursor: tempSelectedAssets.length === 0 ? 'not-allowed' : 'pointer' }}
+            >
               Apply
             </button>
           </div>

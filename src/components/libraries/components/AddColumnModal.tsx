@@ -980,14 +980,14 @@ export function AddColumnModal({
                 }))}
                 maxTagCount="responsive"
                 open={referenceDropdownOpen}
-                onDropdownVisibleChange={(openDropdown) => {
+                onOpenChange={(openDropdown) => {
                   setReferenceDropdownOpen(openDropdown);
                   if (!openDropdown) {
                     setReferenceFolderFilter('all');
                     setReferenceSearch('');
                   }
                 }}
-                dropdownRender={() => (
+                popupRender={() => (
                   <div className={styles.referenceDropdown}>
                     <div className={styles.referenceDropdownContent}>
                       <Input
