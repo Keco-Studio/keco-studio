@@ -31,11 +31,9 @@ jobs:
         run: npm ci --ignore-scripts
 
       - name: 安装 Supabase CLI
-        run: |
-          # 使用官方推荐的 Linux 二进制安装方式
-          curl -fsSL https://github.com/supabase/cli/releases/download/v1.227.0/supabase_linux_amd64.tar.gz -o supabase.tar.gz
-          tar -xzf supabase.tar.gz
-          mv supabase /usr/local/bin/
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.90.0
 
       - name: 启动 Supabase 本地服务
         run: |
