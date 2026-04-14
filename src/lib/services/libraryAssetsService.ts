@@ -173,6 +173,10 @@ const normalizeValue = (input: unknown): any => {
       // 不是 JSON 字符串，就按普通字符串使用
     }
   }
+  // Deep copy objects to prevent shared references between assets
+  if (value !== null && typeof value === 'object') {
+    return JSON.parse(JSON.stringify(value));
+  }
   return value;
 };
 

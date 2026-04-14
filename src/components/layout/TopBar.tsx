@@ -170,6 +170,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     hits: CellSearchHit[];
   };
 
+  const [isCellSearchActive, setIsCellSearchActive] = useState(false);
   const [cellSearchLoading, setCellSearchLoading] = useState(false);
   const [cellSearchHits, setCellSearchHits] = useState<CellSearchHit[]>([]);
   const [cellSearchPage, setCellSearchPage] = useState(1);
@@ -403,15 +404,15 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       searchFilter === 'cell'
         ? []
         : searchFilter === 'all'
-        ? baseResults
-        : baseResults.filter((item) => item.type === searchFilter);
+          ? baseResults
+          : baseResults.filter((item) => item.type === searchFilter);
 
     // Sort by last modified time from newest to oldest
     return [...filtered]
       .sort((a, b) => {
-      const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
-      const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
-      return bTime - aTime;
+        const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return bTime - aTime;
       })
       .slice(0, 20);
   }, [searchResults, recentResults, searchFilter, searchQuery]);
@@ -553,6 +554,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       ) {
         setIsSearchFocused(false);
         setIsSearchDropdownOpen(false);
+        setIsCellSearchActive(false);
       }
     };
 
@@ -636,7 +638,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     }
 
     console.log('[TopBar] Setting up collaborators subscription for project:', projectId);
-    
+
     // Subscribe to project_collaborators table for real-time permission updates
     const collaboratorsChannel = supabase
       .channel(`topbar-collaborators:project:${projectId}`)
@@ -654,7 +656,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           console.log('[TopBar] Affected user (new):', payload.new);
           console.log('[TopBar] Affected user (old):', payload.old);
           console.log('[TopBar] Current user:', userProfile.id);
-          
+
           // Handle DELETE event - user access was removed or project was deleted
           if (payload.eventType === 'DELETE' && payload.old && 'user_id' in payload.old) {
             if (payload.old.user_id === userProfile.id) {
@@ -663,21 +665,21 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               setUserRole(null);
             }
           }
-          
+
           // Handle INSERT/UPDATE events - check if the change affects current user
-          if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') && 
-              payload.new && 'user_id' in payload.new && payload.new.user_id === userProfile.id) {
+          if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') &&
+            payload.new && 'user_id' in payload.new && payload.new.user_id === userProfile.id) {
             console.log('[TopBar] 🔄 Current user\'s permission changed, refetching role...');
             try {
               const { data: { session } } = await supabase.auth.getSession();
               if (!session) return;
-              
+
               const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
                 headers: {
                   'Authorization': `Bearer ${session.access_token}`,
                 },
               });
-              
+
               if (roleResponse.ok) {
                 const roleResult = await roleResponse.json();
                 console.log('[TopBar] ✅ Role updated to:', roleResult.role);
@@ -1102,12 +1104,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             <span className={styles.topbarPillIcon}>
               <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-16">
                 <g clipPath="url(#clip0_1420_346)">
-                  <path d="M8 8.6665L5.66666 10.9998M8 14.6665V8.6665V14.6665ZM8 8.6665L10.3333 10.9998L8 8.6665Z" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M13.3333 11.7384C14.3291 11.3482 15.3333 10.4594 15.3333 8.66683C15.3333 6.00016 13.1111 5.3335 12 5.3335C12 4.00016 12 1.3335 8 1.3335C4 1.3335 4 4.00016 4 5.3335C2.88888 5.3335 0.666664 6.00016 0.666664 8.66683C0.666664 10.4594 1.67085 11.3482 2.66666 11.7384" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M8 8.6665L5.66666 10.9998M8 14.6665V8.6665V14.6665ZM8 8.6665L10.3333 10.9998L8 8.6665Z" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M13.3333 11.7384C14.3291 11.3482 15.3333 10.4594 15.3333 8.66683C15.3333 6.00016 13.1111 5.3335 12 5.3335C12 4.00016 12 1.3335 8 1.3335C4 1.3335 4 4.00016 4 5.3335C2.88888 5.3335 0.666664 6.00016 0.666664 8.66683C0.666664 10.4594 1.67085 11.3482 2.66666 11.7384" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </g>
                 <defs>
                   <clipPath id="clip0_1420_346">
-                    <rect width="16" height="16" fill="white"/>
+                    <rect width="16" height="16" fill="white" />
                   </clipPath>
                 </defs>
               </svg>
@@ -1121,12 +1123,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             <span className={styles.topbarPillIcon}>
               <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg" className="icon-16">
                 <g clipPath="url(#clip0_1420_347)">
-                  <path d="M8 8.6665L5.66666 10.9998M8 14.6665V8.6665V14.6665ZM8 8.6665L10.3333 10.9998L8 8.6665Z" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M13.3333 11.7384C14.3291 11.3482 15.3333 10.4594 15.3333 8.66683C15.3333 6.00016 13.1111 5.3335 12 5.3335C12 4.00016 12 1.3335 8 1.3335C4 1.3335 4 4.00016 4 5.3335C2.88888 5.3335 0.666664 6.00016 0.666664 8.66683C0.666664 10.4594 1.67085 11.3482 2.66666 11.7384" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M8 8.6665L5.66666 10.9998M8 14.6665V8.6665V14.6665ZM8 8.6665L10.3333 10.9998L8 8.6665Z" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M13.3333 11.7384C14.3291 11.3482 15.3333 10.4594 15.3333 8.66683C15.3333 6.00016 13.1111 5.3335 12 5.3335C12 4.00016 12 1.3335 8 1.3335C4 1.3335 4 4.00016 4 5.3335C2.88888 5.3335 0.666664 6.00016 0.666664 8.66683C0.666664 10.4594 1.67085 11.3482 2.66666 11.7384" stroke="#0B99FF" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </g>
                 <defs>
                   <clipPath id="clip0_1420_347">
-                    <rect width="16" height="16" fill="white"/>
+                    <rect width="16" height="16" fill="white" />
                   </clipPath>
                 </defs>
               </svg>
@@ -1203,7 +1205,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </>
         );
       } else {
-  
+
       }
     }
 
@@ -1233,10 +1235,10 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
           </div>
         ) : (
           <div className={styles.breadcrumb}>
-            <Image src={topBarBreadCrumbIcon} 
-              alt="Breadcrumb" 
-              width={24} height={24} className="icon-24" 
-              style={{ marginRight: '5px', cursor: 'pointer' }} 
+            <Image src={topBarBreadCrumbIcon}
+              alt="Breadcrumb"
+              width={24} height={24} className="icon-24"
+              style={{ marginRight: '5px', cursor: 'pointer' }}
               onClick={handleSidebarToggle}
             />
             {displayBreadcrumbs.map((item, index) => {
@@ -1248,9 +1250,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               return (
                 <span key={index}>
                   <button
-                    className={`${styles.breadcrumbItem} ${
-                      isLast ? styles.breadcrumbItemActive : styles.breadcrumbItemClickable
-                    }`}
+                    className={`${styles.breadcrumbItem} ${isLast ? styles.breadcrumbItemActive : styles.breadcrumbItemClickable
+                      }`}
                     onClick={() => handleBreadcrumbClick(item.path, index)}
                     disabled={isLast}
                   >
@@ -1267,9 +1268,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       </div>
       <div className={styles.searchContainer} ref={searchContainerRef}>
         <label
-          className={`${styles.searchLabel} ${
-            isSearchFocused ? styles.searchLabelFocused : ''
-          }`}
+          className={`${styles.searchLabel} ${isSearchFocused ? styles.searchLabelFocused : ''
+            }`}
         >
           <Image
             src={searchIcon}
@@ -1310,6 +1310,8 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
                   e.preventDefault();
                   e.stopPropagation();
                   setSearchQuery('');
+                  setIsCellSearchActive(false);
+                  setSearchFilter('all');
                   setIsSearchDropdownOpen(true);
                   clearCellSearchFocusState();
                 }}
@@ -1319,29 +1321,59 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
             </div>
           )}
         </label>
-        {isSearchDropdownOpen && (filteredSearchResults.length > 0 || searchFilter === 'cell') && (
+        {isSearchDropdownOpen && (filteredSearchResults.length > 0 || searchFilter === 'cell' || isCellSearchActive) && (
           <div className={styles.searchDropdown}>
             <div className={styles.searchTabs}>
-              {[
-                { key: 'all', label: 'All' },
-                { key: 'project', label: 'Project' },
-                { key: 'folder', label: 'Folder' },
-                { key: 'library', label: 'Library' },
-                { key: 'cell', label: 'Table Cells' },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  type="button"
-                  className={`${styles.searchTab} ${
-                    searchFilter === tab.key ? styles.searchTabActive : ''
-                  }`}
-                  onClick={() =>
-                    setSearchFilter(tab.key as 'all' | 'project' | 'folder' | 'library' | 'cell')
-                  }
-                >
-                  {tab.label}
-                </button>
-              ))}
+              <div style={{ display: 'flex', flexDirection: 'column', width: '100%', gap: '0.25rem' }}>
+                <div style={{ display: 'flex' }}>
+                  <button
+                    type="button"
+                    className={`${styles.searchTab} ${searchFilter === 'cell' || isCellSearchActive ? styles.searchTabActive : ''
+                      }`}
+                    style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'flex-start', backgroundColor: isCellSearchActive ? 'rgba(11, 153, 255, 0.08)' : '#f3f4f6' }}
+                    onClick={() => {
+                      if (isCellSearchActive) {
+                        setIsCellSearchActive(false);
+                        setSearchFilter('all');
+                      } else {
+                        setIsCellSearchActive(true);
+                        setSearchFilter('cell');
+                      }
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', flexShrink: 0 }}>
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+                      <line x1="3" y1="9" x2="21" y2="9" />
+                      <line x1="3" y1="15" x2="21" y2="15" />
+                      <line x1="9" y1="3" x2="9" y2="21" />
+                      <line x1="15" y1="3" x2="15" y2="21" />
+                    </svg>
+                    Only search cell content
+                  </button>
+                </div>
+                {!isCellSearchActive && (
+                  <div style={{ display: 'flex' }}>
+                    {[
+                      { key: 'all', label: 'All' },
+                      { key: 'project', label: 'Project' },
+                      { key: 'folder', label: 'Folder' },
+                      { key: 'library', label: 'Library' },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        className={`${styles.searchTab} ${searchFilter === tab.key ? styles.searchTabActive : ''
+                          }`}
+                        onClick={() => {
+                          setSearchFilter(tab.key as 'all' | 'project' | 'folder' | 'library');
+                        }}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
             <div className={styles.searchResultSectionLabel}>RESULT</div>
             <div className={styles.searchDropdownInner}>

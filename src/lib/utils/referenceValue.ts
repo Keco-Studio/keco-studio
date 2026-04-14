@@ -88,21 +88,30 @@ export function normalizeReferenceSelections(value: unknown): ReferenceSelection
     const key = `${item.assetId}::${item.fieldId || ''}::${item.displayValue || ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    deduped.push(item);
+    // Deep copy each item to prevent shared references
+    deduped.push({
+      assetId: item.assetId,
+      fieldId: item.fieldId,
+      fieldLabel: item.fieldLabel,
+      displayValue: item.displayValue,
+    });
   }
-  return deduped;
+  // Deep copy the final array to prevent shared references
+  return JSON.parse(JSON.stringify(deduped));
 }
 
 /** null when empty (product requirement) */
 export function assetIdsToReferenceValue(assetIds: string[]): string[] | null {
   if (!assetIds || assetIds.length === 0) return null;
-  return assetIds;
+  // Deep copy to prevent shared references
+  return JSON.parse(JSON.stringify(assetIds));
 }
 
 export function referenceSelectionsToValue(
   selections: ReferenceSelection[]
 ): ReferenceSelection[] | null {
   if (!selections || selections.length === 0) return null;
-  return selections;
+  // Deep copy to prevent shared references between assets
+  return JSON.parse(JSON.stringify(selections));
 }
 
