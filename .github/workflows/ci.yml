@@ -12,7 +12,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-        # 只有指定仓库才触发
+    # 只有指定仓库才触发
     if: github.repository == 'Keco-Studio/keco-studio'
     steps:
       - name: 检出代码
@@ -20,16 +20,61 @@ jobs:
         # GitHub 会自动使用 merge commit 来测试 PR，模拟 merge 后的状态
         with:
           fetch-depth: 0
-      
+
       - name: 设置 Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-      
+
       - name: 安装依赖
         run: npm ci --ignore-scripts
-      
+
+      - name: 安装 Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.90.0
+
+      - name: 启动 Supabase 本地服务
+        run: |
+          # 启动 Supabase 服务（后台运行）
+          supabase start --ignore-health-check
+          # 等待服务就绪（最多等待 90 秒）
+          echo "等待 Supabase 服务启动..."
+          for i in {1..90}; do
+            if curl -s http://127.0.0.1:54321/rest/v1/ > /dev/null 2>&1; then
+              echo "Supabase 服务已就绪"
+              break
+            fi
+            echo "等待中... ($i/90)"
+            sleep 1
+          done
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+
+      - name: 重置数据库
+        run: |
+          # 重试机制：数据库 reset 可能因容器重启问题失败
+          for attempt in 1 2 3; do
+            echo "尝试重置数据库 (第 $attempt 次)..."
+            if supabase db reset; then
+              echo "数据库重置成功"
+              exit 0
+            fi
+            echo "数据库重置失败，等待后重试..."
+            sleep 5
+          done
+          echo "数据库重置最终失败"
+          exit 1
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        # 增加超时时间（默认 1 小时）
+        timeout-minutes: 90
+
       - name: 构建项目
         env:
           # 从 GitHub Secrets 读取 Supabase 环境变量
@@ -39,6 +84,11 @@ jobs:
           # SUPABASE_SERVICE_ROLE_KEY 在某些 API 路由中可能需要
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run build
-      
+
+      - name: 停止 Supabase 服务
+        if: always()
+        run: supabase stop
+        continue-on-error: true
+
       - name: 构建成功 ✅
         run: echo "构建检查通过！可以安全合并到 main"

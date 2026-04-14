@@ -73,6 +73,22 @@ export function AssetReferenceModal({
   const [tempSelectedAssetIds, setTempSelectedAssetIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const modalRef = useRef<HTMLDivElement>(null);
+  // Track selections per column: each column's selection is independent
+  const [selectionsByColumn, setSelectionsByColumn] = useState<Record<string, string[]>>({});
+
+  // Save current column's selection and load new column's selection when switching
+  const handleColumnChange = (newFieldId: string) => {
+    // Save current column's selection before switching
+    if (selectedColumnFieldId) {
+      setSelectionsByColumn((prev) => ({
+        ...prev,
+        [selectedColumnFieldId]: [...tempSelectedAssetIds],
+      }));
+    }
+    setSelectedColumnFieldId(newFieldId);
+    // Load new column's selection if exists, otherwise start fresh
+    setTempSelectedAssetIds(selectionsByColumn[newFieldId] || []);
+  };
 
   useEffect(() => {
     if (!open || referenceLibraries.length === 0) return;
@@ -191,11 +207,14 @@ export function AssetReferenceModal({
       setSelectedColumnFieldId(null);
       return;
     }
+    const firstFieldId = libraryFields[0].id;
     setSelectedColumnFieldId((prev) => {
       if (prev && libraryFields.some((f) => f.id === prev)) return prev;
-      return libraryFields[0].id;
+      return firstFieldId;
     });
-  }, [libraryFields]);
+    // Load first column's selection when fields are loaded
+    setTempSelectedAssetIds(selectionsByColumn[firstFieldId] || []);
+  }, [libraryFields, selectionsByColumn]);
 
   const assetsWithDisplay: Asset[] = useMemo(() => {
     if (!selectedColumnFieldId) return [];
@@ -228,10 +247,19 @@ export function AssetReferenceModal({
 
   useEffect(() => {
     if (!open) return;
+    // Parse selections and group them by fieldId
     const normalizedSelections = normalizeReferenceSelections(value);
-    setTempSelectedAssetIds(normalizedSelections.map((s) => s.assetId));
+    const byColumn: Record<string, string[]> = {};
+    normalizedSelections.forEach((s) => {
+      const fid = s.fieldId || '';
+      if (!byColumn[fid]) byColumn[fid] = [];
+      byColumn[fid].push(s.assetId);
+    });
+    setSelectionsByColumn(byColumn);
     setSearchText('');
     setViewMode('grid');
+    // Load first column's selection if exists, otherwise start fresh
+    setTempSelectedAssetIds([]);
   }, [open, value]);
 
   const handleAssetToggle = (asset: Asset) => {
@@ -243,23 +271,33 @@ export function AssetReferenceModal({
   };
 
   const handleApply = () => {
-    if (!selectedColumnFieldId) {
-      onApply(null);
-      onClose();
-      return;
-    }
-    const selections: ReferenceSelection[] = tempSelectedAssetIds.map((assetId) => {
-      const vals = valuesByAsset[assetId] || {};
-      const displayRaw = vals[selectedColumnFieldId];
-      const displayValue = cellDisplayString(displayRaw) || 'Untitled';
-      return {
-        assetId,
-        fieldId: selectedColumnFieldId,
-        fieldLabel: selectedColumnLabel,
-        displayValue,
-      };
+    // Save current column's selection before applying
+    const finalSelectionsByColumn = {
+      ...selectionsByColumn,
+      ...(selectedColumnFieldId ? { [selectedColumnFieldId]: [...tempSelectedAssetIds] } : {}),
+    };
+
+    // Build ReferenceSelection[] from all columns
+    const allSelections: ReferenceSelection[] = [];
+    Object.entries(finalSelectionsByColumn).forEach(([fieldId, assetIds]) => {
+      if (!fieldId || !assetIds.length) return;
+      const fieldDef = libraryFields.find((f) => f.id === fieldId);
+      const fieldLabel = fieldDef?.label || 'Column';
+
+      assetIds.forEach((assetId) => {
+        const vals = valuesByAsset[assetId] || {};
+        const displayRaw = vals[fieldId];
+        const displayValue = cellDisplayString(displayRaw) || 'Untitled';
+        allSelections.push({
+          assetId,
+          fieldId,
+          fieldLabel,
+          displayValue,
+        });
+      });
     });
-    onApply(referenceSelectionsToValue(selections));
+
+    onApply(referenceSelectionsToValue(allSelections));
     onClose();
   };
 
@@ -334,7 +372,7 @@ export function AssetReferenceModal({
 
                 <Select
                   value={selectedColumnFieldId}
-                  onChange={setSelectedColumnFieldId}
+                  onChange={handleColumnChange}
                   className={styles.toolbarSelect}
                   placeholder={libraryFields.length === 0 ? 'No columns' : 'Select column'}
                   disabled={libraryFields.length === 0 || !selectedLibraryId}
