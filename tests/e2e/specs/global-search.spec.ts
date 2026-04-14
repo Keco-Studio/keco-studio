@@ -162,8 +162,8 @@ test.describe('Table Cells search', () => {
     await input.click();
     await expect(searchDropdown(page)).toBeVisible({ timeout: 5000 });
 
-    // Click "Table Cells" tab
-    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /table cells/i });
+    // Click "Only search cell content" tab
+    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /only search cell content/i });
     await expect(tableCellsTab).toBeVisible({ timeout: 5000 });
     await tableCellsTab.click();
 
@@ -245,8 +245,8 @@ test.describe('Table Cells search', () => {
     await input.click();
     await expect(searchDropdown(page)).toBeVisible({ timeout: 5000 });
 
-    // Select Table Cells tab
-    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /table cells/i });
+    // Select "Only search cell content" tab
+    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /only search cell content/i });
     await expect(tableCellsTab).toBeVisible({ timeout: 5000 });
     await tableCellsTab.click();
 
@@ -356,8 +356,8 @@ test.describe('Table Cells search', () => {
     await input.click();
     await expect(searchDropdown(page)).toBeVisible({ timeout: 5000 });
 
-    // Select Table Cells tab
-    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /table cells/i });
+    // Select "Only search cell content" tab
+    const tableCellsTab = searchDropdown(page).getByRole('button', { name: /only search cell content/i });
     await expect(tableCellsTab).toBeVisible({ timeout: 5000 });
     await tableCellsTab.click();
 
