@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Input, Select, Avatar, Spin } from 'antd';
+import { Input, Select, Avatar, Spin, Tooltip } from 'antd';
 import { SearchOutlined, UnorderedListOutlined, AppstoreOutlined } from '@ant-design/icons';
 import Image from 'next/image';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -432,20 +432,25 @@ export function AssetReferenceModal({
                   filteredAssets.map((asset) => (
                     <div
                       key={asset.id}
-                      className={`${styles.assetCard} ${
-                        selectedAssetIdsForCurrentColumn.includes(asset.id) ? styles.assetCardSelected : ''
-                      }`}
+                      className={`${styles.assetCard} ${selectedAssetIdsForCurrentColumn.includes(asset.id) ? styles.assetCardSelected : ''
+                        }`}
                       onClick={() => handleAssetToggle(asset)}
                     >
-                      <Avatar
-                        style={{
-                          backgroundColor: getAvatarColor(asset.id, asset.displayValue || 'Untitled'),
-                        }}
-                        size={30}
-                        className={styles.assetIcon}
+                      <Tooltip
+                        title={asset.displayValue || 'Untitled'}
+                        zIndex={2100}
+                        getPopupContainer={() => document.body}
                       >
-                        {getAvatarText(asset.displayValue || 'Untitled')}
-                      </Avatar>
+                        <Avatar
+                          style={{
+                            backgroundColor: getAvatarColor(asset.id, asset.displayValue || 'Untitled'),
+                          }}
+                          size={30}
+                          className={styles.assetIcon}
+                        >
+                          {getAvatarText(asset.displayValue || 'Untitled')}
+                        </Avatar>
+                      </Tooltip>
                       {selectedAssetIdsForCurrentColumn.includes(asset.id) ? (
                         <span className={styles.assetCardCheck}>✓</span>
                       ) : null}
@@ -466,22 +471,27 @@ export function AssetReferenceModal({
                     <button
                       key={asset.id}
                       type="button"
-                      className={`${styles.assetListRow} ${
-                        selectedAssetIdsForCurrentColumn.includes(asset.id)
+                      className={`${styles.assetListRow} ${selectedAssetIdsForCurrentColumn.includes(asset.id)
                           ? styles.assetListRowSelected
                           : ''
-                      }`}
+                        }`}
                       onClick={() => handleAssetToggle(asset)}
                     >
-                      <Avatar
-                        size={28}
-                        style={{
-                          backgroundColor: getAvatarColor(asset.id, asset.displayValue || 'Untitled'),
-                          flexShrink: 0,
-                        }}
+                      <Tooltip
+                        title={asset.displayValue || 'Untitled'}
+                        zIndex={2100}
+                        getPopupContainer={() => document.body}
                       >
-                        {getAvatarText(asset.displayValue || 'Untitled')}
-                      </Avatar>
+                        <Avatar
+                          size={28}
+                          style={{
+                            backgroundColor: getAvatarColor(asset.id, asset.displayValue || 'Untitled'),
+                            flexShrink: 0,
+                          }}
+                        >
+                          {getAvatarText(asset.displayValue || 'Untitled')}
+                        </Avatar>
+                      </Tooltip>
                       <span className={styles.assetListLabel}>{asset.displayValue || 'Untitled'}</span>
                       {selectedAssetIdsForCurrentColumn.includes(asset.id) ? (
                         <span className={styles.assetListCheck}>✓</span>

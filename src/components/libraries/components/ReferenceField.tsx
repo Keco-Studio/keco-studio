@@ -70,8 +70,8 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
     visibleSelections.length <= 1
       ? undefined
       : {
-          width: `calc(3.25rem + ${visibleSelections.length - 1} * 1.375rem)`,
-        };
+        width: `calc(3.25rem + ${visibleSelections.length - 1} * 1.375rem)`,
+      };
 
   const setAvatarRef = useCallback(
     (assetId: string) => (el: HTMLDivElement | null) => {
