@@ -75,19 +75,39 @@ export function AssetReferenceModal({
   const modalRef = useRef<HTMLDivElement>(null);
   // Track selections per column: each column's selection is independent
   const [selectionsByColumn, setSelectionsByColumn] = useState<Record<string, string[]>>({});
+  // Ref to avoid stale closure when reading selectionsByColumn in handlers
+  const selectionsByColumnRef = useRef(selectionsByColumn);
+  useEffect(() => {
+    selectionsByColumnRef.current = selectionsByColumn;
+  }, [selectionsByColumn]);
 
   // Save current column's selection and load new column's selection when switching
   const handleColumnChange = (newFieldId: string) => {
-    // Save current column's selection before switching
-    if (selectedColumnFieldId) {
+    // Capture ALL values at click time, before any React state mutations.
+    const currentFieldId = selectedColumnFieldId;
+    const currentSelection = [...tempSelectedAssetIds];
+
+    // Synchronously update ref BEFORE any state mutations so newColumnSelection is fresh.
+    // The regular effect will run after state updates, but we need the ref updated NOW.
+    if (currentFieldId) {
+      selectionsByColumnRef.current = {
+        ...selectionsByColumnRef.current,
+        [currentFieldId]: currentSelection,
+      };
+    }
+
+    const newColumnSelection = selectionsByColumnRef.current[newFieldId] || [];
+
+    // Also update state (this is async/batched)
+    if (currentFieldId) {
       setSelectionsByColumn((prev) => ({
         ...prev,
-        [selectedColumnFieldId]: [...tempSelectedAssetIds],
+        [currentFieldId]: currentSelection,
       }));
     }
     setSelectedColumnFieldId(newFieldId);
-    // Load new column's selection if exists, otherwise start fresh
-    setTempSelectedAssetIds(selectionsByColumn[newFieldId] || []);
+    // Use the captured selection so it's not affected by React's async state
+    setTempSelectedAssetIds(newColumnSelection);
   };
 
   useEffect(() => {
@@ -212,9 +232,11 @@ export function AssetReferenceModal({
       if (prev && libraryFields.some((f) => f.id === prev)) return prev;
       return firstFieldId;
     });
-    // Load first column's selection when fields are loaded
-    setTempSelectedAssetIds(selectionsByColumn[firstFieldId] || []);
-  }, [libraryFields, selectionsByColumn]);
+    // Only load first column's selection on initial mount or when libraryFields changes.
+    // Do NOT depend on selectionsByColumn — it causes this effect to override
+    // tempSelectedAssetIds whenever handleColumnChange updates selectionsByColumn.
+    setTempSelectedAssetIds(selectionsByColumnRef.current[firstFieldId] || []);
+  }, [libraryFields]);
 
   const assetsWithDisplay: Asset[] = useMemo(() => {
     if (!selectedColumnFieldId) return [];
@@ -247,11 +269,13 @@ export function AssetReferenceModal({
 
   useEffect(() => {
     if (!open) return;
-    // Parse selections and group them by fieldId
+    // Parse selections and group them by fieldId (only valid fieldIds)
     const normalizedSelections = normalizeReferenceSelections(value);
+    // Only load selections that have a valid fieldId — ignore legacy entries with empty fieldId
+    const validSelections = normalizedSelections.filter((s) => s.fieldId && s.fieldId.trim() !== '');
     const byColumn: Record<string, string[]> = {};
-    normalizedSelections.forEach((s) => {
-      const fid = s.fieldId || '';
+    validSelections.forEach((s) => {
+      const fid = s.fieldId!;
       if (!byColumn[fid]) byColumn[fid] = [];
       byColumn[fid].push(s.assetId);
     });
