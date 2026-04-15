@@ -7,9 +7,9 @@
 export function normalizeReferenceValueToAssetIds(value: unknown): string[] {
   if (value === null || value === undefined) return [];
 
-  // New format: string[]
+  // New format: string[] or ReferenceSelection[]
   if (Array.isArray(value)) {
-    const ids = value
+    return value
       .map((v) => {
         if (typeof v === 'string') return v.trim();
         if (v && typeof v === 'object') {
@@ -20,7 +20,6 @@ export function normalizeReferenceValueToAssetIds(value: unknown): string[] {
         return '';
       })
       .filter((v) => v !== '');
-    return Array.from(new Set(ids));
   }
 
   // Old format: single string

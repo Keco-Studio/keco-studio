@@ -70,48 +70,31 @@ export function AssetReferenceModal({
   const [valuesByAsset, setValuesByAsset] = useState<Record<string, Record<string, unknown>>>({});
   const [searchText, setSearchText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [tempSelectedAssetIds, setTempSelectedAssetIds] = useState<string[]>([]);
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const modalRef = useRef<HTMLDivElement>(null);
   // Track selections per column: each column's selection is independent
   const [selectionsByColumn, setSelectionsByColumn] = useState<Record<string, string[]>>({});
   // Ref to avoid stale closure when reading selectionsByColumn in handlers
   const selectionsByColumnRef = useRef(selectionsByColumn);
-  useEffect(() => {
-    selectionsByColumnRef.current = selectionsByColumn;
-  }, [selectionsByColumn]);
 
-  // Save current column's selection and load new column's selection when switching
+  // Helper that keeps ref and state in sync — call this instead of setSelectionsByColumn directly
+  const updateSelectionsByColumn = (
+    updater: Record<string, string[]> | ((prev: Record<string, string[]>) => Record<string, string[]>)
+  ) => {
+    const newValue = typeof updater === 'function' ? updater(selectionsByColumnRef.current) : updater;
+    selectionsByColumnRef.current = newValue;
+    setSelectionsByColumn(newValue);
+  };
+
   const handleColumnChange = (newFieldId: string) => {
-    // Capture ALL values at click time, before any React state mutations.
-    const currentFieldId = selectedColumnFieldId;
-    const currentSelection = [...tempSelectedAssetIds];
-
-    // Synchronously update ref BEFORE any state mutations so newColumnSelection is fresh.
-    // The regular effect will run after state updates, but we need the ref updated NOW.
-    if (currentFieldId) {
-      selectionsByColumnRef.current = {
-        ...selectionsByColumnRef.current,
-        [currentFieldId]: currentSelection,
-      };
-    }
-
-    const newColumnSelection = selectionsByColumnRef.current[newFieldId] || [];
-
-    // Also update state (this is async/batched)
-    if (currentFieldId) {
-      setSelectionsByColumn((prev) => ({
-        ...prev,
-        [currentFieldId]: currentSelection,
-      }));
-    }
     setSelectedColumnFieldId(newFieldId);
-    // Use the captured selection so it's not affected by React's async state
-    setTempSelectedAssetIds(newColumnSelection);
   };
 
   useEffect(() => {
     if (!open || referenceLibraries.length === 0) return;
+
+    // Reset selections when opening modal or changing reference libraries
+    updateSelectionsByColumn({});
 
     const loadLibraries = async () => {
       try {
@@ -232,10 +215,6 @@ export function AssetReferenceModal({
       if (prev && libraryFields.some((f) => f.id === prev)) return prev;
       return firstFieldId;
     });
-    // Only load first column's selection on initial mount or when libraryFields changes.
-    // Do NOT depend on selectionsByColumn — it causes this effect to override
-    // tempSelectedAssetIds whenever handleColumnChange updates selectionsByColumn.
-    setTempSelectedAssetIds(selectionsByColumnRef.current[firstFieldId] || []);
   }, [libraryFields]);
 
   const assetsWithDisplay: Asset[] = useMemo(() => {
@@ -267,6 +246,11 @@ export function AssetReferenceModal({
     return f?.label || 'Column';
   }, [libraryFields, selectedColumnFieldId]);
 
+  const selectedAssetIdsForCurrentColumn = useMemo(() => {
+    if (!selectedColumnFieldId) return [];
+    return selectionsByColumn[selectedColumnFieldId] || [];
+  }, [selectionsByColumn, selectedColumnFieldId]);
+
   useEffect(() => {
     if (!open) return;
     // Parse selections and group them by fieldId (only valid fieldIds)
@@ -279,27 +263,28 @@ export function AssetReferenceModal({
       if (!byColumn[fid]) byColumn[fid] = [];
       byColumn[fid].push(s.assetId);
     });
-    setSelectionsByColumn(byColumn);
+    updateSelectionsByColumn(byColumn);
     setSearchText('');
     setViewMode('grid');
-    // Load first column's selection if exists, otherwise start fresh
-    setTempSelectedAssetIds([]);
   }, [open, value]);
 
   const handleAssetToggle = (asset: Asset) => {
-    setTempSelectedAssetIds((prev) => {
-      const exists = prev.includes(asset.id);
-      if (exists) return prev.filter((id) => id !== asset.id);
-      return [...prev, asset.id];
+    if (!selectedColumnFieldId) return;
+    updateSelectionsByColumn((prev) => {
+      const current = prev[selectedColumnFieldId] || [];
+      const exists = current.includes(asset.id);
+      const nextColumnSelection = exists
+        ? current.filter((id) => id !== asset.id)
+        : [...current, asset.id];
+      return {
+        ...prev,
+        [selectedColumnFieldId]: nextColumnSelection,
+      };
     });
   };
 
   const handleApply = () => {
-    // Save current column's selection before applying
-    const finalSelectionsByColumn = {
-      ...selectionsByColumn,
-      ...(selectedColumnFieldId ? { [selectedColumnFieldId]: [...tempSelectedAssetIds] } : {}),
-    };
+    const finalSelectionsByColumn = selectionsByColumnRef.current;
 
     // Build ReferenceSelection[] from all columns
     const allSelections: ReferenceSelection[] = [];
@@ -326,8 +311,6 @@ export function AssetReferenceModal({
   };
 
   const handleCancel = () => {
-    const normalizedSelections = normalizeReferenceSelections(value);
-    setTempSelectedAssetIds(normalizedSelections.map((s) => s.assetId));
     onClose();
   };
 
@@ -450,7 +433,7 @@ export function AssetReferenceModal({
                     <div
                       key={asset.id}
                       className={`${styles.assetCard} ${
-                        tempSelectedAssetIds.includes(asset.id) ? styles.assetCardSelected : ''
+                        selectedAssetIdsForCurrentColumn.includes(asset.id) ? styles.assetCardSelected : ''
                       }`}
                       onClick={() => handleAssetToggle(asset)}
                     >
@@ -463,7 +446,7 @@ export function AssetReferenceModal({
                       >
                         {getAvatarText(asset.displayValue || 'Untitled')}
                       </Avatar>
-                      {tempSelectedAssetIds.includes(asset.id) ? (
+                      {selectedAssetIdsForCurrentColumn.includes(asset.id) ? (
                         <span className={styles.assetCardCheck}>✓</span>
                       ) : null}
                     </div>
@@ -484,7 +467,9 @@ export function AssetReferenceModal({
                       key={asset.id}
                       type="button"
                       className={`${styles.assetListRow} ${
-                        tempSelectedAssetIds.includes(asset.id) ? styles.assetListRowSelected : ''
+                        selectedAssetIdsForCurrentColumn.includes(asset.id)
+                          ? styles.assetListRowSelected
+                          : ''
                       }`}
                       onClick={() => handleAssetToggle(asset)}
                     >
@@ -498,7 +483,7 @@ export function AssetReferenceModal({
                         {getAvatarText(asset.displayValue || 'Untitled')}
                       </Avatar>
                       <span className={styles.assetListLabel}>{asset.displayValue || 'Untitled'}</span>
-                      {tempSelectedAssetIds.includes(asset.id) ? (
+                      {selectedAssetIdsForCurrentColumn.includes(asset.id) ? (
                         <span className={styles.assetListCheck}>✓</span>
                       ) : null}
                     </button>

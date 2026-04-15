@@ -45,25 +45,26 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
   onBlur,
   inTableForm = false,
 }) {
-  const hasValues = assetIds.length > 0;
-  const selectedAssetIds = assetIds.slice(0, 5);
-  const extraCount = Math.max(0, assetIds.length - selectedAssetIds.length);
-
   const selections = normalizeReferenceSelections(currentValue);
-  const firstSelectionById = new Map<string, (typeof selections)[number]>();
-  selections.forEach((s) => {
-    if (!firstSelectionById.has(s.assetId)) {
-      firstSelectionById.set(s.assetId, s);
-    }
-  });
-  const getAssetName = (id: string) => firstSelectionById.get(id)?.displayValue || assetNamesCache[id] || id;
+  // Keep per-selection granularity so the same asset chosen in different columns
+  // is rendered independently in the cell UI.
+  const displaySelections =
+    selections.length > 0
+      ? selections.filter((s) => s.assetId && s.assetId.trim() !== '')
+      : assetIds.map((assetId) => ({ assetId }));
+  const hasValues = displaySelections.length > 0;
+  const visibleSelections = displaySelections.slice(0, 5);
+  const extraCount = Math.max(0, displaySelections.length - visibleSelections.length);
+
+  const getAssetName = (selection: { assetId: string; displayValue?: string | null }) =>
+    selection.displayValue || assetNamesCache[selection.assetId] || selection.assetId;
 
   // Expand pill so each avatar tile (1.375rem) fits; base 3.25rem covers 1 avatar + "+" tile.
   const pillWidthStyle: React.CSSProperties | undefined =
-    selectedAssetIds.length <= 1
+    visibleSelections.length <= 1
       ? undefined
       : {
-          width: `calc(3.25rem + ${selectedAssetIds.length - 1} * 1.375rem)`,
+          width: `calc(3.25rem + ${visibleSelections.length - 1} * 1.375rem)`,
         };
 
   const setAvatarRef = useCallback(
@@ -110,24 +111,24 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
           onDoubleClick={handleDoubleClick}
         >
           <div className={styles.referenceAvatarsStack}>
-            {selectedAssetIds.map((id, idx) => {
-              const name = getAssetName(id);
+            {visibleSelections.map((selection, idx) => {
+              const id = selection.assetId;
+              const name = getAssetName(selection);
               return (
                 <div
-                  key={id}
+                  key={`${id}-${selection.fieldId || 'legacy'}-${idx}`}
                   ref={setAvatarRef(id)}
                   onMouseEnter={(e) => {
                     e.stopPropagation();
-                    const selectionsForAsset = selections.filter((s) => s.assetId === id);
                     onAvatarMouseEnter(
                       id,
                       e.currentTarget,
-                      selectionsForAsset.length > 0
-                        ? selectionsForAsset.map((s) => ({
-                            fieldLabel: s.fieldLabel,
-                            displayValue: s.displayValue,
-                          }))
-                        : undefined
+                      [
+                        {
+                          fieldLabel: selection.fieldLabel,
+                          displayValue: selection.displayValue,
+                        },
+                      ]
                     );
                   }}
                   onMouseLeave={(e) => {
@@ -146,7 +147,7 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
                   >
                     {getAssetAvatarText(name)}
                   </Avatar>
-                  {idx === selectedAssetIds.length - 1 && extraCount > 0 ? (
+                  {idx === visibleSelections.length - 1 && extraCount > 0 ? (
                     <span
                       style={{
                         position: 'absolute',
