@@ -46,12 +46,18 @@ export const ReferenceField = React.memo<ReferenceFieldProps>(function Reference
   inTableForm = false,
 }) {
   const selections = normalizeReferenceSelections(currentValue);
+  type DisplaySelection = {
+    assetId: string;
+    fieldId?: string | null;
+    fieldLabel?: string | null;
+    displayValue?: string | null;
+  };
   // Keep per-selection granularity so the same asset chosen in different columns
   // is rendered independently in the cell UI.
-  const displaySelections =
+  const displaySelections: DisplaySelection[] =
     selections.length > 0
       ? selections.filter((s) => s.assetId && s.assetId.trim() !== '')
-      : assetIds.map((assetId) => ({ assetId }));
+      : assetIds.map((assetId) => ({ assetId, fieldId: null, fieldLabel: null, displayValue: null }));
   const hasValues = displaySelections.length > 0;
   const visibleSelections = displaySelections.slice(0, 5);
   const extraCount = Math.max(0, displaySelections.length - visibleSelections.length);

@@ -66,11 +66,56 @@ jobs:
     # This is important for test consistency across runs
     - name: Reset database with seed data
       run: |
-        supabase db reset
-        echo "✅ Database reset completed with fresh seed data"
-        # Verify Supabase is still running after reset
-        echo "🔍 Verifying Supabase is still running after reset..."
-        supabase status
+        set -euo pipefail
+        # CI occasionally hits transient 502 during the container restart phase of `supabase db reset`.
+        # Retry with recovery (stop/start) before failing the workflow.
+        max_attempts=3
+        attempt=1
+        reset_ok=0
+
+        while [ "$attempt" -le "$max_attempts" ]; do
+          echo "🔄 Running supabase db reset (attempt ${attempt}/${max_attempts})..."
+          if supabase db reset --debug; then
+            echo "✅ Database reset completed with fresh seed data"
+            reset_ok=1
+            break
+          fi
+
+          echo "⚠️ supabase db reset failed on attempt ${attempt}"
+          echo "📋 Current Supabase status:"
+          supabase status || true
+
+          if [ "$attempt" -lt "$max_attempts" ]; then
+            echo "🛠️ Attempting Supabase recovery (stop/start) before retry..."
+            supabase stop || true
+            sleep 2
+            supabase start
+            sleep 3
+          fi
+
+          attempt=$((attempt + 1))
+        done
+
+        if [ "$reset_ok" -ne 1 ]; then
+          echo "❌ supabase db reset failed after ${max_attempts} attempts"
+          exit 1
+        fi
+
+        # Verify Supabase is healthy after reset
+        echo "🔍 Verifying Supabase health after reset..."
+        for i in {1..15}; do
+          if curl -f -s http://127.0.0.1:54321/rest/v1/ > /dev/null 2>&1; then
+            echo "✅ Supabase API is healthy after reset"
+            break
+          fi
+          if [ "$i" -eq 15 ]; then
+            echo "❌ Supabase API not healthy after reset"
+            supabase status || true
+            exit 1
+          fi
+          echo "Waiting for Supabase API after reset... (attempt $i/15)"
+          sleep 2
+        done
     
     # Set Supabase environment variables from local instance
     # CRITICAL: These must be set before Playwright starts webServer
