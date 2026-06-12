@@ -12,6 +12,7 @@
 import { useEffect, useRef } from 'react';
 import { useParams, useRouter, usePathname } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { fetchProjectRoleWithRetry } from '@/lib/utils/fetchProjectRoleWithRetry';
 
 export default function ProjectLayout({
   children,
@@ -42,22 +43,11 @@ export default function ProjectLayout({
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) return;
         
-        const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        });
-        
-        if (roleResponse.ok) {
-          const roleResult = await roleResponse.json();
-          
-          // SECURITY FIX: If user has no role in project_collaborators,
-          // they have NO access - even if they are the project owner.
-          // Access is determined ONLY by collaborator records.
-          if (!roleResult.role) {
-            console.log('[ProjectLayout] ⚠️ User no longer has access (not in collaborators), redirecting to /projects');
-            window.location.href = '/projects';
-          }
+        const roleResult = await fetchProjectRoleWithRetry(projectId, session.access_token);
+
+        if (!roleResult.role) {
+          console.log('[ProjectLayout] ⚠️ User no longer has access after role retries, redirecting to /projects');
+          window.location.href = '/projects';
         }
       } catch (err) {
         console.error('[ProjectLayout] Error checking user access:', err);

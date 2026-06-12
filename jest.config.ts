@@ -13,6 +13,7 @@ const config: Config = {
   },
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
   transformIgnorePatterns: [
     'node_modules/(?!(uuid)/)',

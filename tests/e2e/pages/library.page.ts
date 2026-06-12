@@ -109,6 +109,13 @@ export class LibraryPage {
   }
 
   /**
+   * Wait until sidebar admin controls are visible (role API may lag after project creation).
+   */
+  async waitForSidebarAdminRole(timeout = 30000): Promise<void> {
+    await expect(this.sidebarAddButton).toBeVisible({ timeout });
+  }
+
+  /**
    * Open the default Resource Folder that is auto-created with each project
    * @param folderName - Name of the folder (default: "Resource Folder")
    */
@@ -205,7 +212,7 @@ export class LibraryPage {
     // Note: This button is conditionally rendered only when userRole === 'admin'.
     // The user role is fetched asynchronously via /api/projects/{projectId}/role,
     // so we need a longer timeout to allow the API call to complete and the button to render.
-    await expect(this.sidebarAddButton).toBeVisible({ timeout: 15000 });
+    await this.waitForSidebarAdminRole();
     await this.sidebarAddButton.click();
 
     // Step 2: Wait for AddLibraryMenu to appear and click "Create new library"
@@ -277,7 +284,7 @@ export class LibraryPage {
     // Note: This button is conditionally rendered only when userRole === 'admin'.
     // The user role is fetched asynchronously via /api/projects/{projectId}/role,
     // so we need a longer timeout to allow the API call to complete and the button to render.
-    await expect(this.sidebarAddButton).toBeVisible({ timeout: 15000 });
+    await this.waitForSidebarAdminRole();
     await this.sidebarAddButton.click();
 
     // Step 2: Wait for AddLibraryMenu to appear and click "Create new folder"

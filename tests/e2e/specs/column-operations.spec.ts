@@ -159,6 +159,7 @@ async function createAndOpenLibrary(page: Page): Promise<{
 }
 
 test.describe('Column operations and double-click rename', () => {
+  test.describe.configure({ mode: 'serial' });
   test('Add column validation - header name is required', async ({ page }) => {
     test.setTimeout(120000);
 

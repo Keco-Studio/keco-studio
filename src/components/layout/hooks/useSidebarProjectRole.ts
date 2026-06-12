@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { fetchProjectRoleWithRetry } from '@/lib/utils/fetchProjectRoleWithRetry';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -36,20 +37,9 @@ export function useSidebarProjectRole(
         return;
       }
 
-      const roleResponse = await fetch(`/api/projects/${currentProjectId}/role`, {
-        headers: {
-          Authorization: `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (roleResponse.ok) {
-        const roleResult = await roleResponse.json();
-        setUserRole(roleResult.role || null);
-        setIsProjectOwner(roleResult.isOwner || false);
-      } else {
-        setUserRole(null);
-        setIsProjectOwner(false);
-      }
+      const result = await fetchProjectRoleWithRetry(currentProjectId, session.access_token);
+      setUserRole(result.role);
+      setIsProjectOwner(result.isOwner);
     } catch (error) {
       console.error('[Sidebar] Error fetching user role:', error);
       setUserRole(null);
