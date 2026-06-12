@@ -449,12 +449,15 @@ export async function getUserProjectRole(
       .eq('project_id', projectId)
       .eq('user_id', userId)
       .not('accepted_at', 'is', null)
-      .single();
+      .maybeSingle();
 
-    // SECURITY FIX: Access is determined ONLY by collaborator record.
-    // If user is not in project_collaborators (even if they are the owner),
-    // they have NO access. This prevents removed owners from accessing the project.
-    const role = collaborator?.role as CollaboratorRole | null;
+    let role = (collaborator?.role ?? null) as CollaboratorRole | null;
+
+    // Fallback: project owners always have admin access even if their
+    // collaborator record hasn't propagated yet (e.g. right after creation).
+    if (role === null && isOwner) {
+      role = 'admin';
+    }
 
     return {
       role,
