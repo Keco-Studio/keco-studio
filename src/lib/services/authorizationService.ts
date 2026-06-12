@@ -168,6 +168,10 @@ export async function getUserProjectRole(
       return collaborator.role as 'admin' | 'editor' | 'viewer';
     }
 
+    if (project.owner_id === currentUserId) {
+      return 'admin';
+    }
+
     throw new AuthorizationError('User is not a collaborator of this project');
   };
 

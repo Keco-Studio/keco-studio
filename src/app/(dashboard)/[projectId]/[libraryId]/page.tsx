@@ -318,11 +318,11 @@ export default function LibraryPage() {
           // Check if user is the project owner
           const { data: projectData } = await supabase
             .from('projects')
-            .select('user_id')
+            .select('owner_id')
             .eq('id', projectId)
             .single();
-          
-          if (projectData?.user_id === userProfile.id) {
+
+          if (projectData?.owner_id === userProfile.id) {
             setUserRole('admin');
           }
         }
