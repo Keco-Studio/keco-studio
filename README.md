@@ -216,3 +216,5 @@ supabase stop
 
 ---
 
+<!-- CI empty PR verification: Playwright baseline check -->
+
