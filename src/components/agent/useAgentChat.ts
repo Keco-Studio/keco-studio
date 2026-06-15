@@ -9,6 +9,7 @@ import {
   setLastConversation,
 } from './agentChatStorage';
 import { mapHistoryMessagesToChatItems } from './historyMessageMapper';
+import type { StreamActivity } from './streamActivity';
 import type { ChatItem, SendContext } from './types';
 
 let idCounter = 0;
@@ -29,6 +30,8 @@ export function useAgentChat(ctx: SendContext) {
 
   const [items, setItems] = useState<ChatItem[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+  const [streamActivity, setStreamActivity] = useState<StreamActivity>('connecting');
+  const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const conversationIdRef = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
@@ -88,8 +91,15 @@ export function useAgentChat(ctx: SendContext) {
   /**
    * Consume an SSE stream from a Response, mutating chat state as events arrive.
    */
+  const beginStreamActivity = useCallback((activity: StreamActivity = 'connecting') => {
+    setStreamActivity(activity);
+    setStreamStartedAt(Date.now());
+  }, []);
+
   const consumeStream = useCallback(
     async (response: Response) => {
+      beginStreamActivity('connecting');
+
       const convHeader = response.headers.get('X-Conversation-Id');
       if (convHeader) setConv(convHeader);
 
@@ -100,6 +110,7 @@ export function useAgentChat(ctx: SendContext) {
 
       let assistantId: string | null = null;
       let toolCallId: string | null = null;
+      let receivedDone = false;
 
       const ensureAssistantBubble = () => {
         if (!assistantId) {
@@ -114,6 +125,7 @@ export function useAgentChat(ctx: SendContext) {
       const handleEvent = (event: ParsedSSE) => {
         switch (event.type) {
           case 'reasoning_delta': {
+            setStreamActivity('thinking');
             const delta = String(event.content ?? '');
             const id = ensureAssistantBubble();
             const now = Date.now();
@@ -130,6 +142,7 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'text_delta': {
+            setStreamActivity('writing');
             const delta = String(event.content ?? '');
             const id = ensureAssistantBubble();
             const now = Date.now();
@@ -146,6 +159,7 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'tool_call_start': {
+            setStreamActivity('tool');
             assistantId = null;
             streamingAssistantIdRef.current = null;
             setStreamingAssistantId(null);
@@ -158,16 +172,19 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'tool_call_end': {
+            setStreamActivity('processing');
             break;
           }
           case 'tool_result': {
             if (toolCallId) {
+              const succeeded = event.success !== false;
               updateItem(toolCallId, {
                 toolCall: {
                   tool: String(event.tool ?? ''),
-                  status: 'success',
+                  status: succeeded ? 'success' : 'failure',
                   data: event.data,
                   displayHint: event.displayHint ? String(event.displayHint) : undefined,
+                  error: typeof event.error === 'string' ? event.error : undefined,
                 },
               });
             }
@@ -203,6 +220,7 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'done':
+            receivedDone = true;
             break;
           default:
             break;
@@ -244,8 +262,15 @@ export function useAgentChat(ctx: SendContext) {
         }
       }
       finalizeStreamingAssistant();
+      if (!receivedDone) {
+        appendItem({
+          id: nextId(),
+          role: 'error',
+          error: 'Connection closed before the agent finished. Send a follow-up to continue.',
+        });
+      }
     },
-    [appendItem, updateItem, invalidateCaches, setConv]
+    [appendItem, updateItem, invalidateCaches, setConv, beginStreamActivity]
   );
 
   const send = useCallback(
@@ -253,6 +278,7 @@ export function useAgentChat(ctx: SendContext) {
       if (isStreaming || !message.trim()) return;
       appendItem({ id: nextId(), role: 'user', text: message });
       setIsStreaming(true);
+      beginStreamActivity('connecting');
       abortRef.current = new AbortController();
       try {
         const token = await getToken();
@@ -285,9 +311,10 @@ export function useAgentChat(ctx: SendContext) {
         appendItem({ id: nextId(), role: 'error', error: (e as Error).message || 'Network error' });
       } finally {
         setIsStreaming(false);
+        setStreamStartedAt(null);
       }
     },
-    [isStreaming, appendItem, getToken, ctx, consumeStream]
+    [isStreaming, appendItem, getToken, ctx, consumeStream, beginStreamActivity]
   );
 
   const confirm = useCallback(
@@ -301,6 +328,7 @@ export function useAgentChat(ctx: SendContext) {
         )
       );
       setIsStreaming(true);
+      beginStreamActivity('connecting');
       abortRef.current = new AbortController();
       try {
         const token = await getToken();
@@ -332,9 +360,10 @@ export function useAgentChat(ctx: SendContext) {
         appendItem({ id: nextId(), role: 'error', error: (e as Error).message || 'Network error' });
       } finally {
         setIsStreaming(false);
+        setStreamStartedAt(null);
       }
     },
-    [isStreaming, getToken, ctx, consumeStream, appendItem]
+    [isStreaming, getToken, ctx, consumeStream, appendItem, beginStreamActivity]
   );
 
   const resetToEmpty = useCallback(() => {
@@ -343,6 +372,7 @@ export function useAgentChat(ctx: SendContext) {
     setConversationId(undefined);
     setItems([]);
     setIsStreaming(false);
+    setStreamStartedAt(null);
     streamingAssistantIdRef.current = null;
     setStreamingAssistantId(null);
   }, []);
@@ -427,6 +457,8 @@ export function useAgentChat(ctx: SendContext) {
   return {
     items,
     isStreaming,
+    streamActivity,
+    streamStartedAt,
     streamingAssistantId,
     conversationId,
     send,

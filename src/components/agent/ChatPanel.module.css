@@ -285,6 +285,11 @@
 .textarea:focus {
   border-color: #2563eb;
 }
+.textarea:disabled {
+  background: #f9fafb;
+  color: #9ca3af;
+  cursor: default;
+}
 .sendBtn {
   border: none;
   background: #2563eb;
@@ -298,6 +303,34 @@
 .sendBtn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.sendBtnWorking:disabled {
+  opacity: 1;
+  background: #1d4ed8;
+}
+
+.activityBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-top: 1px solid #eef0f3;
+  background: #f0f9ff;
+  font-size: 12.5px;
+  color: #1e40af;
+}
+.activitySpinner {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+.activityText {
+  font-weight: 500;
+}
+.activityElapsed {
+  margin-left: auto;
+  color: #60a5fa;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
 }
 
 .empty {
