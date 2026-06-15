@@ -1244,6 +1244,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onClose={() => setShowAddMenu(false)}
         onCreateFolder={handleCreateFolder}
         onCreateLibrary={handleCreateLibrary}
+        onGenerateFromDocument={() => {
+          setShowAddMenu(false);
+          if (!currentIds.projectId) {
+            setError('Please select a project first');
+            return;
+          }
+          router.push(`/${currentIds.projectId}/design-upload`);
+        }}
       />
 
       {contextMenu && (

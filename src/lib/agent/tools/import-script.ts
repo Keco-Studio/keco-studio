@@ -149,7 +149,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: buildUserPrompt(data, attempt > 0 ? lastErrors : undefined) },
         ],
-        { temperature: 0.2, maxTokens: 8192 }
+        { temperature: 0.2 }
       );
     } catch (e) {
       return { success: false, error: `LLM conversion failed: ${(e as Error).message}` };

@@ -18,9 +18,11 @@ import { createLibrary } from './create-library';
 import { createFolder } from './create-folder';
 import { deleteLibrary } from './delete-library';
 import { renameLibrary } from './rename-library';
+import { listProjectStructure } from './list-project-structure';
 import { allSkills } from '../workflows';
 
 const tools: AgentTool[] = [
+  listProjectStructure,
   queryAssets,
   queryScriptLines,
   addField,

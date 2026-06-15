@@ -5,6 +5,17 @@
 
 import type { ToolContext } from './types';
 
+const CONTEXT_PREFIX_PATTERN = /^\[User is viewing:[\s\S]*?\]\n/;
+
+/**
+ * Remove a previously injected `[User is viewing: ...]` prefix so the raw user
+ * message can be recovered and re-augmented with fresh page context. Safe to
+ * call on messages that were never augmented.
+ */
+export function stripContextAugmentation(userMessage: string): string {
+  return userMessage.replace(CONTEXT_PREFIX_PATTERN, '');
+}
+
 export function augmentUserMessageForLlm(userMessage: string, ctx: ToolContext): string {
   const hasPageContext =
     ctx.currentLibraryName ||

@@ -3,6 +3,7 @@
  */
 
 import type { ChatItem } from './types';
+import { deriveUserDisplay } from './userMessageDisplay';
 
 export interface HistoryMessageRow {
   id: string;
@@ -41,7 +42,8 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
     const text = textFromBody(body);
 
     if (m.role === 'user' && text) {
-      loaded.push({ id: m.id, role: 'user', text });
+      const display = deriveUserDisplay(text);
+      loaded.push({ id: m.id, role: 'user', text: display.text, attachments: display.attachments });
       i++;
       continue;
     }

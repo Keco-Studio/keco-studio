@@ -9,6 +9,8 @@ import {
   setLastConversation,
 } from './agentChatStorage';
 import { mapHistoryMessagesToChatItems } from './historyMessageMapper';
+import { deriveUserDisplay } from './userMessageDisplay';
+import { peekDesignHandoff } from '@/lib/design-upload-handoff';
 import type { StreamActivity } from './streamActivity';
 import type { ChatItem, SendContext } from './types';
 
@@ -276,7 +278,8 @@ export function useAgentChat(ctx: SendContext) {
   const send = useCallback(
     async (message: string) => {
       if (isStreaming || !message.trim()) return;
-      appendItem({ id: nextId(), role: 'user', text: message });
+      const display = deriveUserDisplay(message);
+      appendItem({ id: nextId(), role: 'user', text: display.text, attachments: display.attachments });
       setIsStreaming(true);
       beginStreamActivity('connecting');
       abortRef.current = new AbortController();
@@ -420,6 +423,12 @@ export function useAgentChat(ctx: SendContext) {
 
   const restoreProjectConversation = useCallback(async () => {
     if (!ctx.userId || !ctx.projectId) {
+      resetToEmpty();
+      return;
+    }
+    // A pending design-upload hand-off will drive a fresh conversation; skip the
+    // normal restore so it cannot clobber the auto-sent message.
+    if (peekDesignHandoff(ctx.projectId)) {
       resetToEmpty();
       return;
     }

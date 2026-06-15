@@ -6,8 +6,8 @@ import { getOrCreateConversation } from '@/lib/agent/conversation-store';
 import { sseResponse } from '@/lib/agent/sse';
 import type { ToolContext } from '@/lib/agent/types';
 
-// import_script can trigger LLM conversion with retries, which may exceed 10s.
-export const maxDuration = 60;
+// Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
+export const maxDuration = 120;
 
 const isUuid = (v: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);

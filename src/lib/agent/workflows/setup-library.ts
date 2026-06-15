@@ -15,6 +15,7 @@ import { z } from 'zod';
 import { addLibraryField } from '@/lib/services/libraryAssetsService';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import { normalizeFieldDataType, SUPPORTED_FIELD_DATA_TYPES } from '../field-data-type';
+import { buildDataTypeParamDescription } from '../field-type-catalog';
 import {
   createLibraryServer,
   deleteLibraryServer,
@@ -278,8 +279,7 @@ export const setupLibrary: AgentTool = {
             label: { type: 'string', description: 'Column display name (field label)' },
             dataType: {
               type: 'string',
-              description:
-                'Field data type: string, int, float, boolean, enum, date, reference, formula, int_array, float_array, string_array, multimedia, audio',
+              description: buildDataTypeParamDescription(),
             },
             section: {
               type: 'string',

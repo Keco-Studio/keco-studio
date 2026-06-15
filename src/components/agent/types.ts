@@ -25,10 +25,17 @@ export interface ConfirmationView {
   resolved?: 'approved' | 'rejected';
 }
 
+export interface ChatAttachment {
+  /** Original file name shown as a chip in the user bubble. */
+  fileName: string;
+}
+
 export interface ChatItem {
   id: string;
   role: ChatItemRole;
   text?: string;
+  /** File chips to render alongside the text (e.g. an uploaded design document). */
+  attachments?: ChatAttachment[];
   reasoning?: string;
   /** Wall-clock start of the reasoning stream (first reasoning_delta). */
   reasoningStartedAt?: number;

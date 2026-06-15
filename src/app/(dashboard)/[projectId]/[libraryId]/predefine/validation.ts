@@ -1,8 +1,9 @@
 import { z } from 'zod';
+import { SUPPORTED_FIELD_DATA_TYPES } from '@/lib/agent/field-data-type';
 
 export const fieldSchema = z.object({
   label: z.string().trim().min(1, 'Label is required'),
-  dataType: z.enum(['string', 'int', 'float', 'boolean', 'enum', 'date', 'image', 'file', 'reference']),
+  dataType: z.enum(SUPPORTED_FIELD_DATA_TYPES as unknown as [string, ...string[]]),
   required: z.boolean(),
   enumOptions: z.array(z.string().trim().min(1)).optional(),
   referenceLibraries: z.array(z.string()).optional(),

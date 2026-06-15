@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { DownOutlined, RightOutlined } from '@ant-design/icons';
+import { DownOutlined, RightOutlined, PaperClipOutlined } from '@ant-design/icons';
 import styles from './ChatPanel.module.css';
 import type { ChatItem } from './types';
 import { ToolCallCard } from './ToolCallCard';
@@ -19,7 +19,21 @@ interface Props {
 export function ChatMessage({ item, streaming, onDecision }: Props) {
   switch (item.role) {
     case 'user':
-      return <div className={`${styles.bubble} ${styles.user}`}>{item.text}</div>;
+      return (
+        <div className={`${styles.bubble} ${styles.user}`}>
+          {item.attachments && item.attachments.length > 0 && (
+            <div className={styles.userAttachments}>
+              {item.attachments.map((att, idx) => (
+                <span key={`${att.fileName}-${idx}`} className={styles.userAttachment}>
+                  <PaperClipOutlined className={styles.userAttachmentIcon} />
+                  <span className={styles.userAttachmentName}>{att.fileName}</span>
+                </span>
+              ))}
+            </div>
+          )}
+          {item.text && <div className={styles.userText}>{item.text}</div>}
+        </div>
+      );
     case 'assistant':
       return <AssistantBubble item={item} streaming={streaming} />;
     case 'error':

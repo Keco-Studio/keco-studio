@@ -117,7 +117,7 @@ export type SSEEvent =
   | { type: 'reasoning_delta'; content: string }
   | { type: 'tool_call_start'; tool: string; args: string }
   | { type: 'tool_call_end' }
-  | { type: 'tool_result'; tool: string; data: unknown; displayHint?: DisplayHint }
+  | { type: 'tool_result'; tool: string; data: unknown; displayHint?: DisplayHint; success?: boolean; error?: string }
   | { type: 'confirmation_request'; actionId: string; tool: string; args: unknown; confirmationMode: ConfirmationMode; preview?: unknown }
   | { type: 'cache_invalidated'; paths: string[] }
   | { type: 'done' }
@@ -128,6 +128,8 @@ export interface SuspendedState {
   messages: ChatMessage[];
   pendingToolCall: ToolCall;
   toolResult?: ToolResult;
+  /** Links confirmation resume to the same agent_traces row. */
+  turnId?: string;
 }
 
 export interface AgentTurnInput {

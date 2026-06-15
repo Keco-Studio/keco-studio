@@ -1,0 +1,70 @@
+.zone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 36px 24px;
+  text-align: center;
+  cursor: pointer;
+  background: #f8fafc;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.zone:hover {
+  border-color: #2563eb;
+  background: #f1f5f9;
+}
+.dragOver {
+  border-color: #2563eb;
+  background: #eff6ff;
+}
+.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.disabled:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.input {
+  display: none;
+}
+
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.primaryText {
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
+}
+.secondaryText {
+  font-size: 13px;
+  color: #6b7280;
+}
+
+.selected {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.fileName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  word-break: break-all;
+}
+.clearButton {
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #374151;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.clearButton:hover {
+  border-color: #d1d5db;
+  background: #f9fafb;
+}
