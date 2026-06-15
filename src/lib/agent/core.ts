@@ -16,6 +16,7 @@ import {
   ToolContext,
   ToolResult,
   AgentTool,
+  TokenUsage,
 } from './types';
 import { streamLlm } from './llm-client';
 import { buildSystemPrompt } from './prompts';
@@ -24,25 +25,63 @@ import {
   loadConversationHistory,
   saveMessage,
   getConversation,
-  sanitizeMessagesForLlm,
 } from './conversation-store';
-import { augmentUserMessageForLlm } from './context-message';
+import {
+  emptyTurnErrorMessage,
+  isEmptyAssistantTurn,
+  prepareMessagesForLlm,
+} from './tool-result-for-llm';
+import { augmentUserMessageForLlm, stripContextAugmentation } from './context-message';
 import {
   savePendingAction,
   loadPendingAction,
   markPendingAction,
   deletePendingAction,
 } from './confirmation';
+import {
+  TurnTraceCollector,
+  loadTraceCollector,
+  persistAgentTrace,
+} from './trace-store';
 
-const MAX_ITERATIONS = 10;
+const MAX_ITERATIONS = 50;
 
-function parseArgs(raw: string): Record<string, unknown> {
-  if (!raw || !raw.trim()) return {};
+/** Cap how much of the raw argument string we echo back to the model on a parse failure. */
+const MAX_RAW_ARGS_IN_ERROR = 200;
+
+interface ParsedArgs {
+  args: Record<string, unknown>;
+  /** Present only when the raw JSON could not be parsed into an object. */
+  error?: string;
+}
+
+/**
+ * Parse the LLM-provided tool arguments.
+ *
+ * A malformed / truncated JSON payload must NOT be silently coerced to `{}`:
+ * doing so hides the mistake from the model (Zod then rejects the empty object,
+ * the model assumes the system is broken, and it eventually fabricates a
+ * "done" summary). Instead we surface the parse error so it can be fed back as a
+ * tool result and the model can self-correct.
+ */
+function parseArgs(raw: string): ParsedArgs {
+  if (!raw || !raw.trim()) return { args: {} };
+  let parsed: unknown;
   try {
-    return JSON.parse(raw);
-  } catch {
-    return {};
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    return {
+      args: {},
+      error: `Invalid JSON in tool arguments: ${(e as Error).message}. Received: ${raw.slice(0, MAX_RAW_ARGS_IN_ERROR)}`,
+    };
   }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return {
+      args: {},
+      error: `Tool arguments must be a JSON object. Received: ${raw.slice(0, MAX_RAW_ARGS_IN_ERROR)}`,
+    };
+  }
+  return { args: parsed as Record<string, unknown> };
 }
 
 function needsConfirmation(tool: AgentTool, meta: ConversationMeta): boolean {
@@ -110,6 +149,23 @@ async function buildSystemMessage(ctx: ToolContext): Promise<ChatMessage> {
   };
 }
 
+/**
+ * Re-inject fresh page context into the most recent user message in place.
+ * Used on confirmation resume, where the suspended user message may carry a
+ * stale `[User is viewing: ...]` prefix from before the user navigated away.
+ */
+function refreshLastUserContext(messages: ChatMessage[], ctx: ToolContext): void {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (msg.role !== 'user' || typeof msg.content !== 'string') continue;
+    messages[i] = {
+      ...msg,
+      content: augmentUserMessageForLlm(stripContextAugmentation(msg.content), ctx),
+    };
+    return;
+  }
+}
+
 /** Permission gate run before any write tool executes. */
 function checkToolPermission(tool: AgentTool, ctx: ToolContext): ToolResult | null {
   if (tool.category !== 'write') return null;
@@ -122,6 +178,18 @@ function checkToolPermission(tool: AgentTool, ctx: ToolContext): ToolResult | nu
   return null;
 }
 
+async function flushTrace(
+  collector: TurnTraceCollector | undefined,
+  ctx: ToolContext,
+  conversationId: string
+): Promise<void> {
+  if (!collector) return;
+  await persistAgentTrace(ctx.supabase, collector, {
+    conversationId,
+    userId: ctx.userId,
+  });
+}
+
 /**
  * Drive the ReAct loop over the working messages array. Used both for a fresh
  * turn and after a confirmation resume (with the tool result already appended).
@@ -131,7 +199,8 @@ async function* continueLoop(
   ctx: ToolContext,
   meta: ConversationMeta,
   conversationId: string,
-  startIterations: number
+  startIterations: number,
+  trace?: TurnTraceCollector
 ): AsyncGenerator<SSEEvent> {
   let iterations = startIterations;
 
@@ -139,8 +208,10 @@ async function* continueLoop(
     let assistantContent = '';
     const toolCallsByIndex = new Map<number, ToolCall>();
     let finishReason = '';
+    let llmUsage: TokenUsage | undefined;
+    const llmStartMs = Date.now();
 
-    for await (const chunk of streamLlm(sanitizeMessagesForLlm(messages), { tools: getToolsForLlm() })) {
+    for await (const chunk of streamLlm(prepareMessagesForLlm(messages), { tools: getToolsForLlm() })) {
       if (chunk.type === 'text_delta') {
         assistantContent += chunk.content;
         yield { type: 'text_delta', content: chunk.content };
@@ -161,8 +232,16 @@ async function* continueLoop(
         }
       } else if (chunk.type === 'finish') {
         finishReason = chunk.reason;
+        llmUsage = chunk.usage;
       }
     }
+
+    trace?.recordLlmCall({
+      iteration: iterations,
+      finishReason: finishReason || 'unknown',
+      latencyMs: Date.now() - llmStartMs,
+      usage: llmUsage,
+    });
 
     const toolCalls = Array.from(toolCallsByIndex.entries())
       .sort((a, b) => a[0] - b[0])
@@ -170,6 +249,11 @@ async function* continueLoop(
 
     // Plain text response -> end of turn.
     if (toolCalls.length === 0) {
+      if (isEmptyAssistantTurn(assistantContent, toolCalls)) {
+        yield { type: 'error', message: emptyTurnErrorMessage(finishReason) };
+        yield { type: 'done' };
+        return;
+      }
       messages.push({ role: 'assistant', content: assistantContent });
       await saveMessage(ctx.supabase, conversationId, { role: 'assistant', content: assistantContent });
       yield { type: 'done' };
@@ -185,6 +269,30 @@ async function* continueLoop(
     };
 
     const tool = resolveTool(call.function.name);
+    const parsed = parseArgs(call.function.arguments);
+
+    // Malformed / truncated tool arguments -> feed the parse error back so the
+    // model can re-emit a valid call instead of silently receiving {}.
+    if (parsed.error) {
+      const errorResult: ToolResult = {
+        success: false,
+        error: `${parsed.error}. Re-issue the tool call with a complete, valid JSON object for the arguments.`,
+      };
+      trace?.recordToolCall({
+        tool: call.function.name,
+        args: { _rawArguments: call.function.arguments },
+        success: false,
+        error: errorResult.error,
+      });
+      messages.push(assistantMessage);
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
+      await saveMessage(ctx.supabase, conversationId, assistantMessage);
+      await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
+      yield { type: 'tool_result', tool: call.function.name, data: undefined, displayHint: 'text', success: false, error: errorResult.error };
+      continue;
+    }
+
+    const parsedArgs = parsed.args;
 
     // Unknown tool -> feed an error back to the LLM.
     if (!tool) {
@@ -192,6 +300,12 @@ async function* continueLoop(
         success: false,
         error: `Unknown tool "${call.function.name}". Available: ${allTools.map((t) => t.name).join(', ')}`,
       };
+      trace?.recordToolCall({
+        tool: call.function.name,
+        args: parsedArgs,
+        success: false,
+        error: errorResult.error,
+      });
       messages.push(assistantMessage);
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
       await saveMessage(ctx.supabase, conversationId, assistantMessage);
@@ -202,15 +316,19 @@ async function* continueLoop(
     // Permission gate.
     const permError = checkToolPermission(tool, ctx);
     if (permError) {
+      trace?.recordToolCall({
+        tool: tool.name,
+        args: parsedArgs,
+        success: false,
+        error: permError.error,
+      });
       messages.push(assistantMessage);
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(permError) });
       await saveMessage(ctx.supabase, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(permError) });
-      yield { type: 'tool_result', tool: tool.name, data: undefined, displayHint: 'text' };
+      yield { type: 'tool_result', tool: tool.name, data: undefined, displayHint: 'text', success: false, error: permError.error };
       continue;
     }
-
-    const parsedArgs = parseArgs(call.function.arguments);
 
     if (needsConfirmation(tool, meta)) {
       // pre_execute / meta -> pause BEFORE execution.
@@ -226,8 +344,18 @@ async function* continueLoop(
           toolName: tool.name,
           args: parsedArgs,
           confirmationMode: tool.confirmationMode,
-          suspendedState: { messages: [...messages], pendingToolCall: call },
+          suspendedState: {
+            messages: [...messages],
+            pendingToolCall: call,
+            turnId: trace?.turnId,
+          },
         });
+        trace?.recordConfirmation({
+          actionId,
+          tool: tool.name,
+          confirmationMode: tool.confirmationMode,
+        });
+        await flushTrace(trace, ctx, conversationId);
         yield {
           type: 'confirmation_request',
           actionId,
@@ -242,7 +370,16 @@ async function* continueLoop(
       // post_preview -> execute the non-mutating step first, then pause for preview.
       if (tool.confirmationMode === 'post_preview') {
         yield { type: 'tool_call_start', tool: tool.name, args: call.function.arguments };
+        const previewStartMs = Date.now();
         const result = await tool.execute(parsedArgs, ctx);
+        trace?.recordToolCall({
+          tool: tool.name,
+          args: parsedArgs,
+          success: result.success,
+          error: result.error,
+          latencyMs: Date.now() - previewStartMs,
+          phase: 'execute',
+        });
         yield { type: 'tool_call_end' };
         if (!result.success) {
           messages.push(assistantMessage);
@@ -262,8 +399,19 @@ async function* continueLoop(
           toolName: tool.name,
           args: parsedArgs,
           confirmationMode: 'post_preview',
-          suspendedState: { messages: [...messages], pendingToolCall: call, toolResult: result },
+          suspendedState: {
+            messages: [...messages],
+            pendingToolCall: call,
+            toolResult: result,
+            turnId: trace?.turnId,
+          },
         });
+        trace?.recordConfirmation({
+          actionId,
+          tool: tool.name,
+          confirmationMode: 'post_preview',
+        });
+        await flushTrace(trace, ctx, conversationId);
         yield { type: 'tool_result', tool: tool.name, data: result.data, displayHint: result.displayHint };
         yield {
           type: 'confirmation_request',
@@ -280,9 +428,25 @@ async function* continueLoop(
 
     // No confirmation needed (read tool, or skipConfirmation for pre_execute).
     yield { type: 'tool_call_start', tool: tool.name, args: call.function.arguments };
+    const toolStartMs = Date.now();
     const result = await tool.execute(parsedArgs, ctx);
+    trace?.recordToolCall({
+      tool: tool.name,
+      args: parsedArgs,
+      success: result.success,
+      error: result.error,
+      latencyMs: Date.now() - toolStartMs,
+      phase: 'execute',
+    });
     yield { type: 'tool_call_end' };
-    yield { type: 'tool_result', tool: tool.name, data: result.data, displayHint: result.displayHint };
+    yield {
+      type: 'tool_result',
+      tool: tool.name,
+      data: result.data,
+      displayHint: result.displayHint,
+      success: result.success,
+      error: result.error,
+    };
     if (result.invalidateCache && result.invalidateCache.length > 0) {
       yield { type: 'cache_invalidated', paths: result.invalidateCache };
     }
@@ -300,14 +464,23 @@ async function* continueLoop(
 /** Run a fresh agent turn from a new user message. */
 export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEvent> {
   const { toolContext, conversationId, conversationMeta } = input;
-  const systemMessage = await buildSystemMessage(toolContext);
+  const trace = new TurnTraceCollector({
+    turnId: crypto.randomUUID(),
+    userMessage: input.userMessage,
+  });
 
-  const history = await loadConversationHistory(toolContext.supabase, conversationId);
-  const llmUserMessage = augmentUserMessageForLlm(input.userMessage, toolContext);
-  const messages: ChatMessage[] = [systemMessage, ...history, { role: 'user', content: llmUserMessage }];
-  await saveMessage(toolContext.supabase, conversationId, { role: 'user', content: input.userMessage });
+  try {
+    const systemMessage = await buildSystemMessage(toolContext);
 
-  yield* continueLoop(messages, toolContext, conversationMeta, conversationId, 0);
+    const history = await loadConversationHistory(toolContext.supabase, conversationId);
+    const llmUserMessage = augmentUserMessageForLlm(input.userMessage, toolContext);
+    const messages: ChatMessage[] = [systemMessage, ...history, { role: 'user', content: llmUserMessage }];
+    await saveMessage(toolContext.supabase, conversationId, { role: 'user', content: input.userMessage });
+
+    yield* continueLoop(messages, toolContext, conversationMeta, conversationId, 0, trace);
+  } finally {
+    await flushTrace(trace, toolContext, conversationId);
+  }
 }
 
 /** Resume a suspended turn after the user approves or rejects a pending action. */
@@ -321,61 +494,100 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
   }
 
   const conversationId = pending.conversationId;
-  const conversation = await getConversation(toolContext.supabase, conversationId);
-  const meta = conversation?.meta ?? input.conversationMeta;
+  const turnId = pending.suspendedState.turnId;
+  const trace = turnId ? await loadTraceCollector(toolContext.supabase, turnId) : undefined;
+  trace?.recordConfirmationDecision(
+    input.actionId,
+    input.decision === 'approve' ? 'approved' : 'rejected'
+  );
 
-  const systemMessage = await buildSystemMessage(toolContext);
-  const { messages: suspendedMessages, pendingToolCall, toolResult: savedResult } = pending.suspendedState;
+  try {
+    const conversation = await getConversation(toolContext.supabase, conversationId);
+    const meta = conversation?.meta ?? input.conversationMeta;
 
-  // Ensure the working messages start with the current system prompt.
-  const messages: ChatMessage[] = suspendedMessages[0]?.role === 'system'
-    ? [systemMessage, ...suspendedMessages.slice(1)]
-    : [systemMessage, ...suspendedMessages];
+    const systemMessage = await buildSystemMessage(toolContext);
+    const { messages: suspendedMessages, pendingToolCall, toolResult: savedResult } = pending.suspendedState;
 
-  const tool = resolveTool(pending.toolName);
+    // Ensure the working messages start with the current system prompt.
+    const messages: ChatMessage[] = suspendedMessages[0]?.role === 'system'
+      ? [systemMessage, ...suspendedMessages.slice(1)]
+      : [systemMessage, ...suspendedMessages];
 
-  let result: ToolResult;
+    // The suspended turn baked the page context into the last user message at
+    // suspend time. The user may have navigated elsewhere before approving, so
+    // refresh that injected context from the current ToolContext to avoid the
+    // system prompt and the user message disagreeing within the same turn.
+    refreshLastUserContext(messages, toolContext);
 
-  if (input.decision === 'reject') {
-    result = { success: false, error: 'User cancelled this action.' };
-  } else if (!tool) {
-    result = { success: false, error: `Tool "${pending.toolName}" is no longer available.` };
-  } else if (pending.confirmationMode === 'post_preview') {
-    if (!tool.executeImport || !savedResult) {
-      result = { success: false, error: 'Import data unavailable; please retry.' };
+    const tool = resolveTool(pending.toolName);
+    const resumeArgs =
+      pending.args && typeof pending.args === 'object' && !Array.isArray(pending.args)
+        ? (pending.args as Record<string, unknown>)
+        : {};
+
+    let result: ToolResult;
+
+    if (input.decision === 'reject') {
+      result = { success: false, error: 'User cancelled this action.' };
+    } else if (!tool) {
+      result = { success: false, error: `Tool "${pending.toolName}" is no longer available.` };
+    } else if (pending.confirmationMode === 'post_preview') {
+      if (!tool.executeImport || !savedResult) {
+        result = { success: false, error: 'Import data unavailable; please retry.' };
+      } else {
+        yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
+        const toolStartMs = Date.now();
+        result = await tool.executeImport(savedResult, pending.args, toolContext);
+        trace?.recordToolCall({
+          tool: tool.name,
+          args: resumeArgs,
+          success: result.success,
+          error: result.error,
+          latencyMs: Date.now() - toolStartMs,
+          phase: 'executeImport',
+        });
+        yield { type: 'tool_call_end' };
+      }
     } else {
+      // pre_execute or meta
       yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
-      result = await tool.executeImport(savedResult, pending.args, toolContext);
+      const toolStartMs = Date.now();
+      result = await tool.execute(pending.args, toolContext);
+      trace?.recordToolCall({
+        tool: tool.name,
+        args: resumeArgs,
+        success: result.success,
+        error: result.error,
+        latencyMs: Date.now() - toolStartMs,
+        phase: 'execute',
+      });
       yield { type: 'tool_call_end' };
     }
-  } else {
-    // pre_execute or meta
-    yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
-    result = await tool.execute(pending.args, toolContext);
-    yield { type: 'tool_call_end' };
+
+    yield { type: 'tool_result', tool: pending.toolName, data: result.data, displayHint: result.displayHint };
+    if (result.invalidateCache && result.invalidateCache.length > 0) {
+      yield { type: 'cache_invalidated', paths: result.invalidateCache };
+    }
+
+    // Persist assistant+tool_calls only after we have the tool result, so a
+    // failed execution never leaves orphan tool_calls in the DB.
+    const assistantMessage: ChatMessage = { role: 'assistant', content: '', tool_calls: [pendingToolCall] };
+    const toolMessage: ChatMessage = {
+      role: 'tool',
+      tool_call_id: pendingToolCall.id,
+      content: JSON.stringify(result),
+    };
+    messages.push(assistantMessage);
+    messages.push(toolMessage);
+    await saveMessage(toolContext.supabase, conversationId, assistantMessage);
+    await saveMessage(toolContext.supabase, conversationId, toolMessage);
+
+    await markPendingAction(toolContext.supabase, input.actionId, input.decision === 'approve' ? 'approved' : 'rejected');
+    await deletePendingAction(toolContext.supabase, input.actionId);
+
+    // Continue the loop so the LLM can summarize the result.
+    yield* continueLoop(messages, toolContext, meta, conversationId, 0, trace);
+  } finally {
+    await flushTrace(trace, toolContext, conversationId);
   }
-
-  yield { type: 'tool_result', tool: pending.toolName, data: result.data, displayHint: result.displayHint };
-  if (result.invalidateCache && result.invalidateCache.length > 0) {
-    yield { type: 'cache_invalidated', paths: result.invalidateCache };
-  }
-
-  // Persist assistant+tool_calls only after we have the tool result, so a
-  // failed execution never leaves orphan tool_calls in the DB.
-  const assistantMessage: ChatMessage = { role: 'assistant', content: '', tool_calls: [pendingToolCall] };
-  const toolMessage: ChatMessage = {
-    role: 'tool',
-    tool_call_id: pendingToolCall.id,
-    content: JSON.stringify(result),
-  };
-  messages.push(assistantMessage);
-  messages.push(toolMessage);
-  await saveMessage(toolContext.supabase, conversationId, assistantMessage);
-  await saveMessage(toolContext.supabase, conversationId, toolMessage);
-
-  await markPendingAction(toolContext.supabase, input.actionId, input.decision === 'approve' ? 'approved' : 'rejected');
-  await deletePendingAction(toolContext.supabase, input.actionId);
-
-  // Continue the loop so the LLM can summarize the result.
-  yield* continueLoop(messages, toolContext, meta, conversationId, 0);
 }

@@ -7,7 +7,7 @@ import { loadPendingAction } from '@/lib/agent/confirmation';
 import { sseResponse } from '@/lib/agent/sse';
 import type { ToolContext } from '@/lib/agent/types';
 
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 export async function POST(request: NextRequest) {
   const authed = await authenticate(request);

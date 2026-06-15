@@ -10,9 +10,11 @@ import type { AgentTool } from '../types';
 import { updateRow } from './update-row';
 import { setReference } from './set-reference';
 import { setupLibrary } from './setup-library';
+import { listFieldTypes } from './list-field-types';
 
 export const allSkills: AgentTool[] = [
   updateRow,
   setReference,
   setupLibrary,
+  listFieldTypes,
 ];

@@ -1,53 +1,36 @@
+/**
+ * Field data type normalization. Both the canonical type list and the alias map
+ * are derived from the single source of truth in `field-type-catalog.ts`, so the
+ * two never drift apart.
+ */
+
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
+import { FIELD_TYPE_CATALOG, type FieldDataType } from './field-type-catalog';
 
-const CANONICAL_DATA_TYPES = [
-  'string',
-  'string_array',
-  'int',
-  'int_array',
-  'float',
-  'float_array',
-  'boolean',
-  'enum',
-  'date',
-  'reference',
-  'multimedia',
-  'audio',
-  'formula',
-] as const satisfies readonly PropertyConfig['dataType'][];
+export const SUPPORTED_FIELD_DATA_TYPES: readonly FieldDataType[] = FIELD_TYPE_CATALOG.map(
+  (spec) => spec.dataType
+);
 
-type CanonicalDataType = (typeof CANONICAL_DATA_TYPES)[number];
+const CANONICAL_SET = new Set<string>(SUPPORTED_FIELD_DATA_TYPES);
 
-const ALIASES: Record<string, CanonicalDataType> = {
-  integer: 'int',
-  number: 'int',
-  num: 'int',
-  float: 'float',
-  double: 'float',
-  bool: 'boolean',
-  text: 'string',
-  str: 'string',
-  文本: 'string',
-  字符串: 'string',
-  整数: 'int',
-  整型: 'int',
-  浮点: 'float',
-  布尔: 'boolean',
-  枚举: 'enum',
-  日期: 'date',
-  引用: 'reference',
-  公式: 'formula',
-};
-
-export const SUPPORTED_FIELD_DATA_TYPES = CANONICAL_DATA_TYPES;
+/** Alias -> canonical type, built from each catalog entry's `aliases`. */
+const ALIASES: Record<string, FieldDataType> = (() => {
+  const map: Record<string, FieldDataType> = {};
+  for (const spec of FIELD_TYPE_CATALOG) {
+    for (const alias of spec.aliases ?? []) {
+      map[alias] = spec.dataType;
+    }
+  }
+  return map;
+})();
 
 export function normalizeFieldDataType(input: string): PropertyConfig['dataType'] | null {
   const trimmed = input.trim();
   if (!trimmed) return null;
 
   const lower = trimmed.toLowerCase().replace(/\s+/g, '_');
-  if ((CANONICAL_DATA_TYPES as readonly string[]).includes(lower)) {
-    return lower as CanonicalDataType;
+  if (CANONICAL_SET.has(lower)) {
+    return lower as FieldDataType;
   }
 
   const alias = ALIASES[trimmed] ?? ALIASES[lower];

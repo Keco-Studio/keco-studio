@@ -12,6 +12,7 @@ export const SPECIAL_ROUTE_SEGMENTS = [
   'battle-simulator',
   'economy-simulator',
   'simulation-system',
+  'design-upload',
 ] as const;
 
 export type RouteParamsResult = {

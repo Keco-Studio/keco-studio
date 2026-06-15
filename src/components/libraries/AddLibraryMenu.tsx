@@ -10,6 +10,7 @@ type AddLibraryMenuProps = {
   onClose: () => void;
   onCreateFolder: () => void;
   onCreateLibrary: () => void;
+  onGenerateFromDocument?: () => void;
 };
 
 export function AddLibraryMenu({
@@ -18,6 +19,7 @@ export function AddLibraryMenu({
   onClose,
   onCreateFolder,
   onCreateLibrary,
+  onGenerateFromDocument,
 }: AddLibraryMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
@@ -74,6 +76,11 @@ export function AddLibraryMenu({
       <button className={styles.menuItem} onClick={onCreateLibrary}>
         Create new library
       </button>
+      {onGenerateFromDocument && (
+        <button className={styles.menuItem} onClick={onGenerateFromDocument}>
+          Generate tables from document
+        </button>
+      )}
     </div>,
     document.body
   );

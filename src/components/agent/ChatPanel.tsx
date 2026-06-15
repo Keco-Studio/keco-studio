@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MessageOutlined } from '@ant-design/icons';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { getActiveSectionName } from '@/lib/agent/page-context';
+import { takeDesignHandoff, DESIGN_UPLOAD_EVENT } from '@/lib/design-upload-handoff';
 import { useAgentChat } from './useAgentChat';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
@@ -80,6 +81,30 @@ export function ChatPanel() {
     const el = messagesRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [items]);
+
+  // Consume a pending design-upload hand-off: open the panel, start a fresh
+  // conversation, and auto-send the assembled message to the agent.
+  const consumeDesignHandoff = useCallback(() => {
+    if (!currentProjectId) return;
+    const handoff = takeDesignHandoff(currentProjectId);
+    if (!handoff) return;
+    setOpen(true);
+    startNewConversation();
+    void send(handoff.message);
+  }, [currentProjectId, startNewConversation, send]);
+
+  useEffect(() => {
+    // Run once on mount/route in case the event fired before this listener
+    // attached (e.g. after a full page load), then keep listening for new ones.
+    consumeDesignHandoff();
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ projectId?: string }>).detail;
+      if (detail?.projectId && detail.projectId !== currentProjectId) return;
+      consumeDesignHandoff();
+    };
+    window.addEventListener(DESIGN_UPLOAD_EVENT, handler);
+    return () => window.removeEventListener(DESIGN_UPLOAD_EVENT, handler);
+  }, [consumeDesignHandoff, currentProjectId]);
 
   // Append a note when an import completes via the handoff to ImportScriptModal.
   useEffect(() => {

@@ -610,6 +610,10 @@ export default function ProjectPage() {
                 onClose={() => setShowCreateMenu(false)}
                 onCreateFolder={handleCreateFolder}
                 onCreateLibrary={handleCreateLibrary}
+                onGenerateFromDocument={() => {
+                  setShowCreateMenu(false);
+                  router.push(`/${projectId}/design-upload`);
+                }}
               />
             </>
           )}

@@ -42,9 +42,11 @@ async function requestStream(
     model: LLM_MODEL,
     messages,
     temperature: options.temperature ?? 0.3,
-    max_tokens: options.maxTokens ?? 4096,
     stream: true,
   };
+  if (options.maxTokens != null) {
+    body.max_tokens = options.maxTokens;
+  }
   if (options.tools && options.tools.length > 0) {
     body.tools = options.tools;
     body.tool_choice = 'auto';
