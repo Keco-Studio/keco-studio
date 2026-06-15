@@ -52,6 +52,9 @@ export function ToolCallCard({ toolCall }: Props) {
       </div>
       {open && (
         <div className={styles.cardBody}>
+          {toolCall.status === 'failure' && toolCall.error && (
+            <div style={{ color: '#b91c1c', marginTop: 8 }}>{toolCall.error}</div>
+          )}
           {toolCall.args && (
             <pre className={styles.pre} style={{ marginBottom: 8 }}>
               {toolCall.args}

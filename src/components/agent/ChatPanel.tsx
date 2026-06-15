@@ -9,6 +9,7 @@ import { useAgentChat } from './useAgentChat';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { ConversationList } from './ConversationList';
+import { AgentActivityBar } from './AgentActivityBar';
 import { clearLastConversationById } from './agentChatStorage';
 import styles from './ChatPanel.module.css';
 
@@ -72,7 +73,7 @@ export function ChatPanel() {
     ]
   );
 
-  const { items, isStreaming, streamingAssistantId, conversationId, send, confirm, startNewConversation, loadConversation, appendNote } =
+  const { items, isStreaming, streamActivity, streamStartedAt, streamingAssistantId, conversationId, send, confirm, startNewConversation, loadConversation, appendNote } =
     useAgentChat(ctx);
 
   useEffect(() => {
@@ -153,7 +154,11 @@ export function ChatPanel() {
         )}
       </div>
 
-      <ChatInput userId={userProfile?.id} disabled={isStreaming} onSend={send} />
+      {isStreaming && streamStartedAt != null && (
+        <AgentActivityBar activity={streamActivity} startedAt={streamStartedAt} />
+      )}
+
+      <ChatInput userId={userProfile?.id} isStreaming={isStreaming} onSend={send} />
     </div>
   );
 }

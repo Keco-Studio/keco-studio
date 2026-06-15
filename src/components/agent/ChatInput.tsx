@@ -1,18 +1,19 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { LoadingOutlined } from '@ant-design/icons';
 import { clearDraft, getDraft, setDraft } from './agentChatStorage';
 import styles from './ChatPanel.module.css';
 
 interface Props {
   userId?: string;
-  disabled: boolean;
+  isStreaming: boolean;
   onSend: (message: string) => void;
 }
 
 const DEBOUNCE_MS = 300;
 
-export function ChatInput({ userId, disabled, onSend }: Props) {
+export function ChatInput({ userId, isStreaming, onSend }: Props) {
   const [value, setValue] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -49,7 +50,7 @@ export function ChatInput({ userId, disabled, onSend }: Props) {
 
   const submit = () => {
     const trimmed = value.trim();
-    if (!trimmed || disabled) return;
+    if (!trimmed || isStreaming) return;
     onSend(trimmed);
     setValue('');
     if (userId) clearDraft(userId);
@@ -70,7 +71,12 @@ export function ChatInput({ userId, disabled, onSend }: Props) {
         ref={textareaRef}
         className={styles.textarea}
         rows={1}
-        placeholder="Ask Keco Assistant…  (Enter to send, Shift+Enter for newline)"
+        disabled={isStreaming}
+        placeholder={
+          isStreaming
+            ? 'Keco Assistant is working…'
+            : 'Ask Keco Assistant…  (Enter to send, Shift+Enter for newline)'
+        }
         value={value}
         onChange={(e) => {
           updateValue(e.target.value);
@@ -79,8 +85,13 @@ export function ChatInput({ userId, disabled, onSend }: Props) {
         }}
         onKeyDown={handleKeyDown}
       />
-      <button className={styles.sendBtn} disabled={disabled || !value.trim()} onClick={submit}>
-        Send
+      <button
+        className={`${styles.sendBtn} ${isStreaming ? styles.sendBtnWorking : ''}`}
+        disabled={isStreaming || !value.trim()}
+        onClick={submit}
+        aria-busy={isStreaming}
+      >
+        {isStreaming ? <LoadingOutlined spin /> : 'Send'}
       </button>
     </div>
   );

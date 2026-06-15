@@ -13,6 +13,7 @@ export interface ToolCallView {
   status: ToolCallStatus;
   data?: unknown;
   displayHint?: string;
+  error?: string;
 }
 
 export interface ConfirmationView {
