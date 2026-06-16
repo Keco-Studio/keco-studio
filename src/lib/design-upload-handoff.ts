@@ -16,6 +16,8 @@ const MAX_AGE_MS = 5 * 60 * 1000; // 5 minutes
 export interface DesignUploadHandoff {
   message: string;
   fileName: string;
+  /** Public image URLs (Supabase storage) extracted from the document, if any. */
+  imageUrls?: string[];
   timestamp: number;
 }
 

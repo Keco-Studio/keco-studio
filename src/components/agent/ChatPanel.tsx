@@ -90,7 +90,7 @@ export function ChatPanel() {
     if (!handoff) return;
     setOpen(true);
     startNewConversation();
-    void send(handoff.message);
+    void send(handoff.message, { imageUrls: handoff.imageUrls });
   }, [currentProjectId, startNewConversation, send]);
 
   useEffect(() => {

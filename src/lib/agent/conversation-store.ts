@@ -4,7 +4,36 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { ChatMessage, ConversationMeta } from './types';
+import type { ChatContentPart, ChatMessage, ConversationMeta } from './types';
+
+/** True when a value is a well-formed multimodal content-part array. */
+function isContentPartArray(value: unknown): value is ChatContentPart[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.every(
+      (part) =>
+        part != null &&
+        typeof part === 'object' &&
+        typeof (part as { type?: unknown }).type === 'string'
+    )
+  );
+}
+
+/**
+ * Reconstruct a persisted message body into `ChatMessage['content']`.
+ *
+ * - string -> string (legacy/plain text, backward compatible).
+ * - content-part array -> restored verbatim (multimodal user messages).
+ * - null/undefined -> empty string.
+ * - any other object -> JSON string (legacy fallback).
+ */
+export function parseStoredContent(stored: unknown): ChatMessage['content'] {
+  if (typeof stored === 'string') return stored;
+  if (stored == null) return '';
+  if (isContentPartArray(stored)) return stored;
+  return JSON.stringify(stored);
+}
 
 export interface ConversationRecord {
   id: string;
@@ -83,12 +112,7 @@ export async function loadConversationHistory(
       const body = (row.content ?? {}) as Record<string, unknown>;
       const message: ChatMessage = {
         role: row.role as ChatMessage['role'],
-        content:
-          typeof body.content === 'string'
-            ? body.content
-            : body.content == null
-              ? ''
-              : JSON.stringify(body.content),
+        content: parseStoredContent(body.content),
       };
       if (Array.isArray(body.tool_calls)) message.tool_calls = body.tool_calls as ChatMessage['tool_calls'];
       if (typeof body.tool_call_id === 'string') message.tool_call_id = body.tool_call_id;

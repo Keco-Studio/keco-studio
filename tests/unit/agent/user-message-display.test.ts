@@ -29,4 +29,27 @@ describe('deriveUserDisplay', () => {
     expect(display.attachments).toEqual([{ fileName: 'a.txt' }]);
     expect(display.text).toBe('');
   });
+
+  it('renders image thumbnails for a plain message with attached images', () => {
+    const display = deriveUserDisplay('look at these', [
+      'https://x/a.png',
+      'https://x/b.jpg',
+    ]);
+    expect(display.text).toBe('look at these');
+    expect(display.attachments).toEqual([
+      { fileName: 'a.png', imageUrl: 'https://x/a.png' },
+      { fileName: 'b.jpg', imageUrl: 'https://x/b.jpg' },
+    ]);
+  });
+
+  it('keeps the design-document chip and ignores image thumbnails for design messages', () => {
+    const msg = buildDesignMessage({ fileName: 'world.docx', documentText: 'body' });
+    const display = deriveUserDisplay(msg, ['https://x/a.png']);
+    expect(display.attachments).toEqual([{ fileName: 'world.docx' }]);
+  });
+
+  it('returns no attachments for a plain message without images', () => {
+    const display = deriveUserDisplay('hi', []);
+    expect(display.attachments).toBeUndefined();
+  });
 });

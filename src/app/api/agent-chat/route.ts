@@ -4,6 +4,7 @@ import { runAgentTurn } from '@/lib/agent/core';
 import { resolveUserRole, AgentAccessError } from '@/lib/agent/permissions';
 import { getOrCreateConversation } from '@/lib/agent/conversation-store';
 import { sseResponse } from '@/lib/agent/sse';
+import { sanitizeImageUrls } from '@/lib/agent/image-url-validation';
 import type { ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
@@ -21,6 +22,7 @@ export async function POST(request: NextRequest) {
     conversationId?: string;
     projectId?: string;
     message?: string;
+    imageUrls?: unknown;
     currentFolderId?: string;
     currentFolderName?: string;
     currentLibraryId?: string;
@@ -41,6 +43,10 @@ export async function POST(request: NextRequest) {
   if (!message) {
     return NextResponse.json({ error: 'Message is required' }, { status: 400 });
   }
+
+  // Only accept image URLs that originate from our own public storage bucket, so
+  // the agent can never be steered into fetching arbitrary external URLs.
+  const imageUrls = sanitizeImageUrls(body.imageUrls, process.env.NEXT_PUBLIC_SUPABASE_URL ?? '');
 
   try {
     const userRole = await resolveUserRole(supabase, projectId, user.id);
@@ -66,6 +72,7 @@ export async function POST(request: NextRequest) {
     const generator = runAgentTurn({
       conversationId: conversation.id,
       userMessage: message,
+      imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       toolContext,
       conversationMeta: conversation.meta,
     });

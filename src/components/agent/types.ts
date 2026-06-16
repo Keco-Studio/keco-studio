@@ -28,6 +28,8 @@ export interface ConfirmationView {
 export interface ChatAttachment {
   /** Original file name shown as a chip in the user bubble. */
   fileName: string;
+  /** When set, render an image thumbnail (public URL) instead of a file chip. */
+  imageUrl?: string;
 }
 
 export interface ChatItem {

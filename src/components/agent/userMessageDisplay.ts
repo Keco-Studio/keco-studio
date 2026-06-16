@@ -15,13 +15,35 @@ export interface UserDisplay {
   attachments?: ChatAttachment[];
 }
 
-export function deriveUserDisplay(message: string): UserDisplay {
+/** Derive a short, human-readable file name from an image URL. */
+function fileNameFromUrl(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    const last = path.split('/').pop() ?? '';
+    return decodeURIComponent(last) || 'image';
+  } catch {
+    const last = url.split('/').pop() ?? '';
+    return last || 'image';
+  }
+}
+
+export function deriveUserDisplay(message: string, imageUrls?: string[]): UserDisplay {
   const design = parseDesignMessage(message);
   if (design) {
+    // Design-document messages keep their file chip; embedded doc images are not
+    // shown as thumbnails (there can be many and the chip already conveys it).
     return {
       text: design.instructions ?? '',
       attachments: [{ fileName: design.fileName }],
     };
   }
+
+  if (imageUrls && imageUrls.length > 0) {
+    return {
+      text: message,
+      attachments: imageUrls.map((url) => ({ fileName: fileNameFromUrl(url), imageUrl: url })),
+    };
+  }
+
   return { text: message };
 }

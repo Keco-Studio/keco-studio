@@ -71,6 +71,15 @@ RULES:
       flattening relations into strings; use enum (with enumOptions) for fixed
       option sets; use formula (with formulaExpression) for derived values;
       use *_array types for multi-valued cells.
+    - The design document may include ATTACHED IMAGES (diagrams, structure
+      charts, table screenshots, character art, UI mockups). You can SEE them.
+      Use the images together with the text to understand the design and infer
+      tables/fields/data (e.g. read a relationship diagram to decide reference
+      fields, or a stats-table screenshot to decide columns and rows).
+    - Images are for UNDERSTANDING ONLY. You still cannot upload files, so media
+      columns (image / file / multimedia / audio) must be created but left
+      EMPTY — never put the attached image URLs into cells or invent media
+      values.
     - For visual/asset concepts in the document (立绘/头像/图标/附件/配音 etc.),
       DO create the matching media column (image / file / multimedia / audio),
       but leave its cells EMPTY — the user uploads media later. Never invent

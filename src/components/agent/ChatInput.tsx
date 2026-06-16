@@ -1,24 +1,38 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import { LoadingOutlined, PaperClipOutlined, CloseOutlined } from '@ant-design/icons';
 import { clearDraft, getDraft, setDraft } from './agentChatStorage';
 import { parseDocument, validateDesignFile, SUPPORTED_DESIGN_EXTENSIONS } from '@/lib/document-parser';
 import { buildDesignMessage } from '@/lib/design-message';
+import { uploadDocumentImages, uploadImageFiles } from '@/lib/services/documentImageUpload';
+import { getCurrentUserId } from '@/lib/services/authorizationService';
+import { validateMediaFile } from '@/lib/services/mediaFileUploadService';
+import { useSupabase } from '@/lib/SupabaseContext';
 import styles from './ChatPanel.module.css';
 
 interface Props {
   userId?: string;
   isStreaming: boolean;
-  onSend: (message: string) => void;
+  onSend: (message: string, opts?: { imageUrls?: string[] }) => void;
 }
 
 const DEBOUNCE_MS = 300;
-const ACCEPT = SUPPORTED_DESIGN_EXTENSIONS.map((ext) => `.${ext}`).join(',');
+/** Max images attachable to a single chat message (design decision). */
+const MAX_CHAT_IMAGES = 6;
+/** Default prompt used when the user sends images without typing any text. */
+const DEFAULT_IMAGE_PROMPT = 'Please analyze the attached image(s).';
+const DOC_ACCEPT = SUPPORTED_DESIGN_EXTENSIONS.map((ext) => `.${ext}`).join(',');
+const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
+const ACCEPT = `${DOC_ACCEPT},${IMAGE_ACCEPT}`;
 
 export function ChatInput({ userId, isStreaming, onSend }: Props) {
+  const supabase = useSupabase();
   const [value, setValue] = useState('');
   const [file, setFile] = useState<File | null>(null);
+  const [images, setImages] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [fileError, setFileError] = useState<string | null>(null);
   const [parsing, setParsing] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -26,6 +40,13 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Maintain object-URL previews for the currently attached images.
+  useEffect(() => {
+    const urls = images.map((f) => URL.createObjectURL(f));
+    setImagePreviews(urls);
+    return () => urls.forEach((u) => URL.revokeObjectURL(u));
+  }, [images]);
 
   useEffect(() => {
     if (!userId) {
@@ -57,17 +78,53 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
     [userId]
   );
 
-  const acceptFile = useCallback((next: File | null) => {
-    if (!next) return;
-    const validation = validateDesignFile(next);
-    if (!validation.ok) {
-      setFile(null);
-      setFileError(validation.error ?? 'Unsupported file.');
+  const acceptImages = useCallback((incoming: File[]) => {
+    const valid: File[] = [];
+    let lastError: string | null = null;
+    for (const f of incoming) {
+      const validation = validateMediaFile(f);
+      if (validation.ok) valid.push(f);
+      else lastError = validation.error ?? 'Unsupported image.';
+    }
+    if (valid.length === 0) {
+      if (lastError) setFileError(lastError);
       return;
     }
-    setFile(next);
-    setFileError(null);
+    // Images and a design document are mutually exclusive per message.
+    setFile(null);
+    setImages((prev) => {
+      const merged = [...prev, ...valid];
+      if (merged.length > MAX_CHAT_IMAGES) {
+        setFileError(`You can attach up to ${MAX_CHAT_IMAGES} images.`);
+        return merged.slice(0, MAX_CHAT_IMAGES);
+      }
+      setFileError(lastError);
+      return merged;
+    });
   }, []);
+
+  /** Route dropped/selected files: images go to the image list, else a doc. */
+  const acceptFiles = useCallback(
+    (list: FileList | File[] | null) => {
+      const arr = Array.from(list ?? []);
+      if (arr.length === 0) return;
+      const imgs = arr.filter((f) => f.type.startsWith('image/'));
+      if (imgs.length > 0) {
+        acceptImages(imgs);
+        return;
+      }
+      const doc = arr[0];
+      const validation = validateDesignFile(doc);
+      if (!validation.ok) {
+        setFileError(validation.error ?? 'Unsupported file.');
+        return;
+      }
+      setImages([]);
+      setFile(doc);
+      setFileError(null);
+    },
+    [acceptImages]
+  );
 
   const clearFile = useCallback(() => {
     setFile(null);
@@ -75,25 +132,67 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
     if (fileInputRef.current) fileInputRef.current.value = '';
   }, []);
 
+  const removeImage = useCallback((index: number) => {
+    setImages((prev) => prev.filter((_, i) => i !== index));
+  }, []);
+
+  const clearImages = useCallback(() => {
+    setImages([]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, []);
+
   const submit = useCallback(async () => {
     if (isStreaming || parsing) return;
     const trimmed = value.trim();
-    if (!trimmed && !file) return;
+    if (!trimmed && !file && images.length === 0) return;
+
+    if (images.length > 0) {
+      setParsing(true);
+      try {
+        const uploaderId = await getCurrentUserId(supabase);
+        const imageUrls = await uploadImageFiles(supabase, images, uploaderId);
+        if (imageUrls.length === 0) {
+          setFileError('The image(s) could not be uploaded. Please try again.');
+          return;
+        }
+        onSend(trimmed || DEFAULT_IMAGE_PROMPT, { imageUrls });
+        setValue('');
+        clearImages();
+        if (userId) clearDraft(userId);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        if (textareaRef.current) textareaRef.current.style.height = 'auto';
+      } catch {
+        setFileError('You must be signed in to attach images.');
+      } finally {
+        setParsing(false);
+      }
+      return;
+    }
 
     if (file) {
       setParsing(true);
       try {
-        const documentText = await parseDocument(file);
-        if (!documentText.trim()) {
+        const { text, images } = await parseDocument(file);
+        const documentText = text.trim();
+        if (!documentText) {
           setFileError('No text could be extracted from this file.');
           return;
+        }
+        let imageUrls: string[] = [];
+        if (images.length > 0) {
+          try {
+            const uploaderId = await getCurrentUserId(supabase);
+            imageUrls = await uploadDocumentImages(supabase, images, uploaderId);
+          } catch {
+            // best-effort: fall back to a text-only design message
+          }
         }
         const message = buildDesignMessage({
           fileName: file.name,
           documentText,
           additionalInstructions: trimmed || undefined,
         });
-        onSend(message);
+        onSend(message, { imageUrls });
         setValue('');
         clearFile();
         if (userId) clearDraft(userId);
@@ -112,7 +211,25 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
     if (userId) clearDraft(userId);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-  }, [isStreaming, parsing, value, file, onSend, userId, clearFile]);
+  }, [isStreaming, parsing, value, file, images, onSend, userId, clearFile, clearImages, supabase]);
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent) => {
+      if (isStreaming || parsing) return;
+      const imageFiles: File[] = [];
+      for (const item of Array.from(e.clipboardData.items)) {
+        if (item.kind === 'file' && item.type.startsWith('image/')) {
+          const f = item.getAsFile();
+          if (f) imageFiles.push(f);
+        }
+      }
+      if (imageFiles.length > 0) {
+        e.preventDefault();
+        acceptImages(imageFiles);
+      }
+    },
+    [isStreaming, parsing, acceptImages]
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -149,10 +266,11 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
     dragDepth.current = 0;
     setDragActive(false);
     if (isStreaming) return;
-    acceptFile(e.dataTransfer.files?.[0] ?? null);
+    acceptFiles(e.dataTransfer.files);
   };
 
-  const sendDisabled = isStreaming || parsing || (!value.trim() && !file);
+  const sendDisabled =
+    isStreaming || parsing || (!value.trim() && !file && images.length === 0);
 
   return (
     <div
@@ -162,6 +280,32 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {images.length > 0 && (
+        <div className={styles.attachmentRow}>
+          {imagePreviews.map((url, idx) => (
+            <span key={url} className={styles.imageChip}>
+              <Image
+                src={url}
+                alt={images[idx]?.name ?? 'image'}
+                width={48}
+                height={48}
+                className={styles.imageChipThumb}
+                unoptimized
+              />
+              <button
+                type="button"
+                className={styles.imageChipRemove}
+                onClick={() => removeImage(idx)}
+                aria-label="Remove image"
+                disabled={parsing}
+              >
+                <CloseOutlined />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
+
       {(file || fileError) && (
         <div className={styles.attachmentRow}>
           <span className={`${styles.fileChip} ${fileError ? styles.fileChipError : ''}`}>
@@ -198,8 +342,8 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
           className={styles.attachBtn}
           onClick={() => fileInputRef.current?.click()}
           disabled={isStreaming || parsing}
-          aria-label="Attach a document"
-          title="Attach a .txt, .md, or .docx document"
+          aria-label="Attach a document or images"
+          title="Attach a .txt/.md/.docx document or images"
         >
           <PaperClipOutlined />
         </button>
@@ -207,9 +351,10 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
           ref={fileInputRef}
           type="file"
           accept={ACCEPT}
+          multiple
           className={styles.fileInputHidden}
           onChange={(e) => {
-            acceptFile(e.target.files?.[0] ?? null);
+            acceptFiles(e.target.files);
             e.target.value = '';
           }}
         />
@@ -223,7 +368,9 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
               ? 'Keco Assistant is working…'
               : file
                 ? 'Add a prompt for this document (optional)…'
-                : 'Ask Keco Assistant…  (Enter to send, Shift+Enter for newline)'
+                : images.length > 0
+                  ? 'Add a prompt for these images (optional)…'
+                  : 'Ask Keco Assistant…  (Enter to send, Shift+Enter for newline)'
           }
           value={value}
           onChange={(e) => {
@@ -232,6 +379,7 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
             e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
           }}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
         />
         <button
           className={`${styles.sendBtn} ${isStreaming || parsing ? styles.sendBtnWorking : ''}`}

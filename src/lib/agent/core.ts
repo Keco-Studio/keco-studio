@@ -32,6 +32,8 @@ import {
   prepareMessagesForLlm,
 } from './tool-result-for-llm';
 import { augmentUserMessageForLlm, stripContextAugmentation } from './context-message';
+import { buildUserContent, mapMessageText } from './content-parts';
+import { inlineLocalImages } from './image-inlining';
 import {
   savePendingAction,
   loadPendingAction,
@@ -154,13 +156,16 @@ async function buildSystemMessage(ctx: ToolContext): Promise<ChatMessage> {
  * Used on confirmation resume, where the suspended user message may carry a
  * stale `[User is viewing: ...]` prefix from before the user navigated away.
  */
-function refreshLastUserContext(messages: ChatMessage[], ctx: ToolContext): void {
+export function refreshLastUserContext(messages: ChatMessage[], ctx: ToolContext): void {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
-    if (msg.role !== 'user' || typeof msg.content !== 'string') continue;
+    if (msg.role !== 'user') continue;
+    if (typeof msg.content !== 'string' && !Array.isArray(msg.content)) continue;
     messages[i] = {
       ...msg,
-      content: augmentUserMessageForLlm(stripContextAugmentation(msg.content), ctx),
+      content: mapMessageText(msg.content, (text) =>
+        augmentUserMessageForLlm(stripContextAugmentation(text), ctx)
+      ),
     };
     return;
   }
@@ -211,7 +216,8 @@ async function* continueLoop(
     let llmUsage: TokenUsage | undefined;
     const llmStartMs = Date.now();
 
-    for await (const chunk of streamLlm(prepareMessagesForLlm(messages), { tools: getToolsForLlm() })) {
+    const llmMessages = await inlineLocalImages(prepareMessagesForLlm(messages));
+    for await (const chunk of streamLlm(llmMessages, { tools: getToolsForLlm() })) {
       if (chunk.type === 'text_delta') {
         assistantContent += chunk.content;
         yield { type: 'text_delta', content: chunk.content };
@@ -474,8 +480,13 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
 
     const history = await loadConversationHistory(toolContext.supabase, conversationId);
     const llmUserMessage = augmentUserMessageForLlm(input.userMessage, toolContext);
-    const messages: ChatMessage[] = [systemMessage, ...history, { role: 'user', content: llmUserMessage }];
-    await saveMessage(toolContext.supabase, conversationId, { role: 'user', content: input.userMessage });
+    // In-context message carries page-context-augmented text plus any images;
+    // the persisted copy keeps the raw text (no context prefix) plus the images
+    // so they are re-sent on every turn (spec: always let the agent see them).
+    const userContentForLlm = buildUserContent(llmUserMessage, input.imageUrls);
+    const userContentForDb = buildUserContent(input.userMessage, input.imageUrls);
+    const messages: ChatMessage[] = [systemMessage, ...history, { role: 'user', content: userContentForLlm }];
+    await saveMessage(toolContext.supabase, conversationId, { role: 'user', content: userContentForDb });
 
     yield* continueLoop(messages, toolContext, conversationMeta, conversationId, 0, trace);
   } finally {

@@ -276,9 +276,9 @@ export function useAgentChat(ctx: SendContext) {
   );
 
   const send = useCallback(
-    async (message: string) => {
+    async (message: string, opts?: { imageUrls?: string[] }) => {
       if (isStreaming || !message.trim()) return;
-      const display = deriveUserDisplay(message);
+      const display = deriveUserDisplay(message, opts?.imageUrls);
       appendItem({ id: nextId(), role: 'user', text: display.text, attachments: display.attachments });
       setIsStreaming(true);
       beginStreamActivity('connecting');
@@ -296,6 +296,7 @@ export function useAgentChat(ctx: SendContext) {
             conversationId: conversationIdRef.current,
             projectId: ctx.projectId,
             message,
+            imageUrls: opts?.imageUrls,
             currentFolderId: ctx.currentFolderId,
             currentFolderName: ctx.currentFolderName,
             currentLibraryId: ctx.currentLibraryId,
