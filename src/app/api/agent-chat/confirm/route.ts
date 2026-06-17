@@ -3,6 +3,7 @@ import { authenticate } from '@/lib/agent/route-auth';
 import { resumeAgentTurn } from '@/lib/agent/core';
 import { resolveUserRole, AgentAccessError } from '@/lib/agent/permissions';
 import { getConversation } from '@/lib/agent/conversation-store';
+import { resolveConversationMeta } from '@/lib/agent/conversation-meta';
 import { loadPendingAction } from '@/lib/agent/confirmation';
 import { sseResponse } from '@/lib/agent/sse';
 import type { ToolContext } from '@/lib/agent/types';
@@ -68,7 +69,7 @@ export async function POST(request: NextRequest) {
       actionId,
       decision,
       toolContext,
-      conversationMeta: conversation.meta,
+      conversationMeta: resolveConversationMeta(conversation.meta),
     });
 
     const response = sseResponse(generator);

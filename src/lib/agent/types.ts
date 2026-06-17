@@ -55,16 +55,18 @@ export interface AgentTool {
   requiredPermission?: 'editor' | 'admin';
   execute: (params: unknown, ctx: ToolContext) => Promise<ToolResult>;
   /**
-   * Optional second phase for post_preview tools. The generic ReAct loop never
-   * calls this — only the /confirm resume handler does, after the user approves
-   * a preview. Receives the toolResult saved during the non-mutating execute().
+   * Optional second phase for post_preview tools. Called by the ReAct loop in
+   * auto-execute mode after preview, and by the /confirm resume handler after approval.
    */
   executeImport?: (toolResult: ToolResult, params: unknown, ctx: ToolContext) => Promise<ToolResult>;
 }
 
 /** Per-conversation settings stored in agent_conversations.meta. */
 export interface ConversationMeta {
-  /** Only applies to pre_execute tools. post_preview and meta tools ALWAYS confirm. */
+  /** Default true for new conversations. When true, all write tools skip confirmation. */
+  autoExecute?: boolean;
+
+  /** @deprecated Read as autoExecute=true if set. Do not write on new saves. */
   skipConfirmation?: boolean;
 }
 

@@ -18,6 +18,7 @@ import {
 } from '@/lib/utils/assetEmptiness';
 import {
   normalizeReferenceSelections,
+  looksLikeNonEmptyReferenceInput,
   referenceSelectionsToValue,
   type ReferenceSelection,
 } from '@/lib/utils/referenceValue';
@@ -180,6 +181,64 @@ function buildReferenceSelectionForField(
   };
 }
 
+const normFieldKey = (s: string) => s.trim().toLowerCase();
+
+/** Map agent-supplied fieldId (uuid or semantic label) to a library field definition id. */
+export function resolveReferenceFieldId(
+  fieldIdOrLabel: string,
+  fields: ReferenceFieldLite[]
+): string | null {
+  const raw = fieldIdOrLabel.trim();
+  if (!raw) return null;
+  if (fields.some((f) => f.id === raw)) return raw;
+  const byNorm = fields.find((f) => normFieldKey(f.label) === normFieldKey(raw));
+  if (byNorm) return byNorm.id;
+  const byExact = fields.find((f) => f.label === raw);
+  return byExact?.id ?? null;
+}
+
+function isPlaceholderReferenceDisplay(value: string | null | undefined): boolean {
+  if (!value) return true;
+  const trimmed = value.trim();
+  return trimmed === '' || trimmed.toLowerCase() === 'untitled';
+}
+
+/** Build a persisted ReferenceSelection from agent/query input with robust fallbacks. */
+function buildAgentReferenceSelection(
+  sel: ReferenceSelection,
+  propertyValues: Record<string, unknown>,
+  fields: ReferenceFieldLite[]
+): ReferenceSelection | null {
+  if (sel.fieldId) {
+    const resolvedFieldId = resolveReferenceFieldId(sel.fieldId, fields) ?? sel.fieldId;
+    const specific = buildReferenceSelectionForField(
+      sel.assetId,
+      resolvedFieldId,
+      propertyValues,
+      fields
+    );
+    if (specific) return specific;
+
+    const fallback = buildReferenceSelectionForAsset(sel.assetId, propertyValues, fields);
+    if (fallback) return fallback;
+
+    const inputDisplay = sel.displayValue?.trim();
+    if (inputDisplay && !isPlaceholderReferenceDisplay(inputDisplay)) {
+      const field = fields.find((f) => f.id === resolvedFieldId);
+      return {
+        assetId: sel.assetId,
+        fieldId: resolvedFieldId,
+        fieldLabel: sel.fieldLabel ?? field?.label ?? resolvedFieldId,
+        displayValue: inputDisplay,
+      };
+    }
+
+    return null;
+  }
+
+  return buildReferenceSelectionForAsset(sel.assetId, propertyValues, fields);
+}
+
 export function buildQueryAssetSummary(
   allRows: QueryAssetRow[],
   returnedRows: QueryAssetRow[],
@@ -310,6 +369,9 @@ export async function findEmptyReferenceTargetIds(
 const EMPTY_REFERENCE_ERROR =
   'Cannot reference empty asset(s): %s. These assets have no visible field values. Please fill in the target asset first, or choose a different reference target.';
 
+const INVALID_REFERENCE_FORMAT_ERROR =
+  'Invalid reference value: expected an array of { assetId, fieldId } objects. Pass referenceTargets from query_assets directly — do not wrap selections in an "item" key.';
+
 export async function validateReferencePropertyValues(
   supabase: SupabaseClient,
   properties: PropertyConfig[],
@@ -326,7 +388,12 @@ export async function validateReferencePropertyValues(
     if (!referenceFieldIds.has(fieldId)) continue;
     if (value === null || value === undefined) continue;
 
-    for (const selection of normalizeReferenceSelections(value)) {
+    const selections = normalizeReferenceSelections(value);
+    if (selections.length === 0 && looksLikeNonEmptyReferenceInput(value)) {
+      return { ok: false, error: INVALID_REFERENCE_FORMAT_ERROR };
+    }
+
+    for (const selection of selections) {
       if (selection.fieldId) {
         cellTargets.push({ assetId: selection.assetId, fieldId: selection.fieldId });
       } else {
@@ -465,18 +532,25 @@ export async function resolveAgentReferencePropertyValues(
     const selections: ReferenceSelection[] = [];
     for (const sel of normalized) {
       const libraryId = libraryIdByAsset.get(sel.assetId);
-      if (!libraryId) continue;
+      if (!libraryId) {
+        throw new Error(`Reference target asset not found: ${sel.assetId}`);
+      }
       const fields = fieldsByLibrary.get(libraryId) ?? [];
       const propertyValues = valuesByAsset.get(sel.assetId) ?? {};
 
-      if (sel.fieldId) {
-        const specific = buildReferenceSelectionForField(sel.assetId, sel.fieldId, propertyValues, fields);
-        if (specific) selections.push(specific);
-        continue;
+      const built = buildAgentReferenceSelection(sel, propertyValues, fields);
+      if (!built) {
+        throw new Error(
+          `Reference target has no non-empty cell values: ${sel.assetId}. Query the source library with includeEmpty=false and use referenceTargets.`
+        );
       }
+      selections.push(built);
+    }
 
-      const fallback = buildReferenceSelectionForAsset(sel.assetId, propertyValues, fields);
-      if (fallback) selections.push(fallback);
+    if (selections.length === 0) {
+      throw new Error(
+        'Failed to resolve reference target(s). Pass referenceTargets from query_assets (assetId + fieldId per cell).'
+      );
     }
 
     output[field.key] = referenceSelectionsToValue(selections);

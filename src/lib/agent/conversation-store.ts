@@ -5,6 +5,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ChatContentPart, ChatMessage, ConversationMeta } from './types';
+import { metaForSave, resolveConversationMeta } from './conversation-meta';
 
 /** True when a value is a well-formed multimodal content-part array. */
 function isContentPartArray(value: unknown): value is ChatContentPart[] {
@@ -51,7 +52,7 @@ export interface ConversationRecord {
  */
 export async function getOrCreateConversation(
   supabase: SupabaseClient,
-  params: { conversationId?: string; userId: string; projectId: string }
+  params: { conversationId?: string; userId: string; projectId: string; initialAutoExecute?: boolean }
 ): Promise<ConversationRecord> {
   if (params.conversationId) {
     const { data, error } = await supabase
@@ -68,9 +69,11 @@ export async function getOrCreateConversation(
     return normalizeConversation(data);
   }
 
+  const initialMeta = metaForSave(params.initialAutoExecute ?? true);
+
   const { data, error } = await supabase
     .from('agent_conversations')
-    .insert({ user_id: params.userId, project_id: params.projectId, meta: {} })
+    .insert({ user_id: params.userId, project_id: params.projectId, meta: initialMeta })
     .select('*')
     .single();
   if (error || !data) {
@@ -214,14 +217,17 @@ export async function updateConversationMeta(
   supabase: SupabaseClient,
   conversationId: string,
   meta: ConversationMeta
-): Promise<void> {
+): Promise<ConversationMeta> {
+  const resolved = resolveConversationMeta(meta);
+  const toSave = metaForSave(resolved.autoExecute !== false);
   const { error } = await supabase
     .from('agent_conversations')
-    .update({ meta, updated_at: new Date().toISOString() })
+    .update({ meta: toSave, updated_at: new Date().toISOString() })
     .eq('id', conversationId);
   if (error) {
     throw new Error(`Failed to update conversation meta: ${error.message}`);
   }
+  return toSave;
 }
 
 export interface ConversationListItem {
@@ -275,7 +281,7 @@ function mapConversationListRow(row: Record<string, unknown>): ConversationListI
     id: row.id as string,
     projectId: row.project_id as string,
     projectName,
-    meta: (row.meta ?? {}) as ConversationMeta,
+    meta: resolveConversationMeta((row.meta ?? {}) as ConversationMeta),
     title: (row.title as string | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
@@ -330,12 +336,13 @@ export async function getMessages(
 }
 
 function normalizeConversation(row: Record<string, unknown>): ConversationRecord {
+  const rawMeta = (row.meta ?? {}) as ConversationMeta;
   return {
     id: row.id as string,
     user_id: row.user_id as string,
     project_id: row.project_id as string,
     title: (row.title as string | null) ?? null,
-    meta: (row.meta ?? {}) as ConversationMeta,
+    meta: resolveConversationMeta(rawMeta),
     created_at: row.created_at as string,
     updated_at: row.updated_at as string,
   };

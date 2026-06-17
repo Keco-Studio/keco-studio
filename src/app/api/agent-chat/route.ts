@@ -3,6 +3,7 @@ import { authenticate } from '@/lib/agent/route-auth';
 import { runAgentTurn } from '@/lib/agent/core';
 import { resolveUserRole, AgentAccessError } from '@/lib/agent/permissions';
 import { getOrCreateConversation } from '@/lib/agent/conversation-store';
+import { resolveConversationMeta } from '@/lib/agent/conversation-meta';
 import { sseResponse } from '@/lib/agent/sse';
 import { sanitizeImageUrls } from '@/lib/agent/image-url-validation';
 import type { ToolContext } from '@/lib/agent/types';
@@ -28,6 +29,8 @@ export async function POST(request: NextRequest) {
     currentLibraryId?: string;
     currentLibraryName?: string;
     currentSectionName?: string;
+    /** Default for newly created conversations (from user preference). */
+    autoExecute?: unknown;
   };
   try {
     body = await request.json();
@@ -50,10 +53,14 @@ export async function POST(request: NextRequest) {
 
   try {
     const userRole = await resolveUserRole(supabase, projectId, user.id);
+    const initialAutoExecute =
+      typeof body.autoExecute === 'boolean' ? body.autoExecute : true;
+
     const conversation = await getOrCreateConversation(supabase, {
       conversationId: body.conversationId,
       userId: user.id,
       projectId,
+      initialAutoExecute,
     });
 
     const toolContext: ToolContext = {
@@ -74,7 +81,7 @@ export async function POST(request: NextRequest) {
       userMessage: message,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       toolContext,
-      conversationMeta: conversation.meta,
+      conversationMeta: resolveConversationMeta(conversation.meta),
     });
 
     const response = sseResponse(generator);

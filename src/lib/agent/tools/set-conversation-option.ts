@@ -1,16 +1,17 @@
 /**
  * set_conversation_option — toggle per-conversation options (meta confirmation).
  *
- * Currently only "skipConfirmation" is supported, which suppresses confirmation
- * for pre_execute tools. The change itself always requires confirmation.
+ * Sets autoExecute on the conversation. In Confirm mode the change itself requires
+ * confirmation; in Auto mode meta confirmation is skipped.
  */
 
 import { z } from 'zod';
-import type { AgentTool, ConversationMeta, ToolContext, ToolResult } from '../types';
-import { getConversation, updateConversationMeta } from '../conversation-store';
+import type { AgentTool, ToolContext, ToolResult } from '../types';
+import { updateConversationMeta } from '../conversation-store';
+import { metaForSave } from '../conversation-meta';
 
 const ParamsSchema = z.object({
-  option: z.enum(['skipConfirmation']),
+  option: z.enum(['autoExecute', 'skipConfirmation']),
   value: z.boolean(),
 });
 
@@ -21,32 +22,31 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
   const { option, value } = parsed.data;
 
-  const conversation = await getConversation(ctx.supabase, ctx.conversationId);
-  if (!conversation) {
-    return { success: false, error: 'Conversation not found.' };
-  }
-
-  const nextMeta: ConversationMeta = { ...conversation.meta, [option]: value };
-  await updateConversationMeta(ctx.supabase, ctx.conversationId, nextMeta);
+  const autoExecute = option === 'skipConfirmation' ? value : value;
+  const saved = await updateConversationMeta(ctx.supabase, ctx.conversationId, metaForSave(autoExecute));
 
   return {
     success: true,
     displayHint: 'text',
-    data: { option, value, meta: nextMeta },
+    data: { option: 'autoExecute', value: autoExecute, meta: saved },
   };
 }
 
 export const setConversationOption: AgentTool = {
   name: 'set_conversation_option',
   description:
-    'Toggle a conversation option. Use option="skipConfirmation" with value=true when the user asks to skip confirmations for create/update/delete operations.',
+    'Toggle conversation execution mode. Use option="autoExecute" with value=true for immediate writes, value=false for step-by-step confirmation.',
   category: 'write',
   confirmationMode: 'meta',
   parameters: {
     type: 'object',
     properties: {
-      option: { type: 'string', enum: ['skipConfirmation'], description: 'The option to set' },
-      value: { type: 'boolean', description: 'New value for the option' },
+      option: {
+        type: 'string',
+        enum: ['autoExecute', 'skipConfirmation'],
+        description: 'Prefer autoExecute; skipConfirmation is deprecated and maps to autoExecute',
+      },
+      value: { type: 'boolean', description: 'true = Auto (no confirmations), false = Confirm mode' },
     },
     required: ['option', 'value'],
   },

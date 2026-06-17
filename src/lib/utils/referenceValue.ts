@@ -51,16 +51,62 @@ export type ReferenceSelection = {
   displayValue?: string | null;
 };
 
-export function normalizeReferenceSelections(value: unknown): ReferenceSelection[] {
-  if (value === null || value === undefined) return [];
-  if (!Array.isArray(value)) {
-    if (typeof value === 'string' && value.trim() !== '') {
-      return [{ assetId: value.trim() }];
+/** Unwrap LLM mistake: `{ item: { assetId, fieldId } }` → inner payload. */
+function unwrapReferenceEntry(entry: unknown): unknown {
+  if (entry && typeof entry === 'object' && !Array.isArray(entry)) {
+    const wrapped = entry as { item?: unknown };
+    if (wrapped.item !== undefined) {
+      return wrapped.item;
     }
-    return [];
+  }
+  return entry;
+}
+
+/** Coerce agent/LLM reference payloads into a flat list of entries to parse. */
+function coerceReferenceValueToEntries(value: unknown): unknown[] {
+  if (value === null || value === undefined) return [];
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
   }
 
-  const normalized = value
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => {
+      const unwrapped = unwrapReferenceEntry(entry);
+      if (Array.isArray(unwrapped)) {
+        return unwrapped;
+      }
+      return unwrapped === null || unwrapped === undefined ? [] : [unwrapped];
+    });
+  }
+
+  if (typeof value === 'object') {
+    const obj = value as { item?: unknown; assetId?: unknown; id?: unknown };
+    if (obj.item !== undefined) {
+      return coerceReferenceValueToEntries(obj.item);
+    }
+    if (typeof obj.assetId === 'string' || typeof obj.id === 'string') {
+      return [value];
+    }
+  }
+
+  return [];
+}
+
+/** True when the caller supplied a non-empty reference payload (not null/clear). */
+export function looksLikeNonEmptyReferenceInput(value: unknown): boolean {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim() !== '';
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === 'object') return true;
+  return false;
+}
+
+export function normalizeReferenceSelections(value: unknown): ReferenceSelection[] {
+  const entries = coerceReferenceValueToEntries(value);
+
+  const normalized = entries
     .map((v) => {
       if (typeof v === 'string') {
         const assetId = v.trim();
@@ -140,12 +186,22 @@ export function resolveReferenceSelectionLabel(
   selection: Pick<ReferenceSelection, 'assetId' | 'fieldId' | 'displayValue'>,
   cache: Record<string, string>
 ): string {
-  if (selection.displayValue && selection.displayValue.trim() !== '') {
+  const isPlaceholder = (value: string) => {
+    const trimmed = value.trim();
+    return trimmed === '' || trimmed.toLowerCase() === 'untitled';
+  };
+
+  if (selection.displayValue && !isPlaceholder(selection.displayValue)) {
     return selection.displayValue.trim();
   }
-  const key = referenceCacheKey(selection.assetId, selection.fieldId);
-  const live = cache[key] ?? cache[selection.assetId];
-  if (live && live.trim() !== '') return live;
+
+  const fieldKey = referenceCacheKey(selection.assetId, selection.fieldId);
+  const fieldLive = cache[fieldKey];
+  if (fieldLive && !isPlaceholder(fieldLive)) return fieldLive.trim();
+
+  const assetLive = cache[selection.assetId];
+  if (assetLive && !isPlaceholder(assetLive)) return assetLive.trim();
+
   return selection.assetId;
 }
 
@@ -239,6 +295,21 @@ async function loadDisplayForTarget(
   return { cacheKey, label };
 }
 
+function firstNonEmptyReferenceLabel(
+  propertyValues: Record<string, unknown>,
+  orderedFieldIds: string[],
+  fieldTypeById: Map<string, string>
+): string | null {
+  for (const fieldId of orderedFieldIds) {
+    const dataType = fieldTypeById.get(fieldId) ?? 'string';
+    const label = valueToReferenceDisplayString(propertyValues[fieldId], dataType).trim();
+    if (label !== '' && label.toLowerCase() !== 'untitled') {
+      return label;
+    }
+  }
+  return null;
+}
+
 /** Build display labels for all reference selections visible in the table. */
 export async function buildReferenceDisplayCache(
   supabase: SupabaseClient,
@@ -277,17 +348,37 @@ export async function buildReferenceDisplayCache(
   }
 
   const fieldTypeById = new Map<string, string>();
+  const orderedFieldIdsByLibrary = new Map<string, string[]>();
   if (libraryIds.size > 0) {
     const { data: fieldDefs, error: fieldError } = await supabase
       .from('library_field_definitions')
-      .select('id, data_type')
-      .in('library_id', [...libraryIds]);
+      .select('id, data_type, library_id, order_index')
+      .in('library_id', [...libraryIds])
+      .order('order_index', { ascending: true });
 
     if (!fieldError) {
       for (const row of fieldDefs ?? []) {
         fieldTypeById.set(row.id, row.data_type ?? 'string');
+        const libraryId = row.library_id as string;
+        const list = orderedFieldIdsByLibrary.get(libraryId) ?? [];
+        list.push(row.id as string);
+        orderedFieldIdsByLibrary.set(libraryId, list);
       }
     }
+  }
+
+  const { data: allValueRows, error: allValuesError } = await supabase
+    .from('library_asset_values')
+    .select('asset_id, field_id, value_json')
+    .in('asset_id', assetIds);
+
+  if (allValuesError) throw allValuesError;
+
+  const valuesByAsset = new Map<string, Record<string, unknown>>();
+  for (const row of allValueRows ?? []) {
+    const assetId = row.asset_id as string;
+    if (!valuesByAsset.has(assetId)) valuesByAsset.set(assetId, {});
+    valuesByAsset.get(assetId)![row.field_id as string] = row.value_json;
   }
 
   const namesMap: Record<string, string> = {};
@@ -299,22 +390,29 @@ export async function buildReferenceDisplayCache(
         libraryIdByAsset,
         fieldTypeById
       );
-      if (result) {
-        namesMap[result.cacheKey] = result.label;
-        if (!target.fieldId) {
-          namesMap[target.assetId] = result.label;
-        }
-        return;
+
+      let label = result?.label ?? null;
+      if (!label || label.toLowerCase() === 'untitled') {
+        const libraryId = libraryIdByAsset.get(target.assetId);
+        const orderedFieldIds = libraryId ? orderedFieldIdsByLibrary.get(libraryId) ?? [] : [];
+        const propertyValues = valuesByAsset.get(target.assetId) ?? {};
+        label =
+          firstNonEmptyReferenceLabel(propertyValues, orderedFieldIds, fieldTypeById) ??
+          label;
       }
 
-      const fallbackName = assetNameById.get(target.assetId);
-      if (!fallbackName) return;
+      if (!label || label.toLowerCase() === 'untitled') {
+        const fallbackName = assetNameById.get(target.assetId);
+        if (fallbackName && fallbackName.toLowerCase() !== 'untitled') {
+          label = fallbackName;
+        }
+      }
+
+      if (!label || label.toLowerCase() === 'untitled') return;
 
       const cacheKey = referenceCacheKey(target.assetId, target.fieldId);
-      namesMap[cacheKey] = fallbackName;
-      if (!target.fieldId) {
-        namesMap[target.assetId] = fallbackName;
-      }
+      namesMap[cacheKey] = label;
+      namesMap[target.assetId] = label;
     })
   );
 
