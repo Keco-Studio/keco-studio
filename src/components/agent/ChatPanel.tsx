@@ -74,8 +74,21 @@ export function ChatPanel() {
     ]
   );
 
-  const { items, isStreaming, streamActivity, streamStartedAt, streamingAssistantId, conversationId, send, confirm, startNewConversation, loadConversation, appendNote } =
-    useAgentChat(ctx);
+  const {
+    items,
+    isStreaming,
+    streamActivity,
+    streamStartedAt,
+    streamingAssistantId,
+    conversationId,
+    autoExecute,
+    send,
+    confirm,
+    setAutoExecute,
+    startNewConversation,
+    loadConversation,
+    appendNote,
+  } = useAgentChat(ctx);
 
   useEffect(() => {
     const el = messagesRef.current;
@@ -132,6 +145,19 @@ export function ChatPanel() {
       <div className={styles.header}>
         <span className={styles.headerTitle}>Keco Assistant</span>
         <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={`${styles.modeToggle} ${autoExecute ? styles.modeAuto : styles.modeConfirm}`}
+            disabled={isStreaming}
+            title={
+              autoExecute
+                ? 'Write tools run immediately. Refresh (F5) to discard in-progress work or fix a stale UI—not to undo saved changes.'
+                : 'Write operations require step-by-step confirmation.'
+            }
+            onClick={() => void setAutoExecute(!autoExecute)}
+          >
+            {autoExecute ? 'Auto' : 'Confirm'}
+          </button>
           <button className={styles.iconButton} onClick={() => startNewConversation()}>
             New
           </button>

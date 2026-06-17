@@ -70,6 +70,35 @@
   background: #f3f4f6;
   color: #111827;
 }
+.modeToggle {
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #374151;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 6px;
+  line-height: 1.2;
+}
+.modeToggle:hover:not(:disabled) {
+  background: #f3f4f6;
+  color: #111827;
+}
+.modeToggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.modeAuto {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+.modeConfirm {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #b45309;
+}
 
 .messages {
   flex: 1;

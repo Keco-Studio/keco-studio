@@ -5,6 +5,7 @@
 
 const DRAFT_KEY_PREFIX = 'keco:agent:draft:';
 const LAST_CONV_KEY_PREFIX = 'keco:agent:last-conversation:';
+const AUTO_EXECUTE_KEY_PREFIX = 'keco:agent:auto-execute:';
 
 function storage(): Storage | null {
   if (typeof window === 'undefined') return null;
@@ -62,4 +63,15 @@ export function clearLastConversationById(userId: string, conversationId: string
   if (changed) {
     storage()?.setItem(`${LAST_CONV_KEY_PREFIX}${userId}`, JSON.stringify(map));
   }
+}
+
+/** User preference for new conversations. Defaults to true (Auto mode). */
+export function getAutoExecutePreference(userId: string): boolean {
+  const raw = storage()?.getItem(`${AUTO_EXECUTE_KEY_PREFIX}${userId}`);
+  if (raw === 'false') return false;
+  return true;
+}
+
+export function setAutoExecutePreference(userId: string, autoExecute: boolean): void {
+  storage()?.setItem(`${AUTO_EXECUTE_KEY_PREFIX}${userId}`, autoExecute ? 'true' : 'false');
 }

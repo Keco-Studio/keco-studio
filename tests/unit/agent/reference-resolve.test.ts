@@ -88,4 +88,81 @@ describe('resolveAgentReferencePropertyValues', () => {
       },
     ]);
   });
+
+  it('unwraps item-wrapped reference targets from LLM output', async () => {
+    const resolved = await resolveAgentReferencePropertyValues(makeSupabase(), properties, {
+      'ref-field': { item: { assetId: 'target-1', fieldId: 'f-type' } },
+    });
+
+    expect(resolved['ref-field']).toEqual([
+      {
+        assetId: 'target-1',
+        fieldId: 'f-type',
+        fieldLabel: 'type',
+        displayValue: 'int',
+      },
+    ]);
+  });
+
+  it('resolves field label to field id when LLM passes semantic column name', async () => {
+    const resolved = await resolveAgentReferencePropertyValues(makeSupabase(), properties, {
+      'ref-field': [{ assetId: 'target-1', fieldId: 'type' }],
+    });
+
+    expect(resolved['ref-field']).toEqual([
+      {
+        assetId: 'target-1',
+        fieldId: 'f-type',
+        fieldLabel: 'type',
+        displayValue: 'int',
+      },
+    ]);
+  });
+
+  it('preserves displayValue from query_assets when fieldId label mismatches uuid lookup', async () => {
+    const resolved = await resolveAgentReferencePropertyValues(makeSupabase(), properties, {
+      'ref-field': [
+        {
+          assetId: 'target-1',
+          fieldId: 'wrong-uuid',
+          displayValue: '商铺',
+          fieldLabel: '商店名称',
+        },
+      ],
+    });
+
+    expect(resolved['ref-field']).toEqual([
+      {
+        assetId: 'target-1',
+        fieldId: 'f-id',
+        fieldLabel: 'ID',
+        displayValue: 'hello-id',
+      },
+    ]);
+  });
+
+  it('throws instead of clearing references when no selection can be built', async () => {
+    const emptySupabase = {
+      from(table: string) {
+        return {
+          select() {
+            return {
+              in() {
+                if (table === 'library_assets') {
+                  return Promise.resolve({ data: [], error: null });
+                }
+                return Promise.resolve({ data: [], error: null });
+              },
+            };
+          },
+        };
+      },
+    } as unknown as Parameters<typeof resolveAgentReferencePropertyValues>[0];
+
+    await expect(
+      resolveAgentReferencePropertyValues(emptySupabase, properties, {
+        'ref-field': [{ assetId: 'missing-asset', fieldId: 'f-type' }],
+      })
+    ).rejects.toThrow(/Reference target asset not found/i);
+  });
 });

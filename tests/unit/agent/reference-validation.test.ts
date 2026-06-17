@@ -86,4 +86,27 @@ describe('validateReferencePropertyValues', () => {
     );
     expect(result).toEqual({ ok: true });
   });
+
+  it('rejects malformed reference values that cannot be parsed', async () => {
+    const result = await validateReferencePropertyValues(
+      fakeSupabaseWithValues([]),
+      properties,
+      { 'ref-field': { wrongKey: 'not-a-reference' } }
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain('Invalid reference value');
+    }
+  });
+
+  it('accepts item-wrapped reference targets after normalization', async () => {
+    const result = await validateReferencePropertyValues(
+      fakeSupabaseWithValues([
+        { asset_id: 'a', field_id: 'f1', value_json: 'store-name' },
+      ]),
+      properties,
+      { 'ref-field': { item: { assetId: 'a', fieldId: 'f1' } } }
+    );
+    expect(result).toEqual({ ok: true });
+  });
 });

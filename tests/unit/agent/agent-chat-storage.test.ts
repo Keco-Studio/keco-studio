@@ -1,8 +1,10 @@
 import {
   clearDraft,
   clearLastConversation,
+  getAutoExecutePreference,
   getDraft,
   getLastConversationMap,
+  setAutoExecutePreference,
   setDraft,
   setLastConversation,
 } from '../../../src/components/agent/agentChatStorage';
@@ -105,5 +107,21 @@ describe('agentChatStorage last conversation map', () => {
     setLastConversation('other-user', PROJECT_A, CONV_2);
     expect(getLastConversationMap(USER)).toEqual({ [PROJECT_A]: CONV_1 });
     expect(getLastConversationMap('other-user')).toEqual({ [PROJECT_A]: CONV_2 });
+  });
+});
+
+describe('agentChatStorage autoExecute preference', () => {
+  it('defaults to true when not stored', () => {
+    expect(getAutoExecutePreference(USER)).toBe(true);
+  });
+
+  it('persists false preference', () => {
+    setAutoExecutePreference(USER, false);
+    expect(getAutoExecutePreference(USER)).toBe(false);
+  });
+
+  it('persists true preference', () => {
+    setAutoExecutePreference(USER, true);
+    expect(getAutoExecutePreference(USER)).toBe(true);
   });
 });

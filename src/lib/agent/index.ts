@@ -10,7 +10,9 @@ export {
   listConversations,
   deleteConversation,
   getMessages,
+  updateConversationMeta,
 } from './conversation-store';
+export { resolveConversationMeta, needsConfirmation, metaForSave } from './conversation-meta';
 export { allTools, getToolsForLlm, resolveTool } from './tools';
 export type {
   AgentTool,

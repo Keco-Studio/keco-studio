@@ -7,6 +7,8 @@ import { getActiveSectionName } from '@/lib/agent/page-context';
 import {
   clearLastConversation,
   setLastConversation,
+  getAutoExecutePreference,
+  setAutoExecutePreference,
 } from './agentChatStorage';
 import { mapHistoryMessagesToChatItems } from './historyMessageMapper';
 import { deriveUserDisplay } from './userMessageDisplay';
@@ -35,6 +37,7 @@ export function useAgentChat(ctx: SendContext) {
   const [streamActivity, setStreamActivity] = useState<StreamActivity>('connecting');
   const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
+  const [autoExecute, setAutoExecuteState] = useState(true);
   const conversationIdRef = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const streamingAssistantIdRef = useRef<string | null>(null);
@@ -89,6 +92,34 @@ export function useAgentChat(ctx: SendContext) {
     const { data } = await supabase.auth.getSession();
     return data?.session?.access_token;
   }, [supabase]);
+
+  const fetchConversationMeta = useCallback(
+    async (id: string): Promise<boolean> => {
+      try {
+        const token = await getToken();
+        const res = await fetch(`/api/agent-chat/conversations/${id}/meta`, {
+          credentials: 'include',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        if (!res.ok) return autoExecute;
+        const { meta } = (await res.json()) as { meta?: { autoExecute?: boolean } };
+        return meta?.autoExecute !== false;
+      } catch {
+        return autoExecute;
+      }
+    },
+    [getToken, autoExecute]
+  );
+
+  const applyAutoExecute = useCallback(
+    (value: boolean) => {
+      setAutoExecuteState(value);
+      if (ctx.userId) {
+        setAutoExecutePreference(ctx.userId, value);
+      }
+    },
+    [ctx.userId]
+  );
 
   /**
    * Consume an SSE stream from a Response, mutating chat state as events arrive.
@@ -297,6 +328,7 @@ export function useAgentChat(ctx: SendContext) {
             projectId: ctx.projectId,
             message,
             imageUrls: opts?.imageUrls,
+            autoExecute: conversationIdRef.current ? undefined : autoExecute,
             currentFolderId: ctx.currentFolderId,
             currentFolderName: ctx.currentFolderName,
             currentLibraryId: ctx.currentLibraryId,
@@ -318,7 +350,54 @@ export function useAgentChat(ctx: SendContext) {
         setStreamStartedAt(null);
       }
     },
-    [isStreaming, appendItem, getToken, ctx, consumeStream, beginStreamActivity]
+    [isStreaming, appendItem, getToken, ctx, consumeStream, beginStreamActivity, autoExecute]
+  );
+
+  const setAutoExecute = useCallback(
+    async (value: boolean) => {
+      if (isStreaming) return;
+      const prev = autoExecute;
+      applyAutoExecute(value);
+      if (!conversationIdRef.current) {
+        appendItem({
+          id: nextId(),
+          role: 'assistant',
+          text: value
+            ? 'Mode: Auto — confirmations disabled for this conversation.'
+            : 'Mode: Confirm — write operations will require approval.',
+        });
+        return;
+      }
+      try {
+        const token = await getToken();
+        const res = await fetch(`/api/agent-chat/conversations/${conversationIdRef.current}/meta`, {
+          method: 'PATCH',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ autoExecute: value }),
+        });
+        if (!res.ok) {
+          applyAutoExecute(prev);
+          const err = await res.json().catch(() => ({ error: 'Failed to update mode' }));
+          appendItem({ id: nextId(), role: 'error', error: err.error || 'Failed to update mode' });
+          return;
+        }
+        appendItem({
+          id: nextId(),
+          role: 'assistant',
+          text: value
+            ? 'Mode: Auto — confirmations disabled for this conversation.'
+            : 'Mode: Confirm — write operations will require approval.',
+        });
+      } catch (e) {
+        applyAutoExecute(prev);
+        appendItem({ id: nextId(), role: 'error', error: (e as Error).message || 'Failed to update mode' });
+      }
+    },
+    [isStreaming, autoExecute, applyAutoExecute, getToken, appendItem]
   );
 
   const confirm = useCallback(
@@ -383,6 +462,11 @@ export function useAgentChat(ctx: SendContext) {
 
   const startNewConversation = useCallback(() => {
     resetToEmpty();
+    if (ctx.userId) {
+      setAutoExecuteState(getAutoExecutePreference(ctx.userId));
+    } else {
+      setAutoExecuteState(true);
+    }
     if (ctx.userId && ctx.projectId) {
       clearLastConversation(ctx.userId, ctx.projectId);
     }
@@ -411,6 +495,8 @@ export function useAgentChat(ctx: SendContext) {
           messages: Array<{ id: string; role: string; content: Record<string, unknown> }>;
         };
         setItems(mapHistoryMessagesToChatItems(messages));
+        const resolvedAuto = await fetchConversationMeta(id);
+        setAutoExecuteState(resolvedAuto);
         if (options?.persist !== false && ctx.userId && ctx.projectId) {
           setLastConversation(ctx.userId, ctx.projectId, id);
         }
@@ -419,7 +505,7 @@ export function useAgentChat(ctx: SendContext) {
         return false;
       }
     },
-    [getToken, setConv, ctx.userId, ctx.projectId, resetToEmpty]
+    [getToken, setConv, ctx.userId, ctx.projectId, resetToEmpty, fetchConversationMeta]
   );
 
   const restoreProjectConversation = useCallback(async () => {
@@ -457,6 +543,11 @@ export function useAgentChat(ctx: SendContext) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctx.userId]);
 
+  useEffect(() => {
+    if (!ctx.userId) return;
+    setAutoExecuteState(getAutoExecutePreference(ctx.userId));
+  }, [ctx.userId]);
+
   const appendNote = useCallback(
     (text: string) => {
       appendItem({ id: nextId(), role: 'assistant', text });
@@ -471,8 +562,10 @@ export function useAgentChat(ctx: SendContext) {
     streamStartedAt,
     streamingAssistantId,
     conversationId,
+    autoExecute,
     send,
     confirm,
+    setAutoExecute,
     startNewConversation,
     loadConversation,
     appendNote,

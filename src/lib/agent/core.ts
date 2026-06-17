@@ -41,6 +41,10 @@ import {
   deletePendingAction,
 } from './confirmation';
 import {
+  needsConfirmation,
+  executePostPreviewTool,
+} from './conversation-meta';
+import {
   TurnTraceCollector,
   loadTraceCollector,
   persistAgentTrace,
@@ -84,14 +88,6 @@ function parseArgs(raw: string): ParsedArgs {
     };
   }
   return { args: parsed as Record<string, unknown> };
-}
-
-function needsConfirmation(tool: AgentTool, meta: ConversationMeta): boolean {
-  // Read tools always execute immediately (spec §3).
-  if (tool.category === 'read') return false;
-  if (tool.confirmationMode === 'post_preview' || tool.confirmationMode === 'meta') return true;
-  if (tool.confirmationMode === 'pre_execute' && meta.skipConfirmation) return false;
-  return true;
 }
 
 async function buildSystemMessage(ctx: ToolContext): Promise<ChatMessage> {
@@ -432,8 +428,52 @@ async function* continueLoop(
       }
     }
 
-    // No confirmation needed (read tool, or skipConfirmation for pre_execute).
+    // No confirmation needed (read tool, autoExecute, or legacy skipConfirmation).
     yield { type: 'tool_call_start', tool: tool.name, args: call.function.arguments };
+
+    if (tool.confirmationMode === 'post_preview') {
+      const previewStartMs = Date.now();
+      const { previewResult, importResult, finalResult } = await executePostPreviewTool(
+        tool,
+        parsedArgs,
+        ctx
+      );
+      trace?.recordToolCall({
+        tool: tool.name,
+        args: parsedArgs,
+        success: previewResult.success,
+        error: previewResult.error,
+        latencyMs: Date.now() - previewStartMs,
+        phase: 'execute',
+      });
+      if (importResult) {
+        trace?.recordToolCall({
+          tool: tool.name,
+          args: parsedArgs,
+          success: importResult.success,
+          error: importResult.error,
+          phase: 'executeImport',
+        });
+      }
+      yield { type: 'tool_call_end' };
+      yield {
+        type: 'tool_result',
+        tool: tool.name,
+        data: finalResult.data,
+        displayHint: finalResult.displayHint ?? previewResult.displayHint,
+        success: finalResult.success,
+        error: finalResult.error,
+      };
+      if (finalResult.invalidateCache && finalResult.invalidateCache.length > 0) {
+        yield { type: 'cache_invalidated', paths: finalResult.invalidateCache };
+      }
+      messages.push(assistantMessage);
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(finalResult) });
+      await saveMessage(ctx.supabase, conversationId, assistantMessage);
+      await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(finalResult) });
+      continue;
+    }
+
     const toolStartMs = Date.now();
     const result = await tool.execute(parsedArgs, ctx);
     trace?.recordToolCall({
