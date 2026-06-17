@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Image from 'next/image';
 import { DownOutlined, RightOutlined, PaperClipOutlined } from '@ant-design/icons';
 import styles from './ChatPanel.module.css';
 import type { ChatItem } from './types';
@@ -23,12 +24,32 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
         <div className={`${styles.bubble} ${styles.user}`}>
           {item.attachments && item.attachments.length > 0 && (
             <div className={styles.userAttachments}>
-              {item.attachments.map((att, idx) => (
-                <span key={`${att.fileName}-${idx}`} className={styles.userAttachment}>
-                  <PaperClipOutlined className={styles.userAttachmentIcon} />
-                  <span className={styles.userAttachmentName}>{att.fileName}</span>
-                </span>
-              ))}
+              {item.attachments.map((att, idx) =>
+                att.imageUrl ? (
+                  <a
+                    key={`${att.fileName}-${idx}`}
+                    className={styles.userImageThumb}
+                    href={att.imageUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={att.fileName}
+                  >
+                    <Image
+                      src={att.imageUrl}
+                      alt={att.fileName}
+                      width={72}
+                      height={72}
+                      className={styles.userImageThumbImg}
+                      unoptimized
+                    />
+                  </a>
+                ) : (
+                  <span key={`${att.fileName}-${idx}`} className={styles.userAttachment}>
+                    <PaperClipOutlined className={styles.userAttachmentIcon} />
+                    <span className={styles.userAttachmentName}>{att.fileName}</span>
+                  </span>
+                )
+              )}
             </div>
           )}
           {item.text && <div className={styles.userText}>{item.text}</div>}

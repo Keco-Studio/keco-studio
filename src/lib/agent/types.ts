@@ -68,13 +68,33 @@ export interface ConversationMeta {
   skipConfirmation?: boolean;
 }
 
+/** A plain-text segment of a multimodal message. */
+export interface ChatTextPart {
+  type: 'text';
+  text: string;
+}
+
+/**
+ * An image segment of a multimodal message. The url must be publicly reachable
+ * by the model provider (we upload doc images to a public Supabase bucket).
+ */
+export interface ChatImagePart {
+  type: 'image_url';
+  image_url: { url: string; detail?: 'low' | 'default' | 'high' };
+}
+
+export type ChatContentPart = ChatTextPart | ChatImagePart;
+
 /**
  * OpenAI-compatible chat message used to talk to the LLM and persisted (the
  * text/tool parts) in agent_messages.content.
+ *
+ * `content` may be a multimodal `ChatContentPart[]` (a leading text part plus
+ * `image_url` parts) for user messages that carry design-document images.
  */
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant' | 'tool';
-  content: string | null;
+  content: string | ChatContentPart[] | null;
   tool_calls?: ToolCall[];
   tool_call_id?: string;
   name?: string;
@@ -135,6 +155,8 @@ export interface SuspendedState {
 export interface AgentTurnInput {
   conversationId: string;
   userMessage: string;
+  /** Public image URLs (Supabase storage) attached to this user turn, if any. */
+  imageUrls?: string[];
   toolContext: ToolContext;
   conversationMeta: ConversationMeta;
 }

@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { getUserProjectRole } from '@/lib/services/authorizationService';
-import { showErrorToast } from '@/lib/utils/toast';
+import { getUserProjectRole, getCurrentUserId } from '@/lib/services/authorizationService';
+import { showErrorToast, showInfoToast } from '@/lib/utils/toast';
 import {
   parseDocument,
   validateDesignFile,
   LARGE_DESIGN_TEXT_THRESHOLD,
 } from '@/lib/document-parser';
+import { uploadDocumentImages } from '@/lib/services/documentImageUpload';
 import { buildDesignMessage } from '@/lib/design-message';
 import { saveDesignHandoff, DESIGN_UPLOAD_EVENT } from '@/lib/design-upload-handoff';
 import { DocumentDropZone } from '@/components/design-upload/DocumentDropZone';
@@ -63,10 +64,26 @@ export default function DesignUploadPage() {
 
     setSubmitting(true);
     try {
-      const documentText = (await parseDocument(file)).trim();
+      const { text, images } = await parseDocument(file);
+      const documentText = text.trim();
       if (!documentText) {
         showErrorToast('Could not extract any text from this file.');
         return;
+      }
+
+      let imageUrls: string[] = [];
+      if (images.length > 0) {
+        try {
+          const userId = await getCurrentUserId(supabase);
+          imageUrls = await uploadDocumentImages(supabase, images, userId);
+          if (imageUrls.length < images.length) {
+            showInfoToast(
+              `${images.length - imageUrls.length} image(s) could not be processed and were skipped.`
+            );
+          }
+        } catch {
+          // best-effort: continue with a text-only design message
+        }
       }
 
       const message = buildDesignMessage({
@@ -75,7 +92,7 @@ export default function DesignUploadPage() {
         additionalInstructions: instructions,
       });
 
-      saveDesignHandoff(projectId, { message, fileName: file.name });
+      saveDesignHandoff(projectId, { message, fileName: file.name, imageUrls });
       window.dispatchEvent(
         new CustomEvent(DESIGN_UPLOAD_EVENT, { detail: { projectId } })
       );
@@ -130,7 +147,8 @@ export default function DesignUploadPage() {
         />
 
         <div className={styles.hint}>
-          Images inside the document are ignored and will not be processed.
+          Images in the document will be analyzed by the assistant to better
+          understand your design.
         </div>
 
         {isViewer && (

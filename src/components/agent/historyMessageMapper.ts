@@ -4,6 +4,8 @@
 
 import type { ChatItem } from './types';
 import { deriveUserDisplay } from './userMessageDisplay';
+import { getMessageText } from '@/lib/agent/content-parts';
+import type { ChatMessage } from '@/lib/agent/types';
 
 export interface HistoryMessageRow {
   id: string;
@@ -17,7 +19,29 @@ interface ToolCallRef {
 }
 
 function textFromBody(body: Record<string, unknown>): string {
-  return typeof body.content === 'string' ? body.content : '';
+  const content = body.content;
+  if (typeof content === 'string') return content;
+  // Multimodal user messages persist content as a part array; show their text.
+  if (Array.isArray(content)) return getMessageText(content as ChatMessage['content']);
+  return '';
+}
+
+/** Extract image URLs from a persisted multimodal message body, in order. */
+function imageUrlsFromBody(body: Record<string, unknown>): string[] {
+  const content = body.content;
+  if (!Array.isArray(content)) return [];
+  const urls: string[] = [];
+  for (const part of content) {
+    if (
+      part &&
+      typeof part === 'object' &&
+      (part as { type?: unknown }).type === 'image_url'
+    ) {
+      const url = (part as { image_url?: { url?: unknown } }).image_url?.url;
+      if (typeof url === 'string') urls.push(url);
+    }
+  }
+  return urls;
 }
 
 function parseToolData(text: string): unknown {
@@ -42,7 +66,7 @@ export function mapHistoryMessagesToChatItems(messages: HistoryMessageRow[]): Ch
     const text = textFromBody(body);
 
     if (m.role === 'user' && text) {
-      const display = deriveUserDisplay(text);
+      const display = deriveUserDisplay(text, imageUrlsFromBody(body));
       loaded.push({ id: m.id, role: 'user', text: display.text, attachments: display.attachments });
       i++;
       continue;

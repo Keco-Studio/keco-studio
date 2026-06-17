@@ -10,6 +10,30 @@ describe('mapHistoryMessagesToChatItems', () => {
     expect(items[0]).toMatchObject({ id: 'm1', role: 'user', text: 'Hello' });
   });
 
+  it('restores image thumbnails from a multimodal user message', () => {
+    const rows: HistoryRow[] = [
+      {
+        id: 'm1b',
+        role: 'user',
+        content: {
+          content: [
+            { type: 'text', text: 'look at these' },
+            { type: 'image_url', image_url: { url: 'https://x/a.png' } },
+            { type: 'image_url', image_url: { url: 'https://x/b.jpg' } },
+          ],
+        },
+      },
+    ];
+    const items = mapHistoryMessagesToChatItems(rows);
+    expect(items).toHaveLength(1);
+    expect(items[0].role).toBe('user');
+    expect(items[0].text).toBe('look at these');
+    expect(items[0].attachments).toEqual([
+      { fileName: 'a.png', imageUrl: 'https://x/a.png' },
+      { fileName: 'b.jpg', imageUrl: 'https://x/b.jpg' },
+    ]);
+  });
+
   it('maps plain assistant text to assistant bubbles', () => {
     const rows: HistoryRow[] = [{ id: 'm2', role: 'assistant', content: { content: 'Hi there' } }];
     const items = mapHistoryMessagesToChatItems(rows);
