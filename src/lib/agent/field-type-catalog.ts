@@ -193,6 +193,14 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
  * Build a compact but complete `dataType` parameter description for tool schemas
  * (setup_library / add_field), generated from the catalog so the two never drift.
  */
+/** Look up a catalog entry by canonical dataType. */
+export function lookupFieldTypeSpec(
+  dataType: FieldDataType | undefined
+): FieldTypeSpec | undefined {
+  if (!dataType) return undefined;
+  return FIELD_TYPE_CATALOG.find((spec) => spec.dataType === dataType);
+}
+
 export function buildDataTypeParamDescription(): string {
   const entries = FIELD_TYPE_CATALOG.map((spec) => {
     const config =

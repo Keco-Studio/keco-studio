@@ -20,8 +20,10 @@ import {
   validateReferencePropertyValues,
 } from '../asset-emptiness';
 import { buildFieldLabelMap, getLibraryAssets, getLibraryProperties } from '../data-access';
-import { resolvePropertyValues } from '../field-resolver';
+import { resolvePropertyValues, isExplicitEmptyPropertyValues, buildEmptyPropertyValuesError } from '../field-resolver';
+import { prepareAgentPropertyValues } from '../property-value-validation';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
+import { scheduleReindexForAssetFields } from '../embedding-index';
 import {
   errorFromLookupResult,
   errorFromOkResult,
@@ -88,6 +90,11 @@ async function executeUpdateRow(params: unknown, ctx: ToolContext): Promise<Tool
   }
   const targetAsset = sorted[rowIndex - 1];
 
+  if (isExplicitEmptyPropertyValues(params)) {
+    const { availableFields } = await resolvePropertyValues(ctx.supabase, library.id, undefined);
+    return { success: false, error: buildEmptyPropertyValuesError(availableFields) };
+  }
+
   const [properties, { resolved, unresolved, availableFields }] = await Promise.all([
     getLibraryProperties(ctx.supabase, library.id),
     resolvePropertyValues(ctx.supabase, library.id, propertyValues),
@@ -99,9 +106,21 @@ async function executeUpdateRow(params: unknown, ctx: ToolContext): Promise<Tool
     };
   }
 
+  const prepared = prepareAgentPropertyValues(resolved, properties, {
+    requireAllRequired: false,
+  });
+  if ('error' in prepared) {
+    return { success: false, error: prepared.error };
+  }
+  const normalizedResolved = prepared.values;
+
   let resolvedWithReferences: Record<string, unknown>;
   try {
-    resolvedWithReferences = await resolveAgentReferencePropertyValues(ctx.supabase, properties, resolved);
+    resolvedWithReferences = await resolveAgentReferencePropertyValues(
+      ctx.supabase,
+      properties,
+      normalizedResolved
+    );
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to resolve reference values.' };
   }
@@ -161,6 +180,12 @@ async function executeImport(
 
   try {
     await updateAssetService(ctx.supabase, preview.assetId, preview.assetName, preview.resolvedValues);
+    scheduleReindexForAssetFields(
+      ctx.supabase,
+      ctx.projectId,
+      preview.assetId,
+      Object.keys(preview.resolvedValues)
+    );
     return {
       success: true,
       displayHint: 'text',

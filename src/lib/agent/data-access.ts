@@ -65,6 +65,7 @@ type FieldDefinitionRow = {
   reference_libraries: string[] | null;
   formula_expression: string | null;
   order_index: number;
+  required?: boolean;
 };
 
 function normalizeValue(input: unknown): unknown {
@@ -232,6 +233,7 @@ export async function getLibraryProperties(
       referenceLibraries: row.reference_libraries || undefined,
       enumOptions: row.enum_options || undefined,
       formulaExpression: row.formula_expression || undefined,
+      required: row.required ?? false,
       orderIndex: row.order_index,
     });
   }

@@ -96,6 +96,12 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     { rowIndex }
   );
 
+  const leadingEmpty = summary.leadingEmptyRowCount ?? 0;
+  const llmNote =
+    leadingEmpty > 0 && !includeEmpty && rowIndex === undefined
+      ? `UI row 1${leadingEmpty > 1 ? `–${leadingEmpty}` : ''} is empty (leadingEmptyRowCount=${leadingEmpty}). create_asset reuses the first empty row; use update_row rowIndex=1..${leadingEmpty} or create_asset to fill from the top. query_assets omitted these rows because includeEmpty=false.`
+      : undefined;
+
   return {
     success: true,
     displayHint: 'table',
@@ -109,6 +115,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       nonEmptyCells,
       /** Use these (not row.id) when writing reference fields — one entry per filled cell. */
       referenceTargets,
+      ...(llmNote ? { _llmNote: llmNote } : {}),
     },
   };
 }

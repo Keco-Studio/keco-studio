@@ -20,6 +20,7 @@ import {
   hasFormulaCircularReference,
   getFormulaReferencedFieldNames,
 } from '@/lib/utils/formula';
+import { validateHeaderName } from '@/lib/utils/headerNameValidation';
 import styles from './EditColumnModal.module.css';
 import addColumnStyles from './AddColumnModal.module.css';
 
@@ -68,8 +69,6 @@ const EMPTY_STATE: EditColumnFormState = {
   loadingFolders: false,
   error: null,
 };
-
-const HEADER_NAME_PATTERN = /^[A-Za-z0-9_]+$/;
 
 export function EditColumnModal({
   open,
@@ -326,17 +325,11 @@ export function EditColumnModal({
   const validateForm = () => {
     // Frontend validation: name and type are required, enum/reference need to be configured completely
     const trimmedName = editColumnModal.name.trim();
-    if (!trimmedName) {
+    const headerNameError = validateHeaderName(trimmedName);
+    if (headerNameError) {
       setEditColumnModal((prev) => ({
         ...prev,
-        error: 'Header name is required.',
-      }));
-      return false;
-    }
-    if (!HEADER_NAME_PATTERN.test(trimmedName)) {
-      setEditColumnModal((prev) => ({
-        ...prev,
-        error: 'Header name can only contain letters, numbers, and _ .',
+        error: headerNameError,
       }));
       return false;
     }
@@ -592,19 +585,11 @@ export function EditColumnModal({
             id="edit-column-name"
             value={editColumnModal.name}
             onChange={(e) => {
-              const value = e.target.value;
-              if (!value || HEADER_NAME_PATTERN.test(value)) {
-                setEditColumnModal((prev) => ({
-                  ...prev,
-                  name: value,
-                  error: null,
-                }));
-              } else {
-                setEditColumnModal((prev) => ({
-                  ...prev,
-                  error: 'Header name can only contain letters, numbers, and underscores.',
-                }));
-              }
+              setEditColumnModal((prev) => ({
+                ...prev,
+                name: e.target.value,
+                error: null,
+              }));
             }}
             maxLength={200}
             className={styles.input}

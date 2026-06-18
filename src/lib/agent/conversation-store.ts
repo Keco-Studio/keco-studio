@@ -6,6 +6,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ChatContentPart, ChatMessage, ConversationMeta } from './types';
 import { metaForSave, resolveConversationMeta } from './conversation-meta';
+import { getMessageText } from './content-parts';
+import { triggerConversationIndexing } from './embedding-index';
 
 /** True when a value is a well-formed multimodal content-part array. */
 function isContentPartArray(value: unknown): value is ChatContentPart[] {
@@ -177,6 +179,16 @@ export function sanitizeMessagesForLlm(messages: ChatMessage[]): ChatMessage[] {
   return out;
 }
 
+export interface SaveMessageResult {
+  id: string;
+  createdAt: string;
+}
+
+export interface SaveMessageIndexingContext {
+  projectId: string;
+  userId: string;
+}
+
 /**
  * Persist a single message. The content jsonb stores the full message body so
  * tool_calls / tool_call_id survive round-trips.
@@ -184,22 +196,42 @@ export function sanitizeMessagesForLlm(messages: ChatMessage[]): ChatMessage[] {
 export async function saveMessage(
   supabase: SupabaseClient,
   conversationId: string,
-  message: ChatMessage
-): Promise<void> {
+  message: ChatMessage,
+  indexingContext?: SaveMessageIndexingContext
+): Promise<SaveMessageResult | void> {
   const content: Record<string, unknown> = { content: message.content ?? '' };
   if (message.tool_calls) content.tool_calls = message.tool_calls;
   if (message.tool_call_id) content.tool_call_id = message.tool_call_id;
   if (message.name) content.name = message.name;
 
-  const { error } = await supabase.from('agent_messages').insert({
-    conversation_id: conversationId,
-    role: message.role,
-    content,
-  });
-  if (error) {
-    throw new Error(`Failed to save message: ${error.message}`);
+  const { data, error } = await supabase
+    .from('agent_messages')
+    .insert({
+      conversation_id: conversationId,
+      role: message.role,
+      content,
+    })
+    .select('id, created_at')
+    .single();
+  if (error || !data) {
+    throw new Error(`Failed to save message: ${error?.message ?? 'unknown error'}`);
   }
   await touchConversation(supabase, conversationId);
+
+  if (indexingContext) {
+    const messageText = getMessageText(message.content);
+    triggerConversationIndexing(supabase, {
+      conversationId,
+      projectId: indexingContext.projectId,
+      userId: indexingContext.userId,
+      role: message.role,
+      messageText,
+      messageId: data.id as string,
+      messageCreatedAt: data.created_at as string,
+    });
+  }
+
+  return { id: data.id as string, createdAt: data.created_at as string };
 }
 
 export async function touchConversation(

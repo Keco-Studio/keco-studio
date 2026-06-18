@@ -93,7 +93,33 @@ export type QueryAssetSummary = {
   returnedRows: number;
   /** Empty asset rows excluded when includeEmpty=false. */
   emptyAssetsExcluded: number;
+  /** Empty rows at the top of the table (UI row 1..N) before the first filled row. */
+  leadingEmptyRowCount: number;
 };
+
+/** First empty UI row (1-based rowIndex) in table order, if any. */
+export function findFirstEmptyUiRowAsset(
+  assets: AssetRow[]
+): { asset: AssetRow; rowIndex: number } | null {
+  const sorted = sortAssetsForUiRow(assets);
+  for (let index = 0; index < sorted.length; index++) {
+    const asset = sorted[index];
+    if (isAssetEmptyForDisplay(asset.propertyValues ?? {})) {
+      return { asset, rowIndex: index + 1 };
+    }
+  }
+  return null;
+}
+
+/** Count empty rows at the top of the table before the first non-empty row. */
+export function countLeadingEmptyUiRows(rows: QueryAssetRow[]): number {
+  let count = 0;
+  for (const row of rows) {
+    if (!row.isEmpty) break;
+    count++;
+  }
+  return count;
+}
 
 /** Flatten every visible cell on non-empty rows (one entry per filled column). */
 export function buildNonEmptyCellEntries(
@@ -258,6 +284,7 @@ export function buildQueryAssetSummary(
     nonEmptyCellCount: nonEmptyCells.length,
     returnedRows: returnedRows.length,
     emptyAssetsExcluded,
+    leadingEmptyRowCount: countLeadingEmptyUiRows(allRows),
   };
 }
 
