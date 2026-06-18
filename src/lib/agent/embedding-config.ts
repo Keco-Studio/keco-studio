@@ -29,9 +29,69 @@ export const EMBEDDING_API_URL = (
 ).replace(/\/+$/, '');
 
 export const EMBEDDING_API_KEY = process.env.EMBEDDING_API_KEY || process.env.LLM_API_KEY || '';
-export const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
+export const MINIMAX_GROUP_ID = process.env.MINIMAX_GROUP_ID || '';
+
+export function getEmbeddingApiKey(): string {
+  return process.env.EMBEDDING_API_KEY || process.env.LLM_API_KEY || '';
+}
+
+export function getEmbeddingApiUrl(): string {
+  return (
+    process.env.EMBEDDING_API_URL ||
+    process.env.LLM_API_URL ||
+    'https://api.minimax.io'
+  ).replace(/\/+$/, '');
+}
+
+export function getMinimaxGroupId(): string {
+  return process.env.MINIMAX_GROUP_ID || '';
+}
+
+export type EmbeddingProvider = 'openai' | 'minimax';
+
+/** Explicit override; otherwise inferred from URL/model (see resolveEmbeddingProvider). */
+export const EMBEDDING_PROVIDER = (process.env.EMBEDDING_PROVIDER || '').toLowerCase();
+
+export function resolveEmbeddingProvider(): EmbeddingProvider {
+  const explicit = (process.env.EMBEDDING_PROVIDER || '').toLowerCase();
+  if (explicit === 'minimax') return 'minimax';
+  if (explicit === 'openai') return 'openai';
+
+  const model = (process.env.EMBEDDING_MODEL || '').toLowerCase();
+  if (model.includes('embo')) return 'minimax';
+
+  const url = getEmbeddingApiUrl().toLowerCase();
+  if (url.includes('minimax') || url.includes('minimaxi')) return 'minimax';
+
+  return 'openai';
+}
+
+const defaultEmbeddingModel = (): string =>
+  resolveEmbeddingProvider() === 'minimax' ? 'embo-01' : 'text-embedding-3-small';
+
+/** Resolved at call time so tests and runtime env changes apply. */
+export function getEmbeddingModel(): string {
+  const explicit = process.env.EMBEDDING_MODEL?.trim();
+  return explicit || defaultEmbeddingModel();
+}
+
+/** @deprecated Prefer getEmbeddingModel() — frozen at module load in some bundlers. */
+export const EMBEDDING_MODEL = getEmbeddingModel();
 export const EMBEDDING_DIMENSIONS = parseIntEnv('EMBEDDING_DIMENSIONS', 1536);
 export const EMBEDDING_BATCH_SIZE = parseIntEnv('EMBEDDING_BATCH_SIZE', 64);
+export const EMBEDDING_MIN_INTERVAL_MS = parseIntEnv('EMBEDDING_MIN_INTERVAL_MS', -1);
+export const EMBEDDING_RATE_LIMIT_COOLDOWN_MS = parseIntEnv('EMBEDDING_RATE_LIMIT_COOLDOWN_MS', 60_000);
+export const AGENT_CHAT_REINDEX_DEBOUNCE_MS = parseIntEnv('AGENT_CHAT_REINDEX_DEBOUNCE_MS', 8000);
+
+/** Pacing between embedding HTTP calls; -1 = auto (1.5s for MiniMax, 0 for OpenAI). */
+export function getEmbeddingMinIntervalMs(): number {
+  if (EMBEDDING_MIN_INTERVAL_MS >= 0) return EMBEDDING_MIN_INTERVAL_MS;
+  return resolveEmbeddingProvider() === 'minimax' ? 1500 : 0;
+}
+
+export function getEmbeddingRateLimitCooldownMs(): number {
+  return EMBEDDING_RATE_LIMIT_COOLDOWN_MS;
+}
 
 export const AGENT_INDEXING_ENABLED = parseBoolEnv('AGENT_INDEXING_ENABLED', true);
 export const AGENT_RETRIEVAL_ENABLED = parseBoolEnv('AGENT_RETRIEVAL_ENABLED', true);

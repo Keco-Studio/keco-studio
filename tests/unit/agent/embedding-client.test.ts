@@ -9,6 +9,8 @@ describe('embedTexts', () => {
     process.env.EMBEDDING_API_URL = 'https://embed.test';
     process.env.EMBEDDING_MODEL = 'text-embedding-3-small';
     process.env.EMBEDDING_DIMENSIONS = '3';
+    process.env.EMBEDDING_PROVIDER = 'openai';
+    delete process.env.LLM_API_URL;
   });
 
   afterEach(() => {
@@ -61,5 +63,66 @@ describe('embedTexts', () => {
     process.env.EMBEDDING_API_KEY = '';
     process.env.LLM_API_KEY = '';
     await expect(embedTexts(['x'])).rejects.toBeInstanceOf(EmbeddingError);
+  });
+
+  it('parses MiniMax native embedding response (vectors + type=db)', async () => {
+    process.env.EMBEDDING_PROVIDER = 'minimax';
+    process.env.EMBEDDING_MODEL = 'embo-01';
+    process.env.EMBEDDING_API_URL = 'https://api.minimax.io';
+
+    global.fetch = jest.fn(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body).toEqual({
+        model: 'embo-01',
+        texts: ['index me'],
+        type: 'db',
+      });
+      return new Response(
+        JSON.stringify({
+          vectors: [[0.1, 0.2, 0.3]],
+          base_resp: { status_code: 0, status_msg: 'success' },
+        }),
+        { status: 200 }
+      );
+    }) as typeof fetch;
+
+    const vectors = await embedTexts(['index me']);
+    expect(vectors[0]).toEqual([0.1, 0.2, 0.3]);
+  });
+
+  it('uses type=query for embedQuery on MiniMax', async () => {
+    const { embedQuery } = await import('../../../src/lib/agent/embedding-client');
+    process.env.EMBEDDING_PROVIDER = 'minimax';
+    process.env.EMBEDDING_MODEL = 'embo-01';
+
+    global.fetch = jest.fn(async (_url, init) => {
+      const body = JSON.parse(String(init?.body));
+      expect(body.type).toBe('query');
+      return new Response(
+        JSON.stringify({
+          vectors: [[1, 0, 0]],
+          base_resp: { status_code: 0, status_msg: 'success' },
+        }),
+        { status: 200 }
+      );
+    }) as typeof fetch;
+
+    await expect(embedQuery('search me')).resolves.toEqual([1, 0, 0]);
+  });
+
+  it('surfaces MiniMax base_resp errors', async () => {
+    process.env.EMBEDDING_PROVIDER = 'minimax';
+
+    global.fetch = jest.fn(async () =>
+      new Response(
+        JSON.stringify({
+          vectors: null,
+          base_resp: { status_code: 2013, status_msg: 'invalid params' },
+        }),
+        { status: 200 }
+      )
+    ) as typeof fetch;
+
+    await expect(embedTexts(['x'])).rejects.toThrow(/invalid params/);
   });
 });

@@ -19,7 +19,8 @@ import {
   type IndexableChatMessage,
 } from './chunking';
 import { embedTexts } from './embedding-client';
-import { AGENT_INDEXING_ENABLED } from './embedding-config';
+import { AGENT_CHAT_REINDEX_DEBOUNCE_MS, AGENT_INDEXING_ENABLED } from './embedding-config';
+import { isEmbeddingInCooldown } from './embedding-throttle';
 
 const MIN_CHAT_CHUNK_CHARS = 20;
 const MIN_LIBRARY_CHUNK_CHARS = 10;
@@ -39,6 +40,8 @@ interface ChunkUpsertRow {
 }
 
 const pendingLibraryReindex = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingChatReindex = new Map<string, ReturnType<typeof setTimeout>>();
+const inFlightChatReindex = new Set<string>();
 
 function logIndex(event: string, detail: Record<string, unknown>): void {
   console.info(`embedding.index.${event}`, detail);
@@ -120,7 +123,8 @@ async function indexChatTurnGroup(
     userId: string;
     conversationId: string;
     group: ChatTurnGroup;
-  }
+  },
+  embedding?: number[]
 ): Promise<void> {
   const content = formatChatTurnGroupText(params.group.messages);
   if (content.length < MIN_CHAT_CHUNK_CHARS) return;
@@ -144,7 +148,7 @@ async function indexChatTurnGroup(
     .eq('source_id', sourceId)
     .eq('chunk_index', params.group.chunkIndex);
 
-  const [embedding] = await embedTexts([content]);
+  const vector = embedding ?? (await embedTexts([content]))[0];
   await upsertChunks(supabase, [
     {
       project_id: params.projectId,
@@ -162,7 +166,7 @@ async function indexChatTurnGroup(
         firstMessageAt: params.group.firstMessageAt,
         lastMessageAt: params.group.lastMessageAt,
       },
-      embedding,
+      embedding: vector,
     },
   ]);
 }
@@ -172,6 +176,16 @@ export async function reindexConversationTail(
   params: { conversationId: string; projectId: string; userId: string }
 ): Promise<void> {
   if (!AGENT_INDEXING_ENABLED) return;
+  if (isEmbeddingInCooldown()) {
+    logIndex('chat_message.skipped', {
+      conversationId: params.conversationId,
+      reason: 'rate_limit_cooldown',
+    });
+    return;
+  }
+  if (inFlightChatReindex.has(params.conversationId)) return;
+
+  inFlightChatReindex.add(params.conversationId);
   const start = Date.now();
   try {
     const messages = await loadIndexableChatMessages(supabase, params.conversationId);
@@ -179,8 +193,34 @@ export async function reindexConversationTail(
     const allGroups = buildChatTurnGroups(messages);
     const tailIndexes = new Set(tailGroups.map((g) => g.chunkIndex));
 
+    const pending: Array<{
+      group: ChatTurnGroup;
+      content: string;
+      contentHash: string;
+    }> = [];
+
     for (const group of tailGroups) {
-      await indexChatTurnGroup(supabase, { ...params, group });
+      const content = formatChatTurnGroupText(group.messages);
+      if (content.length < MIN_CHAT_CHUNK_CHARS) continue;
+
+      const contentHash = hashContent(content);
+      const sourceId = `${params.conversationId}:turn_group:${group.chunkIndex}`;
+      const { data: existing } = await supabase
+        .from('agent_embedding_chunks')
+        .select('content_hash')
+        .eq('source_type', 'chat_message')
+        .eq('source_id', sourceId)
+        .eq('chunk_index', group.chunkIndex)
+        .maybeSingle();
+      if (existing && (existing.content_hash as string) === contentHash) continue;
+      pending.push({ group, content, contentHash });
+    }
+
+    if (pending.length > 0) {
+      const embeddings = await embedTexts(pending.map((item) => item.content));
+      for (let i = 0; i < pending.length; i++) {
+        await indexChatTurnGroup(supabase, { ...params, group: pending[i].group }, embeddings[i]);
+      }
     }
 
     for (const group of allGroups) {
@@ -192,6 +232,7 @@ export async function reindexConversationTail(
     logIndex('chat_message', {
       conversationId: params.conversationId,
       chunkCount: tailGroups.length,
+      embeddedCount: pending.length,
       durationMs: Date.now() - start,
     });
   } catch (e) {
@@ -199,7 +240,26 @@ export async function reindexConversationTail(
       conversationId: params.conversationId,
       error: e instanceof Error ? e.message : String(e),
     });
+  } finally {
+    inFlightChatReindex.delete(params.conversationId);
   }
+}
+
+export function scheduleConversationTailReindex(
+  supabase: SupabaseClient,
+  params: { conversationId: string; projectId: string; userId: string }
+): void {
+  if (!AGENT_INDEXING_ENABLED) return;
+  const key = params.conversationId;
+  const existing = pendingChatReindex.get(key);
+  if (existing) clearTimeout(existing);
+  pendingChatReindex.set(
+    key,
+    setTimeout(() => {
+      pendingChatReindex.delete(key);
+      void reindexConversationTail(supabase, params);
+    }, AGENT_CHAT_REINDEX_DEBOUNCE_MS)
+  );
 }
 
 export async function indexDesignDocumentFromMessage(
@@ -276,9 +336,12 @@ export async function indexLibraryCell(
   const sourceId = `${params.assetId}:${params.fieldId}`;
 
   try {
+    // library_asset_values has no updated_at column; the asset row carries the
+    // most recent edit timestamp, so we read value_json here and fall back to
+    // library_assets.updated_at for the chunk metadata below.
     const { data: cell, error: cellErr } = await supabase
       .from('library_asset_values')
-      .select('value_json, updated_at')
+      .select('value_json')
       .eq('asset_id', params.assetId)
       .eq('field_id', params.fieldId)
       .maybeSingle();
@@ -368,7 +431,7 @@ export async function indexLibraryCell(
           fieldId: field.id,
           fieldLabel: field.label,
           sectionId: `${library.id}:${field.section ?? ''}`,
-          cellUpdatedAt: cell.updated_at ?? asset.updated_at,
+          cellUpdatedAt: asset.updated_at,
         },
         embedding,
       },
@@ -497,7 +560,7 @@ export function triggerConversationIndexing(
 ): void {
   if (!AGENT_INDEXING_ENABLED) return;
   if (params.role === 'user' || params.role === 'assistant') {
-    void reindexConversationTail(supabase, {
+    scheduleConversationTailReindex(supabase, {
       conversationId: params.conversationId,
       projectId: params.projectId,
       userId: params.userId,

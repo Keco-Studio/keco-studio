@@ -24,6 +24,8 @@ export type PropertyConfig = {
   enumOptions?: string[]; // For enum type: available option values
   /** For formula type: raw expression text using column names and operators */
   formulaExpression?: string;
+  /** Whether the field must have a value when creating a new row. */
+  required?: boolean;
   orderIndex: number;
 };
 

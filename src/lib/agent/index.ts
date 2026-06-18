@@ -13,7 +13,7 @@ export {
   updateConversationMeta,
 } from './conversation-store';
 export { resolveConversationMeta, needsConfirmation, metaForSave } from './conversation-meta';
-export { allTools, getToolsForLlm, resolveTool } from './tools';
+export { allTools, getToolsForLlm, getToolsForLlmAsync, resolveTool } from './tools';
 export type {
   AgentTool,
   ToolContext,

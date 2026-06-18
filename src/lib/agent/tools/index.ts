@@ -5,7 +5,10 @@
  * Skills live in ../skills/ and are merged into allTools at the bottom.
  */
 
-import type { AgentTool, OpenAITool } from '../types';
+import type { AgentTool, OpenAITool, ToolContext } from '../types';
+import type { PropertyConfig } from '@/lib/types/libraryAssets';
+import { getLibraryProperties } from '../data-access';
+import { injectLibrarySchemaIntoToolParameters } from '../dynamic-tool-schema';
 import { queryAssets } from './query-assets';
 import { queryScriptLines } from './query-script-lines';
 import { addField } from './add-field';
@@ -41,11 +44,42 @@ const tools: AgentTool[] = [
 
 export const allTools: AgentTool[] = [...tools, ...allSkills];
 
-export function getToolsForLlm(): OpenAITool[] {
-  return allTools.map((t) => ({
-    type: 'function',
-    function: { name: t.name, description: t.description, parameters: t.parameters },
-  }));
+export function getToolsForLlm(
+  ctx?: Pick<ToolContext, 'currentLibraryId' | 'currentLibraryName'>,
+  libraryProperties?: PropertyConfig[]
+): OpenAITool[] {
+  const injectSchema = Boolean(ctx?.currentLibraryId && libraryProperties && libraryProperties.length > 0);
+
+  return allTools.map((t) => {
+    const parameters =
+      injectSchema && libraryProperties
+        ? injectLibrarySchemaIntoToolParameters(
+            t.name,
+            t.parameters,
+            libraryProperties,
+            ctx?.currentLibraryName
+          )
+        : t.parameters;
+
+    return {
+      type: 'function',
+      function: { name: t.name, description: t.description, parameters },
+    };
+  });
+}
+
+/** Load active-library field defs and return LLM tools with dynamic write schemas. */
+export async function getToolsForLlmAsync(ctx: ToolContext): Promise<OpenAITool[]> {
+  if (!ctx.currentLibraryId) {
+    return getToolsForLlm(ctx);
+  }
+
+  try {
+    const libraryProperties = await getLibraryProperties(ctx.supabase, ctx.currentLibraryId);
+    return getToolsForLlm(ctx, libraryProperties);
+  } catch {
+    return getToolsForLlm(ctx);
+  }
 }
 
 export function resolveTool(name: string): AgentTool | undefined {

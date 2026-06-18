@@ -20,7 +20,7 @@ import {
 } from './types';
 import { streamLlm } from './llm-client';
 import { buildSystemPrompt } from './prompts';
-import { getToolsForLlm, resolveTool, allTools } from './tools';
+import { getToolsForLlmAsync, resolveTool, allTools } from './tools';
 import {
   loadConversationHistory,
   saveMessage,
@@ -279,7 +279,8 @@ async function* continueLoop(
     const llmStartMs = Date.now();
 
     const llmMessages = await inlineLocalImages(prepareMessagesForLlm(messages));
-    for await (const chunk of streamLlm(llmMessages, { tools: getToolsForLlm() })) {
+    const llmTools = await getToolsForLlmAsync(ctx);
+    for await (const chunk of streamLlm(llmMessages, { tools: llmTools })) {
       if (chunk.type === 'text_delta') {
         assistantContent += chunk.content;
         yield { type: 'text_delta', content: chunk.content };

@@ -14,7 +14,8 @@ import {
 } from '../asset-emptiness';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import { scheduleReindexForAssetFields } from '../embedding-index';
-import { resolvePropertyValues } from '../field-resolver';
+import { resolvePropertyValues, isExplicitEmptyPropertyValues, buildEmptyPropertyValuesError } from '../field-resolver';
+import { prepareAgentPropertyValues } from '../property-value-validation';
 import { getLibraryAssets } from '../data-access';
 import {
   errorFromLookupResult,
@@ -51,6 +52,11 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
   const library = libraryFromLookupResult(libraryResult);
 
+  if (isExplicitEmptyPropertyValues(params)) {
+    const { availableFields } = await resolvePropertyValues(ctx.supabase, library.id, undefined);
+    return { success: false, error: buildEmptyPropertyValuesError(availableFields) };
+  }
+
   const [properties, { resolved, unresolved, availableFields }] = await Promise.all([
     getLibraryProperties(ctx.supabase, library.id),
     resolvePropertyValues(ctx.supabase, library.id, propertyValues),
@@ -62,12 +68,21 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     };
   }
 
+  const prepared = prepareAgentPropertyValues(resolved, properties, {
+    assetName: name,
+    requireAllRequired: true,
+  });
+  if ('error' in prepared) {
+    return { success: false, error: prepared.error };
+  }
+  const normalizedResolved = prepared.values;
+
   let resolvedWithReferences: Record<string, unknown>;
   try {
     resolvedWithReferences = await resolveAgentReferencePropertyValues(
       ctx.supabase,
       properties,
-      resolved
+      normalizedResolved
     );
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to resolve reference values.' };

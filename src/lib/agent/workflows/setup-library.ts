@@ -20,9 +20,11 @@ import {
   createLibraryServer,
   deleteLibraryServer,
   findFolderByName,
+  getLibraryProperties,
   listProjectLibraries,
   findLibraryByName,
 } from '../data-access';
+import { buildLibraryWriteGuide } from '../library-schema-builder';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 const DEFAULT_SECTION = 'section1';
@@ -239,6 +241,9 @@ async function executeImport(
     };
   }
 
+  const properties = await getLibraryProperties(ctx.supabase, libraryId);
+  const writeGuide = buildLibraryWriteGuide(properties);
+
   return {
     success: true,
     displayHint: 'text',
@@ -248,6 +253,7 @@ async function executeImport(
       folderName: preview.folderName,
       sections: Object.keys(preview.sections),
       totalFields: preview.totalFields,
+      writeGuide,
     },
     invalidateCache: [libraryId],
   };
