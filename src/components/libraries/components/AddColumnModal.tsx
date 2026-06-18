@@ -16,10 +16,10 @@ import {
   hasFormulaCircularReference,
   getFormulaReferencedFieldNames,
 } from '@/lib/utils/formula';
+import { validateHeaderName } from '@/lib/utils/headerNameValidation';
 import styles from './AddColumnModal.module.css';
 
 const DESCRIPTION_MAX = 250;
-const HEADER_NAME_PATTERN = /^[A-Za-z0-9_]+$/;
 type DataType = NonNullable<PropertyConfig['dataType']>;
 
 export type AddColumnFormPayload = {
@@ -320,12 +320,9 @@ export function AddColumnModal({
 
   const handleSubmit = async () => {
     const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError('Header name is required.');
-      return;
-    }
-    if (!HEADER_NAME_PATTERN.test(trimmedName)) {
-      setError('Header name can only contain letters, numbers, and underscores.');
+    const headerNameError = validateHeaderName(trimmedName);
+    if (headerNameError) {
+      setError(headerNameError);
       return;
     }
     if (
@@ -501,13 +498,8 @@ export function AddColumnModal({
             ref={nameInputRef}
             value={name}
             onChange={(e) => {
-              const value = e.target.value;
-              if (!value || HEADER_NAME_PATTERN.test(value)) {
-                setName(value);
-                setError(null);
-              } else {
-                setError('Header name can only contain letters, numbers, and underscores.');
-              }
+              setName(e.target.value);
+              setError(null);
             }}
             placeholder=""
             className={styles.input}

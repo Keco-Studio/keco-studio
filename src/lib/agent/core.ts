@@ -25,6 +25,7 @@ import {
   loadConversationHistory,
   saveMessage,
   getConversation,
+  type SaveMessageIndexingContext,
 } from './conversation-store';
 import {
   emptyTurnErrorMessage,
@@ -32,6 +33,12 @@ import {
   prepareMessagesForLlm,
 } from './tool-result-for-llm';
 import { augmentUserMessageForLlm, stripContextAugmentation } from './context-message';
+import { AGENT_RETRIEVAL_ENABLED } from './embedding-config';
+import { embedQuery } from './embedding-client';
+import {
+  formatRetrievedContext,
+  retrieveRelevantChunks,
+} from './embedding-retrieval';
 import { buildUserContent, mapMessageText } from './content-parts';
 import { inlineLocalImages } from './image-inlining';
 import {
@@ -90,7 +97,10 @@ function parseArgs(raw: string): ParsedArgs {
   return { args: parsed as Record<string, unknown> };
 }
 
-async function buildSystemMessage(ctx: ToolContext): Promise<ChatMessage> {
+async function buildSystemMessage(
+  ctx: ToolContext,
+  retrievedContextBlock?: string
+): Promise<ChatMessage> {
   let projectName: string | undefined;
   let currentLibraryName = ctx.currentLibraryName;
   let currentFolderName = ctx.currentFolderName;
@@ -132,9 +142,7 @@ async function buildSystemMessage(ctx: ToolContext): Promise<ChatMessage> {
     }
   }
 
-  return {
-    role: 'system',
-    content: buildSystemPrompt({
+  const basePrompt = buildSystemPrompt({
       projectName,
       projectId: ctx.projectId,
       currentFolderId: ctx.currentFolderId,
@@ -143,8 +151,66 @@ async function buildSystemMessage(ctx: ToolContext): Promise<ChatMessage> {
       currentLibraryName,
       currentSectionName: ctx.currentSectionName,
       userRole: ctx.userRole,
-    }),
+    });
+
+  const content = retrievedContextBlock
+    ? `${basePrompt}\n\n${retrievedContextBlock}`
+    : basePrompt;
+
+  return {
+    role: 'system',
+    content,
   };
+}
+
+async function loadRetrievedContextBlock(
+  ctx: ToolContext,
+  conversationId: string,
+  userMessage: string
+): Promise<string | undefined> {
+  if (!AGENT_RETRIEVAL_ENABLED) return undefined;
+  try {
+    const queryText = stripContextAugmentation(userMessage);
+    if (!queryText.trim()) return undefined;
+    const queryEmbedding = await embedQuery(queryText);
+    const chunks = await retrieveRelevantChunks({
+      supabase: ctx.supabase,
+      queryEmbedding,
+      projectId: ctx.projectId,
+      userId: ctx.userId,
+      conversationId,
+    });
+    const block = formatRetrievedContext(chunks);
+    if (block) {
+      console.info('embedding.retrieve', {
+        queryLength: queryText.length,
+        hitCount: chunks.length,
+        topScore: chunks[0]?.finalScore,
+      });
+    }
+    return block || undefined;
+  } catch (e) {
+    console.warn('embedding.retrieve.failed', {
+      error: e instanceof Error ? e.message : String(e),
+    });
+    return undefined;
+  }
+}
+
+function indexingContext(ctx: ToolContext): SaveMessageIndexingContext {
+  return { projectId: ctx.projectId, userId: ctx.userId };
+}
+
+async function persistMessage(
+  ctx: ToolContext,
+  conversationId: string,
+  message: ChatMessage
+): Promise<void> {
+  const indexing =
+    message.role === 'user' || message.role === 'assistant'
+      ? indexingContext(ctx)
+      : undefined;
+  await saveMessage(ctx.supabase, conversationId, message, indexing);
 }
 
 /**
@@ -257,7 +323,7 @@ async function* continueLoop(
         return;
       }
       messages.push({ role: 'assistant', content: assistantContent });
-      await saveMessage(ctx.supabase, conversationId, { role: 'assistant', content: assistantContent });
+      await persistMessage(ctx, conversationId, { role: 'assistant', content: assistantContent });
       yield { type: 'done' };
       return;
     }
@@ -288,7 +354,7 @@ async function* continueLoop(
       });
       messages.push(assistantMessage);
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
-      await saveMessage(ctx.supabase, conversationId, assistantMessage);
+      await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
       yield { type: 'tool_result', tool: call.function.name, data: undefined, displayHint: 'text', success: false, error: errorResult.error };
       continue;
@@ -310,7 +376,7 @@ async function* continueLoop(
       });
       messages.push(assistantMessage);
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
-      await saveMessage(ctx.supabase, conversationId, assistantMessage);
+      await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(errorResult) });
       continue;
     }
@@ -326,7 +392,7 @@ async function* continueLoop(
       });
       messages.push(assistantMessage);
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(permError) });
-      await saveMessage(ctx.supabase, conversationId, assistantMessage);
+      await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(permError) });
       yield { type: 'tool_result', tool: tool.name, data: undefined, displayHint: 'text', success: false, error: permError.error };
       continue;
@@ -338,7 +404,7 @@ async function* continueLoop(
         const actionId = crypto.randomUUID();
         // Persist assistant text (tool_calls deferred until resume) for display continuity.
         if (assistantContent) {
-          await saveMessage(ctx.supabase, conversationId, { role: 'assistant', content: assistantContent });
+          await persistMessage(ctx, conversationId, { role: 'assistant', content: assistantContent });
         }
         await savePendingAction(ctx.supabase, {
           id: actionId,
@@ -386,14 +452,14 @@ async function* continueLoop(
         if (!result.success) {
           messages.push(assistantMessage);
           messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
-          await saveMessage(ctx.supabase, conversationId, assistantMessage);
+          await persistMessage(ctx, conversationId, assistantMessage);
           await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
           yield { type: 'tool_result', tool: tool.name, data: result.data, displayHint: result.displayHint };
           continue;
         }
         const actionId = crypto.randomUUID();
         if (assistantContent) {
-          await saveMessage(ctx.supabase, conversationId, { role: 'assistant', content: assistantContent });
+          await persistMessage(ctx, conversationId, { role: 'assistant', content: assistantContent });
         }
         await savePendingAction(ctx.supabase, {
           id: actionId,
@@ -469,7 +535,7 @@ async function* continueLoop(
       }
       messages.push(assistantMessage);
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(finalResult) });
-      await saveMessage(ctx.supabase, conversationId, assistantMessage);
+      await persistMessage(ctx, conversationId, assistantMessage);
       await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(finalResult) });
       continue;
     }
@@ -499,7 +565,7 @@ async function* continueLoop(
 
     messages.push(assistantMessage);
     messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
-    await saveMessage(ctx.supabase, conversationId, assistantMessage);
+    await persistMessage(ctx, conversationId, assistantMessage);
     await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
   }
 
@@ -516,7 +582,12 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
   });
 
   try {
-    const systemMessage = await buildSystemMessage(toolContext);
+    const retrievedContextBlock = await loadRetrievedContextBlock(
+      toolContext,
+      conversationId,
+      input.userMessage
+    );
+    const systemMessage = await buildSystemMessage(toolContext, retrievedContextBlock);
 
     const history = await loadConversationHistory(toolContext.supabase, conversationId);
     const llmUserMessage = augmentUserMessageForLlm(input.userMessage, toolContext);
@@ -526,7 +597,7 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     const userContentForLlm = buildUserContent(llmUserMessage, input.imageUrls);
     const userContentForDb = buildUserContent(input.userMessage, input.imageUrls);
     const messages: ChatMessage[] = [systemMessage, ...history, { role: 'user', content: userContentForLlm }];
-    await saveMessage(toolContext.supabase, conversationId, { role: 'user', content: userContentForDb });
+    await saveMessage(toolContext.supabase, conversationId, { role: 'user', content: userContentForDb }, indexingContext(toolContext));
 
     yield* continueLoop(messages, toolContext, conversationMeta, conversationId, 0, trace);
   } finally {
@@ -630,7 +701,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     };
     messages.push(assistantMessage);
     messages.push(toolMessage);
-    await saveMessage(toolContext.supabase, conversationId, assistantMessage);
+    await persistMessage(toolContext, conversationId, assistantMessage);
     await saveMessage(toolContext.supabase, conversationId, toolMessage);
 
     await markPendingAction(toolContext.supabase, input.actionId, input.decision === 'approve' ? 'approved' : 'rejected');

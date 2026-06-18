@@ -9,6 +9,7 @@ import {
   validateReferencePropertyValues,
 } from '../asset-emptiness';
 import { resolveAssetByRowIndex } from '../data-access';
+import { scheduleReindexForAssetFields } from '../embedding-index';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import { resolvePropertyValues } from '../field-resolver';
 import {
@@ -128,6 +129,12 @@ async function executeUpdateAsset(params: unknown, ctx: ToolContext): Promise<To
 
   try {
     await updateAssetService(ctx.supabase, assetId, name ?? assetRow.name, resolvedWithReferences);
+    scheduleReindexForAssetFields(
+      ctx.supabase,
+      ctx.projectId,
+      assetId,
+      Object.keys(resolvedWithReferences)
+    );
     return {
       success: true,
       displayHint: 'text',

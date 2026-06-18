@@ -19,11 +19,13 @@ import { createFolder } from './create-folder';
 import { deleteLibrary } from './delete-library';
 import { renameLibrary } from './rename-library';
 import { listProjectStructure } from './list-project-structure';
+import { semanticSearch } from './semantic-search';
 import { allSkills } from '../workflows';
 
 const tools: AgentTool[] = [
   listProjectStructure,
   queryAssets,
+  semanticSearch,
   queryScriptLines,
   addField,
   createAsset,

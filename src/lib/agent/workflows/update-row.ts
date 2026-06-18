@@ -22,6 +22,7 @@ import {
 import { buildFieldLabelMap, getLibraryAssets, getLibraryProperties } from '../data-access';
 import { resolvePropertyValues } from '../field-resolver';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
+import { scheduleReindexForAssetFields } from '../embedding-index';
 import {
   errorFromLookupResult,
   errorFromOkResult,
@@ -161,6 +162,12 @@ async function executeImport(
 
   try {
     await updateAssetService(ctx.supabase, preview.assetId, preview.assetName, preview.resolvedValues);
+    scheduleReindexForAssetFields(
+      ctx.supabase,
+      ctx.projectId,
+      preview.assetId,
+      Object.keys(preview.resolvedValues)
+    );
     return {
       success: true,
       displayHint: 'text',

@@ -4,7 +4,9 @@ import {
   buildQueryAssetRows,
   buildQueryAssetSummary,
   buildReferenceTargetsFromAssets,
+  countLeadingEmptyUiRows,
   findEmptyReferenceTargetIds,
+  findFirstEmptyUiRowAsset,
   sortQueryAssetRowsByRowIndex,
 } from '../../../src/lib/agent/asset-emptiness';
 import type { AssetRow } from '../../../src/lib/types/libraryAssets';
@@ -227,7 +229,45 @@ describe('buildQueryAssetSummary', () => {
       nonEmptyCellCount: 2,
       returnedRows: 1,
       emptyAssetsExcluded: 1,
+      leadingEmptyRowCount: 0,
     });
+  });
+});
+
+describe('findFirstEmptyUiRowAsset', () => {
+  it('returns the topmost empty row in UI order', () => {
+    const assets: AssetRow[] = [
+      { id: 'empty-top', libraryId: 'lib', name: 'Untitled', propertyValues: {}, rowIndex: 1 },
+      { id: 'filled', libraryId: 'lib', name: 'Untitled', propertyValues: { f1: 'x' }, rowIndex: 2 },
+      { id: 'empty-bottom', libraryId: 'lib', name: 'Untitled', propertyValues: {}, rowIndex: 3 },
+    ];
+    expect(findFirstEmptyUiRowAsset(assets)).toEqual({
+      asset: assets[0],
+      rowIndex: 1,
+    });
+  });
+
+  it('returns null when every row has visible data', () => {
+    const assets: AssetRow[] = [
+      { id: 'a1', libraryId: 'lib', name: 'Untitled', propertyValues: { f1: 'x' } },
+    ];
+    expect(findFirstEmptyUiRowAsset(assets)).toBeNull();
+  });
+});
+
+describe('countLeadingEmptyUiRows', () => {
+  it('counts only leading empty rows before the first filled row', () => {
+    const rows = buildQueryAssetRows(
+      [
+        { id: 'e1', libraryId: 'lib', name: 'Untitled', propertyValues: {}, rowIndex: 1 },
+        { id: 'e2', libraryId: 'lib', name: 'Untitled', propertyValues: { f1: '' }, rowIndex: 2 },
+        { id: 'filled', libraryId: 'lib', name: 'Untitled', propertyValues: { f1: 'data' }, rowIndex: 3 },
+        { id: 'e3', libraryId: 'lib', name: 'Untitled', propertyValues: {}, rowIndex: 4 },
+      ],
+      { f1: 'ID' },
+      ['f1']
+    );
+    expect(countLeadingEmptyUiRows(rows)).toBe(2);
   });
 });
 

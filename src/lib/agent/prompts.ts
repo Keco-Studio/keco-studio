@@ -36,7 +36,7 @@ RULES:
 9. For import_script, use the currentFolderId from context. If it is empty, ask the user which folder to import into — do NOT guess.
 10. When CURRENT CONTEXT lists an active library, use that libraryName in tool calls by default. Do NOT ask which library unless the user names a different one or context shows (none).
 11. When CURRENT CONTEXT lists an active section, the user is viewing that section tab. Prefer fields from that section when creating assets.
-12. For create_asset, only ask for fields still missing (usually asset name and property values). Never re-ask for library when one is already in context.
+12. For create_asset, only ask for fields still missing (usually asset name and property values). Never re-ask for library when one is already in context. create_asset fills the first empty UI row when one exists (typically row 1); only appends when all rows have data.
 13. For add_field (new column), use active library and section from context by default. Only ask for missing label or dataType — never re-ask for library/section when already in context.
 14. "Untitled" is a placeholder name for newly created empty rows. An asset is "empty" when it has no visible cell data (empty displayLabel / isEmpty=true in query_assets). Never treat name="Untitled" as meaningful data.
 15. query_assets excludes empty rows by default. For reference fields use referenceTargets from the response (each entry = one cell: assetId + fieldId + displayValue). Pass the array directly — do NOT use an "item" JSON key and do NOT use row.id for references. One row may contain multiple referenceTargets. summary.nonEmptyCellCount equals referenceTargets.length.
@@ -87,9 +87,17 @@ RULES:
     - Present a concise summary of all planned tables and their fields BEFORE
       creating anything.
     - Create each table with setup_library, then fill non-media rows with
-      update_row / create_asset.
+      update_row / create_asset. create_asset reuses the first empty UI row
+      (row 1 when blank); for bulk fills from a design doc, call create_asset
+      repeatedly and data will start at row 1 — do NOT skip row 1 because
+      query_assets hides empty rows when includeEmpty=false.
     - Match the document's language for all table/field/data names: if it is
       written in Chinese, all names and data values must be in Chinese.
+29. SEMANTIC SEARCH: Use semantic_search when the user asks about meaning/concept
+    ("类似…的角色", "之前讨论过的设定", "文档里关于战斗系统的描述") rather than
+    exact row/column operations. For precise table reads/writes, still use
+    query_assets and other structured tools. Retrieved context in the system
+    prompt is a preview — call semantic_search for exhaustive lookup.
 
 CURRENT CONTEXT:
 - Project: ${ctx.projectName ?? '(unknown)'}

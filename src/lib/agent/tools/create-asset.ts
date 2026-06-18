@@ -3,13 +3,19 @@
  */
 
 import { z } from 'zod';
-import { createAsset as createAssetService } from '@/lib/services/libraryAssetsService';
 import {
+  createAsset as createAssetService,
+  updateAsset as updateAssetService,
+} from '@/lib/services/libraryAssetsService';
+import {
+  findFirstEmptyUiRowAsset,
   resolveAgentReferencePropertyValues,
   validateReferencePropertyValues,
 } from '../asset-emptiness';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
+import { scheduleReindexForAssetFields } from '../embedding-index';
 import { resolvePropertyValues } from '../field-resolver';
+import { getLibraryAssets } from '../data-access';
 import {
   errorFromLookupResult,
   errorFromOkResult,
@@ -78,7 +84,44 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
 
   try {
+    const assets = await getLibraryAssets(ctx.supabase, library.id);
+    const emptyRow = findFirstEmptyUiRowAsset(assets);
+
+    if (emptyRow) {
+      await updateAssetService(
+        ctx.supabase,
+        emptyRow.asset.id,
+        name,
+        resolvedWithReferences
+      );
+      scheduleReindexForAssetFields(
+        ctx.supabase,
+        ctx.projectId,
+        emptyRow.asset.id,
+        Object.keys(resolvedWithReferences)
+      );
+      return {
+        success: true,
+        displayHint: 'text',
+        data: {
+          assetId: emptyRow.asset.id,
+          libraryId: library.id,
+          libraryName: library.name,
+          name,
+          rowIndex: emptyRow.rowIndex,
+          reusedEmptyRow: true,
+        },
+        invalidateCache: [library.id],
+      };
+    }
+
     const assetId = await createAssetService(ctx.supabase, library.id, name, resolvedWithReferences);
+    scheduleReindexForAssetFields(
+      ctx.supabase,
+      ctx.projectId,
+      assetId,
+      Object.keys(resolvedWithReferences)
+    );
     return {
       success: true,
       displayHint: 'text',
@@ -93,7 +136,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const createAsset: AgentTool = {
   name: 'create_asset',
   description:
-    'Add a new asset (row) to a library. Use semantic field names in propertyValues (e.g. {"类型": "character"}). Reference fields cannot target empty assets. libraryName defaults to the user\'s active library from page context when omitted. Params: name (required), libraryName (optional), propertyValues.',
+    'Add a new asset (row) to a library. Reuses the first empty UI row when one exists (row 1 if blank), otherwise appends. Use semantic field names in propertyValues (e.g. {"类型": "character"}). Reference fields cannot target empty assets. libraryName defaults to the user\'s active library from page context when omitted. Params: name (required), libraryName (optional), propertyValues.',
   category: 'write',
   confirmationMode: 'pre_execute',
   requiredPermission: 'editor',
