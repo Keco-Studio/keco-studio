@@ -28,6 +28,7 @@ export interface RankedRetrievalCandidate extends RetrievalCandidate {
 }
 
 const CHAT_CONFLICT_SCORE_DELTA = 0.05;
+const LIBRARY_ROW_CELL_SCORE_DELTA = 0.08;
 
 export function computeRecencyScore(
   sourceTimestamp: string,
@@ -59,7 +60,28 @@ export function rankCandidates(
       finalScore: computeFinalScore(c.similarity, recency),
     };
   });
-  return resolveChatConflict(ranked).sort((a, b) => b.finalScore - a.finalScore);
+  return resolveChatConflict(dedupeLibraryRowOverCell(ranked)).sort((a, b) => b.finalScore - a.finalScore);
+}
+
+/** Prefer library_row over library_cell for the same asset unless the cell scores much higher. */
+export function dedupeLibraryRowOverCell(
+  candidates: RankedRetrievalCandidate[]
+): RankedRetrievalCandidate[] {
+  const rowByAsset = new Map<string, RankedRetrievalCandidate>();
+  for (const c of candidates) {
+    if (c.sourceType !== 'library_row') continue;
+    const assetId = String(c.metadata.assetId ?? '');
+    if (assetId) rowByAsset.set(assetId, c);
+  }
+  if (rowByAsset.size === 0) return candidates;
+
+  return candidates.filter((c) => {
+    if (c.sourceType !== 'library_cell') return true;
+    const assetId = String(c.metadata.assetId ?? '');
+    const row = rowByAsset.get(assetId);
+    if (!row) return true;
+    return c.finalScore - row.finalScore > LIBRARY_ROW_CELL_SCORE_DELTA;
+  });
 }
 
 export function resolveChatConflict(
@@ -170,7 +192,22 @@ function formatSnippetLine(index: number, c: RankedRetrievalCandidate): string {
     const asset = meta.assetName ?? 'asset';
     const field = meta.fieldLabel ?? 'field';
     const updated = String(meta.cellUpdatedAt ?? c.sourceTimestamp).slice(0, 10);
-    return `${index}. [library_cell · ${lib} · ${asset} · ${field} · updated ${updated}] ${c.content}`;
+    const rowSuffix =
+      typeof meta.rowIndex === 'number' ? ` · row ${meta.rowIndex}` : '';
+    return `${index}. [library_cell · ${lib} · ${asset}${rowSuffix} · ${field} · updated ${updated}] ${c.content}`;
+  }
+  if (c.sourceType === 'library_row') {
+    const lib = meta.libraryName ?? 'library';
+    const rowIndex = meta.rowIndex ?? '?';
+    const label = meta.primaryLabel || meta.assetName || 'row';
+    const updated = String(meta.cellUpdatedAt ?? c.sourceTimestamp).slice(0, 10);
+    return `${index}. [library_row · ${lib} · row ${rowIndex} · ${label} · updated ${updated}] ${c.content}`;
+  }
+  if (c.sourceType === 'library_schema') {
+    const lib = meta.libraryName ?? 'library';
+    const cols = meta.columnCount ?? '?';
+    const updated = String(meta.schemaUpdatedAt ?? c.sourceTimestamp).slice(0, 10);
+    return `${index}. [library_schema · ${lib} · ${cols} columns · updated ${updated}] ${c.content}`;
   }
   if (c.sourceType === 'design_document') {
     const chunkIdx = meta.chunkIndex ?? c.metadata.chunkIndex ?? 0;
@@ -323,9 +360,10 @@ export async function semanticSearchChunks(
 
   if (params.libraryName) {
     const needle = params.libraryName.toLowerCase();
+    const libraryTypes = new Set(['library_cell', 'library_row', 'library_schema']);
     results = results.filter(
       (r) =>
-        r.sourceType !== 'library_cell' ||
+        !libraryTypes.has(r.sourceType) ||
         String(r.metadata.libraryName ?? '').toLowerCase().includes(needle)
     );
   }

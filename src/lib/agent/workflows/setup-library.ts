@@ -25,6 +25,7 @@ import {
   findLibraryByName,
 } from '../data-access';
 import { buildLibraryWriteGuide } from '../library-schema-builder';
+import { scheduleLibrarySchemaReindex } from '../embedding-index';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 const DEFAULT_SECTION = 'section1';
@@ -243,6 +244,11 @@ async function executeImport(
 
   const properties = await getLibraryProperties(ctx.supabase, libraryId);
   const writeGuide = buildLibraryWriteGuide(properties);
+
+  scheduleLibrarySchemaReindex(ctx.supabase, {
+    projectId: ctx.projectId,
+    libraryId,
+  });
 
   return {
     success: true,

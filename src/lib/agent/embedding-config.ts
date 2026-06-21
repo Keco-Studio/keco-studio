@@ -99,6 +99,13 @@ export const AGENT_RETRIEVAL_MIN_SCORE = parseFloatEnv('AGENT_RETRIEVAL_MIN_SCOR
 export const AGENT_RETRIEVAL_MAX_CHARS = parseIntEnv('AGENT_RETRIEVAL_MAX_CHARS', 32000);
 export const AGENT_RETRIEVAL_RECENCY_WEIGHT = parseFloatEnv('AGENT_RETRIEVAL_RECENCY_WEIGHT', 0.2);
 export const AGENT_DESIGN_DOC_VECTOR_ONLY = parseBoolEnv('AGENT_DESIGN_DOC_VECTOR_ONLY', false);
+export const AGENT_SEMANTIC_ROW_INDEX_ENABLED = parseBoolEnv('AGENT_SEMANTIC_ROW_INDEX_ENABLED', true);
+export const AGENT_SEMANTIC_SCHEMA_INDEX_ENABLED = parseBoolEnv(
+  'AGENT_SEMANTIC_SCHEMA_INDEX_ENABLED',
+  true
+);
+export const AGENT_LIBRARY_ROW_MIN_CHARS = parseIntEnv('AGENT_LIBRARY_ROW_MIN_CHARS', 20);
+export const AGENT_LIBRARY_SCHEMA_DEBOUNCE_MS = parseIntEnv('AGENT_LIBRARY_SCHEMA_DEBOUNCE_MS', 5000);
 
 export const AGENT_CHAT_TURN_GROUP_MAX_MESSAGES = parseIntEnv('AGENT_CHAT_TURN_GROUP_MAX_MESSAGES', 5);
 export const AGENT_CHAT_TURN_GROUP_MIN_MESSAGES = parseIntEnv('AGENT_CHAT_TURN_GROUP_MIN_MESSAGES', 3);
@@ -114,12 +121,14 @@ export type RetrievalScope =
 export const SCOPE_QUOTAS: Record<RetrievalScope, number> = {
   chat_same_conversation: parseIntEnv('AGENT_RETRIEVAL_QUOTA_CHAT_SAME', 3),
   chat_same_project: parseIntEnv('AGENT_RETRIEVAL_QUOTA_CHAT_PROJECT', 2),
-  library: parseIntEnv('AGENT_RETRIEVAL_QUOTA_LIBRARY', 4),
+  library: parseIntEnv('AGENT_RETRIEVAL_QUOTA_LIBRARY', 6),
   design_document: parseIntEnv('AGENT_RETRIEVAL_QUOTA_DESIGN_DOC', 3),
 };
 
 export const RECENCY_HALF_LIFE_DAYS: Record<string, number> = {
   chat_message: parseIntEnv('AGENT_RETRIEVAL_HALF_LIFE_CHAT_DAYS', 30),
   library_cell: parseIntEnv('AGENT_RETRIEVAL_HALF_LIFE_LIBRARY_DAYS', 90),
+  library_row: parseIntEnv('AGENT_RETRIEVAL_HALF_LIFE_LIBRARY_ROW_DAYS', 90),
+  library_schema: parseIntEnv('AGENT_RETRIEVAL_HALF_LIFE_LIBRARY_SCHEMA_DAYS', 180),
   design_document: parseIntEnv('AGENT_RETRIEVAL_HALF_LIFE_DESIGN_DOC_DAYS', 60),
 };
