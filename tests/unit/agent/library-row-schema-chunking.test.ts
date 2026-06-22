@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  buildLibraryCellChunkText,
   buildLibraryRowChunkText,
   buildLibrarySchemaChunkText,
   type LibraryRowChunkInput,
@@ -29,14 +30,16 @@ describe('buildLibraryRowChunkText', () => {
     expect(text).toContain('|');
   });
 
-  it('returns null when content is shorter than minimum chars', () => {
+  it('indexes short config rows when wrapped with library and field labels', () => {
     const text = buildLibraryRowChunkText({
       libraryName: 'X',
       rowIndex: 1,
       assetName: 'A',
       fields: [{ label: 'N', displayValue: 'v', orderIndex: 0 }],
     });
-    expect(text).toBeNull();
+    expect(text).not.toBeNull();
+    expect(text).toContain('[X] row 1');
+    expect(text).toContain('N: v');
   });
 
   it('returns null for Untitled asset with no visible fields', () => {
@@ -62,6 +65,20 @@ describe('buildLibraryRowChunkText', () => {
     const fieldPart = text!.split('\n')[1];
     expect(fieldPart.indexOf('A: first')).toBeLessThan(fieldPart.indexOf('M: mid'));
     expect(fieldPart.indexOf('M: mid')).toBeLessThan(fieldPart.indexOf('Z: last'));
+  });
+});
+
+describe('buildLibraryCellChunkText', () => {
+  it('wraps short cell values with library, asset, and field context', () => {
+    const content = buildLibraryCellChunkText('Items', 'Diamond Pack', 'Type', 'VIP');
+    expect(content).toBe('Items / Diamond Pack / Type: VIP');
+    expect(content.length).toBeGreaterThanOrEqual(8);
+  });
+
+  it('makes single-character values indexable via surrounding context', () => {
+    const content = buildLibraryCellChunkText('Items', 'Coin', 'Price', '1');
+    expect(content.length).toBeGreaterThanOrEqual(8);
+    expect(content).toContain('Price: 1');
   });
 });
 
