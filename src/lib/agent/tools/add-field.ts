@@ -4,6 +4,7 @@
 
 import { z } from 'zod';
 import { addLibraryField } from '@/lib/services/libraryAssetsService';
+import { scheduleLibrarySchemaReindex } from '../embedding-index';
 import { normalizeFieldDataType, SUPPORTED_FIELD_DATA_TYPES } from '../field-data-type';
 import { buildDataTypeParamDescription } from '../field-type-catalog';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
@@ -89,6 +90,10 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         formulaExpression: parsed.data.formulaExpression,
       }
     );
+    scheduleLibrarySchemaReindex(ctx.supabase, {
+      projectId: ctx.projectId,
+      libraryId: library.id,
+    });
     return {
       success: true,
       displayHint: 'text',

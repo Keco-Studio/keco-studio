@@ -8,7 +8,9 @@ import {
   AGENT_CHAT_TURN_GROUP_MAX_MESSAGES,
   AGENT_CHAT_TURN_GROUP_MIN_MESSAGES,
   AGENT_CHAT_TURN_GROUP_GAP_MINUTES,
+  AGENT_LIBRARY_ROW_MIN_CHARS,
 } from './embedding-config';
+import type { LibrarySchemaData } from './library-schema-builder';
 
 export interface IndexableChatMessage {
   id: string;
@@ -235,4 +237,92 @@ export function buildLibraryCellChunkText(
   cellText: string
 ): string {
   return `${libraryName} / ${assetName} / ${fieldLabel}: ${cellText}`;
+}
+
+export interface LibraryRowChunkField {
+  label: string;
+  displayValue: string;
+  orderIndex: number;
+}
+
+export interface LibraryRowChunkInput {
+  libraryName: string;
+  rowIndex: number;
+  assetName: string;
+  primaryLabel?: string;
+  fields: LibraryRowChunkField[];
+}
+
+const SCHEMA_ENUM_MAX_CHARS = 500;
+
+function formatEnumOptions(options: string[]): string {
+  const joined = options.join(', ');
+  if (joined.length <= SCHEMA_ENUM_MAX_CHARS) return joined;
+  let acc = '';
+  let shown = 0;
+  for (const opt of options) {
+    const next = acc ? `${acc}, ${opt}` : opt;
+    if (next.length > SCHEMA_ENUM_MAX_CHARS) break;
+    acc = next;
+    shown++;
+  }
+  const remaining = options.length - shown;
+  return remaining > 0 ? `${acc} …(+${remaining} more)` : acc;
+}
+
+/**
+ * Build indexable text for a full library row (non-empty visible fields only).
+ * Returns null when the row should not be indexed (too short or empty Untitled row).
+ */
+export function buildLibraryRowChunkText(input: LibraryRowChunkInput): string | null {
+  const sortedFields = [...input.fields]
+    .filter((f) => f.displayValue.trim().length > 0)
+    .sort((a, b) => a.orderIndex - b.orderIndex);
+
+  if (sortedFields.length === 0 && input.assetName.trim() === 'Untitled') {
+    return null;
+  }
+
+  const headlineLabel =
+    input.primaryLabel?.trim() ||
+    (input.assetName.trim() !== 'Untitled' ? input.assetName.trim() : '');
+  const headline = headlineLabel
+    ? `[${input.libraryName}] row ${input.rowIndex} · ${headlineLabel}`
+    : `[${input.libraryName}] row ${input.rowIndex}`;
+
+  const fieldLine = sortedFields.map((f) => `${f.label}: ${f.displayValue}`).join(' | ');
+  const content = fieldLine ? `${headline}\n${fieldLine}` : headline;
+
+  if (content.length < AGENT_LIBRARY_ROW_MIN_CHARS) return null;
+  return content;
+}
+
+/** Build indexable text summarizing a library schema for semantic table discovery. */
+export function buildLibrarySchemaChunkText(schema: LibrarySchemaData): string {
+  const columnCount = schema.fields.length;
+  const lines: string[] = [
+    `[${schema.libraryName}] schema · ${columnCount} columns · ${schema.rowCount} non-empty rows`,
+  ];
+
+  if (schema.primaryLabelField) {
+    lines.push(`Primary label: ${schema.primaryLabelField} (required)`);
+  }
+
+  lines.push('Columns:');
+  for (const field of schema.fields) {
+    const requiredSuffix = field.required ? ', required' : '';
+    let detail = `- ${field.label} (${field.dataType}${requiredSuffix})`;
+    if (field.label === schema.primaryLabelField) {
+      detail += ' — main row identifier';
+    }
+    if (field.enumOptions?.length) {
+      detail += ` — options: ${formatEnumOptions(field.enumOptions)}`;
+    }
+    lines.push(detail);
+  }
+
+  const refLibraries = schema.fields.flatMap((f) => f.referenceLibraries ?? []);
+  lines.push(refLibraries.length > 0 ? `References: ${refLibraries.join(', ')}` : 'References: none');
+
+  return lines.join('\n');
 }

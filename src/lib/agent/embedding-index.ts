@@ -3,12 +3,16 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { cellDisplayString } from '@/lib/utils/assetEmptiness';
+import { cellDisplayString, isAssetEmptyForDisplay } from '@/lib/utils/assetEmptiness';
+import { buildQueryAssetRows } from './asset-emptiness';
+import { getLibraryAssets, getLibraryProperties } from './data-access';
 import { getMessageText } from './content-parts';
 import { parseStoredContent } from './conversation-store';
 import {
   buildChatTurnGroups,
   buildLibraryCellChunkText,
+  buildLibraryRowChunkText,
+  buildLibrarySchemaChunkText,
   chunkDesignDocument,
   formatChatTurnGroupText,
   getTailTurnGroups,
@@ -19,7 +23,15 @@ import {
   type IndexableChatMessage,
 } from './chunking';
 import { embedTexts } from './embedding-client';
-import { AGENT_CHAT_REINDEX_DEBOUNCE_MS, AGENT_INDEXING_ENABLED } from './embedding-config';
+import {
+  AGENT_CHAT_REINDEX_DEBOUNCE_MS,
+  AGENT_INDEXING_ENABLED,
+  AGENT_LIBRARY_SCHEMA_DEBOUNCE_MS,
+  AGENT_SEMANTIC_ROW_INDEX_ENABLED,
+  AGENT_SEMANTIC_SCHEMA_INDEX_ENABLED,
+} from './embedding-config';
+import { buildLibrarySchemaData } from './library-schema-builder';
+import { findPrimaryLabelField } from './property-value-validation';
 import { isEmbeddingInCooldown } from './embedding-throttle';
 
 const MIN_CHAT_CHUNK_CHARS = 20;
@@ -29,7 +41,7 @@ const LIBRARY_REINDEX_DEBOUNCE_MS = 2000;
 interface ChunkUpsertRow {
   project_id: string;
   user_id: string | null;
-  source_type: 'chat_message' | 'library_cell' | 'design_document';
+  source_type: 'chat_message' | 'library_cell' | 'library_row' | 'library_schema' | 'design_document';
   source_id: string;
   conversation_id: string | null;
   chunk_index: number;
@@ -40,6 +52,8 @@ interface ChunkUpsertRow {
 }
 
 const pendingLibraryReindex = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingLibraryRowReindex = new Map<string, ReturnType<typeof setTimeout>>();
+const pendingLibrarySchemaReindex = new Map<string, ReturnType<typeof setTimeout>>();
 const pendingChatReindex = new Map<string, ReturnType<typeof setTimeout>>();
 const inFlightChatReindex = new Set<string>();
 
@@ -359,7 +373,7 @@ export async function indexLibraryCell(
 
     const { data: asset } = await supabase
       .from('library_assets')
-      .select('id, name, library_id, updated_at')
+      .select('id, name, library_id, updated_at, row_index')
       .eq('id', params.assetId)
       .single();
     if (!asset) return;
@@ -413,6 +427,7 @@ export async function indexLibraryCell(
       .eq('chunk_index', 0);
 
     const [embedding] = await embedTexts([content]);
+    const uiRowIndex = await resolveUiRowIndexForAsset(supabase, asset.library_id as string, asset.id as string);
     await upsertChunks(supabase, [
       {
         project_id: params.projectId,
@@ -432,6 +447,7 @@ export async function indexLibraryCell(
           fieldLabel: field.label,
           sectionId: `${library.id}:${field.section ?? ''}`,
           cellUpdatedAt: asset.updated_at,
+          rowIndex: uiRowIndex,
         },
         embedding,
       },
@@ -443,6 +459,234 @@ export async function indexLibraryCell(
     });
   } catch (e) {
     logIndexError('library_cell', {
+      sourceId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+async function resolveUiRowIndexForAsset(
+  supabase: SupabaseClient,
+  libraryId: string,
+  assetId: string
+): Promise<number | undefined> {
+  const properties = await getLibraryProperties(supabase, libraryId);
+  const labelMap: Record<string, string> = {};
+  for (const p of properties) {
+    labelMap[p.key] = p.name;
+  }
+  const assets = await getLibraryAssets(supabase, libraryId);
+  const rows = buildQueryAssetRows(assets, labelMap, properties.map((p) => p.key));
+  return rows.find((row) => row.id === assetId)?.rowIndex;
+}
+
+export async function indexLibraryRow(
+  supabase: SupabaseClient,
+  params: { projectId: string; assetId: string }
+): Promise<void> {
+  if (!AGENT_INDEXING_ENABLED || !AGENT_SEMANTIC_ROW_INDEX_ENABLED) return;
+  const start = Date.now();
+  const sourceId = `${params.assetId}:row`;
+
+  try {
+    const { data: asset } = await supabase
+      .from('library_assets')
+      .select('id, name, library_id, updated_at')
+      .eq('id', params.assetId)
+      .single();
+    if (!asset) return;
+
+    const { data: library } = await supabase
+      .from('libraries')
+      .select('id, name, project_id')
+      .eq('id', asset.library_id)
+      .single();
+    if (!library || library.project_id !== params.projectId) return;
+
+    const properties = await getLibraryProperties(supabase, library.id as string);
+    const labelMap: Record<string, string> = {};
+    for (const p of properties) {
+      labelMap[p.key] = p.name;
+    }
+    const assets = await getLibraryAssets(supabase, library.id as string);
+    const rows = buildQueryAssetRows(assets, labelMap, properties.map((p) => p.key));
+    const row = rows.find((r) => r.id === params.assetId);
+    if (!row) return;
+
+    const primaryField = findPrimaryLabelField(properties);
+    const primaryLabelKey = primaryField?.key;
+    const primaryLabel =
+      primaryLabelKey && row.values[primaryField.name] != null
+        ? cellDisplayString(row.values[primaryField.name])
+        : row.displayLabel || undefined;
+
+    const fields = properties
+      .filter((p) => isIndexableLibraryFieldType(p.dataType ?? 'string'))
+      .map((p) => ({
+        label: p.name,
+        displayValue: cellDisplayString(row.values[p.name]),
+        orderIndex: p.orderIndex,
+      }))
+      .filter((f) => f.displayValue.trim().length > 0);
+
+    const content = buildLibraryRowChunkText({
+      libraryName: library.name as string,
+      rowIndex: row.rowIndex,
+      assetName: asset.name as string,
+      primaryLabel,
+      fields,
+    });
+
+    if (!content) {
+      await supabase
+        .from('agent_embedding_chunks')
+        .delete()
+        .eq('source_type', 'library_row')
+        .eq('source_id', sourceId);
+      return;
+    }
+
+    const contentHash = hashContent(content);
+    const { data: existing } = await supabase
+      .from('agent_embedding_chunks')
+      .select('id, content_hash')
+      .eq('source_type', 'library_row')
+      .eq('source_id', sourceId)
+      .eq('chunk_index', 0)
+      .maybeSingle();
+    if (existing && (existing.content_hash as string) === contentHash) {
+      scheduleLibrarySchemaReindex(supabase, {
+        projectId: params.projectId,
+        libraryId: library.id as string,
+      });
+      return;
+    }
+
+    await supabase
+      .from('agent_embedding_chunks')
+      .delete()
+      .eq('source_type', 'library_row')
+      .eq('source_id', sourceId)
+      .eq('chunk_index', 0);
+
+    const [embedding] = await embedTexts([content]);
+    await upsertChunks(supabase, [
+      {
+        project_id: params.projectId,
+        user_id: null,
+        source_type: 'library_row',
+        source_id: sourceId,
+        conversation_id: null,
+        chunk_index: 0,
+        content,
+        content_hash: contentHash,
+        metadata: {
+          libraryId: library.id,
+          libraryName: library.name,
+          assetId: asset.id,
+          assetName: asset.name,
+          rowIndex: row.rowIndex,
+          primaryLabel: primaryLabel ?? '',
+          fieldLabels: fields.map((f) => f.label),
+          cellUpdatedAt: asset.updated_at,
+        },
+        embedding,
+      },
+    ]);
+
+    scheduleLibrarySchemaReindex(supabase, {
+      projectId: params.projectId,
+      libraryId: library.id as string,
+    });
+
+    logIndex('library_row', {
+      sourceId,
+      durationMs: Date.now() - start,
+    });
+  } catch (e) {
+    logIndexError('library_row', {
+      sourceId,
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
+}
+
+export async function indexLibrarySchema(
+  supabase: SupabaseClient,
+  params: { projectId: string; libraryId: string }
+): Promise<void> {
+  if (!AGENT_INDEXING_ENABLED || !AGENT_SEMANTIC_SCHEMA_INDEX_ENABLED) return;
+  const start = Date.now();
+  const sourceId = `${params.libraryId}:schema`;
+
+  try {
+    const { data: library } = await supabase
+      .from('libraries')
+      .select('id, name, project_id, updated_at')
+      .eq('id', params.libraryId)
+      .single();
+    if (!library || library.project_id !== params.projectId) return;
+
+    const properties = await getLibraryProperties(supabase, library.id as string);
+    const assets = await getLibraryAssets(supabase, library.id as string);
+    const rowCount = assets.filter(
+      (asset) => !isAssetEmptyForDisplay(asset.propertyValues ?? {})
+    ).length;
+
+    const schemaData = buildLibrarySchemaData(
+      library.id as string,
+      library.name as string,
+      properties,
+      rowCount
+    );
+    const content = buildLibrarySchemaChunkText(schemaData);
+    const contentHash = hashContent(content);
+
+    const { data: existing } = await supabase
+      .from('agent_embedding_chunks')
+      .select('id, content_hash')
+      .eq('source_type', 'library_schema')
+      .eq('source_id', sourceId)
+      .eq('chunk_index', 0)
+      .maybeSingle();
+    if (existing && (existing.content_hash as string) === contentHash) return;
+
+    await supabase
+      .from('agent_embedding_chunks')
+      .delete()
+      .eq('source_type', 'library_schema')
+      .eq('source_id', sourceId)
+      .eq('chunk_index', 0);
+
+    const [embedding] = await embedTexts([content]);
+    await upsertChunks(supabase, [
+      {
+        project_id: params.projectId,
+        user_id: null,
+        source_type: 'library_schema',
+        source_id: sourceId,
+        conversation_id: null,
+        chunk_index: 0,
+        content,
+        content_hash: contentHash,
+        metadata: {
+          libraryId: library.id,
+          libraryName: library.name,
+          columnCount: properties.length,
+          rowCount,
+          primaryLabelField: schemaData.primaryLabelField,
+          schemaUpdatedAt: library.updated_at,
+        },
+        embedding,
+      },
+    ]);
+
+    logIndex('library_schema', {
+      sourceId,
+      durationMs: Date.now() - start,
+    });
+  } catch (e) {
+    logIndexError('library_schema', {
       sourceId,
       error: e instanceof Error ? e.message : String(e),
     });
@@ -465,6 +709,44 @@ export function scheduleLibraryCellReindex(
         logIndexError('library_cell', { key, error: e instanceof Error ? e.message : String(e) })
       );
     }, LIBRARY_REINDEX_DEBOUNCE_MS)
+  );
+}
+
+export function scheduleLibraryRowReindex(
+  supabase: SupabaseClient,
+  params: { projectId: string; assetId: string }
+): void {
+  if (!AGENT_INDEXING_ENABLED || !AGENT_SEMANTIC_ROW_INDEX_ENABLED) return;
+  const key = `${params.projectId}:${params.assetId}:row`;
+  const existing = pendingLibraryRowReindex.get(key);
+  if (existing) clearTimeout(existing);
+  pendingLibraryRowReindex.set(
+    key,
+    setTimeout(() => {
+      pendingLibraryRowReindex.delete(key);
+      void indexLibraryRow(supabase, params).catch((e) =>
+        logIndexError('library_row', { key, error: e instanceof Error ? e.message : String(e) })
+      );
+    }, LIBRARY_REINDEX_DEBOUNCE_MS)
+  );
+}
+
+export function scheduleLibrarySchemaReindex(
+  supabase: SupabaseClient,
+  params: { projectId: string; libraryId: string }
+): void {
+  if (!AGENT_INDEXING_ENABLED || !AGENT_SEMANTIC_SCHEMA_INDEX_ENABLED) return;
+  const key = `${params.projectId}:${params.libraryId}:schema`;
+  const existing = pendingLibrarySchemaReindex.get(key);
+  if (existing) clearTimeout(existing);
+  pendingLibrarySchemaReindex.set(
+    key,
+    setTimeout(() => {
+      pendingLibrarySchemaReindex.delete(key);
+      void indexLibrarySchema(supabase, params).catch((e) =>
+        logIndexError('library_schema', { key, error: e instanceof Error ? e.message : String(e) })
+      );
+    }, AGENT_LIBRARY_SCHEMA_DEBOUNCE_MS)
   );
 }
 
@@ -510,6 +792,78 @@ export async function reindexProjectLibraryCells(
   return { indexed, skipped };
 }
 
+export async function reindexProjectLibraryRows(
+  supabase: SupabaseClient,
+  projectId: string
+): Promise<{ indexed: number; skipped: number }> {
+  if (!AGENT_SEMANTIC_ROW_INDEX_ENABLED) return { indexed: 0, skipped: 0 };
+
+  const { data: libraries } = await supabase
+    .from('libraries')
+    .select('id')
+    .eq('project_id', projectId);
+  if (!libraries?.length) return { indexed: 0, skipped: 0 };
+
+  let indexed = 0;
+  let skipped = 0;
+  for (const lib of libraries) {
+    const { data: assets } = await supabase
+      .from('library_assets')
+      .select('id')
+      .eq('library_id', lib.id);
+    if (!assets?.length) continue;
+
+    for (const asset of assets) {
+      try {
+        await indexLibraryRow(supabase, { projectId, assetId: asset.id as string });
+        indexed++;
+      } catch {
+        skipped++;
+      }
+    }
+  }
+  return { indexed, skipped };
+}
+
+export async function reindexProjectLibrarySchemas(
+  supabase: SupabaseClient,
+  projectId: string
+): Promise<{ indexed: number; skipped: number }> {
+  if (!AGENT_SEMANTIC_SCHEMA_INDEX_ENABLED) return { indexed: 0, skipped: 0 };
+
+  const { data: libraries } = await supabase
+    .from('libraries')
+    .select('id')
+    .eq('project_id', projectId);
+  if (!libraries?.length) return { indexed: 0, skipped: 0 };
+
+  let indexed = 0;
+  let skipped = 0;
+  for (const lib of libraries) {
+    try {
+      await indexLibrarySchema(supabase, { projectId, libraryId: lib.id as string });
+      indexed++;
+    } catch {
+      skipped++;
+    }
+  }
+  return { indexed, skipped };
+}
+
+export async function reindexProjectLibraryEmbeddings(
+  supabase: SupabaseClient,
+  projectId: string
+): Promise<{
+  cells: { indexed: number; skipped: number };
+  rows: { indexed: number; skipped: number };
+  schemas: { indexed: number; skipped: number };
+}> {
+  const cells = await reindexProjectLibraryCells(supabase, projectId);
+  const rows = await reindexProjectLibraryRows(supabase, projectId);
+  const schemas = await reindexProjectLibrarySchemas(supabase, projectId);
+  return { cells, rows, schemas };
+}
+
 export async function reindexProjectConversations(
   supabase: SupabaseClient,
   projectId: string
@@ -544,6 +898,7 @@ export function scheduleReindexForAssetFields(
   for (const fieldId of fieldIds) {
     scheduleLibraryCellReindex(supabase, { projectId, assetId, fieldId });
   }
+  scheduleLibraryRowReindex(supabase, { projectId, assetId });
 }
 
 export function triggerConversationIndexing(

@@ -11,7 +11,7 @@
 import { createClient } from '@supabase/supabase-js';
 import {
   reindexProjectConversations,
-  reindexProjectLibraryCells,
+  reindexProjectLibraryEmbeddings,
 } from '../src/lib/agent/embedding-index';
 
 async function main(): Promise<void> {
@@ -31,8 +31,12 @@ async function main(): Promise<void> {
   const supabase = createClient(url, key);
   console.info(`Reindexing project ${projectId}...`);
 
-  const library = await reindexProjectLibraryCells(supabase, projectId);
-  console.info(`Library cells: indexed=${library.indexed} skipped=${library.skipped}`);
+  const library = await reindexProjectLibraryEmbeddings(supabase, projectId);
+  console.info(
+    `Library: cells=${library.cells.indexed}/${library.cells.skipped} ` +
+      `rows=${library.rows.indexed}/${library.rows.skipped} ` +
+      `schemas=${library.schemas.indexed}/${library.schemas.skipped}`
+  );
 
   const chats = await reindexProjectConversations(supabase, projectId);
   console.info(`Conversations: ${chats.conversations}`);

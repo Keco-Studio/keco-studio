@@ -3,7 +3,7 @@ import { authenticate } from '@/lib/agent/route-auth';
 import { resolveUserRole } from '@/lib/agent/permissions';
 import {
   reindexProjectConversations,
-  reindexProjectLibraryCells,
+  reindexProjectLibraryEmbeddings,
 } from '@/lib/agent/embedding-index';
 
 export const maxDuration = 300;
@@ -37,7 +37,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const library = await reindexProjectLibraryCells(supabase, projectId);
+    const library = await reindexProjectLibraryEmbeddings(supabase, projectId);
     const chats = await reindexProjectConversations(supabase, projectId);
     return NextResponse.json({
       success: true,
