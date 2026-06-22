@@ -26,6 +26,7 @@ import { embedTexts } from './embedding-client';
 import {
   AGENT_CHAT_REINDEX_DEBOUNCE_MS,
   AGENT_INDEXING_ENABLED,
+  AGENT_LIBRARY_CELL_MIN_CHARS,
   AGENT_LIBRARY_SCHEMA_DEBOUNCE_MS,
   AGENT_SEMANTIC_ROW_INDEX_ENABLED,
   AGENT_SEMANTIC_SCHEMA_INDEX_ENABLED,
@@ -35,7 +36,6 @@ import { findPrimaryLabelField } from './property-value-validation';
 import { isEmbeddingInCooldown } from './embedding-throttle';
 
 const MIN_CHAT_CHUNK_CHARS = 20;
-const MIN_LIBRARY_CHUNK_CHARS = 10;
 const LIBRARY_REINDEX_DEBOUNCE_MS = 2000;
 
 interface ChunkUpsertRow {
@@ -393,7 +393,7 @@ export async function indexLibraryCell(
     if (!field || !isIndexableLibraryFieldType(field.data_type as string)) return;
 
     const cellText = cellDisplayString(cell.value_json);
-    if (cellText.trim().length < MIN_LIBRARY_CHUNK_CHARS) {
+    if (!cellText.trim()) {
       await supabase
         .from('agent_embedding_chunks')
         .delete()
@@ -408,6 +408,14 @@ export async function indexLibraryCell(
       (field.label as string) || 'field',
       cellText
     );
+    if (content.trim().length < AGENT_LIBRARY_CELL_MIN_CHARS) {
+      await supabase
+        .from('agent_embedding_chunks')
+        .delete()
+        .eq('source_type', 'library_cell')
+        .eq('source_id', sourceId);
+      return;
+    }
     const contentHash = hashContent(content);
 
     const { data: existing } = await supabase
