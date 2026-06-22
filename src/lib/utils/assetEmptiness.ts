@@ -11,6 +11,9 @@ import type { AssetRow } from '@/lib/types/libraryAssets';
 export function cellDisplayString(raw: unknown): string {
   if (raw === null || raw === undefined) return '';
   if (typeof raw === 'boolean') return raw ? 'true' : 'false';
+  if (typeof raw === 'object') {
+    return JSON.stringify(raw);
+  }
   const s = String(raw).trim();
   if (s === '' || s === 'null' || s === 'undefined') return '';
   return s;

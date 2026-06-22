@@ -5,6 +5,14 @@ import {
   valueToDisplayString,
 } from '@/lib/utils/cellValueReplace';
 
+describe('valueToDisplayString', () => {
+  it('serializes plain JSON objects for string fields', () => {
+    expect(valueToDisplayString({ damageRatio: 0.1, levelBonus: 5 }, 'string')).toBe(
+      '{"damageRatio":0.1,"levelBonus":5}'
+    );
+  });
+});
+
 describe('cellValueReplace reference fields', () => {
   it('replaces entire matching reference displayValue', () => {
     const currentValue = [

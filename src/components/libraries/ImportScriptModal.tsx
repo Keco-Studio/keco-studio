@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { validateName } from '@/lib/utils/nameValidation';
+import { parseDocument, validateDesignFile } from '@/lib/document-parser';
 import styles from './ImportScriptModal.module.css';
 
 type ImportScriptModalProps = {
@@ -128,6 +129,7 @@ export function ImportScriptModal({
   const [inputMode, setInputMode] = useState<InputMode>('file');
   const [libraryName, setLibraryName] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [parsedFileText, setParsedFileText] = useState<string | null>(null);
   const [textInput, setTextInput] = useState('');
   const [preview, setPreview] = useState<PreviewInfo | null>(null);
   const [importing, setImporting] = useState(false);
@@ -149,6 +151,7 @@ export function ImportScriptModal({
     if (!open) {
       setLibraryName('');
       setSelectedFile(null);
+      setParsedFileText(null);
       setTextInput('');
       setPreview(null);
       setInputMode('file');
@@ -166,13 +169,14 @@ export function ImportScriptModal({
   const handleFileChange = async (file: File | null) => {
     if (!file) {
       setSelectedFile(null);
+      setParsedFileText(null);
       setPreview(null);
       return;
     }
 
-    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-    if (!['txt', 'md'].includes(ext)) {
-      showErrorToast('Please select a .txt or .md file');
+    const validation = validateDesignFile(file);
+    if (!validation.ok) {
+      showErrorToast(validation.error || 'Unsupported file');
       return;
     }
 
@@ -182,11 +186,19 @@ export function ImportScriptModal({
     }
 
     try {
-      const text = await file.text();
-      setPreview(previewScript(text));
-    } catch {
+      const doc = await parseDocument(file);
+      if (!doc.text.trim()) {
+        setParsedFileText(null);
+        setPreview(null);
+        showErrorToast('No text content found in file');
+        return;
+      }
+      setParsedFileText(doc.text);
+      setPreview(previewScript(doc.text));
+    } catch (e) {
+      setParsedFileText(null);
       setPreview(null);
-      showErrorToast('Failed to read file');
+      showErrorToast(e instanceof Error ? e.message : 'Failed to read file');
     }
   };
 
@@ -207,17 +219,12 @@ export function ImportScriptModal({
     let fileName = 'input.txt';
 
     if (inputMode === 'file') {
-      if (!selectedFile) {
-        showErrorToast('Please select a file');
+      if (!selectedFile || !parsedFileText?.trim()) {
+        showErrorToast('Please select a file with text content');
         return;
       }
-      try {
-        fileContent = await selectedFile.text();
-        fileName = selectedFile.name;
-      } catch {
-        showErrorToast('Failed to read file');
-        return;
-      }
+      fileContent = parsedFileText;
+      fileName = `${trimmedName}.txt`;
     } else {
       if (!textInput.trim()) {
         showErrorToast('Please enter script text');
@@ -277,7 +284,7 @@ export function ImportScriptModal({
   };
 
   const canImport = inputMode === 'file'
-    ? !!selectedFile && !!libraryName.trim()
+    ? !!parsedFileText?.trim() && !!libraryName.trim()
     : !!textInput.trim() && !!libraryName.trim();
 
   if (!open) return null;
@@ -335,7 +342,7 @@ export function ImportScriptModal({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".txt,.md"
+                accept=".txt,.md,.docx"
                 style={{ display: 'none' }}
                 onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
                 disabled={importing}
@@ -351,7 +358,7 @@ export function ImportScriptModal({
               {selectedFile && (
                 <p className={styles.fileName}>{selectedFile.name}</p>
               )}
-              <p className={styles.fileHint}>.txt and .md supported</p>
+              <p className={styles.fileHint}>.txt, .md, and .docx supported</p>
             </div>
           ) : (
             <div className={styles.textContainer}>
