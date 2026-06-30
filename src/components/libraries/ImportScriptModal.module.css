@@ -30,6 +30,7 @@
   justify-content: space-between;
   align-items: center;
   margin-bottom: 0.5rem;
+  flex-shrink: 0;
 }
 
 .title {
@@ -61,6 +62,7 @@
   height: 1px;
   background: #e2e8f0;
   margin: 1rem 0;
+  flex-shrink: 0;
 }
 
 .content {
@@ -70,9 +72,15 @@
   /* Single scroll region for the modal body. flex:1 + min-height:0 lets it
      shrink within the flex column so the footer stays visible and the format
      guide never overflows the modal's overflow:hidden boundary. */
-  flex: 1 1 auto;
+  flex: 1 1 0%;
   min-height: 0;
   overflow-y: auto;
+}
+
+/* Prevent flex children (especially formatGuide) from being squashed and
+   clipped by overflow:hidden when the modal body runs out of vertical space. */
+.content > * {
+  flex-shrink: 0;
 }
 
 .hint {
@@ -258,6 +266,7 @@
   justify-content: flex-end;
   align-items: center;
   gap: 0.75rem;
+  flex-shrink: 0;
 }
 
 .cancelButton {
@@ -356,7 +365,6 @@
 .formatGuide {
   border: 1px solid #e2e8f0;
   border-radius: 0.375rem;
-  overflow: hidden;
   margin-top: 0.5rem;
 }
 
@@ -390,6 +398,7 @@
   padding: 0.75rem;
   background: white;
   border-top: 1px solid #e2e8f0;
+  border-radius: 0 0 0.375rem 0.375rem;
 }
 
 .formatGuideTitle {
