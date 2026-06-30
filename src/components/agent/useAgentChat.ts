@@ -19,6 +19,19 @@ import type { ChatItem, SendContext } from './types';
 let idCounter = 0;
 const nextId = () => `item_${Date.now()}_${idCounter++}`;
 
+/**
+ * True when an error is the result of an intentional AbortController.abort()
+ * (e.g. the user switched conversations mid-stream). These must not surface as
+ * error bubbles. Browsers throw a DOMException named 'AbortError'; some emit a
+ * plain Error with the message "signal is aborted without reason".
+ */
+const isAbortError = (e: unknown): boolean => {
+  if (e instanceof DOMException && e.name === 'AbortError') return true;
+  const err = e as { name?: string; message?: string } | null;
+  if (err?.name === 'AbortError') return true;
+  return typeof err?.message === 'string' && err.message.toLowerCase().includes('aborted');
+};
+
 interface ParsedSSE {
   type: string;
   [key: string]: unknown;
@@ -344,7 +357,10 @@ export function useAgentChat(ctx: SendContext) {
         }
         await consumeStream(response);
       } catch (e) {
-        appendItem({ id: nextId(), role: 'error', error: (e as Error).message || 'Network error' });
+        // Intentional abort (conversation switch / new chat) is not a failure.
+        if (!isAbortError(e)) {
+          appendItem({ id: nextId(), role: 'error', error: (e as Error).message || 'Network error' });
+        }
       } finally {
         setIsStreaming(false);
         setStreamStartedAt(null);
@@ -440,7 +456,10 @@ export function useAgentChat(ctx: SendContext) {
         }
         await consumeStream(response);
       } catch (e) {
-        appendItem({ id: nextId(), role: 'error', error: (e as Error).message || 'Network error' });
+        // Intentional abort (conversation switch / new chat) is not a failure.
+        if (!isAbortError(e)) {
+          appendItem({ id: nextId(), role: 'error', error: (e as Error).message || 'Network error' });
+        }
       } finally {
         setIsStreaming(false);
         setStreamStartedAt(null);

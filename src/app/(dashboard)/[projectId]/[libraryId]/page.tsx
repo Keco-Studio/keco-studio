@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Tooltip } from 'antd';
 import { showSuccessToast, showInfoToast } from '@/lib/utils/toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -53,6 +53,7 @@ type FieldDef = {
 
 export default function LibraryPage() {
   const params = useParams();
+  const router = useRouter();
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   const projectId = params.projectId as string;
@@ -367,11 +368,13 @@ export default function LibraryPage() {
       if (customEvent.detail?.libraryId === libraryId) {
         console.log('[LibraryPage] ⚠️ Current library was deleted, navigating to project page...');
         showInfoToast('This library has been deleted');
-        // Navigate to project page
+        // SPA navigation keeps the authenticated session and in-memory caches alive.
+        // A full-page reload (window.location) remounts AuthProvider and briefly
+        // renders the login form before the session is re-derived from storage.
         if (projectId) {
-          window.location.href = `/${projectId}`;
+          router.push(`/${projectId}`);
         } else {
-          window.location.href = '/projects';
+          router.push('/projects');
         }
       }
     };
@@ -383,7 +386,7 @@ export default function LibraryPage() {
       window.removeEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
       window.removeEventListener('libraryDeleted', handleLibraryDeleted as EventListener);
     };
-  }, [libraryId, projectId, queryClient]);
+  }, [libraryId, projectId, queryClient, router]);
 
   // Optimized: Listen for asset changes and use targeted cache invalidation
   useEffect(() => {
