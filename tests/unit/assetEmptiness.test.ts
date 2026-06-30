@@ -22,6 +22,12 @@ describe('assetEmptiness utils', () => {
     expect(cellDisplayString(' hello ')).toBe('hello');
   });
 
+  it('cellDisplayString serializes JSON objects from jsonb cells', () => {
+    expect(cellDisplayString({ damageRatio: 0.1, levelBonus: 5 })).toBe(
+      '{"damageRatio":0.1,"levelBonus":5}'
+    );
+  });
+
   it('isAssetEmpty uses propertyValues keys only', () => {
     expect(isAssetEmpty({})).toBe(true);
     expect(isAssetEmpty({ f1: '' })).toBe(false);

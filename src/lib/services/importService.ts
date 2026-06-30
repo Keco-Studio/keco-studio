@@ -31,6 +31,7 @@ function cellToString(value: unknown): string {
   if (typeof value === 'string') return value.trim();
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
   if (value instanceof Date) return value.toISOString();
+  if (typeof value === 'object') return JSON.stringify(value);
   return String(value).trim();
 }
 

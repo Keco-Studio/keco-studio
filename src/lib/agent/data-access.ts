@@ -73,7 +73,10 @@ function normalizeValue(input: unknown): unknown {
   let value = input;
   if (typeof value === 'string' && value.trim() !== '') {
     try {
-      value = JSON.parse(value);
+      const parsed = JSON.parse(value);
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        value = parsed;
+      }
     } catch {
       // keep as plain string
     }

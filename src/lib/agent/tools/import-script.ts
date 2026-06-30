@@ -14,9 +14,8 @@ import { z } from 'zod';
 import { parseText } from '@/lib/script-parser';
 import type { RoleMap, Script } from '@/lib/script-parser';
 import { importScriptFromFile } from '@/lib/services/scriptImportService';
+import { resolveScriptTextForImport } from '@/lib/services/scriptConversionService';
 import { getFolderRow } from '../data-access';
-import { completeLlm } from '../llm-client';
-import { sanitizeLlmOutput, validateScriptStructure } from '../script-validation';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 const ParamsSchema = z.object({
@@ -60,57 +59,6 @@ function computeStats(script: Script): PreviewData['stats'] {
   return { lineCount: script.lines.length, dialogueCount, optionCount };
 }
 
-const SYSTEM_PROMPT = `You convert narrative story text into keco-studio Import Script standard format.
-
-OUTPUT RULES (strict):
-- Output ONLY plain script lines. No markdown, no code fences, no explanations.
-- One instruction per line.
-- Branch labels use letter O + digit: O1, O2, O3, Oend — NEVER 01, 02.
-- Do NOT invent plot. Preserve speaker intent and events from source only.
-- If source has no choices, output linear dialogue only (no fake branches).
-
-FORMAT (in order when applicable):
-1) Scene: 【Label｜scene description】  (Start for opening)
-2) Dialogue: （TypeX・Speaker）text
-   Type 1=player blue, 2=AI pink, 3=narrator gray, 5=fullscreen
-3) Options (after the line that triggers choice):
-   O1：text（$var+=N，jump O1 branch）
-4) Branch: O1 branch【O1｜scene】
-5) End branch: （Jump Oend）
-6) Merge: Oend merge【Oend｜scene】
-
-Variables: $name+=N or $name-=N only when implied by source.
-Jump target in option must match branch label exactly (O1, not "O1 branch" as label).
-Use full-width punctuation where shown: （）【】｜：`;
-
-function buildUserPrompt(params: Params, previousErrors?: string[]): string {
-  const charLines = params.characterMapping
-    ? Object.entries(params.characterMapping)
-        .map(([name, type]) => `- ${name} → Type${type}`)
-        .join('\n')
-    : '(none specified)';
-
-  let prompt = `CHARACTERS (Type mapping):
-${charLines}
-
-SOURCE STORY:
-<<<
-${params.sourceText}
->>>
-
-If choices exist, use at most 3 options (O1–O3). Merge all branches to Oend when appropriate.`;
-
-  if (previousErrors && previousErrors.length > 0) {
-    prompt += `
-
-Your previous output failed validation:
-${previousErrors.map((e) => `- ${e}`).join('\n')}
-
-Fix ONLY these issues. Output the full corrected script again. Plain text only.`;
-  }
-  return prompt;
-}
-
 async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   const parsed = ParamsSchema.safeParse(params);
   if (!parsed.success) {
@@ -130,43 +78,16 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 
   const roleMap = toRoleMap(data.characterMapping);
 
-  // 1. Try parsing the source directly — skip the LLM when it already conforms.
-  const directScript = parseText(data.sourceText, roleMap);
-  const directErrors = validateScriptStructure(directScript);
-  const directHasContent = directScript.lines.some((l) => l.content || l.name || l.label);
-  if (directHasContent && directErrors.length === 0 && directScript.lines.length > 1) {
-    return previewResult(data, data.sourceText, directScript, []);
+  try {
+    const resolved = await resolveScriptTextForImport(data.sourceText, {
+      roleMap,
+      characterMapping: data.characterMapping,
+    });
+    const script = parseText(resolved.fullText, roleMap);
+    return previewResult(data, resolved.fullText, script, resolved.warnings);
+  } catch (e) {
+    return { success: false, error: (e as Error).message || 'Conversion failed.' };
   }
-
-  // 2. LLM conversion with up to 2 retries on validation failure.
-  let lastErrors: string[] = [];
-  let fullText = '';
-  for (let attempt = 0; attempt < 3; attempt++) {
-    let raw: string;
-    try {
-      raw = await completeLlm(
-        [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: buildUserPrompt(data, attempt > 0 ? lastErrors : undefined) },
-        ],
-        { temperature: 0.2 }
-      );
-    } catch (e) {
-      return { success: false, error: `LLM conversion failed: ${(e as Error).message}` };
-    }
-
-    fullText = sanitizeLlmOutput(raw);
-    const script = parseText(fullText, roleMap);
-    const errors = validateScriptStructure(script);
-    if (errors.length === 0 && script.lines.length > 0) {
-      return previewResult(data, fullText, script, []);
-    }
-    lastErrors = errors;
-  }
-
-  // 3. Exhausted retries — return the best attempt as preview with warnings.
-  const finalScript = parseText(fullText, roleMap);
-  return previewResult(data, fullText, finalScript, lastErrors);
 }
 
 function previewResult(

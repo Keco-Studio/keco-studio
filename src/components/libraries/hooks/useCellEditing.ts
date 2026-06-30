@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 
 /**
  * useCellEditing - Handle cell editing logic
@@ -499,8 +500,7 @@ export function useCellEditing({
         // 使用 JSON.stringify，确保元素带有引号：["A","B"]
         stringValue = JSON.stringify(currentValue);
       } else {
-        // 其他情况沿用默认字符串化
-        stringValue = String(currentValue);
+        stringValue = cellDisplayString(currentValue);
       }
     }
     // 对数组类型，如果当前值为空，则自动填充一对方括号，方便用户直接在内部输入

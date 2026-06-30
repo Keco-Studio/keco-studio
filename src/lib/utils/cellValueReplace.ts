@@ -1,4 +1,5 @@
 import { normalizeSearchString } from '@/lib/utils/normalizeSearchString';
+import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 import {
   normalizeReferenceSelections,
   referenceSelectionsToValue,
@@ -58,7 +59,11 @@ export function normalizeValue(input: unknown): unknown {
   let value = input;
   if (typeof value === 'string' && value.trim() !== '') {
     try {
-      value = JSON.parse(value);
+      const parsed = JSON.parse(value);
+      // Keep JSON objects as strings for plain text fields (e.g. imported params columns).
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        value = parsed;
+      }
     } catch {
       // keep as plain string
     }
@@ -100,7 +105,7 @@ export function valueToDisplayString(value: unknown, dataType: string): string {
     return selections.map((sel) => sel.assetId).join(' | ');
   }
 
-  return String(raw);
+  return cellDisplayString(raw);
 }
 
 export function getRuntimeValueKind(value: unknown): string {

@@ -44,6 +44,7 @@ import { useMediaFileUpdate } from './hooks/useMediaFileUpdate';
 import { useContextMenu } from './hooks/useContextMenu';
 import { ReferenceField } from './components/ReferenceField';
 import { normalizeReferenceSelections, normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
+import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 import { CellEditor } from './components/CellEditor';
 import { CellPresenceAvatars } from './components/CellPresenceAvatars';
 import { TableToast } from './components/TableToast';
@@ -1902,7 +1903,7 @@ export function LibraryAssetsTable({
                         ) {
                           display = `[${value.map((v) => JSON.stringify(v)).join(',')}]`;
                         } else {
-                          display = String(value);
+                          display = cellDisplayString(value);
                         }
                       }
 

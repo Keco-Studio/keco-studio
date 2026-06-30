@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
 import { importScriptFromFile } from '@/lib/services/scriptImportService';
+import { resolveScriptTextForImport } from '@/lib/services/scriptConversionService';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
+export const maxDuration = 120;
+
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = new Set(['txt']);
+const ALLOWED_EXTENSIONS = new Set(['txt', 'md']);
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -57,7 +60,7 @@ export async function POST(request: NextRequest) {
 
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   if (!ALLOWED_EXTENSIONS.has(ext)) {
-    return NextResponse.json({ error: 'File must be .txt' }, { status: 400 });
+    return NextResponse.json({ error: 'File must be .txt or .md' }, { status: 400 });
   }
   if (file.size > MAX_FILE_BYTES) {
     return NextResponse.json({ error: 'File exceeds 10 MB limit' }, { status: 400 });
@@ -65,12 +68,13 @@ export async function POST(request: NextRequest) {
 
   try {
     const fileContent = await file.text();
+    const resolved = await resolveScriptTextForImport(fileContent);
     const result = await importScriptFromFile(supabase, {
       userId: user.id,
       projectId,
       folderId,
       libraryName,
-      fileContent,
+      fileContent: resolved.fullText,
       fileName: file.name,
     });
     return NextResponse.json(result, { status: 200 });

@@ -169,7 +169,11 @@ const normalizeValue = (input: unknown): any => {
   let value = input;
   if (typeof value === 'string' && value.trim() !== '') {
     try {
-      value = JSON.parse(value);
+      const parsed = JSON.parse(value);
+      // Keep JSON objects as strings for plain text fields (e.g. imported params columns).
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        value = parsed;
+      }
     } catch {
       // 不是 JSON 字符串，就按普通字符串使用
     }
