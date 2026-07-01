@@ -33,6 +33,30 @@ describe('buildDesignMessage', () => {
     const without = buildDesignMessage({ fileName: 'a.txt', documentText: 'doc' });
     expect(withBlank).toBe(without);
   });
+
+  it('instructs the agent to extract explicit tables before generating from prose', () => {
+    const msg = buildDesignMessage({
+      fileName: 'mixed.docx',
+      documentText: '剧情段落\n\n| 名称 | 数值 |\n| --- | --- |\n| A | 1 |',
+      additionalInstructions: '提取文档里的表格',
+    });
+
+    expect(msg).toContain('EXTRACTION mode');
+    expect(msg).toContain('preserve the explicit table headers and rows');
+    expect(msg).toContain('Do not convert surrounding story/prose into extra rows');
+  });
+
+  it('adds a quality gate for unrelated prose with no reliable table evidence', () => {
+    const msg = buildDesignMessage({
+      fileName: 'random.txt',
+      documentText: '今天晚饭很好吃，窗外下雨了。',
+      additionalInstructions: '生成一个表格',
+    });
+
+    expect(msg).toContain('QUALITY GATE');
+    expect(msg).toContain('do not call setup_library');
+    expect(msg).toContain('table quality would be poor');
+  });
 });
 
 describe('parseDesignMessage', () => {

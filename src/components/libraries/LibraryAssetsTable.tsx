@@ -820,9 +820,11 @@ export function LibraryAssetsTable({
     handleCellClick,
     handleCellFillDragStart,
     handleCellDragStart,
+    handleSelectedCellArrowNavigation,
     getSelectionBorderClasses,
   } = useCellSelection({
     orderedProperties,
+    navigationProperties: activeProperties,
     getAllRowsForCellSelection,
     fillDown,
     fillDownIntSequence,
@@ -1002,6 +1004,12 @@ export function LibraryAssetsTable({
     onPaste: handlePaste,
     onClearContents: handleClearContents,
   });
+
+  useEffect(() => {
+    if (editingCell) return;
+    window.addEventListener('keydown', handleSelectedCellArrowNavigation);
+    return () => window.removeEventListener('keydown', handleSelectedCellArrowNavigation);
+  }, [editingCell, handleSelectedCellArrowNavigation]);
 
   const closeRowContextMenu = useCallback(() => {
     setContextMenuRowId(null);
