@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import type { AssetRow } from '@/lib/types/libraryAssets';
+import { resolveArrowKeyCellSelection, shouldIgnoreCellNavigationTarget } from './cellNavigation';
 
 export type CellKey = `${string}-${string}`;
 
@@ -31,6 +32,7 @@ export type SelectionBorderClassNames = {
  */
 export function useCellSelection({
   orderedProperties,
+  navigationProperties,
   getAllRowsForCellSelection,
   fillDown,
   fillDownIntSequence,
@@ -39,6 +41,7 @@ export function useCellSelection({
   selectionBorderClassNames,
 }: {
   orderedProperties: PropertyConfig[];
+  navigationProperties?: PropertyConfig[];
   getAllRowsForCellSelection: () => AssetRow[];
   fillDown: (startRowId: string, endRowId: string, propertyKey: string) => Promise<void>;
   /** Int 序列填充：步长 = 第二格 - 第一格，仅当选中两格连续时使用 */
@@ -613,6 +616,51 @@ export function useCellSelection({
     ]
   );
 
+  const handleSelectedCellArrowNavigation = useCallback(
+    (event: KeyboardEvent): boolean => {
+      if (
+        event.altKey ||
+        event.ctrlKey ||
+        event.metaKey ||
+        event.shiftKey ||
+        isDraggingCellsRef.current ||
+        isFillingCellsRef.current ||
+        shouldIgnoreCellNavigationTarget(event.target)
+      ) {
+        return false;
+      }
+
+      const nextSelectedCells = resolveArrowKeyCellSelection({
+        key: event.key,
+        selectedCells,
+        rows: getAllRowsForCellSelection(),
+        properties: navigationProperties ?? orderedProperties,
+      });
+
+      if (!nextSelectedCells) {
+        return false;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (selectedRowIds.size > 0) {
+        setSelectedRowIds(new Set());
+      }
+      setSelectedCells(nextSelectedCells);
+      setDragStartCell(null);
+      setDragCurrentCell(null);
+      dragCurrentCellRef.current = null;
+      return true;
+    },
+    [
+      selectedCells,
+      selectedRowIds,
+      getAllRowsForCellSelection,
+      orderedProperties,
+      navigationProperties,
+    ]
+  );
+
   return {
     // State
     selectedRowIds,
@@ -633,6 +681,7 @@ export function useCellSelection({
     handleCellClick,
     handleCellFillDragStart,
     handleCellDragStart,
+    handleSelectedCellArrowNavigation,
     getSelectionBorderClasses,
   };
 }

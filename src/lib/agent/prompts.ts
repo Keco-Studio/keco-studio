@@ -59,6 +59,17 @@ RULES:
 25. DESIGN DOCUMENT -> TABLES: When the user uploads a design document (the message starts with "[Design document]") and asks to build tables from it:
     - FIRST call list_project_structure (existing layout) AND list_field_types
       (supported field types + their required config + how to write values).
+    - EXTRACT EXISTING TABLES by default when the document contains explicit tables:
+      preserve the explicit table headers and rows, use nearby prose only for table
+      names or obvious field-label context, and do NOT convert surrounding story/prose
+      into extra rows.
+    - Generate/infer/build tables from prose ONLY when the user explicitly asks for
+      prose-based generation. If the user asks to extract/import tables, stay in
+      extraction mode.
+    - QUALITY GATE: if there is no reliable table evidence and no clear design
+      entities to extract, do NOT call setup_library, create_asset, update_row, or
+      other write tools. Tell the user the table quality would be poor and ask for a
+      clearer table/schema or an explicit generation instruction.
     - Design fields using ONLY the dataTypes returned by list_field_types.
     - Use reference (with referenceLibraries) to link related tables instead of
       flattening relations into strings; use enum (with enumOptions) for fixed

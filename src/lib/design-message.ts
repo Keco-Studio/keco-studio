@@ -29,8 +29,14 @@ export function buildDesignMessage(params: BuildDesignMessageParams): string {
     `The user uploaded a design document "${params.fileName}". First call ` +
       'list_project_structure and list_field_types, then analyze the content, infer ' +
       'which tables (libraries) are needed, design appropriate fields (columns) using ' +
-      'only supported field types, then extract entities from the document and fill ' +
-      'them into rows. Present a short summary of the planned tables before creating anything.'
+      'only supported field types. EXTRACTION mode: when the document contains explicit ' +
+      'tables, preserve the explicit table headers and rows and use nearby prose only ' +
+      'as context for table names or obvious field labels. Do not convert surrounding ' +
+      'story/prose into extra rows unless the user explicitly asks to generate/infer/build ' +
+      'tables from prose. QUALITY GATE: if there is no reliable table evidence and no ' +
+      'clear design entities, do not call setup_library or other write tools; tell the ' +
+      'user the table quality would be poor and ask for clearer source data or an explicit ' +
+      'generation instruction. Present a short summary of the planned tables before creating anything.'
   );
 
   const extra = params.additionalInstructions?.trim();
