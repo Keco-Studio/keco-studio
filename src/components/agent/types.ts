@@ -3,6 +3,8 @@
  * core but is shaped for rendering (one visual item per array entry).
  */
 
+import type { AgentSelectionContext } from '@/lib/agent/selection-context';
+
 export type ChatItemRole = 'user' | 'assistant' | 'tool' | 'error' | 'confirmation';
 
 export type ToolCallStatus = 'running' | 'success' | 'failure';
@@ -26,10 +28,17 @@ export interface ConfirmationView {
 }
 
 export interface ChatAttachment {
+  /** Distinguishes document/image chips from selected-data chips. */
+  kind?: 'file' | 'image' | 'selection';
   /** Original file name shown as a chip in the user bubble. */
   fileName: string;
   /** When set, render an image thumbnail (public URL) instead of a file chip. */
   imageUrl?: string;
+}
+
+export interface SendOptions {
+  imageUrls?: string[];
+  selectionContext?: AgentSelectionContext;
 }
 
 export interface ChatItem {

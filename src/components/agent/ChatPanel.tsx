@@ -6,6 +6,7 @@ import { useAuth } from '@/lib/contexts/AuthContext';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { getActiveSectionName } from '@/lib/agent/page-context';
 import { takeDesignHandoff, DESIGN_UPLOAD_EVENT } from '@/lib/design-upload-handoff';
+import type { AgentSelectionContext } from '@/lib/agent/selection-context';
 import { useAgentChat } from './useAgentChat';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
@@ -18,6 +19,7 @@ export function ChatPanel() {
   const { userProfile } = useAuth();
   const {
     currentProjectId,
+    currentProjectName,
     currentLibraryId,
     currentLibraryName,
     currentFolderId,
@@ -26,6 +28,8 @@ export function ChatPanel() {
   const [open, setOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [currentSectionName, setCurrentSectionName] = useState<string | undefined>(undefined);
+  const [pendingSelectionContext, setPendingSelectionContext] = useState<AgentSelectionContext | undefined>(undefined);
+  const [inputFocusRequest, setInputFocusRequest] = useState(0);
   const messagesRef = useRef<HTMLDivElement>(null);
 
   // Active section tab lives in LibraryAssetsTable state, not the URL.
@@ -82,6 +86,7 @@ export function ChatPanel() {
     streamingAssistantId,
     conversationId,
     autoExecute,
+    activeScope,
     send,
     confirm,
     setAutoExecute,
@@ -89,6 +94,28 @@ export function ChatPanel() {
     loadConversation,
     appendNote,
   } = useAgentChat(ctx);
+
+  // Locked-target label: an existing conversation shows its frozen scope; a new
+  // one previews what the current navigation will bind to on first message.
+  const lockLabel = useMemo(() => {
+    if (activeScope) {
+      switch (activeScope.level) {
+        case 'table':
+          return activeScope.libraryName ? `📄 ${activeScope.libraryName}` : '📄 Table';
+        case 'folder':
+          return activeScope.folderName ? `📁 ${activeScope.folderName}` : '📁 Folder';
+        case 'global':
+          return '🌐 Global';
+        default:
+          return currentProjectName ? `📦 ${currentProjectName}` : '📦 Project';
+      }
+    }
+    // New conversation preview (not yet frozen).
+    if (currentLibraryName) return `📄 ${currentLibraryName}`;
+    if (currentFolderName) return `📁 ${currentFolderName}`;
+    if (currentProjectName) return `📦 ${currentProjectName}`;
+    return null;
+  }, [activeScope, currentProjectName, currentLibraryName, currentFolderName]);
 
   useEffect(() => {
     const el = messagesRef.current;
@@ -102,6 +129,7 @@ export function ChatPanel() {
     const handoff = takeDesignHandoff(currentProjectId);
     if (!handoff) return;
     setOpen(true);
+    setPendingSelectionContext(undefined);
     startNewConversation();
     void send(handoff.message, { imageUrls: handoff.imageUrls });
   }, [currentProjectId, startNewConversation, send]);
@@ -119,6 +147,18 @@ export function ChatPanel() {
     return () => window.removeEventListener(DESIGN_UPLOAD_EVENT, handler);
   }, [consumeDesignHandoff, currentProjectId]);
 
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ selectionContext?: AgentSelectionContext }>).detail;
+      if (!detail?.selectionContext) return;
+      setOpen(true);
+      setPendingSelectionContext(detail.selectionContext);
+      setInputFocusRequest((value) => value + 1);
+    };
+    window.addEventListener('agent:open-with-selection', handler);
+    return () => window.removeEventListener('agent:open-with-selection', handler);
+  }, []);
+
   // Append a note when an import completes via the handoff to ImportScriptModal.
   useEffect(() => {
     const handler = (event: Event) => {
@@ -134,7 +174,14 @@ export function ChatPanel() {
 
   if (!open) {
     return (
-      <button className={styles.launcher} title="Keco Assistant" onClick={() => setOpen(true)}>
+      <button
+        className={styles.launcher}
+        title="Keco Assistant"
+        onClick={() => {
+          setPendingSelectionContext(undefined);
+          setOpen(true);
+        }}
+      >
         <MessageOutlined className={styles.launcherIcon} />
       </button>
     );
@@ -143,7 +190,22 @@ export function ChatPanel() {
   return (
     <div className={styles.panel}>
       <div className={styles.header}>
-        <span className={styles.headerTitle}>Keco Assistant</span>
+        <div className={styles.headerTitleGroup}>
+          <span className={styles.headerTitle}>Keco Assistant</span>
+          {lockLabel && (
+            <span
+              className={styles.scopeLock}
+              title={
+                activeScope
+                  ? '此对话已锁定到该范围，切换项目不会改变它'
+                  : '新对话将绑定到当前范围'
+              }
+            >
+              {activeScope ? '🔒 ' : ''}
+              {lockLabel}
+            </span>
+          )}
+        </div>
         <div className={styles.headerActions}>
           <button
             type="button"
@@ -158,13 +220,25 @@ export function ChatPanel() {
           >
             {autoExecute ? 'Auto' : 'Confirm'}
           </button>
-          <button className={styles.iconButton} onClick={() => startNewConversation()}>
+          <button
+            className={styles.iconButton}
+            onClick={() => {
+              setPendingSelectionContext(undefined);
+              startNewConversation();
+            }}
+          >
             New
           </button>
           <button className={styles.iconButton} onClick={() => setShowHistory((v) => !v)}>
             History
           </button>
-          <button className={styles.iconButton} onClick={() => setOpen(false)}>
+          <button
+            className={styles.iconButton}
+            onClick={() => {
+              setPendingSelectionContext(undefined);
+              setOpen(false);
+            }}
+          >
             ✕
           </button>
         </div>
@@ -173,6 +247,7 @@ export function ChatPanel() {
             activeId={conversationId}
             onSelect={(id) => {
               setShowHistory(false);
+              setPendingSelectionContext(undefined);
               void loadConversation(id);
             }}
             onDelete={(id) => {
@@ -180,6 +255,7 @@ export function ChatPanel() {
                 clearLastConversationById(userProfile.id, id);
               }
               if (conversationId === id) {
+                setPendingSelectionContext(undefined);
                 startNewConversation();
               }
             }}
@@ -209,7 +285,14 @@ export function ChatPanel() {
         <AgentActivityBar activity={streamActivity} startedAt={streamStartedAt} />
       )}
 
-      <ChatInput userId={userProfile?.id} isStreaming={isStreaming} onSend={send} />
+      <ChatInput
+        userId={userProfile?.id}
+        isStreaming={isStreaming}
+        focusRequest={inputFocusRequest}
+        selectionContext={pendingSelectionContext}
+        onClearSelectionContext={() => setPendingSelectionContext(undefined)}
+        onSend={send}
+      />
     </div>
   );
 }

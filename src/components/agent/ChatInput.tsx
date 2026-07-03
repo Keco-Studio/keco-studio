@@ -10,12 +10,18 @@ import { uploadDocumentImages, uploadImageFiles } from '@/lib/services/documentI
 import { getCurrentUserId } from '@/lib/services/authorizationService';
 import { validateMediaFile } from '@/lib/services/mediaFileUploadService';
 import { useSupabase } from '@/lib/SupabaseContext';
+import type { AgentSelectionContext } from '@/lib/agent/selection-context';
+import type { SendOptions } from './types';
+import { focusChatInput } from './chatInputFocus';
 import styles from './ChatPanel.module.css';
 
 interface Props {
   userId?: string;
   isStreaming: boolean;
-  onSend: (message: string, opts?: { imageUrls?: string[] }) => void;
+  focusRequest?: number;
+  selectionContext?: AgentSelectionContext;
+  onClearSelectionContext?: () => void;
+  onSend: (message: string, opts?: SendOptions) => void;
 }
 
 const DEBOUNCE_MS = 300;
@@ -27,7 +33,14 @@ const DOC_ACCEPT = SUPPORTED_DESIGN_EXTENSIONS.map((ext) => `.${ext}`).join(',')
 const IMAGE_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp';
 const ACCEPT = `${DOC_ACCEPT},${IMAGE_ACCEPT}`;
 
-export function ChatInput({ userId, isStreaming, onSend }: Props) {
+export function ChatInput({
+  userId,
+  isStreaming,
+  focusRequest = 0,
+  selectionContext,
+  onClearSelectionContext,
+  onSend,
+}: Props) {
   const supabase = useSupabase();
   const [value, setValue] = useState('');
   const [file, setFile] = useState<File | null>(null);
@@ -61,6 +74,11 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
       el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
     }
   }, [userId]);
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    focusChatInput(textareaRef.current);
+  }, [focusRequest]);
 
   const updateValue = useCallback(
     (next: string) => {
@@ -155,9 +173,10 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
           setFileError('The image(s) could not be uploaded. Please try again.');
           return;
         }
-        onSend(trimmed || DEFAULT_IMAGE_PROMPT, { imageUrls });
+        onSend(trimmed || DEFAULT_IMAGE_PROMPT, { imageUrls, selectionContext });
         setValue('');
         clearImages();
+        onClearSelectionContext?.();
         if (userId) clearDraft(userId);
         if (debounceRef.current) clearTimeout(debounceRef.current);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -192,9 +211,10 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
           documentText,
           additionalInstructions: trimmed || undefined,
         });
-        onSend(message, { imageUrls });
+        onSend(message, { imageUrls, selectionContext });
         setValue('');
         clearFile();
+        onClearSelectionContext?.();
         if (userId) clearDraft(userId);
         if (debounceRef.current) clearTimeout(debounceRef.current);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
@@ -206,12 +226,26 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
       return;
     }
 
-    onSend(trimmed);
+    onSend(trimmed, selectionContext ? { selectionContext } : undefined);
     setValue('');
+    onClearSelectionContext?.();
     if (userId) clearDraft(userId);
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
-  }, [isStreaming, parsing, value, file, images, onSend, userId, clearFile, clearImages, supabase]);
+  }, [
+    isStreaming,
+    parsing,
+    value,
+    file,
+    images,
+    onSend,
+    userId,
+    clearFile,
+    clearImages,
+    supabase,
+    selectionContext,
+    onClearSelectionContext,
+  ]);
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent) => {
@@ -280,6 +314,23 @@ export function ChatInput({ userId, isStreaming, onSend }: Props) {
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
+      {selectionContext && (
+        <div className={styles.attachmentRow}>
+          <span className={styles.selectionAttachment} title={selectionContext.selectionLabel}>
+            <span className={styles.selectionAttachmentText}>{selectionContext.selectionLabel}</span>
+            <button
+              type="button"
+              className={styles.selectionAttachmentRemove}
+              onClick={onClearSelectionContext}
+              aria-label="Remove selected table data"
+              disabled={isStreaming || parsing}
+            >
+              <CloseOutlined />
+            </button>
+          </span>
+        </div>
+      )}
+
       {images.length > 0 && (
         <div className={styles.attachmentRow}>
           {imagePreviews.map((url, idx) => (

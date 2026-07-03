@@ -591,7 +591,11 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     const systemMessage = await buildSystemMessage(toolContext, retrievedContextBlock);
 
     const history = await loadConversationHistory(toolContext.supabase, conversationId);
-    const llmUserMessage = augmentUserMessageForLlm(input.userMessage, toolContext);
+    const llmUserMessage = augmentUserMessageForLlm(
+      input.userMessage,
+      toolContext,
+      input.selectionContext
+    );
     // In-context message carries page-context-augmented text plus any images;
     // the persisted copy keeps the raw text (no context prefix) plus the images
     // so they are re-sent on every turn (spec: always let the agent see them).

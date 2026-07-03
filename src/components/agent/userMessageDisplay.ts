@@ -8,6 +8,7 @@
  */
 
 import { parseDesignMessage } from '@/lib/design-message';
+import type { AgentSelectionContext } from '@/lib/agent/selection-context';
 import type { ChatAttachment } from './types';
 
 export interface UserDisplay {
@@ -27,22 +28,37 @@ function fileNameFromUrl(url: string): string {
   }
 }
 
-export function deriveUserDisplay(message: string, imageUrls?: string[]): UserDisplay {
+export function deriveUserDisplay(
+  message: string,
+  imageUrls?: string[],
+  selectionContext?: AgentSelectionContext
+): UserDisplay {
+  const selectionAttachments: ChatAttachment[] = selectionContext
+    ? [{ kind: 'selection', fileName: selectionContext.selectionLabel }]
+    : [];
+
   const design = parseDesignMessage(message);
   if (design) {
     // Design-document messages keep their file chip; embedded doc images are not
     // shown as thumbnails (there can be many and the chip already conveys it).
     return {
       text: design.instructions ?? '',
-      attachments: [{ fileName: design.fileName }],
+      attachments: [{ fileName: design.fileName }, ...selectionAttachments],
     };
   }
 
   if (imageUrls && imageUrls.length > 0) {
     return {
       text: message,
-      attachments: imageUrls.map((url) => ({ fileName: fileNameFromUrl(url), imageUrl: url })),
+      attachments: [
+        ...selectionAttachments,
+        ...imageUrls.map((url) => ({ fileName: fileNameFromUrl(url), imageUrl: url })),
+      ],
     };
+  }
+
+  if (selectionAttachments.length > 0) {
+    return { text: message, attachments: selectionAttachments };
   }
 
   return { text: message };

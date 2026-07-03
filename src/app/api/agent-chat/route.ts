@@ -4,8 +4,10 @@ import { runAgentTurn } from '@/lib/agent/core';
 import { resolveUserRole, AgentAccessError } from '@/lib/agent/permissions';
 import { getOrCreateConversation } from '@/lib/agent/conversation-store';
 import { resolveConversationMeta } from '@/lib/agent/conversation-meta';
+import { resolveScopeFromNavigation, contextFieldsFromScope } from '@/lib/agent/scope';
 import { sseResponse } from '@/lib/agent/sse';
 import { sanitizeImageUrls } from '@/lib/agent/image-url-validation';
+import { isAgentSelectionContext } from '@/lib/agent/selection-context';
 import type { ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
@@ -24,6 +26,7 @@ export async function POST(request: NextRequest) {
     projectId?: string;
     message?: string;
     imageUrls?: unknown;
+    selectionContext?: unknown;
     currentFolderId?: string;
     currentFolderName?: string;
     currentLibraryId?: string;
@@ -38,50 +41,84 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const projectId = String(body.projectId ?? '').trim();
   const message = String(body.message ?? '').trim();
-  if (!projectId || !isUuid(projectId)) {
-    return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 });
-  }
   if (!message) {
     return NextResponse.json({ error: 'Message is required' }, { status: 400 });
+  }
+
+  const isNewConversation = !body.conversationId;
+  const bodyProjectId = String(body.projectId ?? '').trim();
+
+  // A new conversation must be opened inside a project — that project (and the
+  // current folder/table selection) is snapshotted as the conversation's frozen
+  // scope. An existing conversation derives its project from its own binding.
+  if (isNewConversation && (!bodyProjectId || !isUuid(bodyProjectId))) {
+    return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 });
   }
 
   // Only accept image URLs that originate from our own public storage bucket, so
   // the agent can never be steered into fetching arbitrary external URLs.
   const imageUrls = sanitizeImageUrls(body.imageUrls, process.env.NEXT_PUBLIC_SUPABASE_URL ?? '');
+  const selectionContext = isAgentSelectionContext(body.selectionContext)
+    ? body.selectionContext
+    : undefined;
 
   try {
-    const userRole = await resolveUserRole(supabase, projectId, user.id);
     const initialAutoExecute =
       typeof body.autoExecute === 'boolean' ? body.autoExecute : true;
+
+    // For a new conversation, snapshot the scope from live navigation.
+    const scopeSnapshot = isNewConversation
+      ? resolveScopeFromNavigation({
+          projectId: bodyProjectId,
+          currentFolderId: body.currentFolderId,
+          currentFolderName: body.currentFolderName,
+          currentLibraryId: body.currentLibraryId,
+          currentLibraryName: body.currentLibraryName,
+          currentSectionName: body.currentSectionName,
+        })
+      : undefined;
 
     const conversation = await getOrCreateConversation(supabase, {
       conversationId: body.conversationId,
       userId: user.id,
-      projectId,
+      // Existing conversations ignore this; only used to create a new one.
+      projectId: bodyProjectId,
       initialAutoExecute,
+      scope: scopeSnapshot,
     });
+
+    // The conversation's own binding is authoritative from here on. For existing
+    // conversations this ignores the request body's live navigation entirely.
+    const boundMeta = resolveConversationMeta(conversation.meta);
+    const boundScope = isNewConversation ? scopeSnapshot : boundMeta.scope;
+
+    // v1: the global scope has no cross-project capability yet (see spec §7).
+    if (boundScope?.level === 'global') {
+      return NextResponse.json(
+        { error: '此会话未绑定具体项目，请进入一个项目后新建对话。' },
+        { status: 400 }
+      );
+    }
+
+    const contextFields = contextFieldsFromScope(boundScope, conversation.project_id);
+    const userRole = await resolveUserRole(supabase, contextFields.projectId, user.id);
 
     const toolContext: ToolContext = {
       userId: user.id,
-      projectId,
       conversationId: conversation.id,
-      currentFolderId: body.currentFolderId,
-      currentFolderName: body.currentFolderName,
-      currentLibraryId: body.currentLibraryId,
-      currentLibraryName: body.currentLibraryName,
-      currentSectionName: body.currentSectionName,
       supabase,
       userRole,
+      ...contextFields,
     };
 
     const generator = runAgentTurn({
       conversationId: conversation.id,
       userMessage: message,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
+      selectionContext,
       toolContext,
-      conversationMeta: resolveConversationMeta(conversation.meta),
+      conversationMeta: boundMeta,
     });
 
     const response = sseResponse(generator);

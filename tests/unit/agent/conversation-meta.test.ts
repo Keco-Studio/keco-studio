@@ -3,6 +3,7 @@ import {
   needsConfirmation,
   resolveConversationMeta,
   executePostPreviewTool,
+  metaForSave,
 } from '../../../src/lib/agent/conversation-meta';
 import type { AgentTool, ToolContext, ToolResult } from '../../../src/lib/agent/types';
 
@@ -37,6 +38,30 @@ describe('resolveConversationMeta', () => {
     expect(resolveConversationMeta({ autoExecute: false, skipConfirmation: true })).toEqual({
       autoExecute: false,
     });
+  });
+
+  it('passes through a bound scope verbatim', () => {
+    const scope = { level: 'table' as const, projectId: 'p1', libraryId: 'l1' };
+    expect(resolveConversationMeta({ autoExecute: true, scope })).toEqual({
+      autoExecute: true,
+      scope,
+    });
+  });
+
+  it('omits scope for legacy rows without one', () => {
+    expect(resolveConversationMeta({ autoExecute: false })).not.toHaveProperty('scope');
+  });
+});
+
+describe('metaForSave', () => {
+  it('writes autoExecute only when no scope is given', () => {
+    expect(metaForSave(true)).toEqual({ autoExecute: true });
+    expect(metaForSave(false)).toEqual({ autoExecute: false });
+  });
+
+  it('merges scope when provided', () => {
+    const scope = { level: 'folder' as const, projectId: 'p1', folderId: 'f1' };
+    expect(metaForSave(true, scope)).toEqual({ autoExecute: true, scope });
   });
 });
 

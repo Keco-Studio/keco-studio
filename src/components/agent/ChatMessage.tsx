@@ -44,7 +44,10 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
                     />
                   </a>
                 ) : (
-                  <span key={`${att.fileName}-${idx}`} className={styles.userAttachment}>
+                  <span
+                    key={`${att.fileName}-${idx}`}
+                    className={`${styles.userAttachment} ${att.kind === 'selection' ? styles.userSelectionAttachment : ''}`}
+                  >
                     <PaperClipOutlined className={styles.userAttachmentIcon} />
                     <span className={styles.userAttachmentName}>{att.fileName}</span>
                   </span>

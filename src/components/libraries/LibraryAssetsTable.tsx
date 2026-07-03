@@ -75,6 +75,7 @@ import styles from './LibraryAssetsTable.module.css';
 import { useFormulaCellCustomization } from './hooks/useFormulaCellCustomization';
 import { useTableResize, NUMBER_COLUMN_KEY } from './hooks/useTableResize';
 import { evaluateFormulaForRow, getCustomFormulaExpressionFromCellValue } from './utils/formulaEvaluation';
+import { buildAgentSelectionContext } from './utils/agentSelectionContext';
 
 export type LibraryAssetsTableProps = {
   library: {
@@ -1006,10 +1007,43 @@ export function LibraryAssetsTable({
   });
 
   useEffect(() => {
-    if (editingCell) return;
-    window.addEventListener('keydown', handleSelectedCellArrowNavigation);
-    return () => window.removeEventListener('keydown', handleSelectedCellArrowNavigation);
-  }, [editingCell, handleSelectedCellArrowNavigation]);
+    const handleOpenAgentWithSelection = (event: KeyboardEvent) => {
+      const isSelectionShortcut =
+        event.key.toLowerCase() === 'l' && (event.ctrlKey || event.metaKey);
+      if (!isSelectionShortcut) return;
+      if (selectedCells.size === 0 && selectedRowIds.size === 0) return;
+
+      const selectionContext = buildAgentSelectionContext({
+        libraryId: library?.id ?? '',
+        libraryName: library?.name,
+        sectionName: activeGroup?.section.name,
+        rows: getAllRowsForCellSelection(),
+        visibleProperties: activeProperties,
+        selectedCells,
+        selectedRowIds,
+      });
+      if (!selectionContext) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      window.dispatchEvent(
+        new CustomEvent('agent:open-with-selection', {
+          detail: { selectionContext },
+        })
+      );
+    };
+
+    window.addEventListener('keydown', handleOpenAgentWithSelection);
+    return () => window.removeEventListener('keydown', handleOpenAgentWithSelection);
+  }, [
+    activeGroup?.section.name,
+    activeProperties,
+    getAllRowsForCellSelection,
+    library?.id,
+    library?.name,
+    selectedCells,
+    selectedRowIds,
+  ]);
 
   const closeRowContextMenu = useCallback(() => {
     setContextMenuRowId(null);
