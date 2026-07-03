@@ -9,6 +9,7 @@ import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
 import projectIcon from '@/assets/images/projectIcon52.svg';
 import closeIcon from '@/assets/images/closeIcon32.svg';
+import dialog from '@/components/shared/FormDialog.module.css';
 import styles from './NewProjectModal.module.css';
 
 type EditProjectModalProps = {
@@ -150,7 +151,7 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
             </div>
 
             <div className={styles.footer}>
-              {error && <div className={styles.error}>{error}</div>}
+              {error && <div className={dialog.error}>{error}</div>}
               <button
                 className={`${styles.button} ${styles.primary}`}
                 onClick={handleSubmit}

@@ -63,6 +63,7 @@ import { AddColumnModal, type AddColumnFormPayload } from './components/AddColum
 import { FormulaCellPanel } from './components/FormulaCellPanel';
 import { FormulaCell } from './components/FormulaCell';
 import { TableCellFindReplace } from './components/TableCellFindReplace';
+import { VisualNovelScriptView, type ScriptColumns } from './components/VisualNovelScriptView';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
 import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
@@ -517,6 +518,26 @@ export function LibraryAssetsTable({
     return { groups, orderedProperties };
   }, [sections, properties]);
 
+  // Detect script columns — support both Chinese and English column names
+  const { scriptColumns, hasScriptColumns } = useMemo(() => {
+    const find = (names: string[]) => {
+      for (const prop of orderedProperties) {
+        if (names.includes(prop.name)) return prop.key;
+      }
+      return undefined;
+    };
+    const cols: ScriptColumns = {
+      labelKey: find(['这里是跳转的节点', 'Story jump node', 'Label', 'label']),
+      typeKey: find(['类型', 'Type', 'type']),
+      nameKey: find(['说话人', 'Speaker', 'Name', 'name']),
+      contentKey: find(['对话内容', 'Dialogue and options', 'Content', 'content']),
+    };
+    // Show script toggle when script columns (name + content) are found
+    const isScript = !!(cols.nameKey && cols.contentKey);
+    return { scriptColumns: cols, hasScriptColumns: isScript };
+  }, [orderedProperties]);
+  const [scriptViewMode, setScriptViewMode] = useState<'table' | 'script'>('table');
+
   const {
     filteredRows: displayRows,
     applyColumnFilter,
@@ -800,9 +821,11 @@ export function LibraryAssetsTable({
     handleCellClick,
     handleCellFillDragStart,
     handleCellDragStart,
+    handleSelectedCellArrowNavigation,
     getSelectionBorderClasses,
   } = useCellSelection({
     orderedProperties,
+    navigationProperties: activeProperties,
     getAllRowsForCellSelection,
     fillDown,
     fillDownIntSequence,
@@ -1328,6 +1351,24 @@ export function LibraryAssetsTable({
           ) : (
             <div className={styles.tableTopBarSpacer} />
           )}
+          {hasScriptColumns && (
+            <div className={styles.viewToggleGroup}>
+              <button
+                type="button"
+                className={`${styles.viewToggleBtn} ${scriptViewMode === 'table' ? styles.viewToggleBtnActive : ''}`}
+                onClick={() => setScriptViewMode('table')}
+              >
+                Table
+              </button>
+              <button
+                type="button"
+                className={`${styles.viewToggleBtn} ${scriptViewMode === 'script' ? styles.viewToggleBtnActive : ''}`}
+                onClick={() => setScriptViewMode('script')}
+              >
+                Script
+              </button>
+            </div>
+          )}
           <div className={styles.tableTopBarFindWrap}>
             <TableCellFindReplace
               libraryId={library?.id}
@@ -1346,6 +1387,11 @@ export function LibraryAssetsTable({
           className={`${styles.tableContainer} ${isResizingColumn || isResizingRow ? styles.tableResizing : ''}`}
           ref={tableContainerRef}
         >
+          {scriptViewMode === 'script' && hasScriptColumns ? (
+            <div className={styles.scriptViewContainer}>
+              <VisualNovelScriptView rows={displayRows} scriptColumns={scriptColumns} />
+            </div>
+          ) : (
           <table
             className={`${styles.table} ${hasCustomColumnWidths || isResizingColumn ? styles.colsCustom : getColumnWidthClass()}`}
           >
@@ -2033,6 +2079,7 @@ export function LibraryAssetsTable({
               ) : null}
             </tbody>
           </table>
+          )}
         </div>
       </div>
 

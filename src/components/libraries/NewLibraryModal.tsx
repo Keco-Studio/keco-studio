@@ -7,7 +7,7 @@ import { createLibrary, checkLibraryNameExists } from '@/lib/services/librarySer
 import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
 import closeIcon from '@/assets/images/closeIcon32.svg';
-import styles from './NewLibraryModal.module.css';
+import dialog from '@/components/shared/FormDialog.module.css';
 
 type NewLibraryModalProps = {
   open: boolean;
@@ -76,40 +76,38 @@ export function NewLibraryModal({ open, projectId, folderId, onClose, onCreated 
   };
 
   return createPortal(
-    <div className={styles.backdrop}>
-      <div className={styles.modal}>
-        <div className={styles.header}>
-          <div className={styles.title}>Create Library</div>
-          <button className={styles.close} onClick={onClose} aria-label="Close">
+    <div className={dialog.backdrop}>
+      <div className={`${dialog.modal} ${dialog.modalTall}`}>
+        <div className={dialog.header}>
+          <div className={dialog.title}>Create Library</div>
+          <button className={dialog.close} onClick={onClose} aria-label="Close">
             <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>
         </div>
 
-        <div className={styles.divider}></div>
+        <div className={dialog.divider}></div>
 
-        <div className={styles.nameContainer}>
-          <div className={styles.nameInputContainer}>
-            <label htmlFor="library-name" className={styles.nameLabel}>Library Name</label>
-            <input
-              id="library-name"
-              className={styles.nameInput}
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Enter library name"
-            />
-          </div>
+        <div className={dialog.field}>
+          <label htmlFor="library-name" className={dialog.nameLabel}>Library Name</label>
+          <input
+            id="library-name"
+            className={dialog.nameInput}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Enter library name"
+          />
         </div>
 
-        <div className={styles.notesContainer}>
-          <label htmlFor="library-description" className={styles.notesLabel}>
-            <span className={styles.notesLabelText}>Add notes for this Library</span>
-            <span className={styles.notesLabelLimit}> (250 characters limit)</span>
+        <div className={dialog.notesContainer}>
+          <label htmlFor="library-description" className={dialog.notesLabel}>
+            <span className={dialog.notesLabelText}>Add notes for this Library</span>
+            <span className={dialog.notesLabelLimit}> (250 characters limit)</span>
           </label>
-          <div className={styles.textareaWrapper}>
+          <div className={dialog.textareaWrapper}>
             <textarea
               id="library-description"
               name="library-description"
-              className={styles.textarea}
+              className={dialog.textarea}
               value={description}
               onChange={(e) => {
                 if (e.target.value.length <= 250) {
@@ -121,10 +119,10 @@ export function NewLibraryModal({ open, projectId, folderId, onClose, onCreated 
           </div>
         </div>
 
-        <div className={styles.footer}>
-          {error && <div className={styles.error}>{error}</div>}
+        <div className={dialog.footer}>
+          {error && <div className={dialog.error}>{error}</div>}
           <button
-            className={`${styles.button} ${styles.primary}`}
+            className={`${dialog.button} ${dialog.buttonFixed} ${dialog.primary}`}
             onClick={handleSubmit}
             disabled={submitting}
           >

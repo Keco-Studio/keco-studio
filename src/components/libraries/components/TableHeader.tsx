@@ -16,7 +16,7 @@ import { EditColumnModal } from './EditColumnModal';
 import { ColumnValueFilterPopover } from './ColumnValueFilterPopover';
 import { NUMBER_COLUMN_KEY } from '../hooks/useTableResize';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
-import showIcon from '@/assets/images/showIcon.svg';
+import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
 import addColumIcon from '@/assets/images/addColumIcon.svg';
 import descriptionIcon from '@/assets/images/descriptionIcon.svg';
 
@@ -482,11 +482,11 @@ export function TableHeader({
                     }}
                   >
                     <Image
-                      src={showIcon}
+                      src={libraryAssetTableSelectIcon}
                       alt=""
-                      width={8}
-                      height={4}
-                      className={styles.propertyHeaderIcon}
+                      width={16}
+                      height={16}
+                      className={styles.enumSelectIcon}
                     />
                   </div>
                 </div>

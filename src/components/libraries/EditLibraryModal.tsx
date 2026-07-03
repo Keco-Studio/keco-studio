@@ -8,6 +8,7 @@ import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
 import closeIcon from '@/assets/images/closeIcon32.svg';
+import dialog from '@/components/shared/FormDialog.module.css';
 import styles from './NewLibraryModal.module.css';
 
 type EditLibraryModalProps = {
@@ -146,7 +147,7 @@ export function EditLibraryModal({ open, libraryId, onClose, onUpdated }: EditLi
             </div>
 
             <div className={styles.footer}>
-              {error && <div className={styles.error}>{error}</div>}
+              {error && <div className={dialog.error}>{error}</div>}
               <button
                 className={`${styles.button} ${styles.primary}`}
                 onClick={handleSubmit}

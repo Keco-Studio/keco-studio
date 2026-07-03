@@ -251,9 +251,9 @@ export class ProjectPage {
   /**
    * Assert successful project creation
    */
-  async expectProjectCreated(): Promise<void> {
+  async expectProjectCreated(projectName?: string): Promise<void> {
     const timeout = process.env.CI === 'true' ? 45000 : 30000;
-    const projectName = this.lastCreatedProjectName;
+    const resolvedName = projectName ?? this.lastCreatedProjectName;
     const deadline = Date.now() + timeout;
     const remainingMs = () => Math.max(1000, deadline - Date.now());
 
@@ -265,10 +265,10 @@ export class ProjectPage {
         { timeout: remainingMs(), waitUntil: 'commit' }
       );
     } catch {
-      if (!projectName) {
+      if (!resolvedName) {
         throw new Error('Project creation did not navigate away from /projects');
       }
-      await this.openProject(projectName, remainingMs());
+      await this.openProject(resolvedName, remainingMs());
     }
 
     await expect
@@ -283,8 +283,8 @@ export class ProjectPage {
       .catch(() => {});
 
     // Project page may briefly redirect back to /projects while data settles; re-open if needed.
-    if (!this.isProjectDetailPath(new URL(this.page.url()).pathname) && projectName) {
-      await this.openProject(projectName, remainingMs());
+    if (!this.isProjectDetailPath(new URL(this.page.url()).pathname) && resolvedName) {
+      await this.openProject(resolvedName, remainingMs());
       await expect
         .poll(() => this.isProjectDetailPath(new URL(this.page.url()).pathname), {
           timeout: remainingMs(),

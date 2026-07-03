@@ -17,6 +17,7 @@
   flex-direction: column;
   box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.12);
   flex-shrink: 0;
+  font-family: 'Roboto', sans-serif;
 }
 
 .header {
@@ -29,12 +30,13 @@
 }
 
 .title {
+  font-family: 'Roboto', sans-serif;
   font-size: 1rem;
-  font-weight: 600;
-  line-height: 1.364;
+  font-weight: 700;
+  line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: #111827;
+  color: #0f172a;
   margin: 0;
 }
 
@@ -78,6 +80,7 @@
   padding: 1.5rem;
   text-align: center;
   color: #697077;
+  font-family: 'Roboto', sans-serif;
   font-size: 0.875rem;
 }
 

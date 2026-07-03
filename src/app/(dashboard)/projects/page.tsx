@@ -86,6 +86,7 @@ export default function ProjectsPage() {
 
   const handleCreated = async (projectId: string) => {
     queryClient.invalidateQueries({ queryKey: ['projects'] });
+    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     if (userProfile?.id) {
       globalRequestCache.invalidate(`projects:list:${userProfile.id}`);
       globalRequestCache.invalidate(`project:${projectId}`);

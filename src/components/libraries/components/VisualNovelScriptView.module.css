@@ -1,0 +1,244 @@
+/* Visual Novel Script View Styles */
+
+.container {
+  padding: 2rem 3rem 3rem;
+  background: #ffffff;
+  min-height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Part title: floating white oval capsule with horizontal divider */
+.partHeaderWrap {
+  padding: 2rem 0 1.5rem;
+}
+
+.partHeaderRow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.partHeaderLine {
+  flex: 1;
+  height: 0;
+  border-top: 1px solid #d1d5db;
+}
+
+.partTitleOval {
+  flex-shrink: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 9999px;
+  padding: 0.375rem 1.5rem;
+  background: #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.sceneMarkerText {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+
+/* Dialog row */
+.dialogRow {
+  display: flex;
+  margin-bottom: 1.5rem;
+  position: relative;
+}
+
+.dialogRow.left {
+  justify-content: flex-start;
+  padding-right: 25%;
+}
+
+.dialogRow.right {
+  justify-content: flex-end;
+  padding-left: 25%;
+}
+
+.dialogRow.left > div,
+.dialogRow.right > div {
+  max-width: 75%;
+  display: flex;
+  flex-direction: column;
+}
+
+.dialogRow.left > div {
+  align-items: flex-start;
+}
+
+.dialogRow.right > div {
+  align-items: flex-end;
+}
+
+.dialogRow.center {
+  justify-content: center;
+  padding-left: 10%;
+  padding-right: 10%;
+}
+
+/* Speaker header area */
+.speakerHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.dialogRow.left .speakerHeader {
+  padding-left: 0;
+}
+
+.dialogRow.right .speakerHeader {
+  flex-direction: row-reverse;
+  padding-right: 0;
+}
+
+.dialogRow.center .speakerHeader {
+  justify-content: center;
+}
+
+/* Avatar circle */
+.avatar {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #ffffff;
+  flex-shrink: 0;
+}
+
+.avatar.blue {
+  background: #0B99FF;
+}
+
+.avatar.pink {
+  background: #e91e8c;
+}
+
+.avatar.gray {
+  background: #9ca3af;
+}
+
+/* Speaker name */
+.speakerName {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+/* Dialog type tag */
+.dialogTag {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.25rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dialogTag.blue {
+  background: #0B99FF;
+  color: #ffffff;
+}
+
+.dialogTag.pink {
+  background: #e91e8c;
+  color: #ffffff;
+}
+
+.dialogTag.gray {
+  background: #9ca3af;
+  color: #ffffff;
+}
+
+/* Dialog bubble */
+.dialogBubble {
+  max-width: 100%;
+  width: fit-content;
+  padding: 0.875rem 1.125rem;
+  border-radius: 0.75rem;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: #1a1a1a;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.dialogRow.left .dialogBubble {
+  margin-left: 2.5rem;
+}
+
+.dialogRow.right .dialogBubble {
+  margin-right: 2.5rem;
+}
+
+.dialogRow.center .dialogBubble {
+  margin-left: 0;
+  margin-right: 0;
+  max-width: 80%;
+}
+
+.dialogBubble.blue {
+  background: #eef5fb;
+}
+
+.dialogBubble.pink {
+  background: #fce4ec;
+}
+
+.dialogBubble.gray {
+  background: #f5f5f5;
+}
+
+/* Type 4 / Name 4: plain text, no bubble, always left */
+.plainTextRow {
+  margin-bottom: 1.5rem;
+  padding-right: 25%;
+}
+
+.plainText {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: #1a1a1a;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Type 5: centered fullscreen text */
+.fullscreenRow {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 3rem 12%;
+  margin-bottom: 1.5rem;
+}
+
+.fullscreenText {
+  margin: 0;
+  max-width: 36rem;
+  font-size: 1.0625rem;
+  font-weight: 500;
+  line-height: 1.7;
+  color: #1a1a1a;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Empty state */
+.emptyState {
+  text-align: center;
+  padding: 4rem 2rem;
+  color: #9ca3af;
+  font-size: 0.9375rem;
+}

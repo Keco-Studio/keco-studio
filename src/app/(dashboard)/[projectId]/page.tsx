@@ -96,6 +96,16 @@ export default function ProjectPage() {
     retryDelay: (attemptIndex) => Math.min(750 * 2 ** attemptIndex, 5000),
   });
 
+  useEffect(() => {
+    const handleProjectCreated = () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
+    };
+    window.addEventListener('projectCreated' as any, handleProjectCreated as EventListener);
+    return () => {
+      window.removeEventListener('projectCreated' as any, handleProjectCreated as EventListener);
+    };
+  }, [projectId, queryClient]);
+
   const { data: folders = [], isLoading: foldersLoading } = useQuery({
     queryKey: queryKeys.projectFolders(projectId),
     queryFn: () => listFolders(supabase, projectId),

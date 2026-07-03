@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import Image from 'next/image';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { createFolder } from '@/lib/services/folderService';
 import { validateName } from '@/lib/utils/nameValidation';
-import styles from './NewFolderModal.module.css';
+import closeIcon from '@/assets/images/closeIcon32.svg';
+import dialog from '@/components/shared/FormDialog.module.css';
 
 type NewFolderModalProps = {
   open: boolean;
@@ -58,19 +60,21 @@ export function NewFolderModal({ open, projectId, onClose, onCreated }: NewFolde
   };
 
   return createPortal(
-    <div className={styles.backdrop}>
-      <div className={styles.modal}>
-        <div className={styles.header}>
-          <div className={styles.title}>New Folder</div>
-          <button className={styles.close} onClick={onClose} aria-label="Close">
-            ×
+    <div className={dialog.backdrop}>
+      <div className={`${dialog.modal} ${dialog.modalCompact}`}>
+        <div className={dialog.header}>
+          <div className={dialog.title}>New Folder</div>
+          <button className={dialog.close} onClick={onClose} aria-label="Close">
+            <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>
         </div>
 
-        <div className={styles.field}>
-          <label className={styles.label}>Folder name *</label>
+        <div className={dialog.divider}></div>
+
+        <div className={dialog.field}>
+          <label className={dialog.nameLabel}>Folder name *</label>
           <input
-            className={styles.input}
+            className={dialog.nameInput}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Enter folder name"
@@ -82,14 +86,14 @@ export function NewFolderModal({ open, projectId, onClose, onCreated }: NewFolde
           />
         </div>
 
-        {error && <div className={styles.error}>{error}</div>}
+        {error && <div className={`${dialog.error} ${dialog.errorInline}`}>{error}</div>}
 
-        <div className={styles.footer}>
-          <button className={`${styles.button} ${styles.secondary}`} onClick={onClose}>
+        <div className={dialog.footer}>
+          <button className={`${dialog.button} ${dialog.buttonAuto} ${dialog.secondary}`} onClick={onClose}>
             Cancel
           </button>
           <button
-            className={`${styles.button} ${styles.primary}`}
+            className={`${dialog.button} ${dialog.buttonAuto} ${dialog.primary}`}
             onClick={handleSubmit}
             disabled={submitting}
           >
@@ -101,4 +105,3 @@ export function NewFolderModal({ open, projectId, onClose, onCreated }: NewFolde
     document.body
   );
 }
-

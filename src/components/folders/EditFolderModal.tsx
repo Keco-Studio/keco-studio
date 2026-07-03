@@ -6,6 +6,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { getFolder, Folder } from '@/lib/services/folderService';
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
+import dialog from '@/components/shared/FormDialog.module.css';
 import styles from './NewFolderModal.module.css';
 
 type EditFolderModalProps = {
@@ -118,7 +119,7 @@ export function EditFolderModal({ open, folderId, onClose, onUpdated }: EditFold
               />
             </div>
 
-            {error && <div className={styles.error}>{error}</div>}
+            {error && <div className={dialog.error}>{error}</div>}
 
             <div className={styles.footer}>
               <button 

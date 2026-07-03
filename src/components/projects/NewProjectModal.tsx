@@ -8,6 +8,7 @@ import { validateName } from '@/lib/utils/nameValidation';
 import Image from 'next/image';
 import projectIcon from '@/assets/images/projectIcon52.svg';
 import closeIcon from '@/assets/images/closeIcon32.svg';
+import dialog from '@/components/shared/FormDialog.module.css';
 import styles from './NewProjectModal.module.css';
 
 type NewProjectModalProps = {
@@ -73,26 +74,26 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
   };
 
   return createPortal(
-    <div className={styles.backdrop}>
-      <div className={styles.modal}>
-        <div className={styles.header}>
-          <div className={styles.title}>Create Project</div>
-          <button className={styles.close} onClick={onClose} aria-label="Close">
+    <div className={dialog.backdrop}>
+      <div className={`${dialog.modal} ${dialog.modalTall}`}>
+        <div className={dialog.header}>
+          <div className={dialog.title}>Create Project</div>
+          <button className={dialog.close} onClick={onClose} aria-label="Close">
             <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>
         </div>
 
-        <div className={styles.divider}></div>
+        <div className={dialog.divider}></div>
 
-        <div className={styles.nameContainer}>
+        <div className={dialog.nameContainer}>
           <div className={styles.iconWrapper}>
             <Image src={projectIcon} alt="Project icon" width={52} height={52} className="icon-52" />
           </div>
-          <div className={styles.nameInputContainer}>
-            <label htmlFor="project-name" className={styles.nameLabel}>Project Name</label>
+          <div className={dialog.nameInputContainer}>
+            <label htmlFor="project-name" className={dialog.nameLabel}>Project Name</label>
           <input
             id="project-name"
-            className={styles.nameInput}
+            className={dialog.nameInput}
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Enter project name"
@@ -100,16 +101,16 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
           </div>
         </div>
 
-        <div className={styles.notesContainer}>
-          <label htmlFor="project-description" className={styles.notesLabel}>
-            <span className={styles.notesLabelText}>Add notes for this project</span>
-            <span className={styles.notesLabelLimit}> (250 characters limit)</span>
+        <div className={dialog.notesContainer}>
+          <label htmlFor="project-description" className={dialog.notesLabel}>
+            <span className={dialog.notesLabelText}>Add notes for this project</span>
+            <span className={dialog.notesLabelLimit}> (250 characters limit)</span>
           </label>
-          <div className={styles.textareaWrapper}>
+          <div className={dialog.textareaWrapper}>
             <textarea
               id="project-description"
               name="project-description"
-              className={styles.textarea}
+              className={dialog.textarea}
               value={description}
               onChange={(e) => {
                 if (e.target.value.length <= 250) {
@@ -121,10 +122,10 @@ export function NewProjectModal({ open, onClose, onCreated }: NewProjectModalPro
           </div>
         </div>
 
-        <div className={styles.footer}>
-          {error && <div className={styles.error}>{error}</div>}
+        <div className={dialog.footer}>
+          {error && <div className={dialog.error}>{error}</div>}
           <button
-            className={`${styles.button} ${styles.primary}`}
+            className={`${dialog.button} ${dialog.buttonFixed} ${dialog.primary}`}
             onClick={handleSubmit}
             disabled={submitting}
           >

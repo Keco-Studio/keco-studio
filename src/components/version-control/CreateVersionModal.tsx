@@ -9,7 +9,7 @@ import { validateName } from '@/lib/utils/nameValidation';
 import type { AssetRow } from '@/lib/types/libraryAssets';
 import Image from 'next/image';
 import closeIcon from '@/assets/images/closeIcon32.svg';
-import styles from './CreateVersionModal.module.css';
+import dialog from '@/components/shared/FormDialog.module.css';
 
 interface CreateVersionModalProps {
   open: boolean;
@@ -93,38 +93,38 @@ export function CreateVersionModal({
   };
 
   return createPortal(
-    <div className={styles.backdrop}>
-      <div className={styles.modal}>
-        <div className={styles.header}>
-          <div className={styles.title}>Create new version</div>
-          <button className={styles.close} onClick={onClose} aria-label="Close">
+    <div className={dialog.backdrop}>
+      <div className={`${dialog.modal} ${dialog.modalCompact}`}>
+        <div className={dialog.header}>
+          <div className={dialog.title}>Create new version</div>
+          <button className={dialog.close} onClick={onClose} aria-label="Close">
             <Image src={closeIcon} alt="Close" width={32} height={32} className="icon-32" />
           </button>
         </div>
 
-        <div className={styles.nameContainer}>
-          <div className={styles.nameInputContainer}>
-            <label htmlFor="version-name" className={styles.nameLabel}>Version Name</label>
-            <input
-              id="version-name"
-              className={styles.nameInput}
-              value={versionName}
-              onChange={(e) => setVersionName(e.target.value)}
-              placeholder="Enter version name"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleSubmit();
-                }
-              }}
-              autoFocus
-            />
-          </div>
+        <div className={dialog.divider}></div>
+
+        <div className={dialog.field}>
+          <label htmlFor="version-name" className={dialog.nameLabel}>Version Name</label>
+          <input
+            id="version-name"
+            className={dialog.nameInput}
+            value={versionName}
+            onChange={(e) => setVersionName(e.target.value)}
+            placeholder="Enter version name"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                handleSubmit();
+              }
+            }}
+            autoFocus
+          />
         </div>
 
-        <div className={styles.footer}>
-          {error && <div className={styles.error}>{error}</div>}
+        <div className={dialog.footer}>
+          {error && <div className={dialog.error}>{error}</div>}
           <button
-            className={`${styles.button} ${styles.primary}`}
+            className={`${dialog.button} ${dialog.buttonAuto} ${dialog.primary}`}
             onClick={handleSubmit}
             disabled={submitting}
           >

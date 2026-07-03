@@ -14,6 +14,7 @@
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
+  font-family: 'Roboto', sans-serif;
 }
 
 .header {
@@ -26,9 +27,10 @@
 }
 
 .title {
+  font-family: 'Roboto', sans-serif;
   font-size: 1rem;
-  font-weight: 600;
-  color: #111827;
+  font-weight: 700;
+  color: #0f172a;
   letter-spacing: 0.5px;
   text-transform: uppercase;
   margin: 0;
@@ -71,12 +73,14 @@
 }
 
 .label {
-  font-size: 0.875rem;
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
   font-weight: 500;
-  color: #334155;
+  color: #000000;
 }
 
 .labelOptional {
+  font-family: 'Roboto', sans-serif;
   font-weight: 400;
   color: #64748b;
 }
@@ -85,6 +89,7 @@
 .textarea {
   width: 100%;
   padding: 0.5rem 0.75rem;
+  font-family: 'Roboto', sans-serif;
   font-size: 0.875rem;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
@@ -106,6 +111,7 @@
 }
 
 .hint {
+  font-family: 'Roboto', sans-serif;
   font-size: 0.75rem;
   color: #64748b;
   margin-top: 0.125rem;
@@ -145,8 +151,9 @@
   width: 9.94rem;
   height: 2rem;
   border-radius: 0.5rem;
+  font-family: 'Roboto', sans-serif;
   font-size: 1rem;
-  font-weight: 400;
+  font-weight: 500;
   align-self: flex-start;
   border: 1px solid var(--border-base, rgba(188, 188, 188, 1))
 }
@@ -167,11 +174,13 @@
   min-height: 36px !important;
   padding: 0 0.75rem !important;
   background-color: #ffffff !important;
+  font-family: 'Roboto', sans-serif !important;
   font-size: 0.875rem !important;
 }
 
-.dataTypeSelect :global(.ant-select-selection-item),
-.dataTypeSelect :global(.ant-select-selection-placeholder) {
+.popup :global(.ant-select-selector),
+.popup :global(.ant-input) {
+  font-family: 'Roboto', sans-serif !important;
   font-size: 0.875rem !important;
 }
 
@@ -240,6 +249,7 @@
   border: none;
   border-radius: 8px;
   padding: 6px 10px 6px 32px;
+  font-family: 'Roboto', sans-serif;
   font-size: 0.875rem;
   background: transparent;
   color: #0f172a;
@@ -265,7 +275,8 @@
 
 .cancelBtn {
   padding: 0.5rem 1rem;
-  font-size: 0.875rem;
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
   font-weight: 500;
   color: #0f172a;
   background: #ffffff;
@@ -282,7 +293,8 @@
 
 .addBtn {
   padding: 0.5rem 1rem;
-  font-size: 0.875rem;
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
   font-weight: 500;
   color: #ffffff;
   background: #0B99FF;

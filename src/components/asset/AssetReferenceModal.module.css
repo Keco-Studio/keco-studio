@@ -27,6 +27,7 @@
   position: relative;
   border: 1px solid rgba(11, 153, 255, 0.35);
   box-sizing: border-box;
+  font-family: 'Roboto', sans-serif;
 }
 
 .header {
@@ -40,9 +41,10 @@
 }
 
 .title {
+  font-family: 'Roboto', sans-serif;
   font-size: 1rem;
-  font-weight: 600;
-  color: #111827;
+  font-weight: 700;
+  color: #0f172a;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0;
@@ -73,6 +75,13 @@
   display: flex;
   flex-direction: column;
   gap: 1rem;
+  font-family: 'Roboto', sans-serif;
+}
+
+.content :global(.ant-input),
+.content :global(.ant-select-selector) {
+  font-family: 'Roboto', sans-serif !important;
+  font-size: 0.875rem !important;
 }
 
 .filterToolbar {
@@ -170,7 +179,8 @@
   width: 100%;
   border-radius: 1.25rem;
   height: 38px;
-  font-size: 1rem;
+  font-family: 'Roboto', sans-serif;
+  font-size: 0.875rem;
 }
 
 .librarySelectContainer {
@@ -270,6 +280,7 @@
 .assetListLabel {
   flex: 1;
   min-width: 0;
+  font-family: 'Roboto', sans-serif;
   font-size: 0.875rem;
   color: #111827;
   overflow: hidden;
@@ -460,9 +471,10 @@
 }
 
 .assetCardTitle {
+  font-family: 'Roboto', sans-serif;
   font-size: 1rem;
-  font-weight: 600;
-  color: #111827;
+  font-weight: 700;
+  color: #0f172a;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   margin: 0;
@@ -506,9 +518,10 @@
 }
 
 .assetCardDetailsLabel {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: #374151;
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
+  font-weight: 500;
+  color: #000000;
   margin-bottom: 1rem;
 }
 
@@ -550,12 +563,14 @@
 }
 
 .assetCardDetailLabel {
-  font-size: 0.75rem;
+  font-family: 'Roboto', sans-serif;
+  font-size: 1rem;
   font-weight: 500;
-  color: #6b7280;
+  color: #000000;
 }
 
 .assetCardDetailValue {
+  font-family: 'Roboto', sans-serif;
   font-size: 0.875rem;
   color: #111827;
   font-weight: 400;
