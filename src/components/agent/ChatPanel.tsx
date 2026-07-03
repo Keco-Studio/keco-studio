@@ -95,6 +95,30 @@ export function ChatPanel() {
     appendNote,
   } = useAgentChat(ctx);
 
+  // Close the panel whenever the navigation scope it was opened in changes
+  // (a different project, folder, or table/library). The scope is captured when
+  // the panel opens and compared against the live location on each navigation.
+  // We ignore unresolved states (no project id, e.g. the projects list or an
+  // in-flight route) so transient flickers never close a freshly opened panel.
+  const openScopeRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!open) {
+      openScopeRef.current = null;
+      return;
+    }
+    if (!currentProjectId) return;
+    const scopeKey = `${currentProjectId}|${currentFolderId ?? ''}|${currentLibraryId ?? ''}`;
+    if (openScopeRef.current === null) {
+      openScopeRef.current = scopeKey;
+      return;
+    }
+    if (openScopeRef.current !== scopeKey) {
+      setOpen(false);
+      setShowHistory(false);
+      setPendingSelectionContext(undefined);
+    }
+  }, [open, currentProjectId, currentFolderId, currentLibraryId]);
+
   // Locked-target label: an existing conversation shows its frozen scope; a new
   // one previews what the current navigation will bind to on first message.
   const lockLabel = useMemo(() => {
@@ -259,7 +283,6 @@ export function ChatPanel() {
                 startNewConversation();
               }
             }}
-            onClose={() => setShowHistory(false)}
           />
         )}
       </div>
