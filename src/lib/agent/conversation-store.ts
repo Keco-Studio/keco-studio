@@ -4,7 +4,12 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { ChatContentPart, ChatMessage, ConversationMeta } from './types';
+import type {
+  ChatContentPart,
+  ChatMessage,
+  ConversationMeta,
+  ConversationScope,
+} from './types';
 import { metaForSave, resolveConversationMeta } from './conversation-meta';
 import { getMessageText } from './content-parts';
 import { triggerConversationIndexing } from './embedding-index';
@@ -54,7 +59,14 @@ export interface ConversationRecord {
  */
 export async function getOrCreateConversation(
   supabase: SupabaseClient,
-  params: { conversationId?: string; userId: string; projectId: string; initialAutoExecute?: boolean }
+  params: {
+    conversationId?: string;
+    userId: string;
+    projectId: string;
+    initialAutoExecute?: boolean;
+    /** Scope snapshot for a newly created conversation (ignored for existing ones). */
+    scope?: ConversationScope;
+  }
 ): Promise<ConversationRecord> {
   if (params.conversationId) {
     const { data, error } = await supabase
@@ -68,10 +80,21 @@ export async function getOrCreateConversation(
     if (data.user_id !== params.userId) {
       throw new Error('Conversation does not belong to the current user.');
     }
+    // Project lock: an existing conversation is bound to its creation project.
+    // Loading it from another project (e.g. via History) is legitimate, so we
+    // silently keep the bound project rather than erroring — the caller derives
+    // its ToolContext from the conversation, not the request body.
+    if (params.projectId && data.project_id !== params.projectId) {
+      console.warn('agent.scope.project_mismatch', {
+        conversationId: params.conversationId,
+        boundProject: data.project_id,
+        requestProject: params.projectId,
+      });
+    }
     return normalizeConversation(data);
   }
 
-  const initialMeta = metaForSave(params.initialAutoExecute ?? true);
+  const initialMeta = metaForSave(params.initialAutoExecute ?? true, params.scope);
 
   const { data, error } = await supabase
     .from('agent_conversations')
@@ -251,7 +274,20 @@ export async function updateConversationMeta(
   meta: ConversationMeta
 ): Promise<ConversationMeta> {
   const resolved = resolveConversationMeta(meta);
-  const toSave = metaForSave(resolved.autoExecute !== false);
+
+  // Preserve the frozen scope binding: a mode toggle must never wipe it. Read
+  // the existing scope when the incoming meta doesn't carry one.
+  let scope = resolved.scope;
+  if (!scope) {
+    const { data } = await supabase
+      .from('agent_conversations')
+      .select('meta')
+      .eq('id', conversationId)
+      .single();
+    scope = resolveConversationMeta((data?.meta ?? {}) as ConversationMeta).scope;
+  }
+
+  const toSave = metaForSave(resolved.autoExecute !== false, scope);
   const { error } = await supabase
     .from('agent_conversations')
     .update({ meta: toSave, updated_at: new Date().toISOString() })
@@ -267,6 +303,8 @@ export interface ConversationListItem {
   projectId: string;
   projectName: string;
   meta: ConversationMeta;
+  /** Convenience mirror of meta.scope for the History list badge. */
+  scope?: ConversationScope;
   title: string | null;
   lastMessage?: string;
   createdAt: string;
@@ -309,11 +347,13 @@ function mapConversationListRow(row: Record<string, unknown>): ConversationListI
     ? (projects[0]?.name ?? 'Unknown project')
     : (projects?.name ?? 'Unknown project');
 
+  const meta = resolveConversationMeta((row.meta ?? {}) as ConversationMeta);
   return {
     id: row.id as string,
     projectId: row.project_id as string,
     projectName,
-    meta: resolveConversationMeta((row.meta ?? {}) as ConversationMeta),
+    meta,
+    scope: meta.scope,
     title: (row.title as string | null) ?? null,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,

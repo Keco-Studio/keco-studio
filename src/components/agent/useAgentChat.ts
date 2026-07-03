@@ -14,7 +14,8 @@ import { mapHistoryMessagesToChatItems } from './historyMessageMapper';
 import { deriveUserDisplay } from './userMessageDisplay';
 import { peekDesignHandoff } from '@/lib/design-upload-handoff';
 import type { StreamActivity } from './streamActivity';
-import type { ChatItem, SendContext } from './types';
+import type { ChatItem, SendContext, SendOptions } from './types';
+import type { ConversationScope } from '@/lib/agent/types';
 
 let idCounter = 0;
 const nextId = () => `item_${Date.now()}_${idCounter++}`;
@@ -51,6 +52,8 @@ export function useAgentChat(ctx: SendContext) {
   const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
   const [autoExecute, setAutoExecuteState] = useState(true);
+  // Scope the loaded conversation is frozen to (undefined = new/legacy).
+  const [activeScope, setActiveScope] = useState<ConversationScope | undefined>(undefined);
   const conversationIdRef = useRef<string | undefined>(undefined);
   const abortRef = useRef<AbortController | null>(null);
   const streamingAssistantIdRef = useRef<string | null>(null);
@@ -107,18 +110,20 @@ export function useAgentChat(ctx: SendContext) {
   }, [supabase]);
 
   const fetchConversationMeta = useCallback(
-    async (id: string): Promise<boolean> => {
+    async (id: string): Promise<{ autoExecute: boolean; scope?: ConversationScope }> => {
       try {
         const token = await getToken();
         const res = await fetch(`/api/agent-chat/conversations/${id}/meta`, {
           credentials: 'include',
           headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         });
-        if (!res.ok) return autoExecute;
-        const { meta } = (await res.json()) as { meta?: { autoExecute?: boolean } };
-        return meta?.autoExecute !== false;
+        if (!res.ok) return { autoExecute };
+        const { meta } = (await res.json()) as {
+          meta?: { autoExecute?: boolean; scope?: ConversationScope };
+        };
+        return { autoExecute: meta?.autoExecute !== false, scope: meta?.scope };
       } catch {
-        return autoExecute;
+        return { autoExecute };
       }
     },
     [getToken, autoExecute]
@@ -320,15 +325,39 @@ export function useAgentChat(ctx: SendContext) {
   );
 
   const send = useCallback(
-    async (message: string, opts?: { imageUrls?: string[] }) => {
+    async (message: string, opts?: SendOptions) => {
       if (isStreaming || !message.trim()) return;
-      const display = deriveUserDisplay(message, opts?.imageUrls);
+      const display = deriveUserDisplay(message, opts?.imageUrls, opts?.selectionContext);
       appendItem({ id: nextId(), role: 'user', text: display.text, attachments: display.attachments });
       setIsStreaming(true);
       beginStreamActivity('connecting');
       abortRef.current = new AbortController();
       try {
         const token = await getToken();
+        // A new conversation snapshots its scope from the current navigation, so
+        // it sends the full live context. An existing conversation is frozen to
+        // its bound scope (server-side), so we send only the message — the live
+        // navigation must not re-target it.
+        const isNew = !conversationIdRef.current;
+        const requestBody = isNew
+          ? {
+              projectId: ctx.projectId,
+              message,
+              imageUrls: opts?.imageUrls,
+              selectionContext: opts?.selectionContext,
+              autoExecute,
+              currentFolderId: ctx.currentFolderId,
+              currentFolderName: ctx.currentFolderName,
+              currentLibraryId: ctx.currentLibraryId,
+              currentLibraryName: ctx.currentLibraryName,
+              currentSectionName: ctx.currentSectionName ?? getActiveSectionName(ctx.currentLibraryId),
+            }
+          : {
+              conversationId: conversationIdRef.current,
+              message,
+              imageUrls: opts?.imageUrls,
+              selectionContext: opts?.selectionContext,
+            };
         const response = await fetch('/api/agent-chat', {
           method: 'POST',
           credentials: 'include',
@@ -336,18 +365,7 @@ export function useAgentChat(ctx: SendContext) {
             'Content-Type': 'application/json',
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({
-            conversationId: conversationIdRef.current,
-            projectId: ctx.projectId,
-            message,
-            imageUrls: opts?.imageUrls,
-            autoExecute: conversationIdRef.current ? undefined : autoExecute,
-            currentFolderId: ctx.currentFolderId,
-            currentFolderName: ctx.currentFolderName,
-            currentLibraryId: ctx.currentLibraryId,
-            currentLibraryName: ctx.currentLibraryName,
-            currentSectionName: ctx.currentSectionName ?? getActiveSectionName(ctx.currentLibraryId),
-          }),
+          body: JSON.stringify(requestBody),
           signal: abortRef.current.signal,
         });
         if (!response.ok) {
@@ -473,6 +491,7 @@ export function useAgentChat(ctx: SendContext) {
     conversationIdRef.current = undefined;
     setConversationId(undefined);
     setItems([]);
+    setActiveScope(undefined);
     setIsStreaming(false);
     setStreamStartedAt(null);
     streamingAssistantIdRef.current = null;
@@ -514,8 +533,9 @@ export function useAgentChat(ctx: SendContext) {
           messages: Array<{ id: string; role: string; content: Record<string, unknown> }>;
         };
         setItems(mapHistoryMessagesToChatItems(messages));
-        const resolvedAuto = await fetchConversationMeta(id);
-        setAutoExecuteState(resolvedAuto);
+        const resolvedMeta = await fetchConversationMeta(id);
+        setAutoExecuteState(resolvedMeta.autoExecute);
+        setActiveScope(resolvedMeta.scope);
         if (options?.persist !== false && ctx.userId && ctx.projectId) {
           setLastConversation(ctx.userId, ctx.projectId, id);
         }
@@ -582,6 +602,7 @@ export function useAgentChat(ctx: SendContext) {
     streamingAssistantId,
     conversationId,
     autoExecute,
+    activeScope,
     send,
     confirm,
     setAutoExecute,

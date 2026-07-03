@@ -4,12 +4,35 @@ import { useEffect, useState } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
 import styles from './ChatPanel.module.css';
 
+interface ConversationScopeView {
+  level: 'global' | 'project' | 'folder' | 'table';
+  folderName?: string;
+  libraryName?: string;
+}
+
 interface ConversationItem {
   id: string;
   projectId: string;
   projectName: string;
+  scope?: ConversationScopeView;
   title: string | null;
   updatedAt: string;
+}
+
+/** Short scope badge for the History list. Project level needs no badge — the
+ * project name already conveys it; global is flagged explicitly. */
+function scopeBadge(scope?: ConversationScopeView): string | null {
+  if (!scope) return null;
+  switch (scope.level) {
+    case 'table':
+      return scope.libraryName ? `📄 ${scope.libraryName}` : '📄 Table';
+    case 'folder':
+      return scope.folderName ? `📁 ${scope.folderName}` : '📁 Folder';
+    case 'global':
+      return '🌐 Global';
+    default:
+      return null;
+  }
 }
 
 interface Props {
@@ -79,7 +102,9 @@ export function ConversationList({ activeId, onSelect, onDelete, onClose }: Prop
             <div>
               <div>{c.title || 'Conversation'}</div>
               <div className={styles.convMeta}>
-                {c.projectName} · {new Date(c.updatedAt).toLocaleString()}
+                {c.projectName}
+                {scopeBadge(c.scope) ? ` · ${scopeBadge(c.scope)}` : ''} ·{' '}
+                {new Date(c.updatedAt).toLocaleString()}
               </div>
             </div>
             <button className={styles.convDelete} onClick={(e) => handleDelete(e, c.id)}>

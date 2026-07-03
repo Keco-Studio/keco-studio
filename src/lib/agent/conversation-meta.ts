@@ -2,15 +2,30 @@
  * Conversation meta resolution and confirmation gating helpers.
  */
 
-import type { AgentTool, ConversationMeta, ToolContext, ToolResult } from './types';
+import type {
+  AgentTool,
+  ConversationMeta,
+  ConversationScope,
+  ToolContext,
+  ToolResult,
+} from './types';
 
-/** Normalize raw DB meta to a resolved autoExecute flag (default true). */
+/**
+ * Normalize raw DB meta to a resolved autoExecute flag (default true) and pass
+ * through the bound scope verbatim (absent on legacy rows).
+ */
 export function resolveConversationMeta(
   raw: ConversationMeta | null | undefined
 ): ConversationMeta {
-  if (raw?.autoExecute === false) return { autoExecute: false };
-  if (raw?.autoExecute === true || raw?.skipConfirmation === true) return { autoExecute: true };
-  return { autoExecute: true };
+  const autoExecute =
+    raw?.autoExecute === false
+      ? false
+      : raw?.autoExecute === true || raw?.skipConfirmation === true
+        ? true
+        : true;
+  const resolved: ConversationMeta = { autoExecute };
+  if (raw?.scope) resolved.scope = raw.scope;
+  return resolved;
 }
 
 /** Whether the ReAct loop should pause for user confirmation before completing a write. */
@@ -46,7 +61,11 @@ export async function executePostPreviewTool(
   return { previewResult, importResult, finalResult: importResult };
 }
 
-/** Build meta for persisting after a mode change (writes autoExecute only). */
-export function metaForSave(autoExecute: boolean): ConversationMeta {
-  return { autoExecute };
+/**
+ * Build meta for persisting. Writes autoExecute always and the bound scope when
+ * provided (at conversation creation). A mode change omits scope to leave the
+ * existing binding untouched — callers must merge rather than overwrite meta.
+ */
+export function metaForSave(autoExecute: boolean, scope?: ConversationScope): ConversationMeta {
+  return scope ? { autoExecute, scope } : { autoExecute };
 }

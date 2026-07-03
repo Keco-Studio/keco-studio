@@ -52,4 +52,27 @@ describe('deriveUserDisplay', () => {
     const display = deriveUserDisplay('hi', []);
     expect(display.attachments).toBeUndefined();
   });
+
+  it('shows selected table context as a compact attachment', () => {
+    const display = deriveUserDisplay('请分析', undefined, {
+      source: 'library_table',
+      libraryId: 'lib-1',
+      libraryName: '角色表',
+      selectionLabel: '角色表 · 第 2-3 行 · 2 列',
+      mode: 'cells',
+      selectedCellCount: 4,
+      selectedRowCount: 2,
+      rows: [],
+    });
+
+    expect(display).toEqual({
+      text: '请分析',
+      attachments: [
+        {
+          kind: 'selection',
+          fileName: '角色表 · 第 2-3 行 · 2 列',
+        },
+      ],
+    });
+  });
 });

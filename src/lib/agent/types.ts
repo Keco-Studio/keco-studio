@@ -7,6 +7,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { AgentSelectionContext } from './selection-context';
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
 
@@ -61,6 +62,31 @@ export interface AgentTool {
   executeImport?: (toolResult: ToolResult, params: unknown, ctx: ToolContext) => Promise<ToolResult>;
 }
 
+/**
+ * Data-range level a conversation is bound to, snapshotted at creation time
+ * from the user's live navigation (coarse -> fine).
+ */
+export type ScopeLevel = 'global' | 'project' | 'folder' | 'table';
+
+/**
+ * The frozen data range a conversation operates on. Snapshotted once when the
+ * conversation is created and used as the authoritative source on every turn,
+ * so the agent never drifts with the user's live navigation.
+ *
+ * `*Name` fields are display snapshots taken at creation time and may go stale
+ * after a rename; the runtime resolves fresh names by id and treats these only
+ * as fallback / list-badge hints.
+ */
+export interface ConversationScope {
+  level: ScopeLevel;
+  projectId?: string;
+  folderId?: string;
+  folderName?: string;
+  libraryId?: string;
+  libraryName?: string;
+  sectionName?: string;
+}
+
 /** Per-conversation settings stored in agent_conversations.meta. */
 export interface ConversationMeta {
   /** Default true for new conversations. When true, all write tools skip confirmation. */
@@ -68,6 +94,9 @@ export interface ConversationMeta {
 
   /** @deprecated Read as autoExecute=true if set. Do not write on new saves. */
   skipConfirmation?: boolean;
+
+  /** Frozen data range bound at conversation creation. Absent on legacy rows. */
+  scope?: ConversationScope;
 }
 
 /** A plain-text segment of a multimodal message. */
@@ -159,6 +188,8 @@ export interface AgentTurnInput {
   userMessage: string;
   /** Public image URLs (Supabase storage) attached to this user turn, if any. */
   imageUrls?: string[];
+  /** Explicit selected table data attached to this user turn only. */
+  selectionContext?: AgentSelectionContext;
   toolContext: ToolContext;
   conversationMeta: ConversationMeta;
 }
