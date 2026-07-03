@@ -39,10 +39,9 @@ interface Props {
   activeId?: string;
   onSelect: (id: string) => void;
   onDelete?: (id: string) => void;
-  onClose: () => void;
 }
 
-export function ConversationList({ activeId, onSelect, onDelete, onClose }: Props) {
+export function ConversationList({ activeId, onSelect, onDelete }: Props) {
   const supabase = useSupabase();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -82,7 +81,7 @@ export function ConversationList({ activeId, onSelect, onDelete, onClose }: Prop
   };
 
   return (
-    <div className={styles.convList} onMouseLeave={onClose}>
+    <div className={styles.convList}>
       {loading ? (
         <div className={styles.convItem} style={{ color: '#9ca3af' }}>
           Loading…

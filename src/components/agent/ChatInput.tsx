@@ -12,7 +12,7 @@ import { validateMediaFile } from '@/lib/services/mediaFileUploadService';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
 import type { SendOptions } from './types';
-import { focusChatInput } from './chatInputFocus';
+import { focusChatInputWithRetry } from './chatInputFocus';
 import styles from './ChatPanel.module.css';
 
 interface Props {
@@ -77,7 +77,7 @@ export function ChatInput({
 
   useEffect(() => {
     if (!focusRequest) return;
-    focusChatInput(textareaRef.current);
+    return focusChatInputWithRetry(() => textareaRef.current);
   }, [focusRequest]);
 
   const updateValue = useCallback(
