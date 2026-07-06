@@ -40,8 +40,6 @@ import { useSidebarContextMenu } from "./hooks/useSidebarContextMenu";
 import { SidebarTreeView } from "./components/SidebarTreeView";
 import { SidebarProjectsList } from "./components/SidebarProjectsList";
 import { SidebarLibrariesSection } from "./components/SidebarLibrariesSection";
-import { SidebarSimulationSystemEntry } from "./components/SidebarSimulationSystemEntry";
-import { isSimulationEmbedConfigured } from "@/lib/simulationClientConfig";
 import { deleteAsset } from "@/lib/services/libraryAssetsService";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { ContextMenu } from "./ContextMenu";
@@ -1051,8 +1049,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       </div> */}
 
       <div className={styles.content}>
-        {/* Simulation app (separate repo); shown only when embed env is set */}
-        {isSimulationEmbedConfigured() ? <SidebarSimulationSystemEntry /> : null}
+        {/* Simulation: no sidebar nav; open /simulation-system directly or via bookmark */}
 
         <SidebarProjectsList
           projects={projects}

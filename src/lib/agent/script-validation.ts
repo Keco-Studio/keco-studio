@@ -29,9 +29,11 @@ export function validateScriptStructure(script: ValidatableScript): string[] {
   for (const line of script.lines) {
     if (line.label) labels.add(line.label.trim());
   }
-  // Branch labels must use letter O + digit, never 0 + digit.
+  // Branch labels must use letter O + digit, never 0 + digit (e.g. 01 vs O1).
+  // Pure numeric scene IDs (004, 003) are allowed.
   for (const line of script.lines) {
-    if (/^0\d/.test((line.label ?? '').trim())) {
+    const label = (line.label ?? '').trim();
+    if (/^0\d/.test(label) && !/^\d{3,}$/.test(label)) {
       errors.push(`Label "${line.label}" looks like it uses zero (0) instead of letter O.`);
     }
   }

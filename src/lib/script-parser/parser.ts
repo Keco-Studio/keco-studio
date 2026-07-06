@@ -95,7 +95,7 @@ function isSpecialLine(line: string): boolean {
   if (!stripped) return false;
 
   // 分隔符
-  if (/^[-*]{3,}$/.test(stripped)) return true;
+  if (/^[-*+]{3,}$/.test(stripped)) return true;
 
   // Label
   if (/^\[(?:Label|标签):\s*(.+?)\]$/.test(stripped)) return true;
@@ -116,7 +116,21 @@ function isSpecialLine(line: string): boolean {
 }
 
 /**
- * 预处理：合并引号跨行
+ * 判断一行是否应该终止跨行对话合并
+ */
+function isContinuationBreaker(line: string): boolean {
+  const stripped = line.trim();
+  if (/^（/.test(stripped)) return true;       // stage direction
+  if (/^【/.test(stripped)) return true;       // system message
+  if (/^[-*+]{3,}$/.test(stripped)) return true; // separator (-, *, +)
+  if (/^\[\w+\]\s*$/.test(stripped)) return true; // scene ID [004]
+  if (/^\[.+\]$/.test(stripped) && !/^\[\w+\]$/.test(stripped)) return true; // [env description]
+  if (/^["'""]/.test(stripped)) return true;   // quoted narration block
+  return false;
+}
+
+/**
+ * 预处理：合并引号跨行 + 无引号对话跨行
  */
 function preprocessLines(rawLines: string[]): string[] {
   const result: string[] = [];
@@ -127,6 +141,35 @@ function preprocessLines(rawLines: string[]): string[] {
     if (!line) {
       i++;
       continue;
+    }
+
+    // 合并跨行引号环境描写
+    if (/^["'""]/.test(line)) {
+      const quoteChar = line[0];
+      const closedOnSameLine =
+        line.length > 1 &&
+        line.endsWith(quoteChar) &&
+        line.indexOf(quoteChar, 1) === line.length - 1;
+
+      if (!closedOnSameLine) {
+        const collected = [line];
+        i++;
+        while (i < rawLines.length) {
+          const nl = rawLines[i].trim();
+          if (!nl) {
+            i++;
+            continue;
+          }
+          if (isSpecialLine(nl) || isContinuationBreaker(nl)) break;
+          const nlColonPos = findColon(nl);
+          if (nlColonPos > 0) break;
+          collected.push(nl);
+          i++;
+          if (nl.endsWith(quoteChar)) break;
+        }
+        result.push(collected.join(' '));
+        continue;
+      }
     }
 
     const colonPos = findColon(line);
@@ -183,6 +226,34 @@ function preprocessLines(rawLines: string[]): string[] {
       }
     }
 
+    // 无引号对话：尝试合并后续无冒号的 continuation 行
+    if (rest.length > 0) {
+      const speaker = line.slice(0, colonPos).trim();
+      const collected: string[] = [];
+      let j = i + 1;
+
+      while (j < rawLines.length) {
+        const nl = rawLines[j].trim();
+        if (!nl) { j++; continue; }
+
+        // 终止条件
+        if (isSpecialLine(nl)) break;
+        if (isContinuationBreaker(nl)) break;
+
+        const nlColonPos = findColon(nl);
+        if (nlColonPos > 0 && !isSpecialLine(nl)) break; // 新对话行
+
+        collected.push(nl);
+        j++;
+      }
+
+      if (collected.length > 0) {
+        result.push(`${speaker}：${rest} ${collected.join(' ')}`);
+        i = j;
+        continue;
+      }
+    }
+
     result.push(line);
     i++;
   }
@@ -215,6 +286,23 @@ export function parseText(text: string, roleMap: RoleMap = {}): Script {
     const node = classifyLine(line, roleMap);
     if (node._type !== 'empty') {
       rawNodes.push(node);
+    }
+  }
+
+  // 合并 scene_id 与前一行 narration → scene_label
+  // 例如: "South Figaro Cave" + "[003]" → scene_label(label="003", content="South Figaro Cave")
+  for (let i = 1; i < rawNodes.length; i++) {
+    if (rawNodes[i]._type === 'scene_id') {
+      const prev = rawNodes[i - 1];
+      if (prev._type === 'narration') {
+        rawNodes[i - 1] = {
+          _type: 'scene_label',
+          label: (rawNodes[i] as { id: string }).id,
+          content: prev.content,
+        };
+        rawNodes.splice(i, 1);
+        i--;
+      }
     }
   }
 

@@ -43,11 +43,41 @@
   white-space: nowrap;
 }
 
+/* Scene description text below the oval */
+.sceneDescription {
+  text-align: center;
+  font-size: 0.9375rem;
+  color: #6b7280;
+  margin-top: 0.5rem;
+  padding: 0 10%;
+}
+
 /* Dialog row */
 .dialogRow {
   display: flex;
   margin-bottom: 1.5rem;
   position: relative;
+}
+
+/* Type 2 旁白：灰色对话框，始终靠左 */
+.narrationRow {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 1.5rem;
+  padding-right: 25%;
+  padding-left: 0;
+}
+
+.narrationRow > div {
+  max-width: 75%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.narrationRow .dialogBubble {
+  margin-left: 2.5rem;
+  margin-right: 0;
 }
 
 .dialogRow.left {
@@ -128,6 +158,14 @@
   background: #9ca3af;
 }
 
+.avatar.green {
+  background: #22c55e;
+}
+
+.avatar.orange {
+  background: #f97316;
+}
+
 /* Speaker name */
 .speakerName {
   font-size: 0.9375rem;
@@ -157,6 +195,16 @@
 
 .dialogTag.gray {
   background: #9ca3af;
+  color: #ffffff;
+}
+
+.dialogTag.green {
+  background: #22c55e;
+  color: #ffffff;
+}
+
+.dialogTag.orange {
+  background: #f97316;
   color: #ffffff;
 }
 
@@ -197,6 +245,14 @@
 
 .dialogBubble.gray {
   background: #f5f5f5;
+}
+
+.dialogBubble.green {
+  background: #f0fdf4;
+}
+
+.dialogBubble.orange {
+  background: #fff7ed;
 }
 
 /* Type 4 / Name 4: plain text, no bubble, always left */
