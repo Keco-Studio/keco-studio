@@ -22,10 +22,21 @@ describe('projects_update_policy owner_id guard (issue #153)', () => {
     expect(migration).toContain('accepted_at IS NOT NULL');
   });
 
-  it('adds a WITH CHECK clause that forbids reassigning owner_id', () => {
-    expect(migration).toMatch(/WITH CHECK/i);
-    // The new row's owner_id must still equal the row's current owner_id,
-    // so an editor cannot set owner_id = auth.uid() to take over the project.
-    expect(migration).toContain('owner_id = (SELECT p.owner_id FROM public.projects p WHERE p.id = projects.id)');
+  it('enforces owner_id immutability with a trigger, not a self-referencing WITH CHECK', () => {
+    // A WITH CHECK that reads public.projects to compare owner_id re-enters the
+    // projects RLS policy and raises "infinite recursion detected in policy for
+    // relation projects". Ownership immutability must be enforced by a trigger
+    // comparing OLD.owner_id vs NEW.owner_id instead.
+    expect(migration).not.toContain('FROM public.projects p WHERE p.id = projects.id');
+    expect(migration).toMatch(/CREATE TRIGGER projects_prevent_owner_reassignment/);
+    expect(migration).toMatch(/BEFORE UPDATE ON public\.projects/);
+    expect(migration).toMatch(/NEW\.owner_id IS DISTINCT FROM OLD\.owner_id/);
+  });
+
+  it('does not re-query the projects table inside its own policy', () => {
+    // Guard against reintroducing the recursion: the only self-reference allowed
+    // is the CREATE POLICY / trigger DDL, never a SELECT ... FROM public.projects
+    // used as a policy predicate.
+    expect(migration).not.toMatch(/WITH CHECK[\s\S]*SELECT[\s\S]*FROM public\.projects/i);
   });
 });
