@@ -33,6 +33,17 @@ describe('canImportScriptDirectly', () => {
     expect(looksLikeStructuredScript(natural)).toBe(true);
     expect(canImportScriptDirectly(natural)).toBe(true);
   });
+
+  it('imports RPG scene format directly without LLM conversion', () => {
+    const rpg = `South Figaro [004]
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+[The group arrives in South Figaro, encountering a strange individual.]
+
+Locke: Right, ignore us...`;
+    expect(looksLikeStructuredScript(rpg)).toBe(true);
+    expect(canImportScriptDirectly(rpg)).toBe(true);
+  });
 });
 
 describe('resolveScriptTextForImport', () => {

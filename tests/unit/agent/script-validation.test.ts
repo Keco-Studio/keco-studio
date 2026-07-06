@@ -30,6 +30,11 @@ describe('validateScriptStructure', () => {
     expect(errors.some((e) => e.includes('zero'))).toBe(true);
   });
 
+  it('allows numeric scene IDs like 004', () => {
+    const errors = validateScriptStructure({ lines: [{ label: '004' }] });
+    expect(errors).toEqual([]);
+  });
+
   it('flags option jumps with no matching label', () => {
     const errors = validateScriptStructure({
       lines: [

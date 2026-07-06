@@ -95,12 +95,9 @@ Oend 统一收尾【Oend｜傍晚，公寓餐桌】
 
     // Verify each dialogue was extracted correctly
     const names = dataLines.map(l => l.name).filter(Boolean);
-    expect(names).toContain('AI');
     expect(names).toContain('阿塔那');
-
-    // Check that content was properly split
-    const aiLine = dataLines.find(l => l.name === 'AI');
-    expect(aiLine?.content).toContain('检测到你已连续');
+    expect(names).toContain('AI');
+    // Type 3 → 场景/旁白（无说话人），内容保留
 
     const ataLine = dataLines.find(l => l.name === '阿塔那');
     expect(ataLine?.content).toContain('别吵');

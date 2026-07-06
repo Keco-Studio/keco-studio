@@ -7,17 +7,22 @@ import AuthForm from '@/components/authform/AuthForm';
 import { SimulationOriginWarmup } from '@/components/simulation/SimulationOriginWarmup';
 import { ChatPanel } from '@/components/agent/ChatPanel';
 import { AgentImportBridge } from '@/components/agent/AgentImportBridge';
+import { isSimulationEmbedConfigured } from '@/lib/simulationClientConfig';
 import styles from './DashboardLayout.module.css';
 import { useEffect, useRef, useState } from 'react';
+import { usePathname } from 'next/navigation';
 
 type DashboardLayoutProps = {
   children: React.ReactNode;
 };
 
 export function DashboardLayout({ children }: DashboardLayoutProps) {
+  const pathname = usePathname();
   const { isAuthenticated, isLoading, userProfile, signOut } = useAuth();
   const prevAuthenticatedRef = useRef<boolean | null>(null);
   const [showAuthForm, setShowAuthForm] = useState(true);
+  const hideSidebarForSimulation =
+    isSimulationEmbedConfigured() && (pathname?.startsWith('/simulation-system') ?? false);
 
   useEffect(() => {
     if (isLoading) return;
@@ -57,9 +62,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <div className={styles.dashboard}>
       <SimulationOriginWarmup />
-      <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
+      {!hideSidebarForSimulation ? (
+        <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
+      ) : null}
       <div className={styles.main}>
-        <TopBar />
+        {!hideSidebarForSimulation ? <TopBar /> : null}
         <div className={styles.content}>
           {children}
         </div>

@@ -8,7 +8,7 @@
 export interface ScriptLine {
   // 核心字段
   label: string;           // A: 节点 ID / 跳转标签
-  type: number;            // B: 对话框类型 (0=未设置, 1蓝/2粉/3灰/4无框/5全屏)
+  type: number;            // B: 1=对话, 2=旁白/场景/舞台/系统
   name: string;            // C: 说话人
   content: string;         // D: 对话内容
   if: string;              // E: 触发条件
@@ -56,7 +56,7 @@ export type Node =
   | { _type: 'label'; label: string }
   | { _type: 'chapter'; label: string }
   | { _type: 'dialogue'; name: string; type: number; content: string }
-  | { _type: 'narration'; content: string; condition?: string }
+  | { _type: 'narration'; content: string; condition?: string; type?: number }
   | { _type: 'system'; type: number; content: string }
   | { _type: 'variable'; command: string }
   | { _type: 'condition'; condition: string }
@@ -71,7 +71,10 @@ export type Node =
   | { _type: 'struct_label'; label: string; content: string }
   | { _type: 'struct_option'; option_index: number; option_text: string; var_change: string; jump_target: string }
   | { _type: 'struct_branch'; label: string; content: string }
-  | { _type: 'struct_jump'; target: string };
+  | { _type: 'struct_jump'; target: string }
+  // Natural format scene labels
+  | { _type: 'scene_label'; label: string; content: string }
+  | { _type: 'scene_id'; id: string };
 
 // 带选项附加信息的节点
 export interface NodeWithOptions {

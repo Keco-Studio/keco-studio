@@ -7,7 +7,7 @@
 import type { Node, RoleMap } from './types';
 
 // 基础正则
-const SEPARATOR_RE = /^[-*]{3,}$/;
+const SEPARATOR_RE = /^[-*+]{3,}$/;
 const LABEL_RE = /^\[(?:Label|标签):\s*(.+?)\]$/;
 const OPTION_RE = /^【选项\s*(\d+)\s*[：:]\s*(.+?)】$/;
 const SYSTEM_RE = /^【(.+?)】(.*)$/; // 支持 【文字】后续内容 格式
@@ -37,6 +37,11 @@ const STAGE_KEYWORDS = [
   '清晨', '黄昏', '夜晚', '傍晚', '午后', '深夜',
   '场景', '镜头', '画面', '背景', '特效',
 ];
+
+// 场景标签: "Location Name [XXX]" or "[XXX] Location Name" or just "[XXX]"
+const SCENE_LABEL_RE = /^(.+?)\s*\[(\w+)\]\s*$/;
+const SCENE_LABEL_START_RE = /^\[(\w+)\]\s*(.+?)\s*$/; // [XXX] Location Name
+const SCENE_ID_RE = /^\[(\w+)\]\s*$/;
 
 // 变量标注
 const VAR_CN_RE = /^（([^）]*[线值分好感][^）]*[+\-\d][^）]*)）$/;
@@ -113,13 +118,13 @@ function classifyBracketContent(inner: string): Node {
   // 舞台指示
   for (const kw of STAGE_KEYWORDS) {
     if (inner.includes(kw)) {
-      return { _type: 'system', type: 5, content: inner };
+      return { _type: 'system', type: 2, content: inner };
     }
   }
 
   // 短文本且像指示
   if (inner.length < 20 && !inner.includes('，') && !inner.includes(',')) {
-    return { _type: 'system', type: 5, content: inner };
+    return { _type: 'system', type: 2, content: inner };
   }
 
   // 兜底：当旁白
@@ -283,7 +288,7 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     const title = sysMatch[1];
     const rest = sysMatch[2] ? sysMatch[2].trim() : '';
     const content = rest ? `${title}】${rest}` : title;
-    return { _type: 'system', type: 5, content };
+    return { _type: 'system', type: 2, content };
   }
 
   // 4.5 变量赋值 $var += 2 格式
@@ -298,9 +303,15 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
   // 5. 结构化对话
   const typedMatch = STRUCT_TYPED_RE.exec(stripped);
   if (typedMatch) {
-    const type = parseInt(typedMatch[1], 10);
-    const name = type === 3 ? '' : typedMatch[2];
-    return { _type: 'dialogue', name, type, content: typedMatch[3] };
+    const rawType = parseInt(typedMatch[1], 10);
+    const name = typedMatch[2];
+    const content = typedMatch[3];
+    // 输出 Type：1=人物对话，2=场景/旁白
+    // 结构化 Type1/Type2 均为人物；Type3+ 为场景/旁白
+    if (rawType === 1 || rawType === 2) {
+      return { _type: 'dialogue', name, type: 1, content };
+    }
+    return { _type: 'dialogue', name: '', type: 2, content };
   }
 
   // 6. 章节标题
@@ -337,15 +348,43 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
   if (colonPos > 0) {
     const speaker = stripped.slice(0, colonPos).trim();
     const content = stripQuotes(stripped.slice(colonPos + 1).trim());
-    const roleInfo = roleMap[speaker] || { id: speaker, type: 1 };
     return {
       _type: 'dialogue',
-      name: String(roleInfo.id || speaker),
-      type: roleInfo.type || 1,
+      name: speaker,
+      type: 1,
       content,
     };
   }
 
+  // 9.3 引号环境描写: "..." 或跨行合并后的引号块
+  if (/^["'""]/.test(stripped)) {
+    return { _type: 'narration', content: stripQuotes(stripped), type: 2 };
+  }
+
+  // 9.4 环境描写: [English bracket narration with spaces/punctuation]
+  const envDescMatch = /^\[(.+)\]$/.exec(stripped);
+  if (envDescMatch && !/^\w+$/.test(envDescMatch[1])) {
+    return { _type: 'narration', content: envDescMatch[1].trim(), type: 2 };
+  }
+
+  // 9.5 场景标签: "Location Name [XXX]" → label=编号, content=场景名
+  const sceneLabelMatch = SCENE_LABEL_RE.exec(stripped);
+  if (sceneLabelMatch) {
+    return { _type: 'scene_label', label: sceneLabelMatch[2], content: sceneLabelMatch[1].trim() };
+  }
+
+  // 9.5.1 场景标签（开头有编号）: "[XXX] Location Name" → label=编号, content=场景描述
+  const sceneLabelStartMatch = SCENE_LABEL_START_RE.exec(stripped);
+  if (sceneLabelStartMatch) {
+    return { _type: 'scene_label', label: sceneLabelStartMatch[1], content: sceneLabelStartMatch[2].trim() };
+  }
+
+  // 9.6 场景ID: "[XXX]" — 由 parser 层与前一行合并
+  const sceneIdMatch = SCENE_ID_RE.exec(stripped);
+  if (sceneIdMatch) {
+    return { _type: 'scene_id', id: sceneIdMatch[1] };
+  }
+
   // 10. 兜底：旁白
-  return { _type: 'narration', content: stripped };
+  return { _type: 'narration', content: stripped, type: 2 };
 }
