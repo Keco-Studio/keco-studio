@@ -365,12 +365,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [currentIds.projectId]);
 
-  // Smart cache refresh: If user is viewing a project that's not in the sidebar list
-  // (including empty list after first project creation), refresh projects.
+  // Smart cache refresh: If user is viewing a project that's not in the sidebar,
+  // it might mean they were just added as a collaborator. Refresh the projects list.
   useEffect(() => {
-    if (currentIds.projectId && !loadingProjects) {
+    if (currentIds.projectId && projects.length > 0 && !loadingProjects) {
       const currentProjectExists = projects.some(p => p.id === currentIds.projectId);
       if (!currentProjectExists) {
+
         // Clear globalRequestCache and refetch
         (async () => {
           try {
@@ -931,8 +932,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       globalRequestCache.invalidate(`project:${projectId}`);
     }
 
-    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-
     // Dispatch event to notify other components (ProjectsPage) to refresh their caches
     window.dispatchEvent(new CustomEvent('projectCreated'));
 
@@ -1067,7 +1066,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           onContextMenu={handleContextMenu}
         />
 
-        {currentIds.projectId && (
+        {currentIds.projectId &&
+          projects.length > 0 &&
+          projects.some((p) => p.id === currentIds.projectId) && (
             <SidebarLibrariesSection
               currentIds={currentIds}
               libraries={libraries}
@@ -1307,7 +1308,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               />
             </div>
 
-            <div className={styles.moveToProjectText}>Folder in "{currentProjectName}"</div>
+            <div className={styles.moveToProjectText}>Folder in &quot;{currentProjectName}&quot;</div>
 
             <label className={styles.moveToIndependentRow}>
               <span>Use as independent library</span>
@@ -1410,7 +1411,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       {isSidebarVisible && (
         <div
           role="separator"
-          aria-label="调整侧边栏宽度"
+          aria-label="Resize sidebar width"
           className={styles.resizeHandle}
           onMouseDown={handleResizeStart}
         />

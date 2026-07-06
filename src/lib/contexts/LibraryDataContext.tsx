@@ -1127,3 +1127,13 @@ export function useLibraryData() {
   return context;
 }
 
+/**
+ * Like {@link useLibraryData} but returns null instead of throwing when used
+ * outside a LibraryDataProvider. Lets components consume the context when
+ * present while safely falling back (e.g. in TopBar or tests) — without
+ * conditionally calling the hook, which violates the rules of hooks.
+ */
+export function useLibraryDataOptional(): LibraryDataContextValue | null {
+  return useContext(LibraryDataContext);
+}
+

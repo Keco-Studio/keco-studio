@@ -20,10 +20,10 @@ function mockTool(overrides: Partial<AgentTool>): AgentTool {
 }
 
 describe('resolveConversationMeta', () => {
-  it('defaults to autoExecute true when meta is empty', () => {
-    expect(resolveConversationMeta({})).toEqual({ autoExecute: true });
-    expect(resolveConversationMeta(null)).toEqual({ autoExecute: true });
-    expect(resolveConversationMeta(undefined)).toEqual({ autoExecute: true });
+  it('defaults to autoExecute false when meta is empty', () => {
+    expect(resolveConversationMeta({})).toEqual({ autoExecute: false });
+    expect(resolveConversationMeta(null)).toEqual({ autoExecute: false });
+    expect(resolveConversationMeta(undefined)).toEqual({ autoExecute: false });
   });
 
   it('preserves explicit autoExecute false', () => {
@@ -72,14 +72,17 @@ describe('needsConfirmation', () => {
     expect(needsConfirmation(read, { autoExecute: false })).toBe(false);
   });
 
-  it('skips confirmation for all write tools when autoExecute is true', () => {
-    const pre = mockTool({ confirmationMode: 'pre_execute' });
+  it('requires confirmation for post_preview and meta write tools even when autoExecute is true', () => {
     const post = mockTool({ confirmationMode: 'post_preview' });
-    const meta = mockTool({ confirmationMode: 'meta' });
+    const metaTool = mockTool({ confirmationMode: 'meta' });
     const auto = { autoExecute: true as const };
-    expect(needsConfirmation(pre, auto)).toBe(false);
-    expect(needsConfirmation(post, auto)).toBe(false);
-    expect(needsConfirmation(meta, auto)).toBe(false);
+    expect(needsConfirmation(post, auto)).toBe(true);
+    expect(needsConfirmation(metaTool, auto)).toBe(true);
+  });
+
+  it('skips confirmation for pre_execute write tools when autoExecute is true', () => {
+    const pre = mockTool({ confirmationMode: 'pre_execute' });
+    expect(needsConfirmation(pre, { autoExecute: true })).toBe(false);
   });
 
   it('confirms post_preview and meta in requireConfirmation mode', () => {

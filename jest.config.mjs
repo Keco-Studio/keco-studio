@@ -1,6 +1,12 @@
-import type { Config } from 'jest';
-
-const config: Config = {
+/**
+ * Jest configuration.
+ *
+ * Authored as .mjs (not .ts) so `jest` can load it on a clean checkout without
+ * requiring ts-node to compile the config file (see issue #162).
+ *
+ * @type {import('jest').Config}
+ */
+const config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   roots: ['<rootDir>/tests'],

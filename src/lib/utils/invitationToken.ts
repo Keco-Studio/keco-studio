@@ -29,16 +29,13 @@ function getSecret(): Uint8Array {
 }
 
 /**
- * Default token expiration (365 days / 1 year in seconds)
- * 
- * Set to 365 days for long-term invitations.
- * Can be changed to:
- * - 7 for 1 week
- * - 30 for 1 month  
- * - 365 for 1 year
- * - 3650 for 10 years (effectively permanent)
+ * Default token expiration (7 days in seconds).
+ *
+ * Invitation links are unauthenticated bearer tokens (e.g. /api/invitations/decline
+ * is gated only by this token), so they must be short-lived. Keep this small;
+ * do not raise it to multi-month/year values.
  */
-const DEFAULT_EXPIRATION_DAYS = 365;
+const DEFAULT_EXPIRATION_DAYS = 7;
 const SECONDS_PER_DAY = 24 * 60 * 60;
 
 /**

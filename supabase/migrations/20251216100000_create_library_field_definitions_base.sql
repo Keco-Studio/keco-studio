@@ -38,35 +38,73 @@ do $$
 begin
   if not exists (
     select 1 from pg_policies
-    where policyname = 'lfd_select_auth' and tablename = 'library_field_definitions'
+    where policyname = 'library_field_definitions_select_policy' and tablename = 'library_field_definitions'
   ) then
-    create policy lfd_select_auth on public.library_field_definitions
-      for select to authenticated using (true);
+    create policy "library_field_definitions_select_policy"
+      on public.library_field_definitions for select
+      using (
+        library_id in (
+          select l.id
+          from public.libraries l
+          join public.projects p on p.id = l.project_id
+          where p.owner_id = auth.uid()
+        )
+      );
   end if;
 
   if not exists (
     select 1 from pg_policies
-    where policyname = 'lfd_insert_auth' and tablename = 'library_field_definitions'
+    where policyname = 'library_field_definitions_insert_policy' and tablename = 'library_field_definitions'
   ) then
-    create policy lfd_insert_auth on public.library_field_definitions
-      for insert to authenticated with check (true);
+    create policy "library_field_definitions_insert_policy"
+      on public.library_field_definitions for insert
+      with check (
+        library_id in (
+          select l.id
+          from public.libraries l
+          join public.projects p on p.id = l.project_id
+          where p.owner_id = auth.uid()
+        )
+      );
   end if;
 
   if not exists (
     select 1 from pg_policies
-    where policyname = 'lfd_update_auth' and tablename = 'library_field_definitions'
+    where policyname = 'library_field_definitions_update_policy' and tablename = 'library_field_definitions'
   ) then
-    create policy lfd_update_auth on public.library_field_definitions
-      for update to authenticated using (true) with check (true);
+    create policy "library_field_definitions_update_policy"
+      on public.library_field_definitions for update
+      using (
+        library_id in (
+          select l.id
+          from public.libraries l
+          join public.projects p on p.id = l.project_id
+          where p.owner_id = auth.uid()
+        )
+      )
+      with check (
+        library_id in (
+          select l.id
+          from public.libraries l
+          join public.projects p on p.id = l.project_id
+          where p.owner_id = auth.uid()
+        )
+      );
   end if;
 
   if not exists (
     select 1 from pg_policies
-    where policyname = 'lfd_delete_auth' and tablename = 'library_field_definitions'
+    where policyname = 'library_field_definitions_delete_policy' and tablename = 'library_field_definitions'
   ) then
-    create policy lfd_delete_auth on public.library_field_definitions
-      for delete to authenticated using (true);
+    create policy "library_field_definitions_delete_policy"
+      on public.library_field_definitions for delete
+      using (
+        library_id in (
+          select l.id
+          from public.libraries l
+          join public.projects p on p.id = l.project_id
+          where p.owner_id = auth.uid()
+        )
+      );
   end if;
 end$$;
-
-

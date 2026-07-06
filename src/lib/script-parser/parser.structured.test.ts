@@ -2,7 +2,7 @@
  * Script Parser - Structured Format Tests
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@jest/globals';
 import { parseText } from './parser';
 
 describe('Structured Format Parser', () => {

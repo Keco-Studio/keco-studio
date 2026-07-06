@@ -18,7 +18,8 @@ export function createSupabaseServerClient(request: Request): SupabaseClient {
   // Extract the authorization header from the request
   const authHeader = request.headers.get('authorization');
   
-  console.log('[createSupabaseServerClient] Auth header:', authHeader ? `exists (${authHeader.substring(0, 30)}...)` : 'MISSING');
+  // Do not log token material: report only presence, never any part of the JWT.
+  console.log('[createSupabaseServerClient] Auth header:', authHeader ? 'present' : 'MISSING');
   
   // Create a client with the auth token if present
   const supabase = createClient(supabaseUrl, supabaseAnonKey, {

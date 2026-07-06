@@ -76,6 +76,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // 5b. Verify the inviter is authorized to grant the requested role.
+    // Authorization matrix (mirrors collaborators_insert_policy RLS):
+    //   - owner / admin -> may grant any role
+    //   - editor        -> may grant only 'editor' or 'viewer'
+    //   - viewer        -> may not invite at all
+    const { data: ownedProject } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('owner_id', user.id)
+      .maybeSingle();
+
+    let inviterRole: CollaboratorRole | 'owner' | null = ownedProject ? 'owner' : null;
+
+    if (!inviterRole) {
+      const { data: membership } = await supabase
+        .from('project_collaborators')
+        .select('role')
+        .eq('project_id', projectId)
+        .eq('user_id', user.id)
+        .not('accepted_at', 'is', null)
+        .maybeSingle();
+      inviterRole = (membership?.role as CollaboratorRole | undefined) ?? null;
+    }
+
+    const canGrant =
+      inviterRole === 'owner' ||
+      inviterRole === 'admin' ||
+      (inviterRole === 'editor' && (role === 'editor' || role === 'viewer'));
+
+    if (!canGrant) {
+      return NextResponse.json(
+        { success: false, error: 'You are not allowed to grant this role' },
+        { status: 403 }
+      );
+    }
+
     // 6. Get user profile and project info for email
     const { data: profile } = await supabase
       .from('profiles')

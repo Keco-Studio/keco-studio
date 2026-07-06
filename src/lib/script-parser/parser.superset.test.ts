@@ -2,7 +2,7 @@
  * Comprehensive Test: Verify TypeScript parser is a superset of galgame parser
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@jest/globals';
 import { parseText } from './parser';
 
 describe('Parser Superset Verification', () => {
