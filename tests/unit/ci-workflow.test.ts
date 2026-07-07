@@ -4,6 +4,10 @@ import path from 'node:path';
 
 const repoRoot = process.cwd();
 const workflow = readFileSync(path.join(repoRoot, '.github/workflows/ci.yml'), 'utf8');
+const deployWorkflow = readFileSync(
+  path.join(repoRoot, '.github/workflows/deploy-vercel.yml'),
+  'utf8'
+);
 const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as {
   scripts: Record<string, string>;
 };
@@ -29,5 +33,12 @@ describe('CI workflow gates', () => {
 
   it('uses the ESLint CLI instead of the removed Next lint command', () => {
     expect(pkg.scripts.lint).toBe('eslint .');
+  });
+
+  it('pins Supabase CLI versions instead of resolving latest during CI', () => {
+    expect(workflow).toContain('version: 2.90.0');
+    expect(deployWorkflow).toContain('version: 2.90.0');
+    expect(workflow).not.toContain('version: latest');
+    expect(deployWorkflow).not.toContain('version: latest');
   });
 });
