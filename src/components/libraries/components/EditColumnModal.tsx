@@ -488,6 +488,7 @@ export function EditColumnModal({
       await queryClient.invalidateQueries({
         queryKey: queryKeys.libraryAssets(libraryId!),
       });
+      window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
       showSuccessToast('Column updated');
       onClose();
     } catch (e: any) {
@@ -1288,4 +1289,3 @@ export function EditColumnModal({
     </>
   );
 }
-

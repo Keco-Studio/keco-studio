@@ -34,6 +34,8 @@ import {
 } from '@/lib/services/referenceSyncService';
 import { computeFormulaValuesForRow } from '@/lib/utils/formula';
 import { compareAssetsForUiRow } from '@/lib/utils/assetEmptiness';
+import { createFormulaFieldMetaCache } from '@/lib/library/formulaFieldMetaCache';
+import { touchLibraryAssetEditUpdatedAt } from '@/lib/library/updatedAt';
 
 interface LibraryDataContextValue {
   // Data access
@@ -143,21 +145,6 @@ async function touchLibraryUpdatedAt(
       error
     );
   }
-}
-
-async function touchAssetUpdatedAt(
-  supabase: ReturnType<typeof useSupabase>,
-  assetId: string
-): Promise<string | null> {
-  const { data, error } = await supabase
-    .from('library_assets')
-    .update({ updated_at: new Date().toISOString() })
-    .eq('id', assetId)
-    .select('updated_at')
-    .single();
-
-  if (error) throw error;
-  return (data as any)?.updated_at ?? null;
 }
 
 export function LibraryDataProvider({ children, libraryId, projectId }: LibraryDataProviderProps) {
@@ -441,15 +428,43 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   const cellUpdateQueueRef = useRef<CellUpdateEvent[]>([]);
   const cellUpdateFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const getFormulaFieldMeta = useCallback(async (): Promise<FormulaFieldMetaRow[]> => {
-    const { data, error } = await supabase
-      .from('library_field_definitions')
-      .select('id, label, data_type, formula_expression')
-      .eq('library_id', libraryId);
+  const formulaFieldMetaCache = useMemo(
+    () =>
+      createFormulaFieldMetaCache<FormulaFieldMetaRow>(async (targetLibraryId) => {
+        const { data, error } = await supabase
+          .from('library_field_definitions')
+          .select('id, label, data_type, formula_expression')
+          .eq('library_id', targetLibraryId);
 
-    if (error) throw error;
-    return (data ?? []) as FormulaFieldMetaRow[];
-  }, [supabase, libraryId]);
+        if (error) throw error;
+        return (data ?? []) as FormulaFieldMetaRow[];
+      }),
+    [supabase]
+  );
+
+  useEffect(() => {
+    formulaFieldMetaCache.clear();
+  }, [formulaFieldMetaCache, libraryId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleSchemaUpdated = (event: Event) => {
+      const customEvent = event as CustomEvent<{ libraryId?: string }>;
+      const targetLibraryId = customEvent.detail?.libraryId;
+      if (targetLibraryId && targetLibraryId !== libraryId) return;
+      formulaFieldMetaCache.invalidate(libraryId);
+    };
+
+    window.addEventListener('schemaUpdated', handleSchemaUpdated as EventListener);
+    return () => {
+      window.removeEventListener('schemaUpdated', handleSchemaUpdated as EventListener);
+    };
+  }, [formulaFieldMetaCache, libraryId]);
+
+  const getFormulaFieldMeta = useCallback(async (): Promise<FormulaFieldMetaRow[]> => {
+    return formulaFieldMetaCache.get(libraryId);
+  }, [formulaFieldMetaCache, libraryId]);
 
   const flushCellUpdateQueue = useCallback(() => {
     const events = cellUpdateQueueRef.current;
@@ -783,7 +798,10 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     });
 
     try {
-      const serverUpdatedAt = await touchAssetUpdatedAt(supabase, assetId);
+      const serverUpdatedAt = await touchLibraryAssetEditUpdatedAt(supabase, {
+        assetId,
+        libraryId,
+      });
 
       const upsertRows = Object.entries(valuesToPersist).map(([fieldKey, fieldValue]) => ({
         asset_id: assetId,
@@ -799,16 +817,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
       if (error) throw error;
 
-      // 更新库内单元格成功后，刷新 library / folder / project 的 updated_at，供 TopBar 搜索排序使用
-      await touchLibraryUpdatedAt(supabase, libraryId, projectId);
-
       await syncReferencesAfterSourceChange(assetId, fieldId, valueForYjs);
       for (const [formulaFieldId, formulaValue] of changedFormulaEntries) {
         await syncReferencesAfterSourceChange(assetId, formulaFieldId, formulaValue);
       }
 
       if (!options?.skipBroadcast && realtimeConfig) {
-        await new Promise(resolve => setTimeout(resolve, 100));
         await broadcastCellUpdate(assetId, fieldId, valueForYjs, oldValue, serverUpdatedAt);
         for (const [formulaFieldId, formulaValue] of changedFormulaEntries) {
           await broadcastCellUpdate(assetId, formulaFieldId, formulaValue, oldFormulaValues[formulaFieldId], serverUpdatedAt);
@@ -845,7 +859,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     realtimeConfig,
     syncReferencesAfterSourceChange,
     libraryId,
-    projectId,
   ]);
 
   const updateAssetName = useCallback(async (

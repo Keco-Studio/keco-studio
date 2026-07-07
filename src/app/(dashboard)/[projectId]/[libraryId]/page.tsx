@@ -224,6 +224,7 @@ export default function LibraryPage() {
 
           // Update the table with the latest schema (including the ID field)
           await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+          window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
 
           // Business requirement:
           // When a brand new library is created (no schema & no assets),
@@ -438,6 +439,7 @@ export default function LibraryPage() {
     async (sectionId: string, newName: string) => {
       await updateSectionName(supabase, sectionId, newName);
       queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+      window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
     },
     [supabase, libraryId, queryClient]
   );
@@ -447,6 +449,7 @@ export default function LibraryPage() {
 
     // 刷新 schema，确保新建的 ID 字段出现在表头
     await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+    window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
 
     try {
       // 若当前库还没有任何资产，则与初始表逻辑保持一致：创建 00001 / 00002 两条记录
@@ -498,6 +501,7 @@ export default function LibraryPage() {
             : undefined,
       });
       queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
+      window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
       showSuccessToast('Column added');
     },
     [supabase, libraryId, queryClient]
@@ -1048,4 +1052,3 @@ export default function LibraryPage() {
     </div>
   );
 }
-

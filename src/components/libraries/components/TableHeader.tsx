@@ -652,6 +652,7 @@ export function TableHeader({
                       await deleteLibraryField(supabase, libraryId, deleteColumnConfirm.propertyId);
                       await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
                       await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+                      window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
                       showSuccessToast('Column deleted');
                     } catch (e: any) {
                       showErrorToast(e?.message || 'Failed to delete column');
@@ -720,4 +721,3 @@ export function TableHeader({
     </>
   );
 }
-
