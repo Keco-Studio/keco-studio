@@ -1,28 +1,18 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { sidebarAssetsKey } from '@/lib/queryInvalidation';
 
 export type SidebarAssetRow = { id: string; name: string; library_id: string };
 
-/**
- * Fetches and caches asset list per library for the Sidebar (tree expand / asset list view).
- */
 export function useSidebarAssets(currentLibraryId: string | null) {
   const supabase = useSupabase();
-  const [assets, setAssets] = useState<Record<string, SidebarAssetRow[]>>({});
-  const fetchingRef = useRef<Set<string>>(new Set());
+  const queryClient = useQueryClient();
 
-  const fetchAssets = useCallback(async (libraryId: string | null | undefined) => {
-    if (!libraryId) return;
-    if (fetchingRef.current.has(libraryId)) return;
-
-    fetchingRef.current.add(libraryId);
-    try {
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const cacheKey = `assets:list:${libraryId}`;
-
-      const data = await globalRequestCache.fetch(cacheKey, async () => {
+  const fetchSidebarAssets = useCallback(
+    async (libraryId: string) => {
         const { data: rows, error } = await supabase
           .from('library_assets')
           .select('id,name,library_id')
@@ -30,42 +20,33 @@ export function useSidebarAssets(currentLibraryId: string | null) {
           .order('created_at', { ascending: true });
         if (error) throw error;
         return (rows as SidebarAssetRow[]) || [];
+    },
+    [supabase]
+  );
+
+  const { data: currentAssets = [] } = useQuery({
+    queryKey: currentLibraryId
+      ? sidebarAssetsKey(currentLibraryId)
+      : ['sidebar-assets', 'none'],
+    queryFn: () => fetchSidebarAssets(currentLibraryId!),
+    enabled: !!currentLibraryId,
+  });
+
+  const fetchAssets = useCallback(
+    async (libraryId: string | null | undefined) => {
+      if (!libraryId) return;
+      await queryClient.ensureQueryData({
+        queryKey: sidebarAssetsKey(libraryId),
+        queryFn: () => fetchSidebarAssets(libraryId),
       });
+    },
+    [fetchSidebarAssets, queryClient]
+  );
 
-      setAssets((prev) => ({ ...prev, [libraryId]: data }));
-    } catch (err) {
-      console.error('Failed to load assets', err);
-    } finally {
-      fetchingRef.current.delete(libraryId);
-    }
-  }, [supabase]);
-
-  useEffect(() => {
-    if (currentLibraryId) {
-      fetchAssets(currentLibraryId);
-    }
-  }, [currentLibraryId, fetchAssets]);
-
-  useEffect(() => {
-    const handleAssetChange = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ libraryId: string }>;
-      if (customEvent.detail?.libraryId) {
-        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-        globalRequestCache.invalidate(`assets:list:${customEvent.detail.libraryId}`);
-        fetchAssets(customEvent.detail.libraryId);
-      }
-    };
-
-    window.addEventListener('assetCreated', handleAssetChange);
-    window.addEventListener('assetUpdated', handleAssetChange);
-    window.addEventListener('assetDeleted', handleAssetChange);
-
-    return () => {
-      window.removeEventListener('assetCreated', handleAssetChange);
-      window.removeEventListener('assetUpdated', handleAssetChange);
-      window.removeEventListener('assetDeleted', handleAssetChange);
-    };
-  }, [fetchAssets]);
+  const assets = useMemo(
+    () => (currentLibraryId ? { [currentLibraryId]: currentAssets } : {}),
+    [currentAssets, currentLibraryId]
+  );
 
   return { assets, fetchAssets };
 }

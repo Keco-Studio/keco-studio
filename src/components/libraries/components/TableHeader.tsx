@@ -9,7 +9,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AssetRow, SectionConfig, PropertyConfig } from '@/lib/types/libraryAssets';
 import { deleteLibraryField, updateLibraryField } from '@/lib/services/libraryAssetsService';
-import { queryKeys } from '@/lib/utils/queryKeys';
+import { invalidateLibrarySchemaData } from '@/lib/queryInvalidation';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { getFieldTypeIcon, FIELD_TYPE_OPTIONS } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
 import { EditColumnModal } from './EditColumnModal';
@@ -650,9 +650,10 @@ export function TableHeader({
                     setDeleteColumnConfirm((prev) => ({ ...prev, loading: true }));
                     try {
                       await deleteLibraryField(supabase, libraryId, deleteColumnConfirm.propertyId);
-                      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-                      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-                      window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
+                      await invalidateLibrarySchemaData(queryClient, {
+                        libraryId,
+                        refetchActiveSchema: true,
+                      });
                       showSuccessToast('Column deleted');
                     } catch (e: any) {
                       showErrorToast(e?.message || 'Failed to delete column');

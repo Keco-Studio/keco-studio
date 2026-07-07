@@ -37,6 +37,11 @@ import { VersionControlSidebar } from '@/components/version-control/VersionContr
 import { getVersionsByLibrary } from '@/lib/services/versionService';
 import type { LibraryVersion } from '@/lib/types/version';
 import { YjsProvider } from '@/lib/contexts/YjsContext';
+import {
+  invalidateLibraryAssetsData,
+  invalidateLibraryData,
+  invalidateLibrarySchemaData,
+} from '@/lib/queryInvalidation';
 import styles from './page.module.css';
 import addColumIcon from "@/assets/images/addColumIcon.svg";
 
@@ -153,7 +158,13 @@ export default function LibraryPage() {
                 libraryError ? (libraryError as any)?.message || 'Library not found' : null;
 
   // Get presence and asset operations from LibraryDataContext (single source of truth)
-  const { presenceUsers, createAsset: contextCreateAsset } = useLibraryData();
+  const {
+    presenceUsers,
+    createAsset: contextCreateAsset,
+    refreshAssetsFromServer,
+    applySnapshot,
+    invalidateFormulaFieldMeta,
+  } = useLibraryData();
 
   // Broadcast presence to TopBar so it can render LibraryHeader in the global top row
   useEffect(() => {
@@ -223,8 +234,8 @@ export default function LibraryPage() {
           const fieldId = newField.id as string;
 
           // Update the table with the latest schema (including the ID field)
-          await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-          window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
+          await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
+          invalidateFormulaFieldMeta();
 
           // Business requirement:
           // When a brand new library is created (no schema & no assets),
@@ -235,8 +246,7 @@ export default function LibraryPage() {
           await contextCreateAsset('', { [fieldId]: '' }, { createdAt: new Date(now + 1) });
           await contextCreateAsset('', { [fieldId]: '' }, { createdAt: new Date(now + 2) });
 
-          // Notify the sidebar to refresh etc.
-          window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
+          await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
         } else {
           // 3) already has schema but no assets: don't create 3 empty rows, avoid extra empty rows in the table
         }
@@ -255,6 +265,7 @@ export default function LibraryPage() {
     librarySchema,
     schemaLoading,
     queryClient,
+    invalidateFormulaFieldMeta,
     selectedVersionId,
     supabase,
     userRole,
@@ -336,120 +347,21 @@ export default function LibraryPage() {
     fetchUserRole();
   }, [projectId, userProfile?.id, supabase]);
 
-  // Optimized: Listen for library updates and use targeted cache invalidation
-  useEffect(() => {
-    const handleLibraryUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ libraryId: string }>;
-      // Only invalidate if the event is for this library
-      if (customEvent.detail?.libraryId === libraryId) {
-        console.log('[LibraryPage] Library updated, refreshing data...');
-        
-        // CRITICAL: Must invalidate globalRequestCache first!
-        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-        globalRequestCache.invalidate(`library:${libraryId}`);
-        globalRequestCache.invalidate(`library:info:${libraryId}`);
-        console.log('[LibraryPage] ✅ globalRequestCache invalidated');
-        
-        // Targeted cache invalidation and force refetch
-        await queryClient.invalidateQueries({ queryKey: queryKeys.library(libraryId) });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-        
-        // Force refetch to get fresh data
-        await queryClient.refetchQueries({ 
-          queryKey: queryKeys.library(libraryId),
-          type: 'active',
-        });
-        console.log('[LibraryPage] ✅ Library data refreshed');
-      }
-    };
-
-    const handleLibraryDeleted = (event: Event) => {
-      const customEvent = event as CustomEvent<{ libraryId: string; projectId: string }>;
-      // If the deleted library is the one currently being viewed, navigate away
-      if (customEvent.detail?.libraryId === libraryId) {
-        console.log('[LibraryPage] ⚠️ Current library was deleted, navigating to project page...');
-        showInfoToast('This library has been deleted');
-        // SPA navigation keeps the authenticated session and in-memory caches alive.
-        // A full-page reload (window.location) remounts AuthProvider and briefly
-        // renders the login form before the session is re-derived from storage.
-        if (projectId) {
-          router.push(`/${projectId}`);
-        } else {
-          router.push('/projects');
-        }
-      }
-    };
-
-    window.addEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
-    window.addEventListener('libraryDeleted', handleLibraryDeleted as EventListener);
-
-    return () => {
-      window.removeEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
-      window.removeEventListener('libraryDeleted', handleLibraryDeleted as EventListener);
-    };
-  }, [libraryId, projectId, queryClient, router]);
-
-  // Optimized: Listen for asset changes and use targeted cache invalidation
-  useEffect(() => {
-    const handleAssetChange = (event: Event) => {
-      // Don't refresh if viewing a historical version
-      if (selectedVersionId && selectedVersionId !== '__current__') {
-        return;
-      }
-      
-      const customEvent = event as CustomEvent<{ libraryId: string; assetId?: string }>;
-      // Only invalidate if the event is for this library
-      if (customEvent.detail?.libraryId === libraryId) {
-        // Targeted cache invalidation - React Query will handle the refetch
-        queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-      }
-    };
-
-    const handleSchemaChange = (event: Event) => {
-      // Don't refresh if viewing a historical version
-      if (selectedVersionId && selectedVersionId !== '__current__') {
-        return;
-      }
-      
-      const customEvent = event as CustomEvent<{ libraryId: string }>;
-      // Only invalidate if the event is for this library
-      if (customEvent.detail?.libraryId === libraryId) {
-        // Schema changed - need to refresh schema, assets, and summary
-        queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-        queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-      }
-    };
-
-    window.addEventListener('assetCreated', handleAssetChange as EventListener);
-    window.addEventListener('assetUpdated', handleAssetChange as EventListener);
-    window.addEventListener('assetDeleted', handleAssetChange as EventListener);
-    window.addEventListener('schemaUpdated', handleSchemaChange as EventListener);
-
-    return () => {
-      window.removeEventListener('assetCreated', handleAssetChange as EventListener);
-      window.removeEventListener('assetUpdated', handleAssetChange as EventListener);
-      window.removeEventListener('assetDeleted', handleAssetChange as EventListener);
-      window.removeEventListener('schemaUpdated', handleSchemaChange as EventListener);
-    };
-  }, [libraryId, selectedVersionId, queryClient]);
-
   const handleUpdateSection = useCallback(
     async (sectionId: string, newName: string) => {
       await updateSectionName(supabase, sectionId, newName);
-      queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-      window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
+      await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
+      invalidateFormulaFieldMeta();
     },
-    [supabase, libraryId, queryClient]
+    [supabase, libraryId, queryClient, invalidateFormulaFieldMeta]
   );
 
   const handleAddSection = useCallback(async (): Promise<string> => {
     const { sectionId, sectionName, fieldId } = await addLibrarySection(supabase, libraryId);
 
-    // 刷新 schema，确保新建的 ID 字段出现在表头
-    await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-    window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
+    // Refresh schema so the new ID field appears in the table header.
+    await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
+    invalidateFormulaFieldMeta();
 
     try {
       // 若当前库还没有任何资产，则与初始表逻辑保持一致：创建 00001 / 00002 两条记录
@@ -463,10 +375,7 @@ export default function LibraryPage() {
         await contextCreateAsset('00001', { [fieldId]: '00001' }, { createdAt: new Date(now) });
         await contextCreateAsset('00002', { [fieldId]: '00002' }, { createdAt: new Date(now + 1) });
 
-        // 通知其他视图刷新
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
-        }
+        await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
       }
     } catch (e) {
       console.error('Failed to create default assets for new section', e);
@@ -474,7 +383,7 @@ export default function LibraryPage() {
 
     showSuccessToast(`Section "${sectionName}" added`);
     return sectionId;
-  }, [addLibrarySection, contextCreateAsset, libraryId, queryClient, supabase]);
+  }, [addLibrarySection, contextCreateAsset, libraryId, queryClient, supabase, invalidateFormulaFieldMeta]);
 
   const handleAddProperty = useCallback(
     async (
@@ -500,11 +409,11 @@ export default function LibraryPage() {
             ? payload.formulaExpression
             : undefined,
       });
-      queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-      window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
+      await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
+      invalidateFormulaFieldMeta();
       showSuccessToast('Column added');
     },
-    [supabase, libraryId, queryClient]
+    [supabase, libraryId, queryClient, invalidateFormulaFieldMeta]
   );
 
   // Load versions when version control is opened
@@ -685,8 +594,7 @@ export default function LibraryPage() {
       setSaveSuccess('Asset created');
       setAssetName('');
       setValues({});
-      // Notify Sidebar to refresh assets for this library
-      window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
+      await invalidateLibraryAssetsData(queryClient, { libraryId, assetId, refetchActiveAssets: true });
     } catch (e: any) {
       setSaveError(e?.message || 'Failed to create asset');
     } finally {
@@ -696,34 +604,32 @@ export default function LibraryPage() {
 
   // Callback for saving new asset from table (uses context so table updates immediately)
   const handleSaveAssetFromTable = async (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date }) => {
-    await contextCreateAsset(assetName, propertyValues, options);
-    window.dispatchEvent(new CustomEvent('assetCreated', { detail: { libraryId } }));
+    const assetId = await contextCreateAsset(assetName, propertyValues, options);
+    await invalidateLibraryAssetsData(queryClient, { libraryId, assetId, refetchActiveAssets: true });
   };
 
-  // Single update (each completion dispatches → N invalidates)
   const handleUpdateAssetFromTable = async (assetId: string, assetName: string, propertyValues: Record<string, any>) => {
     await updateAsset(supabase, assetId, assetName, propertyValues);
-    window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { assetId, libraryId } }));
+    await invalidateLibraryAssetsData(queryClient, { libraryId, assetId, refetchActiveAssets: true });
   };
 
-  // Batch update: all updates then one dispatch → one invalidate, avoids 先消失后恢复再消失 + 其他列恢复
   const handleUpdateAssetsFromTable = async (
     updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
   ) => {
     await Promise.all(updates.map((u) => updateAsset(supabase, u.assetId, u.assetName, u.propertyValues)));
-    window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { libraryId } }));
+    await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
   };
 
   // Single delete
   const handleDeleteAssetFromTable = async (assetId: string) => {
     await deleteAsset(supabase, assetId);
-    window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
+    await invalidateLibraryAssetsData(queryClient, { libraryId, assetId, refetchActiveAssets: true });
   };
 
   // Batch delete: Supabase .delete().in(), one round-trip
   const handleDeleteAssetsFromTable = async (assetIds: string[]) => {
     await deleteAssets(supabase, assetIds);
-    window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
+    await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
   };
 
   if (loading) {
@@ -813,9 +719,13 @@ export default function LibraryPage() {
               try {
                 const loadedVersions = await getVersionsByLibrary(supabase, libraryId);
                 setVersions(loadedVersions);
-                window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { libraryId } }));
-                // 用刚恢复的 snapshot 直接覆盖 Yjs，保证当前视图 = 恢复的版本（与「创建版本用 Yjs」一致）
-                window.dispatchEvent(new CustomEvent('libraryRestored', { detail: { libraryId, snapshotData } }));
+                if (snapshotData) {
+                  applySnapshot(snapshotData);
+                } else {
+                  await refreshAssetsFromServer();
+                }
+                await invalidateLibraryData(queryClient, { projectId, libraryId });
+                await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
                 
                 // Highlight the restored version for 1.5 seconds
                 setHighlightedVersionId(restoredVersionId);

@@ -15,10 +15,10 @@ const editColumnModalSource = readFileSync(
   'utf8'
 );
 
-describe('schemaUpdated dispatch coverage', () => {
-  it('invalidates schema-dependent caches for inline schema edits', () => {
-    expect(libraryPageSource).toMatch(/dispatchEvent\(new CustomEvent\('schemaUpdated'/);
-    expect(tableHeaderSource).toMatch(/dispatchEvent\(new CustomEvent\('schemaUpdated'/);
-    expect(editColumnModalSource).toMatch(/dispatchEvent\(new CustomEvent\('schemaUpdated'/);
+describe('schema invalidation coverage', () => {
+  it('uses typed schema invalidation for inline schema edits', () => {
+    expect(libraryPageSource).toContain('invalidateLibrarySchemaData');
+    expect(tableHeaderSource).toContain('invalidateLibrarySchemaData');
+    expect(editColumnModalSource).toContain('invalidateLibrarySchemaData');
   });
 });

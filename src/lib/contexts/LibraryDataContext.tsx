@@ -36,6 +36,8 @@ import { computeFormulaValuesForRow } from '@/lib/utils/formula';
 import { compareAssetsForUiRow } from '@/lib/utils/assetEmptiness';
 import { createFormulaFieldMetaCache } from '@/lib/library/formulaFieldMetaCache';
 import { touchLibraryAssetEditUpdatedAt } from '@/lib/library/updatedAt';
+import { useQueryClient } from '@tanstack/react-query';
+import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
 
 interface LibraryDataContextValue {
   // Data access
@@ -48,6 +50,9 @@ interface LibraryDataContextValue {
   updateAssetName: (assetId: string, newName: string, options?: { skipBroadcast?: boolean }) => Promise<void>;
   createAsset: (name: string, propertyValues: Record<string, any>, options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<string>;
   deleteAsset: (assetId: string) => Promise<void>;
+  refreshAssetsFromServer: () => Promise<void>;
+  applySnapshot: (snapshotData: LibrarySnapshotData) => void;
+  invalidateFormulaFieldMeta: () => void;
 
   // Bulk operations
   updateMultipleFields: (updates: Array<{ assetId: string; fieldId: string; value: any }>) => Promise<void>;
@@ -83,6 +88,16 @@ type FormulaFieldMetaRow = {
   label: string;
   data_type: string;
   formula_expression: string | null;
+};
+
+type LibrarySnapshotData = {
+  assets?: Array<{
+    id: string;
+    name?: string;
+    propertyValues?: Record<string, any>;
+    createdAt?: string;
+    rowIndex?: number | null;
+  }>;
 };
 
 const isCustomFormulaCellValue = (value: unknown): boolean => {
@@ -149,6 +164,7 @@ async function touchLibraryUpdatedAt(
 
 export function LibraryDataProvider({ children, libraryId, projectId }: LibraryDataProviderProps) {
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const { userProfile, isAuthenticated, isLoading: isAuthLoading } = useAuth();
 
   // Yjs setup - shared data structure
@@ -168,6 +184,20 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // postgres_changes INSERT events don't add them to yAssets with missing row_index.
   const pendingBatchInsertIdsRef = useRef<Set<string>>(new Set());
   const yPersistenceRef = useRef<IndexeddbPersistence | null>(null);
+
+  const formulaFieldMetaCache = useMemo(
+    () =>
+      createFormulaFieldMetaCache<FormulaFieldMetaRow>(async (targetLibraryId) => {
+        const { data, error } = await supabase
+          .from('library_field_definitions')
+          .select('id, label, data_type, formula_expression')
+          .eq('library_id', targetLibraryId);
+
+        if (error) throw error;
+        return (data ?? []) as FormulaFieldMetaRow[];
+      }),
+    [supabase]
+  );
 
   // Keep ref updated
   useEffect(() => {
@@ -289,8 +319,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     }
   }, [libraryId, isAuthenticated, userProfile, supabase, yDoc, yAssets, libraryPersistenceName]);
 
+  const invalidateFormulaFieldMeta = useCallback(() => {
+    formulaFieldMetaCache.invalidate(libraryId);
+  }, [formulaFieldMetaCache, libraryId]);
+
   // Restore 后直接用 snapshot 覆盖 Yjs，保证「当前视图 = 刚恢复的版本」，与创建版本用 Yjs 一致
-  const applySnapshotToYjs = useCallback((snapshotData: { assets?: Array<{ id: string; name?: string; propertyValues?: Record<string, any>; createdAt?: string; rowIndex?: number | null }> }) => {
+  const applySnapshotToYjs = useCallback((snapshotData: LibrarySnapshotData) => {
     if (!snapshotData?.assets || !Array.isArray(snapshotData.assets)) return;
     yDoc.transact(() => {
       yAssets.clear();
@@ -341,30 +375,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     };
   }, [yDoc, libraryPersistenceName, loadInitialData]);
 
-  // Reload data when a library restore event is dispatched
-  // 若带 snapshotData 则直接用其覆盖 Yjs，保证当前视图 = 刚恢复的版本；否则从 DB 拉取
-  useEffect(() => {
-    const handleLibraryRestored = (event: Event) => {
-      const customEvent = event as CustomEvent<{ libraryId: string; snapshotData?: any }>;
-      if (customEvent.detail?.libraryId !== libraryId) return;
-      if (customEvent.detail?.snapshotData) {
-        applySnapshotToYjs(customEvent.detail.snapshotData);
-      } else {
-        loadInitialData();
-      }
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener('libraryRestored', handleLibraryRestored as EventListener);
-    }
-
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener('libraryRestored', handleLibraryRestored as EventListener);
-      }
-    };
-  }, [libraryId, loadInitialData, applySnapshotToYjs]);
-
   // Realtime: 当有人成功 restore 一个版本时，所有协作者自动从 DB 重新加载一次
   useEffect(() => {
     if (!libraryId) return;
@@ -398,68 +408,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     };
   }, [libraryId, supabase, loadInitialData]);
 
-  // Global cell search replace writes via API; reload Yjs from DB so the table reflects new values.
-  useEffect(() => {
-    const handleCellValuesReplaced = (event: Event) => {
-      const customEvent = event as CustomEvent<{ libraryId?: string }>;
-      const targetLibraryId = customEvent.detail?.libraryId;
-      if (!targetLibraryId || targetLibraryId !== libraryId) return;
-      loadInitialData();
-    };
-
-    if (typeof window !== 'undefined') {
-      window.addEventListener(
-        'libraryCellValuesReplaced',
-        handleCellValuesReplaced as EventListener
-      );
-    }
-
-    return () => {
-      if (typeof window !== 'undefined') {
-        window.removeEventListener(
-          'libraryCellValuesReplaced',
-          handleCellValuesReplaced as EventListener
-        );
-      }
-    };
-  }, [libraryId, loadInitialData]);
-
   // Batch queue for cell updates - apply in one transact so UI updates at once (fixes "one by one" disappearing)
   const cellUpdateQueueRef = useRef<CellUpdateEvent[]>([]);
   const cellUpdateFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const formulaFieldMetaCache = useMemo(
-    () =>
-      createFormulaFieldMetaCache<FormulaFieldMetaRow>(async (targetLibraryId) => {
-        const { data, error } = await supabase
-          .from('library_field_definitions')
-          .select('id, label, data_type, formula_expression')
-          .eq('library_id', targetLibraryId);
-
-        if (error) throw error;
-        return (data ?? []) as FormulaFieldMetaRow[];
-      }),
-    [supabase]
-  );
-
   useEffect(() => {
     formulaFieldMetaCache.clear();
-  }, [formulaFieldMetaCache, libraryId]);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-
-    const handleSchemaUpdated = (event: Event) => {
-      const customEvent = event as CustomEvent<{ libraryId?: string }>;
-      const targetLibraryId = customEvent.detail?.libraryId;
-      if (targetLibraryId && targetLibraryId !== libraryId) return;
-      formulaFieldMetaCache.invalidate(libraryId);
-    };
-
-    window.addEventListener('schemaUpdated', handleSchemaUpdated as EventListener);
-    return () => {
-      window.removeEventListener('schemaUpdated', handleSchemaUpdated as EventListener);
-    };
   }, [formulaFieldMetaCache, libraryId]);
 
   const getFormulaFieldMeta = useCallback(async (): Promise<FormulaFieldMetaRow[]> => {
@@ -673,15 +627,14 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         }
       });
 
-      if (typeof window === 'undefined') return;
-
       const libraryIdsToReload = new Set(
         refUpdates.map((u) => u.referencingLibraryId).filter(Boolean)
       );
       libraryIdsToReload.forEach((id) => {
-        window.dispatchEvent(
-          new CustomEvent('libraryCellValuesReplaced', { detail: { libraryId: id } })
-        );
+        if (id === libraryId) {
+          void loadInitialData();
+        }
+        void invalidateLibraryAssetsData(queryClient, { libraryId: id });
       });
 
       const referencingAssetIds = new Set(refUpdates.map((u) => u.referencingAssetId));
@@ -689,10 +642,13 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         const libId =
           refUpdates.find((u) => u.referencingAssetId === refAssetId)?.referencingLibraryId ??
           libraryId;
-        window.dispatchEvent(new CustomEvent('assetUpdated', { detail: { assetId: refAssetId, libraryId: libId } }));
+        void invalidateLibraryAssetsData(queryClient, {
+          libraryId: libId,
+          assetId: refAssetId,
+        });
       });
     },
-    [libraryId, yDoc, yAssets]
+    [libraryId, loadInitialData, queryClient, yDoc, yAssets]
   );
 
   const syncReferencesAfterSourceChange = useCallback(
@@ -702,11 +658,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
           { assetId, fieldId, valueJson },
         ]);
         applyReferenceSyncToLocalState(refUpdates);
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(
-            new CustomEvent('referenceSourceUpdated', { detail: { assetId, fieldId } })
-          );
-        }
+        await invalidateLibraryAssetsData(queryClient, { libraryId, assetId });
       } catch (error) {
         console.error(
           `[LibraryDataContext] reference sync failed: assetId=${assetId} fieldId=${fieldId}`,
@@ -714,7 +666,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         );
       }
     },
-    [supabase, applyReferenceSyncToLocalState]
+    [supabase, applyReferenceSyncToLocalState, queryClient, libraryId]
   );
 
   // Data operations
@@ -829,11 +781,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         }
       }
 
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('assetUpdated', { detail: { assetId, libraryId, fieldId } })
-        );
-      }
+      await invalidateLibraryAssetsData(queryClient, { libraryId, assetId });
     } catch (error) {
       const errMsg = serializeError(error);
       console.error(
@@ -859,6 +807,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     realtimeConfig,
     syncReferencesAfterSourceChange,
     libraryId,
+    queryClient,
   ]);
 
   const updateAssetName = useCallback(async (
@@ -1078,6 +1027,11 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     }
   }, [supabase, yDoc, yAssets, broadcastAssetDelete, realtimeConfig]);
 
+  const refreshAssetsFromServer = useCallback(async () => {
+    await loadInitialData();
+    await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
+  }, [libraryId, loadInitialData, queryClient]);
+
   const updateMultipleFields = useCallback(async (
     updates: Array<{ assetId: string; fieldId: string; value: any }>
   ) => {
@@ -1162,6 +1116,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     updateAssetName,
     createAsset,
     deleteAsset,
+    refreshAssetsFromServer,
+    applySnapshot: applySnapshotToYjs,
+    invalidateFormulaFieldMeta,
     updateMultipleFields,
     updateAssetsBatch,
     connectionStatus,

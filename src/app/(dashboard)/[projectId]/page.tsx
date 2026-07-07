@@ -30,6 +30,11 @@ import { AddLibraryMenu } from '@/components/libraries/AddLibraryMenu';
 import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
 import { deleteFolder } from '@/lib/services/folderService';
+import {
+  invalidateFolderData,
+  invalidateLibraryData,
+  invalidateProjectData,
+} from '@/lib/queryInvalidation';
 
 export default function ProjectPage() {
   const params = useParams();
@@ -95,16 +100,6 @@ export default function ProjectPage() {
     },
     retryDelay: (attemptIndex) => Math.min(750 * 2 ** attemptIndex, 5000),
   });
-
-  useEffect(() => {
-    const handleProjectCreated = () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
-    };
-    window.addEventListener('projectCreated' as any, handleProjectCreated as EventListener);
-    return () => {
-      window.removeEventListener('projectCreated' as any, handleProjectCreated as EventListener);
-    };
-  }, [projectId, queryClient]);
 
   const { data: folders = [], isLoading: foldersLoading } = useQuery({
     queryKey: queryKeys.projectFolders(projectId),
@@ -177,130 +172,6 @@ export default function ProjectPage() {
     fetchUserRole();
   }, [projectId, supabase]);
 
-  // Optimized event handlers with targeted cache invalidation
-  useEffect(() => {
-    const handleFolderCreated = (event: CustomEvent) => {
-      const eventProjectId = event.detail?.projectId;
-      if (!eventProjectId || eventProjectId === projectId) {
-        // Only invalidate folders list, not everything
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(projectId) });
-      }
-    };
-
-    const handleFolderDeleted = (event: CustomEvent) => {
-      const deletedProjectId = event.detail?.projectId;
-      if (deletedProjectId === projectId) {
-        // Invalidate folders list
-        queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(projectId) });
-      }
-    };
-
-    const handleFolderUpdated = (event: CustomEvent) => {
-      const folderId = event.detail?.folderId;
-      // Only invalidate the specific folder, not all folders
-      if (folderId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.folder(folderId) });
-      }
-      // Also invalidate folders list to update the name
-      queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(projectId) });
-    };
-
-    const handleLibraryCreated = async (event: CustomEvent) => {
-      const eventProjectId = event.detail?.projectId;
-      const folderId = event.detail?.folderId;
-      if (!eventProjectId || eventProjectId === projectId) {
-        // Invalidate appropriate libraries list
-        if (folderId) {
-          queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
-          // Also refresh folderLibraries state for the specific folder
-          const libs = await listLibraries(supabase, projectId, folderId);
-          setFolderLibraries(prev => ({ ...prev, [folderId]: libs }));
-        } else {
-          queryClient.invalidateQueries({ queryKey: queryKeys.projectLibraries(projectId) });
-        }
-      }
-    };
-
-    const handleLibraryDeleted = async (event: CustomEvent) => {
-      const deletedProjectId = event.detail?.projectId;
-      const folderId = event.detail?.folderId;
-      if (deletedProjectId === projectId) {
-        // Invalidate appropriate libraries list
-        if (folderId) {
-          queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
-          // Also refresh folderLibraries state for the specific folder
-          const libs = await listLibraries(supabase, projectId, folderId);
-          setFolderLibraries(prev => ({ ...prev, [folderId]: libs }));
-        } else {
-          queryClient.invalidateQueries({ queryKey: queryKeys.projectLibraries(projectId) });
-        }
-      }
-    };
-
-    const handleLibraryUpdated = async (event: CustomEvent) => {
-      const libraryId = event.detail?.libraryId;
-      // Only invalidate the specific library
-      if (libraryId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.library(libraryId) });
-      }
-      // Also invalidate libraries lists to update the name
-      queryClient.invalidateQueries({ queryKey: queryKeys.projectLibraries(projectId) });
-      // Invalidate all folder libraries to catch any folder-based libraries
-      folders.forEach(folder => {
-        queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folder.id) });
-      });
-      // Refresh folderLibraries state to update names
-      const folderLibrariesMap: Record<string, Library[]> = {};
-      await Promise.all(
-        folders.map(async (folder) => {
-          const libs = await listLibraries(supabase, projectId, folder.id);
-          folderLibrariesMap[folder.id] = libs;
-        })
-      );
-      setFolderLibraries(folderLibrariesMap);
-    };
-
-    const handleProjectUpdated = async (event: CustomEvent) => {
-      const updatedProjectId = event.detail?.projectId;
-      if (updatedProjectId === projectId) {
-        console.log('[ProjectPage] Project updated, refreshing data...');
-        
-        // CRITICAL: Must invalidate globalRequestCache first!
-        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-        globalRequestCache.invalidate(`project:${projectId}`);
-        globalRequestCache.invalidate(`project:name:${projectId}`);
-        console.log('[ProjectPage] ✅ globalRequestCache invalidated');
-        
-        // Only invalidate project data, not folders or libraries
-        await queryClient.invalidateQueries({ queryKey: queryKeys.project(projectId) });
-        await queryClient.refetchQueries({ 
-          queryKey: queryKeys.project(projectId),
-          type: 'active',
-        });
-        console.log('[ProjectPage] ✅ Project data refreshed');
-      }
-    };
-
-    window.addEventListener('folderCreated' as any, handleFolderCreated as EventListener);
-    window.addEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
-    window.addEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
-    window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
-    window.addEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
-    window.addEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
-    window.addEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
-    
-    return () => {
-      window.removeEventListener('folderCreated' as any, handleFolderCreated as EventListener);
-      window.removeEventListener('folderDeleted' as any, handleFolderDeleted as EventListener);
-      window.removeEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
-      window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
-      window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
-      window.removeEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
-      window.removeEventListener('projectUpdated' as any, handleProjectUpdated as EventListener);
-    };
-  }, [queryClient, projectId, folders]);
-
-  
   useEffect(() => {
     async function fetchAssetCounts() {
       if (libraries.length > 0) {
@@ -384,17 +255,12 @@ export default function ProjectPage() {
             
             await deleteLibrary(supabase, libraryId);
             
-            // Invalidate appropriate cache
-            if (deletedFolderId) {
-              queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(deletedFolderId) });
-            } else {
-              queryClient.invalidateQueries({ queryKey: queryKeys.projectLibraries(projectId) });
-            }
-            
-            // Dispatch event to notify Sidebar
-            window.dispatchEvent(new CustomEvent('libraryDeleted', {
-              detail: { folderId: deletedFolderId, libraryId, projectId }
-            }));
+            await invalidateLibraryData(queryClient, {
+              projectId,
+              folderId: deletedFolderId,
+              libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
             
             // If viewing this library, navigate to project
             if (pathname.includes(libraryId)) {
@@ -427,16 +293,11 @@ export default function ProjectPage() {
         if (await confirmDeletion('Delete this folder? All libraries under it will be removed.')) {
           try {
             await deleteFolder(supabase, folderId);
-            
-            // Invalidate folders list
-            queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(projectId) });
-            // Also invalidate the folder libraries
-            queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
-            
-            // Dispatch event to notify Sidebar
-            window.dispatchEvent(new CustomEvent('folderDeleted', {
-              detail: { folderId, projectId }
-            }));
+            await invalidateFolderData(queryClient, {
+              projectId,
+              folderId,
+              refetchActiveFoldersLibraries: true,
+            });
             
             // If viewing this folder, navigate to project
             if (pathname.includes(`/folder/${folderId}`)) {
@@ -521,20 +382,20 @@ export default function ProjectPage() {
 
   const handleFolderCreated = () => {
     setShowFolderModal(false);
-    // 只发送事件，让所有监听器统一刷新，避免重复请求
-    // 事件监听器会检查 projectId 并刷新当前页面的数据
-    window.dispatchEvent(new CustomEvent('folderCreated', {
-      detail: { projectId }
-    }));
+    void invalidateFolderData(queryClient, {
+      projectId,
+      refetchActiveFoldersLibraries: true,
+    });
   };
 
   const handleLibraryCreated = (libraryId: string) => {
     setShowLibraryModal(false);
-    // 只发送事件，让所有监听器统一刷新，避免重复请求
-    // 事件监听器会检查 projectId 并刷新当前页面的数据
-    window.dispatchEvent(new CustomEvent('libraryCreated', {
-      detail: { folderId: null, libraryId, projectId }
-    }));
+    void invalidateLibraryData(queryClient, {
+      projectId,
+      folderId: null,
+      libraryId,
+      refetchActiveFoldersLibraries: true,
+    });
   };
 
   if (loading) {
@@ -725,11 +586,12 @@ export default function ProjectPage() {
           folderId={importFolderId}
           onClose={() => setImportFolderId(null)}
           onImported={(libraryId) => {
-            queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(importFolderId) });
-            queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(projectId) });
-            window.dispatchEvent(new CustomEvent('libraryCreated', {
-              detail: { folderId: importFolderId, libraryId, projectId }
-            }));
+            void invalidateLibraryData(queryClient, {
+              projectId,
+              folderId: importFolderId,
+              libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
             setImportFolderId(null);
             router.push(`/${projectId}/${libraryId}`);
           }}
@@ -742,11 +604,12 @@ export default function ProjectPage() {
           folderId={importScriptFolderId}
           onClose={() => setImportScriptFolderId(null)}
           onImported={(libraryId) => {
-            queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(importScriptFolderId) });
-            queryClient.invalidateQueries({ queryKey: queryKeys.projectFolders(projectId) });
-            window.dispatchEvent(new CustomEvent('libraryCreated', {
-              detail: { folderId: importScriptFolderId, libraryId, projectId }
-            }));
+            void invalidateLibraryData(queryClient, {
+              projectId,
+              folderId: importScriptFolderId,
+              libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
             setImportScriptFolderId(null);
             router.push(`/${projectId}/${libraryId}`);
           }}
@@ -775,4 +638,3 @@ export default function ProjectPage() {
     </div>
   );
 }
-

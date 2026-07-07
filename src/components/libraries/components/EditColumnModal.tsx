@@ -9,7 +9,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { useQueryClient } from '@tanstack/react-query';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import { updateLibraryField } from '@/lib/services/libraryAssetsService';
-import { queryKeys } from '@/lib/utils/queryKeys';
+import { invalidateLibrarySchemaData } from '@/lib/queryInvalidation';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { getFieldTypeIcon, FIELD_TYPE_OPTIONS } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
 import { listLibraries, type Library } from '@/lib/services/libraryService';
@@ -482,13 +482,10 @@ export function EditColumnModal({
             : undefined,
       });
 
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.librarySchema(libraryId!),
+      await invalidateLibrarySchemaData(queryClient, {
+        libraryId: libraryId!,
+        refetchActiveSchema: true,
       });
-      await queryClient.invalidateQueries({
-        queryKey: queryKeys.libraryAssets(libraryId!),
-      });
-      window.dispatchEvent(new CustomEvent('schemaUpdated', { detail: { libraryId } }));
       showSuccessToast('Column updated');
       onClose();
     } catch (e: any) {

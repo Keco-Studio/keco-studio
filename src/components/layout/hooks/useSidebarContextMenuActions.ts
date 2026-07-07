@@ -8,7 +8,11 @@ import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import type { SidebarContextMenuState } from './useSidebarContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
 import { deleteFolder } from '@/lib/services/folderService';
-import { queryKeys } from '@/lib/utils/queryKeys';
+import {
+  invalidateFolderData,
+  invalidateLibraryAssetsData,
+  invalidateLibraryData,
+} from '@/lib/queryInvalidation';
 import type { Library } from '@/lib/services/libraryService';
 import type { SidebarAssetRow } from './useSidebarAssets';
 
@@ -183,19 +187,13 @@ export function useSidebarContextMenuActions({
               const libraryToDelete = libraries.find((lib) => lib.id === contextMenu.id);
               const deletedFolderId = libraryToDelete?.folder_id || null;
               return deleteLibrary(supabase, contextMenu.id)
-                .then(() => {
-                  if (currentIds.projectId) {
-                    queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-                  }
-                  window.dispatchEvent(
-                    new CustomEvent('libraryDeleted', {
-                      detail: {
-                        folderId: deletedFolderId,
-                        libraryId: contextMenu.id,
-                        projectId: currentIds.projectId,
-                      },
-                    })
-                  );
+                .then(async () => {
+                  await invalidateLibraryData(queryClient, {
+                    projectId: currentIds.projectId,
+                    folderId: deletedFolderId,
+                    libraryId: contextMenu.id,
+                    refetchActiveFoldersLibraries: true,
+                  });
                   if (currentIds.libraryId === contextMenu.id && currentIds.projectId) {
                     router.push(`/${currentIds.projectId}`);
                   }
@@ -218,17 +216,12 @@ export function useSidebarContextMenuActions({
               );
 
               return deleteFolder(supabase, contextMenu.id)
-                .then(() => {
-                  if (currentIds.projectId) {
-                    queryClient.invalidateQueries({
-                      queryKey: ['folders-libraries', currentIds.projectId],
-                    });
-                  }
-                  window.dispatchEvent(
-                    new CustomEvent('folderDeleted', {
-                      detail: { folderId: contextMenu.id, projectId: currentIds.projectId },
-                    })
-                  );
+                .then(async () => {
+                  await invalidateFolderData(queryClient, {
+                    projectId: currentIds.projectId,
+                    folderId: contextMenu.id,
+                    refetchActiveFoldersLibraries: true,
+                  });
                   if (
                     (currentIds.folderId === contextMenu.id || isViewingLibraryInFolder) &&
                     currentIds.projectId
@@ -260,26 +253,13 @@ export function useSidebarContextMenuActions({
                   if (result.error) {
                     console.error('Failed to delete asset', result.error);
                   } else {
-                    const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-                    globalRequestCache.invalidate(`assets:list:${libraryId}`);
-
-                    await queryClient.invalidateQueries({
-                      queryKey: queryKeys.libraryAssets(libraryId),
-                    });
-                    await queryClient.invalidateQueries({
-                      queryKey: queryKeys.librarySummary(libraryId),
-                    });
-                    await queryClient.refetchQueries({
-                      queryKey: queryKeys.libraryAssets(libraryId),
-                    });
-                    await queryClient.refetchQueries({
-                      queryKey: queryKeys.librarySummary(libraryId),
+                    await invalidateLibraryAssetsData(queryClient, {
+                      libraryId,
+                      assetId: contextMenu.id,
+                      refetchActiveAssets: true,
                     });
 
                     await fetchAssets(libraryId);
-                    window.dispatchEvent(
-                      new CustomEvent('assetDeleted', { detail: { libraryId } })
-                    );
                     if (
                       currentIds.assetId === contextMenu.id &&
                       currentIds.projectId

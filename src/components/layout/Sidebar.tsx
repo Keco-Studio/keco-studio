@@ -56,6 +56,12 @@ import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
+import {
+  invalidateFolderData,
+  invalidateLibraryAssetsData,
+  invalidateLibraryData,
+  invalidateProjectData,
+} from '@/lib/queryInvalidation';
 import styles from "./Sidebar.module.css";
 
 const MIN_SIDEBAR_WIDTH = 267;
@@ -424,30 +430,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [folders]);
 
-  // When a new library is created under a folder that is currently collapsed in the Sidebar,
-  // auto-expand that folder so the new library becomes visible in the tree.
-  // We intentionally DO NOT change selection here, only expanded state.
-  useEffect(() => {
-    const handleLibraryCreatedExpandFolder = (event: Event) => {
-      const detail = (event as CustomEvent<any>).detail || {};
-      const folderId: string | null | undefined = detail.folderId;
-      const eventProjectId: string | null | undefined = detail.projectId;
-
-      // Only care about folders in the current project (when projectId is provided)
-      if (eventProjectId && currentIds.projectId && eventProjectId !== currentIds.projectId) {
-        return;
-      }
-      if (!folderId) return; // Root-level libraries don't belong to any folder
-
-      const folderKey = `folder-${folderId}`;
-      setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
-    };
-
-    window.addEventListener('libraryCreated', handleLibraryCreatedExpandFolder as EventListener);
-    return () => {
-      window.removeEventListener('libraryCreated', handleLibraryCreatedExpandFolder as EventListener);
-    };
-  }, [currentIds.projectId]);
+  const expandFolder = useCallback((folderId: string | null | undefined) => {
+    if (!folderId) return;
+    const folderKey = `folder-${folderId}`;
+    setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
+  }, []);
 
   // actions
   const handleProjectClick = async (projectId: string) => {
@@ -529,21 +516,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       await deleteAsset(supabase, assetId);
 
-      // Clear cache before fetching to ensure fresh data
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const cacheKey = `assets:list:${libraryId}`;
-      globalRequestCache.invalidate(cacheKey);
-
-      // Invalidate React Query cache to ensure LibraryPage gets fresh data
-      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-
-      // Refetch to ensure data is updated immediately
-      await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-      await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-
-      // Notify that asset was deleted
-      window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
+      await invalidateLibraryAssetsData(queryClient, {
+        libraryId,
+        assetId,
+        refetchActiveAssets: true,
+      });
       await fetchAssets(libraryId);
 
       // If currently viewing this asset, navigate to library page
@@ -566,15 +543,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const deletedFolderId = libraryToDelete?.folder_id || null;
 
       await deleteLibrary(supabase, libraryId);
-      // Use React Query to refresh cache
-      if (currentIds.projectId) {
-        queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-      }
-
-      // Dispatch event to notify ProjectPage and FolderPage to refresh
-      window.dispatchEvent(new CustomEvent('libraryDeleted', {
-        detail: { folderId: deletedFolderId, libraryId, projectId: currentIds.projectId }
-      }));
+      await invalidateLibraryData(queryClient, {
+        projectId: currentIds.projectId,
+        folderId: deletedFolderId,
+        libraryId,
+        refetchActiveFoldersLibraries: true,
+      });
 
       // If the deleted library is currently being viewed (including library page, predefine page, new asset page, or any asset in it), navigate to project page
       if (currentIds.libraryId === libraryId && currentIds.projectId) {
@@ -595,10 +569,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const isViewingLibraryInFolder = librariesInFolder.some(lib => lib.id === currentIds.libraryId);
 
       await deleteFolder(supabase, folderId);
-      // Use React Query to refresh cache
-      if (currentIds.projectId) {
-        queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-      }
+      await invalidateFolderData(queryClient, {
+        projectId: currentIds.projectId,
+        folderId,
+        refetchActiveFoldersLibraries: true,
+      });
 
       // If currently viewing the folder page or a library in this folder, navigate to project page
       if (currentIds.folderId === folderId || isViewingLibraryInFolder) {
@@ -796,18 +771,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setIsMovingLibrary(true);
     try {
       await moveLibraryToFolder(supabase, movingLibraryId, { folderId: finalTargetFolderId });
-      if (currentIds.projectId) {
-        queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-      }
-      window.dispatchEvent(
-        new CustomEvent('libraryUpdated', {
-          detail: {
-            projectId: currentIds.projectId,
-            libraryId: movingLibraryId,
-            folderId: finalTargetFolderId,
-          },
-        })
-      );
+      await invalidateLibraryData(queryClient, {
+        projectId: currentIds.projectId,
+        folderId: finalTargetFolderId,
+        libraryId: movingLibraryId,
+        refetchActiveFoldersLibraries: true,
+      });
+      expandFolder(finalTargetFolderId);
       showSuccessToast('Library moved successfully');
       setShowMoveLibraryModal(false);
       setMovingLibraryId(null);
@@ -820,7 +790,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } finally {
       setIsMovingLibrary(false);
     }
-  }, [movingLibraryId, targetFolderId, useIndependentLibrary, libraries, supabase, currentIds.projectId, queryClient]);
+  }, [movingLibraryId, targetFolderId, useIndependentLibrary, libraries, supabase, currentIds.projectId, queryClient, expandFolder]);
 
   const movingLibrary = useMemo(
     () => libraries.find((lib) => lib.id === movingLibraryId) ?? null,
@@ -921,6 +891,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // per-project key so the two creation entry points stay consistent.
     queryClient.invalidateQueries({ queryKey: ['projects'] });
     queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    await invalidateProjectData(queryClient, {
+      projectId,
+      userProjectList: true,
+      refetchActiveProjects: true,
+    });
 
     // Also invalidate globalRequestCache for projects list
     const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
@@ -937,9 +912,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       globalRequestCache.invalidate(`project:${projectId}`);
     }
 
-    // Dispatch event to notify other components (ProjectsPage) to refresh their caches
-    window.dispatchEvent(new CustomEvent('projectCreated'));
-
     // Always navigate to the newly created project
     if (projectId) {
       router.push(`/${projectId}`);
@@ -953,11 +925,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     const createdFolderId = selectedFolderId;
     setSelectedFolderId(null); // Clear selection after creation
 
-    // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
-    // All components (Sidebar, ProjectPage, FolderPage) will listen to this event and refresh their respective caches
-    window.dispatchEvent(new CustomEvent('libraryCreated', {
-      detail: { folderId: createdFolderId, libraryId, projectId: currentIds.projectId }
-    }));
+    await invalidateLibraryData(queryClient, {
+      projectId: currentIds.projectId,
+      folderId: createdFolderId,
+      libraryId,
+      refetchActiveFoldersLibraries: true,
+    });
+    expandFolder(createdFolderId);
 
     // Always navigate to the newly created library if we have a projectId
     if (currentIds.projectId) {
@@ -969,11 +943,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     closeFolderModal();
     setSelectedFolderId(null); // Clear selection after creation
 
-    // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
-    // All components (Sidebar, ProjectPage) will listen to this event and refresh their respective caches
-    window.dispatchEvent(new CustomEvent('folderCreated', {
-      detail: { projectId: currentIds.projectId, folderId }
-    }));
+    await invalidateFolderData(queryClient, {
+      projectId: currentIds.projectId,
+      folderId,
+      refetchActiveFoldersLibraries: true,
+    });
+    expandFolder(folderId);
 
     // Always navigate to the newly created folder if we have a projectId
     if (currentIds.projectId && folderId) {
@@ -1162,10 +1137,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             const originalLibrary = libraries.find(lib => lib.id === duplicatingLibraryId);
             const folderId = originalLibrary?.folder_id || null;
 
-            // Dispatch event so that tree and other caches can refresh
-            window.dispatchEvent(new CustomEvent('libraryCreated', {
-              detail: { folderId, libraryId: newLibraryId, projectId: currentIds.projectId }
-            }));
+            void invalidateLibraryData(queryClient, {
+              projectId: currentIds.projectId,
+              folderId,
+              libraryId: newLibraryId,
+              refetchActiveFoldersLibraries: true,
+            });
+            expandFolder(folderId);
 
             // Navigate to the newly duplicated library
             if (currentIds.projectId) {
@@ -1192,9 +1170,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           folderId={importingFolderId}
           onClose={closeImportLibraryModal}
           onImported={(libraryId) => {
-            window.dispatchEvent(new CustomEvent('libraryCreated', {
-              detail: { folderId: importingFolderId, libraryId, projectId: currentIds.projectId }
-            }));
+            void invalidateLibraryData(queryClient, {
+              projectId: currentIds.projectId,
+              folderId: importingFolderId,
+              libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
+            expandFolder(importingFolderId);
             if (currentIds.projectId) {
               router.push(`/${currentIds.projectId}/${libraryId}`);
             }
@@ -1209,9 +1191,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           folderId={importingScriptFolderId}
           onClose={closeImportScriptModal}
           onImported={(libraryId) => {
-            window.dispatchEvent(new CustomEvent('libraryCreated', {
-              detail: { folderId: importingScriptFolderId, libraryId, projectId: currentIds.projectId }
-            }));
+            void invalidateLibraryData(queryClient, {
+              projectId: currentIds.projectId,
+              folderId: importingScriptFolderId,
+              libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
+            expandFolder(importingScriptFolderId);
             if (currentIds.projectId) {
               router.push(`/${currentIds.projectId}/${libraryId}`);
             }
@@ -1428,4 +1414,3 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     </aside>
   );
 }
-
