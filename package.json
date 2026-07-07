@@ -52,6 +52,14 @@
     "tsx": "^4.19.2",
     "typescript": "5.9.3"
   },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    },
+    "next": {
+      "postcss": "8.5.10"
+    }
+  },
   "scripts": {
     "dev": "next dev",
     "dev:lan": "bash scripts/dev-lan.sh",

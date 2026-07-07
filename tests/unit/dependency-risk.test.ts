@@ -6,6 +6,7 @@ const repoRoot = process.cwd();
 const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as {
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
+  overrides?: Record<string, unknown>;
 };
 
 const sourceFiles = [
@@ -37,5 +38,12 @@ describe('dependency risk guardrails', () => {
       expect(source).not.toContain('import * as XLSX');
       expect(source).not.toContain('XLSX.');
     }
+  });
+
+  it('keeps audited transitive dependency overrides for production packages', () => {
+    expect(pkg.overrides).toMatchObject({
+      exceljs: { uuid: '11.1.1' },
+      next: { postcss: '8.5.10' },
+    });
   });
 });
