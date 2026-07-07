@@ -29,17 +29,19 @@ describeDb('library_field_definitions write RLS (issue #143, live RLS)', () => {
     if (fx) await teardownProjectFixture(fx);
   }, 30_000);
 
+  // Active unique constraint is (section_id, order_index) — see migration
+  // 20260129000000. Hand out a distinct order_index per row within the section.
+  let nextOrder = 0;
   function fieldRow(label: string) {
     return {
       library_id: fx.libraryId,
       section: 'main',
-      // section_id is a NOT NULL stable id (see 20260128000000). The value only
-      // needs to be consistent per (library, section); uniqueness is on
-      // (section_id, label) and every label here already carries a unique suffix.
+      // section_id is a NOT NULL stable id (see 20260128000000), consistent per
+      // (library, section).
       section_id: `${fx.libraryId}::main`,
       label,
       data_type: 'string',
-      order_index: 0,
+      order_index: nextOrder++,
     };
   }
 
