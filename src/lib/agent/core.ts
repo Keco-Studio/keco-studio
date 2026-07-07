@@ -56,6 +56,14 @@ import {
   loadTraceCollector,
   persistAgentTrace,
 } from './trace-store';
+import {
+  AGENT_LLM_MAX_TOKENS,
+  AGENT_TURN_TOKEN_BUDGET,
+  addTokenUsageTotal,
+  compactLargeUserContentInMessages,
+  isOverTokenBudget,
+  tokenBudgetExceededMessage,
+} from './turn-budget';
 
 const MAX_ITERATIONS = 50;
 
@@ -262,16 +270,31 @@ async function flushTrace(
  * turn and after a confirmation resume (with the tool result already appended).
  */
 async function* continueLoop(
-  messages: ChatMessage[],
+  initialMessages: ChatMessage[],
   ctx: ToolContext,
   meta: ConversationMeta,
   conversationId: string,
   startIterations: number,
+  startTokenUsageTotal = 0,
   trace?: TurnTraceCollector
 ): AsyncGenerator<SSEEvent> {
   let iterations = startIterations;
+  let usedTokenTotal = startTokenUsageTotal;
+  let messages = initialMessages;
 
   while (iterations++ < MAX_ITERATIONS) {
+    if (iterations > 1) {
+      messages = compactLargeUserContentInMessages(messages);
+    }
+    if (isOverTokenBudget(usedTokenTotal, AGENT_TURN_TOKEN_BUDGET)) {
+      yield {
+        type: 'error',
+        message: tokenBudgetExceededMessage(usedTokenTotal, AGENT_TURN_TOKEN_BUDGET),
+      };
+      yield { type: 'done' };
+      return;
+    }
+
     let assistantContent = '';
     const toolCallsByIndex = new Map<number, ToolCall>();
     let finishReason = '';
@@ -280,7 +303,10 @@ async function* continueLoop(
 
     const llmMessages = await inlineLocalImages(prepareMessagesForLlm(messages));
     const llmTools = await getToolsForLlmAsync(ctx);
-    for await (const chunk of streamLlm(llmMessages, { tools: llmTools })) {
+    for await (const chunk of streamLlm(llmMessages, {
+      tools: llmTools,
+      maxTokens: AGENT_LLM_MAX_TOKENS,
+    })) {
       if (chunk.type === 'text_delta') {
         assistantContent += chunk.content;
         yield { type: 'text_delta', content: chunk.content };
@@ -304,6 +330,7 @@ async function* continueLoop(
         llmUsage = chunk.usage;
       }
     }
+    usedTokenTotal = addTokenUsageTotal(usedTokenTotal, llmUsage);
 
     trace?.recordLlmCall({
       iteration: iterations,
@@ -417,6 +444,8 @@ async function* continueLoop(
             messages: [...messages],
             pendingToolCall: call,
             turnId: trace?.turnId,
+            nextIteration: iterations,
+            tokenUsageTotal: usedTokenTotal,
           },
         });
         trace?.recordConfirmation({
@@ -473,6 +502,8 @@ async function* continueLoop(
             pendingToolCall: call,
             toolResult: result,
             turnId: trace?.turnId,
+            nextIteration: iterations,
+            tokenUsageTotal: usedTokenTotal,
           },
         });
         trace?.recordConfirmation({
@@ -591,6 +622,7 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     const systemMessage = await buildSystemMessage(toolContext, retrievedContextBlock);
 
     const history = await loadConversationHistory(toolContext.supabase, conversationId);
+    const compactedHistory = compactLargeUserContentInMessages(history);
     const llmUserMessage = augmentUserMessageForLlm(
       input.userMessage,
       toolContext,
@@ -601,10 +633,10 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     // so they are re-sent on every turn (spec: always let the agent see them).
     const userContentForLlm = buildUserContent(llmUserMessage, input.imageUrls);
     const userContentForDb = buildUserContent(input.userMessage, input.imageUrls);
-    const messages: ChatMessage[] = [systemMessage, ...history, { role: 'user', content: userContentForLlm }];
+    const messages: ChatMessage[] = [systemMessage, ...compactedHistory, { role: 'user', content: userContentForLlm }];
     await saveMessage(toolContext.supabase, conversationId, { role: 'user', content: userContentForDb }, indexingContext(toolContext));
 
-    yield* continueLoop(messages, toolContext, conversationMeta, conversationId, 0, trace);
+    yield* continueLoop(messages, toolContext, conversationMeta, conversationId, 0, 0, trace);
   } finally {
     await flushTrace(trace, toolContext, conversationId);
   }
@@ -713,7 +745,17 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     await deletePendingAction(toolContext.supabase, input.actionId);
 
     // Continue the loop so the LLM can summarize the result.
-    yield* continueLoop(messages, toolContext, meta, conversationId, 0, trace);
+    const resumeIteration = pending.suspendedState.nextIteration ?? 0;
+    const resumeTokenUsageTotal = pending.suspendedState.tokenUsageTotal ?? 0;
+    yield* continueLoop(
+      messages,
+      toolContext,
+      meta,
+      conversationId,
+      resumeIteration,
+      resumeTokenUsageTotal,
+      trace
+    );
   } finally {
     await flushTrace(trace, toolContext, conversationId);
   }

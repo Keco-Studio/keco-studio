@@ -181,6 +181,10 @@ export interface SuspendedState {
   toolResult?: ToolResult;
   /** Links confirmation resume to the same agent_traces row. */
   turnId?: string;
+  /** The next ReAct loop iteration to run when resuming this suspended turn. */
+  nextIteration?: number;
+  /** Cumulative provider-reported token total for this turn at suspension time. */
+  tokenUsageTotal?: number;
 }
 
 export interface AgentTurnInput {
