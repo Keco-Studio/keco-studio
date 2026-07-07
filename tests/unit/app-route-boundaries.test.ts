@@ -30,7 +30,19 @@ describe('Next app route boundaries', () => {
   it.each(segments)('%s error boundary is resettable client component', (segment) => {
     const content = readFileSync(path.join(repoRoot, segment, 'error.tsx'), 'utf8');
     expect(content).toContain("'use client'");
+    // Wires reset through to the shared RouteErrorBoundary (which renders the
+    // "Try again" button); the retry copy itself now lives in that component.
     expect(content).toContain('reset');
+    expect(content).toContain('RouteErrorBoundary');
+  });
+
+  it('shared RouteErrorBoundary provides the retry affordance', () => {
+    const content = readFileSync(
+      path.join(repoRoot, 'src/components/shared/RouteBoundary.tsx'),
+      'utf8'
+    );
+    expect(content).toContain("'use client'");
     expect(content).toContain('Try again');
+    expect(content).toContain('onClick={reset}');
   });
 });

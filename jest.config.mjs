@@ -12,7 +12,7 @@ const config = {
   // Both tests/ (the main suite) and src/ (colocated script-parser regression
   // tests from issue #162) — omitting src/ silently skips those in CI.
   roots: ['<rootDir>/tests', '<rootDir>/src'],
-  testMatch: ['**/*.test.ts'],
+  testMatch: ['**/*.test.ts', '**/*.test.tsx'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
   transform: {
     '^.+\\.tsx?$': ['ts-jest', {

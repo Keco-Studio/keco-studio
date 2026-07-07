@@ -916,8 +916,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const handleProjectCreated = async (projectId: string, defaultFolderId: string) => {
     closeProjectModal();
 
-    // Immediately invalidate React Query cache to refresh the sidebar
+    // Immediately invalidate React Query cache to refresh the sidebar.
+    // Mirror projects/page.tsx handleCreated: invalidate both the list and the
+    // per-project key so the two creation entry points stay consistent.
     queryClient.invalidateQueries({ queryKey: ['projects'] });
+    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
 
     // Also invalidate globalRequestCache for projects list
     const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
