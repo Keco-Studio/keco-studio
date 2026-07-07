@@ -1,4 +1,5 @@
 -- Seed data for local testing
+-- The fixed password in this file is local/CI only and never targets a public remote.
 -- Multiple users:
 -- 1-4) empty accounts (for parallel testing)
 -- 5) account with one empty project
@@ -363,4 +364,3 @@ fileupload_field_definitions as (
 select 1 from fileupload_field_definitions;
 
 commit;
-
