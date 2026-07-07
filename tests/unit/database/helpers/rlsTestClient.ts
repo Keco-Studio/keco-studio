@@ -157,7 +157,9 @@ export async function buildProjectFixture(): Promise<ProjectFixture> {
   ].map((r) => ({
     ...r,
     project_id: projectId,
-    invited_by: owner.id,
+    // project_collaborators has CHECK (user_id != invited_by) — the owner's own
+    // row cannot be self-invited, so leave invited_by null for it.
+    invited_by: r.user_id === owner.id ? null : owner.id,
     invited_at: now,
     accepted_at: now,
   }));
