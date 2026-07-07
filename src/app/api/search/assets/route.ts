@@ -5,6 +5,49 @@ import { cookies } from 'next/headers';
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
 
+type AssetSearchRow = {
+  id: string;
+  name: string | null;
+  library_id: string;
+  updated_at: string | null;
+  created_at: string | null;
+};
+
+type LibrarySearchRow = {
+  id: string;
+  name: string | null;
+  project_id: string;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
+const nullableString = (value: unknown): value is string | null =>
+  typeof value === 'string' || value === null;
+
+function isAssetSearchRow(value: unknown): value is AssetSearchRow {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.library_id === 'string' &&
+    nullableString(value.name) &&
+    nullableString(value.updated_at) &&
+    nullableString(value.created_at) &&
+    isUuid(value.id) &&
+    isUuid(value.library_id)
+  );
+}
+
+function isLibrarySearchRow(value: unknown): value is LibrarySearchRow {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.project_id === 'string' &&
+    nullableString(value.name) &&
+    isUuid(value.id)
+  );
+}
+
 export async function GET(req: Request) {
   const cookieStore = await cookies();
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -56,10 +99,10 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: assetsError.message }, { status: 400 });
   }
 
-  const safeAssets = (assets ?? []).filter((a: any) => a && isUuid(String(a.id)) && isUuid(String(a.library_id)));
+  const safeAssets = (assets ?? []).filter(isAssetSearchRow);
   if (safeAssets.length === 0) return NextResponse.json({ results: [] });
 
-  const libraryIds = Array.from(new Set(safeAssets.map((a: any) => a.library_id))).slice(0, 50);
+  const libraryIds = Array.from(new Set(safeAssets.map((asset) => asset.library_id))).slice(0, 50);
 
   const { data: libraries, error: librariesError } = await supabase
     .from('libraries')
@@ -70,28 +113,26 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: librariesError.message }, { status: 400 });
   }
 
-  const libById = new Map<string, any>();
-  (libraries ?? []).forEach((l: any) => {
-    if (!l) return;
-    if (isUuid(String(l.id))) libById.set(l.id, l);
+  const libById = new Map<string, LibrarySearchRow>();
+  (libraries ?? []).filter(isLibrarySearchRow).forEach((library) => {
+    libById.set(library.id, library);
   });
 
   const results = safeAssets
-    .map((a: any) => {
-      const lib = libById.get(a.library_id);
+    .map((asset) => {
+      const lib = libById.get(asset.library_id);
       if (!lib) return null;
       return {
         type: 'asset' as const,
-        id: String(a.id),
-        projectId: String(lib.project_id),
-        libraryId: String(lib.id),
-        name: String(a.name ?? ''),
+        id: asset.id,
+        projectId: lib.project_id,
+        libraryId: lib.id,
+        name: asset.name ?? '',
         hierarchy: String(lib.name ?? ''),
-        updatedAt: a.updated_at ?? a.created_at ?? null,
+        updatedAt: asset.updated_at ?? asset.created_at ?? null,
       };
     })
     .filter(Boolean);
 
   return NextResponse.json({ results });
 }
-
