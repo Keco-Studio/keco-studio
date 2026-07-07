@@ -33,7 +33,7 @@ export function YjsProvider({ children, libraryId }: YjsProviderProps) {
   
   const [isConnected, setIsConnected] = useState(false);
 
-  // Local persistence (IndexedDB) - supports offline editing and state recovery
+  // Local cache (IndexedDB) for the current Y.Doc state; this is not offline-edit merge support.
   useEffect(() => {
     const persistence = new IndexeddbPersistence(`asset-table-${libraryId}`, ydoc);
     
@@ -60,4 +60,3 @@ export function useYjs() {
   }
   return context;
 }
-

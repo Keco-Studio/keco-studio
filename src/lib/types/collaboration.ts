@@ -112,6 +112,7 @@ export type CellUpdateEvent = {
   newValue: any;
   oldValue?: any;
   timestamp: number; // Unix timestamp (ms)
+  updatedAt?: string | null; // Server-sourced conflict key (DB updated_at or equivalent)
 };
 
 export type AssetCreateEvent = {
@@ -235,6 +236,7 @@ export type OptimisticUpdate = {
   propertyKey: string;
   newValue: any;
   timestamp: number;
+  updatedAt?: string | null;
   userId: string;
 };
 
@@ -263,4 +265,3 @@ export function canUserManageCollaborators(role: CollaboratorRole): boolean {
 export function canUserEdit(role: CollaboratorRole): boolean {
   return role === 'admin' || role === 'editor';
 }
-

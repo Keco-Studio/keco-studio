@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { resolveConflict } from '@/lib/realtime/conflict-resolution';
 import type {
   CellUpdateEvent,
   AssetCreateEvent,
@@ -131,19 +132,17 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     // console.log('[useRealtimeSubscription] ✅ Processing broadcast from another user');
     const optimistic = getOptimisticUpdate(event.assetId, event.propertyKey);
 
-    if (optimistic && optimistic.timestamp < event.timestamp) {
-      // Conflict detected: remote update is newer than our optimistic update
-      // console.log('[useRealtimeSubscription] ⚠️ Conflict detected, remote wins');
-      onConflict(event, optimistic.newValue);
-      removeOptimisticUpdate(event.assetId, event.propertyKey);
-    } else if (!optimistic) {
+    if (optimistic) {
+      const resolution = resolveConflict(optimistic, event);
+      if (resolution.winner === 'remote') {
+        onConflict(event, optimistic.newValue);
+        removeOptimisticUpdate(event.assetId, event.propertyKey);
+      }
+    } else {
       // No conflict, apply the update
       // console.log('[useRealtimeSubscription] ✅ No conflict, applying update');
       onCellUpdate(event);
-    } else {
-      // console.log('[useRealtimeSubscription] ⏭️ Local update is newer, ignoring');
     }
-    // If optimistic.timestamp >= event.timestamp, ignore (our update is newer)
   }, [currentUserId, getOptimisticUpdate, onCellUpdate, onConflict, removeOptimisticUpdate]);
 
   /**
@@ -223,7 +222,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     assetId: string,
     propertyKey: string,
     newValue: any,
-    oldValue?: any
+    oldValue?: any,
+    updatedAt?: string | null
   ): Promise<void> => {
     // console.log('[useRealtimeSubscription] broadcastCellUpdate called:', { 
     //   assetId, 
@@ -249,6 +249,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       newValue,
       oldValue,
       timestamp,
+      updatedAt,
     };
 
     // console.log('[useRealtimeSubscription] Created broadcast event:', event);
@@ -259,6 +260,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       propertyKey,
       newValue,
       timestamp,
+      updatedAt,
       userId: currentUserId,
     });
 
@@ -575,7 +577,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
             try {
               const { data: assetData } = await supabase
                 .from('library_assets')
-                .select('library_id')
+                .select('library_id, updated_at')
                 .eq('id', newRecord.asset_id)
                 .single();
               
@@ -606,6 +608,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
                 newValue: newRecord.value_json,
                 oldValue: oldRecord?.value_json,
                 timestamp: Date.now(),
+                updatedAt: (assetData as any)?.updated_at ?? (payload as any)?.commit_timestamp ?? null,
               };
               
               handleCellUpdateEvent({ payload: syntheticEvent });
@@ -638,7 +641,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
             try {
               const { data: assetData } = await supabase
                 .from('library_assets')
-                .select('library_id')
+                .select('library_id, updated_at')
                 .eq('id', newRecord.asset_id)
                 .single();
               if (!assetData || assetData.library_id !== libraryId) return;
@@ -653,6 +656,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
                 newValue: newRecord.value_json,
                 oldValue: null, // INSERT means it was null before
                 timestamp: Date.now(),
+                updatedAt: (assetData as any)?.updated_at ?? (payload as any)?.commit_timestamp ?? null,
               };
               
               handleCellUpdateEvent({ payload: syntheticEvent });
@@ -763,6 +767,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
             newValue: newName,
             oldValue: oldName,
             timestamp: Date.now(),
+            updatedAt: newRecord.updated_at ?? (payload as any)?.commit_timestamp ?? null,
           };
           handleCellUpdateEvent({ payload: syntheticEvent });
         }
@@ -873,4 +878,3 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     queuedUpdatesCount: queuedUpdates.length,
   };
 }
-

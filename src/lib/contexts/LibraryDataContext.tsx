@@ -25,6 +25,7 @@ import { useRealtimeSubscription, type ConnectionStatus } from '@/lib/hooks/useR
 import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState, CellsBatchUpdateEvent } from '@/lib/types/collaboration';
+import { repopulateWithResetPersistence } from '@/lib/yjs/persistence';
 import { serializeError } from '@/lib/utils/errorUtils';
 import { getLibraryAssetsWithProperties, applyBooleanFieldDefaults, getBooleanFieldIdsByLibraryId } from '@/lib/services/libraryAssetsService';
 import {
@@ -144,6 +145,21 @@ async function touchLibraryUpdatedAt(
   }
 }
 
+async function touchAssetUpdatedAt(
+  supabase: ReturnType<typeof useSupabase>,
+  assetId: string
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('library_assets')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', assetId)
+    .select('updated_at')
+    .single();
+
+  if (error) throw error;
+  return (data as any)?.updated_at ?? null;
+}
+
 export function LibraryDataProvider({ children, libraryId, projectId }: LibraryDataProviderProps) {
   const supabase = useSupabase();
   const { userProfile, isAuthenticated, isLoading: isAuthLoading } = useAuth();
@@ -151,6 +167,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Yjs setup - shared data structure
   const yDoc = useMemo(() => new Y.Doc(), [libraryId]);
   const yAssets = useMemo(() => yDoc.getMap<Y.Map<any>>('assets'), [yDoc]);
+  const libraryPersistenceName = `library-${libraryId}`;
 
   // State
   const [assets, setAssets] = useState<Map<string, AssetRow>>(new Map());
@@ -163,6 +180,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Track asset IDs created during a batch insert (skipReload=true) so that
   // postgres_changes INSERT events don't add them to yAssets with missing row_index.
   const pendingBatchInsertIdsRef = useRef<Set<string>>(new Set());
+  const yPersistenceRef = useRef<IndexeddbPersistence | null>(null);
 
   // Keep ref updated
   useEffect(() => {
@@ -233,40 +251,56 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       // 使用与版本快照完全一致的服务读取当前库数据，避免「当前视图」和「版本快照」两套取数逻辑
       const assetRows: AssetRow[] = await getLibraryAssetsWithProperties(supabase, libraryId);
 
-      // Populate Yjs with data (using Y.Map for propertyValues)
-      // Always clear existing Yjs state first to avoid mixing old and new data
-      yDoc.transact(() => {
-        yAssets.clear();
-
-        assetRows.forEach((asset: AssetRow) => {
-          const yAsset = new Y.Map();
-          yAsset.set('name', asset.name);
-
-          // Create Y.Map for propertyValues (nested structure)
-          const yPropertyValues = new Y.Map();
-          const values = asset.propertyValues || {};
-          Object.entries(values).forEach(([fieldId, value]) => {
-            // For complex objects, use deep copy to avoid reference issues
-            let valueForYjs = value;
-            if (value !== null && typeof value === 'object') {
-              valueForYjs = JSON.parse(JSON.stringify(value));
+      const nextPersistence = await repopulateWithResetPersistence({
+        persistenceName: libraryPersistenceName,
+        currentPersistence: yPersistenceRef.current,
+        createPersistence: () => {
+          const persistence = new IndexeddbPersistence(libraryPersistenceName, yDoc);
+          persistence.on('synced', () => {
+            if (isMountedRef.current) {
+              setIsSynced(true);
             }
-            yPropertyValues.set(fieldId, valueForYjs);
           });
-          yAsset.set('propertyValues', yPropertyValues);
+          return persistence;
+        },
+        repopulate: () => {
+          // Populate Yjs with data (using Y.Map for propertyValues)
+          // Always clear existing Yjs state first to avoid mixing old and new data
+          yDoc.transact(() => {
+            yAssets.clear();
 
-          if (asset.created_at) yAsset.set('created_at', asset.created_at);
-          if (typeof asset.rowIndex === 'number') yAsset.set('row_index', asset.rowIndex);
-          yAssets.set(asset.id, yAsset as any);
-        });
+            assetRows.forEach((asset: AssetRow) => {
+              const yAsset = new Y.Map();
+              yAsset.set('name', asset.name);
+
+              // Create Y.Map for propertyValues (nested structure)
+              const yPropertyValues = new Y.Map();
+              const values = asset.propertyValues || {};
+              Object.entries(values).forEach(([fieldId, value]) => {
+                // For complex objects, use deep copy to avoid reference issues
+                let valueForYjs = value;
+                if (value !== null && typeof value === 'object') {
+                  valueForYjs = JSON.parse(JSON.stringify(value));
+                }
+                yPropertyValues.set(fieldId, valueForYjs);
+              });
+              yAsset.set('propertyValues', yPropertyValues);
+
+              if (asset.created_at) yAsset.set('created_at', asset.created_at);
+              if (typeof asset.rowIndex === 'number') yAsset.set('row_index', asset.rowIndex);
+              yAssets.set(asset.id, yAsset as any);
+            });
+          });
+        },
       });
+      yPersistenceRef.current = nextPersistence;
 
     } catch (error) {
       console.error('[LibraryDataContext] Failed to load initial data:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [libraryId, isAuthenticated, userProfile, supabase, yDoc, yAssets]);
+  }, [libraryId, isAuthenticated, userProfile, supabase, yDoc, yAssets, libraryPersistenceName]);
 
   // Restore 后直接用 snapshot 覆盖 Yjs，保证「当前视图 = 刚恢复的版本」，与创建版本用 Yjs 一致
   const applySnapshotToYjs = useCallback((snapshotData: { assets?: Array<{ id: string; name?: string; propertyValues?: Record<string, any>; createdAt?: string; rowIndex?: number | null }> }) => {
@@ -296,20 +330,29 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Initial load (wait for auth so RLS-backed queries have a valid session)
   useEffect(() => {
     if (isAuthLoading || !isAuthenticated || !userProfile) return;
+    if (!yPersistenceRef.current) return;
     loadInitialData();
   }, [loadInitialData, isAuthLoading, isAuthenticated, userProfile]);
 
   // IndexedDB persistence — after restore, overwrite with DB so collaborative view matches server (fixes 44 vs 28 row mismatch)
   useEffect(() => {
-    const persistence = new IndexeddbPersistence(`library-${libraryId}`, yDoc);
+    let isDisposed = false;
+    const persistence = new IndexeddbPersistence(libraryPersistenceName, yDoc);
+    yPersistenceRef.current = persistence;
     persistence.on('synced', () => {
+      if (isDisposed) return;
       setIsSynced(true);
       loadInitialData();
     });
     return () => {
-      persistence.destroy();
+      isDisposed = true;
+      const activePersistence = yPersistenceRef.current;
+      yPersistenceRef.current = null;
+      if (activePersistence) {
+        void activePersistence.destroy();
+      }
     };
-  }, [yDoc, libraryId, loadInitialData]);
+  }, [yDoc, libraryPersistenceName, loadInitialData]);
 
   // Reload data when a library restore event is dispatched
   // 若带 snapshotData 则直接用其覆盖 Yjs，保证当前视图 = 刚恢复的版本；否则从 DB 拉取
@@ -740,6 +783,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     });
 
     try {
+      const serverUpdatedAt = await touchAssetUpdatedAt(supabase, assetId);
+
       const upsertRows = Object.entries(valuesToPersist).map(([fieldKey, fieldValue]) => ({
         asset_id: assetId,
         field_id: fieldKey,
@@ -764,9 +809,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
       if (!options?.skipBroadcast && realtimeConfig) {
         await new Promise(resolve => setTimeout(resolve, 100));
-        await broadcastCellUpdate(assetId, fieldId, valueForYjs, oldValue);
+        await broadcastCellUpdate(assetId, fieldId, valueForYjs, oldValue, serverUpdatedAt);
         for (const [formulaFieldId, formulaValue] of changedFormulaEntries) {
-          await broadcastCellUpdate(assetId, formulaFieldId, formulaValue, oldFormulaValues[formulaFieldId]);
+          await broadcastCellUpdate(assetId, formulaFieldId, formulaValue, oldFormulaValues[formulaFieldId], serverUpdatedAt);
         }
       }
 
@@ -800,6 +845,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     realtimeConfig,
     syncReferencesAfterSourceChange,
     libraryId,
+    projectId,
   ]);
 
   const updateAssetName = useCallback(async (
@@ -821,18 +867,21 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
     // 2. Save to database
     try {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from('library_assets')
         .update({ name: newName })
-        .eq('id', assetId);
+        .eq('id', assetId)
+        .select('updated_at')
+        .single();
 
       if (error) throw error;
+      const serverUpdatedAt = (data as any)?.updated_at ?? null;
 
       await touchLibraryUpdatedAt(supabase, libraryId, projectId);
 
       // 3. Broadcast as field update (name is a special field)
       if (!options?.skipBroadcast && realtimeConfig) {
-        await broadcastCellUpdate(assetId, 'name', newName, oldName);
+        await broadcastCellUpdate(assetId, 'name', newName, oldName, serverUpdatedAt);
       }
     } catch (error) {
       // Revert optimistic update on error
@@ -841,7 +890,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       });
       throw error;
     }
-  }, [yAssets, yDoc, supabase, broadcastCellUpdate, realtimeConfig]);
+  }, [yAssets, yDoc, supabase, broadcastCellUpdate, realtimeConfig, libraryId, projectId]);
 
   const createAsset = useCallback(async (
     name: string,
@@ -1136,4 +1185,3 @@ export function useLibraryData() {
 export function useLibraryDataOptional(): LibraryDataContextValue | null {
   return useContext(LibraryDataContext);
 }
-
