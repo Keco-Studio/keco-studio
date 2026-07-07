@@ -146,7 +146,7 @@ export type RowOrderChangeEvent = {
   timestamp: number;
 };
 
-/** 批量单元格更新事件，用于 Clear Content 等批量清空场景，一次广播所有变更，避免多条 cell:update 的 debounce 与顺序问题 */
+/** Batched cell update event for Clear Content and similar bulk operations. */
 export type CellsBatchUpdateEvent = {
   type: 'cells:batch-update';
   userId: string;

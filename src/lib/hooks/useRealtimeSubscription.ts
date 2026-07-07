@@ -35,9 +35,9 @@ export type RealtimeSubscriptionConfig = {
   onAssetCreate: (event: AssetCreateEvent) => void;
   onAssetDelete: (event: AssetDeleteEvent) => void;
   onConflict: (event: CellUpdateEvent, localValue: any) => void;
-  /** 行顺序发生变更时的回调（例如 insert above/below 或批量重排） */
+  /** Callback for row order changes, such as insert above/below or batch reordering. */
   onRowOrderChange?: (event: RowOrderChangeEvent) => void;
-  /** 批量单元格更新回调（Clear Content 等场景，一次接收所有变更，效仿 Delete Row 的即时同步） */
+  /** Callback for batched cell updates, such as Clear Content. */
   onCellsBatchUpdate?: (event: CellsBatchUpdateEvent) => void;
 };
 
@@ -65,7 +65,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   
   // Track recent broadcasts to prevent processing our own database updates
   const recentBroadcastsRef = useRef<Map<string, number>>(new Map());
-  // 收到 cells:batch-update 后短时间忽略同批 cell 的 postgres_changes，避免协作者「一格一格清空」
+  // After cells:batch-update, briefly ignore matching postgres_changes so
+  // collaborators do not see cells clear one by one.
   const recentBatchCellKeysRef = useRef<{ keys: Set<string>; at: number }>({ keys: new Set(), at: 0 });
   // Buffer postgres_changes INSERT events for library_assets to coalesce with roworder:change.
   // Without this, INSERT events arrive before roworder:change and cause rows to appear at
@@ -199,8 +200,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
   /**
    * Handle incoming cells batch update events (e.g. Clear Content).
-   * 效仿 Delete Row：一次性接收所有变更，协作者立即全部应用，无 debounce、无顺序问题。
-   * 同时记录这批 cell，短时间忽略同批的 postgres_changes，避免「一格一格清空」。
+   * Like Delete Row, collaborators receive and apply every change at once.
+   * Track the batch briefly so matching postgres_changes do not replay cells one by one.
    */
   const handleCellsBatchUpdateEvent = useCallback((payload: any) => {
     if (!onCellsBatchUpdate) return;
@@ -428,7 +429,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
   /**
    * Broadcast a batch of cell updates in one message (e.g. Clear Content).
-   * 效仿 Delete Row：无 debounce，一次发送所有变更，协作者一次性接收并应用。
+   * Like Delete Row, send every change in one message with no debounce.
    */
   const broadcastCellsBatchUpdate = useCallback(async (
     cells: Array<{ assetId: string; propertyKey: string; newValue: any }>
@@ -456,8 +457,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
   /**
    * Broadcast a row order change hint to all clients.
-   * 事件本身不携带具体 rowIndex 列表，上层通常在收到事件后触发一次从 DB 的 reload，
-   * 以 server 为准同步行序。
+   * The event does not carry rowIndex details; callers usually reload from the
+   * database so server order stays authoritative.
    */
   const broadcastRowOrderChange = useCallback(async (): Promise<void> => {
     if (!channelRef.current) {

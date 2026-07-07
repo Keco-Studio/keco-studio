@@ -1101,7 +1101,7 @@ td.cellCopy.copyBorderRight:hover {
   display: block;
 }
 
-/* Int 列拖动填充柄时待填充格的预览值样式 */
+/* Preview value style while drag-filling int cells */
 .cellFillPreview {
   color: var(--color-text-tertiary, #94a3b8);
   font-style: italic;

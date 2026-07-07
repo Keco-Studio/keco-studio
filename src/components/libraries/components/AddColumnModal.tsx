@@ -40,9 +40,9 @@ export type AddColumnModalProps = {
   sectionId: string;
   sectionName: string;
   onSubmit: (payload: AddColumnFormPayload) => Promise<void>;
-  /** 锚点元素（如「新增列」按钮），弹窗将悬浮在该元素正下方；不传则相对视口居中 */
+  /** Anchor element for positioning the popup below the trigger; centered when omitted. */
   anchorRef?: React.RefObject<HTMLElement | null>;
-  /** 当前库已有的字段列表，用于公式下拉中插入列名 */
+  /** Existing fields for inserting column names from the formula dropdown. */
   existingProperties?: PropertyConfig[];
 };
 
@@ -96,7 +96,7 @@ export function AddColumnModal({
         const next = current.slice(0, safeStart) + rawToken + current.slice(safeEnd);
         const cursorPos = safeStart + rawToken.length;
 
-        // 更新输入框中的光标位置
+        // Update the input cursor position.
         setTimeout(() => {
           const inputEl = formulaInputRef.current;
           if (inputEl && typeof inputEl.setSelectionRange === 'function') {
@@ -146,7 +146,7 @@ export function AddColumnModal({
   }, [dataTypeSearch]);
 
   const updatePosition = () => {
-    // 无锚点时，居中显示
+    // Center the popup when there is no anchor.
     if (!anchorRef?.current) {
       setPopupStyle({
         position: 'fixed',
@@ -164,7 +164,7 @@ export function AddColumnModal({
     const estimatedWidth = 440;
     const margin = 1;
 
-    // 编辑框在表格右侧、按钮下方：右边缘与按钮右边缘对齐；再整体右移 100px
+    // Place the editor below the button and align its right edge with the trigger.
     let left = rect.right - estimatedWidth + 100;
     if (left < margin) left = margin;
     if (left + estimatedWidth + margin > viewportWidth) {
@@ -173,9 +173,9 @@ export function AddColumnModal({
 
     setPopupStyle({
       position: 'fixed',
-      top: rect.bottom + gap + 20, // 在原基础上垂直下移 40px
+      top: rect.bottom + gap + 20, // Shift down from the base trigger position.
       left,
-      transform: 'none', // 覆盖 .popup 的 translate(-50%,-50%)，否则会居中
+      transform: 'none', // Override centered popup transform.
       zIndex: 1050,
     });
   };
@@ -375,14 +375,14 @@ export function AddColumnModal({
             )
           );
 
-          // 先检查是否有「引用了不存在的列」
+          // First check for references to missing columns.
           const missingRefs = referencedNames.filter((_, idx) => !referencedProps[idx]);
           if (missingRefs.length > 0) {
             setError('Formula references a non-existing column');
             return;
           }
 
-          // 再检查是否引用了非可计算列：仅允许 int / float / formula
+          // Then reject references to non-calculable columns.
           const nonCalculable = referencedProps.filter(
             (prop): prop is PropertyConfig =>
               !!prop &&

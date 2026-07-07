@@ -117,7 +117,7 @@
   display: grid;
   gap: 1.5rem;
   width: 100%;
-  /* 默认：小屏幕，1列，靠左对齐 */
+  /* Default: small screens, one left-aligned column */
   grid-template-columns: 1fr;
   justify-items: start;
 }
@@ -129,7 +129,7 @@
   width: 100%;
 }
 
-/* 小屏幕：1列，card 宽度自适应，靠左对齐 */
+/* Small screens: one left-aligned column with adaptive card width */
 @media (min-width: 640px) {
   .grid {
     grid-template-columns: 1fr;
@@ -137,30 +137,30 @@
   }
 }
 
-/* 中等屏幕：2列，card 宽度自适应填充 */
+/* Medium screens: two columns with cards filling each track */
 @media (min-width: 800px) {
   .grid {
     grid-template-columns: repeat(2, 1fr);
     gap: 1.5rem;
-    justify-items: stretch; /* 多列时，card 填充整列 */
+    justify-items: stretch; /* In multi-column layouts, cards fill the whole track */
   }
 }
 
-/* 大屏幕：3列，card 宽度约 597px（设计稿标准） */
+/* Large screens: three columns near the 597px design width */
 @media (min-width: 1920px) {
   .grid {
     grid-template-columns: repeat(3, 1fr);
     gap: 1.5rem;
-    justify-items: stretch; /* 多列时，card 填充整列 */
+    justify-items: stretch; /* In multi-column layouts, cards fill the whole track */
   }
 }
 
-/* 超大屏幕：4列 */
+/* Extra-large screens: four columns */
 @media (min-width: 2560px) {
   .grid {
     grid-template-columns: repeat(4, 1fr);
     gap: 1.5rem;
-    justify-items: stretch; /* 多列时，card 填充整列 */
+    justify-items: stretch; /* In multi-column layouts, cards fill the whole track */
   }
 }
 

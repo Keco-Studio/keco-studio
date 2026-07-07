@@ -19,7 +19,7 @@ export interface LibraryVersion {
     avatarColor?: string;
   };
   createdAt: Date;
-  snapshotData: any; // Library的完整数据快照
+  snapshotData: any; // Complete library data snapshot.
   restoreFromVersionId?: string | null;
   restoredBy?: {
     id: string;
@@ -36,14 +36,14 @@ import type { AssetRow } from './libraryAssets';
 export interface CreateVersionRequest {
   libraryId: string;
   versionName: string;
-  /** 创建版本时优先使用当前界面（Yjs）数据，避免与 DB 未同步导致快照与「当前看到」不一致 */
+  /** Prefer current UI (Yjs) data so snapshots match what the user sees. */
   currentAssetsFromClient?: AssetRow[];
 }
 
 export interface RestoreRequest {
   versionId: string;
   backupCurrent: boolean;
-  backupVersionName?: string; // 当backupCurrent为true时必填
+  backupVersionName?: string; // Required when backupCurrent is true.
 }
 
 export interface EditVersionRequest {
@@ -53,7 +53,7 @@ export interface EditVersionRequest {
 
 export interface DuplicateVersionRequest {
   versionId: string;
-  // 新library名称由后端生成：libraryName (copy)
+  // Backend generates the new library name: libraryName (copy).
 }
 
 // Database schema types (snake_case)
@@ -72,4 +72,3 @@ export interface LibraryVersionDb {
   is_current: boolean;
   metadata: Record<string, any> | null;
 }
-

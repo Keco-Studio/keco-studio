@@ -102,7 +102,7 @@ function dbVersionToAppVersion(dbVersion: LibraryVersionDb, createdByProfile?: a
 /**
  * Create a complete snapshot of a library
  * Includes all assets, field definitions, and configuration.
- * 若传入 currentAssetsFromClient（当前界面 Yjs 数据），则用其作为快照内容，保证与用户看到的完全一致。
+ * If currentAssetsFromClient is provided, use it so the snapshot matches the current UI state.
  */
 async function createLibrarySnapshot(
   supabase: SupabaseClient,
@@ -390,7 +390,7 @@ export async function createVersion(
   // Get current user
   const userId = await getCurrentUserId(supabase);
 
-  // Create snapshot（优先用当前界面数据，避免 DB 与 Yjs 不同步导致快照和「当前看到」不一致）
+  // Prefer current UI data for the snapshot so it does not drift from what the user sees.
   const snapshotData = await createLibrarySnapshot(supabase, libraryId, currentAssetsFromClient);
 
   // Insert new version as history version (not current)
@@ -937,4 +937,3 @@ export async function duplicateVersionAsLibrary(
     projectId: projectId,
   };
 }
-

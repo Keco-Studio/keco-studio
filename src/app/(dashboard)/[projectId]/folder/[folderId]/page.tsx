@@ -196,7 +196,7 @@ export default function FolderPage() {
     });
   };
 
-  // 将页面内 LibraryToolbar 的视图模式同步到 TopBar
+  // Sync the page LibraryToolbar view mode to TopBar.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(
@@ -210,7 +210,7 @@ export default function FolderPage() {
     );
   }, [viewMode, projectId, folderId]);
 
-  // 让 TopBar 中的 LibraryToolbar 也能控制本页视图切换和创建 Library
+  // Let the TopBar LibraryToolbar control view switching and library creation on this page.
   useEffect(() => {
     const handleTopbarCreateLibrary = (event: Event) => {
       const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;

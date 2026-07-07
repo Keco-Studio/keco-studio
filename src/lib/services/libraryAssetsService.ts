@@ -99,14 +99,14 @@ const mergeFormulaValuesPreservingCustom = (
   return merged;
 };
 
-// 当库内数据/结构发生变化时，顺便刷新 libraries.updated_at，
-// 以及其所在的 folder / project 的 updated_at，供顶部搜索排序使用。
+// Refresh library, folder, and project updated_at metadata after library data
+// or schema changes so TopBar search ordering stays current.
 async function touchLibraryUpdatedAt(supabase: SupabaseClient, libraryId: string) {
   if (!libraryId) return;
   try {
     const now = new Date().toISOString();
 
-    // 更新 library 并取回所属 project / folder
+    // Update the library and fetch its parent project/folder in one round trip.
     const { data, error } = await supabase
       .from('libraries')
       .update({ updated_at: now })
@@ -133,7 +133,7 @@ async function touchLibraryUpdatedAt(supabase: SupabaseClient, libraryId: string
         .eq('id', folderId);
     }
   } catch (error) {
-    // 不要因为更新时间失败而影响主流程
+    // Do not block the main flow if timestamp metadata fails to update.
     // eslint-disable-next-line no-console
     console.warn('[Libraries] Failed to touch updated_at for library/folder/project', libraryId, error);
   }
@@ -160,9 +160,9 @@ const mapDataTypeToValueType = (
 };
 
 /**
- * 统一字段反序列化逻辑，和 LibraryDataContext.loadInitialData 保持一致：
- * - Supabase jsonb 通常已经是对象/原始类型，直接返回
- * - 如果是非空字符串，再尝试 JSON.parse，一旦失败就保留原字符串
+ * Keep field deserialization consistent with LibraryDataContext.loadInitialData:
+ * - Supabase jsonb is usually already an object or primitive, so return it directly.
+ * - For non-empty strings, try JSON.parse and keep the original string if parsing fails.
  */
 const normalizeValue = (input: unknown): any => {
   if (input === null || input === undefined) return null;
@@ -175,7 +175,7 @@ const normalizeValue = (input: unknown): any => {
         value = parsed;
       }
     } catch {
-      // 不是 JSON 字符串，就按普通字符串使用
+      // Not a JSON string, so keep it as plain text.
     }
   }
   return value;
@@ -316,7 +316,7 @@ async function recalculateAndPersistFormulaFieldValues(
     }
     const computed = computeFormulaValuesForRow(evaluableFields, asset.propertyValues);
     const value = computed[targetFormulaFieldId];
-    // 允许持久化任意非空结果（数字、布尔或字符串），以支持 IF 等复杂公式
+    // Persist any non-empty result so formulas can return numbers, booleans, or strings.
     if (value !== null && value !== undefined) {
       upsertRows.push({
         asset_id: asset.id,
@@ -467,7 +467,7 @@ export async function getLibrarySchema(
   return { sections, properties };
 }
 
-/** 更新 section 显示名称：sectionId 格式为 libraryId:旧名称，将 library_field_definitions 中该 section 的 section 字段改为 newName */
+/** Rename a section by updating all matching field definition rows. */
 export async function updateSectionName(
   supabase: SupabaseClient,
   sectionId: string,
@@ -493,7 +493,7 @@ export async function updateSectionName(
   await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
-/** 新增一个 section（在 library_field_definitions 中插入一个默认字段以创建新区块，参考 predefine 的 handleSaveNewSection）。 */
+/** Add a section by inserting its default field definition row. */
 export async function addLibrarySection(
   supabase: SupabaseClient,
   libraryId: string,
@@ -520,7 +520,7 @@ export async function addLibrarySection(
 
   const sectionId = `${libraryId}:${sectionName}`;
 
-  // 与表初始化保持一致：默认创建一个 ID(String) 字段
+  // Match table initialization: create a default ID string field.
   const { data: inserted, error } = await supabase
     .from('library_field_definitions')
     .insert({
@@ -547,7 +547,7 @@ export async function addLibrarySection(
   return { sectionId, sectionName, fieldId: inserted.id as string };
 }
 
-/** 在指定 section 下新增一个字段（用于表格内「新增列」弹窗）。sectionId 为前端格式（libraryId:sectionName），内部会按 library_id + section 解析出 DB 的 section_id。 */
+/** Add one field under the target section for the in-table Add Column modal. */
 export async function addLibraryField(
   supabase: SupabaseClient,
   libraryId: string,
@@ -622,7 +622,7 @@ export async function addLibraryField(
   return { id: inserted.id };
 }
 
-/** 删除单个字段（列），会依赖数据库外键自动级联删除该列下所有资产值 */
+/** Delete one field; database foreign keys cascade deletion of that field's values. */
 export async function deleteLibraryField(
   supabase: SupabaseClient,
   libraryId: string,
@@ -645,7 +645,7 @@ export async function deleteLibraryField(
   await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
-/** 更新单个字段（列）的基础信息和类型配置 */
+/** Update one field's basic metadata and type configuration. */
 export async function updateLibraryField(
   supabase: SupabaseClient,
   libraryId: string,
@@ -709,8 +709,8 @@ export async function getLibraryAssetsWithProperties(
     .from('library_assets')
     .select('id, library_id, name, created_at, row_index')
     .eq('library_id', libraryId)
-    // IMPORTANT: 排序逻辑必须与前端 allAssets 完全一致：
-    // 先按 row_index，再按 id，避免不同客户端行顺序不一致。
+    // IMPORTANT: keep this ordering identical to frontend allAssets sorting:
+    // row_index first, then id, so clients agree on row order.
     .order('row_index', { ascending: true })
     .order('id', { ascending: true });
 
@@ -969,7 +969,7 @@ export async function deleteAssets(
     return;
   }
   await verifyAssetsDeletionPermission(supabase, assetIds);
-  // 约定：批量删除时，这些资产都来自同一个库
+  // Batch deletes are scoped to assets from the same library.
   const libraryId = await getLibraryIdByAssetId(supabase, assetIds[0]);
   const { error } = await supabase
     .from('library_assets')
@@ -979,4 +979,3 @@ export async function deleteAssets(
 
   await touchLibraryUpdatedAt(supabase, libraryId);
 }
-

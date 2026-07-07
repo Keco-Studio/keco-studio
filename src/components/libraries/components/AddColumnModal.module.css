@@ -1,4 +1,4 @@
-/* Add Column popup - no overlay, floats below trigger button；具体 left/top 由内联样式设置 */
+/* Add Column popup: no overlay, floats below trigger button; left/top are set inline. */
 .popup {
   position: fixed;
   z-index: 1050;
@@ -435,7 +435,7 @@
   flex-direction: column;
   max-height: 25rem;
   min-height: 12.5rem;
-  /* 整个下拉面板可滚动，避免内容被截断 */
+  /* Keep the whole dropdown panel scrollable to avoid clipping content */
   overflow-y: auto;
 }
 
@@ -495,7 +495,7 @@
 
 .referenceOptionsList {
   flex: 1;
-  /* 允许在库很多时通过滚动查看完整列表 */
+  /* Allow scrolling through the full list when many libraries exist */
   overflow-y: auto;
   max-height: 13.75rem;
   padding-right: 0.25rem;

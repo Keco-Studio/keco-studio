@@ -114,7 +114,7 @@ export type TableHeaderProps = {
   allRowsSelected: boolean;
   hasSomeRowsSelected: boolean;
   onToggleSelectAll: (checked: boolean) => void;
-  /** 当前库的全部字段列表，用于下钻到 EditColumnModal 做重名校验 */
+  /** All fields in the current library, used for duplicate-name validation in EditColumnModal. */
   existingProperties?: PropertyConfig[];
   /** When true (e.g. section tabs mode), hide the section name row and only show property names */
   showSectionRow?: boolean;
@@ -234,7 +234,7 @@ export function TableHeader({
     open: false,
   });
 
-  // 点击任意非浮层区域时关闭浮层（使用捕获阶段，避免被内部 stopPropagation 影响）
+  // Close the floating menu on outside pointer down; capture phase bypasses inner stopPropagation.
   useEffect(() => {
     if (!headerMenu.visible) return;
 
@@ -252,7 +252,7 @@ export function TableHeader({
     };
   }, [headerMenu.visible]);
 
-  // 当发生滚动 / 滑轮滚动时，只关闭右键小浮层
+  // Close only the small header context menu when scroll or wheel events occur.
   useEffect(() => {
     if (!headerMenu.visible) return;
     const handleScroll = () => {

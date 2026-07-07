@@ -30,7 +30,7 @@ export function parseRouteParams(
 ): RouteParamsResult {
   const parts = pathname.split('/').filter(Boolean);
 
-  // 根路径特殊页面 (没有项目上下文的路由)
+  // Root-level special pages have no project context.
   if (parts.length === 1 && SPECIAL_ROUTE_SEGMENTS.includes(parts[0] as (typeof SPECIAL_ROUTE_SEGMENTS)[number])) {
     return {
       projectId: null,
@@ -42,12 +42,12 @@ export function parseRouteParams(
     };
   }
 
-  // simulation-system 及其子路由也是特殊页面（不涉及项目授权）- 优化：提前返回
+  // simulation-system routes are special pages without project authorization.
   if (parts[0] === 'simulation-system') {
-    // economy 子路由
+    // economy subroutes
     if (parts[1] === 'economy') {
       const subPage = parts[2];
-      // 直接子页面（概览等）
+      // Direct child pages, such as overview.
       if (!subPage || subPage === 'overview') {
         return {
           projectId: null,
@@ -58,7 +58,7 @@ export function parseRouteParams(
           isLibraryPage: false,
         };
       }
-      // 子模块页面
+      // Nested module pages.
       return {
         projectId: null,
         libraryId: null,
@@ -68,7 +68,7 @@ export function parseRouteParams(
         isLibraryPage: false,
       };
     }
-    // battle 子路由
+    // battle subroutes
     if (parts[1] === 'battle') {
       return {
         projectId: null,
@@ -79,7 +79,7 @@ export function parseRouteParams(
         isLibraryPage: false,
       };
     }
-    // simulation-system 自身
+    // simulation-system root
     return {
       projectId: null,
       libraryId: null,

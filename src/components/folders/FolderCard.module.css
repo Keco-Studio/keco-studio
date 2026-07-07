@@ -9,13 +9,13 @@
   flex-direction: column;
   justify-content: space-between;
   width: 100%;
-  max-width: 37.3125rem; /* 597px - 设计稿标准宽度，单列时限制 */
+  max-width: 37.3125rem; /* 597px design width, constrained in one-column layouts */
   padding: 1.25rem 14px 12px;
   height: 169px;
   box-sizing: border-box;
 }
 
-/* 多列布局时，移除 max-width 限制，让 card 填充整列 */
+/* Remove max-width in multi-column layouts so cards fill the track */
 @media (min-width: 1366px) {
   .card {
     max-width: none;
@@ -103,7 +103,7 @@
 }
 
 .actionButton:hover img {
-  filter: brightness(0) invert(1); /* 图标变白色 */
+  filter: brightness(0) invert(1); /* Turn icon white */
 }
 
 .actionButton:active {
@@ -111,7 +111,7 @@
 }
 
 .actionButton:active img {
-  filter: brightness(0) invert(1); /* 图标变白色 */
+  filter: brightness(0) invert(1); /* Turn icon white */
 }
 
 .librariesSection {

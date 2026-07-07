@@ -138,7 +138,7 @@
 }
 
 .actionButton:hover img {
-  filter: brightness(0) invert(1); /* 图标变白色 */
+  filter: brightness(0) invert(1); /* Turn icon white */
 }
 
 .actionButtonActive {
@@ -147,7 +147,7 @@
 }
 
 .actionButtonActive img {
-  filter: brightness(0) invert(1); /* 图标变白色 */
+  filter: brightness(0) invert(1); /* Turn icon white */
 }
 
 .avatarCell {

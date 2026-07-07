@@ -73,10 +73,10 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   // Adapt createAsset to onSaveAsset format
   const handleSaveAsset = useCallback(async (
     assetName: string,
-    propertyValues: Record<string, any>,
-    options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }
+  propertyValues: Record<string, any>,
+  options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }
   ) => {
-    // 直接透传 options，保持与 LibraryDataContext.createAsset 的参数结构一致
+    // Pass options through unchanged to match LibraryDataContext.createAsset.
     await createAsset(assetName, propertyValues, options);
   }, [createAsset]);
   
@@ -111,21 +111,21 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
     await deleteAsset(assetId);
   }, [deleteAsset]);
 
-  // Batch update: 与 delete row 一致，多行时走批量接口
+  // Batch update: match delete-row behavior by using one multi-row path.
   const handleUpdateAssets = useCallback(async (
     updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
   ) => {
     await Promise.all(updates.map((u) => handleUpdateAsset(u.assetId, u.assetName, u.propertyValues)));
   }, [handleUpdateAsset]);
 
-  // Clear Content 专用：批量更新 + 一次性广播，效仿 Delete Row 的即时同步
+  // Clear Content path: batch update and broadcast once, matching Delete Row sync.
   const handleUpdateAssetsWithBatchBroadcast = useCallback(async (
     updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
   ) => {
     await updateAssetsBatch(updates);
   }, [updateAssetsBatch]);
 
-  // Batch delete: 多行时一次调用多个 delete（Context 无真批量时用 Promise.all）
+  // Batch delete: the Context lacks a true batch API, so use Promise.all.
   const handleDeleteAssets = useCallback(async (assetIds: string[]) => {
     await Promise.all(assetIds.map((id) => deleteAsset(id)));
   }, [deleteAsset]);
@@ -179,4 +179,3 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
     />
   );
 }
-

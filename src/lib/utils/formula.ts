@@ -47,9 +47,9 @@ function extractIdentifiersFromFormulaExpression(
     : expression.trim();
   if (!trimmedExpr) return [];
 
-  // 为了避免把字符串字面量中的内容（例如 "true" / "sdas"）误识别为列名，
-  // 在后续用正则提取标识符之前，先用占位符替换掉所有字符串字面量。
-  // 支持双引号和单引号，简单处理转义字符。
+  // Replace string literals with placeholders before identifier extraction so
+  // literal text such as "true" is not treated as a column name.
+  // Supports single and double quotes with simple escaped-character handling.
   const exprWithoutStrings = trimmedExpr.replace(
     /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g,
     '""'
@@ -57,7 +57,7 @@ function extractIdentifiersFromFormulaExpression(
 
   const identifiers = new Set<string>();
 
-  // 1) [Column Name] 形式，直接抓中括号里的列名
+  // 1. [Column Name] form: read the name inside brackets.
   const bracketRegex = /\[([^\]]+)\]/g;
   let m: RegExpExecArray | null;
   while ((m = bracketRegex.exec(exprWithoutStrings)) !== null) {
@@ -67,7 +67,7 @@ function extractIdentifiersFromFormulaExpression(
     }
   }
 
-  // 2) 裸标识符：排除内置函数名，只保留可能是列名的标识符
+  // 2. Bare identifiers: exclude built-in functions and keep possible column names.
   const FUNCTION_NAMES = new Set([
     'IF',
     'SUM',
@@ -309,7 +309,7 @@ function evaluateFormulaForRowInternal(
     return raw;
   };
 
-  // 1) 优先尝试简单四则运算解析（仅在 tokenize 成功时使用）
+  // First try the simple arithmetic parser when tokenization succeeds.
   const tokens = tokenizeFormula(trimmedExpr);
   if (tokens.length > 0) {
     const rpn = toRpn(tokens);
@@ -331,7 +331,7 @@ function evaluateFormulaForRowInternal(
     }
   }
 
-  // 2) 
+  // Fall back to the broader expression evaluator.
   try {
     const helper = {
       IF: (condition: any, whenTrue: any, whenFalse: any) =>
@@ -386,7 +386,7 @@ function evaluateFormulaForRowInternal(
       (a, b) => b.length - a.length
     );
 
-    // 在进行列名替换之前，先用占位符暂存字符串字面量，避免把字符串中的内容当作列名替换掉
+    // Hold string literals in placeholders before replacing column names.
     const stringLiterals: string[] = [];
     let jsExpr = trimmedExpr.replace(
       /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g,
@@ -418,7 +418,7 @@ function evaluateFormulaForRowInternal(
       .replace(/__GTE__/g, '>=')
       .replace(/__LTE__/g, '<=');
 
-    // 将之前暂存的字符串字面量占位符还原回去
+    // Restore the string literals that were held in placeholders.
     jsExpr = jsExpr.replace(/__STR_LITERAL_(\d+)__/g, (_, indexStr) => {
       const index = Number(indexStr);
       return Number.isFinite(index) && stringLiterals[index] !== undefined

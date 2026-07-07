@@ -215,10 +215,10 @@ export function useBatchFill({
         };
         
         if (isFillingNameField) {
-          // 对 name 字段做批量填充时，同时更新 assetName，使「显示名称」也随之变化
+          // When filling the name field, also update assetName so display name changes.
           rowNameToSave = value === null || value === undefined ? '' : String(value);
         } else {
-          // 非 name 字段：沿用原来的名称逻辑
+          // Non-name fields keep the existing name logic.
           rowNameToSave = mergedOptimisticUpdate.name || baseRow.name;
         }
       } else {
@@ -229,7 +229,7 @@ export function useBatchFill({
         };
         
         if (isFillingNameField) {
-          // 直接用填充值作为 assetName
+          // Use the filled value directly as assetName.
           rowNameToSave = value === null || value === undefined ? '' : String(value);
         } else if (nameFieldKey) {
           // If not filling name field, ensure name field value is preserved from baseRow
@@ -257,7 +257,7 @@ export function useBatchFill({
       });
     });
     
-    // 与 delete row 一致：多行走批量接口
+    // Match delete-row behavior: use the batch API for multiple rows.
     const batchUpdates = Array.from(updateDataMap.entries()).map(([, data]) => ({
       assetId: data.rowId,
       assetName: data.rowName,
@@ -289,7 +289,7 @@ export function useBatchFill({
         throw error;
       }
     } else {
-      // 单行或无批量接口：沿用原逻辑
+      // Single row or no batch API: keep the original update path.
       const updates: Array<Promise<void>> = [];
       updateDataMap.forEach(({ rowId, rowName, propertyKey, propertyValues }) => {
         updates.push(

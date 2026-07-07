@@ -79,7 +79,7 @@ export default function LibraryPage() {
   const [highlightedVersionId, setHighlightedVersionId] = useState<string | null>(null);
   const hasInitializedBlankRowsRef = useRef(false);
 
-  // 将版本控制打开状态同步给 TopBar（LibraryHeader）
+  // Sync version-control open state to TopBar LibraryHeader.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(
@@ -93,7 +93,7 @@ export default function LibraryPage() {
     );
   }, [isVersionControlOpen, projectId, libraryId]);
 
-  // 响应来自 TopBar 的版本控制切换请求
+  // Respond to version-control toggle requests from TopBar.
   useEffect(() => {
     const handleToggleFromTopbar = (event: Event) => {
       const custom = event as CustomEvent<{ projectId?: string; libraryId?: string }>;
@@ -364,7 +364,7 @@ export default function LibraryPage() {
     invalidateFormulaFieldMeta();
 
     try {
-      // 若当前库还没有任何资产，则与初始表逻辑保持一致：创建 00001 / 00002 两条记录
+      // If the library has no assets yet, match initial table setup by creating 00001 and 00002.
       const { count, error } = await supabase
         .from('library_assets')
         .select('id', { count: 'exact', head: true })

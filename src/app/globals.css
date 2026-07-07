@@ -14,7 +14,7 @@
   --font-pixer: 'Pixer', sans-serif;
 }
 
-/* Pixer 字体声明 */
+/* Pixer font declaration */
 @font-face {
   font-family: 'Pixer';
   src: url('/fonts/Pixer-Regular.woff2') format('woff2'),
@@ -26,9 +26,9 @@
 }
 
 /*
-  响应式根字号配置
-  设计稿基准：2174px
-  基准字号：16px
+  Responsive root font-size configuration
+  Design baseline: 2174px
+  Base font size: 16px
 */
 
 html {
@@ -112,12 +112,12 @@ body {
   font-size: 1rem;
 }
 
-/* 使用 Koulen 字体的工具类 */
+/* Utility class for Koulen font */
 .font-koulen {
   font-family: var(--font-koulen), sans-serif;
 }
 
-/* 使用 Roboto 字体的工具类 */
+/* Utility class for Roboto font */
 .font-roboto {
   font-family: var(--font-roboto), sans-serif;
 }
@@ -130,7 +130,7 @@ body {
   font-family: var(--font-nunito), sans-serif;
 }
 
-/* 全局图标尺寸类 - 使用 rem 单位实现响应式 */
+/* Global icon size classes using rem for responsiveness */
 .icon-16 {
   width: 1rem !important;
   /* 16px */
@@ -178,7 +178,7 @@ body {
   height: 3.25rem !important;
 }
 
-/* 特殊尺寸：菜单图标 36x48 */
+/* Special size: menu icon 36x48 */
 .icon-menu {
   width: 2.25rem !important;
   /* 36px */

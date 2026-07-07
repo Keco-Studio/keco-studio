@@ -334,7 +334,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     };
   }, [searchFilter, searchQuery]);
 
-  // 最近 7 天内有活动的项目 / 文件夹 / Library（基于 updatedAt 或 createdAt）
+  // Projects, folders, and libraries active in the last 7 days.
   const recentResults = useMemo<SearchResult[]>(() => {
     const now = Date.now();
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
@@ -408,7 +408,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       });
 
     const all = [...projectResults, ...folderResults, ...libraryResults];
-    // 统一按时间从近到远排序，并限制条数
+    // Sort by newest activity first and cap the result count.
     const sorted = all.sort((a, b) => {
       const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
       const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -450,7 +450,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-    // 同一天内：显示时间，如 11:41
+    // For same-day activity, show the time, such as 11:41.
     const isSameDay =
       date.getFullYear() === now.getFullYear() &&
       date.getMonth() === now.getMonth() &&
@@ -1510,12 +1510,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               if (wasNonEmpty && isNowEmpty) {
                 clearCellSearchFocusState();
               }
-              // 有输入时展示搜索结果；无输入时展示最近 7 天记录
+              // Show search results when input exists; otherwise show recent records.
               setIsSearchDropdownOpen(true);
             }}
             onFocus={() => {
               setIsSearchFocused(true);
-              // 聚焦时，如果有搜索词就展示匹配结果，否则展示最近 7 天记录
+              // On focus, show matches for a query or recent records for empty input.
               setIsSearchDropdownOpen(true);
               if (searchFilter === 'cell' && searchQuery.trim().length > 0) {
                 setCellSearchRefreshKey((k) => k + 1);
@@ -1898,5 +1898,4 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     </header>
   );
 }
-
 

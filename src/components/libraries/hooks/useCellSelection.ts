@@ -44,7 +44,7 @@ export function useCellSelection({
   navigationProperties?: PropertyConfig[];
   getAllRowsForCellSelection: () => AssetRow[];
   fillDown: (startRowId: string, endRowId: string, propertyKey: string) => Promise<void>;
-  /** Int 序列填充：步长 = 第二格 - 第一格，仅当选中两格连续时使用 */
+  /** Int sequence fill: step equals second cell minus first cell when two adjacent cells are selected. */
   fillDownIntSequence: (startRowId: string, secondRowId: string, endRowId: string, propertyKey: string) => Promise<void>;
   currentFocusedCell: { assetId: string; propertyKey: string } | null;
   handleCellBlur: () => void;
@@ -63,7 +63,7 @@ export function useCellSelection({
   const dragCurrentCellRef = useRef<{ rowId: string; propertyKey: string } | null>(null);
 
   // Fill drag state (for Excel-like fill down functionality)
-  // secondRowId: 仅 Int 类型且选中两格连续时存在，用于序列填充步长 = 第二格值 - 第一格值
+  // secondRowId exists only for int fields with two adjacent selected cells.
   const [fillDragStartCell, setFillDragStartCell] = useState<{
     rowId: string;
     propertyKey: string;

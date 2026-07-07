@@ -322,7 +322,7 @@ export default function ProjectPage() {
     setShowLibraryModal(true);
   };
 
-  // 将页面内 LibraryToolbar 的视图模式同步到 TopBar
+  // Sync the page LibraryToolbar view mode to TopBar.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(
@@ -336,7 +336,7 @@ export default function ProjectPage() {
     );
   }, [viewMode, projectId]);
 
-  // 让 TopBar 中的 LibraryToolbar 也能控制本页面的创建与视图切换
+  // Let the TopBar LibraryToolbar control creation and view switching on this page.
   useEffect(() => {
     const handleTopbarCreateFolder = (event: Event) => {
       const custom = event as CustomEvent<{ projectId?: string }>;
@@ -361,7 +361,7 @@ export default function ProjectPage() {
       const { mode, projectId: evtProjectId, folderId } = custom.detail || {};
       if (!mode) return;
       if (evtProjectId !== projectId) return;
-      if (folderId != null) return; // 仅根项目页处理
+      if (folderId != null) return; // Only the root project page handles this.
       setViewMode(mode);
     };
 

@@ -26,7 +26,7 @@ import addColumnStyles from './AddColumnModal.module.css';
 
 type EditColumnModalProps = {
   open: boolean;
-  /** 弹窗锚点位置（通常是列头的中点坐标） */
+  /** Popup anchor position, usually the column header midpoint. */
   anchorPosition?: { x: number; y: number } | null;
   propertyId?: string;
   propertyName?: string;
@@ -35,7 +35,7 @@ type EditColumnModalProps = {
   propertyEnumOptions?: string[];
   propertyReferenceLibraries?: string[];
   propertyFormulaExpression?: string;
-  /** 当前库已有的字段列表，用于校验重名 */
+  /** Existing fields used for duplicate-name validation. */
   existingProperties?: PropertyConfig[];
   onClose: () => void;
 };
@@ -147,7 +147,7 @@ export function EditColumnModal({
     propertyFormulaExpression,
   ]);
 
-  // 关闭时重置内部状态
+  // Reset internal state when closing.
   useEffect(() => {
     if (!open) {
       setShowOverwriteConfirm(false);
@@ -404,7 +404,7 @@ export function EditColumnModal({
             )
           );
 
-          // 先检查是否有「引用了不存在的列」
+          // First check for references to missing columns.
           const missingRefs = referencedNames.filter((_, idx) => !referencedProps[idx]);
           if (missingRefs.length > 0) {
             setEditColumnModal((prev) => ({
@@ -414,7 +414,7 @@ export function EditColumnModal({
             return false;
           }
 
-          // 再检查是否引用了非可计算列：仅允许 int / float / formula
+          // Then reject references to non-calculable columns.
           const nonCalculable = referencedProps.filter(
             (prop): prop is PropertyConfig =>
               !!prop &&
@@ -924,7 +924,7 @@ export function EditColumnModal({
             </div>
           </div>
         )}
-        {/* Description 字段保留占位，暂不持久化到后端 */}
+        {/* Description is reserved for now and is not persisted yet. */}
         <div className={styles.field}>
           <label className={`${styles.label} ${styles.labelOptional}`} htmlFor="edit-column-desc">
             Description
