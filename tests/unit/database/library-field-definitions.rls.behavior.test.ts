@@ -33,6 +33,10 @@ describeDb('library_field_definitions write RLS (issue #143, live RLS)', () => {
     return {
       library_id: fx.libraryId,
       section: 'main',
+      // section_id is a NOT NULL stable id (see 20260128000000). The value only
+      // needs to be consistent per (library, section); uniqueness is on
+      // (section_id, label) and every label here already carries a unique suffix.
+      section_id: `${fx.libraryId}::main`,
       label,
       data_type: 'string',
       order_index: 0,
