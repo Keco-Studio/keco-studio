@@ -30,7 +30,6 @@
     "recharts": "^3.8.1",
     "resend": "^6.17.1",
     "word-extractor": "^1.0.4",
-    "y-indexeddb": "^9.0.12",
     "yjs": "^13.6.29",
     "zod": "^3.22.4"
   },

@@ -17,7 +17,6 @@
 
 import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import * as Y from 'yjs';
-import { IndexeddbPersistence } from 'y-indexeddb';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
@@ -25,7 +24,6 @@ import { useRealtimeSubscription, type ConnectionStatus } from '@/lib/hooks/useR
 import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState, CellsBatchUpdateEvent } from '@/lib/types/collaboration';
-import { repopulateWithResetPersistence } from '@/lib/yjs/persistence';
 import { serializeError } from '@/lib/utils/errorUtils';
 import { getLibraryAssetsWithProperties, applyBooleanFieldDefaults, getBooleanFieldIdsByLibraryId } from '@/lib/services/libraryAssetsService';
 import {
@@ -170,7 +168,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Yjs setup - shared data structure
   const yDoc = useMemo(() => new Y.Doc(), [libraryId]);
   const yAssets = useMemo(() => yDoc.getMap<Y.Map<any>>('assets'), [yDoc]);
-  const libraryPersistenceName = `library-${libraryId}`;
 
   // State
   const [assets, setAssets] = useState<Map<string, AssetRow>>(new Map());
@@ -183,7 +180,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Track asset IDs created during a batch insert (skipReload=true) so that
   // postgres_changes INSERT events don't add them to yAssets with missing row_index.
   const pendingBatchInsertIdsRef = useRef<Set<string>>(new Set());
-  const yPersistenceRef = useRef<IndexeddbPersistence | null>(null);
 
   const formulaFieldMetaCache = useMemo(
     () =>
@@ -263,61 +259,50 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     if (!libraryId || !isAuthenticated || !userProfile) return;
 
     setIsLoading(true);
+    setIsSynced(false);
 
     try {
       // 使用与版本快照完全一致的服务读取当前库数据，避免「当前视图」和「版本快照」两套取数逻辑
       const assetRows: AssetRow[] = await getLibraryAssetsWithProperties(supabase, libraryId);
 
-      const nextPersistence = await repopulateWithResetPersistence({
-        persistenceName: libraryPersistenceName,
-        currentPersistence: yPersistenceRef.current,
-        createPersistence: () => {
-          const persistence = new IndexeddbPersistence(libraryPersistenceName, yDoc);
-          persistence.on('synced', () => {
-            if (isMountedRef.current) {
-              setIsSynced(true);
+      // Populate in-memory Yjs with data from Supabase.
+      // Always clear existing Yjs state first to avoid mixing old and new data.
+      yDoc.transact(() => {
+        yAssets.clear();
+
+        assetRows.forEach((asset: AssetRow) => {
+          const yAsset = new Y.Map();
+          yAsset.set('name', asset.name);
+
+          // Create Y.Map for propertyValues (nested structure)
+          const yPropertyValues = new Y.Map();
+          const values = asset.propertyValues || {};
+          Object.entries(values).forEach(([fieldId, value]) => {
+            // For complex objects, use deep copy to avoid reference issues
+            let valueForYjs = value;
+            if (value !== null && typeof value === 'object') {
+              valueForYjs = JSON.parse(JSON.stringify(value));
             }
+            yPropertyValues.set(fieldId, valueForYjs);
           });
-          return persistence;
-        },
-        repopulate: () => {
-          // Populate Yjs with data (using Y.Map for propertyValues)
-          // Always clear existing Yjs state first to avoid mixing old and new data
-          yDoc.transact(() => {
-            yAssets.clear();
+          yAsset.set('propertyValues', yPropertyValues);
 
-            assetRows.forEach((asset: AssetRow) => {
-              const yAsset = new Y.Map();
-              yAsset.set('name', asset.name);
-
-              // Create Y.Map for propertyValues (nested structure)
-              const yPropertyValues = new Y.Map();
-              const values = asset.propertyValues || {};
-              Object.entries(values).forEach(([fieldId, value]) => {
-                // For complex objects, use deep copy to avoid reference issues
-                let valueForYjs = value;
-                if (value !== null && typeof value === 'object') {
-                  valueForYjs = JSON.parse(JSON.stringify(value));
-                }
-                yPropertyValues.set(fieldId, valueForYjs);
-              });
-              yAsset.set('propertyValues', yPropertyValues);
-
-              if (asset.created_at) yAsset.set('created_at', asset.created_at);
-              if (typeof asset.rowIndex === 'number') yAsset.set('row_index', asset.rowIndex);
-              yAssets.set(asset.id, yAsset as any);
-            });
-          });
-        },
+          if (asset.created_at) yAsset.set('created_at', asset.created_at);
+          if (typeof asset.rowIndex === 'number') yAsset.set('row_index', asset.rowIndex);
+          yAssets.set(asset.id, yAsset as any);
+        });
       });
-      yPersistenceRef.current = nextPersistence;
 
+      if (isMountedRef.current) {
+        setIsSynced(true);
+      }
     } catch (error) {
+      setIsSynced(false);
       console.error('[LibraryDataContext] Failed to load initial data:', error);
     } finally {
       setIsLoading(false);
     }
-  }, [libraryId, isAuthenticated, userProfile, supabase, yDoc, yAssets, libraryPersistenceName]);
+  }, [libraryId, isAuthenticated, userProfile, supabase, yDoc, yAssets]);
 
   const invalidateFormulaFieldMeta = useCallback(() => {
     formulaFieldMetaCache.invalidate(libraryId);
@@ -351,29 +336,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Initial load (wait for auth so RLS-backed queries have a valid session)
   useEffect(() => {
     if (isAuthLoading || !isAuthenticated || !userProfile) return;
-    if (!yPersistenceRef.current) return;
     loadInitialData();
   }, [loadInitialData, isAuthLoading, isAuthenticated, userProfile]);
-
-  // IndexedDB persistence — after restore, overwrite with DB so collaborative view matches server (fixes 44 vs 28 row mismatch)
-  useEffect(() => {
-    let isDisposed = false;
-    const persistence = new IndexeddbPersistence(libraryPersistenceName, yDoc);
-    yPersistenceRef.current = persistence;
-    persistence.on('synced', () => {
-      if (isDisposed) return;
-      setIsSynced(true);
-      loadInitialData();
-    });
-    return () => {
-      isDisposed = true;
-      const activePersistence = yPersistenceRef.current;
-      yPersistenceRef.current = null;
-      if (activePersistence) {
-        void activePersistence.destroy();
-      }
-    };
-  }, [yDoc, libraryPersistenceName, loadInitialData]);
 
   // Realtime: 当有人成功 restore 一个版本时，所有协作者自动从 DB 重新加载一次
   useEffect(() => {
