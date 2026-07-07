@@ -18,7 +18,7 @@ import type { Node, RoleMap, Script } from './types';
 import { classifyLine } from './classifier';
 import { postProcess } from './postProcess';
 
-const QUOTES = '"\'""\'""「」';
+const QUOTES = '"\'“”‘’「」';
 
 // Regex for splitting multiple typed dialogues on one line
 const STRUCT_TYPED_SPLIT_RE = /（(?:Type|类型)(\d+)・(.+?)）/g;
@@ -82,8 +82,16 @@ function splitMixedPatterns(line: string): string[] {
 function findColon(line: string): number {
   const cPos = line.indexOf('：');
   const ePos = line.indexOf(':');
-  if (cPos === -1) return ePos;
+  if (cPos === -1) {
+    if (ePos > 0 && /\d/.test(line[ePos - 1]) && /\d/.test(line[ePos + 1] ?? '')) {
+      return -1;
+    }
+    return ePos;
+  }
   if (ePos === -1) return cPos;
+  if (ePos > 0 && /\d/.test(line[ePos - 1]) && /\d/.test(line[ePos + 1] ?? '')) {
+    return cPos;
+  }
   return Math.min(cPos, ePos);
 }
 

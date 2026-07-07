@@ -38,6 +38,7 @@ function makeInstructionRow(): ScriptLine {
 function makeScriptLine(
   node: NodeWithOptions,
   isFirst: boolean,
+  warnings: string[],
   labelOverride?: string
 ): ScriptLine {
   const sl = createEmptyScriptLine();
@@ -69,6 +70,13 @@ function makeScriptLine(
   // 处理选项
   const opts = node._options || [];
   const optLabels = node._option_labels || [];
+  if (opts.length > 3) {
+    const nodeName = node.label || node.name || node.content || 'unlabeled node';
+    const dropped = opts.slice(3).map((opt) => opt.option_text).join(' / ');
+    warnings.push(
+      `Node "${nodeName}" has ${opts.length} options but the ScriptLine schema supports 3; extra options not exported: ${dropped}`
+    );
+  }
 
   for (let idx = 0; idx < Math.min(opts.length, 3); idx++) {
     const opt = opts[idx];
@@ -309,7 +317,8 @@ export function postProcess(rawNodes: Node[]): Script {
   }
 
   // 第4层：输出
-  const script: Script = { lines: [] };
+  const warnings: string[] = [];
+  const script: Script = { lines: [], warnings };
   script.lines.push(makeInstructionRow());
 
   // 主干
@@ -319,7 +328,7 @@ export function postProcess(rawNodes: Node[]): Script {
       script.lines.push(createEmptyScriptLine());
       continue;
     }
-    const sl = makeScriptLine(node, isFirst);
+    const sl = makeScriptLine(node, isFirst, warnings);
     isFirst = false;
     script.lines.push(sl);
   }
@@ -334,7 +343,7 @@ export function postProcess(rawNodes: Node[]): Script {
       script.lines.push(createEmptyScriptLine());
       for (let ci = 0; ci < content.length; ci++) {
         const bn = content[ci];
-        const bsl = makeScriptLine(bn, false, ci === 0 ? bl : undefined);
+        const bsl = makeScriptLine(bn, false, warnings, ci === 0 ? bl : undefined);
         script.lines.push(bsl);
       }
     }
@@ -352,6 +361,10 @@ export function postProcess(rawNodes: Node[]): Script {
         sl.commands = sl.commands ? `${sl.commands}; ${varCmd}` : varCmd;
       }
     }
+  }
+
+  if (warnings.length === 0) {
+    delete script.warnings;
   }
 
   return script;

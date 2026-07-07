@@ -41,7 +41,7 @@ const STAGE_KEYWORDS = [
 // 变量标注
 const VAR_CN_RE = /^（([^）]*[线值分好感][^）]*[+\-\d][^）]*)）$/;
 
-const QUOTES = '"\'""\'""「」';
+const QUOTES = '"\'“”‘’「」';
 
 /**
  * 查找冒号位置（支持全角和半角）
@@ -49,8 +49,16 @@ const QUOTES = '"\'""\'""「」';
 function findColon(line: string): number {
   const cPos = line.indexOf('：');
   const ePos = line.indexOf(':');
-  if (cPos === -1) return ePos;
+  if (cPos === -1) {
+    if (ePos > 0 && /\d/.test(line[ePos - 1]) && /\d/.test(line[ePos + 1] ?? '')) {
+      return -1;
+    }
+    return ePos;
+  }
   if (ePos === -1) return cPos;
+  if (ePos > 0 && /\d/.test(line[ePos - 1]) && /\d/.test(line[ePos + 1] ?? '')) {
+    return cPos;
+  }
   return Math.min(cPos, ePos);
 }
 

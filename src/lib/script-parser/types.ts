@@ -47,6 +47,7 @@ export const JUMP_PREFIX = 'Jump';
 
 export interface Script {
   lines: ScriptLine[];
+  warnings?: string[];
 }
 
 // 解析中间节点类型
