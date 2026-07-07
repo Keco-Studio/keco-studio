@@ -500,11 +500,8 @@ export function useAgentChat(ctx: SendContext) {
 
   const startNewConversation = useCallback(() => {
     resetToEmpty();
-    if (ctx.userId) {
-      setAutoExecuteState(getAutoExecutePreference(ctx.userId));
-    } else {
-      setAutoExecuteState(true);
-    }
+    // Anonymous users must default to manual confirm too — never hardcode auto.
+    setAutoExecuteState(ctx.userId ? getAutoExecutePreference(ctx.userId) : false);
     if (ctx.userId && ctx.projectId) {
       clearLastConversation(ctx.userId, ctx.projectId);
     }

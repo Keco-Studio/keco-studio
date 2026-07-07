@@ -65,11 +65,10 @@ export function clearLastConversationById(userId: string, conversationId: string
   }
 }
 
-/** User preference for new conversations. Defaults to true (Auto mode). */
+/** User preference for new conversations. Defaults to false (manual confirm). */
 export function getAutoExecutePreference(userId: string): boolean {
   const raw = storage()?.getItem(`${AUTO_EXECUTE_KEY_PREFIX}${userId}`);
-  if (raw === 'false') return false;
-  return true;
+  return raw === 'true';
 }
 
 export function setAutoExecutePreference(userId: string, autoExecute: boolean): void {

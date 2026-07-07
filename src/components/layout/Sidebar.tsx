@@ -367,8 +367,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
   // Smart cache refresh: If user is viewing a project that's not in the sidebar,
   // it might mean they were just added as a collaborator. Refresh the projects list.
+  // NOTE: must run even when projects is empty — a collaborator opening their very
+  // first project has projects === [], and that is exactly the case to refetch for.
   useEffect(() => {
-    if (currentIds.projectId && projects.length > 0 && !loadingProjects) {
+    if (currentIds.projectId && !loadingProjects) {
       const currentProjectExists = projects.some(p => p.id === currentIds.projectId);
       if (!currentProjectExists) {
 
