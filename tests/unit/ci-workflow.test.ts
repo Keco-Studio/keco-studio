@@ -35,7 +35,8 @@ describe('CI workflow gates', () => {
   });
 
   it('uses the ESLint CLI instead of the removed Next lint command', () => {
-    expect(pkg.scripts.lint).toBe('eslint .');
+    expect(pkg.scripts.lint).toMatch(/^eslint \./);
+    expect(pkg.scripts.lint).not.toContain('next lint');
   });
 
   it('pins Supabase CLI versions instead of resolving latest during CI', () => {
