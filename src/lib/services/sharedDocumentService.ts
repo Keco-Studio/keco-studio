@@ -17,7 +17,7 @@ export async function getDocumentByDocId(
 ): Promise<SharedDocument | null> {
   const { data, error } = await supabase
     .from('shared_documents')
-    .select('id, doc_id, owner_id, content, updated_at, created_at')
+    .select('id, doc_id, project_id, owner_id, content, updated_at, created_at')
     .eq('doc_id', docId)
     .maybeSingle();
 
@@ -36,6 +36,7 @@ export async function getDocumentByDocId(
 export async function createDocument(
   supabase: SupabaseClient,
   docId: string,
+  projectId: string,
   ownerId: string,
   // content: JSONContent
 ): Promise<SharedDocument> {
@@ -43,10 +44,11 @@ export async function createDocument(
     .from('shared_documents')
     .insert({
       doc_id: docId,
+      project_id: projectId,
       owner_id: ownerId,
       // content,
     })
-    .select('id, doc_id, owner_id, content, updated_at, created_at')
+    .select('id, doc_id, project_id, owner_id, content, updated_at, created_at')
     .single();
 
   if (error) {
@@ -83,4 +85,3 @@ export async function updateDocumentContent(
 
   return data;
 }
-

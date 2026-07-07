@@ -24,6 +24,7 @@ export type JSONContent = {
 export type SharedDocument = {
   id: string;           // UUID
   doc_id: string;       // Document identifier (shared across users)
+  project_id: string | null; // UUID of parent project; legacy rows may be null
   owner_id: string;     // UUID of creator
   content: JSONContent; // Document JSON content
   updated_at: string;   // ISO timestamp
@@ -35,4 +36,3 @@ export type SharedDocument = {
  * @deprecated Import directly from '@/lib/types/user' instead
  */
 export type { UserProfile, UserProfileValidation, UserProfileDisplay, MinimalUserProfile } from './user';
-
