@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Input, Select, Button, Avatar, Checkbox, Dropdown, Switch, App } from 'antd';
+import { Checkbox, App } from 'antd';
 import Image from 'next/image';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
@@ -42,6 +42,7 @@ import { useCloseOnDocumentClick } from './hooks/useCloseOnDocumentClick';
 import { useOptimisticUpdates } from './hooks/useOptimisticUpdates';
 import { useMediaFileUpdate } from './hooks/useMediaFileUpdate';
 import { useContextMenu } from './hooks/useContextMenu';
+import { useLibraryTableStructure } from './hooks/useLibraryTableStructure';
 import { ReferenceField } from './components/ReferenceField';
 import { normalizeReferenceSelections, normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
 import { cellDisplayString } from '@/lib/utils/assetEmptiness';
@@ -62,20 +63,20 @@ import { AddNewRowForm } from './components/AddNewRowForm';
 import { AddColumnModal, type AddColumnFormPayload } from './components/AddColumnModal';
 import { FormulaCellPanel } from './components/FormulaCellPanel';
 import { FormulaCell } from './components/FormulaCell';
-import { TableCellFindReplace } from './components/TableCellFindReplace';
-import { VisualNovelScriptView, type ScriptColumns } from './components/VisualNovelScriptView';
+import { VisualNovelScriptView } from './components/VisualNovelScriptView';
+import { LibraryTableTopBar } from './components/LibraryTableTopBar';
+import { ViewerBanner } from './components/ViewerBanner';
 import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
 import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
 import batchEditAddIcon from '@/assets/images/BatchEditAddIcon.svg';
 import tableAssetDetailIcon from '@/assets/images/ProjectDescIcon.svg';
-import collaborationViewNumIcon from '@/assets/images/collaborationViewNumIcon.svg';
-import addSectionIcon from '@/assets/images/addProjectIcon.svg'
 import styles from './LibraryAssetsTable.module.css';
 import { useFormulaCellCustomization } from './hooks/useFormulaCellCustomization';
 import { useTableResize, NUMBER_COLUMN_KEY } from './hooks/useTableResize';
 import { evaluateFormulaForRow, getCustomFormulaExpressionFromCellValue } from './utils/formulaEvaluation';
 import { buildAgentSelectionContext } from './utils/agentSelectionContext';
+import { getColumnWidthClassKey } from './utils/tableStructure';
 
 export type LibraryAssetsTableProps = {
   library: {
@@ -89,15 +90,15 @@ export type LibraryAssetsTableProps = {
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
-  /** Clear Content 专用：批量更新 + 一次性广播，效仿 Delete Row 的即时同步 */
+  /** Clear Content path: batch update and broadcast once, matching Delete Row sync. */
   onUpdateAssetsWithBatchBroadcast?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   onDeleteAssets?: (assetIds: string[]) => Promise<void>;
-  /** 可选：双击 section 标签修改名称时回调，不传则仅本地展示不可持久化 */
+  /** Optional callback for persisting a section rename from a double-clicked tab. */
   onUpdateSection?: (sectionId: string, newName: string) => Promise<void>;
-  /** 可选：点击「添加 section」按钮时回调，不传则按钮不生效；可返回新 sectionId 以自动切换到此 section */
+  /** Optional callback for the add-section button; may return the new section id. */
   onAddSection?: () => Promise<string | void>;
-  /** 可选：表格内「新增列」弹窗提交时回调；不传则点击新增列按钮会跳转到 predefine 页 */
+  /** Optional callback for in-table add-column submissions; otherwise routes to predefine. */
   onAddProperty?: (sectionId: string, sectionName: string, payload: AddColumnFormPayload) => Promise<void>;
   // Real-time collaboration props
   currentUser?: {
@@ -480,62 +481,12 @@ export function LibraryAssetsTable({
     setTypeValidationError,
   });
 
-  // Calculate ordered properties early
-  const { groups, orderedProperties } = useMemo(() => {
-    const byId = new Map<string, SectionConfig>();
-    sections.forEach((s) => byId.set(s.id, s));
-
-    const groupMap = new Map<
-      string,
-      {
-        section: SectionConfig;
-        properties: PropertyConfig[];
-      }
-    >();
-
-    for (const prop of properties) {
-      const section = byId.get(prop.sectionId);
-      if (!section) continue;
-
-      let group = groupMap.get(section.id);
-      if (!group) {
-        group = { section, properties: [] };
-        groupMap.set(section.id, group);
-      }
-      group.properties.push(prop);
-    }
-
-    const groups = Array.from(groupMap.values()).sort(
-      (a, b) => a.section.orderIndex - b.section.orderIndex
-    );
-
-    groups.forEach((g) => {
-      g.properties.sort((a, b) => a.orderIndex - b.orderIndex);
-    });
-
-    const orderedProperties = groups.flatMap((g) => g.properties);
-
-    return { groups, orderedProperties };
-  }, [sections, properties]);
-
-  // Detect script columns — support both Chinese and English column names
-  const { scriptColumns, hasScriptColumns } = useMemo(() => {
-    const find = (names: string[]) => {
-      for (const prop of orderedProperties) {
-        if (names.includes(prop.name)) return prop.key;
-      }
-      return undefined;
-    };
-    const cols: ScriptColumns = {
-      labelKey: find(['这里是跳转的节点', 'Story jump node', 'Label', 'label']),
-      typeKey: find(['类型', 'Type', 'type']),
-      nameKey: find(['说话人', 'Speaker', 'Name', 'name']),
-      contentKey: find(['对话内容', 'Dialogue and options', 'Content', 'content']),
-    };
-    // Show script toggle when script columns (name + content) are found
-    const isScript = !!(cols.nameKey && cols.contentKey);
-    return { scriptColumns: cols, hasScriptColumns: isScript };
-  }, [orderedProperties]);
+  const {
+    groups,
+    orderedProperties,
+    scriptColumns,
+    hasScriptColumns,
+  } = useLibraryTableStructure(sections, properties);
   const [scriptViewMode, setScriptViewMode] = useState<'table' | 'script'>('table');
 
   const {
@@ -792,6 +743,23 @@ export function LibraryAssetsTable({
     message,
     sectionRenameHintStorageKey,
   ]);
+
+  const handleSelectSection = useCallback((sectionId: string) => {
+    setActiveSectionId(sectionId);
+  }, []);
+
+  const handleAddSectionFromTabs = useCallback(async () => {
+    if (!onAddSection) return;
+    try {
+      const newSectionId = await onAddSection();
+      if (newSectionId) {
+        pendingNewSectionIdRef.current = newSectionId;
+        setActiveSectionId(newSectionId);
+      }
+    } catch (e) {
+      message.error((e as Error)?.message ?? 'Failed to add section');
+    }
+  }, [message, onAddSection]);
 
   const getAllRowsForCellSelection = useCallback(() => {
     return dataManager.getRowsWithOptimisticUpdates();
@@ -1200,8 +1168,8 @@ export function LibraryAssetsTable({
   ]);
 
 
-  // Int 序列填充预览：拖动填充柄时待填充格显示的预填值（仅 Int 且两格连续时）
-  // 必须在任何条件 return 之前调用，否则会违反 React Hooks 调用顺序
+  // Int sequence fill preview for drag-fill targets. Keep this before any
+  // conditional return so React hook order stays stable.
   const fillPreviewMap = useMemo(() => {
     if (!fillDragStartCell?.secondRowId) return new Map<string, number>();
     const allRows = getAllRowsForCellSelection();
@@ -1226,17 +1194,7 @@ export function LibraryAssetsTable({
 
   const totalColumns = 1 + activeProperties.length;
 
-  // Determine column width class based on number of columns (active section when using tabs)
-  const getColumnWidthClass = () => {
-    const colCount = activeProperties.length;
-    if (colCount === 1) return styles.cols1;
-    if (colCount === 2) return styles.cols2;
-    if (colCount === 3) return styles.cols3;
-    if (colCount === 4) return styles.cols4;
-    if (colCount === 5) return styles.cols5;
-    if (colCount === 6) return styles.cols6;
-    return styles.colsMany;
-  };
+  const columnWidthClass = styles[getColumnWidthClassKey(activeProperties.length)];
 
   // Header-level "select all rows" state
   const headerAllRowsSelected =
@@ -1284,105 +1242,35 @@ export function LibraryAssetsTable({
     }, 0);
   }, []);
 
-  const getTableFindAccessToken = useCallback(async () => {
-    const sessionRes = await supabase.auth.getSession();
-    return sessionRes.data?.session?.access_token;
-  }, [supabase]);
-
   return (
     <>
       <div className={styles.tableShell}>
-        <div className={styles.tableTopBar}>
-          {hasSections ? (
-            <div className={styles.sectionTabs}>
-              {groups.map((group) => (
-                editingSectionId === group.section.id ? (
-                  <div key={group.section.id} className={styles.sectionTabEdit}>
-                    <Input
-                      ref={sectionInputRef}
-                      value={editingSectionName}
-                      onChange={(e) => setEditingSectionName(e.target.value)}
-                      onBlur={() => handleSectionEditEnd(true)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleSectionEditEnd(true);
-                        if (e.key === 'Escape') handleSectionEditEnd(false);
-                      }}
-                      className={styles.sectionTabInput}
-                      size="small"
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  </div>
-                ) : (
-                  <button
-                    key={group.section.id}
-                    type="button"
-                    className={`${styles.sectionTab} ${effectiveActiveSectionId === group.section.id ? styles.sectionTabActive : ''}`}
-                    onClick={() => setActiveSectionId(group.section.id)}
-                    onDoubleClick={(e) => {
-                      e.preventDefault();
-                      handleSectionEditStart(group.section.id, group.section.name);
-                    }}
-                  >
-                    {group.section.name}
-                  </button>
-                )
-              ))}
-
-              <button
-                type="button"
-                className={styles.addSectionButton}
-                onClick={async () => {
-                  if (!onAddSection) return;
-                  try {
-                    const newSectionId = await onAddSection();
-                    if (newSectionId) {
-                      pendingNewSectionIdRef.current = newSectionId;
-                      setActiveSectionId(newSectionId);
-                    }
-                  } catch (e) {
-                    message.error((e as Error)?.message ?? 'Failed to add section');
-                  }
-                }}
-                aria-label="Add section"
-              >
-                <Image src={addSectionIcon} alt="Add section" width={16} height={16} />
-              </button>
-            </div>
-          ) : (
-            <div className={styles.tableTopBarSpacer} />
-          )}
-          {hasScriptColumns && (
-            <div className={styles.viewToggleGroup}>
-              <button
-                type="button"
-                className={`${styles.viewToggleBtn} ${scriptViewMode === 'table' ? styles.viewToggleBtnActive : ''}`}
-                onClick={() => setScriptViewMode('table')}
-              >
-                Table
-              </button>
-              <button
-                type="button"
-                className={`${styles.viewToggleBtn} ${scriptViewMode === 'script' ? styles.viewToggleBtnActive : ''}`}
-                onClick={() => setScriptViewMode('script')}
-              >
-                Script
-              </button>
-            </div>
-          )}
-          <div className={styles.tableTopBarFindWrap}>
-            <TableCellFindReplace
-              libraryId={library?.id}
-              rows={resolvedRows}
-              properties={orderedProperties}
-              canReplace={userRole === 'admin' || userRole === 'editor'}
-              getAccessToken={getTableFindAccessToken}
-              onHighlightCells={handleTableFindHighlightCells}
-              onClearHighlight={handleTableFindClearHighlight}
-              onFocusSection={hasSections ? handleTableFindFocusSection : undefined}
-              scrollToCell={handleTableFindScrollToCell}
-            />
-          </div>
-        </div>
+        <LibraryTableTopBar
+          hasSections={hasSections}
+          groups={groups}
+          activeSectionId={effectiveActiveSectionId}
+          editingSectionId={editingSectionId}
+          editingSectionName={editingSectionName}
+          sectionInputRef={sectionInputRef}
+          canAddSection={!!onAddSection}
+          hasScriptColumns={hasScriptColumns}
+          scriptViewMode={scriptViewMode}
+          libraryId={library?.id}
+          rows={resolvedRows}
+          properties={orderedProperties}
+          canReplace={userRole === 'admin' || userRole === 'editor'}
+          supabase={supabase}
+          onSelectSection={handleSelectSection}
+          onStartSectionEdit={handleSectionEditStart}
+          onChangeSectionName={setEditingSectionName}
+          onFinishSectionEdit={handleSectionEditEnd}
+          onAddSection={handleAddSectionFromTabs}
+          onChangeScriptViewMode={setScriptViewMode}
+          onHighlightCells={handleTableFindHighlightCells}
+          onClearHighlight={handleTableFindClearHighlight}
+          onFocusSection={hasSections ? handleTableFindFocusSection : undefined}
+          scrollToCell={handleTableFindScrollToCell}
+        />
         <div
           className={`${styles.tableContainer} ${isResizingColumn || isResizingRow ? styles.tableResizing : ''}`}
           ref={tableContainerRef}
@@ -1393,7 +1281,7 @@ export function LibraryAssetsTable({
             </div>
           ) : (
           <table
-            className={`${styles.table} ${hasCustomColumnWidths || isResizingColumn ? styles.colsCustom : getColumnWidthClass()}`}
+            className={`${styles.table} ${hasCustomColumnWidths || isResizingColumn ? styles.colsCustom : columnWidthClass}`}
           >
             <colgroup>
               <col style={getColStyle(NUMBER_COLUMN_KEY)} />
@@ -2235,26 +2123,10 @@ export function LibraryAssetsTable({
         }}
       />
 
-      {/* Viewer notification banner */}
-      {userRole === 'viewer' && !isViewerBannerDismissed && (
-        <div className={styles.viewerBanner}>
-          <Image
-            src={collaborationViewNumIcon}
-            alt="View"
-            width={20}
-            height={20}
-            className={`icon-20 ${styles.viewerBannerIcon}`}
-          />
-          <span className={styles.viewerBannerText}>You can only view this library.</span>
-          <button
-            className={styles.viewerBannerClose}
-            onClick={handleDismissViewerBanner}
-            aria-label="Close"
-          >
-            ×
-          </button>
-        </div>
-      )}
+      <ViewerBanner
+        visible={userRole === 'viewer' && !isViewerBannerDismissed}
+        onDismiss={handleDismissViewerBanner}
+      />
     </>
   );
 }

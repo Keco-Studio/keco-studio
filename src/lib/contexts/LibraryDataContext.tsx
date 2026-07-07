@@ -33,7 +33,12 @@ import {
 import { computeFormulaValuesForRow } from '@/lib/utils/formula';
 import { compareAssetsForUiRow } from '@/lib/utils/assetEmptiness';
 import { createFormulaFieldMetaCache } from '@/lib/library/formulaFieldMetaCache';
-import { touchLibraryAssetEditUpdatedAt } from '@/lib/library/updatedAt';
+import { touchLibraryAssetEditUpdatedAt, touchLibraryUpdatedAt } from '@/lib/library/updatedAt';
+import {
+  hydrateYAssetsFromRows,
+  hydrateYAssetsFromSnapshot,
+  type LibrarySnapshotData,
+} from '@/lib/library/yjsAssetHydration';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
 
@@ -88,16 +93,6 @@ type FormulaFieldMetaRow = {
   formula_expression: string | null;
 };
 
-type LibrarySnapshotData = {
-  assets?: Array<{
-    id: string;
-    name?: string;
-    propertyValues?: Record<string, any>;
-    createdAt?: string;
-    rowIndex?: number | null;
-  }>;
-};
-
 const isCustomFormulaCellValue = (value: unknown): boolean => {
   if (typeof value === 'string') {
     return value.trim().startsWith('=');
@@ -109,56 +104,6 @@ const isCustomFormulaCellValue = (value: unknown): boolean => {
   }
   return false;
 };
-
-// Helper: when library content changes, bump its own updated_at
-// and also the updated_at of its parent folder (if any) and project.
-async function touchLibraryUpdatedAt(
-  supabase: ReturnType<typeof useSupabase>,
-  libraryId: string,
-  projectId: string
-) {
-  if (!supabase || !libraryId) return;
-  const now = new Date().toISOString();
-
-  try {
-    // Update library and also fetch its folder_id / project_id in one round-trip
-    const { data, error } = await supabase
-      .from('libraries')
-      .update({ updated_at: now })
-      .eq('id', libraryId)
-      .select('folder_id, project_id')
-      .single();
-
-    if (error) throw error;
-
-    const effectiveProjectId = projectId || (data as any)?.project_id;
-
-    // Update parent project time
-    if (effectiveProjectId) {
-      await supabase
-        .from('projects')
-        .update({ updated_at: now })
-        .eq('id', effectiveProjectId);
-    }
-
-    // Update parent folder time (if library is inside a folder)
-    const folderId = (data as any)?.folder_id as string | null | undefined;
-    if (folderId) {
-      await supabase
-        .from('folders')
-        .update({ updated_at: now })
-        .eq('id', folderId);
-    }
-  } catch (error) {
-    // Do not break editing flow if this fails
-    // eslint-disable-next-line no-console
-    console.warn(
-      '[LibraryDataContext] Failed to touch updated_at for library/folder/project',
-      { libraryId, projectId },
-      error
-    );
-  }
-}
 
 export function LibraryDataProvider({ children, libraryId, projectId }: LibraryDataProviderProps) {
   const supabase = useSupabase();
@@ -262,36 +207,11 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     setIsSynced(false);
 
     try {
-      // 使用与版本快照完全一致的服务读取当前库数据，避免「当前视图」和「版本快照」两套取数逻辑
+      // Use the same service as version snapshots so the current view and
+      // saved snapshots read the same row shape.
       const assetRows: AssetRow[] = await getLibraryAssetsWithProperties(supabase, libraryId);
 
-      // Populate in-memory Yjs with data from Supabase.
-      // Always clear existing Yjs state first to avoid mixing old and new data.
-      yDoc.transact(() => {
-        yAssets.clear();
-
-        assetRows.forEach((asset: AssetRow) => {
-          const yAsset = new Y.Map();
-          yAsset.set('name', asset.name);
-
-          // Create Y.Map for propertyValues (nested structure)
-          const yPropertyValues = new Y.Map();
-          const values = asset.propertyValues || {};
-          Object.entries(values).forEach(([fieldId, value]) => {
-            // For complex objects, use deep copy to avoid reference issues
-            let valueForYjs = value;
-            if (value !== null && typeof value === 'object') {
-              valueForYjs = JSON.parse(JSON.stringify(value));
-            }
-            yPropertyValues.set(fieldId, valueForYjs);
-          });
-          yAsset.set('propertyValues', yPropertyValues);
-
-          if (asset.created_at) yAsset.set('created_at', asset.created_at);
-          if (typeof asset.rowIndex === 'number') yAsset.set('row_index', asset.rowIndex);
-          yAssets.set(asset.id, yAsset as any);
-        });
-      });
+      hydrateYAssetsFromRows(yDoc, yAssets, assetRows);
 
       if (isMountedRef.current) {
         setIsSynced(true);
@@ -308,29 +228,10 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     formulaFieldMetaCache.invalidate(libraryId);
   }, [formulaFieldMetaCache, libraryId]);
 
-  // Restore 后直接用 snapshot 覆盖 Yjs，保证「当前视图 = 刚恢复的版本」，与创建版本用 Yjs 一致
+  // After restore, apply the snapshot directly so the current view matches
+  // the restored version before the next server refresh arrives.
   const applySnapshotToYjs = useCallback((snapshotData: LibrarySnapshotData) => {
-    if (!snapshotData?.assets || !Array.isArray(snapshotData.assets)) return;
-    yDoc.transact(() => {
-      yAssets.clear();
-      snapshotData.assets.forEach((asset: any) => {
-        const yAsset = new Y.Map();
-        yAsset.set('name', asset.name ?? 'Untitled');
-        const yPropertyValues = new Y.Map();
-        const values = asset.propertyValues ?? {};
-        Object.entries(values).forEach(([fieldId, value]) => {
-          let valueForYjs = value;
-          if (value !== null && typeof value === 'object') {
-            valueForYjs = JSON.parse(JSON.stringify(value));
-          }
-          yPropertyValues.set(fieldId, valueForYjs);
-        });
-        yAsset.set('propertyValues', yPropertyValues);
-        if (asset.createdAt) yAsset.set('created_at', asset.createdAt);
-        if (typeof asset.rowIndex === 'number') yAsset.set('row_index', asset.rowIndex);
-        yAssets.set(asset.id, yAsset as any);
-      });
-    });
+    hydrateYAssetsFromSnapshot(yDoc, yAssets, snapshotData);
   }, [yDoc, yAssets]);
 
   // Initial load (wait for auth so RLS-backed queries have a valid session)
@@ -339,7 +240,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     loadInitialData();
   }, [loadInitialData, isAuthLoading, isAuthenticated, userProfile]);
 
-  // Realtime: 当有人成功 restore 一个版本时，所有协作者自动从 DB 重新加载一次
+  // Realtime restore events cause collaborators to reload from the server.
   useEffect(() => {
     if (!libraryId) return;
 
@@ -357,7 +258,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
           try {
             const row: any = payload.new;
             if (row?.version_type === 'restore') {
-              // 有新 restore 版本记录插入，说明库已被回滚到某个快照 → 强制用 DB 覆盖本地 Yjs
+              // A restore version means the library was rolled back to a snapshot.
               loadInitialData();
             }
           } catch (err) {
@@ -411,7 +312,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   }, [yAssets, yDoc]);
 
   // Realtime collaboration event handlers
-  // 队列里已有多个事件时用较长延迟收集更多，协作者端多条 postgres 更新会合并成一次应用，与操作者「一次性消失」一致
+  // Use a slightly longer delay when the queue already has multiple events so
+  // collaborator-side postgres updates are applied as one visual batch.
   const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
     cellUpdateQueueRef.current.push(event);
     if (cellUpdateFlushTimerRef.current) clearTimeout(cellUpdateFlushTimerRef.current);
@@ -483,12 +385,13 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     handleCellUpdateEvent(event);
   }, [handleCellUpdateEvent]);
 
-  // 行序变更事件：统一触发一次从 DB 的 reload，以后如果有更细粒度的行序事件再优化为局部更新
+  // Row order changes currently reload from the DB; a finer-grained row-order
+  // event can replace this later.
   const handleRowOrderChangeEvent = useCallback(() => {
     loadInitialData();
   }, [loadInitialData]);
 
-  // 批量单元格更新：Clear Content 等场景，一次接收所有变更并应用到 Yjs
+  // Batch cell updates are used by Clear Content and similar commands.
   const handleCellsBatchUpdateEvent = useCallback((event: CellsBatchUpdateEvent) => {
     if (event.cells.length === 0) return;
     yDoc.transact(() => {
@@ -903,13 +806,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       if (valuesError) throw valuesError;
     }
 
-    // 额外：库内新增行，刷新 library / folder / project 的 updated_at
+    // New rows should refresh library, folder, and project updated_at metadata.
     await touchLibraryUpdatedAt(supabase, libraryId, projectId);
 
     // 3. Add to Yjs (using Y.Map for propertyValues)
-    // 对于纯追加（没有显式 rowIndex）的场景，可以直接在本地插入 Yjs 记录，立即看到新行。
-    // 对于带 rowIndex 的场景（Add Row / Insert Above/Below / Paste 新行），我们后面会通过 loadInitialData()
-    // 用 DB 的完整行序覆盖一次本地状态，这里就不再做本地乐观插入，避免出现「先出现在错误位置再跳动」的闪烁。
+    // Plain appends can be inserted locally immediately. Explicit rowIndex
+    // inserts reload below so DB ordering replaces local state in one step.
     if (typeof options?.rowIndex !== 'number') {
       const yAsset = new Y.Map();
       yAsset.set('name', name);
@@ -951,8 +853,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       }
     }
 
-    // 5. Reload: 如果这次创建显式使用了 rowIndex（包括追加、Insert Above/Below、Paste 新行），
-    // 先在本客户端用 DB 结果全量刷新一次，避免本地仍持有旧的 rowIndex 造成“自己这边行出现在末尾”的错觉。
+    // 5. Reload explicit rowIndex inserts so the local order matches the DB.
     if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
       await loadInitialData();
       // After the final reload of a batch insert, clear the pending set.
@@ -1014,7 +915,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     }
   }, [updateAssetField, broadcastCellUpdate, realtimeConfig]);
 
-  /** 批量更新并一次性广播，用于 Clear Content，效仿 Delete Row 的即时同步 */
+  /** Batch update and broadcast once for Clear Content, matching Delete Row sync. */
   const updateAssetsBatch = useCallback(async (
     updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
   ) => {
