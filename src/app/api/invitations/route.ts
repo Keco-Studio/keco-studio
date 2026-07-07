@@ -81,14 +81,16 @@ export async function POST(request: NextRequest) {
     //   - owner / admin -> may grant any role
     //   - editor        -> may grant only 'editor' or 'viewer'
     //   - viewer        -> may not invite at all
-    const { data: ownedProject } = await supabase
+    // Fetch id/name/owner_id in one round-trip: name is reused for the email
+    // below, and owner_id drives the ownership check here.
+    const { data: project } = await supabase
       .from('projects')
-      .select('id')
+      .select('id, name, owner_id')
       .eq('id', projectId)
-      .eq('owner_id', user.id)
       .maybeSingle();
 
-    let inviterRole: CollaboratorRole | 'owner' | null = ownedProject ? 'owner' : null;
+    let inviterRole: CollaboratorRole | 'owner' | null =
+      project && project.owner_id === user.id ? 'owner' : null;
 
     if (!inviterRole) {
       const { data: membership } = await supabase
@@ -127,12 +129,6 @@ export async function POST(request: NextRequest) {
         error: 'Cannot invite yourself',
       });
     }
-
-    const { data: project } = await supabase
-      .from('projects')
-      .select('name')
-      .eq('id', projectId)
-      .single();
 
     if (!project) {
       return NextResponse.json(
