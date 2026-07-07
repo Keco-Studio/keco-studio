@@ -1,15 +1,13 @@
 /**
  * Supabase Context Provider
- * 
- * Provides a tab-isolated Supabase client instance to all child components.
- * Each browser tab gets its own independent client with separate session storage.
+ *
+ * Provides a single browser Supabase client instance to all child components.
  */
 
 'use client';
 
 import { createContext, useContext, useMemo, ReactNode } from 'react';
 import { createClient } from '@supabase/supabase-js';
-import { createHybridStorageAdapter } from './hybridStorageAdapter';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -34,11 +32,9 @@ export function SupabaseProvider({ children }: { children: ReactNode }) {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
-        // Use hybrid storage adapter: cookies for persistence + sessionStorage for tab isolation
-        storage: createHybridStorageAdapter(),
       },
     });
-  }, []); // Empty deps - create once per component mount (which is per tab)
+  }, []);
 
   return (
     <SupabaseContext.Provider value={supabase}>
@@ -54,4 +50,3 @@ export function useSupabase() {
   }
   return context;
 }
-
