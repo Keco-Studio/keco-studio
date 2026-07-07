@@ -2,11 +2,10 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import * as XLSX from 'xlsx';
 import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { validateName } from '@/lib/utils/nameValidation';
-import { parseHeaderLabel } from '@/lib/services/importService';
+import { previewWorkbookFile } from '@/lib/utils/workbook';
 import styles from './ExportLibraryModal.module.css';
 
 type ImportLibraryModalProps = {
@@ -25,32 +24,10 @@ type FilePreview = {
 };
 
 function previewImportFile(file: File): Promise<FilePreview> {
-  return file.arrayBuffer().then((buffer) => {
-    const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-    const workbook =
-      ext === 'csv'
-        ? XLSX.read(new TextDecoder().decode(buffer), { type: 'string' })
-        : XLSX.read(buffer, { type: 'array' });
-    const sheetNames = workbook.SheetNames.filter((name) => name.trim().length > 0);
-
-    let columnCount = 0;
-    let rowCount = 0;
-    for (const sheetName of sheetNames) {
-      const sheet = workbook.Sheets[sheetName];
-      if (!sheet) continue;
-      const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '' }) as unknown[][];
-      if (rows.length === 0) continue;
-      const headers = (rows[0] ?? []).map((cell) => parseHeaderLabel(String(cell ?? ''))).filter(Boolean);
-      columnCount += headers.length;
-      const dataRows = rows.slice(1).filter((row) =>
-        row.some((cell) => String(cell ?? '').trim().length > 0)
-      );
-      rowCount = Math.max(rowCount, dataRows.length);
-    }
-
+  return previewWorkbookFile(file).then(({ sheetCount, columnCount, rowCount }) => {
     return {
       fileName: file.name,
-      sectionCount: sheetNames.length,
+      sectionCount: sheetCount,
       columnCount,
       rowCount,
     };

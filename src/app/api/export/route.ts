@@ -7,8 +7,8 @@ import {
   evaluateFormulaForRow,
   getCustomFormulaExpressionFromCellValue,
 } from '@/components/libraries/utils/formulaEvaluation';
-import * as XLSX from 'xlsx';
 import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { writeXlsxWorkbook } from '@/lib/utils/workbook';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -665,12 +665,16 @@ export async function GET(request: NextRequest) {
     return fallback;
   };
 
-  const wb = XLSX.utils.book_new();
   const usedSheetNames = new Set<string>();
   const exportSections =
     sections.length > 0
       ? sections
       : ([{ id: '__default__', name: 'Section', libraryId, orderIndex: 0 }] as SectionConfig[]);
+  const outputSheets: Array<{
+    name: string;
+    rows: Array<Array<string | number | boolean | null>>;
+    columns?: Array<{ width?: number }>;
+  }> = [];
 
   for (const section of exportSections) {
     const sectionProps =
@@ -708,27 +712,32 @@ export async function GET(request: NextRequest) {
     });
 
     const wsData = [headerRow, ...sheetRows];
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
 
     // Auto-fit column width for readability.
     const maxRowsForWidth = Math.min(wsData.length, 101);
-    ws['!cols'] = sectionProps.map((_, colIdx) => {
+    const columns = sectionProps.map((_, colIdx) => {
       let maxLen = 10;
       for (let rowIdx = 0; rowIdx < maxRowsForWidth; rowIdx += 1) {
         const cellValue = wsData[rowIdx]?.[colIdx];
         const text = cellValue === null || cellValue === undefined ? '' : String(cellValue);
         if (text.length > maxLen) maxLen = text.length;
       }
-      return { wch: Math.min(Math.max(maxLen + 2, 12), 40) };
+      return { width: Math.min(Math.max(maxLen + 2, 12), 40) };
     });
 
     const sectionName =
       section.id === '__default__' ? 'Section' : sectionById.get(section.id)?.name ?? 'Section';
-    XLSX.utils.book_append_sheet(wb, ws, makeUniqueSheetName(sectionName, usedSheetNames));
+    outputSheets.push({
+      name: makeUniqueSheetName(sectionName, usedSheetNames),
+      rows: wsData,
+      columns,
+    });
   }
 
-  const buf = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
-  return new NextResponse(buf, {
+  const buf = await writeXlsxWorkbook(outputSheets);
+  const responseBody = new ArrayBuffer(buf.byteLength);
+  new Uint8Array(responseBody).set(buf);
+  return new NextResponse(responseBody, {
     status: 200,
     headers: {
       'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
