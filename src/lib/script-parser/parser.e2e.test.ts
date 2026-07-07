@@ -2,7 +2,7 @@
  * Script Parser - End-to-end test with real structured format input
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@jest/globals';
 import { parseText } from './parser';
 
 describe('Structured Format E2E', () => {

@@ -4,10 +4,10 @@
 
 export function formatReasoningSeconds(ms: number): string {
   const seconds = Math.max(1, Math.round(ms / 1000));
-  if (seconds < 60) return `${seconds} 秒`;
+  if (seconds < 60) return `${seconds}s`;
   const minutes = Math.floor(seconds / 60);
   const rem = seconds % 60;
-  return rem > 0 ? `${minutes} 分 ${rem} 秒` : `${minutes} 分`;
+  return rem > 0 ? `${minutes}m ${rem}s` : `${minutes}m`;
 }
 
 export function reasoningDurationMs(
@@ -26,9 +26,9 @@ export function reasoningLabel(
   isThinking: boolean,
   now = Date.now()
 ): string {
-  if (!startedAt) return '深度思考';
+  if (!startedAt) return 'Deep thinking';
   const ms = reasoningDurationMs(startedAt, endedAt, now);
-  if (ms === undefined) return '深度思考';
+  if (ms === undefined) return 'Deep thinking';
   const duration = formatReasoningSeconds(ms);
-  return isThinking ? `深度思考中（${duration}）` : `已深度思考（${duration}）`;
+  return isThinking ? `Thinking (${duration})` : `Thought for ${duration}`;
 }

@@ -11,7 +11,7 @@ import type {
 } from './types';
 
 /**
- * Normalize raw DB meta to a resolved autoExecute flag (default true) and pass
+ * Normalize raw DB meta to a resolved autoExecute flag (default false) and pass
  * through the bound scope verbatim (absent on legacy rows).
  */
 export function resolveConversationMeta(
@@ -21,8 +21,8 @@ export function resolveConversationMeta(
     raw?.autoExecute === false
       ? false
       : raw?.autoExecute === true || raw?.skipConfirmation === true
-        ? true
-        : true;
+      ? true
+      : false;
   const resolved: ConversationMeta = { autoExecute };
   if (raw?.scope) resolved.scope = raw.scope;
   return resolved;
@@ -32,8 +32,8 @@ export function resolveConversationMeta(
 export function needsConfirmation(tool: AgentTool, meta: ConversationMeta): boolean {
   const resolved = resolveConversationMeta(meta);
   if (tool.category === 'read') return false;
-  if (resolved.autoExecute === true) return false;
   if (tool.confirmationMode === 'post_preview' || tool.confirmationMode === 'meta') return true;
+  if (resolved.autoExecute === true) return false;
   if (tool.confirmationMode === 'pre_execute' && meta.skipConfirmation) return false;
   return true;
 }

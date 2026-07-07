@@ -75,6 +75,40 @@ jobs:
         # 增加超时时间（默认 1 小时）
         timeout-minutes: 90
 
+      - name: Lint project
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: npm run lint
+
+      # Extract the LOCAL Supabase keys so the RLS behavior tests connect to the
+      # local instance (started above), never to the remote project the build
+      # step's secrets may point at. Mirrors playwright.yml's extraction.
+      - name: Extract local Supabase keys
+        id: local-supabase
+        run: |
+          STATUS_TEXT=$(supabase status)
+          ANON_KEY=$(echo "$STATUS_TEXT" | grep -iE "anon key|Publishable" | sed -n 's/.*│[[:space:]]*\(sb_publishable_[^[:space:]]*\|eyJ[^[:space:]]*\).*/\1/p' | head -1)
+          SERVICE_KEY=$(echo "$STATUS_TEXT" | grep -iE "service_role key|Secret" | grep -v "JWT" | sed -n 's/.*│[[:space:]]*\(sb_secret_[^[:space:]]*\|eyJ[^[:space:]]*\).*/\1/p' | head -1)
+          if [ -z "$ANON_KEY" ] || [ -z "$SERVICE_KEY" ]; then
+            echo "❌ Failed to extract local Supabase keys"; echo "$STATUS_TEXT"; exit 1
+          fi
+          echo "anon_key=$ANON_KEY" >> "$GITHUB_OUTPUT"
+          echo "service_key=$SERVICE_KEY" >> "$GITHUB_OUTPUT"
+          echo "::add-mask::$SERVICE_KEY"
+
+      - name: Run unit tests
+        env:
+          # Point the RLS behavior tests at the LOCAL instance explicitly.
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ steps.local-supabase.outputs.anon_key }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.local-supabase.outputs.service_key }}
+          # Enable the DB-backed RLS behavior tests: a local Postgres with all
+          # migrations applied is running at this point (supabase start + db reset).
+          RLS_DB_TESTS: '1'
+        run: npm run test:unit
+
       - name: 构建项目
         env:
           # 从 GitHub Secrets 读取 Supabase 环境变量

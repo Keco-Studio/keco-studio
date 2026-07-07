@@ -54,8 +54,8 @@ function AuthCallbackContent() {
       flexDirection: 'column',
       gap: '16px'
     }}>
-      <div style={{ fontSize: '18px', fontWeight: 500 }}>正在完成登录...</div>
-      <div style={{ fontSize: '14px', color: '#64748b' }}>请稍候</div>
+      <div style={{ fontSize: '18px', fontWeight: 500 }}>Completing sign-in...</div>
+      <div style={{ fontSize: '14px', color: '#64748b' }}>Please wait</div>
     </div>
   );
 }
@@ -72,7 +72,7 @@ export default function AuthCallback() {
           flexDirection: 'column',
           gap: '16px'
         }}>
-          <div style={{ fontSize: '18px', fontWeight: 500 }}>正在加载...</div>
+          <div style={{ fontSize: '18px', fontWeight: 500 }}>Loading...</div>
         </div>
       }
     >

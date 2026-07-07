@@ -32,12 +32,12 @@ export function SimulationSystemEmbed() {
   if (!configured || !origin) {
     return (
       <div className={styles.fallback}>
-        <p>未启用模拟器嵌入。若要在本机联动（Keco :3000 + keco-simulation :3001），请在 <code>.env.local</code> 中配置：</p>
+        <p>Simulator embedding is not enabled. To run it locally alongside Keco (Keco :3000 + keco-simulation :3001), configure the following in <code>.env.local</code>:</p>
         <pre style={{ whiteSpace: 'pre-wrap', fontSize: 13 }}>
           {`NEXT_PUBLIC_SIMULATION_ENABLED=true
 NEXT_PUBLIC_SIMULATION_ORIGIN=http://localhost:3001`}
         </pre>
-        <p>保存后重启 <code>next dev</code>，并在 sibling 目录启动 <code>keco-simulation</code>（默认端口 3001）。</p>
+        <p>After saving, restart <code>next dev</code> and start <code>keco-simulation</code> in the sibling directory (default port 3001).</p>
       </div>
     );
   }
@@ -49,12 +49,12 @@ NEXT_PUBLIC_SIMULATION_ORIGIN=http://localhost:3001`}
     return (
       <div className={styles.fallback}>
         <p>
-          检测到 <code>NEXT_PUBLIC_SIMULATION_ORIGIN</code> 与当前 Keco Studio 的域名相同（
-          <code>{origin}</code>）。这会让模拟器 iframe 反复加载 Studio 自身，导致页面卡死，因此已停止嵌入。
+          Detected that <code>NEXT_PUBLIC_SIMULATION_ORIGIN</code> is the same as the current Keco Studio origin (
+          <code>{origin}</code>). This would make the simulator iframe repeatedly load Studio itself and freeze the page, so embedding has been stopped.
         </p>
         <p>
-          请将 <code>NEXT_PUBLIC_SIMULATION_ORIGIN</code> 指向独立运行的 keco-simulation（本机默认
-          <code> http://localhost:3001</code>），保存后重启 <code>next dev</code>。
+          Point <code>NEXT_PUBLIC_SIMULATION_ORIGIN</code> at a separately running keco-simulation (locally defaults to
+          <code> http://localhost:3001</code>), then save and restart <code>next dev</code>.
         </p>
       </div>
     );

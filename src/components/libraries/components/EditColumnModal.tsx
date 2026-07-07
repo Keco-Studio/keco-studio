@@ -990,7 +990,7 @@ export function EditColumnModal({
               ))}
               {editColumnModal.enumOptions.length === 0 && (
                 <div className={styles.emptyOptionsHint}>
-                  Click "Add option" to define choices.
+                  Click &quot;Add option&quot; to define choices.
                 </div>
               )}
               <button

@@ -363,12 +363,15 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [currentIds.projectId]);
 
-  // Smart cache refresh: If user is viewing a project that's not in the sidebar list
-  // (including empty list after first project creation), refresh projects.
+  // Smart cache refresh: If user is viewing a project that's not in the sidebar,
+  // it might mean they were just added as a collaborator. Refresh the projects list.
+  // NOTE: must run even when projects is empty — a collaborator opening their very
+  // first project has projects === [], and that is exactly the case to refetch for.
   useEffect(() => {
     if (currentIds.projectId && !loadingProjects) {
       const currentProjectExists = projects.some(p => p.id === currentIds.projectId);
       if (!currentProjectExists) {
+
         // Clear globalRequestCache and refetch
         (async () => {
           try {
@@ -911,8 +914,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const handleProjectCreated = async (projectId: string, defaultFolderId: string) => {
     closeProjectModal();
 
-    // Immediately invalidate React Query cache to refresh the sidebar
+    // Immediately invalidate React Query cache to refresh the sidebar.
+    // Mirror projects/page.tsx handleCreated: invalidate both the list and the
+    // per-project key so the two creation entry points stay consistent.
     queryClient.invalidateQueries({ queryKey: ['projects'] });
+    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
 
     // Also invalidate globalRequestCache for projects list
     const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
@@ -928,8 +934,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       console.warn('Failed to get userId for cache invalidation, clearing all project cache', err);
       globalRequestCache.invalidate(`project:${projectId}`);
     }
-
-    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
 
     // Dispatch event to notify other components (ProjectsPage) to refresh their caches
     window.dispatchEvent(new CustomEvent('projectCreated'));
@@ -1064,6 +1068,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           onContextMenu={handleContextMenu}
         />
 
+        {/* Show the libraries section for whatever project the user is viewing.
+            Gate ONLY on currentIds.projectId — its folders/libraries come from
+            useSidebarFoldersLibraries(currentIds.projectId), independent of the
+            projects-list cache. Requiring projects.some(...) here would hide the
+            section whenever that list is stale, still refetching, or failed
+            (e.g. a collaborator opening their first project). */}
         {currentIds.projectId && (
             <SidebarLibrariesSection
               currentIds={currentIds}
@@ -1304,7 +1314,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               />
             </div>
 
-            <div className={styles.moveToProjectText}>Folder in "{currentProjectName}"</div>
+            <div className={styles.moveToProjectText}>Folder in &quot;{currentProjectName}&quot;</div>
 
             <label className={styles.moveToIndependentRow}>
               <span>Use as independent library</span>
@@ -1407,7 +1417,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       {isSidebarVisible && (
         <div
           role="separator"
-          aria-label="调整侧边栏宽度"
+          aria-label="Resize sidebar width"
           className={styles.resizeHandle}
           onMouseDown={handleResizeStart}
         />

@@ -51,7 +51,7 @@ export function useAgentChat(ctx: SendContext) {
   const [streamActivity, setStreamActivity] = useState<StreamActivity>('connecting');
   const [streamStartedAt, setStreamStartedAt] = useState<number | null>(null);
   const [conversationId, setConversationId] = useState<string | undefined>(undefined);
-  const [autoExecute, setAutoExecuteState] = useState(true);
+  const [autoExecute, setAutoExecuteState] = useState(false);
   // Scope the loaded conversation is frozen to (undefined = new/legacy).
   const [activeScope, setActiveScope] = useState<ConversationScope | undefined>(undefined);
   const conversationIdRef = useRef<string | undefined>(undefined);
@@ -121,7 +121,7 @@ export function useAgentChat(ctx: SendContext) {
         const { meta } = (await res.json()) as {
           meta?: { autoExecute?: boolean; scope?: ConversationScope };
         };
-        return { autoExecute: meta?.autoExecute !== false, scope: meta?.scope };
+        return { autoExecute: meta?.autoExecute === true, scope: meta?.scope };
       } catch {
         return { autoExecute };
       }
@@ -500,11 +500,8 @@ export function useAgentChat(ctx: SendContext) {
 
   const startNewConversation = useCallback(() => {
     resetToEmpty();
-    if (ctx.userId) {
-      setAutoExecuteState(getAutoExecutePreference(ctx.userId));
-    } else {
-      setAutoExecuteState(true);
-    }
+    // Anonymous users must default to manual confirm too — never hardcode auto.
+    setAutoExecuteState(ctx.userId ? getAutoExecutePreference(ctx.userId) : false);
     if (ctx.userId && ctx.projectId) {
       clearLastConversation(ctx.userId, ctx.projectId);
     }

@@ -221,8 +221,8 @@ export function ChatPanel() {
               className={styles.scopeLock}
               title={
                 activeScope
-                  ? '此对话已锁定到该范围，切换项目不会改变它'
-                  : '新对话将绑定到当前范围'
+                  ? 'This conversation is locked to this scope; switching projects will not change it'
+                  : 'New conversations will be bound to the current scope'
               }
             >
               {activeScope ? '🔒 ' : ''}

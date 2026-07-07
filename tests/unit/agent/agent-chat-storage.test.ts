@@ -111,8 +111,11 @@ describe('agentChatStorage last conversation map', () => {
 });
 
 describe('agentChatStorage autoExecute preference', () => {
-  it('defaults to true when not stored', () => {
-    expect(getAutoExecutePreference(USER)).toBe(true);
+  it('defaults to false when not stored', () => {
+    // A user who has never toggled the setting must NOT get auto-execute.
+    // Defaulting to true silently created new conversations in auto mode,
+    // reintroducing the issue #144 confirmation bypass for write tools.
+    expect(getAutoExecutePreference(USER)).toBe(false);
   });
 
   it('persists false preference', () => {

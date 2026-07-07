@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it } from '@jest/globals';
 import { formatElapsedSeconds, streamActivityLabel } from '../../../src/components/agent/streamActivity';
 
 describe('streamActivity', () => {

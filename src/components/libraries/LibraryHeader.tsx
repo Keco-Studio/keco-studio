@@ -17,7 +17,7 @@ import { InviteCollaboratorModal } from '@/components/collaboration/InviteCollab
 import { showSuccessToast } from '@/lib/utils/toast';
 import type { PresenceState } from '@/lib/types/collaboration';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
-import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
+import { useLibraryDataOptional } from '@/lib/contexts/LibraryDataContext';
 import styles from './LibraryHeader.module.css';
 import libraryHeadMoreIcon from '@/assets/images/moreOptionsIcon.svg';
 import libraryHeadVersionControlIcon from '@/assets/images/libraryHeadVersionControlIcon.svg';
@@ -75,17 +75,13 @@ export function LibraryHeader({
 
   // Prefer presence from LibraryDataContext when available (single source of truth),
   // otherwise fall back to the presenceUsers prop (e.g. in TopBar or tests).
+  const libraryData = useLibraryDataOptional();
   const presenceSource: PresenceState[] = (() => {
-    try {
-      const { presenceUsers: ctxPresence } = useLibraryData();
-      if (ctxPresence && ctxPresence.length > 0) {
-        return ctxPresence;
-      }
-      return presenceUsers;
-    } catch {
-      // Not inside LibraryDataProvider – use props only.
-      return presenceUsers;
+    const ctxPresence = libraryData?.presenceUsers;
+    if (ctxPresence && ctxPresence.length > 0) {
+      return ctxPresence;
     }
+    return presenceUsers;
   })();
 
   // Sort presence users: current user first, then by last activity

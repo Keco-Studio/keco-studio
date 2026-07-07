@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const initialAutoExecute =
-      typeof body.autoExecute === 'boolean' ? body.autoExecute : true;
+      typeof body.autoExecute === 'boolean' ? body.autoExecute : false;
 
     // For a new conversation, snapshot the scope from live navigation.
     const scopeSnapshot = isNewConversation
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     // v1: the global scope has no cross-project capability yet (see spec §7).
     if (boundScope?.level === 'global') {
       return NextResponse.json(
-        { error: '此会话未绑定具体项目，请进入一个项目后新建对话。' },
+        { error: 'This conversation is not bound to a specific project. Open a project and start a new conversation.' },
         { status: 400 }
       );
     }
