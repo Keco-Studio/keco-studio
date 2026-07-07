@@ -32,6 +32,10 @@ interface StreamLlmOptions {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+export function isRetriableStatus(status: number): boolean {
+  return status === 429 || status >= 500;
+}
+
 async function requestStream(
   messages: ChatMessage[],
   options: StreamLlmOptions
@@ -83,16 +87,19 @@ export async function* streamLlm(
       response = await requestStream(messages, options);
       if (response.ok && response.body) break;
 
-      const retriable = response.status >= 500 || response.status === 429;
+      const retriable = isRetriableStatus(response.status);
       if (!retriable || attempt === 1) {
         const text = await response.text().catch(() => '');
         throw new LlmError(`LLM request failed (${response.status}): ${text.slice(0, 500)}`);
       }
       lastError = new LlmError(`LLM transient error (${response.status})`);
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw err;
+      }
       if (err instanceof LlmError && !`${err.message}`.includes('transient')) {
         // Non-retriable application error — rethrow immediately.
-        if (attempt === 1) throw err;
+        throw err;
       }
       lastError = err;
       if (attempt === 1) throw err;

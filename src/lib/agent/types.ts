@@ -190,6 +190,7 @@ export interface SuspendedState {
 export interface AgentTurnInput {
   conversationId: string;
   userMessage: string;
+  signal?: AbortSignal;
   /** Public image URLs (Supabase storage) attached to this user turn, if any. */
   imageUrls?: string[];
   /** Explicit selected table data attached to this user turn only. */
@@ -201,6 +202,7 @@ export interface AgentTurnInput {
 export interface ResumeInput {
   actionId: string;
   decision: 'approve' | 'reject';
+  signal?: AbortSignal;
   toolContext: ToolContext;
   conversationMeta: ConversationMeta;
 }

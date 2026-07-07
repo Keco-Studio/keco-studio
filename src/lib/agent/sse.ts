@@ -14,20 +14,35 @@ function formatEvent(event: SSEEvent): Uint8Array {
  * Build a text/event-stream Response from an SSEEvent generator. Errors thrown
  * by the generator are surfaced as a final `error` + `done` event pair.
  */
-export function sseResponse(generator: AsyncGenerator<SSEEvent>): Response {
+export function sseResponse(
+  generator: AsyncGenerator<SSEEvent>,
+  options: { abortController?: AbortController } = {}
+): Response {
+  const abortController = options.abortController ?? new AbortController();
+  let cancelled = false;
+
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       try {
         for await (const event of generator) {
+          if (cancelled || abortController.signal.aborted) return;
           controller.enqueue(formatEvent(event));
         }
       } catch (err) {
+        if (cancelled || abortController.signal.aborted) return;
         const message = err instanceof Error ? err.message : 'Unexpected agent error.';
         controller.enqueue(formatEvent({ type: 'error', message }));
         controller.enqueue(formatEvent({ type: 'done' }));
       } finally {
-        controller.close();
+        if (!cancelled) {
+          controller.close();
+        }
       }
+    },
+    cancel() {
+      cancelled = true;
+      abortController.abort();
+      void generator.return?.(undefined);
     },
   });
 

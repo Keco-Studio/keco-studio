@@ -112,16 +112,18 @@ export async function POST(request: NextRequest) {
       ...contextFields,
     };
 
+    const abortController = new AbortController();
     const generator = runAgentTurn({
       conversationId: conversation.id,
       userMessage: message,
+      signal: abortController.signal,
       imageUrls: imageUrls.length > 0 ? imageUrls : undefined,
       selectionContext,
       toolContext,
       conversationMeta: boundMeta,
     });
 
-    const response = sseResponse(generator);
+    const response = sseResponse(generator, { abortController });
     // Surface the (possibly new) conversation id to the client.
     response.headers.set('X-Conversation-Id', conversation.id);
     return response;

@@ -209,6 +209,11 @@ function indexingContext(ctx: ToolContext): SaveMessageIndexingContext {
   return { projectId: ctx.projectId, userId: ctx.userId };
 }
 
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  throw new DOMException('Agent request aborted.', 'AbortError');
+}
+
 async function persistMessage(
   ctx: ToolContext,
   conversationId: string,
@@ -276,6 +281,7 @@ async function* continueLoop(
   conversationId: string,
   startIterations: number,
   startTokenUsageTotal = 0,
+  signal?: AbortSignal,
   trace?: TurnTraceCollector
 ): AsyncGenerator<SSEEvent> {
   let iterations = startIterations;
@@ -283,6 +289,7 @@ async function* continueLoop(
   let messages = initialMessages;
 
   while (iterations++ < MAX_ITERATIONS) {
+    throwIfAborted(signal);
     if (iterations > 1) {
       messages = compactLargeUserContentInMessages(messages);
     }
@@ -303,9 +310,11 @@ async function* continueLoop(
 
     const llmMessages = await inlineLocalImages(prepareMessagesForLlm(messages));
     const llmTools = await getToolsForLlmAsync(ctx);
+    throwIfAborted(signal);
     for await (const chunk of streamLlm(llmMessages, {
       tools: llmTools,
       maxTokens: AGENT_LLM_MAX_TOKENS,
+      signal,
     })) {
       if (chunk.type === 'text_delta') {
         assistantContent += chunk.content;
@@ -467,6 +476,7 @@ async function* continueLoop(
 
       // post_preview -> execute the non-mutating step first, then pause for preview.
       if (tool.confirmationMode === 'post_preview') {
+        throwIfAborted(signal);
         yield { type: 'tool_call_start', tool: tool.name, args: call.function.arguments };
         const previewStartMs = Date.now();
         const result = await tool.execute(parsedArgs, ctx);
@@ -527,6 +537,7 @@ async function* continueLoop(
     }
 
     // No confirmation needed (read tool, autoExecute, or legacy skipConfirmation).
+    throwIfAborted(signal);
     yield { type: 'tool_call_start', tool: tool.name, args: call.function.arguments };
 
     if (tool.confirmationMode === 'post_preview') {
@@ -636,7 +647,7 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     const messages: ChatMessage[] = [systemMessage, ...compactedHistory, { role: 'user', content: userContentForLlm }];
     await saveMessage(toolContext.supabase, conversationId, { role: 'user', content: userContentForDb }, indexingContext(toolContext));
 
-    yield* continueLoop(messages, toolContext, conversationMeta, conversationId, 0, 0, trace);
+    yield* continueLoop(messages, toolContext, conversationMeta, conversationId, 0, 0, input.signal, trace);
   } finally {
     await flushTrace(trace, toolContext, conversationId);
   }
@@ -694,6 +705,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       if (!tool.executeImport || !savedResult) {
         result = { success: false, error: 'Import data unavailable; please retry.' };
       } else {
+        throwIfAborted(input.signal);
         yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
         const toolStartMs = Date.now();
         result = await tool.executeImport(savedResult, pending.args, toolContext);
@@ -709,6 +721,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       }
     } else {
       // pre_execute or meta
+      throwIfAborted(input.signal);
       yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
       const toolStartMs = Date.now();
       result = await tool.execute(pending.args, toolContext);
@@ -754,6 +767,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       conversationId,
       resumeIteration,
       resumeTokenUsageTotal,
+      input.signal,
       trace
     );
   } finally {
