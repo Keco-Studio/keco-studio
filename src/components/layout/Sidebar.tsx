@@ -1071,9 +1071,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           onContextMenu={handleContextMenu}
         />
 
-        {currentIds.projectId &&
-          projects.length > 0 &&
-          projects.some((p) => p.id === currentIds.projectId) && (
+        {/* Show the libraries section for whatever project the user is viewing.
+            Gate ONLY on currentIds.projectId — its folders/libraries come from
+            useSidebarFoldersLibraries(currentIds.projectId), independent of the
+            projects-list cache. Requiring projects.some(...) here would hide the
+            section whenever that list is stale, still refetching, or failed
+            (e.g. a collaborator opening their first project). */}
+        {currentIds.projectId && (
             <SidebarLibrariesSection
               currentIds={currentIds}
               libraries={libraries}

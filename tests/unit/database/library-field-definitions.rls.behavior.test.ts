@@ -123,5 +123,5 @@ async function deleteReturningCount(actor: RlsUser, id: string) {
     .from('library_field_definitions')
     .delete({ count: 'exact' })
     .eq('id', id);
-  return { delErr: error, count };
+  return { error, count };
 }
