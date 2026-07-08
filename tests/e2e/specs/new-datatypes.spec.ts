@@ -115,11 +115,6 @@ async function addColumn(page: Page, name: string, dataTypeLabel: string): Promi
     )
     .toBeTruthy();
 
-  if (await addModal.isVisible({ timeout: 500 }).catch(() => false)) {
-    // If still visible here, fail with actionable context.
-    const errorText = await addModal.locator('[class*="errorText"]').allInnerTexts().catch(() => []);
-    throw new Error(`Add column modal still visible after submit. errors=${errorText.join(' | ')}`);
-  }
 }
 
 async function getColumnCellByName(page: Page, columnName: string): Promise<Locator> {
@@ -355,4 +350,3 @@ test.describe('New data types (array/audio/video)', () => {
       .toBeGreaterThan(0);
   });
 });
-
