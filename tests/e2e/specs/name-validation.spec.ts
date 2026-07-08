@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { ProjectPage } from '../pages/project.page';
 import { LibraryPage } from '../pages/library.page';
 import { LoginPage } from '../pages/login.page';
@@ -8,6 +8,10 @@ import { projects, generateProjectData } from '../fixures/projects';
 import { libraries } from '../fixures/libraries';
 import { folders } from '../fixures/folders';
 import { users } from '../fixures/users';
+
+function formDialogError(page: Page, text: string | RegExp) {
+  return page.locator('[class*="FormDialog"][class*="error"]').filter({ hasText: text }).first();
+}
 
 /**
  * Name Validation E2E Tests
@@ -647,7 +651,7 @@ test.describe('Name Validation Tests', () => {
         await saveButton.click();
         
         // Verify error message appears
-        const errorMessage = page.locator('[class*="error"]').filter({ hasText: /already exists/i });
+        const errorMessage = formDialogError(page, /already exists/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('already exists');
       });
@@ -714,7 +718,7 @@ test.describe('Name Validation Tests', () => {
         await saveButton.click();
         
         // Verify error message appears
-        const errorMessage = page.locator('[class*="error"]').filter({ hasText: /already exists/i });
+        const errorMessage = formDialogError(page, /already exists/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('already exists');
       });
@@ -783,7 +787,7 @@ test.describe('Name Validation Tests', () => {
         await saveButton.click();
         
         // Verify error message appears
-        const errorMessage = page.locator('[class*="error"]').filter({ hasText: /already exists/i });
+        const errorMessage = formDialogError(page, /already exists/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('already exists');
       });
