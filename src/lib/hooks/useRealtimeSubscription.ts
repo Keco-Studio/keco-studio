@@ -15,6 +15,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useSupabase } from '@/lib/SupabaseContext';
+import { resolveConflict } from '@/lib/realtime/conflict-resolution';
 import type {
   CellUpdateEvent,
   AssetCreateEvent,
@@ -34,9 +35,9 @@ export type RealtimeSubscriptionConfig = {
   onAssetCreate: (event: AssetCreateEvent) => void;
   onAssetDelete: (event: AssetDeleteEvent) => void;
   onConflict: (event: CellUpdateEvent, localValue: any) => void;
-  /** 行顺序发生变更时的回调（例如 insert above/below 或批量重排） */
+  /** Callback for row order changes, such as insert above/below or batch reordering. */
   onRowOrderChange?: (event: RowOrderChangeEvent) => void;
-  /** 批量单元格更新回调（Clear Content 等场景，一次接收所有变更，效仿 Delete Row 的即时同步） */
+  /** Callback for batched cell updates, such as Clear Content. */
   onCellsBatchUpdate?: (event: CellsBatchUpdateEvent) => void;
 };
 
@@ -64,7 +65,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   
   // Track recent broadcasts to prevent processing our own database updates
   const recentBroadcastsRef = useRef<Map<string, number>>(new Map());
-  // 收到 cells:batch-update 后短时间忽略同批 cell 的 postgres_changes，避免协作者「一格一格清空」
+  // After cells:batch-update, briefly ignore matching postgres_changes so
+  // collaborators do not see cells clear one by one.
   const recentBatchCellKeysRef = useRef<{ keys: Set<string>; at: number }>({ keys: new Set(), at: 0 });
   // Buffer postgres_changes INSERT events for library_assets to coalesce with roworder:change.
   // Without this, INSERT events arrive before roworder:change and cause rows to appear at
@@ -131,19 +133,17 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     // console.log('[useRealtimeSubscription] ✅ Processing broadcast from another user');
     const optimistic = getOptimisticUpdate(event.assetId, event.propertyKey);
 
-    if (optimistic && optimistic.timestamp < event.timestamp) {
-      // Conflict detected: remote update is newer than our optimistic update
-      // console.log('[useRealtimeSubscription] ⚠️ Conflict detected, remote wins');
-      onConflict(event, optimistic.newValue);
-      removeOptimisticUpdate(event.assetId, event.propertyKey);
-    } else if (!optimistic) {
+    if (optimistic) {
+      const resolution = resolveConflict(optimistic, event);
+      if (resolution.winner === 'remote') {
+        onConflict(event, optimistic.newValue);
+        removeOptimisticUpdate(event.assetId, event.propertyKey);
+      }
+    } else {
       // No conflict, apply the update
       // console.log('[useRealtimeSubscription] ✅ No conflict, applying update');
       onCellUpdate(event);
-    } else {
-      // console.log('[useRealtimeSubscription] ⏭️ Local update is newer, ignoring');
     }
-    // If optimistic.timestamp >= event.timestamp, ignore (our update is newer)
   }, [currentUserId, getOptimisticUpdate, onCellUpdate, onConflict, removeOptimisticUpdate]);
 
   /**
@@ -200,8 +200,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
   /**
    * Handle incoming cells batch update events (e.g. Clear Content).
-   * 效仿 Delete Row：一次性接收所有变更，协作者立即全部应用，无 debounce、无顺序问题。
-   * 同时记录这批 cell，短时间忽略同批的 postgres_changes，避免「一格一格清空」。
+   * Like Delete Row, collaborators receive and apply every change at once.
+   * Track the batch briefly so matching postgres_changes do not replay cells one by one.
    */
   const handleCellsBatchUpdateEvent = useCallback((payload: any) => {
     if (!onCellsBatchUpdate) return;
@@ -223,7 +223,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     assetId: string,
     propertyKey: string,
     newValue: any,
-    oldValue?: any
+    oldValue?: any,
+    updatedAt?: string | null
   ): Promise<void> => {
     // console.log('[useRealtimeSubscription] broadcastCellUpdate called:', { 
     //   assetId, 
@@ -249,6 +250,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       newValue,
       oldValue,
       timestamp,
+      updatedAt,
     };
 
     // console.log('[useRealtimeSubscription] Created broadcast event:', event);
@@ -259,6 +261,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       propertyKey,
       newValue,
       timestamp,
+      updatedAt,
       userId: currentUserId,
     });
 
@@ -426,7 +429,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
   /**
    * Broadcast a batch of cell updates in one message (e.g. Clear Content).
-   * 效仿 Delete Row：无 debounce，一次发送所有变更，协作者一次性接收并应用。
+   * Like Delete Row, send every change in one message with no debounce.
    */
   const broadcastCellsBatchUpdate = useCallback(async (
     cells: Array<{ assetId: string; propertyKey: string; newValue: any }>
@@ -454,8 +457,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
 
   /**
    * Broadcast a row order change hint to all clients.
-   * 事件本身不携带具体 rowIndex 列表，上层通常在收到事件后触发一次从 DB 的 reload，
-   * 以 server 为准同步行序。
+   * The event does not carry rowIndex details; callers usually reload from the
+   * database so server order stays authoritative.
    */
   const broadcastRowOrderChange = useCallback(async (): Promise<void> => {
     if (!channelRef.current) {
@@ -575,7 +578,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
             try {
               const { data: assetData } = await supabase
                 .from('library_assets')
-                .select('library_id')
+                .select('library_id, updated_at')
                 .eq('id', newRecord.asset_id)
                 .single();
               
@@ -606,6 +609,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
                 newValue: newRecord.value_json,
                 oldValue: oldRecord?.value_json,
                 timestamp: Date.now(),
+                updatedAt: (assetData as any)?.updated_at ?? (payload as any)?.commit_timestamp ?? null,
               };
               
               handleCellUpdateEvent({ payload: syntheticEvent });
@@ -638,7 +642,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
             try {
               const { data: assetData } = await supabase
                 .from('library_assets')
-                .select('library_id')
+                .select('library_id, updated_at')
                 .eq('id', newRecord.asset_id)
                 .single();
               if (!assetData || assetData.library_id !== libraryId) return;
@@ -653,6 +657,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
                 newValue: newRecord.value_json,
                 oldValue: null, // INSERT means it was null before
                 timestamp: Date.now(),
+                updatedAt: (assetData as any)?.updated_at ?? (payload as any)?.commit_timestamp ?? null,
               };
               
               handleCellUpdateEvent({ payload: syntheticEvent });
@@ -763,6 +768,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
             newValue: newName,
             oldValue: oldName,
             timestamp: Date.now(),
+            updatedAt: newRecord.updated_at ?? (payload as any)?.commit_timestamp ?? null,
           };
           handleCellUpdateEvent({ payload: syntheticEvent });
         }
@@ -873,4 +879,3 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     queuedUpdatesCount: queuedUpdates.length,
   };
 }
-

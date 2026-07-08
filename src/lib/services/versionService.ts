@@ -102,7 +102,7 @@ function dbVersionToAppVersion(dbVersion: LibraryVersionDb, createdByProfile?: a
 /**
  * Create a complete snapshot of a library
  * Includes all assets, field definitions, and configuration.
- * 若传入 currentAssetsFromClient（当前界面 Yjs 数据），则用其作为快照内容，保证与用户看到的完全一致。
+ * If currentAssetsFromClient is provided, use it so the snapshot matches the current UI state.
  */
 async function createLibrarySnapshot(
   supabase: SupabaseClient,
@@ -390,7 +390,7 @@ export async function createVersion(
   // Get current user
   const userId = await getCurrentUserId(supabase);
 
-  // Create snapshot（优先用当前界面数据，避免 DB 与 Yjs 不同步导致快照和「当前看到」不一致）
+  // Prefer current UI data for the snapshot so it does not drift from what the user sees.
   const snapshotData = await createLibrarySnapshot(supabase, libraryId, currentAssetsFromClient);
 
   // Insert new version as history version (not current)
@@ -418,10 +418,6 @@ export async function createVersion(
     .select('id, full_name, username, email, avatar_color')
     .eq('id', userId)
     .single();
-
-  // Invalidate cache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`versions:${libraryId}`);
 
   return dbVersionToAppVersion(newVersion as LibraryVersionDb, profile || null);
 }
@@ -599,11 +595,6 @@ export async function restoreVersion(
     .eq('id', userId)
     .single();
 
-  // Invalidate cache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`versions:${libraryId}`);
-  globalRequestCache.invalidate(`library:${libraryId}`);
-
   const restoredVersion = dbVersionToAppVersion(restoredVersionData as LibraryVersionDb, profile || null);
 
   return {
@@ -675,10 +666,6 @@ export async function editVersion(
     restoredByProfile = profile;
   }
 
-  // Invalidate cache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`versions:${version.library_id}`);
-
   return dbVersionToAppVersion(updatedVersion as LibraryVersionDb, createdByProfile, restoredByProfile);
 }
 
@@ -718,9 +705,6 @@ export async function deleteVersion(
     throw new Error(`Failed to delete version: ${error.message}`);
   }
 
-  // Invalidate cache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`versions:${version.library_id}`);
 }
 
 /**
@@ -922,19 +906,9 @@ export async function duplicateVersionAsLibrary(
     throw new Error(`Failed to create version for new library: ${versionCreateError.message}`);
   }
 
-  // Invalidate caches
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`libraries:list:${projectId}:all`);
-  if (folderId) {
-    globalRequestCache.invalidate(`libraries:list:${projectId}:${folderId}`);
-  } else {
-    globalRequestCache.invalidate(`libraries:list:${projectId}:root`);
-  }
-
   return {
     libraryId: newLibrary.id,
     versionId: newVersion.id,
     projectId: projectId,
   };
 }
-

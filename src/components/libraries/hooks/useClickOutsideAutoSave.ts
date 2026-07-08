@@ -27,7 +27,7 @@ export type UseClickOutsideAutoSaveParams = {
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
   editingCell: { rowId: string; propertyKey: string } | null;
   editingCellValue: string;
-  /** 当前正在编辑的单元格 DOM 引用，用于在校验失败时重新聚焦 */
+  /** DOM ref for the active edit cell, used to refocus after validation failure. */
   editingCellRef?: React.MutableRefObject<HTMLSpanElement | null>;
   setEditingCell: React.Dispatch<React.SetStateAction<{ rowId: string; propertyKey: string } | null>>;
   setEditingCellValue: React.Dispatch<React.SetStateAction<string>>;
@@ -40,7 +40,7 @@ export type UseClickOutsideAutoSaveParams = {
     updateActiveCell: (assetId: string | null, propertyKey: string | null) => void;
     getUsersEditingCell: (assetId: string, propertyKey: string) => unknown[];
   };
-  /** 复用单元格编辑中的类型校验逻辑（包括数组类型的 [] 规范化） */
+  /** Reuse cell-editing type validation, including [] normalization for array types. */
   validateValueByType?: (
     value: string,
     dataType: string,
@@ -49,7 +49,7 @@ export type UseClickOutsideAutoSaveParams = {
     error: string | null;
     normalizedValue: string | number | null;
   };
-  /** 设置当前编辑单元格的错误信息，用于在点击表外时也能展示校验错误 */
+  /** Set the current edit-cell error so outside-click saves can show validation errors. */
   setTypeValidationError?: React.Dispatch<React.SetStateAction<string | null>>;
 };
 
@@ -220,14 +220,14 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
         const isNameField =
           prop && prop.name === 'name' && prop.dataType === 'string';
 
-        // 当点击表格外自动保存时，也复用与双击编辑保存相同的校验逻辑：
-        // - 对数组类型自动补全 [] 并做格式校验
-        // - 对数值类型做类型校验
+        // Reuse double-click edit validation when outside-click autosaves:
+        // - Complete [] and validate format for array types.
+        // - Validate numeric types.
         let normalizedValue: string | number | null = editingCellValue;
         if (!isNameField && prop && validateValueByType) {
           const validation = validateValueByType(editingCellValue, prop.dataType);
           if (!validation.isValid) {
-            // 校验失败：展示错误并阻止自动保存，保持编辑状态
+            // Validation failed: show the error and keep edit mode active.
             setTypeValidationError?.(validation.error);
             setTimeout(() => {
               if (editingCellRef?.current) {
@@ -236,7 +236,7 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
             }, 100);
             return;
           }
-          // 校验通过：使用规范化后的值（包括数组类型自动转成 "[]" 或标准格式）
+          // Validation passed: use the normalized value.
           normalizedValue = validation.normalizedValue;
           setTypeValidationError?.(null);
         }

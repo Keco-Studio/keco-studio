@@ -25,6 +25,7 @@ import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import { ConnectionStatusIndicator } from '@/components/collaboration/ConnectionStatusIndicator';
 import { AssetHeader } from '@/components/asset/AssetHeader';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
+import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
 
 type FieldDef = {
   id: string;
@@ -404,44 +405,6 @@ export default function AssetPage() {
     }
   }, [mode, isNewAsset]);
 
-  // Listen for asset updates to refresh asset name
-  useEffect(() => {
-    if (isNewAsset) return; // New assets don't need to listen for updates
-    
-    const handleAssetUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ assetId: string; libraryId?: string; skipLocalRefresh?: boolean }>;
-      // Only refresh if the event is for this asset and skipLocalRefresh is not set
-      if (customEvent.detail?.assetId === assetId && !customEvent.detail?.skipLocalRefresh) {
-        try {
-          // Use a small delay to ensure database transaction is committed
-          await new Promise(resolve => setTimeout(resolve, 100));
-          
-          // Refresh asset data - query directly from database
-          const { data: assetRow, error: assetErr } = await supabase
-            .from('library_assets')
-            .select('id, name, library_id')
-            .eq('id', assetId)
-            .single();
-          
-          if (!assetErr && assetRow) {
-            setAsset(assetRow as AssetRow);
-            // Note: Values are already being synced via Yjs, no need to manually update
-          } else if (assetErr) {
-            console.error('Error refreshing asset:', assetErr);
-          }
-        } catch (e: any) {
-          console.error('Failed to refresh asset:', e);
-        }
-      }
-    };
-
-    window.addEventListener('assetUpdated', handleAssetUpdated as EventListener);
-
-    return () => {
-      window.removeEventListener('assetUpdated', handleAssetUpdated as EventListener);
-    };
-  }, [assetId, isNewAsset, supabase, fieldDefs]);
-
   // Set mode to 'view' for viewers
   useEffect(() => {
     if (!isNewAsset && userRole === 'viewer') {
@@ -631,10 +594,11 @@ export default function AssetPage() {
         setValues({});
         setNavigating(true);
 
-        // Dispatch event to notify Sidebar to refresh assets
-        window.dispatchEvent(new CustomEvent('assetCreated', {
-          detail: { libraryId, assetId: newAssetId }
-        }));
+        await invalidateLibraryAssetsData(queryClient, {
+          libraryId,
+          assetId: newAssetId,
+          refetchActiveAssets: true,
+        });
 
         // Navigate to edit page for further changes with a slight delay
         setTimeout(() => {
@@ -704,10 +668,11 @@ export default function AssetPage() {
         // Update previousValuesRef with current values
         previousValuesRef.current = { ...values };
 
-        // Dispatch event to notify Sidebar to refresh assets
-        window.dispatchEvent(new CustomEvent('assetUpdated', {
-          detail: { libraryId, assetId: asset.id, skipLocalRefresh: true }
-        }));
+        await invalidateLibraryAssetsData(queryClient, {
+          libraryId,
+          assetId: asset.id,
+          refetchActiveAssets: true,
+        });
       } catch (e: any) {
         setSaveError(e?.message || 'Save failed');
       } finally {
@@ -1435,5 +1400,4 @@ export default function AssetPage() {
     </ConfigProvider>
   );
 }
-
 

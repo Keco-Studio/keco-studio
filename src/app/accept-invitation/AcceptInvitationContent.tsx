@@ -9,7 +9,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSupabase } from '@/lib/SupabaseContext';
+import { useQueryClient } from '@tanstack/react-query';
 import { Result, Button } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined, ClockCircleOutlined, InfoCircleOutlined } from '@ant-design/icons';
 
@@ -29,28 +29,12 @@ export function AcceptInvitationContent({
   projectName,
 }: AcceptInvitationContentProps) {
   const router = useRouter();
-  const supabase = useSupabase();
+  const queryClient = useQueryClient();
   
   // Auto-redirect on success after 2 seconds
   useEffect(() => {
     if (status === 'success' && projectId) {
-      // Clear caches to ensure new project appears in sidebar
-      (async () => {
-        try {
-          // 1. Clear globalRequestCache for projects list
-          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            const cacheKey = `projects:list:${user.id}`;
-            globalRequestCache.invalidate(cacheKey);
-          }
-          
-          // 2. Dispatch event to trigger React Query cache refresh in Sidebar
-          window.dispatchEvent(new CustomEvent('projectCreated'));
-        } catch (error) {
-          console.error('[AcceptInvitation] Error clearing caches:', error);
-        }
-      })();
+      void queryClient.invalidateQueries({ queryKey: ['projects'] });
       
       const timer = setTimeout(() => {
         router.push(`/${projectId}/collaborators`);
@@ -58,7 +42,7 @@ export function AcceptInvitationContent({
       
       return () => clearTimeout(timer);
     }
-  }, [status, projectId, router, supabase]);
+  }, [status, projectId, router, queryClient]);
   
   // Check if error is due to invitation already being accepted, declined, or not found
   const isInvalidInvitation = message.toLowerCase().includes('already been accepted') || 
@@ -257,4 +241,3 @@ export function AcceptInvitationContent({
     </div>
   );
 }
-

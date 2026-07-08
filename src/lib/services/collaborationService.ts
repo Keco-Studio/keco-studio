@@ -5,10 +5,9 @@
  * Handles database operations for collaboration features.
  * 
  * NOTE: Most operations should be called from Server Actions with user auth.
- * Service role is only used for specific operations like invitation acceptance.
+ * Service-role operations are isolated in API route server modules.
  */
 
-import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type {
   CollaboratorRole,
@@ -20,22 +19,6 @@ import type {
 } from '@/lib/types/collaboration';
 import { generateInvitationToken } from '@/lib/utils/invitationToken';
 import { sendInvitationEmail } from '@/lib/services/emailService';
-
-/**
- * Create Supabase client with service role for admin operations
- * ONLY use for operations that need to bypass RLS (like invitation acceptance)
- */
-function getServiceClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  
-  return createClient(supabaseUrl, supabaseServiceRole, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    }
-  });
-}
 
 /**
  * Send invitation to collaborate on a project
@@ -302,120 +285,6 @@ export async function getProjectCollaborators(
 }
 
 /**
- * Accept invitation and add user as collaborator
- * 
- * @param invitationId - Invitation ID from token
- * @param userId - User ID accepting invitation
- * @param userEmail - User's email address
- * @returns Success status with project details or error
- */
-export async function acceptInvitation(
-  invitationId: string,
-  userId: string,
-  userEmail: string
-): Promise<{ success: boolean; projectId?: string; projectName?: string; error?: string }> {
-  const supabase = getServiceClient();
-  
-  try {
-    // 1. Get invitation details
-    const { data: invitation, error: invitationError } = await supabase
-      .from('collaboration_invitations')
-      .select('*, projects:project_id(name)')
-      .eq('id', invitationId)
-      .single();
-    
-    if (invitationError || !invitation) {
-      return { success: false, error: 'Invitation not found' };
-    }
-    
-    // 2. Validate invitation status
-    if (invitation.accepted_at) {
-      return { success: false, error: 'Invitation has already been accepted' };
-    }
-    
-    // 3. Check expiration
-    const now = new Date();
-    const expiresAt = new Date(invitation.expires_at);
-    if (now > expiresAt) {
-      return { success: false, error: 'Invitation has expired' };
-    }
-    
-    // 4. Validate email matches (case-insensitive)
-    if (invitation.recipient_email.toLowerCase() !== userEmail.toLowerCase()) {
-      return { 
-        success: false, 
-        error: 'This invitation was sent to a different email address' 
-      };
-    }
-    
-    // 5. Check if user already collaborator
-    const { data: existingCollab } = await supabase
-      .from('project_collaborators')
-      .select('id')
-      .eq('project_id', invitation.project_id)
-      .eq('user_id', userId)
-      .single();
-    
-    if (existingCollab) {
-      // Mark invitation as accepted even though user was already added
-      await supabase
-        .from('collaboration_invitations')
-        .update({ accepted_at: new Date().toISOString(), accepted_by: userId })
-        .eq('id', invitationId);
-      
-      return { 
-        success: true, 
-        projectId: invitation.project_id,
-        projectName: invitation.projects?.name || 'Unknown Project',
-      };
-    }
-    
-    // 6. Add user as collaborator
-    const { error: collaboratorError } = await supabase
-      .from('project_collaborators')
-      .insert({
-        user_id: userId,
-        project_id: invitation.project_id,
-        role: invitation.role,
-        invited_by: invitation.invited_by,
-        invited_at: invitation.invited_at,
-        accepted_at: new Date().toISOString(),
-      });
-    
-    if (collaboratorError) {
-      console.error('Error adding collaborator:', collaboratorError);
-      return { success: false, error: 'Failed to add collaborator' };
-    }
-    
-    // 7. Mark invitation as accepted
-    const { error: updateError } = await supabase
-      .from('collaboration_invitations')
-      .update({ 
-        accepted_at: new Date().toISOString(),
-        accepted_by: userId,
-      })
-      .eq('id', invitationId);
-    
-    if (updateError) {
-      console.error('Error updating invitation status:', updateError);
-      // Don't fail the acceptance - collaborator was already added
-    }
-    
-    return { 
-      success: true, 
-      projectId: invitation.project_id,
-      projectName: invitation.projects?.name || 'Unknown Project',
-    };
-  } catch (error) {
-    console.error('Unexpected error in acceptInvitation:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'An unexpected error occurred' 
-    };
-  }
-}
-
-/**
  * Get user's role in a project
  * 
  * @param supabase - Supabase client with user auth
@@ -468,4 +337,3 @@ export async function getUserProjectRole(
     return { role: null, isOwner: false };
   }
 }
-

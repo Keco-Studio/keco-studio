@@ -1,14 +1,14 @@
 /**
  * Script Parser - Post Processor
  *
- * 选项关联、分支处理、生成最终 Script
+ * Links options, handles branches, and generates the final Script.
  */
 
 import type { Node, NodeWithOptions, Script, ScriptLine } from './types';
 import { createEmptyScriptLine, DEFAULT_START_LABEL, JUMP_PREFIX } from './types';
 
 /**
- * 创建指令行（表头说明）
+ * Create the instruction/header row.
  */
 function makeInstructionRow(): ScriptLine {
   return {
@@ -33,11 +33,12 @@ function makeInstructionRow(): ScriptLine {
 }
 
 /**
- * 将节点转换为 ScriptLine
+ * Convert a node to a ScriptLine.
  */
 function makeScriptLine(
   node: NodeWithOptions,
   isFirst: boolean,
+  warnings: string[],
   labelOverride?: string
 ): ScriptLine {
   const sl = createEmptyScriptLine();
@@ -55,7 +56,7 @@ function makeScriptLine(
   sl.name = node.name ?? '';
   sl.content = node.content ?? '';
 
-  // 处理条件和变量
+  // Handle conditions and variables.
   const conditions: string[] = [];
   const variables: string[] = [];
 
@@ -66,15 +67,22 @@ function makeScriptLine(
     variables.push(node.command);
   }
 
-  // 处理选项
+  // Handle options.
   const opts = node._options || [];
   const optLabels = node._option_labels || [];
+  if (opts.length > 3) {
+    const nodeName = node.label || node.name || node.content || 'unlabeled node';
+    const dropped = opts.slice(3).map((opt) => opt.option_text).join(' / ');
+    warnings.push(
+      `Node "${nodeName}" has ${opts.length} options but the ScriptLine schema supports 3; extra options not exported: ${dropped}`
+    );
+  }
 
   for (let idx = 0; idx < Math.min(opts.length, 3); idx++) {
     const opt = opts[idx];
     const label = optLabels[idx] || `O${idx + 1}`;
 
-    // 收集选项条件和变量
+    // Collect option conditions and variables.
     if (opt.condition) {
       conditions.push(opt.condition);
     }
@@ -94,7 +102,7 @@ function makeScriptLine(
     }
   }
 
-  // 写入条件和变量
+  // Write conditions and variables.
   if (conditions.length > 0) {
     sl.if = conditions.join('; ');
   }
@@ -111,7 +119,7 @@ interface BranchSet {
 }
 
 /**
- * 后处理：选项关联、分支处理、生成 Script
+ * Post-process nodes by linking options, handling branches, and generating a Script.
  */
 export function postProcess(rawNodes: Node[]): Script {
   let branchCounter = 0;
@@ -121,7 +129,7 @@ export function postProcess(rawNodes: Node[]): Script {
     return `O${branchCounter}`;
   };
 
-  // 第1层：合并章节标题为 Label，处理结构化格式节点
+  // Pass 1: merge chapter headings into labels and handle structured nodes.
   let merged: NodeWithOptions[] = [];
   const branchVars: Map<string, string> = new Map(); // label -> var command
 
@@ -135,7 +143,7 @@ export function postProcess(rawNodes: Node[]): Script {
 
     // Handle structured format nodes
     if (node._type === 'struct_label') {
-      // Label with scene description: 【Start｜场景描述】
+      // Label with scene description.
       merged.push({
         _type: 'dialogue',
         label: node.label,
@@ -146,7 +154,7 @@ export function postProcess(rawNodes: Node[]): Script {
     }
 
     if (node._type === 'struct_branch') {
-      // Branch declaration: O1 分支【O1｜场景】
+      // Branch declaration with scene description.
       merged.push({
         _type: 'dialogue',
         label: node.label,
@@ -168,7 +176,7 @@ export function postProcess(rawNodes: Node[]): Script {
     }
 
     if (node._type === 'struct_jump') {
-      // Jump instruction: （跳转 Oend）
+      // Jump instruction.
       // Add as command to the previous line
       if (merged.length > 0) {
         const lastNode = merged[merged.length - 1];
@@ -181,14 +189,14 @@ export function postProcess(rawNodes: Node[]): Script {
     }
 
     if (node._type === 'struct_option') {
-      // Structured option: O1：选项文本（变量，跳转）
+      // Structured option with variable and jump metadata.
       // Attach to previous dialogue/narration
       if (merged.length > 0) {
         const lastNode = merged[merged.length - 1];
         if (!lastNode._options) {
           lastNode._options = [];
-          lastNode._option_labels = [];
         }
+        const optionLabels = lastNode._option_labels ?? (lastNode._option_labels = []);
 
         // Generate label for this option
         const optLabel = node.jump_target || nextLabel();
@@ -197,7 +205,7 @@ export function postProcess(rawNodes: Node[]): Script {
           option_text: node.option_text,
           variable: node.var_change || undefined,
         });
-        lastNode._option_labels.push(optLabel);
+        optionLabels.push(optLabel);
 
         // Store var change for branch if needed
         if (node.var_change && node.jump_target) {
@@ -210,14 +218,14 @@ export function postProcess(rawNodes: Node[]): Script {
     merged.push(node as NodeWithOptions);
   }
 
-  // 第2层：收集连续选项组，附加到前面的节点
+  // Pass 2: collect consecutive option groups and attach them to the previous node.
   const processed: NodeWithOptions[] = [];
   let i = 0;
   while (i < merged.length) {
     const node = merged[i];
 
     if (node._type === 'option') {
-      // 收集连续选项
+      // Collect consecutive options.
       const optGroup: Array<{
         option_index: number;
         option_text: string;
@@ -238,15 +246,15 @@ export function postProcess(rawNodes: Node[]): Script {
         i++;
       }
 
-      // 重新编号
+      // Renumber options.
       for (let idx = 0; idx < optGroup.length; idx++) {
         optGroup[idx].option_index = idx;
       }
 
-      // 生成标签
+      // Generate option labels.
       const labels = optGroup.map(() => nextLabel());
 
-      // 附加到前面的节点
+      // Attach options to the previous node.
       if (processed.length > 0) {
         const lastNode = processed[processed.length - 1];
         if (
@@ -264,10 +272,10 @@ export function postProcess(rawNodes: Node[]): Script {
     }
   }
 
-  // 过滤选项节点
+  // Remove option nodes after attaching them.
   const filtered = processed.filter((n) => n._type !== 'option');
 
-  // 第3层：处理分支
+  // Pass 3: handle branches.
   const trunk: NodeWithOptions[] = [];
   let pendingOptLabels: string[] = [];
   let branchLabels: string[] = [];
@@ -319,23 +327,24 @@ export function postProcess(rawNodes: Node[]): Script {
     });
   }
 
-  // 第4层：输出
-  const script: Script = { lines: [] };
+  // Pass 4: emit output rows.
+  const warnings: string[] = [];
+  const script: Script = { lines: [], warnings };
   script.lines.push(makeInstructionRow());
 
-  // 主干
+  // Trunk
   let isFirst = true;
   for (const node of trunk) {
     if (node._type === 'separator') {
       // Decorative separators (+++ etc.) are not stored as table rows
       continue;
     }
-    const sl = makeScriptLine(node, isFirst);
+    const sl = makeScriptLine(node, isFirst, warnings);
     isFirst = false;
     script.lines.push(sl);
   }
 
-  // 分支
+  // Branches
   for (const bs of branchSets) {
     for (let bi = 0; bi < bs.labels.length; bi++) {
       const bl = bs.labels[bi];
@@ -345,14 +354,14 @@ export function postProcess(rawNodes: Node[]): Script {
       script.lines.push(createEmptyScriptLine());
       for (let ci = 0; ci < content.length; ci++) {
         const bn = content[ci];
-        const bsl = makeScriptLine(bn, false, ci === 0 ? bl : undefined);
+        const bsl = makeScriptLine(bn, false, warnings, ci === 0 ? bl : undefined);
         script.lines.push(bsl);
       }
     }
     script.lines.push(createEmptyScriptLine());
   }
 
-  // 后处理：为分支起始行添加变量指令
+  // Add variable commands to branch start rows.
   if (branchVars.size > 0) {
     for (const sl of script.lines) {
       if (sl.label && branchVars.has(sl.label)) {
@@ -363,6 +372,10 @@ export function postProcess(rawNodes: Node[]): Script {
         sl.commands = sl.commands ? `${sl.commands}; ${varCmd}` : varCmd;
       }
     }
+  }
+
+  if (warnings.length === 0) {
+    delete script.warnings;
   }
 
   return script;

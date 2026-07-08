@@ -103,14 +103,14 @@ test.describe('Table Cells search', () => {
   test.setTimeout(240000);
 
   /**
-   * Test: 切换到 Table Cells 搜索
-   * 步骤：
-   * 1. 登录并创建包含数据的 Library
-   * 2. 打开搜索框，选择 "Table Cells"
-   * 3. 输入表格中存在的关键词
-   * 预期：
-   * - 搜索结果仅包含匹配的单元格
-   * - 结果按 Library 最近打开排序
+   * Test: switch to Table Cells search.
+   * Steps:
+   * 1. Log in and create a Library with data.
+   * 2. Open search and select "Table Cells".
+   * 3. Enter a keyword that exists in the table.
+   * Expected:
+   * - Results include only matching cells.
+   * - Results are ordered by recently opened Library.
    */
   test('Table Cells search: filter and display results by keyword', async ({ page }) => {
     await loginAsSeedEmpty(page);
@@ -194,12 +194,12 @@ test.describe('Table Cells search', () => {
   });
 
   /**
-   * Test: 分页显示
-   * 步骤：
-   * 1. 搜索结果超过 10 条
-   * 2. 点击"下一页"/"上一页"
-   * 预期：
-   * - 可以正常翻页，内容正确加载
+   * Test: pagination display.
+   * Steps:
+   * 1. Produce more than 10 search results.
+   * 2. Click Next and Previous.
+   * Expected:
+   * - Pagination works and loads the correct content.
    */
   test('Table Cells search: pagination works correctly', async ({ page }) => {
     await loginAsSeedEmpty(page);
@@ -297,13 +297,13 @@ test.describe('Table Cells search', () => {
   });
 
   /**
-   * Test: 点击单元格结果跳转并高亮
-   * 步骤：
-   * 1. 在 Table Cells 搜索结果中点击某单元格
-   * 2. 观察页面
-   * 预期：
-   * - 跳转到对应 Library 表格视图
-   * - 仅被点击的那一格黄色高亮（同时只高亮一个）
+   * Test: clicking a cell result navigates and highlights it.
+   * Steps:
+   * 1. Click a cell in Table Cells search results.
+   * 2. Observe the page.
+   * Expected:
+   * - Navigates to the corresponding Library table view.
+   * - Only the clicked cell is highlighted yellow.
    */
   test('Table Cells search: click result navigates and highlights cell', async ({ page }) => {
     await loginAsSeedEmpty(page);
@@ -512,4 +512,3 @@ test.describe('Global search (original)', () => {
     await expect(resultNames.filter({ hasText: fixture.folderName })).toHaveCount(0);
   });
 });
-

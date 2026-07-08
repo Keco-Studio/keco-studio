@@ -1,12 +1,17 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { ProjectPage } from '../pages/project.page';
 import { LibraryPage } from '../pages/library.page';
 import { LoginPage } from '../pages/login.page';
+import { waitForSupabaseAuthStorage } from '../utils/auth-storage';
 
 import { projects, generateProjectData } from '../fixures/projects';
 import { libraries } from '../fixures/libraries';
 import { folders } from '../fixures/folders';
 import { users } from '../fixures/users';
+
+function formDialogError(page: Page, text: string | RegExp) {
+  return page.locator('[class*="FormDialog"][class*="error"]').filter({ hasText: text }).first();
+}
 
 /**
  * Name Validation E2E Tests
@@ -43,34 +48,7 @@ test.describe('Name Validation Tests', () => {
     await loginPage.expectLoginSuccess();
 
     // Verify authentication state is ready for API calls
-    await page.waitForFunction(
-      () => {
-        try {
-          const keys = Object.keys(sessionStorage);
-          for (const key of keys) {
-            if (key.includes('sb-') && key.includes('auth-token')) {
-              const value = sessionStorage.getItem(key);
-              if (value) {
-                try {
-                  const parsed = JSON.parse(value);
-                  if (parsed && parsed.access_token && parsed.access_token.length > 10) {
-                    return true;
-                  }
-                } catch {
-                  if (value.length > 10) {
-                    return true;
-                  }
-                }
-              }
-            }
-          }
-          return false;
-        } catch {
-          return false;
-        }
-      },
-      { timeout: 30000 }
-    );
+    await waitForSupabaseAuthStorage(page, 30000);
 
     // Additional wait to ensure Supabase client is fully initialized
     await page.waitForTimeout(2000);
@@ -673,7 +651,7 @@ test.describe('Name Validation Tests', () => {
         await saveButton.click();
         
         // Verify error message appears
-        const errorMessage = page.locator('[class*="error"]').filter({ hasText: /already exists/i });
+        const errorMessage = formDialogError(page, /already exists/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('already exists');
       });
@@ -740,7 +718,7 @@ test.describe('Name Validation Tests', () => {
         await saveButton.click();
         
         // Verify error message appears
-        const errorMessage = page.locator('[class*="error"]').filter({ hasText: /already exists/i });
+        const errorMessage = formDialogError(page, /already exists/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('already exists');
       });
@@ -809,11 +787,10 @@ test.describe('Name Validation Tests', () => {
         await saveButton.click();
         
         // Verify error message appears
-        const errorMessage = page.locator('[class*="error"]').filter({ hasText: /already exists/i });
+        const errorMessage = formDialogError(page, /already exists/i);
         await expect(errorMessage).toBeVisible({ timeout: 5000 });
         await expect(errorMessage).toContainText('already exists');
       });
     });
   });
 });
-

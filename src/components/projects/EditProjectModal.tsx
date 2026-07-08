@@ -81,8 +81,7 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
         description,
         entityType: 'project'
       });
-      
-      // Event is dispatched automatically by the hook
+
       if (onUpdated) {
         onUpdated();
       }
@@ -166,4 +165,3 @@ export function EditProjectModal({ open, projectId, onClose, onUpdated }: EditPr
     </div>
   , document.body);
 }
-

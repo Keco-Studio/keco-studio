@@ -5,26 +5,26 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useState } from 'react';
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
-  // 创建 QueryClient 实例，配置缓存策略
+  // Create the QueryClient instance with shared cache policy.
   const [queryClient] = useState(
     () =>
       new QueryClient({
         defaultOptions: {
           queries: {
-            // 数据在缓存中保留 2 分钟（在 staleTime 内不会重新请求）
+            // Keep data fresh for 2 minutes; no refetch occurs during staleTime.
             staleTime: 2 * 60 * 1000,
-            // 缓存数据保留 5 分钟
+            // Keep inactive cached data for 5 minutes.
             gcTime: 5 * 60 * 1000,
-            // 失败后自动重试 1 次
+            // Retry failed queries once.
             retry: 1,
-            // 关闭窗口焦点时自动刷新，避免频繁请求
+            // Avoid frequent requests when the browser window regains focus.
             refetchOnWindowFocus: false,
-            // 网络重连时自动刷新
+            // Refresh when the network reconnects.
             refetchOnReconnect: true,
-            // 挂载时不自动重新获取（如果数据还在缓存中）
+            // Do not refetch on mount when cached data is still available.
             refetchOnMount: false,
-            // 启用请求去重：相同 queryKey 的并发请求会自动合并为一个请求
-            // 这是 React Query 的默认行为，但明确设置以确保生效
+            // React Query deduplicates concurrent requests with the same queryKey.
+            // This is the default behavior; keep it documented here for clarity.
           },
         },
       })
@@ -36,4 +36,3 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
     </QueryClientProvider>
   );
 }
-

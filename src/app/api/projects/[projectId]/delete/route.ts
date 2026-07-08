@@ -7,14 +7,11 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { AuthorizationError } from '@/lib/services/authorizationService';
+import { deleteProjectWithServerBoundary } from '@/lib/server/projectDeletion';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseServiceRoleKey) {
-  console.error('[API /projects/[projectId]/delete] SUPABASE_SERVICE_ROLE_KEY is not configured');
-}
 
 /**
  * DELETE /api/projects/[projectId]/delete
@@ -63,95 +60,29 @@ export async function DELETE(
       );
     }
 
-    // 5. Use service role client for permission checking and deletion
-    if (!supabaseServiceRoleKey) {
+    try {
+      await deleteProjectWithServerBoundary({
+        authClient: userSupabase,
+        projectId,
+        userId: user.id,
+      });
+    } catch (error) {
+      if (error instanceof AuthorizationError) {
+        const status = error.message === 'Project not found' ? 404 : 403;
+        return NextResponse.json(
+          {
+            success: false,
+            error: error.message,
+          },
+          { status }
+        );
+      }
+
+      console.error('[API /projects/delete] Error deleting project:', error);
       return NextResponse.json(
         {
           success: false,
-          error: 'Server configuration error: SUPABASE_SERVICE_ROLE_KEY is not set',
-        },
-        { status: 500 }
-      );
-    }
-
-    const serviceClient = createClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
-
-    // 6. Check if user has admin permission (using service role to bypass RLS)
-    // First check if user is owner
-    const { data: project, error: projectError } = await serviceClient
-      .from('projects')
-      .select('owner_id')
-      .eq('id', projectId)
-      .single();
-
-    if (projectError || !project) {
-      console.error('[API /projects/delete] Project not found:', projectError?.message);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Project not found',
-        },
-        { status: 404 }
-      );
-    }
-
-    const isOwner = project.owner_id === user.id;
-
-    // Check collaborator role
-    const { data: collaborator, error: collabError } = await serviceClient
-      .from('project_collaborators')
-      .select('role, accepted_at')
-      .eq('project_id', projectId)
-      .eq('user_id', user.id)
-      .maybeSingle();
-
-    if (collabError) {
-      console.error('[API /projects/delete] Error checking collaborator:', collabError);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Error checking permissions',
-        },
-        { status: 500 }
-      );
-    }
-
-    // Determine user role: collaborator role takes precedence over owner
-    let userRole: string | null = null;
-    if (collaborator && collaborator.accepted_at) {
-      userRole = collaborator.role;
-    } else if (isOwner) {
-      userRole = 'admin'; // Owner defaults to admin if not a collaborator
-    }
-
-    // Only admin can delete
-    if (userRole !== 'admin') {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Only admin users can delete projects',
-        },
-        { status: 403 }
-      );
-    }
-
-    // 7. Delete the project
-    const { error: deleteError } = await serviceClient
-      .from('projects')
-      .delete()
-      .eq('id', projectId);
-
-    if (deleteError) {
-      console.error('[API /projects/delete] Error deleting project:', deleteError);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'Failed to delete project: ' + deleteError.message,
+          error: error instanceof Error ? error.message : 'Failed to delete project',
         },
         { status: 500 }
       );
@@ -172,4 +103,3 @@ export async function DELETE(
     );
   }
 }
-

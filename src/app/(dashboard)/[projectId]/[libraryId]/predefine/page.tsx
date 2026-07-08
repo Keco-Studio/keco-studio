@@ -445,12 +445,6 @@ function PredefinePageContent() {
       await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
       await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
       
-      // Notify LibraryPage to refresh schema and assets (for backward compatibility)
-      window.dispatchEvent(new CustomEvent('schemaUpdated', {
-        detail: { libraryId }
-      }));
-
-      
       // If creating new section, exit creation mode and reload sections
       if (isCreatingNewSection) {
         setIsCreatingNewSection(false);
@@ -543,10 +537,6 @@ function PredefinePageContent() {
 
       showSuccessToast(`Section "${sectionToDelete.name}" deleted successfully`);
 
-      // Invalidate cache before reloading to ensure fresh data
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      globalRequestCache.invalidate(`field-definitions:${libraryId}`);
-
       // Invalidate React Query cache to ensure LibraryPage gets fresh data
       await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
       await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
@@ -556,11 +546,6 @@ function PredefinePageContent() {
       await queryClient.refetchQueries({ queryKey: queryKeys.librarySchema(libraryId) });
       await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
       await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-
-      // Notify LibraryPage to refresh schema and assets (for backward compatibility)
-      window.dispatchEvent(new CustomEvent('schemaUpdated', {
-        detail: { libraryId }
-      }));
 
       // Reload to sync with database
       const loadedSections = await reloadSections();

@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { LoginPage } from '../pages/login.page';
+import { ProjectPage } from '../pages/project.page';
 import { users } from '../fixures/users';
 
 /**
@@ -216,169 +217,154 @@ test.describe('Session Management', () => {
   });
 });
 
-// test.describe('API Endpoint Security', () => {
-//   test.skip(!isRealSupabase, 'Requires real Supabase instance to test API security');
+test.describe('API Endpoint Security', () => {
+  test.skip(!isRealSupabase, 'Requires real Supabase instance to test API security');
 
-//   test('should protect all critical API endpoints from unauthenticated access', async ({ request }) => {
-//     // Define critical API endpoints that should be protected
-//     const protectedEndpoints = [
-//       { method: 'GET', url: '/api/projects', description: 'List projects' },
-//       { method: 'POST', url: '/api/projects', description: 'Create project' },
-//       { method: 'GET', url: '/api/projects/test-id', description: 'Get project details' },
-//       { method: 'DELETE', url: '/api/projects/test-id', description: 'Delete project' },
-//       { method: 'POST', url: '/api/projects/test-id/libraries', description: 'Create library' },
-//       { method: 'GET', url: '/api/libraries/test-id', description: 'Get library details' },
-//     ];
+  test('should protect critical API endpoints from unauthenticated access', async ({ request }) => {
+    const protectedEndpoints = [
+      { method: 'GET', url: '/api/projects', description: 'List projects' },
+      { method: 'POST', url: '/api/projects', description: 'Create project', data: { name: 'test' } },
+      { method: 'GET', url: '/api/projects/test-id/libraries', description: 'List project libraries' },
+      { method: 'POST', url: '/api/projects/test-id/libraries', description: 'Create library', data: { name: 'test' } },
+      { method: 'GET', url: '/api/libraries/test-id', description: 'Get library details' },
+      { method: 'DELETE', url: '/api/projects/test-id/delete', description: 'Delete project' },
+    ];
 
-//     // Test each endpoint
-//     for (const endpoint of protectedEndpoints) {
-//       let response;
-      
-//       switch (endpoint.method) {
-//         case 'GET':
-//           response = await request.get(endpoint.url, { failOnStatusCode: false });
-//           break;
-//         case 'POST':
-//           response = await request.post(endpoint.url, { 
-//             data: { name: 'test' },
-//             failOnStatusCode: false 
-//           });
-//           break;
-//         case 'DELETE':
-//           response = await request.delete(endpoint.url, { failOnStatusCode: false });
-//           break;
-//         default:
-//           continue;
-//       }
-      
-//       // Each endpoint should return 401 Unauthorized or 403 Forbidden
-//       expect(
-//         [401, 403].includes(response.status()),
-//         `${endpoint.method} ${endpoint.url} (${endpoint.description}) should be protected. Got status: ${response.status()}`
-//       ).toBeTruthy();
-//     }
-//   });
-// });
+    for (const endpoint of protectedEndpoints) {
+      const response =
+        endpoint.method === 'GET'
+          ? await request.get(endpoint.url, { failOnStatusCode: false })
+          : endpoint.method === 'POST'
+            ? await request.post(endpoint.url, {
+                data: endpoint.data ?? { name: 'test' },
+                failOnStatusCode: false,
+              })
+            : await request.delete(endpoint.url, { failOnStatusCode: false });
 
-// test.describe('Data Isolation & Access Control', () => {
-//   test.skip(!isRealSupabase, 'Requires real Supabase credentials and multiple users');
-  
-//   test('should prevent users from accessing other users projects', async ({ page }) => {
-//     const loginPage = new LoginPage(page);
-    
-//     // Note: This test requires knowing project IDs belonging to different users
-//     // For now, we'll test the concept. In a real scenario, you'd need to:
-//     // 1. Create a project with User A
-//     // 2. Get that project's ID
-//     // 3. Logout User A
-//     // 4. Login as User B
-//     // 5. Try to access User A's project
-    
-//     // Login as first user
-//     await loginPage.goto();
-//     await loginPage.login(users.seedWithProject);
-//     await page.waitForURL('**/projects', { timeout: 10000 });
-    
-//     // Try to access a project ID that belongs to another user
-//     // This would need to be a real project ID from another user in your test database
-//     const otherUsersProjectId = 'other-users-project-id';
-//     await page.goto(`/${otherUsersProjectId}`);
-    
-//     // Should show either:
-//     // - 403 Forbidden error
-//     // - 404 Not Found (to avoid leaking information about project existence)
-//     // - Redirect back to projects list
-//     // The exact behavior depends on your app's security design
-    
-//     const isForbidden = await page.getByText(/forbidden|access denied|unauthorized/i).isVisible().catch(() => false);
-//     const isNotFound = await page.getByText(/not found/i).isVisible().catch(() => false);
-//     const redirectedToProjects = page.url().includes('/projects');
-    
-//     // At least one of these should be true
-//     expect(isForbidden || isNotFound || redirectedToProjects).toBeTruthy();
-//   });
-// });
+      expect(
+        [401, 403].includes(response.status()),
+        `${endpoint.method} ${endpoint.url} (${endpoint.description}) should be protected. Got status: ${response.status()}`
+      ).toBeTruthy();
+    }
+  });
+});
 
-// test.describe('Input Validation & Security', () => {
-//   test.skip(!isRealSupabase, 'Requires real Supabase credentials');
+test.describe('Data Isolation & Access Control', () => {
+  test.skip(!isRealSupabase, 'Requires real Supabase credentials and multiple users');
 
-//   test('should prevent XSS attacks in project names', async ({ page }) => {
-//     const loginPage = new LoginPage(page);
-    
-//     // Login
-//     await loginPage.goto();
-//     await loginPage.login(users.seedEmpty);
-//     await loginPage.expectLoginSuccess();
-    
-//     // Try to create a project with XSS payload
-//     const xssPayload = '<script>alert("XSS")</script>';
-    
-//     // Click New Project button
-//     await page.getByRole('button', { name: /new project/i }).click();
-    
-//     // Fill in project name with XSS payload
-//     const projectNameInput = page.getByLabel(/project name|name/i);
-//     await projectNameInput.fill(xssPayload);
-    
-//     // Submit
-//     const submitButton = page.getByRole('button', { name: /create|submit/i });
-//     await submitButton.click();
-    
-//     // Wait for project to be created (if validation passes)
-//     await page.waitForTimeout(2000);
-    
-//     // Verify the script did NOT execute
-//     // The page should not have any alert dialogs
-//     const dialogs: string[] = [];
-//     page.on('dialog', dialog => {
-//       dialogs.push(dialog.message());
-//       dialog.dismiss();
-//     });
-    
-//     // Wait a moment to see if any dialogs appear
-//     await page.waitForTimeout(1000);
-    
-//     // No XSS alert should have appeared
-//     expect(dialogs).not.toContain('XSS');
-    
-//     // The text should be displayed as plain text, not executed as HTML
-//     if (await page.getByText(xssPayload).isVisible()) {
-//       // Good: it's displayed as text
-//       expect(true).toBeTruthy();
-//     }
-//   });
+  test('should prevent users from accessing other users projects', async ({ browser }) => {
+    const ownerContext = await browser.newContext();
+    const outsiderContext = await browser.newContext();
 
-//   test('should sanitize SQL injection attempts in search inputs', async ({ page }) => {
-//     const loginPage = new LoginPage(page);
-    
-//     // Login
-//     await loginPage.goto();
-//     await loginPage.login(users.seedEmpty);
-//     await loginPage.expectLoginSuccess();
-    
-//     // SQL injection payloads
-//     const sqlPayloads = [
-//       "'; DROP TABLE projects; --",
-//       "1' OR '1'='1",
-//       "admin'--"
-//     ];
-    
-//     for (const payload of sqlPayloads) {
-//       // Try to use SQL injection in search
-//       const searchInput = page.getByPlaceholder(/search/i);
-//       if (await searchInput.isVisible()) {
-//         await searchInput.fill(payload);
-//         await searchInput.press('Enter');
-        
-//         // Wait for search results
-//         await page.waitForTimeout(1000);
-        
-//         // The app should still work normally
-//         // Should not show database errors or crash
-//         const hasError = await page.getByText(/database error|sql error|syntax error/i).isVisible().catch(() => false);
-//         expect(hasError).toBeFalsy();
-//       }
-//     }
-//   });
-// });
+    try {
+      const ownerPage = await ownerContext.newPage();
+      const ownerLogin = new LoginPage(ownerPage);
+      const ownerProjects = new ProjectPage(ownerPage);
+      const projectName = `IDOR Project ${Date.now()}`;
 
+      await ownerLogin.goto();
+      await ownerLogin.login(users.seedEmpty3);
+      await ownerLogin.expectLoginSuccess();
+      await ownerProjects.createProject({
+        name: projectName,
+        description: 'Created by user A for IDOR isolation coverage',
+      });
+      await ownerProjects.expectProjectCreated(projectName);
+
+      const projectId = new URL(ownerPage.url()).pathname.slice(1);
+      expect(projectId).toMatch(/^[0-9a-f-]{36}$/i);
+
+      const outsiderPage = await outsiderContext.newPage();
+      const outsiderLogin = new LoginPage(outsiderPage);
+      await outsiderLogin.goto();
+      await outsiderLogin.login(users.seedEmpty4);
+      await outsiderLogin.expectLoginSuccess();
+      await outsiderPage.goto(`/${projectId}`, { waitUntil: 'domcontentloaded' });
+
+      await expect(outsiderPage.getByText(projectName, { exact: true })).not.toBeVisible({
+        timeout: 15000,
+      });
+
+      await expect
+        .poll(
+          async () => {
+            const url = outsiderPage.url();
+            const bodyText = await outsiderPage.locator('body').innerText().catch(() => '');
+            return (
+              url.includes('/projects') ||
+              /not found|unable to load|login|unauthorized|access denied/i.test(bodyText)
+            );
+          },
+          { timeout: 30000, intervals: [500, 1000, 2000] }
+        )
+        .toBe(true);
+    } finally {
+      await ownerContext.close();
+      await outsiderContext.close();
+    }
+  });
+});
+
+test.describe('Input Validation & Security', () => {
+  test.skip(!isRealSupabase, 'Requires real Supabase credentials');
+
+  test('should prevent XSS attacks in project names', async ({ page }) => {
+    const loginPage = new LoginPage(page);
+    const projectPage = new ProjectPage(page);
+    const dialogs: string[] = [];
+
+    page.on('dialog', async (dialog) => {
+      dialogs.push(dialog.message());
+      await dialog.dismiss();
+    });
+
+    await loginPage.goto();
+    await loginPage.login(users.seedEmpty2);
+    await loginPage.expectLoginSuccess();
+    await projectPage.goto();
+
+    const xssPayload = '<script>alert("XSS")</script>';
+    await projectPage.createProjectButton.first().click();
+    await expect(projectPage.projectNameInput).toBeVisible({ timeout: 5000 });
+    await projectPage.projectNameInput.fill(xssPayload);
+    await projectPage.submitProjectButton.click();
+
+    await expect
+      .poll(async () => dialogs, { timeout: 5000, intervals: [250, 500] })
+      .not.toContain('XSS');
+    await expect(page.getByTestId('user-menu')).toBeVisible({ timeout: 10000 });
+  });
+
+  test('should sanitize SQL injection attempts in search inputs', async ({ page }) => {
+    const loginPage = new LoginPage(page);
+    const projectPage = new ProjectPage(page);
+    const sqlPayloads = ["'; DROP TABLE projects; --", "1' OR '1'='1", "admin'--"];
+
+    await loginPage.goto();
+    await loginPage.login(users.seedEmpty);
+    await loginPage.expectLoginSuccess();
+    await projectPage.goto();
+
+    const searchInput = page.getByPlaceholder(/Search for\.\.\.|Find in cell values\.\.\.|search/i).first();
+    const hasSearch = await searchInput.isVisible({ timeout: 10000 }).catch(() => false);
+
+    if (hasSearch) {
+      for (const payload of sqlPayloads) {
+        await searchInput.fill(payload);
+        await searchInput.press('Enter');
+
+        await expect
+          .poll(
+            async () => {
+              const bodyText = await page.locator('body').innerText().catch(() => '');
+              return /database error|sql error|syntax error/i.test(bodyText);
+            },
+            { timeout: 5000, intervals: [500, 1000] }
+          )
+          .toBe(false);
+      }
+    }
+
+    await expect(page.getByTestId('user-menu')).toBeVisible({ timeout: 10000 });
+  });
+});

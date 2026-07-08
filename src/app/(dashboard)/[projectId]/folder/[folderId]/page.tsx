@@ -17,6 +17,7 @@ import { EditLibraryModal } from '@/components/libraries/EditLibraryModal';
 import { ExportLibraryModal } from '@/components/libraries/ExportLibraryModal';
 import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
+import { invalidateFolderData, invalidateLibraryData } from '@/lib/queryInvalidation';
 import libraryEmptyIcon from '@/assets/images/projectEmptyIcon_2.png';
 import plusHorizontal from '@/assets/images/plusHorizontal.svg';
 import plusVertical from '@/assets/images/plusVertical.svg';
@@ -102,50 +103,6 @@ export default function FolderPage() {
     fetchAssetCounts();
   }, [libraries, supabase]);
 
-  // Optimized: Listen for library and folder events with targeted cache invalidation
-  useEffect(() => {
-    const handleLibraryCreated = (event: CustomEvent) => {
-      const createdFolderId = event.detail?.folderId;
-      // Only invalidate if the library was created in the current folder
-      if (createdFolderId === folderId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
-      }
-    };
-
-    const handleLibraryDeleted = (event: CustomEvent) => {
-      const deletedFolderId = event.detail?.folderId;
-      // Only invalidate if the library was deleted from the current folder
-      if (deletedFolderId === folderId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
-      }
-    };
-
-    const handleLibraryUpdated = (event: CustomEvent) => {
-      // Invalidate libraries list to refresh the updated library
-      queryClient.invalidateQueries({ queryKey: queryKeys.folderLibraries(folderId) });
-    };
-
-    const handleFolderUpdated = (event: CustomEvent) => {
-      const updatedFolderId = event.detail?.folderId;
-      // Invalidate if the current folder was updated
-      if (updatedFolderId === folderId) {
-        queryClient.invalidateQueries({ queryKey: queryKeys.folder(folderId) });
-      }
-    };
-
-    window.addEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
-    window.addEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
-    window.addEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
-    window.addEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
-    
-    return () => {
-      window.removeEventListener('libraryCreated' as any, handleLibraryCreated as EventListener);
-      window.removeEventListener('libraryDeleted' as any, handleLibraryDeleted as EventListener);
-      window.removeEventListener('libraryUpdated' as any, handleLibraryUpdated as EventListener);
-      window.removeEventListener('folderUpdated' as any, handleFolderUpdated as EventListener);
-    };
-  }, [folderId, queryClient]);
-
   const handleLibraryClick = (libraryId: string) => {
     router.push(`/${projectId}/${libraryId}`);
   };
@@ -203,11 +160,12 @@ export default function FolderPage() {
         if (await confirmDeletion('Delete this library?')) {
           try {
             await deleteLibrary(supabase, libraryId);
-            
-            // Dispatch event to notify other components - event handler will invalidate cache
-            window.dispatchEvent(new CustomEvent('libraryDeleted', {
-              detail: { folderId, libraryId, projectId }
-            }));
+            await invalidateLibraryData(queryClient, {
+              projectId,
+              folderId,
+              libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
             
             // If viewing this library, navigate back to folder
             if (pathname.includes(libraryId)) {
@@ -230,13 +188,15 @@ export default function FolderPage() {
 
   const handleLibraryCreated = (libraryId: string) => {
     setShowLibraryModal(false);
-    // Dispatch event to notify other components - event handler will invalidate cache
-    window.dispatchEvent(new CustomEvent('libraryCreated', {
-      detail: { folderId, libraryId }
-    }));
+    void invalidateLibraryData(queryClient, {
+      projectId,
+      folderId,
+      libraryId,
+      refetchActiveFoldersLibraries: true,
+    });
   };
 
-  // 将页面内 LibraryToolbar 的视图模式同步到 TopBar
+  // Sync the page LibraryToolbar view mode to TopBar.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     window.dispatchEvent(
@@ -250,7 +210,7 @@ export default function FolderPage() {
     );
   }, [viewMode, projectId, folderId]);
 
-  // 让 TopBar 中的 LibraryToolbar 也能控制本页视图切换和创建 Library
+  // Let the TopBar LibraryToolbar control view switching and library creation on this page.
   useEffect(() => {
     const handleTopbarCreateLibrary = (event: Event) => {
       const custom = event as CustomEvent<{ projectId?: string; folderId?: string | null }>;
@@ -406,10 +366,12 @@ export default function FolderPage() {
             setEditingLibraryId(null);
           }}
           onUpdated={() => {
-            // Dispatch event to notify other components - event handler will invalidate cache
-            window.dispatchEvent(new CustomEvent('libraryUpdated', {
-              detail: { libraryId: editingLibraryId, projectId }
-            }));
+            void invalidateLibraryData(queryClient, {
+              projectId,
+              folderId,
+              libraryId: editingLibraryId,
+              refetchActiveFoldersLibraries: true,
+            });
           }}
         />
       )}
@@ -424,4 +386,3 @@ export default function FolderPage() {
     </div>
   );
 }
-

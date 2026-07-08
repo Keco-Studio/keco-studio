@@ -4,6 +4,10 @@ import path from 'node:path';
 
 const repoRoot = process.cwd();
 const workflow = readFileSync(path.join(repoRoot, '.github/workflows/ci.yml'), 'utf8');
+const deployWorkflow = readFileSync(
+  path.join(repoRoot, '.github/workflows/deploy-vercel.yml'),
+  'utf8'
+);
 const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as {
   scripts: Record<string, string>;
 };
@@ -16,7 +20,10 @@ describe('CI workflow gates', () => {
   });
 
   it('keeps local validate aligned with CI gates', () => {
-    expect(pkg.scripts.validate).toBe('npm run lint && npm run test:unit && npm run build');
+    expect(pkg.scripts.typecheck).toBe('tsc --noEmit');
+    expect(pkg.scripts.validate).toBe(
+      'npm run lint && npm run typecheck && npm run test:unit && npm run build'
+    );
   });
 
   it('does not force unit tests to run serially', () => {
@@ -28,6 +35,14 @@ describe('CI workflow gates', () => {
   });
 
   it('uses the ESLint CLI instead of the removed Next lint command', () => {
-    expect(pkg.scripts.lint).toBe('eslint .');
+    expect(pkg.scripts.lint).toMatch(/^eslint \./);
+    expect(pkg.scripts.lint).not.toContain('next lint');
+  });
+
+  it('pins Supabase CLI versions instead of resolving latest during CI', () => {
+    expect(workflow).toContain('version: 2.90.0');
+    expect(deployWorkflow).toContain('version: 2.90.0');
+    expect(workflow).not.toContain('version: latest');
+    expect(deployWorkflow).not.toContain('version: latest');
   });
 });

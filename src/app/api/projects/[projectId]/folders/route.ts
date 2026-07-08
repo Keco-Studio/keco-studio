@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { verifyProjectOwnership, verifyFolderCreationPermission } from '@/lib/services/authorizationService';
 
 type Params = { params: Promise<{ projectId: string }> };
@@ -7,7 +8,13 @@ type Params = { params: Promise<{ projectId: string }> };
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
-async function resolveProjectId(supabase: any, projectIdOrName: string): Promise<string> {
+const errorName = (error: unknown) =>
+  error instanceof Error ? error.name : undefined;
+
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
+
+async function resolveProjectId(supabase: SupabaseClient, projectIdOrName: string): Promise<string> {
   if (isUuid(projectIdOrName)) return projectIdOrName;
   const { data, error } = await supabase
     .from('projects')
@@ -37,11 +44,11 @@ export async function GET(_req: Request, { params }: Params) {
     projectId = await resolveProjectId(supabase, projectIdParam);
     // verify project ownership
     await verifyProjectOwnership(supabase, projectId);
-  } catch (e: any) {
-    if (e.name === 'AuthorizationError') {
-      return NextResponse.json({ error: e.message }, { status: 403 });
+  } catch (e: unknown) {
+    if (errorName(e) === 'AuthorizationError') {
+      return NextResponse.json({ error: errorMessage(e, 'Unauthorized') }, { status: 403 });
     }
-    return NextResponse.json({ error: e?.message || 'Project not found' }, { status: 404 });
+    return NextResponse.json({ error: errorMessage(e, 'Project not found') }, { status: 404 });
   }
 
   const { data, error } = await supabase
@@ -82,11 +89,11 @@ export async function POST(request: Request, { params }: Params) {
     projectId = await resolveProjectId(supabase, projectIdParam);
     // Verify user has admin permission to create folder
     await verifyFolderCreationPermission(supabase, projectId);
-  } catch (e: any) {
-    if (e.name === 'AuthorizationError') {
-      return NextResponse.json({ error: e.message }, { status: 403 });
+  } catch (e: unknown) {
+    if (errorName(e) === 'AuthorizationError') {
+      return NextResponse.json({ error: errorMessage(e, 'Unauthorized') }, { status: 403 });
     }
-    return NextResponse.json({ error: e?.message || 'Project not found' }, { status: 404 });
+    return NextResponse.json({ error: errorMessage(e, 'Project not found') }, { status: 404 });
   }
 
   const { data, error } = await supabase

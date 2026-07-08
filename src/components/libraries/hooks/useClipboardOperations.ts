@@ -265,7 +265,7 @@ export function useClipboardOperations({
         return;
       }
       
-      // Copy/Cut 一律用「当前最新行」（含乐观更新），保证复制的就是表格当前显示的值
+      // Copy/Cut always reads the latest visible row, including optimistic updates.
       const rowToRead = (dataManager.getRowValue(rowId) as AssetRow | null) ?? row;
       
       // Check if this is the name field (identified by label='name' and dataType='string')
@@ -437,7 +437,7 @@ export function useClipboardOperations({
         }
       });
       
-      // 先改 Yjs（同步、瞬间生效），再并行持久化到 DB，不占用 setIsSaving，避免与紧接着的 Paste 冲突导致卡顿
+      // Update Yjs synchronously first, then persist in parallel without blocking Paste.
       (async () => {
         try {
           const allRows = yRows.toArray();
@@ -451,13 +451,13 @@ export function useClipboardOperations({
             const updatedRow = { ...row, name: assetName, propertyValues: rowData.propertyValues };
             toUpdate.push({ rowId, rowIndex, assetName, propertyValues: rowData.propertyValues, updatedRow });
           }
-          // Yjs 按索引从大到小更新，避免 delete+insert 导致下标错位
+          // Update Yjs from high index to low index so delete+insert does not shift later indexes.
           toUpdate.sort((a, b) => b.rowIndex - a.rowIndex);
           toUpdate.forEach(({ rowIndex, updatedRow }) => {
             yRows.delete(rowIndex, 1);
             yRows.insert(rowIndex, [updatedRow]);
           });
-          // 与 delete row 一致：多行走批量接口，减少往返与竞态
+          // Match delete-row behavior: use the batch API for multiple rows.
           const cutUpdates = toUpdate.map(({ rowId, assetName, propertyValues }) => ({ assetId: rowId, assetName, propertyValues }));
           if (cutUpdates.length > 1 && onUpdateAssets) {
             await onUpdateAssets(cutUpdates);
@@ -561,7 +561,7 @@ export function useClipboardOperations({
         return;
       }
       
-      // Copy/Cut 一律用「当前最新行」（含乐观更新），保证复制的就是表格当前显示的值
+      // Copy/Cut always reads the latest visible row, including optimistic updates.
       const rowToRead = (dataManager.getRowValue(rowId) as AssetRow | null) ?? row;
       
       // Check if this is the name field (identified by label='name' and dataType='string')
@@ -916,7 +916,7 @@ export function useClipboardOperations({
     if (result.creates.length > 0 && onSaveAsset && library) {
       setIsSaving(true);
       try {
-        // 基于当前视图行的最大 rowIndex，为 Paste 产生的新行分配连续的 rowIndex（从 max+1 开始）
+        // Allocate consecutive rowIndex values for pasted rows from the current visible max.
         const currentRows = getAllRowsForCellSelection();
         let maxRowIndex =
           currentRows.length > 0

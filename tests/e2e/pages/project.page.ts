@@ -1,5 +1,6 @@
 import { expect, type Page, type Locator } from '@playwright/test';
 import type { ProjectData } from '../fixures/projects';
+import { waitForSupabaseAuthStorage } from '../utils/auth-storage';
 
 /**
  * ProjectPage - Page Object Model for Project management
@@ -73,25 +74,7 @@ export class ProjectPage {
   async createProject(project: ProjectData): Promise<void> {
     // Verify authentication state before creating project
     // This prevents 401 errors in CI environments
-    await this.page.waitForFunction(
-      () => {
-        try {
-          const keys = Object.keys(sessionStorage);
-          for (const key of keys) {
-            if (key.includes('sb-') && key.includes('auth-token')) {
-              const value = sessionStorage.getItem(key);
-              if (value && value.length > 10) {
-                return true;
-              }
-            }
-          }
-          return false;
-        } catch {
-          return false;
-        }
-      },
-      { timeout: 15000 }
-    );
+    await waitForSupabaseAuthStorage(this.page, 15000);
 
     // Always navigate to /projects page to ensure we're in the right place
     // After login, user might be redirected to a project detail page, so we need to go to projects list
@@ -394,4 +377,3 @@ export class ProjectPage {
     await this.page.waitForLoadState('load', { timeout: 10000 }).catch(() => {});
   }
 }
-

@@ -10,7 +10,6 @@
 
 import React, { createContext, useContext, useMemo, useEffect, useState } from 'react';
 import * as Y from 'yjs';
-import { IndexeddbPersistence } from 'y-indexeddb';
 import { AssetRow } from '@/lib/types/libraryAssets';
 
 interface YjsContextType {
@@ -33,18 +32,13 @@ export function YjsProvider({ children, libraryId }: YjsProviderProps) {
   
   const [isConnected, setIsConnected] = useState(false);
 
-  // Local persistence (IndexedDB) - supports offline editing and state recovery
+  // Mark the per-library in-memory Y.Doc as ready for consumers.
   useEffect(() => {
-    const persistence = new IndexeddbPersistence(`asset-table-${libraryId}`, ydoc);
-    
-    persistence.on('synced', () => {
-      setIsConnected(true);
-    });
-
+    setIsConnected(true);
     return () => {
-      persistence.destroy();
+      setIsConnected(false);
     };
-  }, [ydoc, libraryId]);
+  }, [libraryId, ydoc]);
 
   return (
     <YjsContext.Provider value={{ ydoc, yRows, isConnected }}>
@@ -60,4 +54,3 @@ export function useYjs() {
   }
   return context;
 }
-

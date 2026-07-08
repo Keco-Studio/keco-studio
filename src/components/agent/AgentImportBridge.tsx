@@ -1,8 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { ImportScriptModal } from '@/components/libraries/ImportScriptModal';
+import { invalidateLibraryData } from '@/lib/queryInvalidation';
 
 interface PendingImport {
   folderId: string;
@@ -17,6 +19,7 @@ interface PendingImport {
  */
 export function AgentImportBridge() {
   const { currentProjectId } = useNavigation();
+  const queryClient = useQueryClient();
   const [pending, setPending] = useState<PendingImport | null>(null);
 
   useEffect(() => {
@@ -47,11 +50,12 @@ export function AgentImportBridge() {
             detail: { libraryId, libraryName: pending.libraryName },
           })
         );
-        window.dispatchEvent(
-          new CustomEvent('libraryCreated', {
-            detail: { folderId: pending.folderId, libraryId, projectId },
-          })
-        );
+        void invalidateLibraryData(queryClient, {
+          projectId,
+          folderId: pending.folderId,
+          libraryId,
+          refetchActiveFoldersLibraries: true,
+        });
         setPending(null);
       }}
     />

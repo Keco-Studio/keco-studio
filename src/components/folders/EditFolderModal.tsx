@@ -75,8 +75,7 @@ export function EditFolderModal({ open, folderId, onClose, onUpdated }: EditFold
         name: trimmed,
         entityType: 'folder'
       });
-      
-      // Event is dispatched automatically by the hook
+
       if (onUpdated) {
         onUpdated();
       }
@@ -144,4 +143,3 @@ export function EditFolderModal({ open, folderId, onClose, onUpdated }: EditFold
     document.body
   );
 }
-

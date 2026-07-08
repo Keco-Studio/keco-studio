@@ -9,7 +9,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { useQueryClient } from '@tanstack/react-query';
 import type { AssetRow, SectionConfig, PropertyConfig } from '@/lib/types/libraryAssets';
 import { deleteLibraryField, updateLibraryField } from '@/lib/services/libraryAssetsService';
-import { queryKeys } from '@/lib/utils/queryKeys';
+import { invalidateLibrarySchemaData } from '@/lib/queryInvalidation';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { getFieldTypeIcon, FIELD_TYPE_OPTIONS } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
 import { EditColumnModal } from './EditColumnModal';
@@ -114,7 +114,7 @@ export type TableHeaderProps = {
   allRowsSelected: boolean;
   hasSomeRowsSelected: boolean;
   onToggleSelectAll: (checked: boolean) => void;
-  /** 当前库的全部字段列表，用于下钻到 EditColumnModal 做重名校验 */
+  /** All fields in the current library, used for duplicate-name validation in EditColumnModal. */
   existingProperties?: PropertyConfig[];
   /** When true (e.g. section tabs mode), hide the section name row and only show property names */
   showSectionRow?: boolean;
@@ -234,7 +234,7 @@ export function TableHeader({
     open: false,
   });
 
-  // 点击任意非浮层区域时关闭浮层（使用捕获阶段，避免被内部 stopPropagation 影响）
+  // Close the floating menu on outside pointer down; capture phase bypasses inner stopPropagation.
   useEffect(() => {
     if (!headerMenu.visible) return;
 
@@ -252,7 +252,7 @@ export function TableHeader({
     };
   }, [headerMenu.visible]);
 
-  // 当发生滚动 / 滑轮滚动时，只关闭右键小浮层
+  // Close only the small header context menu when scroll or wheel events occur.
   useEffect(() => {
     if (!headerMenu.visible) return;
     const handleScroll = () => {
@@ -650,8 +650,10 @@ export function TableHeader({
                     setDeleteColumnConfirm((prev) => ({ ...prev, loading: true }));
                     try {
                       await deleteLibraryField(supabase, libraryId, deleteColumnConfirm.propertyId);
-                      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySchema(libraryId) });
-                      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
+                      await invalidateLibrarySchemaData(queryClient, {
+                        libraryId,
+                        refetchActiveSchema: true,
+                      });
                       showSuccessToast('Column deleted');
                     } catch (e: any) {
                       showErrorToast(e?.message || 'Failed to delete column');
@@ -720,4 +722,3 @@ export function TableHeader({
     </>
   );
 }
-

@@ -96,6 +96,7 @@ function previewResult(
   script: Script,
   warnings: string[]
 ): ToolResult {
+  const allWarnings = [...warnings, ...(script.warnings ?? [])];
   const preview: PreviewData = {
     libraryName: params.libraryName,
     folderId: params.folderId,
@@ -103,7 +104,7 @@ function previewResult(
     lines: script.lines,
     stats: computeStats(script),
     characterMapping: params.characterMapping,
-    warnings,
+    warnings: allWarnings,
   };
   return { success: true, displayHint: 'script_preview', data: preview };
 }

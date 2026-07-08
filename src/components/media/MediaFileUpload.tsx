@@ -26,7 +26,7 @@ interface MediaFileUploadProps {
   fieldType?: 'image' | 'file' | 'multimedia' | 'audio';
   onFocus?: () => void;
   onBlur?: () => void;
-  // 可选：由父级控制的统一 toast（例如 LibraryAssetsTable 的 TableToast）
+  // Optional parent-controlled toast, such as LibraryAssetsTable's TableToast.
   onShowToast?: (message: string, type?: 'success' | 'error' | 'default') => void;
 }
 
@@ -66,7 +66,7 @@ export function MediaFileUpload({
 
     setError(null);
 
-    // Validate file (size、基础类型等)
+    // Validate file size and basic type.
     const validation = validateMediaFile(file);
     if (!validation.ok) {
       const msg = validation.error || 'Invalid file';
@@ -79,7 +79,7 @@ export function MediaFileUpload({
       return;
     }
 
-    // 根据当前字段类型进行更细粒度的类型校验
+    // Apply stricter validation based on the current field type.
     const fileType = file.type;
     const fileName = file.name.toLowerCase();
     let typeError: string | null = null;
@@ -89,7 +89,7 @@ export function MediaFileUpload({
         typeError = 'Please upload an image file';
       }
     } else if (fieldType === 'multimedia') {
-      // 目前 accept 只允许 mp4
+      // The current accept list only allows MP4.
       if (fileType !== 'video/mp4') {
         typeError = 'Please upload an MP4 video file';
       }
@@ -115,7 +115,7 @@ export function MediaFileUpload({
       } else {
         message.error(typeError);
       }
-      // 重置 input，避免选择同一个错误文件时 onChange 不触发
+      // Reset the input so selecting the same invalid file still triggers onChange.
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
@@ -364,7 +364,7 @@ export function MediaFileUpload({
         </div>
       )}
 
-      {/* 使用全局 toast 提示错误，这里不再单独渲染错误文本 */}
+      {/* Errors are shown through the shared toast; no inline error text here. */}
 
       {/* Image Preview Modal */}
       {showImagePreview && value && isImageFile(value.fileType) && (
@@ -415,4 +415,3 @@ export function MediaFileUpload({
     </div>
   );
 }
-

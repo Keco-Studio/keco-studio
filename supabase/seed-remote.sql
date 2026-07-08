@@ -7,6 +7,11 @@
 
 begin;
 
+-- `seed_password` is supplied by scripts/seed-remote.sh via psql -v.
+-- Store it in a transaction-local setting so the PL/pgSQL DO block can read it
+-- without committing any usable password to the repository.
+select set_config('app.seed_password', :'seed_password', true);
+
 -- Get the actual instance_id from the auth.instances table
 do $$
 declare
@@ -24,7 +29,7 @@ begin
     with u as (
       select
         gen_random_uuid() as id,
-        crypt('Password123!', gen_salt('bf')) as enc_pwd
+        crypt(current_setting('app.seed_password', true), gen_salt('bf')) as enc_pwd
     )
     insert into auth.users (
       id, instance_id, email, encrypted_password,
@@ -49,7 +54,7 @@ begin
   else
     -- User exists, ensure password is correct
     update auth.users 
-    set encrypted_password = crypt('Password123!', gen_salt('bf')),
+    set encrypted_password = crypt(current_setting('app.seed_password', true), gen_salt('bf')),
         updated_at = now()
     where email = 'seed-empty@mailinator.com';
   end if;
@@ -59,7 +64,7 @@ begin
     with u as (
       select
         gen_random_uuid() as id,
-        crypt('Password123!', gen_salt('bf')) as enc_pwd
+        crypt(current_setting('app.seed_password', true), gen_salt('bf')) as enc_pwd
     )
     insert into auth.users (
       id, instance_id, email, encrypted_password,
@@ -84,7 +89,7 @@ begin
   else
     -- User exists, ensure password is correct
     update auth.users 
-    set encrypted_password = crypt('Password123!', gen_salt('bf')),
+    set encrypted_password = crypt(current_setting('app.seed_password', true), gen_salt('bf')),
         updated_at = now()
     where email = 'seed-empty-2@mailinator.com';
   end if;
@@ -94,7 +99,7 @@ begin
     with u as (
       select
         gen_random_uuid() as id,
-        crypt('Password123!', gen_salt('bf')) as enc_pwd
+        crypt(current_setting('app.seed_password', true), gen_salt('bf')) as enc_pwd
     )
     insert into auth.users (
       id, instance_id, email, encrypted_password,
@@ -119,7 +124,7 @@ begin
   else
     -- User exists, ensure password is correct
     update auth.users 
-    set encrypted_password = crypt('Password123!', gen_salt('bf')),
+    set encrypted_password = crypt(current_setting('app.seed_password', true), gen_salt('bf')),
         updated_at = now()
     where email = 'seed-empty-3@mailinator.com';
   end if;
@@ -129,7 +134,7 @@ begin
     with u as (
       select
         gen_random_uuid() as id,
-        crypt('Password123!', gen_salt('bf')) as enc_pwd
+        crypt(current_setting('app.seed_password', true), gen_salt('bf')) as enc_pwd
     )
     insert into auth.users (
       id, instance_id, email, encrypted_password,
@@ -154,7 +159,7 @@ begin
   else
     -- User exists, ensure password is correct
     update auth.users 
-    set encrypted_password = crypt('Password123!', gen_salt('bf')),
+    set encrypted_password = crypt(current_setting('app.seed_password', true), gen_salt('bf')),
         updated_at = now()
     where email = 'seed-empty-4@mailinator.com';
   end if;
@@ -179,7 +184,7 @@ begin
         gen_random_uuid(),
         v_instance_id,
         'seed-project@mailinator.com',
-        crypt('Password123!', gen_salt('bf')),
+        crypt(current_setting('app.seed_password', true), gen_salt('bf')),
         jsonb_build_object('provider', 'email', 'providers', array['email']),
         jsonb_build_object('username', 'seed-project'),
         now(), now(),
@@ -191,7 +196,7 @@ begin
     else
       -- User exists, ensure password is correct
       update auth.users 
-      set encrypted_password = crypt('Password123!', gen_salt('bf')),
+      set encrypted_password = crypt(current_setting('app.seed_password', true), gen_salt('bf')),
           updated_at = now()
       where id = v_user5_id;
     end if;
@@ -228,7 +233,7 @@ begin
         gen_random_uuid(),
         v_instance_id,
         'seed-library@mailinator.com',
-        crypt('Password123!', gen_salt('bf')),
+        crypt(current_setting('app.seed_password', true), gen_salt('bf')),
         jsonb_build_object('provider', 'email', 'providers', array['email']),
         jsonb_build_object('username', 'seed-library'),
         now(), now(),
@@ -240,7 +245,7 @@ begin
     else
       -- User exists, ensure password is correct
       update auth.users 
-      set encrypted_password = crypt('Password123!', gen_salt('bf')),
+      set encrypted_password = crypt(current_setting('app.seed_password', true), gen_salt('bf')),
           updated_at = now()
       where id = v_user6_id;
     end if;
@@ -277,7 +282,7 @@ begin
     with u as (
       select
         gen_random_uuid() as id,
-        crypt('Password123!', gen_salt('bf')) as enc_pwd
+        crypt(current_setting('app.seed_password', true), gen_salt('bf')) as enc_pwd
     )
     insert into auth.users (
       id, instance_id, email, encrypted_password,
@@ -302,7 +307,7 @@ begin
   else
     -- User exists, ensure password is correct
     update auth.users 
-    set encrypted_password = crypt('Password123!', gen_salt('bf')),
+    set encrypted_password = crypt(current_setting('app.seed_password', true), gen_salt('bf')),
         updated_at = now()
     where email = 'seed-happy-path-remote@mailinator.com';
   end if;
@@ -402,4 +407,3 @@ begin
 end $$;
 
 commit;
-

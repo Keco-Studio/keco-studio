@@ -5,6 +5,11 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
 import type { Project } from '@/lib/services/projectService';
+import {
+  invalidateFolderData,
+  invalidateLibraryData,
+  invalidateProjectData,
+} from '@/lib/queryInvalidation';
 
 export type UseSidebarRealtimeParams = {
   supabase: SupabaseClient;
@@ -49,30 +54,18 @@ export function useSidebarRealtime({
 
           if (!isUserProject && payload.eventType !== 'INSERT') return;
 
-          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-          const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-
-          try {
-            const userId = await getCurrentUserId(supabase);
-            globalRequestCache.invalidate(`projects:list:${userId}`);
-            if (projectId) {
-              globalRequestCache.invalidate(`project:${projectId}`);
-              globalRequestCache.invalidate(`project:name:${projectId}`);
-            }
-          } catch (err) {
-            console.warn('[Sidebar] Error invalidating project cache:', err);
-          }
-
-          await queryClient.invalidateQueries({ queryKey: ['projects'] });
-          await queryClient.refetchQueries({ queryKey: ['projects'], type: 'active' });
+          await invalidateProjectData(queryClient, {
+            projectId,
+            userProjectList: true,
+            refetchActiveProjects: true,
+          });
 
           if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
-            window.dispatchEvent(new CustomEvent('projectUpdated', { detail: { projectId: payload.new.id } }));
+            await invalidateProjectData(queryClient, { projectId: payload.new.id });
           } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
             queryClient.setQueryData<Project[]>(['projects'], (old) =>
               old ? old.filter((p) => p.id !== payload.old.id) : []
             );
-            window.dispatchEvent(new CustomEvent('projectDeleted', { detail: { projectId: payload.old.id } }));
             if (currentProjectId === payload.old.id) {
               router.push('/projects');
             }
@@ -107,31 +100,22 @@ export function useSidebarRealtime({
           filter: `project_id=eq.${currentProjectId}`,
         },
         async (payload) => {
-          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-          globalRequestCache.invalidate(`libraries:list:${currentProjectId}:all`);
-          if (payload.new && 'id' in payload.new) {
-            globalRequestCache.invalidate(`library:info:${payload.new.id}`);
-            globalRequestCache.invalidate(`library:${payload.new.id}`);
-          }
+          const libraryId =
+            (payload.new && 'id' in payload.new ? payload.new.id : null) ||
+            (payload.old && 'id' in payload.old ? payload.old.id : null);
+          const folderId =
+            (payload.new && 'folder_id' in payload.new ? payload.new.folder_id : null) ||
+            (payload.old && 'folder_id' in payload.old ? payload.old.folder_id : null);
 
-          await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentProjectId] });
-          await queryClient.refetchQueries({
-            queryKey: ['folders-libraries', currentProjectId],
-            type: 'active',
+          await invalidateLibraryData(queryClient, {
+            projectId: currentProjectId,
+            folderId: typeof folderId === 'string' ? folderId : null,
+            libraryId: typeof libraryId === 'string' ? libraryId : null,
+            refetchActiveFoldersLibraries: true,
           });
 
-          if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
-            window.dispatchEvent(
-              new CustomEvent('libraryUpdated', { detail: { libraryId: payload.new.id, projectId: currentProjectId } })
-            );
-          } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
-            window.dispatchEvent(
-              new CustomEvent('libraryDeleted', { detail: { libraryId: payload.old.id, projectId: currentProjectId } })
-            );
-          } else if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
-            window.dispatchEvent(
-              new CustomEvent('libraryCreated', { detail: { libraryId: payload.new.id, projectId: currentProjectId } })
-            );
+          if (payload.new && 'id' in payload.new) {
+            await invalidateLibraryData(queryClient, { libraryId: payload.new.id });
           }
         }
       )
@@ -162,30 +146,18 @@ export function useSidebarRealtime({
           filter: `project_id=eq.${currentProjectId}`,
         },
         async (payload) => {
-          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-          globalRequestCache.invalidate(`folders:list:${currentProjectId}`);
-          if (payload.new && 'id' in payload.new) {
-            globalRequestCache.invalidate(`folder:${payload.new.id}`);
-          }
+          const folderId =
+            (payload.new && 'id' in payload.new ? payload.new.id : null) ||
+            (payload.old && 'id' in payload.old ? payload.old.id : null);
 
-          await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentProjectId] });
-          await queryClient.refetchQueries({
-            queryKey: ['folders-libraries', currentProjectId],
-            type: 'active',
+          await invalidateFolderData(queryClient, {
+            projectId: currentProjectId,
+            folderId: typeof folderId === 'string' ? folderId : null,
+            refetchActiveFoldersLibraries: true,
           });
 
-          if (payload.eventType === 'UPDATE' && payload.new && 'id' in payload.new) {
-            window.dispatchEvent(
-              new CustomEvent('folderUpdated', { detail: { folderId: payload.new.id, projectId: currentProjectId } })
-            );
-          } else if (payload.eventType === 'DELETE' && payload.old && 'id' in payload.old) {
-            window.dispatchEvent(
-              new CustomEvent('folderDeleted', { detail: { folderId: payload.old.id, projectId: currentProjectId } })
-            );
-          } else if (payload.eventType === 'INSERT' && payload.new && 'id' in payload.new) {
-            window.dispatchEvent(
-              new CustomEvent('folderCreated', { detail: { folderId: payload.new.id, projectId: currentProjectId } })
-            );
+          if (payload.new && 'id' in payload.new) {
+            await invalidateFolderData(queryClient, { folderId: payload.new.id });
           }
         }
       )
@@ -238,31 +210,19 @@ export function useSidebarRealtime({
               queryClient.setQueryData<Project[]>(['projects'], (old) =>
                 old ? old.filter((p) => p.id !== currentProjectId) : []
               );
-              const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-              const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-              try {
-                const userId = await getCurrentUserId(supabase);
-                globalRequestCache.invalidate(`projects:list:${userId}`);
-                globalRequestCache.invalidate(`project:${currentProjectId}`);
-              } catch (err) {
-                console.warn('[Sidebar] Failed to clear cache:', err);
-              }
-              window.dispatchEvent(new CustomEvent('projectDeleted', { detail: { projectId: currentProjectId } }));
+              await invalidateProjectData(queryClient, {
+                projectId: currentProjectId,
+                userProjectList: true,
+              });
               router.push('/projects');
             } else if (!hasAccess) {
               queryClient.setQueryData<Project[]>(['projects'], (old) =>
                 old ? old.filter((p) => p.id !== currentProjectId) : []
               );
-              const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-              const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-              try {
-                const userId = await getCurrentUserId(supabase);
-                globalRequestCache.invalidate(`projects:list:${userId}`);
-                globalRequestCache.invalidate(`project:${currentProjectId}`);
-              } catch (err) {
-                console.warn('[Sidebar] Failed to clear cache:', err);
-              }
-              queryClient.invalidateQueries({ queryKey: ['projects'] });
+              await invalidateProjectData(queryClient, {
+                projectId: currentProjectId,
+                userProjectList: true,
+              });
               router.push('/projects');
             }
           }
@@ -303,12 +263,9 @@ export function useSidebarRealtime({
           table: 'predefine_properties',
         },
         async (payload) => {
-          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-          globalRequestCache.invalidate(`libraries:list:${currentProjectId}:all`);
-          await queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentProjectId] });
-          await queryClient.refetchQueries({
-            queryKey: ['folders-libraries', currentProjectId],
-            type: 'active',
+          await invalidateLibraryData(queryClient, {
+            projectId: currentProjectId,
+            refetchActiveFoldersLibraries: true,
           });
         }
       )

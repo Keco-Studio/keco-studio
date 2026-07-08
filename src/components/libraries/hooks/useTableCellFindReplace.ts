@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
 import {
   REPLACEABLE_CELL_DATA_TYPES,
   findNormalizedMatchSpan,
@@ -83,6 +85,7 @@ export function useTableCellFindReplace({
   onFocusSection,
   scrollToCell,
 }: UseTableCellFindReplaceParams) {
+  const queryClient = useQueryClient();
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [page, setPage] = useState(1);
@@ -252,32 +255,21 @@ export function useTableCellFindReplace({
       setReplacePreview(null);
       onClearHighlight();
 
-      if (typeof window !== 'undefined') {
-        const libraryIds = new Set<string>(
-          (result.affectedLibraryIds ?? []).filter((id) => id.length > 0)
-        );
-        if (libraryId) {
-          libraryIds.add(libraryId);
-        }
-        libraryIds.forEach((id) => {
-          window.dispatchEvent(
-            new CustomEvent('libraryCellValuesReplaced', { detail: { libraryId: id } })
-          );
-        });
-        (result.previews ?? []).forEach((preview) => {
-          if (!preview.assetId) return;
-          window.dispatchEvent(
-            new CustomEvent('assetUpdated', {
-              detail: { assetId: preview.assetId, fieldId: preview.fieldId },
-            })
-          );
-          window.dispatchEvent(
-            new CustomEvent('referenceSourceUpdated', {
-              detail: { assetId: preview.assetId, fieldId: preview.fieldId },
-            })
-          );
-        });
+      const libraryIds = new Set<string>(
+        (result.affectedLibraryIds ?? []).filter((id) => id.length > 0)
+      );
+      if (libraryId) {
+        libraryIds.add(libraryId);
       }
+      await Promise.all(
+        Array.from(libraryIds).map((id) =>
+          invalidateLibraryAssetsData(queryClient, {
+            libraryId: id,
+            includeSchema: true,
+            refetchActiveAssets: true,
+          })
+        )
+      );
     } catch (error) {
       setReplacePreview({
         updated: 0,
@@ -297,6 +289,7 @@ export function useTableCellFindReplace({
   }, [
     libraryId,
     onClearHighlight,
+    queryClient,
     replacePendingHit,
     replacePendingMode,
     replacePreview,

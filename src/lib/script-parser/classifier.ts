@@ -1,18 +1,18 @@
 /**
  * Script Parser - Line Classifier
  *
- * 智能分类一行文本，返回结构化节点
+ * Classifies one source line into a structured parser node.
  */
 
 import type { Node, RoleMap } from './types';
 
-// 基础正则
+// Basic regexes
 const SEPARATOR_RE = /^[-*+]{3,}$/;
 const LABEL_RE = /^\[(?:Label|标签):\s*(.+?)\]$/;
 const OPTION_RE = /^【选项\s*(\d+)\s*[：:]\s*(.+?)】$/;
-const SYSTEM_RE = /^【(.+?)】(.*)$/; // 支持 【文字】后续内容 格式
+const SYSTEM_RE = /^【(.+?)】(.*)$/; // Supports bracketed text followed by trailing content.
 
-// 结构化格式正则
+// Structured-format regexes
 const STRUCT_TYPED_RE = /^（(?:Type|类型)(\d+)・(.+?)）(.*)$/;
 const STRUCT_LABEL_RE = /^【(.+?)】$/;
 const STRUCT_INNER_LABEL_RE = /【(.+?)】/;
@@ -20,17 +20,17 @@ const STRUCT_OPTION_RE = /^(?:O(\d+)|选项(\d+))[：:]\s*(.+?)（([^）]+)）$/
 const STRUCT_JUMP_RE = /^（(?:跳转|Jump)\s*(.+?)\s*）/i;
 const STRUCT_BRANCH_RE = /^(O\d+|选项\d+|Oend|结尾)\s+(分支|统一收尾|branch|merge)【.+?】$/i;
 
-// 变量格式正则
+// Variable-format regexes
 const VAR_ASSIGN_RE = /^\$([a-zA-Z_]\w*)\s*([+\-\*/]?=)\s*(.+)$/;
 
-// 简洁选项
+// Simple options
 const SIMPLE_OPTION_RE = /^-\s*(.+)$/;
 const NESTED_OPTION_RE = /^-\s*-\s*(.+)$/;
 
-// 章节标题
+// Chapter headings
 const CHAPTER_RE = /^\d+[\.\、．]\s*(\S+.*)$/;
 
-// 舞台指示
+// Stage directions
 const STAGE_DIR_RE = /^（([^）]+)）$/;
 const STAGE_KEYWORDS = [
   '切屏', '黑屏', '淡入', '淡出', '转场', '渐隐', '渐显',
@@ -38,29 +38,37 @@ const STAGE_KEYWORDS = [
   '场景', '镜头', '画面', '背景', '特效',
 ];
 
-// 场景标签: "Location Name [XXX]" or "[XXX] Location Name" or just "[XXX]"
+// Scene labels: "Location Name [XXX]" or "[XXX] Location Name" or just "[XXX]"
 const SCENE_LABEL_RE = /^(.+?)\s*\[(\w+)\]\s*$/;
 const SCENE_LABEL_START_RE = /^\[(\w+)\]\s*(.+?)\s*$/; // [XXX] Location Name
 const SCENE_ID_RE = /^\[(\w+)\]\s*$/;
 
-// 变量标注
+// Variable annotations
 const VAR_CN_RE = /^（([^）]*[线值分好感][^）]*[+\-\d][^）]*)）$/;
 
-const QUOTES = '"\'""\'""「」';
+const QUOTES = '"\'“”‘’「」';
 
 /**
- * 查找冒号位置（支持全角和半角）
+ * Find a colon position, supporting full-width and half-width colons.
  */
 function findColon(line: string): number {
   const cPos = line.indexOf('：');
   const ePos = line.indexOf(':');
-  if (cPos === -1) return ePos;
+  if (cPos === -1) {
+    if (ePos > 0 && /\d/.test(line[ePos - 1]) && /\d/.test(line[ePos + 1] ?? '')) {
+      return -1;
+    }
+    return ePos;
+  }
   if (ePos === -1) return cPos;
+  if (ePos > 0 && /\d/.test(line[ePos - 1]) && /\d/.test(line[ePos + 1] ?? '')) {
+    return cPos;
+  }
   return Math.min(cPos, ePos);
 }
 
 /**
- * 去除引号
+ * Strip wrapping quote characters.
  */
 function stripQuotes(s: string): string {
   s = s.trim();
@@ -74,7 +82,7 @@ function stripQuotes(s: string): string {
 }
 
 /**
- * 从文本中提取条件标注
+ * Extract a leading condition annotation from text.
  */
 function extractCondition(text: string): { text: string; condition: string } {
   const m = text.match(/^（([^）]*(?:周目|解锁|结局|条件|路线)[^）]*)）\s*(.*)$/);
@@ -85,7 +93,7 @@ function extractCondition(text: string): { text: string; condition: string } {
 }
 
 /**
- * 从文本中提取变量/好感度标注
+ * Extract a variable or affinity annotation from text.
  */
 function extractVariable(text: string): { text: string; variable: string } {
   const m = text.match(/（([^）]*[线值分好感][^）]*[+\-\d][^）]*)）/);
@@ -97,42 +105,42 @@ function extractVariable(text: string): { text: string; variable: string } {
 }
 
 /**
- * 智能分类括号内的内容
+ * Classify the content inside parentheses.
  */
 function classifyBracketContent(inner: string): Node {
-  // 变量标注
+  // Variable annotation
   if (inner.includes('$') || inner.includes('+=') || inner.includes('-=')) {
     return { _type: 'variable', command: inner };
   }
 
-  // 好感度标注
+  // Affinity annotation
   if (/[线值分好感].*[+\-\d]/.test(inner)) {
     return { _type: 'variable', command: inner };
   }
 
-  // 条件标注
+  // Condition annotation
   if (/[周目解锁结局条件路线]/.test(inner)) {
     return { _type: 'condition', condition: inner };
   }
 
-  // 舞台指示
+  // Stage direction
   for (const kw of STAGE_KEYWORDS) {
     if (inner.includes(kw)) {
       return { _type: 'system', type: 2, content: inner };
     }
   }
 
-  // 短文本且像指示
+  // Short text that looks like an instruction.
   if (inner.length < 20 && !inner.includes('，') && !inner.includes(',')) {
     return { _type: 'system', type: 2, content: inner };
   }
 
-  // 兜底：当旁白
+  // Fallback to narration.
   return { _type: 'narration', content: `（${inner}）` };
 }
 
 /**
- * 智能分类一行文本
+ * Classify one source line.
  */
 export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
   const stripped = line.trim();
@@ -140,19 +148,19 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     return { _type: 'empty' };
   }
 
-  // === 结构化格式优先检测 ===
+  // Prefer structured-format detection.
 
-  // 跳转指令: （跳转 Oend ...）
+  // Jump instruction.
   const jumpMatch = STRUCT_JUMP_RE.exec(stripped);
   if (jumpMatch) {
     const target = jumpMatch[1].split(/\s+/)[0].trim();
     return { _type: 'struct_jump', target };
   }
 
-  // 分支声明: O1 分支【O1｜...】 或 Oend 统一收尾【Oend｜...】
+  // Branch declaration.
   const branchMatch = STRUCT_BRANCH_RE.exec(stripped);
   if (branchMatch) {
-    const branchLabel = branchMatch[1]; // O1 / 选项1 / Oend / 结尾
+    const branchLabel = branchMatch[1]; // Branch label token.
     const innerMatch = STRUCT_INNER_LABEL_RE.exec(stripped);
     let content = '';
     if (innerMatch) {
@@ -164,7 +172,7 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     return { _type: 'struct_branch', label: branchLabel, content };
   }
 
-  // 标签+场景: 【Start｜场景描述】
+  // Label plus scene description.
   const labelMatch = STRUCT_LABEL_RE.exec(stripped);
   if (labelMatch && labelMatch[1].includes('｜')) {
     const labelParts = labelMatch[1].split('｜');
@@ -173,7 +181,7 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     return { _type: 'struct_label', label: sceneLabel, content };
   }
 
-  // 结构化选项: O1：选项文本（条件，跳转...）
+  // Structured option with condition and jump metadata.
   const structOptMatch = STRUCT_OPTION_RE.exec(stripped);
   if (structOptMatch) {
     const optionNum = structOptMatch[1] || structOptMatch[2];
@@ -184,7 +192,7 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     // Clean up escape characters: \( → (, \) → )
     optCond = optCond.replace(/\\\(/g, '(').replace(/\\\)/g, ')');
 
-    // Parse condition: $trust+=2，跳转O1分支
+    // Parse condition and jump metadata.
     let jumpTarget = '';
     let varChange = '';
     const optParts = optCond.replace(/，/g, ',').split(',');
@@ -208,9 +216,9 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     };
   }
 
-  // === 通用格式检测 ===
+  // General-format detection.
 
-  // 1. 分隔符
+  // 1. Separator
   if (SEPARATOR_RE.test(stripped)) {
     return { _type: 'separator' };
   }
@@ -221,7 +229,7 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     return { _type: 'label', label: labelMatch2[1] };
   }
 
-  // 3. 选项（多种格式）
+  // 3. Option in bracketed form
   const optMatch = OPTION_RE.exec(stripped);
   if (optMatch) {
     const { text, condition } = extractCondition(optMatch[2]);
@@ -236,19 +244,19 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     return result;
   }
 
-  // 简洁选项
+  // Simple option
   const simpleOptMatch = SIMPLE_OPTION_RE.exec(stripped);
   if (simpleOptMatch) {
     let text = simpleOptMatch[1];
     let condition = '';
     let variable = '';
 
-    // 提取条件
+    // Extract condition.
     const condResult = extractCondition(text);
     text = condResult.text;
     condition = condResult.condition;
 
-    // 提取变量
+    // Extract variable.
     const varResult = extractVariable(text);
     text = varResult.text;
     variable = varResult.variable;
@@ -267,7 +275,7 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     return result;
   }
 
-  // 嵌套选项（展平）
+  // Nested option, flattened.
   const nestedOptMatch = NESTED_OPTION_RE.exec(stripped);
   if (nestedOptMatch) {
     const { text, condition } = extractCondition(nestedOptMatch[1]);
@@ -282,7 +290,7 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     return result;
   }
 
-  // 4. 系统提示 - 支持 【文字】 和 【文字】后续内容 两种格式
+  // 4. System prompt with optional trailing content.
   const sysMatch = SYSTEM_RE.exec(stripped);
   if (sysMatch) {
     const title = sysMatch[1];
@@ -291,7 +299,7 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     return { _type: 'system', type: 2, content };
   }
 
-  // 4.5 变量赋值 $var += 2 格式
+  // 4.5 Variable assignment syntax.
   const varAssignMatch = VAR_ASSIGN_RE.exec(stripped);
   if (varAssignMatch) {
     const varName = varAssignMatch[1];
@@ -300,42 +308,42 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     return { _type: 'variable', command: `$${varName}${operator}${value}` };
   }
 
-  // 5. 结构化对话
+  // 5. Structured dialogue
   const typedMatch = STRUCT_TYPED_RE.exec(stripped);
   if (typedMatch) {
     const rawType = parseInt(typedMatch[1], 10);
     const name = typedMatch[2];
     const content = typedMatch[3];
-    // 输出 Type：1=人物对话，2=场景/旁白
-    // 结构化 Type1/Type2 均为人物；Type3+ 为场景/旁白
+    // Output Type: 1=character dialogue, 2=scene/narration
+    // Structured Type1/Type2 are both characters; Type3+ are scene/narration
     if (rawType === 1 || rawType === 2) {
       return { _type: 'dialogue', name, type: 1, content };
     }
     return { _type: 'dialogue', name: '', type: 2, content };
   }
 
-  // 6. 章节标题
+  // 6. Chapter heading
   const chapterMatch = CHAPTER_RE.exec(stripped);
   if (chapterMatch) {
     return { _type: 'chapter', label: chapterMatch[1] };
   }
 
-  // 7. 括号内容智能分类
+  // 7. Parenthesized content
   const stageDirMatch = STAGE_DIR_RE.exec(stripped);
   if (stageDirMatch) {
     return classifyBracketContent(stageDirMatch[1].trim());
   }
 
-  // 8. 变量标注（独立行）
+  // 8. Standalone variable annotation
   const varCnMatch = VAR_CN_RE.exec(stripped);
   if (varCnMatch) {
     return { _type: 'variable', command: varCnMatch[1] };
   }
 
-  // 8.5 以条件标注开头的行
+  // 8.5 Line that starts with a condition annotation
   const condMatch = stripped.match(/^（([^）]*(?:周目|解锁|结局|条件|路线)[^）]*)）\s*(.*)$/);
   if (condMatch && condMatch[2]) {
-    // 有条件标注 + 后续内容 → 旁白带条件
+    // Condition annotation plus trailing content becomes conditional narration.
     return {
       _type: 'narration',
       content: condMatch[2],
@@ -343,48 +351,49 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     } as Node;
   }
 
-  // 9. 普通对话
+  // 9. Plain dialogue
   const colonPos = findColon(stripped);
   if (colonPos > 0) {
     const speaker = stripped.slice(0, colonPos).trim();
     const content = stripQuotes(stripped.slice(colonPos + 1).trim());
+    const roleInfo = roleMap[speaker] || { id: speaker, type: 1 };
     return {
       _type: 'dialogue',
-      name: speaker,
-      type: 1,
+      name: String(roleInfo.id || speaker),
+      type: roleInfo.type || 1,
       content,
     };
   }
 
-  // 9.3 引号环境描写: "..." 或跨行合并后的引号块
+  // 9.3 Quoted environment description: "..." or a merged multi-line quoted block
   if (/^["'""]/.test(stripped)) {
     return { _type: 'narration', content: stripQuotes(stripped), type: 2 };
   }
 
-  // 9.4 环境描写: [English bracket narration with spaces/punctuation]
+  // 9.4 Environment description: [English bracket narration with spaces/punctuation]
   const envDescMatch = /^\[(.+)\]$/.exec(stripped);
   if (envDescMatch && !/^\w+$/.test(envDescMatch[1])) {
     return { _type: 'narration', content: envDescMatch[1].trim(), type: 2 };
   }
 
-  // 9.5 场景标签: "Location Name [XXX]" → label=编号, content=场景名
+  // 9.5 Scene label: "Location Name [XXX]" → label=id, content=scene name
   const sceneLabelMatch = SCENE_LABEL_RE.exec(stripped);
   if (sceneLabelMatch) {
     return { _type: 'scene_label', label: sceneLabelMatch[2], content: sceneLabelMatch[1].trim() };
   }
 
-  // 9.5.1 场景标签（开头有编号）: "[XXX] Location Name" → label=编号, content=场景描述
+  // 9.5.1 Scene label with leading id: "[XXX] Location Name" → label=id, content=scene description
   const sceneLabelStartMatch = SCENE_LABEL_START_RE.exec(stripped);
   if (sceneLabelStartMatch) {
     return { _type: 'scene_label', label: sceneLabelStartMatch[1], content: sceneLabelStartMatch[2].trim() };
   }
 
-  // 9.6 场景ID: "[XXX]" — 由 parser 层与前一行合并
+  // 9.6 Scene id: "[XXX]" — merged with the previous line at the parser layer
   const sceneIdMatch = SCENE_ID_RE.exec(stripped);
   if (sceneIdMatch) {
     return { _type: 'scene_id', id: sceneIdMatch[1] };
   }
 
-  // 10. 兜底：旁白
+  // 10. Fallback to narration
   return { _type: 'narration', content: stripped, type: 2 };
 }

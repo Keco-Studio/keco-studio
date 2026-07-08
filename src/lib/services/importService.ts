@@ -1,8 +1,8 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import * as XLSX from 'xlsx';
 import {
   verifyLibraryCreationPermission,
 } from '@/lib/services/authorizationService';
+import { parseWorkbookRows } from '@/lib/utils/workbook';
 
 const BATCH_SIZE = 200;
 
@@ -51,13 +51,7 @@ function normalizeColumns(rawHeaders: unknown[]): string[] {
   });
 }
 
-function sheetToSection(sheet: XLSX.WorkSheet, sectionName: string): ImportSectionData | null {
-  const rows = XLSX.utils.sheet_to_json<(string | number | boolean | null)[]>(sheet, {
-    header: 1,
-    defval: '',
-    raw: false,
-  }) as unknown[][];
-
+function rowsToSection(rows: unknown[][], sectionName: string): ImportSectionData | null {
   if (rows.length === 0) return null;
 
   const headerRow = rows[0] ?? [];
@@ -72,23 +66,17 @@ function sheetToSection(sheet: XLSX.WorkSheet, sectionName: string): ImportSecti
   return { name: sectionName, columns, rows: dataRows };
 }
 
-export function parseImportFile(buffer: Buffer, fileName: string): ParsedImportFile {
+export async function parseImportFile(buffer: Buffer, fileName: string): Promise<ParsedImportFile> {
   const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-  const workbook =
-    ext === 'csv'
-      ? XLSX.read(buffer.toString('utf8'), { type: 'string' })
-      : XLSX.read(buffer, { type: 'buffer' });
+  const sheets = await parseWorkbookRows(buffer, fileName);
 
-  const sheetNames = workbook.SheetNames.filter((name) => name.trim().length > 0);
-  if (sheetNames.length === 0) {
+  if (sheets.length === 0) {
     throw new Error('File has no sheets');
   }
 
   const sections: ImportSectionData[] = [];
-  for (const sheetName of sheetNames) {
-    const sheet = workbook.Sheets[sheetName];
-    if (!sheet) continue;
-    const section = sheetToSection(sheet, sheetName.trim() || 'Section');
+  for (const sheet of sheets) {
+    const section = rowsToSection(sheet.rows, sheet.name.trim() || 'Section');
     if (section) sections.push(section);
   }
 
@@ -162,7 +150,7 @@ export async function importLibraryFromFile(
     throw new Error(`Library name "${trimmedName}" already exists in this folder`);
   }
 
-  const parsed = parseImportFile(fileBuffer, fileName);
+  const parsed = await parseImportFile(fileBuffer, fileName);
 
   const { data: createdLibrary, error: createError } = await supabase
     .from('libraries')

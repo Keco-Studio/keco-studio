@@ -55,7 +55,7 @@ export function useCellEditing({
     error: string | null;
     normalizedValue: string | number | null;
   } => {
-    // 统一处理空值：数组类型默认为空数组 []，其他类型为 null
+    // Empty array types normalize to [], while other empty values normalize to null.
     if (value === '' || value === null || value === undefined) {
       if (
         dataType === 'int_array' ||
@@ -69,7 +69,7 @@ export function useCellEditing({
 
     if (dataType === 'int_array') {
       let trimmed = value.trim();
-      // 如果用户没有手动输入 [ ]，则自动补全一对方括号
+      // Add brackets if the user did not type them.
       if (trimmed !== '' && (!trimmed.startsWith('[') || !trimmed.endsWith(']'))) {
         trimmed = `[${trimmed}]`;
       }
@@ -123,7 +123,7 @@ export function useCellEditing({
 
     if (dataType === 'float_array') {
       let trimmed = value.trim();
-      // 如果用户没有手动输入 [ ]，则自动补全一对方括号
+      // Add brackets if the user did not type them.
       if (trimmed !== '' && (!trimmed.startsWith('[') || !trimmed.endsWith(']'))) {
         trimmed = `[${trimmed}]`;
       }
@@ -175,7 +175,7 @@ export function useCellEditing({
 
     if (dataType === 'string_array') {
       let trimmed = value.trim();
-      // 如果用户没有手动输入 [ ]，则自动补全一对方括号
+      // Add brackets if the user did not type them.
       if (trimmed !== '' && (!trimmed.startsWith('[') || !trimmed.endsWith(']'))) {
         trimmed = `[${trimmed}]`;
       }
@@ -343,7 +343,7 @@ export function useCellEditing({
         return;
       }
       
-      // Clear validation error if valid，并使用规范化后的值
+      // Clear validation error and use the normalized value.
       setTypeValidationError(null);
       normalizedValue = validation.normalizedValue;
     }
@@ -489,21 +489,21 @@ export function useCellEditing({
     }
     let stringValue = '';
     if (currentValue !== null && currentValue !== undefined) {
-      // 数组类型需要特殊处理，确保编辑态下的文本格式与展示/校验逻辑一致
+      // Array types need display text that matches edit and validation logic.
       if (property.dataType === 'int_array' && Array.isArray(currentValue)) {
-        // 规范化为 "[1,2,3]" 格式
+        // Normalize to "[1,2,3]" format.
         stringValue = `[${currentValue.join(',')}]`;
       } else if (property.dataType === 'float_array' && Array.isArray(currentValue)) {
-        // 规范化为 "[1.1,2.2]" 格式
+        // Normalize to "[1.1,2.2]" format.
         stringValue = `[${currentValue.join(',')}]`;
       } else if (property.dataType === 'string_array' && Array.isArray(currentValue)) {
-        // 使用 JSON.stringify，确保元素带有引号：["A","B"]
+        // Use JSON.stringify so elements keep quotes.
         stringValue = JSON.stringify(currentValue);
       } else {
         stringValue = cellDisplayString(currentValue);
       }
     }
-    // 对数组类型，如果当前值为空，则自动填充一对方括号，方便用户直接在内部输入
+    // For empty array values, prefill brackets so users can type inside them.
     if (
       (property.dataType === 'int_array' ||
         property.dataType === 'float_array' ||

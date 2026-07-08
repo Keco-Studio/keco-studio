@@ -1,4 +1,5 @@
 import nextCoreWebVitals from 'eslint-config-next/core-web-vitals';
+import tseslint from 'typescript-eslint';
 
 export default [
   ...nextCoreWebVitals,
@@ -29,6 +30,25 @@ export default [
       'react-hooks/set-state-in-effect': 'warn',
       'react-hooks/preserve-manual-memoization': 'warn',
       'react-hooks/refs': 'warn',
+    },
+  },
+  {
+    files: ['src/app/api/**/*.{ts,tsx}'],
+    plugins: {
+      '@typescript-eslint': tseslint.plugin,
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'error',
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/app/api/**/*.{ts,tsx}'],
+    plugins: {
+      '@typescript-eslint': tseslint.plugin,
+    },
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'warn',
     },
   },
 ];

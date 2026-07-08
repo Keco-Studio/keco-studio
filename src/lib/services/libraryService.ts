@@ -60,7 +60,7 @@ async function resolveProjectId(supabase: SupabaseClient, projectIdOrName: strin
   if (!projectIdOrName || projectIdOrName.trim() === '') {
     throw new Error('Project ID or name is required');
   }
-  
+
   if (isUuid(projectIdOrName)) {
     return projectIdOrName;
   }
@@ -72,7 +72,7 @@ async function resolveProjectId(supabase: SupabaseClient, projectIdOrName: strin
     .eq('name', projectIdOrName.trim())
     .limit(1)
     .maybeSingle();
-    
+
   if (error) {
     console.error('Error resolving project ID:', error);
     throw new Error(`Project not found: ${error.message}`);
@@ -140,15 +140,6 @@ export async function createLibrary(
     throw error;
   }
 
-  // Invalidate caches
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`libraries:list:${projectId}:all`);
-  if (folderId) {
-    globalRequestCache.invalidate(`libraries:list:${projectId}:${folderId}`);
-  } else {
-    globalRequestCache.invalidate(`libraries:list:${projectId}:root`);
-  }
-
   return data.id;
 }
 
@@ -162,123 +153,111 @@ export async function listLibraries(
   // verify project access (owner or collaborator)
   await verifyProjectAccess(supabase, resolvedProjectId);
 
-  // Use request cache to prevent duplicate requests
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  const folderKey = folderId === undefined ? 'all' : folderId === null ? 'root' : folderId;
-  const cacheKey = `libraries:list:${resolvedProjectId}:${folderKey}`;
-  
-  return globalRequestCache.fetch(cacheKey, async () => {
-    let query = supabase
-      .from('libraries')
-      .select(`
-        *,
-        updater:updated_by (
-          id,
-          username,
-          full_name,
-          email,
-          avatar_color
-        )
-      `)
-      .eq('project_id', resolvedProjectId);
+  let query = supabase
+    .from('libraries')
+    .select(`
+      *,
+      updater:updated_by (
+        id,
+        username,
+        full_name,
+        email,
+        avatar_color
+      )
+    `)
+    .eq('project_id', resolvedProjectId);
 
-    // If folderId is provided, filter by folder_id
-    // If folderId is undefined, return ALL libraries (both root and nested)
-    // Only filter by null if folderId is explicitly null (not undefined)
-    if (folderId !== undefined) {
-      if (folderId === null) {
-        // Explicitly request root libraries only
-        query = query.is('folder_id', null);
-      } else {
-        if (!isUuid(folderId)) {
-          throw new Error('Invalid folder ID format');
-        }
-        query = query.eq('folder_id', folderId);
+  // If folderId is provided, filter by folder_id
+  // If folderId is undefined, return ALL libraries (both root and nested)
+  // Only filter by null if folderId is explicitly null (not undefined)
+  if (folderId !== undefined) {
+    if (folderId === null) {
+      // Explicitly request root libraries only
+      query = query.is('folder_id', null);
+    } else {
+      if (!isUuid(folderId)) {
+        throw new Error('Invalid folder ID format');
       }
+      query = query.eq('folder_id', folderId);
     }
-    // If folderId is undefined, don't filter - return all libraries
+  }
+  // If folderId is undefined, don't filter - return all libraries
 
-    const { data, error } = await query.order('created_at', { ascending: true });
-    
-    if (error) {
-      console.error('Error listing libraries:', error);
-      console.error('Query params:', { projectId: resolvedProjectId, folderId });
+  const { data, error } = await query.order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error listing libraries:', error);
+    console.error('Query params:', { projectId: resolvedProjectId, folderId });
+  }
+
+  if (error) {
+    throw error;
+  }
+
+  const libraries = data || [];
+
+  // If no libraries, return empty array
+  if (libraries.length === 0) {
+    return libraries.map(lib => ({ ...lib, asset_count: 0 }));
+  }
+
+  // Get asset counts for all libraries in one query
+  const libraryIds = libraries.map(lib => lib.id);
+  const { data: assetCounts, error: countError } = await supabase
+    .from('library_assets')
+    .select('library_id')
+    .in('library_id', libraryIds);
+
+  if (countError) {
+    console.error('Error fetching asset counts:', countError);
+    return libraries.map(lib => ({ ...lib, asset_count: 0 }));
+  }
+
+  // Count assets per library
+  const countMap = new Map<string, number>();
+  (assetCounts || []).forEach(asset => {
+    const currentCount = countMap.get(asset.library_id) || 0;
+    countMap.set(asset.library_id, currentCount + 1);
+  });
+
+  const libraryIdsForUpdate = libraries.map(lib => lib.id);
+  const { data: recentAssets } = await supabase
+    .from('library_assets')
+    .select(`
+      library_id,
+      updated_at,
+      updated_by,
+      updater:updated_by (
+        id,
+        username,
+        full_name,
+        email,
+        avatar_color
+      )
+    `)
+    .in('library_id', libraryIdsForUpdate)
+    .order('updated_at', { ascending: false });
+
+  const recentAssetMap = new Map<string, any>();
+  (recentAssets || []).forEach(asset => {
+    if (!recentAssetMap.has(asset.library_id)) {
+      recentAssetMap.set(asset.library_id, asset);
     }
+  });
 
-    if (error) {
-      throw error;
-    }
+  // Merge asset counts and recent update info into libraries
+  return libraries.map((lib: any) => {
+    const recentAsset = recentAssetMap.get(lib.id);
 
-    const libraries = data || [];
-
-    // If no libraries, return empty array
-    if (libraries.length === 0) {
-      return libraries.map(lib => ({ ...lib, asset_count: 0 }));
-    }
-
-    // Get asset counts for all libraries in one query
-    const libraryIds = libraries.map(lib => lib.id);
-    const { data: assetCounts, error: countError } = await supabase
-      .from('library_assets')
-      .select('library_id')
-      .in('library_id', libraryIds);
-
-    if (countError) {
-      console.error('Error fetching asset counts:', countError);
-      // If count query fails, return libraries with 0 counts
-      return libraries.map(lib => ({ ...lib, asset_count: 0 }));
-    }
-
-    // Count assets per library
-    const countMap = new Map<string, number>();
-    (assetCounts || []).forEach(asset => {
-      const currentCount = countMap.get(asset.library_id) || 0;
-      countMap.set(asset.library_id, currentCount + 1);
-    });
-
-    // Get most recent asset update for each library
-    const libraryIdsForUpdate = libraries.map(lib => lib.id);
-    
-    // Query to get the most recent asset update for each library
-    const { data: recentAssets } = await supabase
-      .from('library_assets')
-      .select(`
-        library_id,
-        updated_at,
-        updated_by,
-        updater:updated_by (
-          id,
-          username,
-          full_name,
-          email,
-          avatar_color
-        )
-      `)
-      .in('library_id', libraryIdsForUpdate)
-      .order('updated_at', { ascending: false });
-
-    // Create a map of library_id to most recent asset update
-    const recentAssetMap = new Map<string, any>();
-    (recentAssets || []).forEach(asset => {
-      if (!recentAssetMap.has(asset.library_id)) {
-        recentAssetMap.set(asset.library_id, asset);
-      }
-    });
-
-    // Merge asset counts and recent update info into libraries
-    return libraries.map((lib: any) => {
-      const recentAsset = recentAssetMap.get(lib.id);
-      
-      return {
-        ...lib,
-        asset_count: countMap.get(lib.id) || 0,
-        updater: lib.updater || null,
-        // Use asset update info if available, otherwise fall back to library update info
-        last_data_updated_at: recentAsset?.updated_at || lib.updated_at,
-        last_data_updated_by: recentAsset?.updated_by || lib.updated_by,
-        data_updater: recentAsset?.updater || lib.updater || null,
-      };
-    });
+    return {
+      ...lib,
+      asset_count: countMap.get(lib.id) || 0,
+      updater: lib.updater || null,
+      // Use asset update info if available, otherwise fall back to library update info
+      last_data_updated_at: recentAsset?.updated_at || lib.updated_at,
+      last_data_updated_by: recentAsset?.updated_by || lib.updated_by,
+      data_updater: recentAsset?.updater || lib.updater || null,
+    };
   });
 }
 
@@ -298,37 +277,28 @@ export async function getLibrary(
     await verifyProjectOwnership(supabase, resolvedProjectId);
   }
   
-  // Use request cache to prevent duplicate requests
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  const cacheKey = isUuid(libraryId) ? `library:${libraryId}` : `library:${projectId}:${libraryId}`;
-  
-  return globalRequestCache.fetch(cacheKey, async () => {
-    let query = supabase.from('libraries').select('*');
+  let query = supabase.from('libraries').select('*');
 
-    if (isUuid(libraryId)) {
-      query = query.eq('id', libraryId);
-    } else {
-      const resolvedProjectId = await resolveProjectId(supabase, projectId!);
-      query = query.eq('project_id', resolvedProjectId).eq('name', libraryId);
-    }
+  if (isUuid(libraryId)) {
+    query = query.eq('id', libraryId);
+  } else {
+    const resolvedProjectId = await resolveProjectId(supabase, projectId!);
+    query = query.eq('project_id', resolvedProjectId).eq('name', libraryId);
+  }
 
-    const { data, error } = await query.single();
+  const { data, error } = await query.single();
 
-    if (error) {
-      throw error;
-    }
+  if (error) {
+    throw error;
+  }
 
-    return data ?? null;
-  });
+  return data ?? null;
 }
 
 export async function deleteLibrary(
   supabase: SupabaseClient,
   libraryId: string
 ): Promise<void> {
-  // Get library info before deleting to invalidate proper caches
-  const library = await getLibrary(supabase, libraryId);
-  
   // verify deletion permission (only admin can delete)
   await verifyLibraryDeletionPermission(supabase, libraryId);
   
@@ -337,17 +307,6 @@ export async function deleteLibrary(
     throw error;
   }
   
-  // Invalidate caches
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`library:${libraryId}`);
-  if (library) {
-    globalRequestCache.invalidate(`libraries:list:${library.project_id}:all`);
-    if (library.folder_id) {
-      globalRequestCache.invalidate(`libraries:list:${library.project_id}:${library.folder_id}`);
-    } else {
-      globalRequestCache.invalidate(`libraries:list:${library.project_id}:root`);
-    }
-  }
 }
 
 export async function checkLibraryNameExists(
@@ -523,15 +482,6 @@ export async function updateLibrary(
     throw error;
   }
 
-  // Invalidate caches
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`library:${libraryId}`);
-  globalRequestCache.invalidate(`libraries:list:${library.project_id}:all`);
-  if (library.folder_id) {
-    globalRequestCache.invalidate(`libraries:list:${library.project_id}:${library.folder_id}`);
-  } else {
-    globalRequestCache.invalidate(`libraries:list:${library.project_id}:root`);
-  }
 }
 
 export async function moveLibraryToFolder(
@@ -603,16 +553,6 @@ export async function moveLibraryToFolder(
     throw error;
   }
 
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`library:${libraryId}`);
-  globalRequestCache.invalidate(`libraries:list:${library.project_id}:all`);
-  globalRequestCache.invalidate(`libraries:list:${library.project_id}:root`);
-  if (library.folder_id) {
-    globalRequestCache.invalidate(`libraries:list:${library.project_id}:${library.folder_id}`);
-  }
-  if (targetFolderId) {
-    globalRequestCache.invalidate(`libraries:list:${library.project_id}:${targetFolderId}`);
-  }
 }
 
 export async function duplicateLibrary(
@@ -749,15 +689,6 @@ export async function duplicateLibrary(
         }
       }
     }
-  }
-
-  // Invalidate caches
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`libraries:list:${originalLib.project_id}:all`);
-  if (originalLib.folder_id) {
-    globalRequestCache.invalidate(`libraries:list:${originalLib.project_id}:${originalLib.folder_id}`);
-  } else {
-    globalRequestCache.invalidate(`libraries:list:${originalLib.project_id}:root`);
   }
 
   return newLibraryId;

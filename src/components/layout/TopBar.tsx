@@ -1,6 +1,7 @@
 'use client';
 
 import { usePathname, useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -27,6 +28,7 @@ import { useSidebarProjects } from './hooks/useSidebarProjects';
 import { useSidebarFoldersLibraries } from './hooks/useSidebarFoldersLibraries';
 import { normalizeSearchString } from '@/lib/utils/normalizeSearchString';
 import { buildNormalizedIndexMap } from '@/lib/utils/cellValueReplace';
+import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -38,6 +40,7 @@ const CELL_SEARCH_PAGE_SIZE = 10;
 
 export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowCreateProjectBreadcrumb }: TopBarProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const {
     breadcrumbs,
@@ -318,23 +321,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     };
   }, [searchFilter, searchQuery, supabase, cellSearchRefreshKey]);
 
-  // Re-run cell search when underlying assets change (e.g. user edited a cell).
-  useEffect(() => {
-    if (searchFilter !== 'cell' || searchQuery.trim().length === 0) return;
-
-    const scheduleRefresh = () => {
-      setCellSearchRefreshKey((k) => k + 1);
-    };
-
-    window.addEventListener('assetUpdated', scheduleRefresh);
-    window.addEventListener('libraryCellValuesReplaced', scheduleRefresh);
-    return () => {
-      window.removeEventListener('assetUpdated', scheduleRefresh);
-      window.removeEventListener('libraryCellValuesReplaced', scheduleRefresh);
-    };
-  }, [searchFilter, searchQuery]);
-
-  // 最近 7 天内有活动的项目 / 文件夹 / Library（基于 updatedAt 或 createdAt）
+  // Projects, folders, and libraries active in the last 7 days.
   const recentResults = useMemo<SearchResult[]>(() => {
     const now = Date.now();
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
@@ -408,7 +395,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       });
 
     const all = [...projectResults, ...folderResults, ...libraryResults];
-    // 统一按时间从近到远排序，并限制条数
+    // Sort by newest activity first and cap the result count.
     const sorted = all.sort((a, b) => {
       const aTime = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
       const bTime = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
@@ -450,7 +437,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-    // 同一天内：显示时间，如 11:41
+    // For same-day activity, show the time, such as 11:41.
     const isSameDay =
       date.getFullYear() === now.getFullYear() &&
       date.getMonth() === now.getMonth() &&
@@ -737,30 +724,16 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         if (libraryIds.size === 0 && currentLibraryId) {
           libraryIds.add(currentLibraryId);
         }
-        if (typeof window !== 'undefined') {
-          libraryIds.forEach((id) => {
-            window.dispatchEvent(
-              new CustomEvent('libraryCellValuesReplaced', { detail: { libraryId: id } })
-            );
-          });
-          const touchedAssetIds = new Set<string>();
-          (result.previews ?? []).forEach((preview) => {
-            if (preview.assetId) touchedAssetIds.add(preview.assetId);
-          });
-          (result.previews ?? []).forEach((preview) => {
-            if (!preview.assetId) return;
-            window.dispatchEvent(
-              new CustomEvent('assetUpdated', {
-                detail: { assetId: preview.assetId, fieldId: preview.fieldId },
-              })
-            );
-            window.dispatchEvent(
-              new CustomEvent('referenceSourceUpdated', {
-                detail: { assetId: preview.assetId, fieldId: preview.fieldId },
-              })
-            );
-          });
-        }
+        await Promise.all(
+          Array.from(libraryIds).map((libraryId) =>
+            invalidateLibraryAssetsData(queryClient, {
+              libraryId,
+              includeSchema: true,
+              refetchActiveAssets: true,
+            })
+          )
+        );
+        setCellSearchRefreshKey((key) => key + 1);
 
         const q = searchQuery.trim();
         const sessionRes = await supabase.auth.getSession();
@@ -1510,12 +1483,12 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
               if (wasNonEmpty && isNowEmpty) {
                 clearCellSearchFocusState();
               }
-              // 有输入时展示搜索结果；无输入时展示最近 7 天记录
+              // Show search results when input exists; otherwise show recent records.
               setIsSearchDropdownOpen(true);
             }}
             onFocus={() => {
               setIsSearchFocused(true);
-              // 聚焦时，如果有搜索词就展示匹配结果，否则展示最近 7 天记录
+              // On focus, show matches for a query or recent records for empty input.
               setIsSearchDropdownOpen(true);
               if (searchFilter === 'cell' && searchQuery.trim().length > 0) {
                 setCellSearchRefreshKey((k) => k + 1);
@@ -1898,5 +1871,3 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     </header>
   );
 }
-
-

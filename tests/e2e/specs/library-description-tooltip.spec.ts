@@ -2,6 +2,7 @@ import { test, expect, type Page } from '@playwright/test';
 import { ProjectPage } from '../pages/project.page';
 import { LibraryPage } from '../pages/library.page';
 import { LoginPage } from '../pages/login.page';
+import { waitForSupabaseAuthStorage } from '../utils/auth-storage';
 
 import { generateProjectData } from '../fixures/projects';
 import { generateLibraryData } from '../fixures/libraries';
@@ -35,34 +36,7 @@ test.describe('Library Description Display Tests', () => {
     await loginPage.expectLoginSuccess();
 
     // Verify authentication state is ready for API calls
-    await page.waitForFunction(
-      () => {
-        try {
-          const keys = Object.keys(sessionStorage);
-          for (const key of keys) {
-            if (key.includes('sb-') && key.includes('auth-token')) {
-              const value = sessionStorage.getItem(key);
-              if (value) {
-                try {
-                  const parsed = JSON.parse(value);
-                  if (parsed && parsed.access_token && parsed.access_token.length > 10) {
-                    return true;
-                  }
-                } catch {
-                  if (value.length > 10) {
-                    return true;
-                  }
-                }
-              }
-            }
-          }
-          return false;
-        } catch {
-          return false;
-        }
-      },
-      { timeout: 30000 }
-    );
+    await waitForSupabaseAuthStorage(page, 30000);
 
     await page.waitForTimeout(500);
   });
@@ -129,4 +103,3 @@ test.describe('Library Description Display Tests', () => {
     await expect(page.locator('.ant-tooltip-inner').filter({ hasText: exactDescription })).toHaveCount(0);
   });
 });
-

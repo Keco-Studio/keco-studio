@@ -57,17 +57,17 @@ export function useSidebarTree(
     const projectFolders = folders.filter((f) => f.project_id === currentIds.projectId);
     const projectLibraries = libraries.filter((lib) => lib.project_id === currentIds.projectId);
 
-    // 根据侧边栏宽度动态估算最多显示的字符数
-    // 例如：宽度约 300px 时显示 ~15 个字符，宽度约 400px 时显示 ~20 个字符
+    // Estimate visible characters based on sidebar width.
+    // Example: around 300px shows ~15 chars; around 400px shows ~20 chars.
     const computeMaxChars = (baseChars: number) => {
       if (!sidebarWidth) return baseChars;
       const MIN_WIDTH_FOR_BASE = 267;
-      const PX_PER_CHAR = 10; // 大约每 20px 增加 1 个字符
+      const PX_PER_CHAR = 10; // Roughly one extra character per 10px.
 
       const extraWidth = Math.max(0, sidebarWidth - MIN_WIDTH_FOR_BASE);
       const extraChars = Math.floor(extraWidth / PX_PER_CHAR);
 
-      return Math.max(8, baseChars + extraChars); // 给一个最小下限，避免太小
+      return Math.max(8, baseChars + extraChars); // Keep a lower bound for narrow sidebars.
     };
 
     const librariesByFolder = new Map<string, Library[]>();

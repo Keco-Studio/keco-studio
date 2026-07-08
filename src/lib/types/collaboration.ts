@@ -112,6 +112,7 @@ export type CellUpdateEvent = {
   newValue: any;
   oldValue?: any;
   timestamp: number; // Unix timestamp (ms)
+  updatedAt?: string | null; // Server-sourced conflict key (DB updated_at or equivalent)
 };
 
 export type AssetCreateEvent = {
@@ -145,7 +146,7 @@ export type RowOrderChangeEvent = {
   timestamp: number;
 };
 
-/** 批量单元格更新事件，用于 Clear Content 等批量清空场景，一次广播所有变更，避免多条 cell:update 的 debounce 与顺序问题 */
+/** Batched cell update event for Clear Content and similar bulk operations. */
 export type CellsBatchUpdateEvent = {
   type: 'cells:batch-update';
   userId: string;
@@ -235,6 +236,7 @@ export type OptimisticUpdate = {
   propertyKey: string;
   newValue: any;
   timestamp: number;
+  updatedAt?: string | null;
   userId: string;
 };
 
@@ -263,4 +265,3 @@ export function canUserManageCollaborators(role: CollaboratorRole): boolean {
 export function canUserEdit(role: CollaboratorRole): boolean {
   return role === 'admin' || role === 'editor';
 }
-

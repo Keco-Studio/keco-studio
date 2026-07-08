@@ -65,7 +65,7 @@ export interface MediaCellProps {
   // View detail (first column only)
   isFirstColumn?: boolean;
   onViewAssetDetail?: (row: AssetRow, e: React.MouseEvent) => void;
-  // 统一表格 toast（TableToast）
+  // Shared table toast.
   onShowToast?: (message: string, type?: 'success' | 'error' | 'default') => void;
 }
 
@@ -238,4 +238,3 @@ export const MediaCell: React.FC<MediaCellProps> = ({
     </td>
   );
 };
-

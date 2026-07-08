@@ -1,34 +1,12 @@
 'use client';
 
-import { SupabaseClient, createClient } from '@supabase/supabase-js';
+import { SupabaseClient } from '@supabase/supabase-js';
 import {
   verifyProjectCreation,
-  verifyProjectOwnership,
   verifyProjectAccess,
   verifyProjectUpdatePermission,
-  verifyProjectDeletionPermission,
   getCurrentUserId,
 } from './authorizationService';
-
-/**
- * Create Supabase client with service role for admin operations
- * ONLY use for operations that need to bypass RLS (like project deletion by admin collaborators)
- */
-function getServiceClient() {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseServiceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  
-  if (!supabaseServiceRole) {
-    throw new Error('SUPABASE_SERVICE_ROLE_KEY is not configured');
-  }
-  
-  return createClient(supabaseUrl, supabaseServiceRole, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    }
-  });
-}
 
 export type Project = {
   id: string;
@@ -155,46 +133,36 @@ export async function listProjects(
 ): Promise<Project[]> {
   const resolvedUserId = userId ?? (await getCurrentUserId(supabase));
 
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  const cacheKey = `projects:list:${resolvedUserId}`;
+  // SECURITY FIX: Only return projects where user is in project_collaborators
+  // Access is determined ONLY by collaborator records, not ownership
+  const { data: collaboratorRecords, error: collaboratorError } = await supabase
+    .from('project_collaborators')
+    .select('project_id')
+    .eq('user_id', resolvedUserId)
+    .not('accepted_at', 'is', null);
 
-  return globalRequestCache.fetch(cacheKey, async () => {
-    // SECURITY FIX: Only return projects where user is in project_collaborators
-    // Access is determined ONLY by collaborator records, not ownership
-    
-    // Get project IDs where user is a collaborator
-    const { data: collaboratorRecords, error: collaboratorError } = await supabase
-      .from('project_collaborators')
-      .select('project_id')
-      .eq('user_id', resolvedUserId)
-      .not('accepted_at', 'is', null);
+  if (collaboratorError) {
+    console.error('Error fetching collaborator projects:', collaboratorError);
+    throw collaboratorError;
+  }
 
-    if (collaboratorError) {
-      console.error('Error fetching collaborator projects:', collaboratorError);
-      throw collaboratorError;
-    }
+  if (!collaboratorRecords || collaboratorRecords.length === 0) {
+    return [];
+  }
 
-    // If user is not a collaborator of any project, return empty array
-    if (!collaboratorRecords || collaboratorRecords.length === 0) {
-      return [];
-    }
+  const projectIds = collaboratorRecords.map(record => record.project_id);
+  const { data: projects, error: projectsError } = await supabase
+    .from('projects')
+    .select('*')
+    .in('id', projectIds)
+    .order('created_at', { ascending: true });
 
-    // Fetch the actual project details for those IDs
-    const projectIds = collaboratorRecords.map(record => record.project_id);
-    
-    const { data: projects, error: projectsError } = await supabase
-      .from('projects')
-      .select('*')
-      .in('id', projectIds)
-      .order('created_at', { ascending: true });
+  if (projectsError) {
+    console.error('Error fetching projects:', projectsError);
+    throw projectsError;
+  }
 
-    if (projectsError) {
-      console.error('Error fetching projects:', projectsError);
-      throw projectsError;
-    }
-
-    return projects || [];
-  });
+  return projects || [];
 }
 
 export async function getProject(
@@ -204,49 +172,42 @@ export async function getProject(
  
   await verifyProjectAccess(supabase, projectId);
 
-  // Use request cache to prevent duplicate requests
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  const cacheKey = `project:${projectId}`;
-  
-  return globalRequestCache.fetch(cacheKey, async () => {
-    const { data, error } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('id', projectId)
-      .single();
+  const { data, error } = await supabase
+    .from('projects')
+    .select('*')
+    .eq('id', projectId)
+    .single();
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        // Not found
-        return null;
-      }
-      throw error;
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null;
     }
+    throw error;
+  }
 
-    return data;
-  });
+  return data;
 }
 
 export async function deleteProject(
   supabase: SupabaseClient,
   projectId: string
 ): Promise<void> {
-  // Verify user has admin permission (only admin role can delete, not based on ownership)
-  await verifyProjectDeletionPermission(supabase, projectId);
-  
-  // Use service role client to bypass RLS and allow admin collaborators to delete
-  // RLS only allows owner to delete, but we want any admin to be able to delete
-  const serviceClient = getServiceClient();
-  const { error } = await serviceClient.from('projects').delete().eq('id', projectId);
-  if (error) {
-    throw error;
+  const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError || !session) {
+    throw new Error('You must be logged in to delete projects');
   }
-  
-  // Invalidate cache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  const userId = await getCurrentUserId(supabase);
-  globalRequestCache.invalidate(`projects:list:${userId}`);
-  globalRequestCache.invalidate(`project:${projectId}`);
+
+  const response = await fetch(`/api/projects/${projectId}/delete`, {
+    method: 'DELETE',
+    headers: {
+      Authorization: `Bearer ${session.access_token}`,
+    },
+  });
+
+  const result = await response.json() as { success?: boolean; error?: string };
+  if (!response.ok || !result.success) {
+    throw new Error(result.error || 'Failed to delete project');
+  }
 }
 
 export async function checkProjectNameExists(
@@ -331,9 +292,4 @@ export async function updateProject(
     throw error;
   }
 
-  // Invalidate cache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`projects:list:${userId}`);
-  globalRequestCache.invalidate(`project:${projectId}`);
 }
-

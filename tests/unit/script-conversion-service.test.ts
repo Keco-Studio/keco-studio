@@ -10,6 +10,7 @@ import {
   canImportScriptDirectly,
   looksLikeStructuredScript,
 } from '@/lib/services/scriptConversionService';
+import { parseText } from '@/lib/script-parser';
 
 const mockedCompleteLlm = completeLlm as jest.MockedFunction<typeof completeLlm>;
 
@@ -32,6 +33,19 @@ describe('canImportScriptDirectly', () => {
     const natural = 'Atana: Hello there.\nAI: Welcome back.';
     expect(looksLikeStructuredScript(natural)).toBe(true);
     expect(canImportScriptDirectly(natural)).toBe(true);
+  });
+
+  it('keeps role-map types for directly imported natural dialogue', () => {
+    const natural = 'Atana: Hello there.\nAI: Welcome back.';
+    const roleMap = {
+      Atana: { id: '', type: 1 },
+      AI: { id: '', type: 2 },
+    };
+
+    expect(canImportScriptDirectly(natural, roleMap)).toBe(true);
+
+    const script = parseText(natural, roleMap);
+    expect(script.lines.find((line) => line.name === 'AI')?.type).toBe(2);
   });
 
   it('imports RPG scene format directly without LLM conversion', () => {

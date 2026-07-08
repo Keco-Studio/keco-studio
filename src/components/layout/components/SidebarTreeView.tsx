@@ -69,7 +69,7 @@ function InlineEditRow({
 
   useEffect(() => {
     inputRef.current?.focus();
-    // 不在此处 select()，避免触发浏览器选区工具栏（弹框）；用户仍可在输入框内手动选中
+    // Do not call select() here; it can trigger the browser text-selection toolbar.
   }, []);
 
   const handleSave = useCallback(async () => {
@@ -236,7 +236,7 @@ export function SidebarTreeView({
     return null;
   };
 
-  // rc-tree / Ant Design Tree 的 titleRender 只传入一个参数：节点数据 data（含 key, title, _titleStr 等）
+  // rc-tree / Ant Design Tree titleRender passes only the node data object.
   const titleRender = useCallback(
     (data: EventDataNode & SidebarTreeNodeMeta) => {
       if (!data || data.key == null) return null;

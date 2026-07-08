@@ -11,6 +11,12 @@ if [ -z "$SUPABASE_DB_URL" ]; then
   exit 1
 fi
 
+if [ -z "$SEED_TEST_PASSWORD" ]; then
+  echo "Error: SEED_TEST_PASSWORD environment variable must be set"
+  echo "Remote seed passwords are intentionally not committed. Export a strong temporary password before running this script."
+  exit 1
+fi
+
 # Get the directory of this script
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
@@ -26,7 +32,6 @@ echo "Using seed file: $SEED_FILE"
 echo "Database URL: $(echo "$SUPABASE_DB_URL" | sed -E 's|(://[^:]+:)[^@]+(@)|\1***\2|')"
 
 # Execute the seed SQL file using psql
-psql "$SUPABASE_DB_URL" -f "$SEED_FILE"
+psql "$SUPABASE_DB_URL" -v seed_password="$SEED_TEST_PASSWORD" -f "$SEED_FILE"
 
 echo "Seed data applied successfully!"
-

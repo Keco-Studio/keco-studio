@@ -1,4 +1,5 @@
 import { expect, type Page, type Locator } from '@playwright/test';
+import { waitForSupabaseAuthStorage } from '../utils/auth-storage';
 
 /**
  * User credentials interface for authentication operations
@@ -150,32 +151,9 @@ export class LoginPage {
     // This ensures all API calls (including auth verification) are complete
     await this.page.waitForLoadState('networkidle', { timeout: longTimeout });
     
-    // Strategy 3: Wait for sessionStorage to contain Supabase auth token
-    // In CI environments, there may be a delay between login and session storage update
-    await this.page.waitForFunction(
-      () => {
-        try {
-          // Check if Supabase auth token exists in sessionStorage or localStorage
-          // Supabase stores auth in storage with key like 'sb-<project-ref>-auth-token'
-          const storages = [sessionStorage, localStorage];
-          for (const storage of storages) {
-            const keys = Object.keys(storage);
-            for (const key of keys) {
-              if (key.includes('sb-') && key.includes('auth-token')) {
-                const value = storage.getItem(key);
-                if (value && value.length > 10) {
-                  return true;
-                }
-              }
-            }
-          }
-          return false;
-        } catch {
-          return false;
-        }
-      },
-      { timeout: mediumTimeout }
-    );
+    // Strategy 3: Wait for browser storage to contain Supabase auth token
+    // In CI environments, there may be a delay between login and auth storage update
+    await waitForSupabaseAuthStorage(this.page, mediumTimeout);
     
     // Strategy 4: Additional wait to ensure authentication state is fully established
     // This is important after adding authorization checks - longer wait for CI
@@ -216,4 +194,3 @@ export class LoginPage {
     return this.registerHeading.isVisible();
   }
 }
-

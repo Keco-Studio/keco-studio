@@ -1,7 +1,7 @@
 /**
  * Script Parser Module
  *
- * 通用剧本解析器 - 将自然语言剧本转换为结构化脚本
+ * Converts natural-language story text into structured script rows.
  */
 
 export { parseText } from './parser';

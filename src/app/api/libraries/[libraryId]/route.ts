@@ -7,6 +7,12 @@ type Params = { params: Promise<{ libraryId: string }> };
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
+const errorName = (error: unknown) =>
+  error instanceof Error ? error.name : undefined;
+
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
+
 export async function GET(_req: Request, { params }: Params) {
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -23,11 +29,11 @@ export async function GET(_req: Request, { params }: Params) {
   if (isUuid(libraryId)) {
     try {
       await verifyLibraryAccess(supabase, libraryId);
-    } catch (e: any) {
-      if (e.name === 'AuthorizationError') {
-        return NextResponse.json({ error: e.message }, { status: 403 });
+    } catch (e: unknown) {
+      if (errorName(e) === 'AuthorizationError') {
+        return NextResponse.json({ error: errorMessage(e, 'Unauthorized') }, { status: 403 });
       }
-      return NextResponse.json({ error: e?.message || 'Library not found' }, { status: 404 });
+      return NextResponse.json({ error: errorMessage(e, 'Library not found') }, { status: 404 });
     }
   }
   
@@ -50,4 +56,3 @@ export async function GET(_req: Request, { params }: Params) {
 
   return NextResponse.json(data);
 }
-

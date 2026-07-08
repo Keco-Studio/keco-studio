@@ -122,7 +122,7 @@
   cursor: not-allowed;
 }
 
-/* Tab 切换 */
+/* Tab switching */
 .tabContainer {
   display: flex;
   gap: 0;
@@ -157,7 +157,7 @@
   border-bottom-color: #0B99FF;
 }
 
-/* 文件上传区域 */
+/* File upload area */
 .fileContainer {
   display: flex;
   flex-direction: column;
@@ -204,7 +204,7 @@
   margin: 0;
 }
 
-/* 文本输入区域 */
+/* Text input area */
 .textContainer {
   display: flex;
   flex-direction: column;
@@ -239,7 +239,7 @@
   color: #94a3b8;
 }
 
-/* 预览信息 */
+/* Preview information */
 .preview {
   display: flex;
   align-items: center;
@@ -333,7 +333,7 @@
   to { transform: rotate(360deg); }
 }
 
-/* 文本输入操作按钮 */
+/* Text input action buttons */
 .textActions {
   display: flex;
   justify-content: flex-end;
@@ -361,7 +361,7 @@
   cursor: not-allowed;
 }
 
-/* 格式说明 */
+/* Format instructions */
 .formatGuide {
   border: 1px solid #e2e8f0;
   border-radius: 0.375rem;

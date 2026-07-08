@@ -16,9 +16,9 @@ interface YRowsLike {
 export type UseRowOperationsParams = {
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
-  /** Batch update: all updates then one dispatch → one invalidate, avoids 先消失后恢复再消失 + 其他列恢复 */
+  /** Batch update: all updates then one dispatch and one invalidate, avoiding flicker. */
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
-  /** Clear Content 专用：批量更新 + 一次性广播，效仿 Delete Row 的即时同步 */
+  /** Clear Content path: batch update and broadcast once, matching Delete Row sync. */
   onUpdateAssetsWithBatchBroadcast?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   onDeleteAsset?: (assetId: string) => Promise<void>;
   /** Batch delete: Supabase .delete().in(), one round-trip */
@@ -490,7 +490,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
             : (existing?.name ?? row.name ?? 'Untitled');
         // Only overlay cleared keys onto existing optimistic (or row). Replacing with full
         // rowData.propertyValues could overwrite other columns if row was ever stale/partial,
-        // causing "其他列也清空，过一会又恢复".
+        // causing unrelated columns to clear and then restore.
         const clearedDelta: Record<string, any> = {};
         for (const [k, v] of Object.entries(rowData.propertyValues)) {
           if (row.propertyValues[k] !== v) clearedDelta[k] = v;
@@ -520,7 +520,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
         return { assetId: rowId, assetName, propertyValues };
       });
 
-      // 优先使用批量广播（效仿 Delete Row），协作者即时同步；否则回退到普通批量更新
+      // Prefer batch broadcast so collaborators update immediately; otherwise use normal batch update.
       if (updates.length > 0 && onUpdateAssetsWithBatchBroadcast) {
         await onUpdateAssetsWithBatchBroadcast(updates);
       } else if (entries.length > 1 && onUpdateAssets) {
@@ -535,7 +535,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
           })
         );
       }
-      // Rely on useOptimisticCleanup when rows match; no setTimeout clear to avoid 先消失后恢复再消失
+      // Rely on useOptimisticCleanup when rows match; avoid timeout clearing that causes flicker.
       setSelectedCells(new Set());
       setSelectedRowIds(new Set());
     } catch (e) {

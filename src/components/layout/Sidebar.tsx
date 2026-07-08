@@ -30,7 +30,7 @@ import { NewFolderModal } from "@/components/folders/NewFolderModal";
 import { EditFolderModal } from "@/components/folders/EditFolderModal";
 import { EditAssetModal } from "@/components/asset/EditAssetModal";
 import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
-import { Project, deleteProject } from "@/lib/services/projectService";
+import { Project } from "@/lib/services/projectService";
 import { Library, deleteLibrary, moveLibraryToFolder } from "@/lib/services/libraryService";
 import { Folder, deleteFolder } from "@/lib/services/folderService";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
@@ -54,6 +54,12 @@ import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
 import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
+import {
+  invalidateFolderData,
+  invalidateLibraryAssetsData,
+  invalidateLibraryData,
+  invalidateProjectData,
+} from '@/lib/queryInvalidation';
 import styles from "./Sidebar.module.css";
 
 const MIN_SIDEBAR_WIDTH = 267;
@@ -372,29 +378,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const currentProjectExists = projects.some(p => p.id === currentIds.projectId);
       if (!currentProjectExists) {
 
-        // Clear globalRequestCache and refetch
         (async () => {
           try {
-            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-              // Clear projects list cache
-              const projectsCacheKey = `projects:list:${user.id}`;
-              globalRequestCache.invalidate(projectsCacheKey);
-
-              // Clear all caches for this project (important!)
-              // This ensures fresh data and permissions
-              const cacheKeys = [
-                `auth:project-access:${currentIds.projectId}:${user.id}`,
-                `auth:project-ownership:${currentIds.projectId}:${user.id}`,
-                `auth:project-role:${currentIds.projectId}:${user.id}`,
-                `project:${currentIds.projectId}`,
-              ];
-              cacheKeys.forEach(key => {
-                globalRequestCache.invalidate(key);
-              });
+            await queryClient.invalidateQueries({ queryKey: ['projects'] });
+            if (currentIds.projectId) {
+              await queryClient.invalidateQueries({ queryKey: ['project', currentIds.projectId] });
             }
-            // Refetch projects list
             await refetchProjects();
           } catch (error) {
             console.error('[Sidebar] Error refreshing projects:', error);
@@ -402,7 +391,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         })();
       }
     }
-  }, [currentIds.projectId, projects, loadingProjects, refetchProjects, supabase]);
+  }, [currentIds.projectId, projects, loadingProjects, refetchProjects, queryClient]);
 
   // Sync selectedFolderId from URL (via NavigationContext)
   useEffect(() => {
@@ -422,96 +411,29 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [folders]);
 
-  // When a new library is created under a folder that is currently collapsed in the Sidebar,
-  // auto-expand that folder so the new library becomes visible in the tree.
-  // We intentionally DO NOT change selection here, only expanded state.
-  useEffect(() => {
-    const handleLibraryCreatedExpandFolder = (event: Event) => {
-      const detail = (event as CustomEvent<any>).detail || {};
-      const folderId: string | null | undefined = detail.folderId;
-      const eventProjectId: string | null | undefined = detail.projectId;
-
-      // Only care about folders in the current project (when projectId is provided)
-      if (eventProjectId && currentIds.projectId && eventProjectId !== currentIds.projectId) {
-        return;
-      }
-      if (!folderId) return; // Root-level libraries don't belong to any folder
-
-      const folderKey = `folder-${folderId}`;
-      setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
-    };
-
-    window.addEventListener('libraryCreated', handleLibraryCreatedExpandFolder as EventListener);
-    return () => {
-      window.removeEventListener('libraryCreated', handleLibraryCreatedExpandFolder as EventListener);
-    };
-  }, [currentIds.projectId]);
+  const expandFolder = useCallback((folderId: string | null | undefined) => {
+    if (!folderId) return;
+    const folderKey = `folder-${folderId}`;
+    setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
+  }, []);
 
   // actions
   const handleProjectClick = async (projectId: string) => {
-    // Clear all related caches before navigation to ensure fresh data
-    // This is important for collaborators who might have stale cache
-    try {
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const cacheKeys = [
-          // Authorization caches
-          `auth:project-access:${projectId}:${user.id}`,
-          `auth:project-ownership:${projectId}:${user.id}`,
-          `auth:project-role:${projectId}:${user.id}`,
-          // Project data cache
-          `project:${projectId}`,
-        ];
-        cacheKeys.forEach(key => {
-          globalRequestCache.invalidate(key);
-        });
-      }
-    } catch (error) {
-      console.error('[Sidebar] Error clearing caches:', error);
-    }
+    await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     router.push(`/${projectId}`);
   };
 
   const handleLibraryClick = async (projectId: string, libraryId: string) => {
-    // Clear authorization caches before navigation
-    try {
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const authCacheKeys = [
-          `auth:project-access:${projectId}:${user.id}`,
-          `auth:library-access:${libraryId}:${user.id}`,
-        ];
-        authCacheKeys.forEach(key => {
-          globalRequestCache.invalidate(key);
-        });
-      }
-    } catch (error) {
-      console.error('[Sidebar] Error clearing auth caches:', error);
-    }
+    await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    await queryClient.invalidateQueries({ queryKey: ['library', libraryId] });
     router.push(`/${projectId}/${libraryId}`);
     fetchAssets(libraryId);
   };
 
   const handleAssetClick = async (projectId: string, libraryId: string, assetId: string) => {
-    // Clear authorization caches before navigation
-    try {
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const authCacheKeys = [
-          `auth:project-access:${projectId}:${user.id}`,
-          `auth:library-access:${libraryId}:${user.id}`,
-          `auth:asset-access:${assetId}:${user.id}`,
-        ];
-        authCacheKeys.forEach(key => {
-          globalRequestCache.invalidate(key);
-        });
-      }
-    } catch (error) {
-      console.error('[Sidebar] Error clearing auth caches:', error);
-    }
+    await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+    await queryClient.invalidateQueries({ queryKey: ['library', libraryId] });
+    await queryClient.invalidateQueries({ queryKey: ['asset', assetId] });
     router.push(`/${projectId}/${libraryId}/${assetId}`);
   };
 
@@ -527,21 +449,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
 
       await deleteAsset(supabase, assetId);
 
-      // Clear cache before fetching to ensure fresh data
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const cacheKey = `assets:list:${libraryId}`;
-      globalRequestCache.invalidate(cacheKey);
-
-      // Invalidate React Query cache to ensure LibraryPage gets fresh data
-      await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-      await queryClient.invalidateQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-
-      // Refetch to ensure data is updated immediately
-      await queryClient.refetchQueries({ queryKey: queryKeys.libraryAssets(libraryId) });
-      await queryClient.refetchQueries({ queryKey: queryKeys.librarySummary(libraryId) });
-
-      // Notify that asset was deleted
-      window.dispatchEvent(new CustomEvent('assetDeleted', { detail: { libraryId } }));
+      await invalidateLibraryAssetsData(queryClient, {
+        libraryId,
+        assetId,
+        refetchActiveAssets: true,
+      });
       await fetchAssets(libraryId);
 
       // If currently viewing this asset, navigate to library page
@@ -564,15 +476,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const deletedFolderId = libraryToDelete?.folder_id || null;
 
       await deleteLibrary(supabase, libraryId);
-      // Use React Query to refresh cache
-      if (currentIds.projectId) {
-        queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-      }
-
-      // Dispatch event to notify ProjectPage and FolderPage to refresh
-      window.dispatchEvent(new CustomEvent('libraryDeleted', {
-        detail: { folderId: deletedFolderId, libraryId, projectId: currentIds.projectId }
-      }));
+      await invalidateLibraryData(queryClient, {
+        projectId: currentIds.projectId,
+        folderId: deletedFolderId,
+        libraryId,
+        refetchActiveFoldersLibraries: true,
+      });
 
       // If the deleted library is currently being viewed (including library page, predefine page, new asset page, or any asset in it), navigate to project page
       if (currentIds.libraryId === libraryId && currentIds.projectId) {
@@ -593,10 +502,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const isViewingLibraryInFolder = librariesInFolder.some(lib => lib.id === currentIds.libraryId);
 
       await deleteFolder(supabase, folderId);
-      // Use React Query to refresh cache
-      if (currentIds.projectId) {
-        queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-      }
+      await invalidateFolderData(queryClient, {
+        projectId: currentIds.projectId,
+        folderId,
+        refetchActiveFoldersLibraries: true,
+      });
 
       // If currently viewing the folder page or a library in this folder, navigate to project page
       if (currentIds.folderId === folderId || isViewingLibraryInFolder) {
@@ -615,22 +525,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       const id = key.replace('folder-', '');
       // Navigate to folder page
       if (currentIds.projectId) {
-        // Clear authorization caches before navigation
-        try {
-          const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-          const { data: { user } } = await supabase.auth.getUser();
-          if (user) {
-            const authCacheKeys = [
-              `auth:project-access:${currentIds.projectId}:${user.id}`,
-              `auth:folder-access:${id}:${user.id}`,
-            ];
-            authCacheKeys.forEach(key => {
-              globalRequestCache.invalidate(key);
-            });
-          }
-        } catch (error) {
-          console.error('[Sidebar] Error clearing auth caches:', error);
-        }
+        await queryClient.invalidateQueries({ queryKey: ['project', currentIds.projectId] });
+        await queryClient.invalidateQueries({ queryKey: ['folder', id] });
         router.push(`/${currentIds.projectId}/folder/${id}`);
       }
     } else if (key.startsWith('library-')) {
@@ -748,15 +644,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         queryClient.setQueryData<Project[]>(['projects'], (oldProjects) =>
           oldProjects ? oldProjects.filter((p) => p.id !== projectId) : []
         );
-        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-        const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-        try {
-          const userId = await getCurrentUserId(supabase);
-          globalRequestCache.invalidate(`projects:list:${userId}`);
-          globalRequestCache.invalidate(`project:${projectId}`);
-        } catch (err) {
-          console.warn('Failed to clear cache:', err);
-        }
         if (currentIds.projectId === projectId) {
           router.push('/projects');
         }
@@ -794,18 +681,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setIsMovingLibrary(true);
     try {
       await moveLibraryToFolder(supabase, movingLibraryId, { folderId: finalTargetFolderId });
-      if (currentIds.projectId) {
-        queryClient.invalidateQueries({ queryKey: ['folders-libraries', currentIds.projectId] });
-      }
-      window.dispatchEvent(
-        new CustomEvent('libraryUpdated', {
-          detail: {
-            projectId: currentIds.projectId,
-            libraryId: movingLibraryId,
-            folderId: finalTargetFolderId,
-          },
-        })
-      );
+      await invalidateLibraryData(queryClient, {
+        projectId: currentIds.projectId,
+        folderId: finalTargetFolderId,
+        libraryId: movingLibraryId,
+        refetchActiveFoldersLibraries: true,
+      });
+      expandFolder(finalTargetFolderId);
       showSuccessToast('Library moved successfully');
       setShowMoveLibraryModal(false);
       setMovingLibraryId(null);
@@ -818,7 +700,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } finally {
       setIsMovingLibrary(false);
     }
-  }, [movingLibraryId, targetFolderId, useIndependentLibrary, libraries, supabase, currentIds.projectId, queryClient]);
+  }, [movingLibraryId, targetFolderId, useIndependentLibrary, libraries, supabase, currentIds.projectId, queryClient, expandFolder]);
 
   const movingLibrary = useMemo(
     () => libraries.find((lib) => lib.id === movingLibraryId) ?? null,
@@ -919,24 +801,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // per-project key so the two creation entry points stay consistent.
     queryClient.invalidateQueries({ queryKey: ['projects'] });
     queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-
-    // Also invalidate globalRequestCache for projects list
-    const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-    const { getCurrentUserId } = await import('@/lib/services/authorizationService');
-    try {
-      const userId = await getCurrentUserId(supabase);
-      globalRequestCache.invalidate(`projects:list:${userId}`);
-      globalRequestCache.invalidate(`project:${projectId}`);
-      globalRequestCache.invalidate(`auth:project-access:${projectId}:${userId}`);
-      globalRequestCache.invalidate(`auth:project-role:${projectId}:${userId}`);
-    } catch (err) {
-      // If getting userId fails, invalidate all project-related cache
-      console.warn('Failed to get userId for cache invalidation, clearing all project cache', err);
-      globalRequestCache.invalidate(`project:${projectId}`);
-    }
-
-    // Dispatch event to notify other components (ProjectsPage) to refresh their caches
-    window.dispatchEvent(new CustomEvent('projectCreated'));
+    await invalidateProjectData(queryClient, {
+      projectId,
+      userProjectList: true,
+      refetchActiveProjects: true,
+    });
 
     // Always navigate to the newly created project
     if (projectId) {
@@ -951,11 +820,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     const createdFolderId = selectedFolderId;
     setSelectedFolderId(null); // Clear selection after creation
 
-    // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
-    // All components (Sidebar, ProjectPage, FolderPage) will listen to this event and refresh their respective caches
-    window.dispatchEvent(new CustomEvent('libraryCreated', {
-      detail: { folderId: createdFolderId, libraryId, projectId: currentIds.projectId }
-    }));
+    await invalidateLibraryData(queryClient, {
+      projectId: currentIds.projectId,
+      folderId: createdFolderId,
+      libraryId,
+      refetchActiveFoldersLibraries: true,
+    });
+    expandFolder(createdFolderId);
 
     // Always navigate to the newly created library if we have a projectId
     if (currentIds.projectId) {
@@ -967,11 +838,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     closeFolderModal();
     setSelectedFolderId(null); // Clear selection after creation
 
-    // Only dispatch event, let all listeners refresh cache uniformly to avoid duplicate requests
-    // All components (Sidebar, ProjectPage) will listen to this event and refresh their respective caches
-    window.dispatchEvent(new CustomEvent('folderCreated', {
-      detail: { projectId: currentIds.projectId, folderId }
-    }));
+    await invalidateFolderData(queryClient, {
+      projectId: currentIds.projectId,
+      folderId,
+      refetchActiveFoldersLibraries: true,
+    });
+    expandFolder(folderId);
 
     // Always navigate to the newly created folder if we have a projectId
     if (currentIds.projectId && folderId) {
@@ -1126,7 +998,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           projectId={editingProjectId}
           onClose={closeEditProjectModal}
           onUpdated={() => {
-            // Cache will be invalidated by the projectUpdated event listener
+            void invalidateProjectData(queryClient, {
+              projectId: editingProjectId,
+              userProjectList: true,
+              refetchActiveProjects: true,
+            });
           }}
         />
       )}
@@ -1145,7 +1021,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           libraryId={editingLibraryId}
           onClose={closeEditLibraryModal}
           onUpdated={() => {
-            // Cache will be invalidated by the libraryUpdated event listener
+            const library = libraries.find((lib) => lib.id === editingLibraryId);
+            void invalidateLibraryData(queryClient, {
+              projectId: currentIds.projectId,
+              folderId: library?.folder_id ?? null,
+              libraryId: editingLibraryId,
+              refetchActiveFoldersLibraries: true,
+            });
           }}
         />
       )}
@@ -1159,10 +1041,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             const originalLibrary = libraries.find(lib => lib.id === duplicatingLibraryId);
             const folderId = originalLibrary?.folder_id || null;
 
-            // Dispatch event so that tree and other caches can refresh
-            window.dispatchEvent(new CustomEvent('libraryCreated', {
-              detail: { folderId, libraryId: newLibraryId, projectId: currentIds.projectId }
-            }));
+            void invalidateLibraryData(queryClient, {
+              projectId: currentIds.projectId,
+              folderId,
+              libraryId: newLibraryId,
+              refetchActiveFoldersLibraries: true,
+            });
+            expandFolder(folderId);
 
             // Navigate to the newly duplicated library
             if (currentIds.projectId) {
@@ -1189,9 +1074,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           folderId={importingFolderId}
           onClose={closeImportLibraryModal}
           onImported={(libraryId) => {
-            window.dispatchEvent(new CustomEvent('libraryCreated', {
-              detail: { folderId: importingFolderId, libraryId, projectId: currentIds.projectId }
-            }));
+            void invalidateLibraryData(queryClient, {
+              projectId: currentIds.projectId,
+              folderId: importingFolderId,
+              libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
+            expandFolder(importingFolderId);
             if (currentIds.projectId) {
               router.push(`/${currentIds.projectId}/${libraryId}`);
             }
@@ -1206,9 +1095,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           folderId={importingScriptFolderId}
           onClose={closeImportScriptModal}
           onImported={(libraryId) => {
-            window.dispatchEvent(new CustomEvent('libraryCreated', {
-              detail: { folderId: importingScriptFolderId, libraryId, projectId: currentIds.projectId }
-            }));
+            void invalidateLibraryData(queryClient, {
+              projectId: currentIds.projectId,
+              folderId: importingScriptFolderId,
+              libraryId,
+              refetchActiveFoldersLibraries: true,
+            });
+            expandFolder(importingScriptFolderId);
             if (currentIds.projectId) {
               router.push(`/${currentIds.projectId}/${libraryId}`);
             }
@@ -1229,7 +1122,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           folderId={editingFolderId}
           onClose={closeEditFolderModal}
           onUpdated={() => {
-            // Cache will be invalidated by the folderUpdated event listener
+            void invalidateFolderData(queryClient, {
+              projectId: currentIds.projectId,
+              folderId: editingFolderId,
+              refetchActiveFoldersLibraries: true,
+            });
           }}
         />
       )}
@@ -1240,7 +1137,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           assetId={editingAssetId}
           onClose={closeEditAssetModal}
           onUpdated={() => {
-            // Cache will be invalidated by the assetUpdated event listener
+            if (!currentIds.libraryId) return;
+            void invalidateLibraryAssetsData(queryClient, {
+              libraryId: currentIds.libraryId,
+              assetId: editingAssetId,
+              refetchActiveAssets: true,
+            });
           }}
         />
       )}
@@ -1425,4 +1327,3 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     </aside>
   );
 }
-

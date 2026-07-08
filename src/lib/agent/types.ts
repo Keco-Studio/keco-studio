@@ -181,11 +181,16 @@ export interface SuspendedState {
   toolResult?: ToolResult;
   /** Links confirmation resume to the same agent_traces row. */
   turnId?: string;
+  /** The next ReAct loop iteration to run when resuming this suspended turn. */
+  nextIteration?: number;
+  /** Cumulative provider-reported token total for this turn at suspension time. */
+  tokenUsageTotal?: number;
 }
 
 export interface AgentTurnInput {
   conversationId: string;
   userMessage: string;
+  signal?: AbortSignal;
   /** Public image URLs (Supabase storage) attached to this user turn, if any. */
   imageUrls?: string[];
   /** Explicit selected table data attached to this user turn only. */
@@ -197,6 +202,7 @@ export interface AgentTurnInput {
 export interface ResumeInput {
   actionId: string;
   decision: 'approve' | 'reject';
+  signal?: AbortSignal;
   toolContext: ToolContext;
   conversationMeta: ConversationMeta;
 }

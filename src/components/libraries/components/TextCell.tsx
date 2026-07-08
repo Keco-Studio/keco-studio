@@ -15,7 +15,7 @@ export interface TextCellProps {
   actualRowIndex: number;
   display: string | null;
   isNameField: boolean;
-  /** 当前 section 下的第一列（用于显示查看详情按钮） */
+  /** First column in the current section, used to show the detail button. */
   isFirstColumn?: boolean;
   // Cell editing state
   editingCell: { rowId: string; propertyKey: string } | null;
@@ -66,7 +66,7 @@ export interface TextCellProps {
   // Border classes
   getCopyBorderClasses: (rowId: string, propertyIndex: number) => string;
   getSelectionBorderClasses: (rowId: string, propertyIndex: number) => string;
-  /** Int 列拖动填充柄时的预览值（待填充格实时显示） */
+  /** Preview value shown while drag-filling int columns. */
   fillPreviewValue?: number;
 }
 
@@ -287,4 +287,3 @@ export const TextCell: React.FC<TextCellProps> = ({
     </td>
   );
 };
-

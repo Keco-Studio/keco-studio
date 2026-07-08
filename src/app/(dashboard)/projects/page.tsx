@@ -8,7 +8,6 @@ import { listProjects, Project } from '@/lib/services/projectService';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NewProjectModal } from '@/components/projects/NewProjectModal';
 import { useNavigation } from '@/lib/contexts/NavigationContext';
-import { globalRequestCache } from '@/lib/hooks/useRequestCache';
 import projectEmptyIcon from '@/assets/images/projectEmptyIcon_2.png';
 import plusHorizontal from '@/assets/images/plusHorizontal.svg';
 import plusVertical from '@/assets/images/plusVertical.svg';
@@ -38,33 +37,6 @@ export default function ProjectsPage() {
     refetchOnWindowFocus: false,
   });
 
-  // Listen to projectCreated event to refresh cache
-  useEffect(() => {
-    const handleProjectCreated = () => {
-      queryClient.invalidateQueries({ queryKey: ['projects'] });
-    };
-
-    window.addEventListener('projectCreated' as any, handleProjectCreated as EventListener);
-    
-    return () => {
-      window.removeEventListener('projectCreated' as any, handleProjectCreated as EventListener);
-    };
-  }, [queryClient]);
-
-  // Listen to authStateChanged event to clear React Query cache when user signs out or switches
-  useEffect(() => {
-    const handleAuthStateChanged = () => {
-      // Clear all React Query cache when auth state changes (sign out or user switch)
-      queryClient.clear();
-    };
-
-    window.addEventListener('authStateChanged' as any, handleAuthStateChanged as EventListener);
-    
-    return () => {
-      window.removeEventListener('authStateChanged' as any, handleAuthStateChanged as EventListener);
-    };
-  }, [queryClient]);
-
   // Check for pending invitation token after user logs in
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -85,17 +57,8 @@ export default function ProjectsPage() {
   }, [loading, projectsError, projects.length, setShowCreateProjectBreadcrumb]);
 
   const handleCreated = async (projectId: string) => {
-    queryClient.invalidateQueries({ queryKey: ['projects'] });
-    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-    if (userProfile?.id) {
-      globalRequestCache.invalidate(`projects:list:${userProfile.id}`);
-      globalRequestCache.invalidate(`project:${projectId}`);
-      globalRequestCache.invalidate(`auth:project-access:${projectId}:${userProfile.id}`);
-      globalRequestCache.invalidate(`auth:project-role:${projectId}:${userProfile.id}`);
-    } else {
-      globalRequestCache.invalidate(`project:${projectId}`);
-    }
-    window.dispatchEvent(new CustomEvent('projectCreated'));
+    await queryClient.invalidateQueries({ queryKey: ['projects'] });
+    await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     router.push(`/${projectId}`);
   };
 
@@ -158,4 +121,3 @@ export default function ProjectsPage() {
     </div>
   );
 }
-

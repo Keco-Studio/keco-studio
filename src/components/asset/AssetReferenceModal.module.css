@@ -193,7 +193,7 @@
 
 .librarySelectContainer > :global(.ant-select) {
   width: auto;
-  min-width: 200px; /* 设置最小宽度，防止下拉框被挤压 */
+  min-width: 200px; /* Set a minimum width so the dropdown is not squeezed */
   flex-shrink: 0;
 }
 
@@ -221,19 +221,19 @@
 
 /* Limit dropdown width to match Select width - ensure it matches the Select component width */
 .librarySelectContainer :global(.ant-select-dropdown) {
-  min-width: 200px !important; /* 设置下拉框最小宽度，防止内容被挤压 */
+  min-width: 200px !important; /* Set dropdown minimum width so content is not squeezed */
   max-width: fit-content !important;
 }
 
 /* Ensure Select component width is based on content, not full width */
 .librarySelectContainer :global(.ant-select) {
   width: auto !important;
-  min-width: 200px !important; /* 确保 Select 有足够的最小宽度 */
+  min-width: 200px !important; /* Ensure Select has enough minimum width */
 }
 
 .librarySelectContainer :global(.ant-select-selector) {
   width: auto !important;
-  min-width: 200px !important; /* 确保 Select 选择器有足够的最小宽度 */
+  min-width: 200px !important; /* Ensure the Select control has enough minimum width */
 }
 
 .assetsGrid {

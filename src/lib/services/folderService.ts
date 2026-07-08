@@ -2,7 +2,6 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
-  verifyProjectOwnership,
   verifyProjectAccess,
   verifyFolderAccess,
   verifyFolderDeletionPermission,
@@ -98,10 +97,6 @@ export async function createFolder(
     throw error;
   }
 
-  // Invalidate cache after successful creation
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`folders:list:${projectId}`);
-
   return data.id;
 }
 
@@ -114,35 +109,29 @@ export async function listFolders(
   // verify project access (owner or collaborator)
   await verifyProjectAccess(supabase, resolvedProjectId);
 
-  // Use request cache to prevent duplicate requests
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  const cacheKey = `folders:list:${resolvedProjectId}`;
-  
-  return globalRequestCache.fetch(cacheKey, async () => {
-    const { data, error } = await supabase
-      .from('folders')
-      .select(`
-        *,
-        updater:updated_by (
-          id,
-          username,
-          full_name,
-          email,
-          avatar_color
-        )
-      `)
-      .eq('project_id', resolvedProjectId)
-      .order('created_at', { ascending: true });
+  const { data, error } = await supabase
+    .from('folders')
+    .select(`
+      *,
+      updater:updated_by (
+        id,
+        username,
+        full_name,
+        email,
+        avatar_color
+      )
+    `)
+    .eq('project_id', resolvedProjectId)
+    .order('created_at', { ascending: true });
 
-    if (error) {
-      throw error;
-    }
+  if (error) {
+    throw error;
+  }
 
-    return ((data ?? []) as any[]).map(folder => ({
-      ...folder,
-      updater: folder.updater || null,
-    })) as Folder[];
-  });
+  return ((data ?? []) as any[]).map(folder => ({
+    ...folder,
+    updater: folder.updater || null,
+  })) as Folder[];
 }
 
 export async function getFolder(
@@ -156,26 +145,20 @@ export async function getFolder(
   // verify folder access
   await verifyFolderAccess(supabase, folderId);
 
-  // Use request cache to prevent duplicate requests
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  const cacheKey = `folder:${folderId}`;
-  
-  return globalRequestCache.fetch(cacheKey, async () => {
-    const { data, error } = await supabase
-      .from('folders')
-      .select('*')
-      .eq('id', folderId)
-      .single();
+  const { data, error } = await supabase
+    .from('folders')
+    .select('*')
+    .eq('id', folderId)
+    .single();
 
-    if (error) {
-      if (error.code === 'PGRST116') {
-        return null;
-      }
-      throw error;
+  if (error) {
+    if (error.code === 'PGRST116') {
+      return null;
     }
+    throw error;
+  }
 
-    return data;
-  });
+  return data;
 }
 
 export async function updateFolder(
@@ -246,12 +229,6 @@ export async function updateFolder(
     throw error;
   }
 
-  // Invalidate caches
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`folder:${folderId}`);
-  if (folder) {
-    globalRequestCache.invalidate(`folders:list:${folder.project_id}`);
-  }
 }
 
 export async function deleteFolder(
@@ -306,13 +283,4 @@ export async function deleteFolder(
     throw error;
   }
 
-  // Invalidate caches
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`folder:${folderId}`);
-  if (folder) {
-    globalRequestCache.invalidate(`folders:list:${folder.project_id}`);
-    // Also invalidate library lists that might be affected
-    globalRequestCache.invalidate(`libraries:list:${folder.project_id}:all`);
-    globalRequestCache.invalidate(`libraries:list:${folder.project_id}:${folderId}`);
-  }
 }

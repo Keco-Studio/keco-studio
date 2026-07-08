@@ -29,21 +29,14 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
     setLoading(true);
     setError(null);
     try {
-      // Use cache to prevent duplicate requests
-      const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-      const cacheKey = `field-definitions:${libraryId}`;
-      
-      const data = await globalRequestCache.fetch(cacheKey, async () => {
-        const { data, error: fetchError } = await supabase
-          .from('library_field_definitions')
-          .select('*')
-          .eq('library_id', libraryId)
-          .order('section', { ascending: true })
-          .order('order_index', { ascending: true });
+      const { data, error: fetchError } = await supabase
+        .from('library_field_definitions')
+        .select('*')
+        .eq('library_id', libraryId)
+        .order('section', { ascending: true })
+        .order('order_index', { ascending: true });
 
-        if (fetchError) throw fetchError;
-        return data || [];
-      });
+      if (fetchError) throw fetchError;
 
       if (!data) {
         throw new Error('Failed to load field definitions');
@@ -128,4 +121,3 @@ export function useSchemaData({ libraryId, supabase }: UseSchemaDataProps) {
 
   return { sections, setSections, loading, error, reload: loadSections };
 }
-

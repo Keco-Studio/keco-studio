@@ -20,7 +20,8 @@ export type CellEditorProps = {
 };
 
 /**
- * 双击编辑态下的单元格编辑器：contentEditable + int/float 即时校验 + Del 清空 + 类型错误提示
+ * Cell editor for double-click edit mode: contentEditable, numeric validation,
+ * Delete-to-clear, and type error display.
  */
 export function CellEditor({
   property,

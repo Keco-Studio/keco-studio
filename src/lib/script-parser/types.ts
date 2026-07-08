@@ -1,35 +1,35 @@
 /**
  * Script Parser Types
  *
- * 通用剧本解析器 - 将自然语言剧本转换为结构化脚本
+ * Converts natural-language story text into structured script rows.
  */
 
-// Excel 29 列模板字段
+// Excel template fields
 export interface ScriptLine {
-  // 核心字段
-  label: string;           // A: 节点 ID / 跳转标签
-  type: number;            // B: 1=对话, 2=旁白/场景/舞台/系统
-  name: string;            // C: 说话人
-  content: string;         // D: 对话内容
-  if: string;              // E: 触发条件
-  commands: string;        // F: 剧情指令
+  // Core fields
+  label: string;           // A: node id or jump label
+  type: number;            // B: 1=dialogue, 2=narration/scene/stage/system
+  name: string;            // C: speaker
+  content: string;         // D: dialogue content
+  if: string;              // E: trigger condition
+  commands: string;        // F: story commands
 
-  // 资源字段
-  fg: string;              // G: 左侧立绘
-  fg1: string;             // H: 右侧立绘
-  cg: string;              // I: CG 资源
+  // Asset fields
+  fg: string;              // G: left portrait
+  fg1: string;             // H: right portrait
+  cg: string;              // I: CG asset
 
-  // 选项字段
-  option0: string;         // J: 选项0
-  option0_next: string;    // K: 选项0 跳转
-  option1: string;         // L: 选项1
-  option1_next: string;    // M: 选项1 跳转
-  option2: string;         // N: 选项2
-  option2_next: string;    // O: 选项2 跳转
+  // Option fields
+  option0: string;         // J: option 0
+  option0_next: string;    // K: option 0 jump target
+  option1: string;         // L: option 1
+  option1_next: string;    // M: option 1 jump target
+  option2: string;         // N: option 2
+  option2_next: string;    // O: option 2 jump target
 
-  // 其他资源
-  voice: string;           // P: 配音路径
-  bg: string;              // Q: 背景图
+  // Other assets
+  voice: string;           // P: voice path
+  bg: string;              // Q: background image
 }
 
 export const SCRIPT_COLUMNS = [
@@ -47,9 +47,10 @@ export const JUMP_PREFIX = 'Jump';
 
 export interface Script {
   lines: ScriptLine[];
+  warnings?: string[];
 }
 
-// 解析中间节点类型
+// Intermediate parser node types
 export type Node =
   | { _type: 'empty' }
   | { _type: 'separator' }
@@ -76,7 +77,7 @@ export type Node =
   | { _type: 'scene_label'; label: string; content: string }
   | { _type: 'scene_id'; id: string };
 
-// 带选项附加信息的节点
+// Node with attached option metadata
 export interface NodeWithOptions {
   _type: string;
   type?: number;
@@ -92,7 +93,7 @@ export interface NodeWithOptions {
   _option_labels?: string[];
 }
 
-// 角色映射
+// Speaker role mapping
 export interface RoleInfo {
   id: string;
   type: number;
@@ -100,7 +101,7 @@ export interface RoleInfo {
 
 export type RoleMap = Record<string, RoleInfo>;
 
-// 创建空的 ScriptLine
+// Create an empty ScriptLine.
 export function createEmptyScriptLine(): ScriptLine {
   return {
     label: '',
@@ -123,7 +124,7 @@ export function createEmptyScriptLine(): ScriptLine {
   };
 }
 
-// 将 ScriptLine 转换为行数组
+// Convert a ScriptLine to a row array.
 export function scriptLineToRow(line: ScriptLine): string[] {
   return [
     line.label,

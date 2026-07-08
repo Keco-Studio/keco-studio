@@ -80,8 +80,7 @@ export function EditLibraryModal({ open, libraryId, onClose, onUpdated }: EditLi
         description,
         entityType: 'library'
       });
-      
-      // Event is dispatched automatically by the hook
+
       if (onUpdated) {
         onUpdated();
       }
@@ -162,4 +161,3 @@ export function EditLibraryModal({ open, libraryId, onClose, onUpdated }: EditLi
     </div>
   , document.body);
 }
-

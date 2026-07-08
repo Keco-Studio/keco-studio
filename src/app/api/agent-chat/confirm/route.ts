@@ -65,14 +65,16 @@ export async function POST(request: NextRequest) {
       userRole,
     };
 
+    const abortController = new AbortController();
     const generator = resumeAgentTurn({
       actionId,
       decision,
+      signal: abortController.signal,
       toolContext,
       conversationMeta: resolveConversationMeta(conversation.meta),
     });
 
-    const response = sseResponse(generator);
+    const response = sseResponse(generator, { abortController });
     response.headers.set('X-Conversation-Id', conversation.id);
     return response;
   } catch (e) {
