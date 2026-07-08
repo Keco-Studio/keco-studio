@@ -419,10 +419,6 @@ export async function createVersion(
     .eq('id', userId)
     .single();
 
-  // Invalidate cache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`versions:${libraryId}`);
-
   return dbVersionToAppVersion(newVersion as LibraryVersionDb, profile || null);
 }
 
@@ -599,11 +595,6 @@ export async function restoreVersion(
     .eq('id', userId)
     .single();
 
-  // Invalidate cache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`versions:${libraryId}`);
-  globalRequestCache.invalidate(`library:${libraryId}`);
-
   const restoredVersion = dbVersionToAppVersion(restoredVersionData as LibraryVersionDb, profile || null);
 
   return {
@@ -675,10 +666,6 @@ export async function editVersion(
     restoredByProfile = profile;
   }
 
-  // Invalidate cache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`versions:${version.library_id}`);
-
   return dbVersionToAppVersion(updatedVersion as LibraryVersionDb, createdByProfile, restoredByProfile);
 }
 
@@ -718,9 +705,6 @@ export async function deleteVersion(
     throw new Error(`Failed to delete version: ${error.message}`);
   }
 
-  // Invalidate cache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`versions:${version.library_id}`);
 }
 
 /**
@@ -920,15 +904,6 @@ export async function duplicateVersionAsLibrary(
     // Rollback: delete the new library if version creation fails
     await supabase.from('libraries').delete().eq('id', newLibrary.id);
     throw new Error(`Failed to create version for new library: ${versionCreateError.message}`);
-  }
-
-  // Invalidate caches
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate(`libraries:list:${projectId}:all`);
-  if (folderId) {
-    globalRequestCache.invalidate(`libraries:list:${projectId}:${folderId}`);
-  } else {
-    globalRequestCache.invalidate(`libraries:list:${projectId}:root`);
   }
 
   return {

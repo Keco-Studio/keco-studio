@@ -1,6 +1,18 @@
 import { NextResponse, NextRequest } from 'next/server';
 import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
 
+type ProjectCreateRpcResult = {
+  project_id?: unknown;
+  projectId?: unknown;
+  folder_id?: unknown;
+  folderId?: unknown;
+  0?: unknown;
+  1?: unknown;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
+
 export async function GET(request: NextRequest) {
   const supabase = createSupabaseServerClient(request);
 
@@ -58,21 +70,29 @@ export async function POST(request: NextRequest) {
   // Handle different return formats:
   // 1. If function returns JSON type, Supabase RPC returns the JSON object directly (not array)
   // 2. If function returns TABLE type, Supabase RPC returns an array
-  let result: any;
+  let result: ProjectCreateRpcResult;
 
   if (Array.isArray(data)) {
     // TABLE return type - get first element
     if (data.length === 0) {
       return NextResponse.json({ error: 'Project creation failed: empty response' }, { status: 500 });
     }
-    result = data[0];
-  } else if (typeof data === 'object' && data !== null) {
+    const first = data[0];
+    if (!isRecord(first)) {
+      return NextResponse.json({ error: 'Project creation failed: invalid response format' }, { status: 500 });
+    }
+    result = first;
+  } else if (isRecord(data)) {
     // JSON return type - data is already the result object
     result = data;
   } else if (typeof data === 'string') {
     // JSON string - parse it
     try {
-      result = JSON.parse(data);
+      const parsed: unknown = JSON.parse(data);
+      if (!isRecord(parsed)) {
+        return NextResponse.json({ error: 'Project creation failed: invalid JSON response' }, { status: 500 });
+      }
+      result = parsed;
     } catch (e) {
       console.error('Failed to parse JSON string:', e);
       return NextResponse.json({ error: 'Project creation failed: invalid JSON response' }, { status: 500 });
@@ -86,12 +106,12 @@ export async function POST(request: NextRequest) {
   const projectId = result.project_id || result.projectId || result[0];
   const folderId = result.folder_id || result.folderId || result[1];
 
-  if (!projectId) {
+  if (typeof projectId !== 'string' || !projectId) {
     console.error('Missing project_id in result:', result);
     return NextResponse.json({ error: 'Project creation failed: missing project_id' }, { status: 500 });
   }
 
-  if (!folderId) {
+  if (typeof folderId !== 'string' || !folderId) {
     console.error('Missing folder_id in result:', result);
     return NextResponse.json({ error: 'Project creation failed: missing folder_id' }, { status: 500 });
   }

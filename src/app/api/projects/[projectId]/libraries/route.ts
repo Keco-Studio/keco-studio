@@ -1,13 +1,31 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { verifyProjectOwnership, verifyLibraryCreationPermission } from '@/lib/services/authorizationService';
 
 type Params = { params: Promise<{ projectId: string }> };
+type LibraryListRow = {
+  id: string;
+  project_id: string;
+  folder_id: string | null;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+  [key: string]: unknown;
+};
+type AssetCountRow = { library_id: string };
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
-async function resolveProjectId(supabase: any, projectIdOrName: string): Promise<string> {
+const errorName = (error: unknown) =>
+  error instanceof Error ? error.name : undefined;
+
+const errorMessage = (error: unknown, fallback: string) =>
+  error instanceof Error ? error.message : fallback;
+
+async function resolveProjectId(supabase: SupabaseClient, projectIdOrName: string): Promise<string> {
   if (isUuid(projectIdOrName)) return projectIdOrName;
   const { data, error } = await supabase
     .from('projects')
@@ -47,11 +65,11 @@ export async function POST(request: Request, { params }: Params) {
     projectId = await resolveProjectId(supabase, projectIdParam);
     // Verify user has admin permission to create library
     await verifyLibraryCreationPermission(supabase, projectId);
-  } catch (e: any) {
-    if (e.name === 'AuthorizationError') {
-      return NextResponse.json({ error: e.message }, { status: 403 });
+  } catch (e: unknown) {
+    if (errorName(e) === 'AuthorizationError') {
+      return NextResponse.json({ error: errorMessage(e, 'Unauthorized') }, { status: 403 });
     }
-    return NextResponse.json({ error: e?.message || 'Project not found' }, { status: 404 });
+    return NextResponse.json({ error: errorMessage(e, 'Project not found') }, { status: 404 });
   }
 
   // Validate folder_id if provided
@@ -121,11 +139,11 @@ export async function GET(_req: Request, { params }: Params) {
     projectId = await resolveProjectId(supabase, projectIdParam);
     // verify project ownership
     await verifyProjectOwnership(supabase, projectId);
-  } catch (e: any) {
-    if (e.name === 'AuthorizationError') {
-      return NextResponse.json({ error: e.message }, { status: 403 });
+  } catch (e: unknown) {
+    if (errorName(e) === 'AuthorizationError') {
+      return NextResponse.json({ error: errorMessage(e, 'Unauthorized') }, { status: 403 });
     }
-    return NextResponse.json({ error: e?.message || 'Project not found' }, { status: 404 });
+    return NextResponse.json({ error: errorMessage(e, 'Project not found') }, { status: 404 });
   }
 
   // Get URL parameters for filtering
@@ -155,15 +173,15 @@ export async function GET(_req: Request, { params }: Params) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  const libraries = data ?? [];
+  const libraries = (data ?? []) as LibraryListRow[];
 
   // If no libraries, return empty array with asset_count
   if (libraries.length === 0) {
-    return NextResponse.json(libraries.map((lib: any) => ({ ...lib, asset_count: 0 })));
+    return NextResponse.json(libraries.map((lib) => ({ ...lib, asset_count: 0 })));
   }
 
   // Get asset counts for all libraries in one query
-  const libraryIds = libraries.map((lib: any) => lib.id);
+  const libraryIds = libraries.map((lib) => lib.id);
   const { data: assetCounts, error: countError } = await supabase
     .from('library_assets')
     .select('library_id')
@@ -172,22 +190,21 @@ export async function GET(_req: Request, { params }: Params) {
   if (countError) {
     console.error('Error fetching asset counts:', countError);
     // If count query fails, return libraries with 0 counts
-    return NextResponse.json(libraries.map((lib: any) => ({ ...lib, asset_count: 0 })));
+    return NextResponse.json(libraries.map((lib) => ({ ...lib, asset_count: 0 })));
   }
 
   // Count assets per library
   const countMap = new Map<string, number>();
-  (assetCounts || []).forEach((asset: any) => {
+  ((assetCounts ?? []) as AssetCountRow[]).forEach((asset) => {
     const currentCount = countMap.get(asset.library_id) || 0;
     countMap.set(asset.library_id, currentCount + 1);
   });
 
   // Merge asset counts into libraries
-  const librariesWithCounts = libraries.map((lib: any) => ({
+  const librariesWithCounts = libraries.map((lib) => ({
     ...lib,
     asset_count: countMap.get(lib.id) || 0,
   }));
 
   return NextResponse.json(librariesWithCounts);
 }
-

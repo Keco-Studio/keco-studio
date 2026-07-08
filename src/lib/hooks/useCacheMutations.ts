@@ -21,6 +21,7 @@ import {
   deleteAsset,
 } from '@/lib/services/libraryAssetsService';
 import type { Collaborator } from '@/lib/types/collaboration';
+import { shouldInvalidateEntityListAfterUpdate } from '@/lib/queryInvalidation';
 
 /**
  * Update Entity Name Hook Parameters
@@ -52,7 +53,6 @@ function isDuplicateNameError(error: unknown): boolean {
  * - Instant UI feedback (optimistic)
  * - Automatic rollback on error
  * - Updates individual cache + all lists
- * - Dispatches event for backward compatibility
  * 
  * Usage:
  *   const updateName = useUpdateEntityName();
@@ -159,21 +159,24 @@ export function useUpdateEntityName() {
       }
     },
     
-    // ON SUCCESS: Dispatch event for backward compatibility
-    onSuccess: (data, variables, context) => {
+    onSuccess: async (data, variables, context) => {
       if (!context) return;
-      
-      // Dispatch custom event for components still using event listeners
-      const eventDetail: any = { [`${context.entityType}Id`]: context.id };
-      
-      // For assets, also include libraryId if provided
-      if (context.entityType === 'asset' && variables.libraryId) {
-        eventDetail.libraryId = variables.libraryId;
+
+      await queryClient.invalidateQueries({ queryKey: context.entityKey });
+      await queryClient.invalidateQueries({
+        predicate: (query) =>
+          shouldInvalidateEntityListAfterUpdate(
+            query.queryKey,
+            context.entityType,
+            variables.libraryId
+          ),
+      });
+      if (context.entityType === 'project') {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.projects() });
       }
-      
-      window.dispatchEvent(new CustomEvent(`${context.entityType}Updated`, {
-        detail: eventDetail
-      }));
+      if (context.entityType === 'asset' && variables.libraryId) {
+        await queryClient.invalidateQueries({ queryKey: queryKeys.libraryAssets(variables.libraryId) });
+      }
     },
   });
 }
@@ -194,7 +197,6 @@ interface AddEntityParams {
  * Features:
  * - Appends to list immediately after server insert
  * - No refetch needed
- * - Dispatches event
  * 
  * Usage:
  *   const addEntity = useAddEntityToList();
@@ -246,7 +248,7 @@ export function useAddEntityToList() {
       }
     },
     
-    onSuccess: (newEntity, variables) => {
+    onSuccess: async (newEntity, variables) => {
       // Determine list query key based on parent-child relationship
       let listKey: readonly unknown[];
       
@@ -267,13 +269,7 @@ export function useAddEntityToList() {
         return [...(old || []), newEntity];
       });
       
-      // Dispatch event
-      window.dispatchEvent(new CustomEvent(`${variables.childType}Created`, {
-        detail: {
-          [`${variables.childType}Id`]: newEntity.id,
-          parentId: variables.parentId
-        }
-      }));
+      await queryClient.invalidateQueries({ queryKey: listKey });
     }
   });
 }
@@ -294,7 +290,6 @@ interface RemoveEntityParams {
  * Features:
  * - Removes from all lists containing the entity
  * - Cleans up individual entity cache
- * - Dispatches event
  * 
  * Usage:
  *   const removeEntity = useRemoveEntityFromList();
@@ -321,7 +316,7 @@ export function useRemoveEntityFromList() {
       }
     },
     
-    onSuccess: (data, variables) => {
+    onSuccess: async (data, variables) => {
       // Remove from all lists that might contain it
       // Use partial matching to update all relevant lists
       queryClient.setQueriesData(
@@ -363,13 +358,9 @@ export function useRemoveEntityFromList() {
         });
       }
       
-      // Dispatch event
-      window.dispatchEvent(new CustomEvent(`${variables.entityType}Deleted`, {
-        detail: {
-          [`${variables.entityType}Id`]: variables.id,
-          parentId: variables.parentId
-        }
-      }));
+      if (variables.parentId) {
+        await queryClient.invalidateQueries({ queryKey: [variables.parentType, variables.parentId] });
+      }
     }
   });
 }
@@ -390,7 +381,6 @@ interface UpdateCollaboratorRoleParams {
  * - Instant UI feedback (optimistic)
  * - Automatic rollback on error
  * - Updates collaborators list cache
- * - Dispatches event for backward compatibility
  * 
  * Usage:
  *   const updateRole = useUpdateCollaboratorRole();
@@ -464,17 +454,9 @@ export function useUpdateCollaboratorRole() {
       console.error('Failed to update collaborator role:', err);
     },
     
-    // ON SUCCESS: Dispatch event for backward compatibility
-    onSuccess: (data, variables, context) => {
+    onSuccess: async (data, variables, context) => {
       if (!context) return;
-      
-      // Dispatch custom event for components still using event listeners
-      window.dispatchEvent(new CustomEvent('collaboratorUpdated', {
-        detail: { 
-          collaboratorId: context.collaboratorId,
-          projectId: context.projectId 
-        }
-      }));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.projectCollaborators(context.projectId) });
     },
   });
 }
@@ -494,7 +476,6 @@ interface RemoveCollaboratorParams {
  * - Instant UI feedback (optimistic)
  * - Automatic rollback on error
  * - Updates collaborators list cache
- * - Dispatches event for backward compatibility
  * 
  * Usage:
  *   const removeCollaborator = useRemoveCollaborator();
@@ -562,18 +543,9 @@ export function useRemoveCollaborator() {
       console.error('Failed to remove collaborator:', err);
     },
     
-    // ON SUCCESS: Dispatch event for backward compatibility
-    onSuccess: (data, variables, context) => {
+    onSuccess: async (data, variables, context) => {
       if (!context) return;
-      
-      // Dispatch custom event for components still using event listeners
-      window.dispatchEvent(new CustomEvent('collaboratorRemoved', {
-        detail: { 
-          collaboratorId: context.collaboratorId,
-          projectId: context.projectId 
-        }
-      }));
+      await queryClient.invalidateQueries({ queryKey: queryKeys.projectCollaborators(context.projectId) });
     },
   });
 }
-

@@ -768,9 +768,9 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       resumeIteration,
       resumeTokenUsageTotal,
       input.signal,
-      trace
+      trace ?? undefined
     );
   } finally {
-    await flushTrace(trace, toolContext, conversationId);
+    await flushTrace(trace ?? undefined, toolContext, conversationId);
   }
 }

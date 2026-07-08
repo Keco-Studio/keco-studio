@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SectionConfig, PropertyConfig, AssetRow } from '@/lib/types/libraryAssets';
 import type { FormulaEvaluableField } from '@/lib/utils/formula';
 import { computeFormulaValuesForRow } from '@/lib/utils/formula';
@@ -109,7 +110,7 @@ const mapDataTypeToValueType = (
 };
 
 async function verifyLibraryAccessDirect(
-  supabase: any,
+  supabase: SupabaseClient,
   userId: string,
   libraryId: string
 ): Promise<{ name: string }> {
@@ -154,7 +155,7 @@ async function verifyLibraryAccessDirect(
 }
 
 async function getLibrarySchemaDirect(
-  supabase: any,
+  supabase: SupabaseClient,
   libraryId: string
 ): Promise<{ sections: SectionConfig[]; properties: PropertyConfig[] }> {
   const { data, error } = await supabase
@@ -224,7 +225,7 @@ async function getLibrarySchemaDirect(
 }
 
 async function getLibraryAssetsWithPropertiesDirect(
-  supabase: any,
+  supabase: SupabaseClient,
   libraryId: string
 ): Promise<AssetRow[]> {
   const { data: assetData, error: assetError } = await supabase
@@ -491,7 +492,7 @@ export async function GET(request: NextRequest) {
         orderIndex: p.orderIndex,
       })),
       rows: assets.map((row: AssetRow) => {
-        const exportPropertyValues: Record<string, any> = { ...(row.propertyValues ?? {}) };
+        const exportPropertyValues: Record<string, unknown> = { ...(row.propertyValues ?? {}) };
         for (const p of formulaProps) {
           const raw = row.propertyValues?.[p.key];
           const customExpression = getCustomFormulaExpressionFromCellValue(raw);

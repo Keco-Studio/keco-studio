@@ -1,20 +1,13 @@
 'use client';
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import type { QueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { UserProfile } from '@/lib/types/user';
 
-// Helper function to clear all caches
-async function clearAllCaches() {
-  // Clear globalRequestCache
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  globalRequestCache.invalidate();
-  
-  // Dispatch event to notify components to clear React Query cache
-  // Components using useQueryClient will listen to this event
-  window.dispatchEvent(new CustomEvent('authStateChanged', { 
-    detail: { type: 'signOut' } 
-  }));
+function clearAllCaches(queryClient: QueryClient) {
+  queryClient.clear();
 }
 
 /** Stable string for logs / Next overlay (object args often render as "{}"). */
@@ -72,6 +65,7 @@ const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -154,7 +148,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       currentUserId.current = null;
       
       // Clear all caches when user signs out
-      await clearAllCaches();
+      clearAllCaches(queryClient);
       
       // Clear pending invitation token to prevent issues when switching accounts
       if (typeof window !== 'undefined') {
@@ -163,7 +157,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('Logout failed', e);
     }
-  }, [supabase]);
+  }, [supabase, queryClient]);
 
   useEffect(() => {
     let mounted = true;
@@ -229,7 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           
           // If user changed (not just initial load), clear caches
           if (currentUserId.current !== null && currentUserId.current !== newUserId) {
-            await clearAllCaches();
+            clearAllCaches(queryClient);
           }
           
           // Set currentUserId to null first when user changes, then set to new value
@@ -243,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // User signed out or no session
           // Clear caches if there was a previous user
           if (prevUserId !== null) {
-            await clearAllCaches();
+            clearAllCaches(queryClient);
           }
           
           setIsAuthenticated(false);
@@ -267,7 +261,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchUserProfile, supabase]);
+  }, [fetchUserProfile, supabase, queryClient]);
 
   const value: AuthContextType = {
     isAuthenticated,
@@ -290,4 +284,3 @@ export function useAuth() {
   }
   return context;
 }
-

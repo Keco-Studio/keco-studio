@@ -2,9 +2,11 @@
 
 import { createContext, useContext, ReactNode, useEffect, useMemo, useState, useRef } from 'react';
 import { useParams, usePathname, useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from './AuthContext';
 import { parseRouteParams } from '@/lib/utils/routeParams';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import {
   verifyProjectAccess,
   verifyLibraryAccess,
@@ -40,6 +42,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const { isAuthenticated, userProfile } = useAuth();
   const [projectName, setProjectName] = useState<string | null>(null);
   const [libraryName, setLibraryName] = useState<string | null>(null);
@@ -113,116 +116,6 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     currentUserIdRef.current = newUserId;
   }, [isAuthenticated, userProfile, currentProjectId, currentLibraryId, currentAssetId, router]);
 
-  // Listen to entity update events to refresh names
-  useEffect(() => {
-    const handleProjectUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ projectId?: string }>;
-      if (!customEvent.detail?.projectId || !currentProjectId) return;
-      if (customEvent.detail.projectId === currentProjectId) {
-        // Clear cache for this project
-        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-        const cacheKey = `project:name:${currentProjectId}`;
-        globalRequestCache.invalidate(cacheKey);
-        
-        // Re-fetch project name immediately
-        try {
-          const { data, error } = await supabase
-            .from('projects')
-            .select('name')
-            .eq('id', currentProjectId)
-            .single();
-          
-          if (!error && data) {
-            setProjectName(data.name ?? null);
-          }
-        } catch (error) {
-          console.error('Error refreshing project name:', error);
-        }
-      }
-    };
-
-    const handleLibraryUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ libraryId?: string }>;
-      if (!customEvent.detail?.libraryId || !currentLibraryId) return;
-      if (customEvent.detail.libraryId === currentLibraryId) {
-        // Clear cache for this library
-        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-        const cacheKey = `library:info:${currentLibraryId}`;
-        globalRequestCache.invalidate(cacheKey);
-        
-        // Re-fetch library name immediately
-        try {
-          const { data, error } = await supabase
-            .from('libraries')
-            .select('name, folder_id')
-            .eq('id', currentLibraryId)
-            .single();
-          
-          if (!error && data) {
-            setLibraryName(data.name ?? null);
-            setLibraryFolderId(data.folder_id ?? null);
-          }
-        } catch (error) {
-          console.error('Error refreshing library name:', error);
-        }
-      }
-    };
-
-    const handleFolderUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ folderId?: string }>;
-      if (!customEvent.detail?.folderId || !currentFolderId) return;
-      if (customEvent.detail.folderId === currentFolderId) {
-        // Re-fetch folder name immediately
-        try {
-          const { data, error } = await supabase
-            .from('folders')
-            .select('name')
-            .eq('id', currentFolderId)
-            .single();
-          
-          if (!error && data) {
-            setFolderName(data.name ?? null);
-          }
-        } catch (error) {
-          console.error('Error refreshing folder name:', error);
-        }
-      }
-    };
-
-    const handleAssetUpdated = async (event: Event) => {
-      const customEvent = event as CustomEvent<{ assetId?: string }>;
-      if (!customEvent.detail?.assetId || !currentAssetId) return;
-      if (customEvent.detail.assetId === currentAssetId) {
-        // Re-fetch asset name immediately
-        try {
-          const { data, error } = await supabase
-            .from('library_assets')
-            .select('name')
-            .eq('id', currentAssetId)
-            .single();
-          
-          if (!error && data) {
-            setAssetName(data.name ?? null);
-          }
-        } catch (error) {
-          console.error('Error refreshing asset name:', error);
-        }
-      }
-    };
-
-    window.addEventListener('projectUpdated', handleProjectUpdated as EventListener);
-    window.addEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
-    window.addEventListener('folderUpdated', handleFolderUpdated as EventListener);
-    window.addEventListener('assetUpdated', handleAssetUpdated as EventListener);
-
-    return () => {
-      window.removeEventListener('projectUpdated', handleProjectUpdated as EventListener);
-      window.removeEventListener('libraryUpdated', handleLibraryUpdated as EventListener);
-      window.removeEventListener('folderUpdated', handleFolderUpdated as EventListener);
-      window.removeEventListener('assetUpdated', handleAssetUpdated as EventListener);
-    };
-  }, [currentProjectId, currentLibraryId, currentFolderId, currentAssetId, supabase]);
-
   useEffect(() => {
     let mounted = true;
     const fetchNames = async () => {
@@ -253,11 +146,9 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
             // First verify user has access to this project (owner or collaborator)
             await verifyProjectAccess(supabase, currentProjectId);
             
-            // Use cache to fetch project name and avoid duplicate requests
-            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-            const cacheKey = `project:name:${currentProjectId}`;
-            
-            const data = await globalRequestCache.fetch(cacheKey, async () => {
+            const data = await queryClient.fetchQuery({
+              queryKey: queryKeys.project(currentProjectId),
+              queryFn: async () => {
               const { data, error } = await supabase
                 .from('projects')
                 .select('name')
@@ -268,6 +159,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
                 return null;
               }
               return data;
+              },
             });
             
             if (mounted) {
@@ -311,11 +203,9 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
             // First verify user has access to this library
             await verifyLibraryAccess(supabase, currentLibraryId);
             
-            // Use cache to fetch library info and avoid duplicate requests
-            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-            const cacheKey = `library:info:${currentLibraryId}`;
-            
-            const data = await globalRequestCache.fetch(cacheKey, async () => {
+            const data = await queryClient.fetchQuery({
+              queryKey: queryKeys.library(currentLibraryId),
+              queryFn: async () => {
               const { data, error } = await supabase
                 .from('libraries')
                 .select('name, folder_id')
@@ -326,6 +216,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
                 return null;
               }
               return data;
+              },
             });
             
             if (mounted) {
@@ -383,14 +274,21 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
               await verifyFolderAccess(supabase, currentFolderId);
               
               // If verified, fetch the name
-              const { data, error } = await supabase
-                .from('folders')
-                .select('name')
-                .eq('id', currentFolderId)
-                .single();
+              const data = await queryClient.fetchQuery({
+                queryKey: queryKeys.folder(currentFolderId),
+                queryFn: async () => {
+                  const { data, error } = await supabase
+                    .from('folders')
+                    .select('name')
+                    .eq('id', currentFolderId)
+                    .single();
+                  if (error || !data) return null;
+                  return data;
+                },
+              });
               
               if (mounted) {
-                if (error || !data) {
+                if (!data) {
                   setFolderName(null);
                 } else {
                   setFolderName(data.name ?? null);
@@ -425,14 +323,21 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
               await verifyAssetAccess(supabase, currentAssetId);
               
               // If verified, fetch the name
-              const { data, error } = await supabase
-                .from('library_assets')
-                .select('name')
-                .eq('id', currentAssetId)
-                .single();
+              const data = await queryClient.fetchQuery({
+                queryKey: queryKeys.asset(currentAssetId),
+                queryFn: async () => {
+                  const { data, error } = await supabase
+                    .from('library_assets')
+                    .select('name')
+                    .eq('id', currentAssetId)
+                    .single();
+                  if (error || !data) return null;
+                  return data;
+                },
+              });
               
               if (mounted) {
-                if (error || !data) {
+                if (!data) {
                   setAssetName(null);
                   // Only redirect if this is not the initial fetch
                   if (!isInitialFetch) {
@@ -490,7 +395,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [currentProjectId, currentLibraryId, currentAssetId, currentFolderId, supabase, isAuthenticated, userProfile, router]);
+  }, [currentProjectId, currentLibraryId, currentAssetId, currentFolderId, supabase, isAuthenticated, userProfile, router, queryClient]);
 
   // Build breadcrumbs from current route params
   const buildBreadcrumbs = (): BreadcrumbItem[] => {
@@ -557,4 +462,3 @@ export function useNavigation() {
   }
   return context;
 }
-

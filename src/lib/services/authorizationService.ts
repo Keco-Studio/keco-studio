@@ -14,17 +14,10 @@ export class AuthorizationError extends Error {
   }
 }
 
-/**
- * Client-side auth checks are cached via globalRequestCache. API routes and
- * server actions skip the cache — the module is 'use client' and unusable on
- * the server.
- */
+/** Execute an authorization lookup. React Query handles caching at caller boundaries. */
 async function withAuthCache<T>(cacheKey: string, fn: () => Promise<T>): Promise<T> {
-  if (typeof window === 'undefined') {
-    return fn();
-  }
-  const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-  return globalRequestCache.fetch(cacheKey, fn);
+  void cacheKey;
+  return fn();
 }
 
 /**
@@ -673,8 +666,13 @@ export async function verifyAssetUpdatePermission(
     projectId = library.project_id;
   }
 
+  if (!projectId) {
+    throw new AuthorizationError('Project not found');
+  }
+
+  const resolvedProjectId = projectId;
   const { data: isOwner, error: ownerError } = await supabase.rpc('is_project_owner', {
-    p_project_id: projectId,
+    p_project_id: resolvedProjectId,
     p_user_id: currentUserId,
   });
 
@@ -682,10 +680,9 @@ export async function verifyAssetUpdatePermission(
     return;
   }
 
-  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  const role = await getUserProjectRole(supabase, resolvedProjectId, currentUserId);
 
   if (role !== 'admin' && role !== 'editor') {
     throw new AuthorizationError('Only admin and editor users can update assets');
   }
 }
-

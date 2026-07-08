@@ -8,6 +8,7 @@ const read = (file: string) => readFileSync(path.join(repoRoot, file), 'utf8');
 const liveSourceFiles = [
   'src/lib/contexts/LibraryDataContext.tsx',
   'src/lib/contexts/YjsContext.tsx',
+  'src/lib/library/yjsAssetHydration.ts',
 ];
 
 describe('Yjs online-only static guard', () => {
@@ -20,6 +21,7 @@ describe('Yjs online-only static guard', () => {
       expect(source).not.toContain('library-${libraryId}');
       expect(source).not.toContain('asset-table-${libraryId}');
       expect(source).not.toMatch(/offline[- ]edit/i);
+      expect(source).not.toContain('yAssets.clear(');
     }
   });
 

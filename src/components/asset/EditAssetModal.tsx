@@ -112,8 +112,7 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
         entityType: 'asset',
         libraryId: verifiedLibraryId
       });
-      
-      // Event is dispatched automatically by the hook
+
       if (onUpdated) {
         onUpdated();
       }
@@ -181,4 +180,3 @@ export function EditAssetModal({ open, assetId, onClose, onUpdated }: EditAssetM
     document.body
   );
 }
-

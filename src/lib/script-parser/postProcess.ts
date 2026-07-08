@@ -184,8 +184,8 @@ export function postProcess(rawNodes: Node[]): Script {
         const lastNode = merged[merged.length - 1];
         if (!lastNode._options) {
           lastNode._options = [];
-          lastNode._option_labels = [];
         }
+        const optionLabels = lastNode._option_labels ?? (lastNode._option_labels = []);
 
         // Generate label for this option
         const optLabel = node.jump_target || nextLabel();
@@ -194,7 +194,7 @@ export function postProcess(rawNodes: Node[]): Script {
           option_text: node.option_text,
           variable: node.var_change || undefined,
         });
-        lastNode._option_labels.push(optLabel);
+        optionLabels.push(optLabel);
 
         // Store var change for branch if needed
         if (node.var_change && node.jump_target) {

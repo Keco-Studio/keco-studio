@@ -540,9 +540,6 @@ export async function addLibrarySection(
 
   if (error) throw error;
 
-  const { invalidateRequestCache } = await import('@/lib/utils/safeRequestCache');
-  await invalidateRequestCache(`field-definitions:${libraryId}`);
-
   await touchLibraryUpdatedAt(supabase, libraryId);
   return { sectionId, sectionName, fieldId: inserted.id as string };
 }
@@ -616,8 +613,6 @@ export async function addLibraryField(
     await backfillBooleanFieldDefaults(supabase, libraryId, inserted.id);
   }
 
-  const { invalidateRequestCache } = await import('@/lib/utils/safeRequestCache');
-  await invalidateRequestCache(`field-definitions:${libraryId}`);
   await touchLibraryUpdatedAt(supabase, libraryId);
   return { id: inserted.id };
 }
@@ -640,8 +635,6 @@ export async function deleteLibraryField(
     throw new Error(error.message);
   }
 
-  const { invalidateRequestCache } = await import('@/lib/utils/safeRequestCache');
-  await invalidateRequestCache(`field-definitions:${libraryId}`);
   await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
@@ -692,8 +685,6 @@ export async function updateLibraryField(
     await recalculateAndPersistFormulaFieldValues(supabase, libraryId, fieldId);
   }
 
-  const { invalidateRequestCache } = await import('@/lib/utils/safeRequestCache');
-  await invalidateRequestCache(`field-definitions:${libraryId}`);
   await touchLibraryUpdatedAt(supabase, libraryId);
 }
 

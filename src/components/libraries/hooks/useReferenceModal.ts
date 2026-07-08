@@ -5,7 +5,6 @@ import {
   buildReferenceDisplayCache,
   normalizeReferenceSelections,
   referenceSelectionsToValue,
-  refreshReferenceDisplayCacheForAsset,
   type ReferenceSelection,
 } from '@/lib/utils/referenceValue';
 
@@ -33,7 +32,7 @@ export type UseReferenceModalParams = {
 };
 
 /**
- * useReferenceModal - Reference 选择弹窗：状态、assetNames 缓存、加载、打开/应用/关闭
+ * useReferenceModal - reference picker state, asset name cache, loading, open/apply/close handlers.
  */
 export function useReferenceModal(params: UseReferenceModalParams) {
   const {
@@ -79,31 +78,6 @@ export function useReferenceModal(params: UseReferenceModalParams) {
     if (Object.keys(patch).length === 0) return;
     setAssetNamesCache((prev) => ({ ...prev, ...patch }));
   }, []);
-
-  useEffect(() => {
-    const refreshFromSource = async (event: Event) => {
-      const ev = event as CustomEvent<{ assetId?: string; fieldId?: string }>;
-      if (!ev.detail?.assetId || !supabase) return;
-      try {
-        const patch = await refreshReferenceDisplayCacheForAsset(
-          supabase,
-          ev.detail.assetId,
-          ev.detail.fieldId
-        );
-        if (Object.keys(patch).length === 0) return;
-        setAssetNamesCache((prev) => ({ ...prev, ...patch }));
-      } catch (e) {
-        console.error('Failed to refresh asset name:', e);
-      }
-    };
-
-    window.addEventListener('assetUpdated', refreshFromSource as EventListener);
-    window.addEventListener('referenceSourceUpdated', refreshFromSource as EventListener);
-    return () => {
-      window.removeEventListener('assetUpdated', refreshFromSource as EventListener);
-      window.removeEventListener('referenceSourceUpdated', refreshFromSource as EventListener);
-    };
-  }, [supabase]);
 
   const handleOpenReferenceModal = useCallback((property: PropertyConfig, currentValue: unknown, rowId: string) => {
     setReferenceModalProperty(property);

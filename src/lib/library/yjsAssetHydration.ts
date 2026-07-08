@@ -44,25 +44,96 @@ const createYAsset = ({
   return yAsset;
 };
 
+type HydratableAsset = {
+  id: string;
+  name: string;
+  propertyValues: Record<string, unknown>;
+  createdAt?: string;
+  rowIndex?: number | null;
+};
+
+function syncPropertyValues(
+  yAsset: Y.Map<unknown>,
+  propertyValues: Record<string, unknown>
+): void {
+  let yPropertyValues = yAsset.get('propertyValues') as Y.Map<unknown> | undefined;
+  if (!yPropertyValues) {
+    yPropertyValues = new Y.Map<unknown>();
+    yAsset.set('propertyValues', yPropertyValues);
+  }
+
+  const nextKeys = new Set(Object.keys(propertyValues));
+  Array.from(yPropertyValues.keys()).forEach((fieldId) => {
+    if (!nextKeys.has(fieldId)) {
+      yPropertyValues.delete(fieldId);
+    }
+  });
+  Object.entries(propertyValues).forEach(([fieldId, value]) => {
+    yPropertyValues.set(fieldId, cloneForYjs(value));
+  });
+}
+
+function upsertYAsset(
+  yAssets: Y.Map<Y.Map<unknown>>,
+  asset: HydratableAsset
+): void {
+  const existing = yAssets.get(asset.id);
+  if (!existing) {
+    yAssets.set(
+      asset.id,
+      createYAsset({
+        name: asset.name,
+        propertyValues: asset.propertyValues,
+        createdAt: asset.createdAt,
+        rowIndex: asset.rowIndex,
+      })
+    );
+    return;
+  }
+
+  existing.set('name', asset.name);
+  syncPropertyValues(existing, asset.propertyValues);
+  if (asset.createdAt) {
+    existing.set('created_at', asset.createdAt);
+  } else {
+    existing.delete('created_at');
+  }
+  if (typeof asset.rowIndex === 'number') {
+    existing.set('row_index', asset.rowIndex);
+  } else {
+    existing.delete('row_index');
+  }
+}
+
+function syncYAssets(
+  yAssets: Y.Map<Y.Map<unknown>>,
+  assets: HydratableAsset[]
+): void {
+  const nextIds = new Set(assets.map((asset) => asset.id));
+  Array.from(yAssets.keys()).forEach((assetId) => {
+    if (!nextIds.has(assetId)) {
+      yAssets.delete(assetId);
+    }
+  });
+  assets.forEach((asset) => upsertYAsset(yAssets, asset));
+}
+
 export function hydrateYAssetsFromRows(
   yDoc: Y.Doc,
   yAssets: Y.Map<Y.Map<unknown>>,
   assetRows: AssetRow[]
 ): void {
   yDoc.transact(() => {
-    yAssets.clear();
-
-    assetRows.forEach((asset) => {
-      yAssets.set(
-        asset.id,
-        createYAsset({
-          name: asset.name,
-          propertyValues: asset.propertyValues,
-          createdAt: asset.created_at,
-          rowIndex: asset.rowIndex,
-        })
-      );
-    });
+    syncYAssets(
+      yAssets,
+      assetRows.map((asset) => ({
+        id: asset.id,
+        name: asset.name,
+        propertyValues: asset.propertyValues,
+        createdAt: asset.created_at,
+        rowIndex: asset.rowIndex,
+      }))
+    );
   });
 }
 
@@ -74,18 +145,15 @@ export function hydrateYAssetsFromSnapshot(
   if (!snapshotData?.assets || !Array.isArray(snapshotData.assets)) return;
 
   yDoc.transact(() => {
-    yAssets.clear();
-
-    snapshotData.assets?.forEach((asset) => {
-      yAssets.set(
-        asset.id,
-        createYAsset({
-          name: asset.name ?? 'Untitled',
-          propertyValues: asset.propertyValues ?? {},
-          createdAt: asset.createdAt,
-          rowIndex: asset.rowIndex,
-        })
-      );
-    });
+    syncYAssets(
+      yAssets,
+      snapshotData.assets.map((asset) => ({
+        id: asset.id,
+        name: asset.name ?? 'Untitled',
+        propertyValues: asset.propertyValues ?? {},
+        createdAt: asset.createdAt,
+        rowIndex: asset.rowIndex,
+      }))
+    );
   });
 }

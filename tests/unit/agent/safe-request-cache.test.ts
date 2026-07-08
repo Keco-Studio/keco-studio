@@ -1,11 +1,11 @@
-import { invalidateRequestCache } from '../../../src/lib/utils/safeRequestCache';
+import { describe, expect, it } from '@jest/globals';
+import { existsSync } from 'node:fs';
+import path from 'node:path';
 
-describe('invalidateRequestCache', () => {
-  it('is a no-op when window is undefined (server)', async () => {
-    const originalWindow = global.window;
-    // @ts-expect-error simulate server environment
-    delete global.window;
-    await expect(invalidateRequestCache('field-definitions:test')).resolves.toBeUndefined();
-    global.window = originalWindow;
+describe('legacy request cache helper', () => {
+  it('stays removed after migrating callers to React Query invalidation', () => {
+    expect(
+      existsSync(path.join(process.cwd(), 'src/lib/utils/safeRequestCache.ts'))
+    ).toBe(false);
   });
 });

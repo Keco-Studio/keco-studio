@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getActiveSectionName } from '@/lib/agent/page-context';
+import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
 import {
   clearLastConversation,
   setLastConversation,
@@ -45,6 +47,7 @@ interface ParsedSSE {
 export function useAgentChat(ctx: SendContext) {
   const supabase = useSupabase();
   const router = useRouter();
+  const queryClient = useQueryClient();
 
   const [items, setItems] = useState<ChatItem[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -87,21 +90,16 @@ export function useAgentChat(ctx: SendContext) {
 
   const invalidateCaches = useCallback(
     async (paths: string[]) => {
-      try {
-        const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-        for (const libraryId of paths) {
-          globalRequestCache.invalidate(`library:${libraryId}`);
-          globalRequestCache.invalidate(`library:info:${libraryId}`);
-          globalRequestCache.invalidate(`assets:list:${libraryId}`);
-          globalRequestCache.invalidate(`field-definitions:${libraryId}`);
-        }
-      } catch {
-        // best-effort
+      for (const libraryId of paths) {
+        await invalidateLibraryAssetsData(queryClient, {
+          libraryId,
+          includeSchema: true,
+          refetchActiveAssets: true,
+        });
       }
-      window.dispatchEvent(new CustomEvent('agent:data-updated', { detail: { paths } }));
       router.refresh();
     },
-    [router]
+    [queryClient, router]
   );
 
   const getToken = useCallback(async () => {

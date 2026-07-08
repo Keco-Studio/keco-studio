@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Query pending invitations (only if admin)
-    let inviteData = [];
+    let inviteData: unknown[] = [];
     if (role === 'admin') {
       const { data, error: inviteError } = await supabase
         .from('collaboration_invitations')
@@ -122,4 +122,3 @@ export async function GET(request: NextRequest) {
     );
   }
 }
-

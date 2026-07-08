@@ -4,7 +4,9 @@ import path from 'node:path';
 const repoRoot = process.cwd();
 
 const filesToScan = [
+  'src/app/api/projects/[projectId]/libraries/route.ts',
   'src/app/api/search/assets/route.ts',
+  'src/app/api/export/route.ts',
 ];
 
 const explicitAnyPatterns: Array<{ label: string; pattern: RegExp }> = [

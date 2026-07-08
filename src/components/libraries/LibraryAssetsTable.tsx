@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Checkbox, App } from 'antd';
-import Image from 'next/image';
+import { App } from 'antd';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   AssetRow,
@@ -9,16 +8,9 @@ import {
 } from '@/lib/types/libraryAssets';
 import { AssetReferenceModal } from '@/components/asset/AssetReferenceModal';
 import { DeleteAssetModal, ClearContentsModal, DeleteRowModal } from './LibraryAssetsTableModals';
-import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { useSupabase } from '@/lib/SupabaseContext';
-import {
-  type MediaFileMetadata,
-  isImageFile,
-  getFileIcon
-} from '@/lib/services/mediaFileUploadService';
+import { type MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
-import { ConnectionStatusIndicator } from '@/components/collaboration/ConnectionStatusIndicator';
-import { StackedAvatars, getFirstUserColor } from '@/components/collaboration/StackedAvatars';
 import { useTableDataManager } from './hooks/useTableDataManager';
 import { useBatchFill } from './hooks/useBatchFill';
 import { useClipboardOperations } from './hooks/useClipboardOperations';
@@ -43,38 +35,25 @@ import { useOptimisticUpdates } from './hooks/useOptimisticUpdates';
 import { useMediaFileUpdate } from './hooks/useMediaFileUpdate';
 import { useContextMenu } from './hooks/useContextMenu';
 import { useLibraryTableStructure } from './hooks/useLibraryTableStructure';
-import { ReferenceField } from './components/ReferenceField';
-import { normalizeReferenceSelections, normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
-import { cellDisplayString } from '@/lib/utils/assetEmptiness';
-import { CellEditor } from './components/CellEditor';
-import { CellPresenceAvatars } from './components/CellPresenceAvatars';
+import { useLibrarySectionEditing } from './hooks/useLibrarySectionEditing';
+import { useLibraryTableFindReplaceWiring } from './hooks/useLibraryTableFindReplaceWiring';
+import { useLibraryAssetDetailDrawerUpdate } from './hooks/useLibraryAssetDetailDrawerUpdate';
 import { TableToast } from './components/TableToast';
 import { RowContextMenu } from './components/RowContextMenu';
 import { BatchEditMenu } from './components/BatchEditMenu';
 import { AssetCardPanel } from './components/AssetCardPanel';
 import { TableHeader } from './components/TableHeader';
-import { EmptyState } from './components/EmptyState';
-import { BooleanCell } from './components/BooleanCell';
-import { EnumCell } from './components/EnumCell';
-import { MediaCell } from './components/MediaCell';
-import { TextCell, type TextCellProps } from './components/TextCell';
-import { AssetDetailDrawer } from './components/AssetDetailDrawer';
-import { AddNewRowForm } from './components/AddNewRowForm';
 import { AddColumnModal, type AddColumnFormPayload } from './components/AddColumnModal';
 import { FormulaCellPanel } from './components/FormulaCellPanel';
-import { FormulaCell } from './components/FormulaCell';
 import { VisualNovelScriptView } from './components/VisualNovelScriptView';
 import { LibraryTableTopBar } from './components/LibraryTableTopBar';
 import { ViewerBanner } from './components/ViewerBanner';
-import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
-import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
-import libraryAssetTableSelectIcon from '@/assets/images/LibraryAssetTableSelectIcon2.svg';
-import batchEditAddIcon from '@/assets/images/BatchEditAddIcon.svg';
-import tableAssetDetailIcon from '@/assets/images/ProjectDescIcon.svg';
+import { LibraryAssetsTableBody } from './components/LibraryAssetsTableBody';
+import { LibraryAssetDetailDrawerWiring } from './components/LibraryAssetDetailDrawerWiring';
 import styles from './LibraryAssetsTable.module.css';
 import { useFormulaCellCustomization } from './hooks/useFormulaCellCustomization';
 import { useTableResize, NUMBER_COLUMN_KEY } from './hooks/useTableResize';
-import { evaluateFormulaForRow, getCustomFormulaExpressionFromCellValue } from './utils/formulaEvaluation';
+import { getCustomFormulaExpressionFromCellValue } from './utils/formulaEvaluation';
 import { buildAgentSelectionContext } from './utils/agentSelectionContext';
 import { getColumnWidthClassKey } from './utils/tableStructure';
 
@@ -517,10 +496,26 @@ export function LibraryAssetsTable({
   const effectiveActiveSectionId = activeSectionId ?? groups[0]?.section.id ?? null;
 
   // Double-click the section TAB to enter editing: The section id currently being edited and the content of the input box
-  const [editingSectionId, setEditingSectionId] = useState<string | null>(null);
-  const [editingSectionName, setEditingSectionName] = useState('');
-  const [editingSectionOriginalName, setEditingSectionOriginalName] = useState('');
-  const sectionInputRef = useRef<HTMLInputElement>(null);
+  const {
+    editingSectionId,
+    editingSectionName,
+    sectionInputRef,
+    setEditingSectionName,
+    handleSectionEditStart,
+    handleSectionEditEnd,
+    handleSelectSection,
+    handleAddSectionFromTabs,
+  } = useLibrarySectionEditing({
+    onAddSection,
+    onUpdateSection,
+    sectionStateStorageKey,
+    sectionRenameHintStorageKey,
+    message,
+    setActiveSectionId,
+    setPreferredSectionNameAfterRename,
+    setToastMessage,
+    pendingNewSectionIdRef,
+  });
   const activeGroup = useMemo(
     () => groups.find((g) => g.section.id === effectiveActiveSectionId) ?? groups[0],
     [groups, effectiveActiveSectionId]
@@ -556,134 +551,24 @@ export function LibraryAssetsTable({
     isResizingColumn,
     isResizingRow,
   } = useTableResize(library?.id, resizeColumnKeys);
-  const [searchHighlightedCells, setSearchHighlightedCells] = useState<
-    Array<{ assetId: string; fieldId: string }>
-  >([]);
-  const appliedFocusSectionRef = useRef<string | null>(null);
-  const appliedFocusCellRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (groups.length === 0) return;
-
-    // Active section still exists: keep current focus.
-    if (activeSectionId && groups.some((g) => g.section.id === activeSectionId)) {
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.setItem(sectionStateStorageKey, activeSectionId);
-      }
-      if (pendingNewSectionIdRef.current === activeSectionId) {
-        pendingNewSectionIdRef.current = null;
-      }
-      if (preferredSectionNameAfterRename) {
-        const activeSection = groups.find((g) => g.section.id === activeSectionId);
-        if (activeSection?.section.name === preferredSectionNameAfterRename) {
-          setPreferredSectionNameAfterRename(null);
-        }
-      }
-      return;
-    }
-
-    // New section may not be reflected in groups yet (async refresh). Keep waiting.
-    if (activeSectionId && pendingNewSectionIdRef.current === activeSectionId) {
-      return;
-    }
-
-    // On remount/re-render, restore from persisted active section id first.
-    if (typeof window !== 'undefined') {
-      const storedSectionId = window.sessionStorage.getItem(sectionStateStorageKey);
-      if (storedSectionId && groups.some((g) => g.section.id === storedSectionId)) {
-        setActiveSectionId(storedSectionId);
-        return;
-      }
-    }
-
-    // After rename/update, id may change in some backends.
-    // Prefer matching by the new name before falling back to the first tab.
-    const preferredName =
-      preferredSectionNameAfterRename ||
-      (typeof window !== 'undefined'
-        ? window.sessionStorage.getItem(sectionRenameHintStorageKey)
-        : null);
-
-    if (preferredName) {
-      const matched = groups.find((g) => g.section.name === preferredName);
-      if (matched) {
-        setActiveSectionId(matched.section.id);
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.setItem(sectionStateStorageKey, matched.section.id);
-          window.sessionStorage.removeItem(sectionRenameHintStorageKey);
-        }
-        setPreferredSectionNameAfterRename(null);
-        return;
-      }
-      // Rename is likely still propagating; avoid jumping to the first section.
-      return;
-    }
-
-    setActiveSectionId(groups[0].section.id);
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem(sectionStateStorageKey, groups[0].section.id);
-    }
-  }, [
+  const {
+    handleTableFindHighlightCells,
+    handleTableFindClearHighlight,
+    handleTableFindFocusSection,
+    handleTableFindScrollToCell,
+  } = useLibraryTableFindReplaceWiring({
+    libraryId: library?.id,
     groups,
     activeSectionId,
-    preferredSectionNameAfterRename,
     sectionStateStorageKey,
-    sectionRenameHintStorageKey,
-  ]);
-
-  const clearSearchCellHighlight = useCallback(() => {
-    setSearchHighlightedCells([]);
-    appliedFocusCellRef.current = null;
-    if (typeof document === 'undefined') return;
-    document
-      .querySelectorAll(`.${styles.searchCellHit}`)
-      .forEach((el) => el.classList.remove(styles.searchCellHit));
-  }, []);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const current = Array.from(document.querySelectorAll(`.${styles.searchCellHit}`));
-    current.forEach((el) => el.classList.remove(styles.searchCellHit));
-    if (searchHighlightedCells.length === 0) return;
-    searchHighlightedCells.forEach(({ assetId, fieldId }) => {
-      const el = document.querySelector(
-        `tr[data-row-id="${assetId}"] td[data-property-key="${fieldId}"]`
-      ) as HTMLElement | null;
-      el?.classList.add(styles.searchCellHit);
-    });
-  }, [searchHighlightedCells, activeProperties, resolvedRows]);
-
-  useEffect(() => {
-    const handleHighlightClear = () => clearSearchCellHighlight();
-    const handleCellValuesReplaced = (event: Event) => {
-      const custom = event as CustomEvent<{ libraryId?: string }>;
-      if (custom.detail?.libraryId && custom.detail.libraryId !== library?.id) return;
-      clearSearchCellHighlight();
-    };
-    if (typeof window === 'undefined') return;
-    window.addEventListener('libraryCellSearchHighlightClear', handleHighlightClear);
-    window.addEventListener('libraryCellValuesReplaced', handleCellValuesReplaced);
-    return () => {
-      window.removeEventListener('libraryCellSearchHighlightClear', handleHighlightClear);
-      window.removeEventListener('libraryCellValuesReplaced', handleCellValuesReplaced);
-    };
-  }, [clearSearchCellHighlight, library?.id]);
-
-  useEffect(() => {
-    if (!focusSectionIdFromQuery) return;
-    if (groups.length === 0) return;
-    if (appliedFocusSectionRef.current === focusSectionIdFromQuery) return;
-    const exists = groups.some((g) => g.section.id === focusSectionIdFromQuery);
-    if (!exists) return;
-    setActiveSectionId(focusSectionIdFromQuery);
-    appliedFocusSectionRef.current = focusSectionIdFromQuery;
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem(sectionStateStorageKey, focusSectionIdFromQuery);
-    }
-  }, [
     focusSectionIdFromQuery,
-    groups,
-    sectionStateStorageKey,
-  ]);
+    focusAssetIdFromQuery,
+    focusFieldIdFromQuery,
+    activeProperties,
+    resolvedRows,
+    setActiveSectionId,
+    searchCellHitClassName: styles.searchCellHit,
+  });
 
   const handlePredefineClick = () => {
     const projectId = params.projectId as string;
@@ -695,71 +580,6 @@ export function LibraryAssetsTable({
     if (onAddProperty) setAddColumnModalOpen(true);
     else handlePredefineClick();
   };
-
-  const handleSectionEditStart = useCallback((sectionId: string, currentName: string) => {
-    setActiveSectionId(sectionId);
-    if (typeof window !== 'undefined') {
-      window.sessionStorage.setItem(sectionStateStorageKey, sectionId);
-    }
-    setEditingSectionId(sectionId);
-    setEditingSectionName(currentName);
-    setEditingSectionOriginalName(currentName);
-    setTimeout(() => sectionInputRef.current?.focus(), 0);
-  }, [sectionStateStorageKey]);
-
-  const handleSectionEditEnd = useCallback(async (submit: boolean) => {
-    if (!editingSectionId) return;
-    const trimmed = editingSectionName.trim();
-    const originalTrimmed = editingSectionOriginalName.trim();
-    const hasChanged = trimmed !== originalTrimmed;
-    if (submit && trimmed && hasChanged && onUpdateSection) {
-      try {
-        setPreferredSectionNameAfterRename(trimmed);
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.setItem(sectionRenameHintStorageKey, trimmed);
-        }
-        await onUpdateSection(editingSectionId, trimmed);
-        setToastMessage({
-          message: 'Section name updated',
-          type: 'success',
-        });
-        setTimeout(() => setToastMessage(null), 2000);
-      } catch (e) {
-        setPreferredSectionNameAfterRename(null);
-        if (typeof window !== 'undefined') {
-          window.sessionStorage.removeItem(sectionRenameHintStorageKey);
-        }
-        message.error('Update failed');
-      }
-    }
-    setEditingSectionId(null);
-    setEditingSectionName('');
-    setEditingSectionOriginalName('');
-  }, [
-    editingSectionId,
-    editingSectionName,
-    editingSectionOriginalName,
-    onUpdateSection,
-    message,
-    sectionRenameHintStorageKey,
-  ]);
-
-  const handleSelectSection = useCallback((sectionId: string) => {
-    setActiveSectionId(sectionId);
-  }, []);
-
-  const handleAddSectionFromTabs = useCallback(async () => {
-    if (!onAddSection) return;
-    try {
-      const newSectionId = await onAddSection();
-      if (newSectionId) {
-        pendingNewSectionIdRef.current = newSectionId;
-        setActiveSectionId(newSectionId);
-      }
-    } catch (e) {
-      message.error((e as Error)?.message ?? 'Failed to add section');
-    }
-  }, [message, onAddSection]);
 
   const getAllRowsForCellSelection = useCallback(() => {
     return dataManager.getRowsWithOptimisticUpdates();
@@ -806,31 +626,6 @@ export function LibraryAssetsTable({
       selectionBorderRight: styles.selectionBorderRight,
     },
   });
-
-  // From cell search: highlight only the clicked result (one cell at a time).
-  useEffect(() => {
-    if (!focusAssetIdFromQuery || !focusFieldIdFromQuery) {
-      setSearchHighlightedCells([]);
-      appliedFocusCellRef.current = null;
-      return;
-    }
-    if (!groups.length) return;
-
-    setSearchHighlightedCells([
-      { assetId: focusAssetIdFromQuery, fieldId: focusFieldIdFromQuery },
-    ]);
-
-    const focusCellKey = `${focusAssetIdFromQuery}-${focusFieldIdFromQuery}`;
-    if (appliedFocusCellRef.current === focusCellKey) return;
-    appliedFocusCellRef.current = focusCellKey;
-
-    setTimeout(() => {
-      const el = document.querySelector(
-        `tr[data-row-id="${focusAssetIdFromQuery}"] td[data-property-key="${focusFieldIdFromQuery}"]`
-      ) as HTMLElement | null;
-      el?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-    }, 0);
-  }, [focusAssetIdFromQuery, focusFieldIdFromQuery, groups]);
 
   const { handleCut, handleCopy, handlePaste } = useClipboardOperations({
     dataManager,
@@ -1019,47 +814,12 @@ export function LibraryAssetsTable({
   }, []);
   useCloseOnDocumentClick(!!contextMenuRowId, closeRowContextMenu);
 
-  // Update row from detail drawer (optimistic + yRows + onUpdateAsset)
-  const handleUpdateRowFromDrawer = useCallback(async (
-    assetId: string,
-    name: string,
-    propertyValues: Record<string, any>
-  ) => {
-    if (!onUpdateAsset) return;
-    const allRows = yRows.toArray();
-    const rowIndex = allRows.findIndex((r) => r.id === assetId);
-    if (rowIndex >= 0) {
-      const existingRow = allRows[rowIndex];
-      const updatedRow = { ...existingRow, name, propertyValues };
-      yRows.delete(rowIndex, 1);
-      yRows.insert(rowIndex, [updatedRow]);
-    }
-    setOptimisticEditUpdates((prev) => {
-      const newMap = new Map(prev);
-      newMap.set(assetId, { name, propertyValues });
-      return newMap;
-    });
-    setIsSaving(true);
-    try {
-      await onUpdateAsset(assetId, name, propertyValues);
-      setTimeout(() => {
-        setOptimisticEditUpdates((prev) => {
-          const newMap = new Map(prev);
-          newMap.delete(assetId);
-          return newMap;
-        });
-      }, 500);
-    } catch (err) {
-      setOptimisticEditUpdates((prev) => {
-        const newMap = new Map(prev);
-        newMap.delete(assetId);
-        return newMap;
-      });
-      console.error('Failed to update from drawer:', err);
-    } finally {
-      setIsSaving(false);
-    }
-  }, [onUpdateAsset, yRows, setOptimisticEditUpdates, setIsSaving]);
+  const handleUpdateRowFromDrawer = useLibraryAssetDetailDrawerUpdate({
+    onUpdateAsset,
+    yRows,
+    setOptimisticEditUpdates,
+    setIsSaving,
+  });
 
   const {
     formulaModalOpen,
@@ -1211,37 +971,6 @@ export function LibraryAssetsTable({
     }
   };
 
-  const handleTableFindHighlightCells = useCallback(
-    (cells: Array<{ assetId: string; fieldId: string }>) => {
-      setSearchHighlightedCells(cells);
-    },
-    []
-  );
-
-  const handleTableFindClearHighlight = useCallback(() => {
-    clearSearchCellHighlight();
-  }, [clearSearchCellHighlight]);
-
-  const handleTableFindFocusSection = useCallback(
-    (sectionId: string) => {
-      if (!sectionId || !groups.some((g) => g.section.id === sectionId)) return;
-      setActiveSectionId(sectionId);
-      if (typeof window !== 'undefined') {
-        window.sessionStorage.setItem(sectionStateStorageKey, sectionId);
-      }
-    },
-    [groups, sectionStateStorageKey]
-  );
-
-  const handleTableFindScrollToCell = useCallback((assetId: string, fieldId: string) => {
-    setTimeout(() => {
-      const el = document.querySelector(
-        `tr[data-row-id="${assetId}"] td[data-property-key="${fieldId}"]`
-      ) as HTMLElement | null;
-      el?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-    }, 0);
-  }, []);
-
   return (
     <>
       <div className={styles.tableShell}>
@@ -1311,661 +1040,75 @@ export function LibraryAssetsTable({
               assetNamesCache={assetNamesCache}
               onMergeAssetNamesCache={mergeAssetNamesCache}
             />
-            <tbody className={styles.body}>
-              {displayRows.map((row, index) => {
-                const isRowHovered = hoveredRowId === row.id;
-                const isRowSelected = selectedRowIds.has(row.id);
-                const allRowsForSelection = getAllRowsForCellSelection();
-                const actualRowIndex = allRowsForSelection.findIndex(r => r.id === row.id);
-
-                return (
-                  <tr
-                    key={row.id}
-                    data-row-id={row.id}
-                    className={`${styles.row} ${isRowSelected ? styles.rowSelected : ''} ${hasCustomRowHeight(row.id) ? styles.rowCustomHeight : ''}`}
-                    style={getRowHeightStyle(row.id)}
-                    onContextMenu={(e) => {
-                      handleRowContextMenu(e, row);
-                    }}
-                    onMouseEnter={() => setHoveredRowId(row.id)}
-                    onMouseLeave={() => setHoveredRowId(null)}
-                  >
-                    <td className={styles.numberCell}>
-                      {isRowHovered || isRowSelected ? (
-                        <div className={styles.checkboxContainer}>
-                          <Checkbox
-                            checked={isRowSelected}
-                            onChange={(e) => {
-                              e.stopPropagation();
-                              handleRowSelectionToggle(row.id, e);
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                            }}
-                          />
-                        </div>
-                      ) : (
-                        <span>{index + 1}</span>
-                      )}
-                      <div
-                        role="separator"
-                        aria-orientation="horizontal"
-                        aria-label="Resize row"
-                        className={`${styles.rowResizeHandle} ${isResizingRow ? styles.rowResizeHandleActive : ''}`}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const tr = e.currentTarget.closest('tr') as HTMLElement | null;
-                          if (tr) {
-                            startRowResize(row.id, e.clientY, tr);
-                          }
-                        }}
-                      />
-                    </td>
-                    {activeProperties.map((property) => {
-                      const globalPropertyIndex = orderedProperties.findIndex((p) => p.id === property.id);
-                      const propertyIndex = globalPropertyIndex >= 0 ? globalPropertyIndex : 0;
-                      const isNameField = property.name === 'name' && property.dataType === 'string';
-                      const isFirstColumn = activeProperties[0]?.id === property.id;
-                      const editingUsers = getUsersEditingCell(row.id, property.key);
-                      const borderColor = getFirstUserColor(editingUsers);
-
-                      // Reference field
-                      if (property.dataType === 'reference' && property.referenceLibraries) {
-                        const value = row.propertyValues[property.key];
-                        const assetIds = normalizeReferenceValueToAssetIds(value);
-                        const selections = normalizeReferenceSelections(value);
-                        const firstSelection = selections[0];
-                        const firstAssetId = assetIds[0] ?? null;
-                        const cellKey: CellKey = `${row.id}-${property.key}`;
-                        const isCellSelected = selectedCells.has(cellKey);
-
-                        return (
-                          <td
-                            key={property.id}
-                            data-property-key={property.key}
-                            className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellEditing : (selectedCells.size === 1 && isCellSelected ? styles.cellSelected : '')} ${selectedCells.size > 1 && isCellSelected && editingUsers.length === 0 ? styles.cellMultipleSelected : ''} ${cutCells.has(cellKey) ? styles.cellCut : ''} ${getCutBorderClasses(row.id, propertyIndex)} ${getSelectionBorderClasses(row.id, propertyIndex)}`}
-                            style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
-                            onClick={(e) => {
-                              handleCellFocus(row.id, property.key);
-                              handleCellClick(row.id, property.key, e);
-                            }}
-                            onContextMenu={(e) => handleCellContextMenu(e, row.id, property.key)}
-                            onMouseDown={(e) => handleCellFillDragStart(row.id, property.key, e)}
-                            onMouseEnter={(e) => {
-                              if (firstAssetId && !isCellSelected) {
-                                const selectionsForAsset = selections
-                                  .filter((s) => s.assetId === firstAssetId)
-                                  .map((s) => ({
-                                    fieldLabel: s.fieldLabel,
-                                    displayValue: s.displayValue,
-                                  }));
-                                handleAvatarMouseEnter(
-                                  firstAssetId,
-                                  e.currentTarget,
-                                  selectionsForAsset.length > 0
-                                    ? selectionsForAsset
-                                    : firstSelection
-                                      ? [{
-                                        fieldLabel: firstSelection.fieldLabel,
-                                        displayValue: firstSelection.displayValue,
-                                      }]
-                                      : undefined
-                                );
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (firstAssetId && !isCellSelected) {
-                                handleAvatarMouseLeave();
-                              }
-                              if (hoveredCellForExpand?.rowId === row.id && hoveredCellForExpand?.propertyKey === property.key) {
-                                setHoveredCellForExpand(null);
-                              }
-                            }}
-                            onMouseMove={(e) => {
-                              if (isCellSelected) {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                const x = e.clientX - rect.left;
-                                const y = e.clientY - rect.top;
-                                const CORNER_SIZE = 20;
-                                if (x >= rect.width - CORNER_SIZE && y >= rect.height - CORNER_SIZE) {
-                                  setHoveredCellForExpand({ rowId: row.id, propertyKey: property.key });
-                                } else if (hoveredCellForExpand?.rowId === row.id && hoveredCellForExpand?.propertyKey === property.key) {
-                                  setHoveredCellForExpand(null);
-                                }
-                              }
-                            }}
-                          >
-                            {isFirstColumn ? (
-                              <div className={styles.cellContent}>
-                                <ReferenceField
-                                  property={property}
-                                  assetIds={assetIds}
-                                  currentValue={value}
-                                  rowId={row.id}
-                                  assetNamesCache={assetNamesCache}
-                                  isCellSelected={isCellSelected}
-                                  avatarRefs={avatarRefs}
-                                  onAvatarMouseEnter={handleAvatarMouseEnter}
-                                  onAvatarMouseLeave={handleAvatarMouseLeave}
-                                  onOpenReferenceModal={handleOpenReferenceModal}
-                                  onFocus={() => handleCellFocus(row.id, property.key)}
-                                  onBlur={handleCellBlur}
-                                />
-                                {isCellSelected && (
-                                  <Image
-                                    src={tableAssetDetailIcon}
-                                    alt=""
-                                    width={16}
-                                    height={16}
-                                    className={styles.referenceDetailIcon}
-                                    onMouseEnter={(e) => {
-                                      if (firstAssetId) {
-                                        e.stopPropagation();
-                                        const selectionsForAsset = selections
-                                          .filter((s) => s.assetId === firstAssetId)
-                                          .map((s) => ({
-                                            fieldLabel: s.fieldLabel,
-                                            displayValue: s.displayValue,
-                                          }));
-                                        handleAvatarMouseEnter(
-                                          firstAssetId,
-                                          e.currentTarget,
-                                          selectionsForAsset.length > 0
-                                            ? selectionsForAsset
-                                            : firstSelection
-                                              ? [{
-                                                fieldLabel: firstSelection.fieldLabel,
-                                                displayValue: firstSelection.displayValue,
-                                              }]
-                                              : undefined
-                                        );
-                                      }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (firstAssetId) {
-                                        e.stopPropagation();
-                                        handleAvatarMouseLeave();
-                                      }
-                                    }}
-                                  />
-                                )}
-                                <button
-                                  className={styles.viewDetailButton}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleViewAssetDetail(row, e);
-                                  }}
-                                  onDoubleClick={(e) => e.stopPropagation()}
-                                  title="View asset details (Ctrl/Cmd+Click for new tab)"
-                                >
-                                  <Image src={assetTableIcon} alt="View" width={20} height={20} className="icon-20" />
-                                </button>
-                              </div>
-                            ) : (
-                              <>
-                                <ReferenceField
-                                  property={property}
-                                  assetIds={assetIds}
-                                  currentValue={value}
-                                  rowId={row.id}
-                                  assetNamesCache={assetNamesCache}
-                                  isCellSelected={isCellSelected}
-                                  avatarRefs={avatarRefs}
-                                  onAvatarMouseEnter={handleAvatarMouseEnter}
-                                  onAvatarMouseLeave={handleAvatarMouseLeave}
-                                  onOpenReferenceModal={handleOpenReferenceModal}
-                                  onFocus={() => handleCellFocus(row.id, property.key)}
-                                  onBlur={handleCellBlur}
-                                />
-                                {isCellSelected && (
-                                  <Image
-                                    src={tableAssetDetailIcon}
-                                    alt=""
-                                    width={16}
-                                    height={16}
-                                    className={styles.referenceDetailIcon}
-                                    onMouseEnter={(e) => {
-                                      if (firstAssetId) {
-                                        e.stopPropagation();
-                                        const selectionsForAsset = selections
-                                          .filter((s) => s.assetId === firstAssetId)
-                                          .map((s) => ({
-                                            fieldLabel: s.fieldLabel,
-                                            displayValue: s.displayValue,
-                                          }));
-                                        handleAvatarMouseEnter(
-                                          firstAssetId,
-                                          e.currentTarget,
-                                          selectionsForAsset.length > 0
-                                            ? selectionsForAsset
-                                            : firstSelection
-                                              ? [{
-                                                fieldLabel: firstSelection.fieldLabel,
-                                                displayValue: firstSelection.displayValue,
-                                              }]
-                                              : undefined
-                                        );
-                                      }
-                                    }}
-                                    onMouseLeave={(e) => {
-                                      if (firstAssetId) {
-                                        e.stopPropagation();
-                                        handleAvatarMouseLeave();
-                                      }
-                                    }}
-                                  />
-                                )}
-                              </>
-                            )}
-                            {editingUsers.length > 0 && (
-                              <CellPresenceAvatars users={editingUsers} />
-                            )}
-                            <div
-                              className={`${styles.cellExpandIcon} ${isCellSelected ? '' : styles.cellExpandIconHidden}`}
-                              onMouseDown={(e) => handleCellDragStart(row.id, property.key, e)}
-                            />
-                          </td>
-                        );
-                      }
-
-                      // Formula field: value derived from other columns
-                      if (property.dataType === 'formula') {
-                        return (
-                          <FormulaCell
-                            key={property.id}
-                            row={row}
-                            property={property}
-                            propertyIndex={propertyIndex}
-                            actualRowIndex={actualRowIndex}
-                            properties={properties}
-                            isFirstColumn={isFirstColumn}
-                            isSaving={isSaving}
-                            selectedCells={selectedCells}
-                            cutCells={cutCells}
-                            copyCells={copyCells}
-                            hoveredCellForExpand={hoveredCellForExpand}
-                            cutSelectionBounds={cutSelectionBounds}
-                            editingUsers={editingUsers}
-                            borderColor={borderColor}
-                            evaluateFormulaForRow={evaluateFormulaForRow}
-                            getCustomFormulaExpressionFromCellValue={getCustomFormulaExpressionFromCellValue}
-                            openFormulaEditor={openFormulaEditor}
-                            onViewAssetDetail={handleViewAssetDetail}
-                            onCellClick={handleCellClick}
-                            onCellContextMenu={handleCellContextMenu}
-                            onCellFillDragStart={handleCellFillDragStart}
-                            onCellDragStart={handleCellDragStart}
-                            onCellFocus={handleCellFocus}
-                            onCellBlur={handleCellBlur}
-                            setHoveredCellForExpand={setHoveredCellForExpand}
-                            getCopyBorderClasses={getCopyBorderClasses}
-                            getSelectionBorderClasses={getSelectionBorderClasses}
-                          />
-                        );
-                      }
-
-                      // Media/Image/File/Multimedia/Audio field
-                      if (
-                        property.dataType === 'image' ||
-                        property.dataType === 'file' ||
-                        property.dataType === 'multimedia' ||
-                        property.dataType === 'audio'
-                      ) {
-                        const value = row.propertyValues[property.key];
-                        let mediaValue: MediaFileMetadata | null = null;
-
-                        if (value) {
-                          if (typeof value === 'string') {
-                            try {
-                              mediaValue = JSON.parse(value) as MediaFileMetadata;
-                            } catch {
-                              mediaValue = null;
-                            }
-                          } else if (typeof value === 'object' && value !== null) {
-                            mediaValue = value as MediaFileMetadata;
-                          }
-                        }
-
-                        return (
-                          <MediaCell
-                            key={property.id}
-                            row={row}
-                            property={property}
-                            propertyIndex={propertyIndex}
-                            actualRowIndex={actualRowIndex}
-                            value={mediaValue}
-                            userRole={userRole}
-                            isSaving={isSaving}
-                            selectedCells={selectedCells}
-                            cutCells={cutCells}
-                            copyCells={copyCells}
-                            hoveredCellForExpand={hoveredCellForExpand}
-                            cutSelectionBounds={cutSelectionBounds}
-                            copySelectionBounds={copySelectionBounds}
-                            editingUsers={editingUsers}
-                            borderColor={borderColor}
-                            onChange={(value) => handleEditMediaFileChange(row.id, property.key, value)}
-                            onCellClick={handleCellClick}
-                            onCellContextMenu={handleCellContextMenu}
-                            onCellFillDragStart={handleCellFillDragStart}
-                            onCellDragStart={handleCellDragStart}
-                            onCellFocus={handleCellFocus}
-                            onCellBlur={handleCellBlur}
-                            setHoveredCellForExpand={setHoveredCellForExpand}
-                            getCopyBorderClasses={getCopyBorderClasses}
-                            getSelectionBorderClasses={getSelectionBorderClasses}
-                            isFirstColumn={isFirstColumn}
-                            onViewAssetDetail={handleViewAssetDetail}
-                            onShowToast={(msg, type = 'error') => {
-                              setToastMessage({ message: msg, type });
-                              setTimeout(() => setToastMessage(null), 2000);
-                            }}
-                          />
-                        );
-                      }
-
-                      // Boolean field
-                      if (property.dataType === 'boolean') {
-                        const checked = optimisticUpdates.getBooleanValue(row.id, property.key, row);
-
-                        return (
-                          <BooleanCell
-                            key={property.id}
-                            row={row}
-                            property={property}
-                            propertyIndex={propertyIndex}
-                            actualRowIndex={actualRowIndex}
-                            checked={checked}
-                            userRole={userRole}
-                            isSaving={isSaving}
-                            selectedCells={selectedCells}
-                            cutCells={cutCells}
-                            copyCells={copyCells}
-                            hoveredCellForExpand={hoveredCellForExpand}
-                            cutSelectionBounds={cutSelectionBounds}
-                            editingUsers={editingUsers}
-                            borderColor={borderColor}
-                            isFirstColumn={isFirstColumn}
-                            onViewAssetDetail={handleViewAssetDetail}
-                            onChange={async (newValue) => {
-                              if (userRole === 'viewer' || !onUpdateAsset) return;
-
-                              optimisticUpdates.updateBooleanValue(
-                                row.id,
-                                property.key,
-                                newValue,
-                                () => { },
-                                () => {
-                                  optimisticUpdates.clearOptimisticValue(row.id, property.key, 'boolean');
-                                }
-                              );
-
-                              try {
-                                const oldValue = row.propertyValues[property.key];
-                                const updatedPropertyValues = {
-                                  ...row.propertyValues,
-                                  [property.key]: newValue
-                                };
-                                await onUpdateAsset(row.id, row.name, updatedPropertyValues);
-                                await broadcastCellUpdateIfEnabled(row.id, property.key, newValue, oldValue);
-                              } catch (error) {
-                                optimisticUpdates.clearOptimisticValue(row.id, property.key, 'boolean');
-                                console.error('Failed to update boolean value:', error);
-                              }
-                            }}
-                            onCellClick={handleCellClick}
-                            onCellContextMenu={handleCellContextMenu}
-                            onCellFillDragStart={handleCellFillDragStart}
-                            onCellDragStart={handleCellDragStart}
-                            onCellFocus={handleCellFocus}
-                            onCellBlur={handleCellBlur}
-                            setHoveredCellForExpand={setHoveredCellForExpand}
-                            getCopyBorderClasses={getCopyBorderClasses}
-                            getSelectionBorderClasses={getSelectionBorderClasses}
-                          />
-                        );
-                      }
-
-                      // Enum field
-                      if (property.dataType === 'enum' && property.enumOptions && property.enumOptions.length > 0) {
-                        const value = optimisticUpdates.getEnumValue(row.id, property.key, row);
-                        const enumSelectKey = `${row.id}-${property.key}`;
-                        const isOpen = openEnumSelects[enumSelectKey] || false;
-
-                        return (
-                          <EnumCell
-                            key={property.id}
-                            row={row}
-                            property={property}
-                            propertyIndex={propertyIndex}
-                            actualRowIndex={actualRowIndex}
-                            value={value}
-                            userRole={userRole}
-                            isOpen={isOpen}
-                            selectedCells={selectedCells}
-                            cutCells={cutCells}
-                            copyCells={copyCells}
-                            hoveredCellForExpand={hoveredCellForExpand}
-                            cutSelectionBounds={cutSelectionBounds}
-                            editingUsers={editingUsers}
-                            borderColor={borderColor}
-                            isFirstColumn={isFirstColumn}
-                            onViewAssetDetail={handleViewAssetDetail}
-                            onChange={async (newValue) => {
-                              if (userRole === 'viewer' || !onUpdateAsset) return;
-
-                              optimisticUpdates.updateEnumValue(
-                                row.id,
-                                property.key,
-                                newValue,
-                                () => { },
-                                () => {
-                                  optimisticUpdates.clearOptimisticValue(row.id, property.key, 'enum');
-                                }
-                              );
-
-                              try {
-                                const oldValue = row.propertyValues[property.key];
-                                const updatedPropertyValues = {
-                                  ...row.propertyValues,
-                                  [property.key]: newValue
-                                };
-                                await onUpdateAsset(row.id, row.name, updatedPropertyValues);
-                                await broadcastCellUpdateIfEnabled(row.id, property.key, newValue, oldValue);
-                              } catch (error) {
-                                optimisticUpdates.clearOptimisticValue(row.id, property.key, 'enum');
-                                console.error('Failed to update enum value:', error);
-                              }
-                            }}
-                            onOpenChange={(open) => {
-                              if (userRole === 'viewer') return;
-
-                              if (open) {
-                                handleCellFocus(row.id, property.key);
-                              } else {
-                                setTimeout(() => {
-                                  handleCellBlur();
-                                }, 1000);
-                              }
-
-                              setOpenEnumSelects(prev => ({
-                                ...prev,
-                                [enumSelectKey]: open
-                              }));
-                            }}
-                            onCellClick={handleCellClick}
-                            onCellContextMenu={handleCellContextMenu}
-                            onCellFillDragStart={handleCellFillDragStart}
-                            onCellDragStart={handleCellDragStart}
-                            onCellFocus={handleCellFocus}
-                            onCellBlur={handleCellBlur}
-                            setHoveredCellForExpand={setHoveredCellForExpand}
-                            getCopyBorderClasses={getCopyBorderClasses}
-                            getSelectionBorderClasses={getSelectionBorderClasses}
-                          />
-                        );
-                      }
-
-                      // Text field
-                      // For the name field, we no longer fall back to row.name here; propertyValues always takes precedence.
-                      // To avoid the issue of showing old values after deleting and rebuilding the name field.
-                      let value = row.propertyValues[property.key];
-                      let display: string | null = null;
-                      if (
-                        value !== null &&
-                        value !== undefined &&
-                        value !== '' &&
-                        !(typeof value === 'number' && Number.isNaN(value))
-                      ) {
-                        // For array-like types, normalize display:
-                        // - number arrays: [1,2,3]
-                        // - string arrays: ["A","B","C"]
-                        if (
-                          (property.dataType === 'int_array' ||
-                            property.dataType === 'float_array') &&
-                          Array.isArray(value)
-                        ) {
-                          display = `[${value.join(',')}]`;
-                        } else if (
-                          property.dataType === 'string_array' &&
-                          Array.isArray(value)
-                        ) {
-                          display = `[${value.map((v) => JSON.stringify(v)).join(',')}]`;
-                        } else {
-                          display = cellDisplayString(value);
-                        }
-                      }
-
-                      const fillPreviewValue: TextCellProps['fillPreviewValue'] =
-                        property.dataType === 'int' && fillDragStartCell?.propertyKey === property.key
-                          ? fillPreviewMap.get(row.id)
-                          : undefined;
-
-                      return (
-                        <TextCell
-                          key={property.id}
-                          row={row}
-                          property={property}
-                          propertyIndex={propertyIndex}
-                          actualRowIndex={actualRowIndex}
-                          display={display}
-                          isNameField={isNameField}
-                          isFirstColumn={isFirstColumn}
-                          fillPreviewValue={fillPreviewValue}
-                          editingCell={editingCell}
-                          editingCellRef={editingCellRef}
-                          editingCellValue={editingCellValue}
-                          isComposingRef={isComposingRef}
-                          typeValidationError={typeValidationError}
-                          typeValidationErrorRef={typeValidationErrorRef}
-                          selectedCells={selectedCells}
-                          cutCells={cutCells}
-                          copyCells={copyCells}
-                          hoveredCellForExpand={hoveredCellForExpand}
-                          cutSelectionBounds={cutSelectionBounds}
-                          editingUsers={editingUsers}
-                          borderColor={borderColor}
-                          onViewAssetDetail={handleViewAssetDetail}
-                          onCellDoubleClick={handleCellDoubleClick}
-                          onCellClick={handleCellClick}
-                          onCellContextMenu={handleCellContextMenu}
-                          onCellFillDragStart={handleCellFillDragStart}
-                          onCellDragStart={handleCellDragStart}
-                          onCellFocus={handleCellFocus}
-                          setEditingCellValue={setEditingCellValue}
-                          setTypeValidationError={setTypeValidationError}
-                          setHoveredCellForExpand={setHoveredCellForExpand}
-                          handleSaveEditedCell={handleSaveEditedCell}
-                          handleCancelEditing={handleCancelEditing}
-                          getCopyBorderClasses={getCopyBorderClasses}
-                          getSelectionBorderClasses={getSelectionBorderClasses}
-                        />
-                      );
-                    })}
-                    {(userRole === 'admin' || userRole === 'editor') && (
-                      <td className={styles.addColumnCell} />
-                    )}
-                  </tr>
-                );
-              })}
-              {/* Add new asset row */}
-              {isAddingRow ? (
-                <tr className={styles.editRow} ref={addRowFormRef}>
-                  <td className={styles.numberCell}>{rows.length + 1}</td>
-                  <AddNewRowForm
-                    orderedProperties={activeProperties}
-                    newRowData={newRowData}
-                    isSaving={isSaving}
-                    userRole={userRole}
-                    openEnumSelects={openEnumSelects}
-                    assetNamesCache={assetNamesCache}
-                    avatarRefs={avatarRefs}
-                    handleInputChange={handleInputChange}
-                    handleMediaFileChange={handleMediaFileChange}
-                    handleOpenReferenceModal={handleOpenReferenceModal}
-                    handleAvatarMouseEnter={handleAvatarMouseEnter}
-                    handleAvatarMouseLeave={handleAvatarMouseLeave}
-                    setOpenEnumSelects={setOpenEnumSelects}
-                  />
-                  {(userRole === 'admin' || userRole === 'editor') && (
-                    <td className={styles.addColumnCell} />
-                  )}
-                </tr>
-              ) : (userRole === 'admin' || userRole === 'editor') ? (
-                <tr
-                  className={styles.addRow}
-                  onClick={(e) => {
-                    const target = e.target as HTMLElement;
-                    const isClickOnNumberCell = target.closest(`.${styles.numberCell}`);
-                    const isClickOnButton = target.closest(`.${styles.addButton}`);
-
-                    if (!isClickOnNumberCell && !isClickOnButton && target.tagName === 'TD') {
-                      if (editingCell) {
-                        alert('Please finish editing the current cell first.');
-                        return;
-                      }
-                      handleAddRowDirect();
-                    }
-                  }}
-                  style={{ cursor: 'pointer' }}
-                >
-                  <td
-                    className={styles.numberCell}
-                    onClick={() => {
-                      if (editingCell) {
-                        alert('Please finish editing the current cell first.');
-                        return;
-                      }
-                      handleAddRowDirect();
-                    }}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <button
-                      className={styles.addButton}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (editingCell) {
-                          alert('Please finish editing the current cell first.');
-                          return;
-                        }
-                        handleAddRowDirect();
-                      }}
-                      disabled={editingCell !== null}
-                    >
-                      <Image src={libraryAssetTableAddIcon}
-                        alt="Add new asset"
-                        width={16} height={16} className="icon-16"
-                      />
-                    </button>
-                  </td>
-                  {activeProperties.map((property) => (
-                    <td key={property.id} className={styles.cell}></td>
-                  ))}
-                  <td className={styles.addColumnCell} />
-                </tr>
-              ) : null}
-            </tbody>
+            <LibraryAssetsTableBody
+              displayRows={displayRows}
+              rows={rows}
+              allRowsForSelection={getAllRowsForCellSelection()}
+              properties={properties}
+              activeProperties={activeProperties}
+              orderedProperties={orderedProperties}
+              userRole={userRole}
+              isAddingRow={isAddingRow}
+              isSaving={isSaving}
+              newRowData={newRowData}
+              openEnumSelects={openEnumSelects}
+              assetNamesCache={assetNamesCache}
+              avatarRefs={avatarRefs}
+              addRowFormRef={addRowFormRef}
+              hoveredRowId={hoveredRowId}
+              selectedRowIds={selectedRowIds}
+              selectedCells={selectedCells}
+              cutCells={cutCells}
+              copyCells={copyCells}
+              hoveredCellForExpand={hoveredCellForExpand}
+              cutSelectionBounds={cutSelectionBounds}
+              copySelectionBounds={copySelectionBounds}
+              fillDragStartCell={fillDragStartCell}
+              fillPreviewMap={fillPreviewMap}
+              editingCell={editingCell}
+              editingCellRef={editingCellRef}
+              editingCellValue={editingCellValue}
+              isComposingRef={isComposingRef}
+              typeValidationError={typeValidationError}
+              typeValidationErrorRef={typeValidationErrorRef}
+              setHoveredRowId={setHoveredRowId}
+              setHoveredCellForExpand={setHoveredCellForExpand}
+              setEditingCellValue={setEditingCellValue}
+              setTypeValidationError={setTypeValidationError}
+              setOpenEnumSelects={setOpenEnumSelects}
+              setToastMessage={setToastMessage}
+              hasCustomRowHeight={hasCustomRowHeight}
+              getRowHeightStyle={getRowHeightStyle}
+              startRowResize={startRowResize}
+              isResizingRow={isResizingRow}
+              getUsersEditingCell={getUsersEditingCell}
+              getSelectionBorderClasses={getSelectionBorderClasses}
+              getCutBorderClasses={getCutBorderClasses}
+              getCopyBorderClasses={getCopyBorderClasses}
+              optimisticUpdates={optimisticUpdates}
+              onUpdateAsset={onUpdateAsset}
+              broadcastCellUpdateIfEnabled={broadcastCellUpdateIfEnabled}
+              onRowContextMenu={handleRowContextMenu}
+              onRowSelectionToggle={handleRowSelectionToggle}
+              onViewAssetDetail={handleViewAssetDetail}
+              onCellFocus={handleCellFocus}
+              onCellBlur={handleCellBlur}
+              onCellClick={handleCellClick}
+              onCellContextMenu={handleCellContextMenu}
+              onCellFillDragStart={handleCellFillDragStart}
+              onCellDragStart={handleCellDragStart}
+              onCellDoubleClick={handleCellDoubleClick}
+              onEditMediaFileChange={handleEditMediaFileChange}
+              onOpenReferenceModal={handleOpenReferenceModal}
+              onAvatarMouseEnter={handleAvatarMouseEnter}
+              onAvatarMouseLeave={handleAvatarMouseLeave}
+              openFormulaEditor={openFormulaEditor}
+              handleInputChange={handleInputChange}
+              handleMediaFileChange={handleMediaFileChange}
+              handleSaveEditedCell={handleSaveEditedCell}
+              handleCancelEditing={handleCancelEditing}
+              handleAddRowDirect={handleAddRowDirect}
+            />
           </table>
           )}
         </div>
@@ -2027,26 +1170,20 @@ export function LibraryAssetsTable({
         containerRef={setAssetCardRef}
       />
 
-      {detailDrawerRowId && (() => {
-        const drawerRow = displayRows.find((r) => r.id === detailDrawerRowId);
-        if (!drawerRow) return null;
-        return (
-          <AssetDetailDrawer
-            open={true}
-            onClose={() => setDetailDrawerRowId(null)}
-            row={drawerRow}
-            orderedProperties={activeProperties}
-            userRole={userRole}
-            onUpdateRow={handleUpdateRowFromDrawer}
-            onMediaFileChange={handleEditMediaFileChange}
-            onOpenReferenceModal={handleOpenReferenceModal}
-            assetNamesCache={assetNamesCache}
-            avatarRefs={avatarRefs}
-            onAvatarMouseEnter={handleAvatarMouseEnter}
-            onAvatarMouseLeave={handleAvatarMouseLeave}
-          />
-        );
-      })()}
+      <LibraryAssetDetailDrawerWiring
+        rowId={detailDrawerRowId}
+        rows={displayRows}
+        orderedProperties={activeProperties}
+        userRole={userRole}
+        onUpdateRow={handleUpdateRowFromDrawer}
+        onMediaFileChange={handleEditMediaFileChange}
+        onOpenReferenceModal={handleOpenReferenceModal}
+        assetNamesCache={assetNamesCache}
+        avatarRefs={avatarRefs}
+        onAvatarMouseEnter={handleAvatarMouseEnter}
+        onAvatarMouseLeave={handleAvatarMouseLeave}
+        onClose={() => setDetailDrawerRowId(null)}
+      />
 
       <RowContextMenu
         visible={!!(contextMenuRowId && contextMenuPosition)}

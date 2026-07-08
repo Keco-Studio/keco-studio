@@ -4,6 +4,46 @@ import { queryKeys } from '@/lib/utils/queryKeys';
 export const sidebarAssetsKey = (libraryId: string) =>
   ['sidebar-assets', libraryId] as const;
 
+export type UpdatableEntityType = 'project' | 'library' | 'folder' | 'asset';
+
+export function shouldInvalidateEntityListAfterUpdate(
+  queryKey: readonly unknown[],
+  entityType: UpdatableEntityType,
+  libraryId?: string
+): boolean {
+  if (entityType === 'project') {
+    return queryKey[0] === 'projects';
+  }
+
+  if (entityType === 'library') {
+    return (
+      (queryKey[0] === 'project' && queryKey[2] === 'libraries') ||
+      (queryKey[0] === 'folder' && queryKey[2] === 'libraries') ||
+      queryKey[0] === 'folders-libraries'
+    );
+  }
+
+  if (entityType === 'folder') {
+    return (
+      (queryKey[0] === 'project' && queryKey[2] === 'folders') ||
+      queryKey[0] === 'folders-libraries'
+    );
+  }
+
+  if (entityType === 'asset') {
+    if (libraryId) {
+      return (
+        (queryKey[0] === 'library' && queryKey[1] === libraryId && queryKey[2] === 'assets') ||
+        (queryKey[0] === 'library' && queryKey[1] === libraryId && queryKey[2] === 'summary') ||
+        (queryKey[0] === 'sidebar-assets' && queryKey[1] === libraryId)
+      );
+    }
+    return queryKey[0] === 'library' && queryKey[2] === 'assets';
+  }
+
+  return false;
+}
+
 export async function invalidateProjectData(
   queryClient: QueryClient,
   options: {

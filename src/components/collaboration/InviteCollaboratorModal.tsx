@@ -12,6 +12,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Form, Input, Select, Button, Alert } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
@@ -38,6 +39,7 @@ export function InviteCollaboratorModal({
   title,
 }: InviteCollaboratorModalProps) {
   const supabase = useSupabase();
+  const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -115,24 +117,8 @@ export function InviteCollaboratorModal({
           ? (result.message || 'Collaborator added successfully!')
           : 'Invite sent';
 
-        // Clear caches and trigger events when user is auto-accepted
         if (result.autoAccepted) {
-          // Clear caches when user is auto-accepted as collaborator          
-          // 1. Clear globalRequestCache for projects list
-          try {
-            const { globalRequestCache } = await import('@/lib/hooks/useRequestCache');
-            const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-              // Clear cache for the INVITED user (not the inviter)
-              // Note: This won't help the invited user's browser, but we need to handle this differently
-            }
-          } catch (error) {
-            console.error('[InviteCollaboratorModal] Error clearing cache:', error);
-          }
-
-          // 2. Dispatch event to trigger React Query cache refresh
-          // This will refresh the inviter's Sidebar, but won't affect the invited user's browser
-          window.dispatchEvent(new CustomEvent('projectCreated'));
+          void queryClient.invalidateQueries({ queryKey: ['projects'] });
         }
 
         // Reset form and close modal
@@ -244,4 +230,3 @@ export function InviteCollaboratorModal({
     </Modal>
   );
 }
-

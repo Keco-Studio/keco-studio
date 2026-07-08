@@ -6,6 +6,7 @@ import {
   invalidateLibrarySchemaData,
   invalidateProjectData,
   sidebarAssetsKey,
+  shouldInvalidateEntityListAfterUpdate,
 } from '@/lib/queryInvalidation';
 import { queryKeys } from '@/lib/utils/queryKeys';
 
@@ -99,5 +100,17 @@ describe('query invalidation helpers', () => {
       queryKey: queryKeys.librarySchema('library-1'),
       type: 'active',
     });
+  });
+
+  it('matches real list keys after entity rename/update mutations', () => {
+    expect(shouldInvalidateEntityListAfterUpdate(queryKeys.projects(), 'project')).toBe(true);
+    expect(shouldInvalidateEntityListAfterUpdate(queryKeys.projectLibraries('project-1'), 'library')).toBe(true);
+    expect(shouldInvalidateEntityListAfterUpdate(queryKeys.folderLibraries('folder-1'), 'library')).toBe(true);
+    expect(shouldInvalidateEntityListAfterUpdate(['folders-libraries', 'project-1'], 'library')).toBe(true);
+    expect(shouldInvalidateEntityListAfterUpdate(queryKeys.projectFolders('project-1'), 'folder')).toBe(true);
+    expect(shouldInvalidateEntityListAfterUpdate(['folders-libraries', 'project-1'], 'folder')).toBe(true);
+    expect(shouldInvalidateEntityListAfterUpdate(queryKeys.libraryAssets('library-1'), 'asset', 'library-1')).toBe(true);
+    expect(shouldInvalidateEntityListAfterUpdate(sidebarAssetsKey('library-1'), 'asset', 'library-1')).toBe(true);
+    expect(shouldInvalidateEntityListAfterUpdate(queryKeys.folderLibraries('folder-1'), 'folder')).toBe(false);
   });
 });

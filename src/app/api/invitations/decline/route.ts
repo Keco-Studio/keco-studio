@@ -6,15 +6,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { validateInvitationToken } from '@/lib/utils/invitationToken';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-if (!supabaseServiceRoleKey) {
-  console.error('[API /invitations/decline] SUPABASE_SERVICE_ROLE_KEY is not configured');
-}
+import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
 
 /**
  * POST /api/invitations/decline
@@ -49,7 +42,11 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Create service role client for database operations
-    if (!supabaseServiceRoleKey) {
+    let supabase;
+    try {
+      supabase = getSupabaseServiceRoleClient();
+    } catch (error) {
+      console.error('[API /invitations/decline] Service role is not configured:', error);
       return NextResponse.json(
         {
           success: false,
@@ -58,13 +55,6 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
 
     // 4. Get invitation details
     const { data: invitation, error: invitationError } = await supabase
@@ -137,4 +127,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

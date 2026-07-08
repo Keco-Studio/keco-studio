@@ -1,10 +1,9 @@
 /**
  * Server-safe data access for agent tools.
  *
- * Several existing services (libraryService, folderService) are marked 'use client'
- * because they use globalRequestCache. API routes must not import them — this
- * module re-implements the small subset of queries the agent needs via direct
- * Supabase calls and authorizationService (withAuthCache bypasses client cache on server).
+ * Several existing services are client modules. API routes must not import them,
+ * so this module re-implements the small subset of queries the agent needs via
+ * direct Supabase calls and authorizationService.
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';

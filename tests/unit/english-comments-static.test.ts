@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const repoRoot = process.cwd();
 
-const coveredFiles = [
+const issue168CoveredFiles = [
   'tests/e2e/specs/global-search.spec.ts',
   'src/lib/providers/QueryProvider.tsx',
   'src/lib/utils/formula.ts',
@@ -52,6 +52,66 @@ const coveredFiles = [
   'src/components/libraries/components/EditColumnModal.module.css',
   'src/components/asset/AssetReferenceModal.module.css',
 ];
+
+const batchTouchedFiles = [
+  'eslint.config.mjs',
+  'scripts/check-no-explicit-any.ts',
+  'src/app/(dashboard)/[projectId]/[libraryId]/predefine/hooks/useSchemaData.ts',
+  'src/app/(dashboard)/[projectId]/[libraryId]/predefine/hooks/useSchemaSave.ts',
+  'src/app/(dashboard)/[projectId]/[libraryId]/predefine/page.tsx',
+  'src/app/(dashboard)/projects/page.tsx',
+  'src/app/accept-invitation/AcceptInvitationContent.tsx',
+  'src/app/api/collaborators/route.ts',
+  'src/app/api/export/route.ts',
+  'src/app/api/invitations/accept/route.ts',
+  'src/app/api/invitations/decline/route.ts',
+  'src/app/api/libraries/[libraryId]/route.ts',
+  'src/app/api/projects/[projectId]/delete/route.ts',
+  'src/app/api/projects/[projectId]/folders/route.ts',
+  'src/app/api/projects/[projectId]/libraries/route.ts',
+  'src/app/api/projects/route.ts',
+  'src/components/agent/AgentImportBridge.tsx',
+  'src/components/agent/useAgentChat.ts',
+  'src/components/collaboration/InviteCollaboratorModal.tsx',
+  'src/components/layout/Sidebar.tsx',
+  'src/components/layout/TopBar.tsx',
+  'src/components/libraries/LibraryAssetsTable.tsx',
+  'src/components/libraries/components/LibraryAssetDetailDrawerWiring.tsx',
+  'src/components/libraries/components/LibraryAssetsTableBody.tsx',
+  'src/components/libraries/hooks/useLibraryAssetDetailDrawerUpdate.ts',
+  'src/components/libraries/hooks/useLibraryAssetMutations.ts',
+  'src/components/libraries/hooks/useLibraryRealtimeHandlers.ts',
+  'src/components/libraries/hooks/useLibrarySectionEditing.ts',
+  'src/components/libraries/hooks/useLibraryTableFindReplaceWiring.ts',
+  'src/components/libraries/hooks/useReferenceModal.ts',
+  'src/components/libraries/hooks/useTableCellFindReplace.ts',
+  'src/lib/agent/core.ts',
+  'src/lib/agent/data-access.ts',
+  'src/lib/contexts/AuthContext.tsx',
+  'src/lib/contexts/LibraryDataContext.tsx',
+  'src/lib/contexts/NavigationContext.tsx',
+  'src/lib/hooks/useCacheMutations.ts',
+  'src/lib/library/referenceSync.ts',
+  'src/lib/script-parser/postProcess.ts',
+  'src/lib/server/projectDeletion.ts',
+  'src/lib/server/supabaseServiceRole.ts',
+  'src/lib/services/authorizationService.ts',
+  'src/lib/services/collaborationService.ts',
+  'src/lib/services/folderService.ts',
+  'src/lib/services/libraryAssetsService.ts',
+  'src/lib/services/libraryService.ts',
+  'src/lib/services/projectService.ts',
+  'src/lib/services/versionService.ts',
+  'tests/unit/agent/safe-request-cache.test.ts',
+  'tests/unit/event-bus-request-cache-static.test.ts',
+  'tests/unit/library-asset-mutations.test.tsx',
+  'tests/unit/library-module-decomposition-static.test.ts',
+  'tests/unit/project-delete-server-boundary.test.ts',
+  'tests/unit/service-role-server-boundary-static.test.ts',
+  'tests/unit/typescript-eslint-api-slice-static.test.ts',
+];
+
+const coveredFiles = Array.from(new Set([...issue168CoveredFiles, ...batchTouchedFiles]));
 
 const hanRegex = /\p{Script=Han}/u;
 

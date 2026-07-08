@@ -23,22 +23,21 @@ import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import { useRealtimeSubscription, type ConnectionStatus } from '@/lib/hooks/useRealtimeSubscription';
 import { usePresenceTracking } from '@/lib/hooks/usePresenceTracking';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
-import type { CellUpdateEvent, AssetCreateEvent, AssetDeleteEvent, PresenceState, CellsBatchUpdateEvent } from '@/lib/types/collaboration';
-import { serializeError } from '@/lib/utils/errorUtils';
-import { getLibraryAssetsWithProperties, applyBooleanFieldDefaults, getBooleanFieldIdsByLibraryId } from '@/lib/services/libraryAssetsService';
-import {
-  syncReferencesForSourceChanges,
-  type ReferenceCellUpdate,
-} from '@/lib/services/referenceSyncService';
-import { computeFormulaValuesForRow } from '@/lib/utils/formula';
+import type { PresenceState } from '@/lib/types/collaboration';
+import { getLibraryAssetsWithProperties } from '@/lib/services/libraryAssetsService';
 import { compareAssetsForUiRow } from '@/lib/utils/assetEmptiness';
 import { createFormulaFieldMetaCache } from '@/lib/library/formulaFieldMetaCache';
-import { touchLibraryAssetEditUpdatedAt, touchLibraryUpdatedAt } from '@/lib/library/updatedAt';
+import {
+  applyReferenceSyncToLocalState,
+  syncReferencesAfterSourceChange,
+} from '@/lib/library/referenceSync';
 import {
   hydrateYAssetsFromRows,
   hydrateYAssetsFromSnapshot,
   type LibrarySnapshotData,
 } from '@/lib/library/yjsAssetHydration';
+import { useLibraryAssetMutations } from '@/components/libraries/hooks/useLibraryAssetMutations';
+import { useLibraryRealtimeHandlers } from '@/components/libraries/hooks/useLibraryRealtimeHandlers';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
 
@@ -91,18 +90,6 @@ type FormulaFieldMetaRow = {
   label: string;
   data_type: string;
   formula_expression: string | null;
-};
-
-const isCustomFormulaCellValue = (value: unknown): boolean => {
-  if (typeof value === 'string') {
-    return value.trim().startsWith('=');
-  }
-  if (value && typeof value === 'object') {
-    const maybe = value as { customExpression?: unknown; expression?: unknown };
-    if (typeof maybe.customExpression === 'string' && maybe.customExpression.trim() !== '') return true;
-    if (typeof maybe.expression === 'string' && maybe.expression.trim() !== '') return true;
-  }
-  return false;
 };
 
 export function LibraryDataProvider({ children, libraryId, projectId }: LibraryDataProviderProps) {
@@ -273,10 +260,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     };
   }, [libraryId, supabase, loadInitialData]);
 
-  // Batch queue for cell updates - apply in one transact so UI updates at once (fixes "one by one" disappearing)
-  const cellUpdateQueueRef = useRef<CellUpdateEvent[]>([]);
-  const cellUpdateFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   useEffect(() => {
     formulaFieldMetaCache.clear();
   }, [formulaFieldMetaCache, libraryId]);
@@ -285,136 +268,19 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     return formulaFieldMetaCache.get(libraryId);
   }, [formulaFieldMetaCache, libraryId]);
 
-  const flushCellUpdateQueue = useCallback(() => {
-    const events = cellUpdateQueueRef.current;
-    cellUpdateQueueRef.current = [];
-    if (events.length === 0) return;
-
-    yDoc.transact(() => {
-      for (const event of events) {
-        const yAsset = yAssets.get(event.assetId);
-        if (!yAsset) continue;
-        const yPropertyValues = yAsset.get('propertyValues') as Y.Map<any>;
-        if (!yPropertyValues) continue;
-        const currentValue = yPropertyValues.get(event.propertyKey);
-        if (JSON.stringify(currentValue) === JSON.stringify(event.newValue)) continue;
-
-        let valueForYjs = event.newValue;
-        if (event.newValue !== null && typeof event.newValue === 'object') {
-          valueForYjs = JSON.parse(JSON.stringify(event.newValue));
-        }
-        yPropertyValues.set(event.propertyKey, valueForYjs);
-        if (event.propertyKey === 'name') {
-          yAsset.set('name', valueForYjs ?? '');
-        }
-      }
-    });
-  }, [yAssets, yDoc]);
-
-  // Realtime collaboration event handlers
-  // Use a slightly longer delay when the queue already has multiple events so
-  // collaborator-side postgres updates are applied as one visual batch.
-  const handleCellUpdateEvent = useCallback((event: CellUpdateEvent) => {
-    cellUpdateQueueRef.current.push(event);
-    if (cellUpdateFlushTimerRef.current) clearTimeout(cellUpdateFlushTimerRef.current);
-    const delay = cellUpdateQueueRef.current.length > 1 ? 50 : 16;
-    cellUpdateFlushTimerRef.current = setTimeout(() => {
-      cellUpdateFlushTimerRef.current = null;
-      flushCellUpdateQueue();
-    }, delay);
-  }, [flushCellUpdateQueue]);
-
-  const handleAssetCreateEvent = useCallback((event: AssetCreateEvent) => {
-    // Skip if asset already exists in Yjs (e.g. from loadInitialData or a prior broadcast).
-    // This prevents the postgres_changes INSERT handler (which creates a synthetic event
-    // without row_index) from overwriting the correct entry that loadInitialData already
-    // set — which would cause the row to jump to the end of the table.
-    if (yAssets.has(event.assetId)) {
-      return;
-    }
-
-    // Skip if this asset is part of an ongoing batch insert (skipReload=true).
-    // The batch's final call will run loadInitialData() to bring in all rows correctly.
-    // Without this guard, postgres_changes INSERT events would add the asset without
-    // row_index, corrupting allAssets ordering and causing the temp rows to flicker.
-    if (pendingBatchInsertIdsRef.current.has(event.assetId)) {
-      return;
-    }
-
-    // Add new asset to Yjs (using Y.Map for propertyValues)
-    const yAsset = new Y.Map();
-    yAsset.set('name', event.assetName);
-
-    // Create Y.Map for propertyValues
-    const yPropertyValues = new Y.Map();
-    Object.entries(event.propertyValues).forEach(([fieldId, value]) => {
-      // For complex objects (like image/file metadata), create a deep copy
-      let valueForYjs = value;
-      if (value !== null && typeof value === 'object') {
-        valueForYjs = JSON.parse(JSON.stringify(value));
-      }
-      yPropertyValues.set(fieldId, valueForYjs);
-    });
-    yAsset.set('propertyValues', yPropertyValues);
-    // Ensure created_at so allAssets sort is consistent across clients (fixes row order mismatch)
-    const createdAt =
-      event.targetCreatedAt ||
-      (event.timestamp ? new Date(event.timestamp).toISOString() : new Date().toISOString());
-    yAsset.set('created_at', createdAt);
-    // Set row_index if available (from postgres_changes INSERT) so allAssets sort places the
-    // row closer to the correct position even before roworder:change triggers loadInitialData().
-    if (typeof event.rowIndex === 'number') {
-      yAsset.set('row_index', event.rowIndex);
-    }
-
-    yDoc.transact(() => {
-      yAssets.set(event.assetId, yAsset);
-    });
-  }, [yAssets, yDoc]);
-
-  const handleAssetDeleteEvent = useCallback((event: AssetDeleteEvent) => {
-    // Remove asset from Yjs
-    yDoc.transact(() => {
-      yAssets.delete(event.assetId);
-    });
-  }, [yAssets, yDoc]);
-
-  const handleConflictEvent = useCallback((event: CellUpdateEvent, localValue: any) => {
-    // For now, remote wins (can enhance with UI later)
-    console.warn('[LibraryDataContext] Conflict detected:', event);
-    handleCellUpdateEvent(event);
-  }, [handleCellUpdateEvent]);
-
-  // Row order changes currently reload from the DB; a finer-grained row-order
-  // event can replace this later.
-  const handleRowOrderChangeEvent = useCallback(() => {
-    loadInitialData();
-  }, [loadInitialData]);
-
-  // Batch cell updates are used by Clear Content and similar commands.
-  const handleCellsBatchUpdateEvent = useCallback((event: CellsBatchUpdateEvent) => {
-    if (event.cells.length === 0) return;
-    yDoc.transact(() => {
-      for (const { assetId, propertyKey, newValue } of event.cells) {
-        const yAsset = yAssets.get(assetId);
-        if (!yAsset) continue;
-        let valueForYjs = newValue;
-        if (typeof newValue === 'number' && Number.isNaN(newValue)) {
-          valueForYjs = null;
-        } else if (newValue !== null && typeof newValue === 'object') {
-          valueForYjs = JSON.parse(JSON.stringify(newValue));
-        }
-        if (propertyKey === 'name') {
-          yAsset.set('name', valueForYjs ?? '');
-        } else {
-          const yPropertyValues = yAsset.get('propertyValues') as Y.Map<any>;
-          if (yPropertyValues) {
-            yPropertyValues.set(propertyKey, valueForYjs);
-          }
-        }
-      }
-    });
-  }, [yAssets, yDoc]);
+  const {
+    handleCellUpdateEvent,
+    handleAssetCreateEvent,
+    handleAssetDeleteEvent,
+    handleConflictEvent,
+    handleRowOrderChangeEvent,
+    handleCellsBatchUpdateEvent,
+  } = useLibraryRealtimeHandlers({
+    yDoc,
+    yAssets,
+    loadInitialData,
+    pendingBatchInsertIdsRef,
+  });
 
   // Initialize realtime subscription
   const realtimeConfig = useMemo(() => {
@@ -475,473 +341,69 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
   const presenceTracking = usePresenceTracking(presenceConfig);
 
-  const applyReferenceSyncToLocalState = useCallback(
-    (refUpdates: ReferenceCellUpdate[]) => {
-      if (refUpdates.length === 0) return;
-
-      yDoc.transact(() => {
-        for (const u of refUpdates) {
-          if (u.referencingLibraryId !== libraryId) continue;
-          const yAsset = yAssets.get(u.referencingAssetId);
-          if (!yAsset) continue;
-          const yPropertyValues = yAsset.get('propertyValues') as Y.Map<any> | undefined;
-          if (!yPropertyValues) continue;
-          let valueForYjs = u.newReferenceValue;
-          if (valueForYjs !== null && typeof valueForYjs === 'object') {
-            valueForYjs = JSON.parse(JSON.stringify(valueForYjs));
-          }
-          yPropertyValues.set(u.referencingFieldId, valueForYjs);
-        }
-      });
-
-      const libraryIdsToReload = new Set(
-        refUpdates.map((u) => u.referencingLibraryId).filter(Boolean)
-      );
-      libraryIdsToReload.forEach((id) => {
-        if (id === libraryId) {
-          void loadInitialData();
-        }
-        void invalidateLibraryAssetsData(queryClient, { libraryId: id });
-      });
-
-      const referencingAssetIds = new Set(refUpdates.map((u) => u.referencingAssetId));
-      referencingAssetIds.forEach((refAssetId) => {
-        const libId =
-          refUpdates.find((u) => u.referencingAssetId === refAssetId)?.referencingLibraryId ??
-          libraryId;
-        void invalidateLibraryAssetsData(queryClient, {
-          libraryId: libId,
-          assetId: refAssetId,
-        });
+  const applyReferenceSync = useCallback(
+    (refUpdates: Parameters<typeof applyReferenceSyncToLocalState>[0]['refUpdates']) => {
+      applyReferenceSyncToLocalState({
+        refUpdates,
+        libraryId,
+        yDoc,
+        yAssets,
+        queryClient,
+        loadInitialData,
       });
     },
     [libraryId, loadInitialData, queryClient, yDoc, yAssets]
   );
 
-  const syncReferencesAfterSourceChange = useCallback(
+  const syncReferenceChange = useCallback(
     async (assetId: string, fieldId: string, valueJson: unknown) => {
-      try {
-        const refUpdates = await syncReferencesForSourceChanges(supabase, [
-          { assetId, fieldId, valueJson },
-        ]);
-        applyReferenceSyncToLocalState(refUpdates);
-        await invalidateLibraryAssetsData(queryClient, { libraryId, assetId });
-      } catch (error) {
-        console.error(
-          `[LibraryDataContext] reference sync failed: assetId=${assetId} fieldId=${fieldId}`,
-          serializeError(error)
-        );
-      }
+      await syncReferencesAfterSourceChange({
+        supabase,
+        queryClient,
+        libraryId,
+        yDoc,
+        yAssets,
+        loadInitialData,
+        assetId,
+        fieldId,
+        valueJson,
+      });
     },
-    [supabase, applyReferenceSyncToLocalState, queryClient, libraryId]
+    [libraryId, loadInitialData, queryClient, supabase, yDoc, yAssets]
   );
 
-  // Data operations
-  const updateAssetField = useCallback(async (
-    assetId: string,
-    fieldId: string,
-    value: any,
-    options?: { skipBroadcast?: boolean }
-  ) => {
-    const formulaMeta = await getFormulaFieldMeta();
-    const yAsset = yAssets.get(assetId);
-    if (!yAsset) {
-      throw new Error(`Asset ${assetId} not found`);
-    }
-
-    const yPropertyValues = yAsset.get('propertyValues') as Y.Map<any>;
-    if (!yPropertyValues) {
-      throw new Error(`propertyValues not found for asset ${assetId}`);
-    }
-
-    const oldValue = yPropertyValues.get(fieldId);
-    const oldFormulaValues: Record<string, any> = {};
-    for (const field of formulaMeta) {
-      if (field.data_type === 'formula') {
-        oldFormulaValues[field.id] = yPropertyValues.get(field.id);
-      }
-    }
-
-    // Normalize NaN to null so it never persists (avoids "NaN" in table after Clear Content etc.)
-    let valueForYjs = value;
-    if (typeof value === 'number' && Number.isNaN(value)) {
-      valueForYjs = null;
-    } else if (value !== null && typeof value === 'object') {
-      // Deep clone the object to break any references
-      valueForYjs = JSON.parse(JSON.stringify(value));
-    }
-
-    let computedFormulaValues: Record<string, any> = {};
-    yDoc.transact(() => {
-      yPropertyValues.set(fieldId, valueForYjs);
-
-      if (formulaMeta.length > 0) {
-        const currentValues: Record<string, any> = {};
-        yPropertyValues.forEach((v: any, key: string) => {
-          currentValues[key] = v;
-        });
-        const rawComputed = computeFormulaValuesForRow(
-          formulaMeta.map((field) => ({
-            id: field.id,
-            name: field.label,
-            dataType: field.data_type,
-            formulaExpression: field.formula_expression,
-          })),
-          currentValues
-        );
-        computedFormulaValues = {};
-        for (const field of formulaMeta) {
-          if (field.data_type !== 'formula') continue;
-          const formulaFieldId = field.id;
-          const currentFormulaValue = currentValues[formulaFieldId];
-          if (isCustomFormulaCellValue(currentFormulaValue)) {
-            // Preserve cell-level custom expression; do not overwrite with schema-level computed value.
-            computedFormulaValues[formulaFieldId] = currentFormulaValue;
-            yPropertyValues.set(formulaFieldId, currentFormulaValue);
-          } else {
-            const formulaValue = rawComputed[formulaFieldId];
-            computedFormulaValues[formulaFieldId] = formulaValue;
-            yPropertyValues.set(formulaFieldId, formulaValue);
-          }
-        }
-      }
-    });
-
-    const valuesToPersist: Record<string, any> = {
-      [fieldId]: valueForYjs,
-      ...computedFormulaValues,
-    };
-
-    const changedFormulaEntries = Object.entries(computedFormulaValues).filter(([formulaFieldId, formulaValue]) => {
-      return JSON.stringify(oldFormulaValues[formulaFieldId]) !== JSON.stringify(formulaValue);
-    });
-
-    try {
-      const serverUpdatedAt = await touchLibraryAssetEditUpdatedAt(supabase, {
-        assetId,
-        libraryId,
-      });
-
-      const upsertRows = Object.entries(valuesToPersist).map(([fieldKey, fieldValue]) => ({
-        asset_id: assetId,
-        field_id: fieldKey,
-        value_json: fieldValue,
-      }));
-
-      const { error } = await supabase
-        .from('library_asset_values')
-        .upsert(upsertRows, {
-          onConflict: 'asset_id,field_id',
-        });
-
-      if (error) throw error;
-
-      await syncReferencesAfterSourceChange(assetId, fieldId, valueForYjs);
-      for (const [formulaFieldId, formulaValue] of changedFormulaEntries) {
-        await syncReferencesAfterSourceChange(assetId, formulaFieldId, formulaValue);
-      }
-
-      if (!options?.skipBroadcast && realtimeConfig) {
-        await broadcastCellUpdate(assetId, fieldId, valueForYjs, oldValue, serverUpdatedAt);
-        for (const [formulaFieldId, formulaValue] of changedFormulaEntries) {
-          await broadcastCellUpdate(assetId, formulaFieldId, formulaValue, oldFormulaValues[formulaFieldId], serverUpdatedAt);
-        }
-      }
-
-      await invalidateLibraryAssetsData(queryClient, { libraryId, assetId });
-    } catch (error) {
-      const errMsg = serializeError(error);
-      console.error(
-        `[LibraryDataContext] ❌ Error in updateAssetField: assetId=${assetId} fieldId=${fieldId} | ${errMsg}`
-      );
-      // Revert optimistic update on error
-      yDoc.transact(() => {
-        yPropertyValues.set(fieldId, oldValue);
-        for (const field of formulaMeta) {
-          if (field.data_type === 'formula') {
-            yPropertyValues.set(field.id, oldFormulaValues[field.id]);
-          }
-        }
-      });
-      throw error;
-    }
-  }, [
-    getFormulaFieldMeta,
-    yAssets,
-    yDoc,
+  const {
+    updateAssetField,
+    updateAssetName,
+    createAsset,
+    deleteAsset,
+    updateMultipleFields,
+    updateAssetsBatch,
+  } = useLibraryAssetMutations({
     supabase,
-    broadcastCellUpdate,
-    realtimeConfig,
-    syncReferencesAfterSourceChange,
-    libraryId,
     queryClient,
-  ]);
-
-  const updateAssetName = useCallback(async (
-    assetId: string,
-    newName: string,
-    options?: { skipBroadcast?: boolean }
-  ) => {
-    // 1. Optimistic update in Yjs
-    const yAsset = yAssets.get(assetId);
-    if (!yAsset) {
-      throw new Error(`Asset ${assetId} not found`);
-    }
-
-    const oldName = yAsset.get('name');
-
-    yDoc.transact(() => {
-      yAsset.set('name', newName);
-    });
-
-    // 2. Save to database
-    try {
-      const { data, error } = await supabase
-        .from('library_assets')
-        .update({ name: newName })
-        .eq('id', assetId)
-        .select('updated_at')
-        .single();
-
-      if (error) throw error;
-      const serverUpdatedAt = (data as any)?.updated_at ?? null;
-
-      await touchLibraryUpdatedAt(supabase, libraryId, projectId);
-
-      // 3. Broadcast as field update (name is a special field)
-      if (!options?.skipBroadcast && realtimeConfig) {
-        await broadcastCellUpdate(assetId, 'name', newName, oldName, serverUpdatedAt);
-      }
-    } catch (error) {
-      // Revert optimistic update on error
-      yDoc.transact(() => {
-        yAsset.set('name', oldName);
-      });
-      throw error;
-    }
-  }, [yAssets, yDoc, supabase, broadcastCellUpdate, realtimeConfig, libraryId, projectId]);
-
-  const createAsset = useCallback(async (
-    name: string,
-    propertyValues: Record<string, any>,
-    options?: { insertAfterRowId?: string; insertBeforeRowId?: string; createdAt?: Date; rowIndex?: number; skipReload?: boolean }
-  ): Promise<string> => {
-    // 0. Determine rowIndex: prefer explicit option, otherwise append to end
-    let nextRowIndex: number;
-    if (typeof options?.rowIndex === 'number') {
-      nextRowIndex = options.rowIndex;
-    } else {
-      const current = Array.from(assetsRef.current.values());
-      const maxIdx = current.reduce(
-        (max, a) => (typeof a.rowIndex === 'number' && a.rowIndex > max ? a.rowIndex : max),
-        0
-      );
-      nextRowIndex = maxIdx + 1;
-    }
-
-    const formulaMeta = await getFormulaFieldMeta();
-    const booleanFieldIds = await getBooleanFieldIdsByLibraryId(supabase, libraryId);
-    const rawComputedFormulaValues = computeFormulaValuesForRow(
-      formulaMeta.map((field) => ({
-        id: field.id,
-        name: field.label,
-        dataType: field.data_type,
-        formulaExpression: field.formula_expression,
-      })),
-      propertyValues
-    );
-    const mergedPropertyValues: Record<string, any> = { ...propertyValues };
-    for (const field of formulaMeta) {
-      if (field.data_type !== 'formula') continue;
-      const fieldId = field.id;
-      const inputValue = propertyValues[fieldId];
-      if (isCustomFormulaCellValue(inputValue)) {
-        mergedPropertyValues[fieldId] = inputValue;
-      } else {
-        mergedPropertyValues[fieldId] = rawComputedFormulaValues[fieldId];
-      }
-    }
-    const valuesWithBooleanDefaults = applyBooleanFieldDefaults(
-      mergedPropertyValues,
-      booleanFieldIds
-    );
-
-    // 1. Create in database
-    const { data: newAsset, error: assetError } = await supabase
-      .from('library_assets')
-      .insert({
-        library_id: libraryId,
-        name,
-        created_at: options?.createdAt?.toISOString(),
-        row_index: nextRowIndex,
-      })
-      .select()
-      .single();
-
-    if (assetError) throw assetError;
-
-    const assetId = newAsset.id;
-
-    // For any insert with explicit rowIndex, register the ID so that
-    // handleAssetCreateEvent ignores the postgres_changes INSERT event for it.
-    // This prevents incomplete synthetic events (missing row_index) from being
-    // added to yAssets between the DB insert and loadInitialData, which would
-    // corrupt allAssets ordering and cause temp rows to flicker.
-    if (typeof options?.rowIndex === 'number') {
-      pendingBatchInsertIdsRef.current.add(assetId);
-    }
-
-    // 2. Insert field values
-    const fieldValues = Object.entries(valuesWithBooleanDefaults).map(([fieldId, value]) => ({
-      asset_id: assetId,
-      field_id: fieldId,
-      value_json: value,
-    }));
-
-    if (fieldValues.length > 0) {
-      const { error: valuesError } = await supabase
-        .from('library_asset_values')
-        .insert(fieldValues);
-
-      if (valuesError) throw valuesError;
-    }
-
-    // New rows should refresh library, folder, and project updated_at metadata.
-    await touchLibraryUpdatedAt(supabase, libraryId, projectId);
-
-    // 3. Add to Yjs (using Y.Map for propertyValues)
-    // Plain appends can be inserted locally immediately. Explicit rowIndex
-    // inserts reload below so DB ordering replaces local state in one step.
-    if (typeof options?.rowIndex !== 'number') {
-      const yAsset = new Y.Map();
-      yAsset.set('name', name);
-
-      // Create Y.Map for propertyValues
-      const yPropertyValues = new Y.Map();
-      Object.entries(valuesWithBooleanDefaults).forEach(([fieldId, value]) => {
-        // For complex objects, use deep copy to avoid reference issues
-        let valueForYjs = value;
-        if (value !== null && typeof value === 'object') {
-          valueForYjs = JSON.parse(JSON.stringify(value));
-        }
-        yPropertyValues.set(fieldId, valueForYjs);
-      });
-      yAsset.set('propertyValues', yPropertyValues);
-      // Ensure created_at / row_index so allAssets sort puts insert-above/insert-below in correct position
-      yAsset.set('created_at', newAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString());
-      yAsset.set('row_index', newAsset.row_index ?? nextRowIndex);
-
-      yDoc.transact(() => {
-        yAssets.set(assetId, yAsset);
-      });
-    }
-
-    // 4. Broadcast FIRST, then reload — broadcast roworder:change before loadInitialData()
-    // so collaborators start their DB query in parallel with ours (~1× instead of ~2× delay).
-    if (realtimeConfig) {
-      if (typeof options?.rowIndex !== 'number') {
-        await broadcastAssetCreate(assetId, name, valuesWithBooleanDefaults, {
-          insertAfterRowId: options?.insertAfterRowId,
-          insertBeforeRowId: options?.insertBeforeRowId,
-          targetCreatedAt: options?.createdAt?.toISOString(),
-        });
-      }
-      // Fire-and-forget (no await) since broadcast channel uses ack:false.
-      // All rows are already in DB (batch loop awaits each insert sequentially).
-      if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
-        broadcastRowOrderChange();
-      }
-    }
-
-    // 5. Reload explicit rowIndex inserts so the local order matches the DB.
-    if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
-      await loadInitialData();
-      // After the final reload of a batch insert, clear the pending set.
-      // All assets are now in yAssets via loadInitialData, so any late-arriving
-      // postgres_changes events will be caught by the yAssets.has() guard.
-      if (pendingBatchInsertIdsRef.current.size > 0) {
-        pendingBatchInsertIdsRef.current.clear();
-      }
-    }
-
-    return assetId;
-  }, [getFormulaFieldMeta, libraryId, supabase, yDoc, yAssets, broadcastAssetCreate, broadcastRowOrderChange, realtimeConfig, loadInitialData]);
-
-  const deleteAsset = useCallback(async (assetId: string) => {
-    const asset = assetsRef.current.get(assetId);
-    if (!asset) {
-      throw new Error(`Asset ${assetId} not found`);
-    }
-
-    // 1. Delete from database
-    const { error } = await supabase
-      .from('library_assets')
-      .delete()
-      .eq('id', assetId);
-
-    if (error) throw error;
-
-    // 2. Remove from Yjs
-    yDoc.transact(() => {
-      yAssets.delete(assetId);
-    });
-
-    // 3. Broadcast deletion
-    if (realtimeConfig) {
-      await broadcastAssetDelete(assetId, asset.name);
-    }
-  }, [supabase, yDoc, yAssets, broadcastAssetDelete, realtimeConfig]);
+    libraryId,
+    projectId,
+    yDoc,
+    yAssets,
+    assetsRef,
+    pendingBatchInsertIdsRef,
+    getFormulaFieldMeta,
+    loadInitialData,
+    realtimeConfig,
+    realtime: {
+      broadcastCellUpdate,
+      broadcastAssetCreate,
+      broadcastAssetDelete,
+      broadcastCellsBatchUpdate,
+      broadcastRowOrderChange,
+    },
+  });
 
   const refreshAssetsFromServer = useCallback(async () => {
     await loadInitialData();
     await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
   }, [libraryId, loadInitialData, queryClient]);
-
-  const updateMultipleFields = useCallback(async (
-    updates: Array<{ assetId: string; fieldId: string; value: any }>
-  ) => {
-    // Batch update - useful for paste operations
-    const promises = updates.map(({ assetId, fieldId, value }) =>
-      updateAssetField(assetId, fieldId, value, { skipBroadcast: true })
-    );
-
-    await Promise.all(promises);
-
-    // Broadcast all updates after they're saved
-    if (realtimeConfig) {
-      for (const { assetId, fieldId, value } of updates) {
-        await broadcastCellUpdate(assetId, fieldId, value);
-      }
-    }
-  }, [updateAssetField, broadcastCellUpdate, realtimeConfig]);
-
-  /** Batch update and broadcast once for Clear Content, matching Delete Row sync. */
-  const updateAssetsBatch = useCallback(async (
-    updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>
-  ) => {
-    const cellsToBroadcast: Array<{ assetId: string; propertyKey: string; newValue: any }> = [];
-
-    for (const { assetId, assetName, propertyValues } of updates) {
-      const asset = assetsRef.current.get(assetId);
-      if (!asset) continue;
-
-      if (asset.name !== assetName) {
-        await updateAssetName(assetId, assetName, { skipBroadcast: true });
-        cellsToBroadcast.push({ assetId, propertyKey: 'name', newValue: assetName });
-      }
-
-      for (const [fieldId, value] of Object.entries(propertyValues)) {
-        const oldValue = asset.propertyValues[fieldId];
-        if (JSON.stringify(oldValue) === JSON.stringify(value)) continue;
-        await updateAssetField(assetId, fieldId, value, { skipBroadcast: true });
-        cellsToBroadcast.push({ assetId, propertyKey: fieldId, newValue: value });
-      }
-    }
-
-    if (realtimeConfig && cellsToBroadcast.length > 0) {
-      await broadcastCellsBatchUpdate(cellsToBroadcast);
-    }
-  }, [updateAssetName, updateAssetField, broadcastCellsBatchUpdate, realtimeConfig]);
 
   // Helper functions
   const getAsset = useCallback((assetId: string) => {
@@ -966,10 +428,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      if (cellUpdateFlushTimerRef.current) {
-        clearTimeout(cellUpdateFlushTimerRef.current);
-        cellUpdateFlushTimerRef.current = null;
-      }
     };
   }, []);
 

@@ -1,4 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import * as Y from 'yjs';
 import {
   hydrateYAssetsFromRows,
@@ -25,6 +27,15 @@ const readYAssets = (yAssets: Y.Map<Y.Map<unknown>>) => {
 };
 
 describe('Yjs asset hydration helpers', () => {
+  it('does not clear then repopulate the Yjs asset map', () => {
+    const source = readFileSync(
+      path.join(process.cwd(), 'src/lib/library/yjsAssetHydration.ts'),
+      'utf8'
+    );
+
+    expect(source).not.toContain('.clear()');
+  });
+
   it('replaces in-memory Yjs assets from Supabase rows', () => {
     const yDoc = new Y.Doc();
     const yAssets = yDoc.getMap<Y.Map<unknown>>('assets');
