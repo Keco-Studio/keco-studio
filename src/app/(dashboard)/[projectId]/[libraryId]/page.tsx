@@ -27,6 +27,7 @@ import {
   updateSectionName,
   addLibrarySection,
   addLibraryField,
+  ensureDefaultLibraryField,
 } from '@/lib/services/libraryAssetsService';
 import type { AddColumnFormPayload } from '@/components/libraries/components/AddColumnModal';
 import { useAuth } from '@/lib/contexts/AuthContext';
@@ -210,32 +211,16 @@ export default function LibraryPage() {
 
         if (!librarySchema || props.length === 0) {
           // 2) no schema and no assets: create default section1 / field ID(String)
-          const sectionId = `${libraryId}:section1`;
-
-          const { data: newField, error: fieldErr } = await supabase
-            .from('library_field_definitions')
-            .insert({
-              library_id: libraryId,
-              section_id: sectionId,
-              section: 'section1',
-              label: 'ID',
-              data_type: 'string',
-              order_index: 0,
-              required: false,
-            })
-            .select('id')
-            .single();
-
-          if (fieldErr) {
-            console.error('Failed to create default section/field', fieldErr);
-            return;
-          }
-
-          const fieldId = newField.id as string;
+          const { fieldId, created } = await ensureDefaultLibraryField(supabase, libraryId);
 
           // Update the table with the latest schema (including the ID field)
           await invalidateLibrarySchemaData(queryClient, { libraryId, refetchActiveSchema: true });
           invalidateFormulaFieldMeta();
+
+          if (!created) {
+            hasInitializedBlankRowsRef.current = true;
+            return;
+          }
 
           // Business requirement:
           // When a brand new library is created (no schema & no assets),

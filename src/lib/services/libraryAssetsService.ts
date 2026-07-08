@@ -493,6 +493,52 @@ export async function updateSectionName(
   await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
+/** Ensure a brand-new library has its default section1 / ID field exactly once. */
+export async function ensureDefaultLibraryField(
+  supabase: SupabaseClient,
+  libraryId: string
+): Promise<{ fieldId: string; created: boolean }> {
+  const sectionId = `${libraryId}:section1`;
+  const defaultField = {
+    library_id: libraryId,
+    section_id: sectionId,
+    section: 'section1',
+    label: 'ID',
+    data_type: 'string',
+    order_index: 0,
+    required: false,
+  };
+
+  const { data: newField, error: fieldErr } = await supabase
+    .from('library_field_definitions')
+    .insert(defaultField)
+    .select('id')
+    .single();
+
+  if (!fieldErr && newField?.id) {
+    return { fieldId: newField.id as string, created: true };
+  }
+
+  if (fieldErr?.code !== '23505') {
+    throw fieldErr;
+  }
+
+  const { data: existingField, error: existingError } = await supabase
+    .from('library_field_definitions')
+    .select('id')
+    .eq('library_id', libraryId)
+    .eq('section_id', sectionId)
+    .eq('order_index', 0)
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+  if (!existingField?.id) throw fieldErr;
+
+  return { fieldId: existingField.id as string, created: false };
+}
+
 /** Add a section by inserting its default field definition row. */
 export async function addLibrarySection(
   supabase: SupabaseClient,
