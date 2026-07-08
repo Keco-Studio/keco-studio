@@ -7,7 +7,7 @@
 import type { Node, RoleMap } from './types';
 
 // Basic regexes
-const SEPARATOR_RE = /^[-*]{3,}$/;
+const SEPARATOR_RE = /^[-*+]{3,}$/;
 const LABEL_RE = /^\[(?:Label|标签):\s*(.+?)\]$/;
 const OPTION_RE = /^【选项\s*(\d+)\s*[：:]\s*(.+?)】$/;
 const SYSTEM_RE = /^【(.+?)】(.*)$/; // Supports bracketed text followed by trailing content.
@@ -37,6 +37,11 @@ const STAGE_KEYWORDS = [
   '清晨', '黄昏', '夜晚', '傍晚', '午后', '深夜',
   '场景', '镜头', '画面', '背景', '特效',
 ];
+
+// Scene labels: "Location Name [XXX]" or "[XXX] Location Name" or just "[XXX]"
+const SCENE_LABEL_RE = /^(.+?)\s*\[(\w+)\]\s*$/;
+const SCENE_LABEL_START_RE = /^\[(\w+)\]\s*(.+?)\s*$/; // [XXX] Location Name
+const SCENE_ID_RE = /^\[(\w+)\]\s*$/;
 
 // Variable annotations
 const VAR_CN_RE = /^（([^）]*[线值分好感][^）]*[+\-\d][^）]*)）$/;
@@ -121,13 +126,13 @@ function classifyBracketContent(inner: string): Node {
   // Stage direction
   for (const kw of STAGE_KEYWORDS) {
     if (inner.includes(kw)) {
-      return { _type: 'system', type: 5, content: inner };
+      return { _type: 'system', type: 2, content: inner };
     }
   }
 
   // Short text that looks like an instruction.
   if (inner.length < 20 && !inner.includes('，') && !inner.includes(',')) {
-    return { _type: 'system', type: 5, content: inner };
+    return { _type: 'system', type: 2, content: inner };
   }
 
   // Fallback to narration.
@@ -291,7 +296,7 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     const title = sysMatch[1];
     const rest = sysMatch[2] ? sysMatch[2].trim() : '';
     const content = rest ? `${title}】${rest}` : title;
-    return { _type: 'system', type: 5, content };
+    return { _type: 'system', type: 2, content };
   }
 
   // 4.5 Variable assignment syntax.
@@ -306,9 +311,15 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
   // 5. Structured dialogue
   const typedMatch = STRUCT_TYPED_RE.exec(stripped);
   if (typedMatch) {
-    const type = parseInt(typedMatch[1], 10);
-    const name = type === 3 ? '' : typedMatch[2];
-    return { _type: 'dialogue', name, type, content: typedMatch[3] };
+    const rawType = parseInt(typedMatch[1], 10);
+    const name = typedMatch[2];
+    const content = typedMatch[3];
+    // Output Type: 1=character dialogue, 2=scene/narration
+    // Structured Type1/Type2 are both characters; Type3+ are scene/narration
+    if (rawType === 1 || rawType === 2) {
+      return { _type: 'dialogue', name, type: 1, content };
+    }
+    return { _type: 'dialogue', name: '', type: 2, content };
   }
 
   // 6. Chapter heading
@@ -354,6 +365,35 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     };
   }
 
+  // 9.3 Quoted environment description: "..." or a merged multi-line quoted block
+  if (/^["'""]/.test(stripped)) {
+    return { _type: 'narration', content: stripQuotes(stripped), type: 2 };
+  }
+
+  // 9.4 Environment description: [English bracket narration with spaces/punctuation]
+  const envDescMatch = /^\[(.+)\]$/.exec(stripped);
+  if (envDescMatch && !/^\w+$/.test(envDescMatch[1])) {
+    return { _type: 'narration', content: envDescMatch[1].trim(), type: 2 };
+  }
+
+  // 9.5 Scene label: "Location Name [XXX]" → label=id, content=scene name
+  const sceneLabelMatch = SCENE_LABEL_RE.exec(stripped);
+  if (sceneLabelMatch) {
+    return { _type: 'scene_label', label: sceneLabelMatch[2], content: sceneLabelMatch[1].trim() };
+  }
+
+  // 9.5.1 Scene label with leading id: "[XXX] Location Name" → label=id, content=scene description
+  const sceneLabelStartMatch = SCENE_LABEL_START_RE.exec(stripped);
+  if (sceneLabelStartMatch) {
+    return { _type: 'scene_label', label: sceneLabelStartMatch[1], content: sceneLabelStartMatch[2].trim() };
+  }
+
+  // 9.6 Scene id: "[XXX]" — merged with the previous line at the parser layer
+  const sceneIdMatch = SCENE_ID_RE.exec(stripped);
+  if (sceneIdMatch) {
+    return { _type: 'scene_id', id: sceneIdMatch[1] };
+  }
+
   // 10. Fallback to narration
-  return { _type: 'narration', content: stripped };
+  return { _type: 'narration', content: stripped, type: 2 };
 }

@@ -103,7 +103,7 @@ function isSpecialLine(line: string): boolean {
   if (!stripped) return false;
 
   // Separator
-  if (/^[-*]{3,}$/.test(stripped)) return true;
+  if (/^[-*+]{3,}$/.test(stripped)) return true;
 
   // Label
   if (/^\[(?:Label|标签):\s*(.+?)\]$/.test(stripped)) return true;
@@ -124,7 +124,21 @@ function isSpecialLine(line: string): boolean {
 }
 
 /**
- * Preprocess by merging quoted text across lines.
+ * Decide whether a line should terminate multi-line dialogue merging.
+ */
+function isContinuationBreaker(line: string): boolean {
+  const stripped = line.trim();
+  if (/^（/.test(stripped)) return true;       // stage direction
+  if (/^【/.test(stripped)) return true;       // system message
+  if (/^[-*+]{3,}$/.test(stripped)) return true; // separator (-, *, +)
+  if (/^\[\w+\]\s*$/.test(stripped)) return true; // scene ID [004]
+  if (/^\[.+\]$/.test(stripped) && !/^\[\w+\]$/.test(stripped)) return true; // [env description]
+  if (/^["'""]/.test(stripped)) return true;   // quoted narration block
+  return false;
+}
+
+/**
+ * Preprocess: merge quoted text across lines + merge unquoted dialogue across lines.
  */
 function preprocessLines(rawLines: string[]): string[] {
   const result: string[] = [];
@@ -135,6 +149,35 @@ function preprocessLines(rawLines: string[]): string[] {
     if (!line) {
       i++;
       continue;
+    }
+
+    // Merge quoted environment description across lines
+    if (/^["'""]/.test(line)) {
+      const quoteChar = line[0];
+      const closedOnSameLine =
+        line.length > 1 &&
+        line.endsWith(quoteChar) &&
+        line.indexOf(quoteChar, 1) === line.length - 1;
+
+      if (!closedOnSameLine) {
+        const collected = [line];
+        i++;
+        while (i < rawLines.length) {
+          const nl = rawLines[i].trim();
+          if (!nl) {
+            i++;
+            continue;
+          }
+          if (isSpecialLine(nl) || isContinuationBreaker(nl)) break;
+          const nlColonPos = findColon(nl);
+          if (nlColonPos > 0) break;
+          collected.push(nl);
+          i++;
+          if (nl.endsWith(quoteChar)) break;
+        }
+        result.push(collected.join(' '));
+        continue;
+      }
     }
 
     const colonPos = findColon(line);
@@ -191,6 +234,34 @@ function preprocessLines(rawLines: string[]): string[] {
       }
     }
 
+    // Unquoted dialogue: try to merge following colon-less continuation lines
+    if (rest.length > 0) {
+      const speaker = line.slice(0, colonPos).trim();
+      const collected: string[] = [];
+      let j = i + 1;
+
+      while (j < rawLines.length) {
+        const nl = rawLines[j].trim();
+        if (!nl) { j++; continue; }
+
+        // Termination conditions
+        if (isSpecialLine(nl)) break;
+        if (isContinuationBreaker(nl)) break;
+
+        const nlColonPos = findColon(nl);
+        if (nlColonPos > 0 && !isSpecialLine(nl)) break; // new dialogue line
+
+        collected.push(nl);
+        j++;
+      }
+
+      if (collected.length > 0) {
+        result.push(`${speaker}：${rest} ${collected.join(' ')}`);
+        i = j;
+        continue;
+      }
+    }
+
     result.push(line);
     i++;
   }
@@ -223,6 +294,23 @@ export function parseText(text: string, roleMap: RoleMap = {}): Script {
     const node = classifyLine(line, roleMap);
     if (node._type !== 'empty') {
       rawNodes.push(node);
+    }
+  }
+
+  // Merge a scene_id with the preceding narration line → scene_label
+  // e.g. "South Figaro Cave" + "[003]" → scene_label(label="003", content="South Figaro Cave")
+  for (let i = 1; i < rawNodes.length; i++) {
+    if (rawNodes[i]._type === 'scene_id') {
+      const prev = rawNodes[i - 1];
+      if (prev._type === 'narration') {
+        rawNodes[i - 1] = {
+          _type: 'scene_label',
+          label: (rawNodes[i] as { id: string }).id,
+          content: prev.content,
+        };
+        rawNodes.splice(i, 1);
+        i--;
+      }
     }
   }
 

@@ -52,7 +52,7 @@ function makeScriptLine(
     sl.label = DEFAULT_START_LABEL;
   }
 
-  sl.type = node.type ?? 3;
+  sl.type = node.type ?? 2;
   sl.name = node.name ?? '';
   sl.content = node.content ?? '';
 
@@ -147,7 +147,7 @@ export function postProcess(rawNodes: Node[]): Script {
       merged.push({
         _type: 'dialogue',
         label: node.label,
-        type: 3,
+        type: 2,
         content: node.content,
       } as NodeWithOptions);
       continue;
@@ -158,7 +158,18 @@ export function postProcess(rawNodes: Node[]): Script {
       merged.push({
         _type: 'dialogue',
         label: node.label,
-        type: 3,
+        type: 2,
+        content: node.content,
+      } as NodeWithOptions);
+      continue;
+    }
+
+    if (node._type === 'scene_label') {
+      // Natural format scene label: "Location Name [XXX]"
+      merged.push({
+        _type: 'dialogue',
+        label: node.label,
+        type: 2,
         content: node.content,
       } as NodeWithOptions);
       continue;
@@ -325,7 +336,7 @@ export function postProcess(rawNodes: Node[]): Script {
   let isFirst = true;
   for (const node of trunk) {
     if (node._type === 'separator') {
-      script.lines.push(createEmptyScriptLine());
+      // Decorative separators (+++ etc.) are not stored as table rows
       continue;
     }
     const sl = makeScriptLine(node, isFirst, warnings);

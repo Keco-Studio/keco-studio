@@ -8,7 +8,7 @@
 export interface ScriptLine {
   // Core fields
   label: string;           // A: node id or jump label
-  type: number;            // B: dialogue box type
+  type: number;            // B: 1=dialogue, 2=narration/scene/stage/system
   name: string;            // C: speaker
   content: string;         // D: dialogue content
   if: string;              // E: trigger condition
@@ -57,7 +57,7 @@ export type Node =
   | { _type: 'label'; label: string }
   | { _type: 'chapter'; label: string }
   | { _type: 'dialogue'; name: string; type: number; content: string }
-  | { _type: 'narration'; content: string; condition?: string }
+  | { _type: 'narration'; content: string; condition?: string; type?: number }
   | { _type: 'system'; type: number; content: string }
   | { _type: 'variable'; command: string }
   | { _type: 'condition'; condition: string }
@@ -72,7 +72,10 @@ export type Node =
   | { _type: 'struct_label'; label: string; content: string }
   | { _type: 'struct_option'; option_index: number; option_text: string; var_change: string; jump_target: string }
   | { _type: 'struct_branch'; label: string; content: string }
-  | { _type: 'struct_jump'; target: string };
+  | { _type: 'struct_jump'; target: string }
+  // Natural format scene labels
+  | { _type: 'scene_label'; label: string; content: string }
+  | { _type: 'scene_id'; id: string };
 
 // Node with attached option metadata
 export interface NodeWithOptions {

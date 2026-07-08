@@ -40,6 +40,9 @@ describe('Structured Format Parser', () => {
     const names = dataLines.map(l => l.name).filter(Boolean);
     expect(names).toContain('阿塔那');
     expect(names).toContain('AI');
+    const allContent = dataLines.map(l => l.content).join(' ');
+    expect(allContent).toContain('场景');
+    expect(allContent).toContain('回复');
   });
 
   it('should parse structured option format', () => {

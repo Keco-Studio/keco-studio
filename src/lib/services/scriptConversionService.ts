@@ -100,6 +100,8 @@ export function looksLikeStructuredScript(sourceText: string): boolean {
     /^[\u4e00-\u9fffA-Za-z0-9_\s]+[：:].+$/,
     /^\s*-\s+/,
     /^【选项\d/,
+    /^.+\s\[\w+\]$/,           // South Figaro [004]
+    /^\[[^\]]+\]$/,             // [environment description]
   ];
 
   return lines.some((line) => structuredPatterns.some((pattern) => pattern.test(line)));
