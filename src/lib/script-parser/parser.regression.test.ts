@@ -3,6 +3,8 @@
  */
 
 import { describe, expect, it } from '@jest/globals';
+import { classifyLine } from './classifier';
+import { findDialogueColon } from './colon';
 import { parseText } from './parser';
 
 describe('Script parser issue #159 regressions', () => {
@@ -42,5 +44,43 @@ describe('Script parser issue #159 regressions', () => {
     const narration = script.lines.find((line) => line.content === '12:30 闹钟响了');
     expect(narration).toBeDefined();
     expect(script.lines.find((line) => line.name === '12')).toBeUndefined();
+  });
+
+  it('classifies dialogue with a leading timestamp and later separator colon', () => {
+    const node = classifyLine('12:30: 说话内容');
+
+    expect(node).toMatchObject({
+      _type: 'dialogue',
+      name: '12:30',
+      content: '说话内容',
+    });
+  });
+
+  it('finds the first non-time colon as the dialogue separator', () => {
+    expect(findDialogueColon('12:30: 说话内容')).toBe('12:30'.length);
+    expect(findDialogueColon('08:00 到 12:30: 说话内容')).toBe('08:00 到 12:30'.length);
+    expect(findDialogueColon('12:30')).toBe(-1);
+  });
+
+  it('parses dialogue with multiple leading time-like colons before the separator', () => {
+    const script = parseText('08:00 到 12:30: 说话内容');
+
+    expect(script.lines).toContainEqual(
+      expect.objectContaining({
+        name: '08:00 到 12:30',
+        content: '说话内容',
+      })
+    );
+  });
+
+  it('uses a full-width separator after a leading half-width time token', () => {
+    const script = parseText('12:30：说话内容');
+
+    expect(script.lines).toContainEqual(
+      expect.objectContaining({
+        name: '12:30',
+        content: '说话内容',
+      })
+    );
   });
 });

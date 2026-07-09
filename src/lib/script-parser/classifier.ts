@@ -5,6 +5,7 @@
  */
 
 import type { Node, RoleMap } from './types';
+import { findDialogueColon } from './colon';
 
 // Basic regexes
 const SEPARATOR_RE = /^[-*+]{3,}$/;
@@ -47,25 +48,6 @@ const SCENE_ID_RE = /^\[(\w+)\]\s*$/;
 const VAR_CN_RE = /^（([^）]*[线值分好感][^）]*[+\-\d][^）]*)）$/;
 
 const QUOTES = '"\'“”‘’「」';
-
-/**
- * Find a colon position, supporting full-width and half-width colons.
- */
-function findColon(line: string): number {
-  const cPos = line.indexOf('：');
-  const ePos = line.indexOf(':');
-  if (cPos === -1) {
-    if (ePos > 0 && /\d/.test(line[ePos - 1]) && /\d/.test(line[ePos + 1] ?? '')) {
-      return -1;
-    }
-    return ePos;
-  }
-  if (ePos === -1) return cPos;
-  if (ePos > 0 && /\d/.test(line[ePos - 1]) && /\d/.test(line[ePos + 1] ?? '')) {
-    return cPos;
-  }
-  return Math.min(cPos, ePos);
-}
 
 /**
  * Strip wrapping quote characters.
@@ -352,7 +334,7 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
   }
 
   // 9. Plain dialogue
-  const colonPos = findColon(stripped);
+  const colonPos = findDialogueColon(stripped);
   if (colonPos > 0) {
     const speaker = stripped.slice(0, colonPos).trim();
     const content = stripQuotes(stripped.slice(colonPos + 1).trim());
