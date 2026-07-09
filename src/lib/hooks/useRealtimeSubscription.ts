@@ -432,7 +432,13 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
    * Like Delete Row, send every change in one message with no debounce.
    */
   const broadcastCellsBatchUpdate = useCallback(async (
-    cells: Array<{ assetId: string; propertyKey: string; newValue: any }>
+    cells: Array<{
+      assetId: string;
+      propertyKey: string;
+      newValue: any;
+      oldValue?: any;
+      updatedAt?: string | null;
+    }>
   ): Promise<void> => {
     if (!channelRef.current || cells.length === 0) return;
 

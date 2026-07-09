@@ -36,6 +36,7 @@ import {
   hydrateYAssetsFromSnapshot,
   type LibrarySnapshotData,
 } from '@/lib/library/yjsAssetHydration';
+import { runLatestLibraryHydration } from '@/lib/library/loadInitialLibraryData';
 import { useLibraryAssetMutations } from '@/components/libraries/hooks/useLibraryAssetMutations';
 import { useLibraryRealtimeHandlers } from '@/components/libraries/hooks/useLibraryRealtimeHandlers';
 import { useQueryClient } from '@tanstack/react-query';
@@ -109,6 +110,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Refs to avoid stale closures
   const assetsRef = useRef<Map<string, AssetRow>>(new Map());
   const isMountedRef = useRef(true);
+  const loadInitialDataGenerationRef = useRef(0);
   // Track asset IDs created during a batch insert (skipReload=true) so that
   // postgres_changes INSERT events don't add them to yAssets with missing row_index.
   const pendingBatchInsertIdsRef = useRef<Set<string>>(new Set());
@@ -190,25 +192,19 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   const loadInitialData = useCallback(async () => {
     if (!libraryId || !isAuthenticated || !userProfile) return;
 
-    setIsLoading(true);
-    setIsSynced(false);
-
-    try {
+    await runLatestLibraryHydration({
+      generationRef: loadInitialDataGenerationRef,
+      isMounted: () => isMountedRef.current,
       // Use the same service as version snapshots so the current view and
       // saved snapshots read the same row shape.
-      const assetRows: AssetRow[] = await getLibraryAssetsWithProperties(supabase, libraryId);
-
-      hydrateYAssetsFromRows(yDoc, yAssets, assetRows);
-
-      if (isMountedRef.current) {
-        setIsSynced(true);
-      }
-    } catch (error) {
-      setIsSynced(false);
-      console.error('[LibraryDataContext] Failed to load initial data:', error);
-    } finally {
-      setIsLoading(false);
-    }
+      fetchAssetRows: () => getLibraryAssetsWithProperties(supabase, libraryId),
+      hydrate: (assetRows) => hydrateYAssetsFromRows(yDoc, yAssets, assetRows),
+      setIsLoading,
+      setIsSynced,
+      onError: (error) => {
+        console.error('[LibraryDataContext] Failed to load initial data:', error);
+      },
+    });
   }, [libraryId, isAuthenticated, userProfile, supabase, yDoc, yAssets]);
 
   const invalidateFormulaFieldMeta = useCallback(() => {

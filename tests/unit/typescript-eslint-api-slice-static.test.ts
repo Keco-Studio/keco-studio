@@ -28,11 +28,10 @@ describe('TypeScript strictness API slice guard', () => {
     expect(tsconfig.include).toEqual(['src/app/api/**/*.ts', 'src/app/api/**/*.tsx']);
   });
 
-  it('keeps the explicit-any guard focused on the three named API routes', () => {
-    const source = read('scripts/check-no-explicit-any.ts');
+  it('does not keep a duplicate explicit-any scanner script', () => {
+    const pkg = JSON.parse(read('package.json')) as { scripts: Record<string, string> };
 
-    expect(source).toContain("src/app/api/projects/[projectId]/libraries/route.ts");
-    expect(source).toContain('src/app/api/search/assets/route.ts');
-    expect(source).toContain('src/app/api/export/route.ts');
+    expect(pkg.scripts.lint).toBe('eslint .');
+    expect(pkg.scripts).not.toHaveProperty('lint:types');
   });
 });

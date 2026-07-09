@@ -37,7 +37,13 @@ type RealtimeMutationConfig = {
   ) => Promise<void>;
   broadcastAssetDelete: (assetId: string, assetName: string) => Promise<void>;
   broadcastCellsBatchUpdate: (
-    cells: Array<{ assetId: string; propertyKey: string; newValue: unknown }>
+    cells: Array<{
+      assetId: string;
+      propertyKey: string;
+      newValue: unknown;
+      oldValue?: unknown;
+      updatedAt?: string | null;
+    }>
   ) => Promise<void>;
   broadcastRowOrderChange: () => Promise<void>;
 };
@@ -58,6 +64,13 @@ type UseLibraryAssetMutationsArgs = {
 };
 
 type MutationOptions = { skipBroadcast?: boolean };
+type PersistedCellUpdate = {
+  assetId: string;
+  propertyKey: string;
+  newValue: unknown;
+  oldValue: unknown;
+  updatedAt: string | null;
+};
 type CreateAssetOptions = {
   insertAfterRowId?: string;
   insertBeforeRowId?: string;
@@ -106,12 +119,12 @@ export function createLibraryAssetMutations({
   realtimeConfig,
   realtime,
 }: UseLibraryAssetMutationsArgs) {
-  const updateAssetField = async (
+  const persistAssetField = async (
     assetId: string,
     fieldId: string,
     value: unknown,
     options?: MutationOptions
-  ) => {
+  ): Promise<PersistedCellUpdate> => {
     const formulaMeta = await getFormulaFieldMeta();
     const yAsset = yAssets.get(assetId);
     if (!yAsset) {
@@ -235,6 +248,13 @@ export function createLibraryAssetMutations({
       }
 
       await invalidateLibraryAssetsData(queryClient, { libraryId, assetId });
+      return {
+        assetId,
+        propertyKey: fieldId,
+        newValue: valueForYjs,
+        oldValue,
+        updatedAt: serverUpdatedAt,
+      };
     } catch (error) {
       const errMsg = serializeError(error);
       console.error(
@@ -252,11 +272,20 @@ export function createLibraryAssetMutations({
     }
   };
 
-  const updateAssetName = async (
+  const updateAssetField = async (
+    assetId: string,
+    fieldId: string,
+    value: unknown,
+    options?: MutationOptions
+  ): Promise<void> => {
+    await persistAssetField(assetId, fieldId, value, options);
+  };
+
+  const persistAssetName = async (
     assetId: string,
     newName: string,
     options?: MutationOptions
-  ) => {
+  ): Promise<PersistedCellUpdate> => {
     const yAsset = yAssets.get(assetId);
     if (!yAsset) {
       throw new Error(`Asset ${assetId} not found`);
@@ -284,12 +313,27 @@ export function createLibraryAssetMutations({
       if (!options?.skipBroadcast && realtimeConfig) {
         await realtime.broadcastCellUpdate(assetId, 'name', newName, oldName, serverUpdatedAt);
       }
+      return {
+        assetId,
+        propertyKey: 'name',
+        newValue: newName,
+        oldValue: oldName,
+        updatedAt: serverUpdatedAt,
+      };
     } catch (error) {
       yDoc.transact(() => {
         yAsset.set('name', oldName);
       });
       throw error;
     }
+  };
+
+  const updateAssetName = async (
+    assetId: string,
+    newName: string,
+    options?: MutationOptions
+  ): Promise<void> => {
+    await persistAssetName(assetId, newName, options);
   };
 
   const createAsset = async (
@@ -436,14 +480,20 @@ export function createLibraryAssetMutations({
     updates: Array<{ assetId: string; fieldId: string; value: unknown }>
   ) => {
     const promises = updates.map(({ assetId, fieldId, value }) =>
-      updateAssetField(assetId, fieldId, value, { skipBroadcast: true })
+      persistAssetField(assetId, fieldId, value, { skipBroadcast: true })
     );
 
-    await Promise.all(promises);
+    const persistedUpdates = await Promise.all(promises);
 
     if (realtimeConfig) {
-      for (const { assetId, fieldId, value } of updates) {
-        await realtime.broadcastCellUpdate(assetId, fieldId, value);
+      for (const update of persistedUpdates) {
+        await realtime.broadcastCellUpdate(
+          update.assetId,
+          update.propertyKey,
+          update.newValue,
+          update.oldValue,
+          update.updatedAt
+        );
       }
     }
   };
@@ -451,22 +501,22 @@ export function createLibraryAssetMutations({
   const updateAssetsBatch = async (
     updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, unknown> }>
   ) => {
-    const cellsToBroadcast: Array<{ assetId: string; propertyKey: string; newValue: unknown }> = [];
+    const cellsToBroadcast: PersistedCellUpdate[] = [];
 
     for (const { assetId, assetName, propertyValues } of updates) {
       const asset = assetsRef.current.get(assetId);
       if (!asset) continue;
 
       if (asset.name !== assetName) {
-        await updateAssetName(assetId, assetName, { skipBroadcast: true });
-        cellsToBroadcast.push({ assetId, propertyKey: 'name', newValue: assetName });
+        const persistedNameUpdate = await persistAssetName(assetId, assetName, { skipBroadcast: true });
+        cellsToBroadcast.push(persistedNameUpdate);
       }
 
       for (const [fieldId, value] of Object.entries(propertyValues)) {
         const oldValue = asset.propertyValues[fieldId];
         if (JSON.stringify(oldValue) === JSON.stringify(value)) continue;
-        await updateAssetField(assetId, fieldId, value, { skipBroadcast: true });
-        cellsToBroadcast.push({ assetId, propertyKey: fieldId, newValue: value });
+        const persistedFieldUpdate = await persistAssetField(assetId, fieldId, value, { skipBroadcast: true });
+        cellsToBroadcast.push(persistedFieldUpdate);
       }
     }
 

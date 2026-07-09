@@ -8,17 +8,14 @@ const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')
 };
 
 describe('type guardrails', () => {
-  it('wires explicit-any guard into lint', () => {
-    expect(pkg.scripts['lint:types']).toBe('tsx scripts/check-no-explicit-any.ts');
-    expect(pkg.scripts.lint).toBe('eslint . && npm run lint:types');
+  it('uses ESLint as the explicit-any guardrail', () => {
+    expect(pkg.scripts.lint).toBe('eslint .');
+    expect(pkg.scripts).not.toHaveProperty('lint:types');
   });
 
-  it('scans the high-risk API route touched by this batch', () => {
+  it('does not keep the retired regex explicit-any scanner', () => {
     const scriptPath = path.join(repoRoot, 'scripts/check-no-explicit-any.ts');
-    expect(existsSync(scriptPath)).toBe(true);
-
-    const scriptSource = readFileSync(scriptPath, 'utf8');
-    expect(scriptSource).toContain('src/app/api/search/assets/route.ts');
+    expect(existsSync(scriptPath)).toBe(false);
   });
 
   it('removes explicit any from the typed API route slice', () => {

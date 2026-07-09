@@ -88,8 +88,8 @@ describeDb('shared_documents project membership RLS (issue #152, live RLS)', () 
     expect(unchanged?.content).toEqual({ type: 'doc', content: [] });
   });
 
-  it('denies rows without project_id by default', async () => {
-    const { data, error } = await fx.svc
+  it('rejects rows without project_id after the audit gate is enforced', async () => {
+    const { error } = await fx.svc
       .from('shared_documents')
       .insert({
         doc_id: `rls-doc-null-project-${fx.suffix}`,
@@ -98,13 +98,8 @@ describeDb('shared_documents project membership RLS (issue #152, live RLS)', () 
       })
       .select('id')
       .single();
-    if (error || !data) throw new Error(`seed null-project document failed: ${error?.message}`);
 
-    const { data: ownerRead, error: ownerReadError } = await fx.owner.client
-      .from('shared_documents')
-      .select('id')
-      .eq('id', data.id as string);
-    expect(ownerReadError).toBeNull();
-    expect(ownerRead?.length ?? 0).toBe(0);
+    expect(error).not.toBeNull();
+    expect(error?.message).toMatch(/project_id|null value|not-null/i);
   });
 });

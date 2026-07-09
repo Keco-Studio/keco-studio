@@ -55,7 +55,6 @@ const issue168CoveredFiles = [
 
 const batchTouchedFiles = [
   'eslint.config.mjs',
-  'scripts/check-no-explicit-any.ts',
   'src/app/(dashboard)/[projectId]/[libraryId]/predefine/hooks/useSchemaData.ts',
   'src/app/(dashboard)/[projectId]/[libraryId]/predefine/hooks/useSchemaSave.ts',
   'src/app/(dashboard)/[projectId]/[libraryId]/predefine/page.tsx',

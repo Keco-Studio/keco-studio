@@ -3,8 +3,8 @@
 This document describes how to locally deploy and run the `keco-studio` project on **macOS or Windows**.
 
 > **📚 Additional Documentation:**
-> - [CI/GitHub Actions Setup Guide](docs/CI_SETUP.md) - Configure automated testing
-> - [Environment Setup](docs/ENVIRONMENT_SETUP.md) - Detailed environment variable configuration
+> - [GitHub Actions Workflows](.github/workflows/README.md) - Current CI, deployment, and Playwright workflow overview
+> - [Seed Scripts](scripts/README.md) - Local/manual test-user seeding notes
 
 ---
 #test playwright
@@ -215,4 +215,3 @@ supabase stop
 * The `.env.local` file should **not** be committed to the repository
 
 ---
-

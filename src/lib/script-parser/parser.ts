@@ -16,6 +16,7 @@
 
 import type { Node, RoleMap, Script } from './types';
 import { classifyLine } from './classifier';
+import { findDialogueColon } from './colon';
 import { postProcess } from './postProcess';
 
 const QUOTES = '"\'“”‘’「」';
@@ -74,25 +75,6 @@ function splitMixedPatterns(line: string): string[] {
 
   // No mixed pattern found, return as is
   return [line];
-}
-
-/**
- * Find the first dialogue colon position.
- */
-function findColon(line: string): number {
-  const cPos = line.indexOf('：');
-  const ePos = line.indexOf(':');
-  if (cPos === -1) {
-    if (ePos > 0 && /\d/.test(line[ePos - 1]) && /\d/.test(line[ePos + 1] ?? '')) {
-      return -1;
-    }
-    return ePos;
-  }
-  if (ePos === -1) return cPos;
-  if (ePos > 0 && /\d/.test(line[ePos - 1]) && /\d/.test(line[ePos + 1] ?? '')) {
-    return cPos;
-  }
-  return Math.min(cPos, ePos);
 }
 
 /**
@@ -169,7 +151,7 @@ function preprocessLines(rawLines: string[]): string[] {
             continue;
           }
           if (isSpecialLine(nl) || isContinuationBreaker(nl)) break;
-          const nlColonPos = findColon(nl);
+          const nlColonPos = findDialogueColon(nl);
           if (nlColonPos > 0) break;
           collected.push(nl);
           i++;
@@ -180,7 +162,7 @@ function preprocessLines(rawLines: string[]): string[] {
       }
     }
 
-    const colonPos = findColon(line);
+    const colonPos = findDialogueColon(line);
     if (colonPos <= 0) {
       result.push(line);
       i++;
@@ -218,7 +200,7 @@ function preprocessLines(rawLines: string[]): string[] {
           if (isSpecialLine(nl)) break;
 
           // Stop at a new dialogue line.
-          const nlColonPos = findColon(nl);
+          const nlColonPos = findDialogueColon(nl);
           if (nlColonPos > 0 && !QUOTES.includes(nl[0])) break;
 
           collected.push(nl);
@@ -248,7 +230,7 @@ function preprocessLines(rawLines: string[]): string[] {
         if (isSpecialLine(nl)) break;
         if (isContinuationBreaker(nl)) break;
 
-        const nlColonPos = findColon(nl);
+        const nlColonPos = findDialogueColon(nl);
         if (nlColonPos > 0 && !isSpecialLine(nl)) break; // new dialogue line
 
         collected.push(nl);
