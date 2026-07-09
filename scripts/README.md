@@ -1,10 +1,19 @@
 # Scripts
 
-## seed-via-api.ts (Recommended)
+## CI seeding
 
-Seeds the remote Supabase database with test users via **Supabase Admin API**. This is the **recommended approach** for CI environments as it:
+GitHub Actions Playwright tests do **not** run `npm run seed:api`.
+
+The current Playwright workflow starts local Supabase and runs
+`supabase db reset`, which applies `supabase/seed.sql`. That SQL file creates
+the CI/E2E test users used by the Playwright specs.
+
+## seed-via-api.ts (manual remote seeding)
+
+Seeds a remote Supabase database with test users via **Supabase Admin API**.
+Use this for manual remote environments when you need API-based seeding. It:
 - ✅ Avoids direct database connection issues (IPv6, firewall, etc.)
-- ✅ Works reliably in GitHub Actions
+- ✅ Avoids direct database access
 - ✅ Uses official Supabase APIs
 - ✅ Supports valid email domains for CI environments
 
@@ -33,14 +42,14 @@ Creates test users with known passwords via Supabase Admin API:
 
 > **Note**: Using `@mailinator.com` instead of `@example.com` because some CI environments reject invalid email domains.
 
-### Setting up in GitHub Actions
+### Manual remote setup
 
-1. Add secrets to your repository:
-   - Go to repository settings → Secrets and variables → Actions
-   - Add `NEXT_PUBLIC_SUPABASE_URL`: `https://[your-project-ref].supabase.co`
-   - Add `SUPABASE_SERVICE_ROLE_KEY`: Found in Supabase Dashboard → Project Settings → API → Service Role Key (⚠️ Keep this secret!)
+1. Export the remote Supabase variables in your local shell or maintenance
+   environment:
+   - `NEXT_PUBLIC_SUPABASE_URL`: `https://[your-project-ref].supabase.co`
+   - `SUPABASE_SERVICE_ROLE_KEY`: Found in Supabase Dashboard → Project Settings → API → Service Role Key (⚠️ Keep this secret!)
 
-2. The GitHub Actions workflow will automatically run `npm run seed:api` before tests
+2. Run `npm run seed:api` from a trusted local environment or maintenance job when remote test users need to be created/refreshed.
 
 ### Features
 
@@ -54,7 +63,7 @@ Creates test users with known passwords via Supabase Admin API:
 
 ## seed-remote.sh (Legacy - Direct DB Connection)
 
-⚠️ **This method may fail in GitHub Actions due to IPv6/network issues.** Use `seed-via-api.ts` instead.
+⚠️ **This method may fail in remote environments due to IPv6/network access issues.** Use `seed-via-api.ts` instead when direct database access is unavailable.
 
 Seeds the remote Supabase database with test users by directly connecting to PostgreSQL.
 
@@ -89,4 +98,3 @@ npm run export:battle-simulation-xlsx
 ```
 
 See `../keco-simulation/README.md` for local dev and iframe embedding from Keco.
-
