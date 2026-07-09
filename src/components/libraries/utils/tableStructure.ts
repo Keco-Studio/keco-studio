@@ -62,6 +62,13 @@ export function detectScriptColumns(
     typeKey: find(['类型', 'Type', 'type']),
     nameKey: find(['说话人', 'Speaker', 'Name', 'name']),
     contentKey: find(['对话内容', 'Dialogue and options', 'Content', 'content']),
+    commandsKey: find(['命令', 'Commands', 'commands']),
+    option0Key: find(['选项0', 'Option0', 'option0']),
+    option0NextKey: find(['选项0跳转', '选项0下一步', 'Option0_Next', 'option0_next']),
+    option1Key: find(['选项1', 'Option1', 'option1']),
+    option1NextKey: find(['选项1跳转', '选项1下一步', 'Option1_Next', 'option1_next']),
+    option2Key: find(['选项2', 'Option2', 'option2']),
+    option2NextKey: find(['选项2跳转', '选项2下一步', 'Option2_Next', 'option2_next']),
   };
 
   return {

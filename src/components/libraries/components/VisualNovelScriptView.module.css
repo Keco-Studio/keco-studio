@@ -5,6 +5,75 @@
   background: #ffffff;
   min-height: 100%;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  outline: none;
+}
+
+.container:focus-visible {
+  box-shadow: inset 0 0 0 2px #0B99FF;
+}
+
+.playerToolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.5rem;
+}
+
+.restartButton {
+  border: 1px solid #cbd5e1;
+  border-radius: 0.375rem;
+  padding: 0.375rem 0.75rem;
+  background: #ffffff;
+  color: #334155;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.restartButton:hover,
+.restartButton:focus-visible {
+  border-color: #0B99FF;
+  color: #0369a1;
+  outline: none;
+}
+
+.choicePanel {
+  display: grid;
+  gap: 0.75rem;
+  max-width: 32rem;
+  margin: 1rem auto 0;
+}
+
+.choiceButton {
+  border: 1px solid #bfdbfe;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+  word-break: break-word;
+}
+
+.choiceButton:hover,
+.choiceButton:focus-visible {
+  border-color: #0B99FF;
+  background: #dbeafe;
+  outline: none;
+}
+
+.warningMessage {
+  max-width: 36rem;
+  margin: 1rem auto 0;
+  border: 1px solid #fbbf24;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1rem;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.875rem;
+  line-height: 1.5;
 }
 
 /* Part title: floating white oval capsule with horizontal divider */
@@ -59,7 +128,7 @@
   position: relative;
 }
 
-/* Type 2 旁白：灰色对话框，始终靠左 */
+/* Type 2 narration: gray bubble, always left-aligned */
 .narrationRow {
   display: flex;
   justify-content: flex-start;

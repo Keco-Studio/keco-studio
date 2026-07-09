@@ -97,14 +97,25 @@ export function looksLikeStructuredScript(sourceText: string): boolean {
     /^O\d+[：:]/,
     /(?:分支|branch|merge|统一收尾)【/i,
     /^（(?:Jump|跳转)\s/i,
-    /^[\u4e00-\u9fffA-Za-z0-9_\s]+[：:].+$/,
     /^\s*-\s+/,
     /^【选项\d/,
     /^.+\s\[\w+\]$/,           // South Figaro [004]
     /^\[[^\]]+\]$/,             // [environment description]
   ];
 
-  return lines.some((line) => structuredPatterns.some((pattern) => pattern.test(line)));
+  if (lines.some((line) => structuredPatterns.some((pattern) => pattern.test(line)))) {
+    return true;
+  }
+
+  return looksLikeNaturalDialogue(lines);
+}
+
+function looksLikeNaturalDialogue(lines: string[]): boolean {
+  const dialogueLines = lines.filter((line) => {
+    return /^[A-Za-z][A-Za-z0-9_ .'-]{0,40}[：:]\s*\S+/.test(line);
+  });
+
+  return dialogueLines.length >= 2 && dialogueLines.length === lines.length;
 }
 
 /** True when source text parses as valid standard script without LLM conversion. */

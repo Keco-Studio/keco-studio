@@ -66,6 +66,29 @@ describe('library table structure helpers', () => {
     ).toBe(false);
   });
 
+  it('detects branch playback option and command columns without changing script gating', () => {
+    const result = detectScriptColumns([
+      property('commands', 'section-a', 'Commands', 1),
+      property('option0', 'section-a', 'Option0', 2),
+      property('option0Next', 'section-a', 'Option0_Next', 3),
+      property('option1', 'section-a', 'Option1', 4),
+      property('option1Next', 'section-a', 'Option1_Next', 5),
+      property('option2', 'section-a', 'Option2', 6),
+      property('option2Next', 'section-a', 'Option2_Next', 7),
+    ]);
+
+    expect(result.scriptColumns).toMatchObject({
+      commandsKey: 'commands',
+      option0Key: 'option0',
+      option0NextKey: 'option0Next',
+      option1Key: 'option1',
+      option1NextKey: 'option1Next',
+      option2Key: 'option2',
+      option2NextKey: 'option2Next',
+    });
+    expect(result.hasScriptColumns).toBe(false);
+  });
+
   it('maps active column counts to stable width class keys', () => {
     expect(getColumnWidthClassKey(1)).toBe('cols1');
     expect(getColumnWidthClassKey(4)).toBe('cols4');
