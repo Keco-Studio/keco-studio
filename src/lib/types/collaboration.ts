@@ -152,7 +152,13 @@ export type CellsBatchUpdateEvent = {
   userId: string;
   userName: string;
   timestamp: number;
-  cells: Array<{ assetId: string; propertyKey: string; newValue: any }>;
+  cells: Array<{
+    assetId: string;
+    propertyKey: string;
+    newValue: any;
+    oldValue?: any;
+    updatedAt?: string | null;
+  }>;
 };
 
 export type RealtimeEvent =
