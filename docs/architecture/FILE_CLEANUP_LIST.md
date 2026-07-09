@@ -2,9 +2,12 @@
 
 **文档版本**: 1.0  
 **创建日期**: 2026-01-30  
+**状态**: 历史归档（已被 GitHub issues #177、#178、#180 的逐项核查和实现取代）  
 **关联文档**: [架构文档](./ARCHITECTURE.md) | [优化建议](./OPTIMIZATION_RECOMMENDATIONS.md)
 
 ---
+
+> **归档说明**: 本文档是 2026-01-30 的一次性架构审查产物，不再作为当前清理工作的执行清单。后续文件和依赖清理由 GitHub issues #177、#178、#180 的 spec 与 PR 记录作为权威来源。请不要按本文档直接删除文件。
 
 ## 📋 目录
 
@@ -1086,4 +1089,3 @@ git push origin cleanup/phase-2-review
 **文档结束**
 
 如有任何疑问或需要协助执行清理任务，请参考[优化建议文档](./OPTIMIZATION_RECOMMENDATIONS.md)或咨询架构团队。
-
