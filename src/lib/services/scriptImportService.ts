@@ -102,33 +102,36 @@ export async function importScriptFromFile(
 
   const libraryId = createdLibrary.id as string;
 
-  const fieldIdsByColumn = new Map<string, string>();
-  let fieldCount = 0;
+  const fieldRows = SCRIPT_COLUMNS.map((label, colIdx) => ({
+    library_id: libraryId,
+    section_id: `${libraryId}:${SCRIPT_SECTION_NAME}`,
+    section: SCRIPT_SECTION_NAME,
+    label,
+    description: null,
+    data_type: 'string',
+    formula_expression: null,
+    required: false,
+    order_index: colIdx,
+    enum_options: null,
+    reference_libraries: null,
+  }));
 
-  for (let colIdx = 0; colIdx < SCRIPT_COLUMNS.length; colIdx++) {
-    const label = SCRIPT_COLUMNS[colIdx];
-    const { data: inserted, error } = await supabase
-      .from('library_field_definitions')
-      .insert({
-        library_id: libraryId,
-        section_id: `${libraryId}:${SCRIPT_SECTION_NAME}`,
-        section: SCRIPT_SECTION_NAME,
-        label,
-        description: null,
-        data_type: 'string',
-        formula_expression: null,
-        required: false,
-        order_index: colIdx,
-        enum_options: null,
-        reference_libraries: null,
-      })
-      .select('id')
-      .single();
+  const { data: insertedFields, error: fieldError } = await supabase
+    .from('library_field_definitions')
+    .insert(fieldRows)
+    .select('id, order_index');
 
-    if (error) throw error;
-    fieldIdsByColumn.set(String(colIdx), inserted.id);
-    fieldCount++;
+  if (fieldError) throw fieldError;
+
+  if (!insertedFields || insertedFields.length !== SCRIPT_COLUMNS.length) {
+    throw new Error('Failed to create script fields');
   }
+
+  const fieldIdsByColumn = new Map<string, string>();
+  insertedFields.forEach((inserted) => {
+    fieldIdsByColumn.set(String(inserted.order_index), inserted.id);
+  });
+  const fieldCount = insertedFields.length;
 
   let rowCount = 0;
   for (let start = 0; start < rows.length; start += BATCH_SIZE) {

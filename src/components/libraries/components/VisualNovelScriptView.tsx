@@ -1,10 +1,15 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AssetRow } from '@/lib/types/libraryAssets';
+import {
+  nextPosition,
+  type ScriptPlayerColumns,
+  type ScriptPlayerState,
+} from './scriptPlayer';
 import styles from './VisualNovelScriptView.module.css';
 
-export interface ScriptColumns {
+export interface ScriptColumns extends ScriptPlayerColumns {
   labelKey?: string;
   typeKey?: string;
   nameKey?: string;
@@ -16,9 +21,22 @@ interface VisualNovelScriptViewProps {
   scriptColumns: ScriptColumns;
 }
 
+export type RevealedScriptRow = {
+  rowIndex: number;
+  row: AssetRow;
+};
+
+type ScrollContainerNode = {
+  parentElement: ScrollContainerNode | null;
+  scrollHeight: number;
+  clientHeight: number;
+  scrollTop: number;
+  scrollTo?: (options: ScrollToOptions) => void;
+};
+
 /* ───────── helpers ───────── */
 
-/** Resolve speaker name from Name column (人物名). */
+/** Resolve speaker name from the Name column. */
 function resolveSpeakerName(nameValue: string | undefined | null): string {
   const v = String(nameValue ?? '').trim();
   if (!v || v === 'Speaker') return 'Narrator';
@@ -33,7 +51,7 @@ function resolveDialogType(typeValue: string | number | undefined | null): '1' |
   return null;
 }
 
-/** Type 1 = 人物对话；Type 2 = 场景/旁白。 */
+/** Type 1 = character dialogue; Type 2 = narration or scene text. */
 function isDialogueType(
   typeValue: string | number | undefined | null,
   nameValue: string | undefined | null,
@@ -103,7 +121,7 @@ function computeDialogAlignments(
 
     if (!isDialogueType(typeVal, nameVal)) {
       alignments.set(row.id, 'left');
-      // 旁白固定在左侧，并重置说话人跟踪，避免影响下一句人物对话
+      // Narration stays left-aligned and resets speaker alternation.
       lastSpeaker = null;
       lastSide = 'left';
       continue;
@@ -162,10 +180,74 @@ function renderSceneTitle(rowId: string, sceneNumber: string, sceneDescription: 
   );
 }
 
+export function getRevealedScriptRows(rows: AssetRow[], revealedIndexes: number[]): RevealedScriptRow[] {
+  return revealedIndexes.flatMap((rowIndex) => {
+    const row = rows[rowIndex];
+    return row ? [{ rowIndex, row }] : [];
+  });
+}
+
+export function resetNearestScrollContainer(element: ScrollContainerNode | null): void {
+  let current = element?.parentElement ?? null;
+
+  while (current) {
+    if (current.scrollHeight > current.clientHeight) {
+      scrollNodeToTop(current);
+      return;
+    }
+    current = current.parentElement;
+  }
+
+  if (element) {
+    scrollNodeToTop(element);
+  }
+}
+
+function scrollNodeToTop(node: ScrollContainerNode): void {
+  if (typeof node.scrollTo === 'function') {
+    node.scrollTo({ top: 0, behavior: 'auto' });
+    return;
+  }
+  node.scrollTop = 0;
+}
+
 /* ───────── component ───────── */
 
 export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScriptViewProps) {
-  const { labelKey, typeKey, nameKey, contentKey } = scriptColumns;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const {
+    labelKey,
+    typeKey,
+    nameKey,
+    contentKey,
+    commandsKey,
+    option0Key,
+    option0NextKey,
+    option1Key,
+    option1NextKey,
+    option2Key,
+    option2NextKey,
+  } = scriptColumns;
+
+  const playerColumns = useMemo<ScriptPlayerColumns>(() => ({
+    labelKey,
+    commandsKey,
+    option0Key,
+    option0NextKey,
+    option1Key,
+    option1NextKey,
+    option2Key,
+    option2NextKey,
+  }), [
+    labelKey,
+    commandsKey,
+    option0Key,
+    option0NextKey,
+    option1Key,
+    option1NextKey,
+    option2Key,
+    option2NextKey,
+  ]);
 
   const filteredRows = useMemo(() => {
     let filtered = rows;
@@ -206,13 +288,76 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
     [filteredRows, nameKey, typeKey, contentKey, labelKey],
   );
 
+  const createInitialPlayerState = useCallback(
+    () => {
+      const initialState: ScriptPlayerState = {
+        currentIndex: 0,
+        revealed: [],
+        atChoice: false,
+        options: [],
+        done: filteredRows.length === 0,
+      };
+      return filteredRows.length > 0
+        ? nextPosition(initialState, filteredRows, playerColumns)
+        : initialState;
+    },
+    [filteredRows, playerColumns],
+  );
+
+  const [playerState, setPlayerState] = useState<ScriptPlayerState>(createInitialPlayerState);
+
+  useEffect(() => {
+    setPlayerState(createInitialPlayerState());
+  }, [createInitialPlayerState]);
+
+  const advance = useCallback(() => {
+    setPlayerState((state) => {
+      if (state.atChoice || state.done || state.warning) return state;
+      return nextPosition(state, filteredRows, playerColumns);
+    });
+  }, [filteredRows, playerColumns]);
+
+  const restart = useCallback(() => {
+    setPlayerState(createInitialPlayerState());
+    resetNearestScrollContainer(rootRef.current);
+  }, [createInitialPlayerState]);
+
+  const chooseOption = useCallback((choice: number) => {
+    setPlayerState((state) => nextPosition(state, filteredRows, playerColumns, choice));
+  }, [filteredRows, playerColumns]);
+
+  const handleContainerClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
+    if ((event.target as HTMLElement).closest('button')) return;
+    advance();
+  }, [advance]);
+
+  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'Enter' && event.key !== ' ') return;
+    if ((event.target as HTMLElement).tagName.toLowerCase() === 'button') return;
+    event.preventDefault();
+    advance();
+  }, [advance]);
+
   if (!filteredRows.length) {
     return <div className={styles.emptyState}>No script data</div>;
   }
 
+  const revealedRows = getRevealedScriptRows(filteredRows, playerState.revealed);
+
   return (
-    <div className={styles.container}>
-      {filteredRows.map((row, index) => {
+    <div
+      ref={rootRef}
+      className={styles.container}
+      onClick={handleContainerClick}
+      onKeyDown={handleKeyDown}
+      tabIndex={0}
+    >
+      <div className={styles.playerToolbar}>
+        <button type="button" className={styles.restartButton} onClick={restart}>
+          Restart
+        </button>
+      </div>
+      {revealedRows.map(({ row, rowIndex: index }) => {
         const labelVal = labelKey ? row.propertyValues[labelKey] : undefined;
         const typeVal = typeKey ? row.propertyValues[typeKey] : undefined;
         const nameVal = nameKey ? row.propertyValues[nameKey] : undefined;
@@ -258,6 +403,25 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
         const alignment = dialogAlignments.get(row.id) ?? 'left';
         return renderScriptLine(row.id, typeVal, nameVal, content, speakerOrder, alignment);
       })}
+      {playerState.atChoice && (
+        <div className={styles.choicePanel}>
+          {playerState.options.map((option) => (
+            <button
+              key={option.index}
+              type="button"
+              className={styles.choiceButton}
+              onClick={() => chooseOption(option.index)}
+            >
+              {option.text}
+            </button>
+          ))}
+        </div>
+      )}
+      {playerState.warning && (
+        <div className={styles.warningMessage} role="status">
+          {playerState.warning}
+        </div>
+      )}
     </div>
   );
 }
