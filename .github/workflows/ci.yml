@@ -82,6 +82,9 @@ jobs:
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run lint
 
+      - name: Typecheck API routes
+        run: npm run typecheck:api
+
       # Extract the LOCAL Supabase keys so the RLS behavior tests connect to the
       # local instance (started above), never to the remote project the build
       # step's secrets may point at. Mirrors playwright.yml's extraction.

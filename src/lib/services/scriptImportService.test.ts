@@ -4,7 +4,7 @@ import { SCRIPT_COLUMNS } from '@/lib/script-parser';
 import { importScriptFromFile } from './scriptImportService';
 
 jest.mock('@/lib/services/authorizationService', () => ({
-  verifyLibraryCreationPermission: jest.fn().mockResolvedValue(undefined),
+  verifyLibraryCreationPermission: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
 }));
 
 type InsertCall = {

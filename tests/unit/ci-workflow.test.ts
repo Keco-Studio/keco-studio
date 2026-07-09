@@ -15,14 +15,16 @@ const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')
 describe('CI workflow gates', () => {
   it('runs lint, unit tests, and build in CI', () => {
     expect(workflow).toContain('npm run lint');
+    expect(workflow).toContain('npm run typecheck:api');
     expect(workflow).toContain('npm run test:unit');
     expect(workflow).toContain('npm run build');
   });
 
   it('keeps local validate aligned with CI gates', () => {
     expect(pkg.scripts.typecheck).toBe('tsc --noEmit');
+    expect(pkg.scripts['typecheck:api']).toBe('tsc --noEmit -p tsconfig.api.json');
     expect(pkg.scripts.validate).toBe(
-      'npm run lint && npm run typecheck && npm run test:unit && npm run build'
+      'npm run lint && npm run typecheck && npm run typecheck:api && npm run test:unit && npm run build'
     );
   });
 
