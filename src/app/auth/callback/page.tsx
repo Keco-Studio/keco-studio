@@ -10,36 +10,62 @@ function AuthCallbackContent() {
   const supabase = useSupabase();
 
   useEffect(() => {
+    let done = false;
+
+    const finish = () => {
+      if (done) return;
+      done = true;
+      const redirectPath = searchParams.get('redirect');
+      router.push(redirectPath || '/');
+    };
+
     const handleCallback = async () => {
       const code = searchParams.get('code');
-      
-      if (code) {
-        try {
-          // exchange code for session
+      const errorParam = searchParams.get('error');
 
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
-          
-          if (error) {
-            console.error('Error exchanging code for session:', error);
-            router.push('/?error=auth_error');
-            return;
-          }
+      if (errorParam) {
+        router.push('/?error=auth_error');
+        return;
+      }
 
-          // login success - check for redirect parameter
-          const redirectPath = searchParams.get('redirect');
-          if (redirectPath) {
-            router.push(redirectPath);
-          } else {
-            router.push('/');
+      if (!code) {
+        // No PKCE code present — nothing to exchange.
+        router.push('/');
+        return;
+      }
+
+      // The @supabase/ssr browser client uses the PKCE flow with
+      // detectSessionInUrl enabled, so it automatically exchanges the `?code=`
+      // for a session (reading the code verifier from cookies) on load. Calling
+      // exchangeCodeForSession manually here races that automatic exchange and
+      // fails with "both auth code and code verifier should be non-empty" once
+      // the verifier has already been consumed. Instead, just wait for the
+      // session to appear.
+      const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session) finish();
+      });
+
+      const { data } = await supabase.auth.getSession();
+      if (data.session) {
+        finish();
+      } else {
+        // Fallback: poll briefly in case the automatic exchange is still in
+        // flight and no auth event fires in this tab.
+        for (let i = 0; i < 20 && !done; i++) {
+          await new Promise((r) => setTimeout(r, 250));
+          const { data: retry } = await supabase.auth.getSession();
+          if (retry.session) {
+            finish();
+            break;
           }
-        } catch (err) {
-          console.error('Auth callback error:', err);
+        }
+        if (!done) {
+          console.error('Auth callback: session not established after PKCE exchange');
           router.push('/?error=auth_error');
         }
-      } else {
-        // login fail
-        router.push('/');
       }
+
+      sub.subscription.unsubscribe();
     };
 
     handleCallback();

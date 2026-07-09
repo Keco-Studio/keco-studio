@@ -70,5 +70,13 @@ export function getUnauthenticatedAction(pathname: string): UnauthenticatedActio
     };
   }
 
-  return { type: 'redirect', destination: '/auth/login' };
+  // Protected PAGE, unauthenticated: let the request through. The client-side
+  // auth gate (DashboardLayout) renders AuthForm in place — there is no
+  // standalone login URL. A server redirect is intentionally NOT emitted:
+  //   - `/auth/login` never existed and fell through to [projectId]/[libraryId],
+  //     which is the bug that surfaced as "Project not found";
+  //   - redirecting to `/` loops (`/` server-redirects to `/projects`).
+  // For authenticated users the proxy (src/proxy.ts) still refreshes the cookie
+  // session; this branch only governs genuinely unauthenticated page requests.
+  return { type: 'next' };
 }

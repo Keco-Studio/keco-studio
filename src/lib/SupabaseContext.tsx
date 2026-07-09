@@ -7,7 +7,7 @@
 'use client';
 
 import { createContext, useContext, useMemo, ReactNode } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import { createBrowserClient } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -23,15 +23,16 @@ const SupabaseContext = createContext<SupabaseClient | null>(null);
 
 export function SupabaseProvider({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => {
-    return createClient(supabaseUrl, supabaseAnonKey, {
+    // Use the @supabase/ssr browser client so the session is persisted in
+    // cookies (not localStorage). The Next.js proxy (src/proxy.ts) reads the
+    // session with the @supabase/ssr server client from cookies; with the old
+    // localStorage-only createClient it never saw a session, so every
+    // logged-in user looked unauthenticated and was redirected.
+    return createBrowserClient(supabaseUrl, supabaseAnonKey, {
       realtime: {
         params: {
           eventsPerSecond: 10,
         },
-      },
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
       },
     });
   }, []);
