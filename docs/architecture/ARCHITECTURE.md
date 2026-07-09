@@ -3,7 +3,7 @@
 **文档版本**: 1.0  
 **创建日期**: 2026-01-30  
 **项目**: Keco Studio - 协作式资产管理平台  
-**技术栈**: Next.js 16 + Supabase + Yjs + React 18
+**技术栈**: Next.js 16 + Supabase + Yjs + React 19
 
 ---
 
@@ -61,7 +61,7 @@ Keco Studio 是一个**多人实时协作的资产管理平台**，允许团队�
 ┌─────────────────────────────────────────────────────────────────┐
 │                         Client Layer                             │
 │  ┌──────────────────────────────────────────────────────────┐   │
-│  │           Next.js 16 App Router (React 18)               │   │
+│  │           Next.js 16 App Router (React 19)               │   │
 │  │  • Server Components (RSC)                                │   │
 │  │  • Client Components ('use client')                       │   │
 │  │  • API Routes (/app/api/*)                                │   │
@@ -100,8 +100,8 @@ Keco Studio 是一个**多人实时协作的资产管理平台**，允许团队�
 ┌─────────────────────────────────────────────────────────────────┐
 │                      Persistence Layer                           │
 │  ┌──────────────────┐  ┌──────────────────────────────────┐    │
-│  │  IndexedDB       │  │  Session/Cookie Storage          │    │
-│  │  (Yjs Docs)      │  │  (Auth Tokens)                   │    │
+│  │ Supabase DB      │  │  Browser Session Storage         │    │
+│  │ + Storage        │  │  (Auth Runtime State)            │    │
 │  └──────────────────┘  └──────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -129,8 +129,9 @@ Keco Studio 是一个**多人实时协作的资产管理平台**，允许团队�
   - Database Functions (存储过程)
 
 #### 4. Persistence Layer (持久化层)
-- **IndexedDB**: 浏览器本地存储Yjs文档
-- **Session Storage**: 存储认证令牌和会话数据
+- **Supabase PostgreSQL**: 资产库、资产、字段值、权限和版本快照的持久数据源
+- **Supabase Storage**: 图片和媒体文件的持久存储
+- **Browser Session Storage**: Supabase SSR/browser client 的会话运行状态；Yjs 文档不使用本地持久化层
 
 ---
 
@@ -140,14 +141,13 @@ Keco Studio 是一个**多人实时协作的资产管理平台**，允许团队�
 
 | 技术 | 版本 | 用途 |
 |------|------|------|
-| **Next.js** | 16.0.0 | React 框架，App Router，SSR/SSG |
-| **React** | 18.3.1 | UI 库 |
-| **React DOM** | 18.3.1 | React 渲染 |
+| **Next.js** | 16.2.10 | React 框架，App Router，SSR/SSG |
+| **React** | 19.2.7 | UI 库 |
+| **React DOM** | 19.2.7 | React 渲染 |
 | **TypeScript** | 5.9.3 | 类型安全 |
 | **Ant Design** | 5.22.2 | UI 组件库 |
 | **@tanstack/react-query** | 5.90.16 | 数据获取和缓存 |
 | **Yjs** | 13.6.29 | CRDT 实时协作 |
-| **y-indexeddb** | 9.0.12 | Yjs IndexedDB 持久化 |
 | **@dnd-kit** | 6.3.1 | 拖拽功能 |
 | **Zod** | 3.22.4 | Schema 验证 |
 
@@ -157,9 +157,8 @@ Keco Studio 是一个**多人实时协作的资产管理平台**，允许团队�
 |------|------|------|
 | **Supabase** | 2.87.1 | BaaS 平台 |
 | **@supabase/ssr** | 0.8.0 | Next.js SSR 集成 |
-| **@supabase/auth-helpers-nextjs** | 0.15.0 | 认证辅助 |
 | **PostgreSQL** | (Supabase管理) | 关系型数据库 |
-| **Resend** | 6.7.0 | 邮件发送服务 |
+| **Resend** | 6.17.1 | 邮件发送服务 |
 | **Jose** | 6.1.3 | JWT 处理 |
 
 ### 开发与测试工具
@@ -183,9 +182,8 @@ keco-studio/
 │   ├── app/                # Next.js App Router 页面和路由
 │   ├── components/         # React 组件
 │   ├── lib/                # 核心库和工具
-│   ├── contexts/           # React Context（已废弃，现在在 lib/contexts）
+│   ├── assets/             # 静态导入资源
 │   ├── emails/             # 邮件模板
-│   ├── hooks/              # 自定义 Hooks（部分已迁移到 lib/hooks）
 │   └── middleware.ts       # Next.js 中间件（认证检查）
 ├── supabase/               # Supabase 配置和迁移
 │   ├── migrations/         # 数据库迁移文件（40+ 个迁移）
@@ -339,13 +337,11 @@ src/
 │   │   ├── FolderCard.tsx
 │   │   ├── LibraryListView.tsx
 │   │   ├── LibraryToolbar.tsx
-│   │   ├── LibraryCardMenu.tsx
 │   │   ├── NewFolderModal.tsx
 │   │   └── EditFolderModal.tsx
 │   ├── collaboration/                # 协作组件
 │   │   ├── CollaboratorsList.tsx
 │   │   ├── InviteCollaboratorModal.tsx
-│   │   ├── PresenceIndicators.tsx
 │   │   ├── StackedAvatars.tsx
 │   │   ├── ConnectionStatusIndicator.tsx
 │   │   └── FieldPresenceAvatars.tsx
@@ -378,46 +374,40 @@ src/
 │   │   ├── versionService.ts         # 版本控制服务
 │   │   ├── authorizationService.ts   # 授权服务
 │   │   ├── emailService.ts           # 邮件服务
-│   │   ├── imageUploadService.ts     # 图片上传服务
+│   │   ├── documentImageUpload.ts    # 文档图片上传服务
+│   │   ├── importService.ts          # 导入服务
 │   │   ├── mediaFileUploadService.ts # 媒体文件上传服务
+│   │   ├── referenceSyncService.ts   # 引用同步服务
 │   │   ├── realtimeService.ts        # Realtime 服务
-│   │   ├── sharedDocumentService.ts  # 共享文档服务
-│   │   └── userValidationService.ts  # 用户验证服务
+│   │   ├── scriptConversionService.ts # 剧本转换服务
+│   │   └── scriptImportService.ts    # 剧本导入服务
 │   ├── hooks/                        # 全局自定义 Hooks
 │   │   ├── useRealtimeSubscription.ts  # Realtime 订阅
 │   │   ├── usePresenceTracking.ts    # Presence 追踪
-│   │   ├── useCacheMutations.ts      # 缓存变更
-│   │   ├── useRequestCache.ts        # 请求缓存
-│   │   └── useCollaboratorPermissions.ts  # 协作者权限
+│   │   ├── useYjsRows.ts             # Yjs 行读取
+│   │   └── useCacheMutations.ts      # 缓存变更
 │   ├── actions/                      # Server Actions
 │   │   └── collaboration.ts
 │   ├── types/                        # TypeScript 类型定义
 │   │   ├── libraryAssets.ts
 │   │   ├── collaboration.ts
-│   │   ├── version.ts
-│   │   └── shared-document.ts
+│   │   ├── user.ts
+│   │   └── version.ts
 │   ├── utils/                        # 工具函数
 │   │   ├── queryKeys.ts              # React Query keys
 │   │   ├── avatarColors.ts           # 头像颜色生成
 │   │   ├── dateTime.ts               # 日期时间工具
 │   │   ├── nameValidation.ts         # 名称验证
 │   │   ├── invitationToken.ts        # 邀请令牌生成
-│   │   ├── requestTimeout.ts         # 请求超时
-│   │   ├── cookieStorageAdapter.ts   # Cookie 存储适配器
+│   │   ├── routeParams.ts            # 路由参数工具
+│   │   ├── workbook.ts               # Excel workbook 工具
 │   │   └── cacheDebugger.ts          # 缓存调试工具
 │   ├── providers/                    # Provider 组件
 │   │   └── QueryProvider.tsx         # React Query Provider
 │   ├── supabase.ts                   # Supabase 客户端（客户端）
 │   ├── createSupabaseServerClient.ts # Supabase 服务端客户端
 │   ├── SupabaseContext.tsx           # Supabase Context
-│   ├── useSupabaseClient.ts          # Supabase Hook
-│   ├── hybridStorageAdapter.ts       # 混合存储适配器
-│   ├── sessionStorageAdapter.ts      # Session 存储适配器
-│   └── tabIsolatedStorageAdapter.ts  # Tab 隔离存储适配器
-├── contexts/                         # 旧的 Context 目录（已废弃）
-│   └── YjsContext.tsx                # Yjs Context
-├── hooks/                            # 旧的 Hooks 目录（部分已迁移）
-│   └── useYjsRows.ts
+│   └── queryInvalidation.ts          # Query invalidation 工具
 ├── emails/                           # 邮件模板
 │   └── invitation-email.tsx
 └── middleware.ts                     # Next.js 中间件（路由保护）
@@ -498,14 +488,13 @@ src/
 
 **技术栈**:
 - **Yjs**: CRDT数据结构，本地状态管理
-- **IndexedDB**: Yjs文档持久化
 - **Supabase Realtime**: 实时数据库订阅
 - **React Query**: 数据缓存和服务端状态
 
 **数据流**:
 ```
 1. 初始加载:
-   Supabase DB → React Query → LibraryDataContext → Yjs Doc → IndexedDB
+   Supabase DB → React Query → LibraryDataContext → Yjs Doc
                                       ↓
                               LibraryAssetsTable 渲染
 
@@ -554,7 +543,7 @@ src/
 
 ### 5. 协作与权限模块
 
-**位置**: `src/lib/services/collaborationService.ts`, `src/components/collaboration/*`, `src/lib/hooks/useCollaboratorPermissions.ts`
+**位置**: `src/lib/services/collaborationService.ts`, `src/lib/services/authorizationService.ts`, `src/components/collaboration/*`
 
 **职责**:
 - 邀请协作者（发送邀请邮件）
@@ -564,10 +553,11 @@ src/
 
 **关键组件**:
 - `collaborationService.ts`: 协作相关业务逻辑
+- `authorizationService.ts`: 角色和权限检查
 - `CollaboratorsList.tsx`: 协作者列表
 - `InviteCollaboratorModal.tsx`: 邀请弹窗
-- `PresenceIndicators.tsx`: 在线状态指示器
-- `useCollaboratorPermissions.ts`: 权限检查 Hook
+- `ConnectionStatusIndicator.tsx`: 连接状态指示器
+- `FieldPresenceAvatars.tsx`: 字段编辑 presence 头像
 
 **数据库表**:
 - `project_collaborators`: 协作者表
@@ -620,7 +610,7 @@ Viewer:
 
 ### 7. 文件上传与存储模块
 
-**位置**: `src/lib/services/imageUploadService.ts`, `src/lib/services/mediaFileUploadService.ts`, `src/components/media/*`
+**位置**: `src/lib/services/documentImageUpload.ts`, `src/lib/services/mediaFileUploadService.ts`, `src/components/media/*`
 
 **职责**:
 - 上传图片文件（Image字段类型）
@@ -629,7 +619,7 @@ Viewer:
 - 文件大小限制
 
 **关键组件**:
-- `imageUploadService.ts`: 图片上传逻辑
+- `documentImageUpload.ts`: 文档图片上传逻辑
 - `mediaFileUploadService.ts`: 媒体文件上传逻辑
 - `MediaFileUpload.tsx`: 上传组件
 
@@ -641,7 +631,7 @@ Viewer:
 
 ### 8. 状态管理与缓存模块
 
-**位置**: `src/lib/providers/QueryProvider.tsx`, `src/lib/hooks/useCacheMutations.ts`, `src/lib/hooks/useRequestCache.ts`
+**位置**: `src/lib/providers/QueryProvider.tsx`, `src/lib/hooks/useCacheMutations.ts`, `src/lib/utils/queryKeys.ts`
 
 **职责**:
 - React Query 配置和管理
@@ -652,7 +642,6 @@ Viewer:
 **关键组件**:
 - `QueryProvider.tsx`: React Query Provider
 - `useCacheMutations.ts`: 缓存变更 Hook
-- `useRequestCache.ts`: 请求缓存 Hook
 - `lib/utils/queryKeys.ts`: 查询键定义
 
 ---
@@ -988,18 +977,18 @@ Viewer:
 
 ### Yjs + Supabase Realtime 双层架构
 
-Keco Studio 使用了一个独特的**双层实时协作架构**：
+Keco Studio 使用了一个**在线双层实时协作架构**：
 
-1. **本地层（Yjs）**: CRDT数据结构，保证本地的即时响应和离线支持
+1. **本地层（Yjs）**: CRDT数据结构，保证当前会话内的即时响应和冲突合并
 2. **远程层（Supabase Realtime）**: 数据库实时订阅，保证跨客户端的最终一致性
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                        Client A                              │
-│  ┌───────────────┐    ┌──────────────┐    ┌──────────────┐ │
-│  │  UI Component │───►│   Yjs Doc    │◄───│  IndexedDB   │ │
-│  │  (React)      │◄───│   (CRDT)     │───►│(Persistence) │ │
-│  └───────────────┘    └──────┬───────┘    └──────────────┘ │
+│  ┌───────────────┐    ┌──────────────┐                      │
+│  │  UI Component │───►│   Yjs Doc    │                      │
+│  │  (React)      │◄───│   (CRDT)     │                      │
+│  └───────────────┘    └──────┬───────┘                      │
 │                               │                              │
 │                               ▼                              │
 │                    ┌──────────────────────┐                 │
@@ -1020,10 +1009,10 @@ Keco Studio 使用了一个独特的**双层实时协作架构**：
 │                    │ WebSocket Connection │                 │
 │                    └──────────┬───────────┘                 │
 │                               │                              │
-│  ┌───────────────┐    ┌──────▼───────┐    ┌──────────────┐ │
-│  │  UI Component │───►│   Yjs Doc    │◄───│  IndexedDB   │ │
-│  │  (React)      │◄───│   (CRDT)     │───►│(Persistence) │ │
-│  └───────────────┘    └──────────────┘    └──────────────┘ │
+│  ┌───────────────┐    ┌──────▼───────┐                     │
+│  │  UI Component │───►│   Yjs Doc    │                     │
+│  │  (React)      │◄───│   (CRDT)     │                     │
+│  └───────────────┘    └──────────────┘                     │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -1031,8 +1020,8 @@ Keco Studio 使用了一个独特的**双层实时协作架构**：
 
 1. **即时响应**: Yjs CRDT保证本地修改立即生效，无需等待网络
 2. **冲突解决**: CRDT自动解决并发编辑冲突
-3. **离线支持**: IndexedDB持久化，离线也可编辑
-4. **最终一致性**: Supabase Realtime保证跨客户端的数据一致性
+3. **在线广播**: Supabase Realtime 将数据库变更推送到其他在线客户端
+4. **最终一致性**: Supabase PostgreSQL 是持久数据源，Realtime 保证跨客户端的数据一致性
 
 ### 缺点（已知痛点）
 
@@ -1237,7 +1226,7 @@ Keco Studio 使用多层状态管理架构：
          │
          ▼
 ┌────────────────────────────┐
-│ imageUploadService/        │
+│ documentImageUpload/       │
 │ mediaFileUploadService     │
 │ uploadFile()               │
 └────────┬───────────────────┘
@@ -1636,4 +1625,3 @@ import { something } from '../../../../lib/services/...'
 ---
 
 **文档结束**
-
