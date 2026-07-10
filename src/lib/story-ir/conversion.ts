@@ -2,6 +2,7 @@ import { completeLlm } from '@/lib/agent/llm-client';
 import type { OpenAITool } from '@/lib/agent/types';
 import type { RoleMap } from '@/lib/script-parser';
 import { chunkSourceUnits, mergeStoryChunks, type StorySourceChunk } from './chunking';
+import { parseNumericCommand } from './commands';
 import { tryLegacyStoryImport } from './legacyAdapter';
 import {
   parseStoryAudit,
@@ -126,9 +127,11 @@ async function convertAndAuditChunk(
         'Converter',
         options
       );
-      const document = parseStoryDocument(canonicalizeStorySourceRefs(
-        normalizeStoryCollections(parseModelJson(raw)),
-        chunk.units
+      const document = parseStoryDocument(canonicalizeStoryCommands(
+        canonicalizeStorySourceRefs(
+          normalizeStoryCollections(parseModelJson(raw)),
+          chunk.units
+        )
       ));
       emit(options, {
         phase: 'structure_validation',
@@ -337,6 +340,30 @@ export function normalizeStoryCollections(value: unknown): unknown {
     }
     return result;
   };
+
+  return visit(value);
+}
+
+export function canonicalizeStoryCommands(value: unknown): unknown {
+  function visit(current: unknown): unknown {
+    if (Array.isArray(current)) return current.map(visit);
+    if (!current || typeof current !== 'object') return current;
+
+    const result: Record<string, unknown> = Object.create(null);
+    for (const [key, child] of Object.entries(current as Record<string, unknown>)) {
+      result[key] = key === 'commands' && Array.isArray(child)
+        ? child.map(canonicalizeCommand)
+        : visit(child);
+    }
+    return result;
+  }
+
+  function canonicalizeCommand(candidate: unknown): unknown {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;
+    const record = visit(candidate) as Record<string, unknown>;
+    if (typeof record.source !== 'string') return record;
+    return Object.assign(record, parseNumericCommand(record.source));
+  }
 
   return visit(value);
 }

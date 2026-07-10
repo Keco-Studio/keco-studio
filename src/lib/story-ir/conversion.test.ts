@@ -12,7 +12,7 @@ import {
   CONVERTER_SYSTEM_PROMPT,
   buildConverterMessages,
 } from './prompts';
-import { resolveStoryForImport } from './conversion';
+import { canonicalizeStoryCommands, resolveStoryForImport } from './conversion';
 
 const mockedCompleteLlm = completeLlm as jest.MockedFunction<typeof completeLlm>;
 
@@ -251,6 +251,61 @@ describe('Story IR LLM conversion', () => {
 
     expect(result.document.nodes[0].commands).toEqual([]);
     expect(result.document.nodes[0].options).toEqual([]);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(2);
+  });
+
+  it('rebuilds redundant command fields from the exact command source', () => {
+    const value = {
+      commands: [{
+        source: '$trust+=1',
+        variable: 'wrong',
+        operator: '-=',
+        value: '1',
+        sourceRefs: [{ sourceId: 'src', unitId: 'src:0', start: 0, end: 10 }],
+      }],
+    };
+
+    expect(canonicalizeStoryCommands(value)).toMatchObject({
+      commands: [{ variable: 'trust', operator: '+=', value: 1 }],
+    });
+  });
+
+  it('rejects a command whose source is not supported numeric syntax', () => {
+    expect(() => canonicalizeStoryCommands({
+      commands: [{
+        source: '$trust plus 1',
+        variable: 'trust',
+        operator: '+=',
+        value: 1,
+        sourceRefs: [],
+      }],
+    })).toThrow(/Invalid numeric command/);
+  });
+
+  it('canonicalizes provider command fields in the conversion pipeline', async () => {
+    const source = '$trust+=1';
+    const units = unitizeSource(source, 'import');
+    const candidate = documentFor(units);
+    candidate.nodes[0].commands = [{
+      source,
+      variable: 'wrong',
+      operator: '-=',
+      value: 1,
+      sourceRefs: [candidate.nodes[0].sourceRefs[0]],
+    }];
+    (candidate.nodes[0].commands[0] as unknown as Record<string, unknown>).value = '1';
+    mockedCompleteLlm
+      .mockResolvedValueOnce(JSON.stringify(candidate))
+      .mockResolvedValueOnce(JSON.stringify(passAudit));
+
+    const result = await resolveStoryForImport(source);
+
+    expect(result.document.nodes[0].commands[0]).toMatchObject({
+      source,
+      variable: 'trust',
+      operator: '+=',
+      value: 1,
+    });
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(2);
   });
 
