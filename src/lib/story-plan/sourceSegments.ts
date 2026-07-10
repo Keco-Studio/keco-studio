@@ -127,7 +127,7 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
     const explicitBranch = EXPLICIT_BRANCH_PATTERN.exec(line);
     if (explicitBranch) {
       if (explicitBranch[3]) {
-        addMatchedText(unit, add, 'branch_marker', explicitBranch[3], line.indexOf(explicitBranch[2]) + explicitBranch[2].length, true, true);
+        addMatchedText(unit, add, 'branch_marker', explicitBranch[3], line.indexOf(explicitBranch[2]) + explicitBranch[2].length, false, false);
       }
       return;
     }
@@ -152,7 +152,7 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
 
     const optionPrefix = EXPLICIT_OPTION_PREFIX.exec(line);
     if (optionPrefix) {
-      const colonIndex = line.indexOf(':') >= 0 ? line.indexOf(':') : line.indexOf('：');
+      const colonIndex = firstDelimiterIndex(line);
       const bodyStart = skipWhitespace(line, colonIndex + 1);
       const metadataStart = Math.max(line.lastIndexOf('('), line.lastIndexOf('（'));
       const displayEnd = metadataStart > bodyStart ? trimEndIndex(line, metadataStart) : line.length;
@@ -164,7 +164,7 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
 
     const dialogue = DIALOGUE_PATTERN.exec(line);
     if (dialogue) {
-      const colonIndex = line.indexOf(':') >= 0 ? line.indexOf(':') : line.indexOf('：');
+      const colonIndex = firstDelimiterIndex(line);
       const left = line.slice(0, colonIndex).trim();
       const cue = SPEAKER_CUE_PATTERN.exec(left);
       if (cue) {
@@ -232,6 +232,12 @@ function trimEndIndex(value: string, end: number): number {
   let index = end;
   while (index > 0 && /\s/.test(value[index - 1])) index -= 1;
   return index;
+}
+
+function firstDelimiterIndex(value: string): number {
+  const indexes = [value.indexOf(':'), value.indexOf('：')].filter((index) => index >= 0);
+  if (indexes.length === 0) throw new Error('Expected a dialogue or option delimiter');
+  return Math.min(...indexes);
 }
 
 function stripMatchedQuoteSpan(value: string, start: number, end: number): [number, number] {

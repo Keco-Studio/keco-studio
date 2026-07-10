@@ -60,6 +60,16 @@ describe('story source segmentation', () => {
     ]));
   });
 
+  it('uses the first speaker delimiter when dialogue contains another colon', () => {
+    const content = '光球： “你到了。信任值: [trust]。”';
+    const result = segmentStorySource(content, 'fixture');
+
+    expect(result.segments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'speaker', text: '光球' }),
+      expect.objectContaining({ kind: 'dialogue', text: '你到了。信任值: [trust]。' }),
+    ]));
+  });
+
   it('extracts natural-language branch choice text', () => {
     const content = '分支一：选择【东侧客房】（安稳谨慎线）';
     const result = segmentStorySource(content, 'fixture');
