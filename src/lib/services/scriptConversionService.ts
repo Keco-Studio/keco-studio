@@ -8,6 +8,9 @@ import type { RoleMap, Script } from '@/lib/script-parser';
 import { completeLlm } from '@/lib/agent/llm-client';
 import { sanitizeLlmOutput, validateScriptStructure } from '@/lib/agent/script-validation';
 
+export { resolveStoryForImport } from '@/lib/story-ir/conversion';
+export type { ResolvedStory, ResolveStoryOptions } from '@/lib/story-ir/conversion';
+
 export interface ResolveScriptTextResult {
   fullText: string;
   converted: boolean;
