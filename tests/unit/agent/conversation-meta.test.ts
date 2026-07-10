@@ -72,6 +72,11 @@ describe('needsConfirmation', () => {
     expect(needsConfirmation(read, { autoExecute: false })).toBe(false);
   });
 
+  it('skips confirmation for tools that complete their own validated write', () => {
+    const validatedWrite = mockTool({ confirmationRequired: false });
+    expect(needsConfirmation(validatedWrite, { autoExecute: false })).toBe(false);
+  });
+
   it('requires confirmation for post_preview and meta write tools even when autoExecute is true', () => {
     const post = mockTool({ confirmationMode: 'post_preview' });
     const metaTool = mockTool({ confirmationMode: 'meta' });

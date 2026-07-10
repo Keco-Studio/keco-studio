@@ -1,11 +1,11 @@
 /**
  * import_script converts an exact user-message source span into audited Story IR,
- * then imports the previewed document without reparsing model text.
+ * then imports the validated document without reparsing model text.
  */
 
 import { z } from 'zod';
 import type { RoleMap } from '@/lib/script-parser';
-import type { ImportProgressEvent, StoryDocument } from '@/lib/story-ir/schema';
+import type { ImportProgressEvent } from '@/lib/story-ir/schema';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { getFolderRow } from '../data-access';
@@ -23,19 +23,6 @@ const ParamsSchema = z.object({
 
 type Params = z.infer<typeof ParamsSchema>;
 
-interface PreviewData {
-  libraryName: string;
-  folderId: string;
-  fullText: string;
-  document: StoryDocument;
-  lines: Array<{ label: string; type: number; name?: string; content: string }>;
-  stats: { lineCount: number; dialogueCount: number; optionCount: number };
-  warnings: string[];
-}
-
-const isUuid = (value: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-
 function toRoleMap(mapping?: Record<string, number>): RoleMap {
   const roleMap: RoleMap = {};
   if (!mapping) return roleMap;
@@ -43,14 +30,6 @@ function toRoleMap(mapping?: Record<string, number>): RoleMap {
     roleMap[name] = { id: '', type };
   }
   return roleMap;
-}
-
-function computeStats(document: StoryDocument): PreviewData['stats'] {
-  return {
-    lineCount: document.nodes.length,
-    dialogueCount: document.nodes.filter((node) => node.type === 'dialogue').length,
-    optionCount: document.nodes.reduce((sum, node) => sum + node.options.length, 0),
-  };
 }
 
 async function validateParamsAndFolder(
@@ -98,75 +77,43 @@ async function* executeStream(
   }
 
   const queue = new ProgressQueue();
-  const resultPromise = resolveStoryForImport(source.content, {
+  const resolutionPromise = resolveStoryForImport(source.content, {
     sourceId: source.sourceId,
     roleMap: toRoleMap(data.characterMapping),
     onProgress: (event) => queue.push(event),
   })
-    .then((resolved): ToolResult => ({
-      success: true,
-      displayHint: 'script_preview',
-      data: {
-        libraryName: data.libraryName,
-        folderId: data.folderId,
-        fullText: source.content,
-        document: resolved.document,
-        lines: resolved.document.nodes.map((node) => ({
-          label: node.label,
-          type: node.type === 'dialogue' ? 1 : 2,
-          name: node.speaker,
-          content: node.content,
-        })),
-        stats: computeStats(resolved.document),
-        warnings: resolved.warnings,
-      } satisfies PreviewData,
-    }))
-    .catch((error): ToolResult => ({
-      success: false,
-      error: (error as Error).message || 'Conversion failed.',
-    }))
+    .then((resolved) => ({ resolved }))
+    .catch((error: unknown) => ({ error }))
     .finally(() => queue.close());
 
   for await (const progress of queue) yield progress;
-  return await resultPromise;
-}
-
-async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
-  const iterator = executeStream(params, ctx);
-  while (true) {
-    const step = await iterator.next();
-    if (step.done) return step.value;
-  }
-}
-
-async function executeImport(
-  toolResult: ToolResult,
-  _params: unknown,
-  ctx: ToolContext
-): Promise<ToolResult> {
-  const preview = toolResult.data as PreviewData | undefined;
-  if (!preview?.document) {
-    return { success: false, error: 'No Story IR preview is available to import.' };
-  }
-  if (!isUuid(preview.folderId)) {
-    return { success: false, error: 'Invalid target folder.' };
+  const resolution = await resolutionPromise;
+  if ('error' in resolution) {
+    return {
+      success: false,
+      error: resolution.error instanceof Error
+        ? resolution.error.message
+        : 'Conversion failed.',
+    };
   }
 
+  yield { phase: 'table_compile', message: 'Compiling script table' };
+  yield { phase: 'database_write', message: 'Writing script library' };
   try {
     const result = await importStoryDocument(ctx.supabase, {
       userId: ctx.userId,
       projectId: ctx.projectId,
-      folderId: preview.folderId,
-      libraryName: preview.libraryName,
-      document: preview.document,
-      fileName: `${preview.libraryName}.txt`,
+      folderId: data.folderId,
+      libraryName: data.libraryName,
+      document: resolution.resolved.document,
+      fileName: `${data.libraryName}.txt`,
     });
     return {
       success: true,
       displayHint: 'text',
       data: {
         libraryId: result.libraryId,
-        libraryName: preview.libraryName,
+        libraryName: data.libraryName,
         rowCount: result.rowCount,
         fieldCount: result.fieldCount,
       },
@@ -174,6 +121,14 @@ async function executeImport(
     };
   } catch (error) {
     return { success: false, error: (error as Error).message || 'Import failed.' };
+  }
+}
+
+async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
+  const iterator = executeStream(params, ctx);
+  while (true) {
+    const step = await iterator.next();
+    if (step.done) return step.value;
   }
 }
 
@@ -212,7 +167,8 @@ export const importScript: AgentTool = {
   description:
     'Convert an exact user-message source span into audited Story IR and import it as a script library. The tool, not the agent, parses and repairs story structure.',
   category: 'write',
-  confirmationMode: 'post_preview',
+  confirmationMode: 'pre_execute',
+  confirmationRequired: false,
   requiredPermission: 'editor',
   parameters: {
     type: 'object',
@@ -232,5 +188,4 @@ export const importScript: AgentTool = {
   },
   execute,
   executeStream,
-  executeImport,
 };

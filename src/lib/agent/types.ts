@@ -16,7 +16,7 @@ export type UserRole = 'admin' | 'editor' | 'viewer';
  * How a tool's confirmation is handled by the ReAct loop.
  * - pre_execute:  Pause BEFORE execution, confirm args (create/update/delete_asset).
  * - post_preview: Execute a non-mutating step first, show a preview, then confirm
- *                 the mutating step (import_script).
+ *                 the mutating step.
  * - meta:         Confirm the option change itself (set_conversation_option).
  */
 export type ConfirmationMode = 'pre_execute' | 'post_preview' | 'meta';
@@ -59,6 +59,8 @@ export interface AgentTool {
   parameters: JSONSchema;
   category: 'read' | 'write';
   confirmationMode: ConfirmationMode;
+  /** False when the tool's validated operation is itself the user-requested action. */
+  confirmationRequired?: boolean;
   requiredPermission?: 'editor' | 'admin';
   execute: (params: unknown, ctx: ToolContext) => Promise<ToolResult>;
   executeStream?: (

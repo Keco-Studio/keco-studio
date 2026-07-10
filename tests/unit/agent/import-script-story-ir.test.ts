@@ -65,7 +65,7 @@ describe('import_script Story IR tool', () => {
     mockedImport.mockReset().mockResolvedValue({ libraryId: 'library-1', rowCount: 1, fieldCount: 11 });
   });
 
-  it('streams Story IR conversion from the exact source span', async () => {
+  it('streams audited conversion and imports the validated document directly', async () => {
     const params = {
       libraryName: 'Story',
       folderId,
@@ -78,26 +78,37 @@ describe('import_script Story IR tool', () => {
       done: false,
       value: { phase: 'conversion', message: 'Converting' },
     });
+    expect(await iterator.next()).toEqual({
+      done: false,
+      value: { phase: 'table_compile', message: 'Compiling script table' },
+    });
+    expect(await iterator.next()).toEqual({
+      done: false,
+      value: { phase: 'database_write', message: 'Writing script library' },
+    });
     const done = await iterator.next();
     expect(done.done).toBe(true);
     expect((done.value as ToolResult).data).toMatchObject({
+      libraryId: 'library-1',
       libraryName: 'Story',
-      document,
-      stats: { lineCount: 1, dialogueCount: 1, optionCount: 0 },
+      rowCount: 1,
+      fieldCount: 11,
     });
-  });
-
-  it('imports the previewed Story IR without reparsing text', async () => {
-    const params = { libraryName: 'Story', folderId, sourceStart: 7, sourceEnd: 15 };
-    const iterator = executeAgentTool(importScript, params, context());
-    await iterator.next();
-    const preview = (await iterator.next()).value as ToolResult;
-
-    const result = await importScript.executeImport!(preview, params, context());
-    expect(result.success).toBe(true);
+    expect(importScript.confirmationRequired).toBe(false);
     expect(mockedImport).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       document,
       libraryName: 'Story',
     }));
+  });
+
+  it('does not write when conversion or audit fails', async () => {
+    mockedResolve.mockRejectedValue(new Error('Semantic audit failed'));
+    const params = { libraryName: 'Story', folderId, sourceStart: 7, sourceEnd: 15 };
+    const iterator = executeAgentTool(importScript, params, context());
+    const done = await iterator.next();
+
+    expect(done.done).toBe(true);
+    expect((done.value as ToolResult)).toMatchObject({ success: false, error: 'Semantic audit failed' });
+    expect(mockedImport).not.toHaveBeenCalled();
   });
 });
