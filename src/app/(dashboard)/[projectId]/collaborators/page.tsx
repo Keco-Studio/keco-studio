@@ -346,7 +346,7 @@ export default function CollaboratorsPage() {
   }
 
   return (
-    <div className={styles.container}>
+    <div className={styles.container} data-testid="collaborators-page">
       {/* Page Header - All in one row */}
       <div className={styles.pageHeader}>
         {/* Return Button */}
@@ -407,6 +407,7 @@ export default function CollaboratorsPage() {
           <button
             onClick={() => setInviteModalOpen(true)}
             className={styles.inviteButton}
+            data-testid="collaborators-invite-button"
           >
             Invite
           </button>
@@ -482,4 +483,3 @@ export default function CollaboratorsPage() {
     </div>
   );
 }
-
