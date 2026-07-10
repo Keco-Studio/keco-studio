@@ -4,6 +4,7 @@ import {
   applyStoryCommands,
   interpolateVariables,
   parseNumericCommand,
+  parseSingleNumericCommandFromText,
 } from './commands';
 
 const ref = { sourceId: 'source', unitId: 'source:0', start: 0, end: 10 };
@@ -46,6 +47,20 @@ describe('Story numeric commands', () => {
   it('rejects malformed and non-finite commands', () => {
     expect(() => parseNumericCommand('trust+=1')).toThrow(/invalid numeric command/i);
     expect(() => parseNumericCommand('$trust+=Infinity')).toThrow(/invalid numeric command/i);
+  });
+
+  it('extracts one numeric command from a structural source fragment', () => {
+    expect(parseSingleNumericCommandFromText('($trust+=1; jump O1)')).toEqual({
+      source: '$trust+=1',
+      variable: 'trust',
+      operator: '+=',
+      value: 1,
+    });
+  });
+
+  it('rejects source fragments containing multiple numeric commands', () => {
+    expect(() => parseSingleNumericCommandFromText('($trust+=1; $courage+=2; jump O1)'))
+      .toThrow(/invalid numeric command source/i);
   });
 
   it('stops on division by zero', () => {

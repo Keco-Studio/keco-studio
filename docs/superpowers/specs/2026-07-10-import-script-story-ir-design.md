@@ -1,7 +1,7 @@
 # Import Script Story IR Design Spec
 
 **Date:** 2026-07-10  
-**Status:** Draft; conversational design approved, pending written spec review  
+**Status:** Draft; command canonicalization amendment approved, pending written spec review
 **Scope:** Replace prose-to-standard-text conversion with an audited Story IR pipeline, support dynamic choices and nested branches, and execute numeric story variables during playback  
 **Related:** [Import Script branch playback spec](../../../specs/012-import-script-branch-playback/spec.md), [Agent design](./2026-06-10-keco-studio-agent-design.md)
 
@@ -21,6 +21,8 @@ Import Script currently uses different definitions of "standard format" at diffe
 Consequently, input can be classified as directly importable even when options, labels, jumps, or quoted lines are misparsed. The imported table then contains no branch semantics, so playback can only reveal every physical row in order.
 
 The confirmed reproduction contains half-width structural punctuation, paired Chinese quotes, nested labels such as `O1A_END`, branch-end commands written as `Jump Merge`, and a final `Oend` label. Current behavior classifies it as directly importable, reports no validation errors, emits empty option/jump columns, and performs a linear playback.
+
+The real MiniMax-M3 contract test on the new Story IR path correctly identified all three choice groups in that reproduction, but returned every numeric command `value` as a JSON string despite the tool schema requiring a number. Strict parsing rejected the candidate on all three attempts. Provider retries therefore cannot be the only defense for redundant command fields when the authoritative numeric command already exists verbatim in the source.
 
 ### 1.2 Decision
 
@@ -89,6 +91,9 @@ Legacy direct-import attempt
                                                 Converter LLM -> partial Story IR
                                                          |
                                                          v
+                                                command canonicalization
+                                                         |
+                                                         v
                                                 deterministic chunk validation
                                                          |
                                                          v
@@ -115,6 +120,7 @@ Legacy direct-import attempt
 | Source Unitizer | Produce stable, lossless source units with character offsets. | Infer story semantics. |
 | Legacy Adapter | Parse compatible standard text into Story IR. | Decide correctness from surface regexes alone. |
 | Converter | Map source units to Story IR using a JSON-only prompt. | Emit standard text or invent plot content. |
+| Command Canonicalizer | Rebuild command variable, operator, and numeric value from the exact cited `source` command. | Infer a command not present in source or repair invalid command syntax. |
 | Validator | Enforce schema, provenance, graph, command, and resource rules. | Make semantic guesses. |
 | Auditor | Compare original content with Story IR for semantic preservation. | Repair or rewrite output. |
 | Chunk Merger | Combine validated partial IR and resolve cross-chunk structure. | Silently rename explicit source labels. |
@@ -277,7 +283,17 @@ The general Agent Chat prompt remains unchanged except for the `import_script` t
 
 ### 6.2 Structured Output
 
-The Converter response must be parsed as structured JSON and validated against a server-owned schema. Markdown fences, prose explanations, multiple JSON documents, unknown keys, non-finite numbers, prototype keys, and schema coercion are rejected. The only normalization exceptions are: known collection fields (`commands`, `options`, `sourceRefs`, and audit `issues`) may fill an omitted/empty value as `[]`, decode a JSON collection string, or wrap a non-empty singleton object as a one-item array; provider objects whose only key is `item` are recursively unwrapped; and a source ref whose `unitId` resolves in the current server-owned chunk is canonicalized to that unit's server-owned `sourceId/start/end`. Every normalized member still passes strict schema validation. Missing or unknown `unitId` values still fail.
+The Converter response must be parsed as structured JSON and validated against a server-owned schema. Markdown fences, prose explanations, multiple JSON documents, unknown keys, non-finite numbers, prototype keys, and general-purpose schema coercion are rejected. The only normalization exceptions are:
+
+- known collection fields (`commands`, `options`, `sourceRefs`, and audit `issues`) may fill an omitted/empty value as `[]`, decode a JSON collection string, or wrap a non-empty singleton object as a one-item array;
+- provider objects whose only key is `item` are recursively unwrapped;
+- a source ref whose `unitId` resolves in the current server-owned chunk is canonicalized to that unit's server-owned `sourceId/start/end`;
+- every object inside a known `commands` array must contain either one exact numeric command or a source-backed structural fragment containing exactly one numeric command; the server extracts that exact command token and deterministically replaces or supplies `source`, `variable`, `operator`, and `value` before strict schema parsing.
+- an option `text` that contains a valid ASCII option-label prefix and a final matched metadata wrapper with a supported `Jump` marker is reduced to the display text between them; the option target and commands remain in their dedicated fields. Earlier parentheses inside the display text are preserved.
+
+Command canonicalization is source reconstruction, not free-form coercion. It may turn a provider value such as `"1"` into `1`, or normalize a provider fragment such as `($trust+=1; jump O1)` to `$trust+=1`, only because that exact numeric token is present in the fragment. The later validator still requires the canonical command source to occur in the referenced authoritative source unit. A fragment containing zero or multiple supported numeric commands is ambiguous and fails conversion. A missing, malformed, unsupported, or uncited command source also fails; the canonicalizer never guesses a variable, operator, or value from surrounding prose. Unknown properties and missing or unknown `unitId` values still fail.
+
+Option-text canonicalization is likewise structural and source-backed. For example, `O1: Go left. ($trust+=1; jump O1)` becomes `Go left.` because the label, jump metadata, target, and command already have separate Story IR fields. Text without a final structural jump wrapper is unchanged, including ordinary colons and parenthetical prose.
 
 Source content is serialized as explicitly delimited untrusted data. Text such as `ignore previous instructions` remains story data and cannot change the system prompt or output contract.
 
@@ -308,6 +324,7 @@ The validator rejects a candidate when any of these is true:
 - a source unit is duplicated without an explicitly allowed shared structural reference;
 - dialogue, narration, option, character, event, or command content lacks provenance;
 - variable name, operator, or value differs from the source;
+- a command `source` cannot be parsed with the supported numeric-command grammar;
 - parser or LLM noise appears as story content;
 - a label is duplicated or invalid;
 - a target is missing, ambiguous, or unresolved;
@@ -321,7 +338,7 @@ Noise is any output that is not supported by source evidence and is not an allow
 
 - fabricated dialogue, narration, characters, events, choices, transitions, or variables;
 - markdown, code fences, explanations, headings added by the model, or prompt text;
-- branch declarations, `Jump` markers, or label syntax stored as dialogue/narration;
+- branch declarations, `Jump` markers, command metadata, or option-label syntax stored as visible dialogue, narration, or option text;
 - duplicate output derived from the same authoritative source unit;
 - content assigned to the wrong speaker or branch;
 - dropped source content hidden by a structurally valid graph;
@@ -499,6 +516,8 @@ Events never include full source text, prompts, hidden reasoning, or raw model o
 ### 9.2 Entry Points
 
 - Import Modal consumes a streaming import response and shows the current stage, attempt, and chunk count.
+- Import Modal accepts arbitrary story text and does not present a canonical or preferred script grammar. Remove the standard-format example loader, expandable format guide, format-specific placeholder copy, and their unused UI state/styles.
+- Legacy standard text remains a compatibility input but is not promoted as the format users should author.
 - Agent Chat forwards the same service events through its existing SSE activity stream.
 - Both entry points call the same conversion, validation, audit, compilation, and import services.
 - A final success event includes the created library ID and row count.
@@ -540,6 +559,7 @@ Closing or interrupting the stream must not be reported as success. Database wri
 | Invalid or ambiguous source reference | Fail before any model call. |
 | Direct-import validation failure | Route original source to LLM conversion. |
 | Converter schema failure | Retry affected chunk. |
+| Command source is missing, malformed, unsupported, or not present in its cited source unit | Retry affected chunk, then fail closed. |
 | Deterministic validation failure | Retry affected chunk(s). |
 | Auditor major/critical issue | Retry affected chunk(s). |
 | Converter/Auditor exceeds 150 seconds | Abort the upstream request; fail immediately with a concise timeout error; create no library. |
@@ -566,6 +586,7 @@ Implementation follows failing-test-first development.
 - Noise rules reject markdown, explanations, structural markers in content, duplicate dialogue, and untraceable output.
 - Validator covers unique labels, entry resolution, arbitrary nested labels, targets, reachability, and no-progress cycles.
 - Command parsing covers all five operators, exact source preservation, invalid syntax, division by zero, and non-finite results.
+- Provider command canonicalization accepts string-typed redundant numeric values and single-command structural wrappers only when the exact numeric token is valid and cited, rebuilds the canonical command from that token, and rejects ambiguous, malformed, or uncited command sources.
 - Dynamic columns cover 0, 1, 3, and 12 options and numeric ordering beyond 9.
 - Chunk merger covers cross-chunk targets, duplicated overlap, conflicting labels, and affected-chunk retries.
 - Player covers dynamic choices, command timing, interpolation, legacy commands, restart, and malformed data.
@@ -639,3 +660,6 @@ The old parser remains behind the Legacy Adapter. It is not the semantic model f
 11. Both Import Modal and Agent Chat stream consistent progress and use the same audited pipeline.
 12. Agent Chat imports exact stored user content by reference rather than trusting LLM-copied source text.
 13. The four-path acceptance fixture produces final trust values `2`, `0`, `4`, and `0` and only renders selected branches.
+14. Provider-specific wrappers, string values, or mismatched redundant fields cannot block a valid cited command or change its meaning: the server extracts exactly one numeric command token and rebuilds `source`, `variable`, `operator`, and numeric `value`, while ambiguous, malformed, or uncited sources still prevent import.
+15. A structured option source such as `O1: Go left. ($trust+=1; jump O1)` compiles to display text `Go left.`, target `Jump O1`, and command `$trust+=1`; ordinary option punctuation and parentheses remain unchanged.
+16. Import Script contains no standard-format example, format guide, or format-specific input instruction; its text entry remains neutral while legacy formatted scripts continue to import through the same compatibility path.
