@@ -237,7 +237,7 @@ Expected: FAIL because `canonicalizeStoryOptionTexts` does not exist and the pip
 - [ ] **Step 3: Implement the minimal canonicalizer**
 
 ```typescript
-const OPTION_PREFIX_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}\s*[：:]\s*(.+)$/s;
+const OPTION_PREFIX_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}\s*[：:]\s*([\s\S]+)$/;
 const OPTION_JUMP_PATTERN = /(?:jump|跳转)\s+[A-Za-z][A-Za-z0-9_-]{0,63}/i;
 
 function cleanStructuredOptionText(text: string): string {

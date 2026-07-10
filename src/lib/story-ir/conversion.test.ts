@@ -12,7 +12,11 @@ import {
   CONVERTER_SYSTEM_PROMPT,
   buildConverterMessages,
 } from './prompts';
-import { canonicalizeStoryCommands, resolveStoryForImport } from './conversion';
+import {
+  canonicalizeStoryCommands,
+  canonicalizeStoryOptionTexts,
+  resolveStoryForImport,
+} from './conversion';
 
 const mockedCompleteLlm = completeLlm as jest.MockedFunction<typeof completeLlm>;
 
@@ -282,30 +286,66 @@ describe('Story IR LLM conversion', () => {
     })).toThrow(/Invalid numeric command/);
   });
 
-  it('canonicalizes provider command fields in the conversion pipeline', async () => {
-    const source = 'Choose left. ($trust+=1; jump O1)';
+  it('removes structural syntax from visible option text', () => {
+    expect(canonicalizeStoryOptionTexts({
+      options: [{ text: 'O1: Go left. ($trust+=1; jump O1)' }],
+    })).toMatchObject({
+      options: [{ text: 'Go left.' }],
+    });
+  });
+
+  it('preserves parentheses inside structured option display text', () => {
+    expect(canonicalizeStoryOptionTexts({
+      options: [{ text: 'O1: Ask (why). ($trust+=1; jump O1)' }],
+    })).toMatchObject({
+      options: [{ text: 'Ask (why).' }],
+    });
+  });
+
+  it('leaves non-structural option text unchanged', () => {
+    expect(canonicalizeStoryOptionTexts({
+      options: [{ text: 'Ask: why (tomorrow)' }],
+    })).toMatchObject({
+      options: [{ text: 'Ask: why (tomorrow)' }],
+    });
+  });
+
+  it('canonicalizes wrapped option text and commands in the conversion pipeline', async () => {
+    const source = 'O1: Choose left. ($trust+=1; jump O1)';
     const commandSource = '($trust+=1; jump O1)';
     const units = unitizeSource(source, 'import');
     const candidate = documentFor(units);
-    candidate.nodes[0].commands = [{
-      source: commandSource,
-      variable: 'wrong',
-      operator: '-=',
-      value: 1,
+    candidate.entryLabel = 'O1';
+    candidate.nodes[0].label = 'O1';
+    candidate.nodes[0].content = 'Choose left.';
+    candidate.nodes[0].options = [{
+      text: source,
+      target: 'O1',
+      commands: [{
+        source: commandSource,
+        variable: 'wrong',
+        operator: '-=',
+        value: 1,
+        sourceRefs: [candidate.nodes[0].sourceRefs[0]],
+      }],
       sourceRefs: [candidate.nodes[0].sourceRefs[0]],
     }];
-    (candidate.nodes[0].commands[0] as unknown as Record<string, unknown>).value = '1';
+    (candidate.nodes[0].options[0].commands[0] as unknown as Record<string, unknown>).value = '1';
     mockedCompleteLlm
       .mockResolvedValueOnce(JSON.stringify(candidate))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
     const result = await resolveStoryForImport(source);
 
-    expect(result.document.nodes[0].commands[0]).toMatchObject({
-      source: '$trust+=1',
-      variable: 'trust',
-      operator: '+=',
-      value: 1,
+    expect(result.document.nodes[0].options[0]).toMatchObject({
+      text: 'Choose left.',
+      target: 'O1',
+      commands: [{
+        source: '$trust+=1',
+        variable: 'trust',
+        operator: '+=',
+        value: 1,
+      }],
     });
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(2);
   });

@@ -127,10 +127,12 @@ async function convertAndAuditChunk(
         'Converter',
         options
       );
-      const document = parseStoryDocument(canonicalizeStoryCommands(
-        canonicalizeStorySourceRefs(
-          normalizeStoryCollections(parseModelJson(raw)),
-          chunk.units
+      const document = parseStoryDocument(canonicalizeStoryOptionTexts(
+        canonicalizeStoryCommands(
+          canonicalizeStorySourceRefs(
+            normalizeStoryCollections(parseModelJson(raw)),
+            chunk.units
+          )
         )
       ));
       emit(options, {
@@ -366,6 +368,48 @@ export function canonicalizeStoryCommands(value: unknown): unknown {
   }
 
   return visit(value);
+}
+
+const OPTION_PREFIX_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}\s*[：:]\s*([\s\S]+)$/;
+const OPTION_JUMP_PATTERN = /(?:jump|跳转)\s+[A-Za-z][A-Za-z0-9_-]{0,63}/i;
+
+export function canonicalizeStoryOptionTexts(value: unknown): unknown {
+  function visit(current: unknown): unknown {
+    if (Array.isArray(current)) return current.map(visit);
+    if (!current || typeof current !== 'object') return current;
+
+    const result: Record<string, unknown> = Object.create(null);
+    for (const [key, child] of Object.entries(current as Record<string, unknown>)) {
+      result[key] = key === 'options' && Array.isArray(child)
+        ? child.map(canonicalizeOption)
+        : visit(child);
+    }
+    return result;
+  }
+
+  function canonicalizeOption(candidate: unknown): unknown {
+    if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;
+    const record = visit(candidate) as Record<string, unknown>;
+    if (typeof record.text === 'string') record.text = cleanStructuredOptionText(record.text);
+    return record;
+  }
+
+  return visit(value);
+}
+
+function cleanStructuredOptionText(text: string): string {
+  const match = OPTION_PREFIX_PATTERN.exec(text.trim());
+  if (!match) return text;
+  const body = match[1].trim();
+  const closing = body.at(-1);
+  const opening = closing === ')' ? '(' : closing === '）' ? '（' : '';
+  if (!opening) return text;
+
+  const metadataStart = body.lastIndexOf(opening);
+  if (metadataStart < 0) return text;
+  const metadata = body.slice(metadataStart + 1, -1);
+  const displayText = body.slice(0, metadataStart).trim();
+  return displayText && OPTION_JUMP_PATTERN.test(metadata) ? displayText : text;
 }
 
 function auditPassed(audit: StoryAudit): boolean {
