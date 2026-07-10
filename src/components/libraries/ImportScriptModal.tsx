@@ -6,6 +6,8 @@ import { showSuccessToast, showErrorToast } from '@/lib/utils/toast';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { validateName } from '@/lib/utils/nameValidation';
 import { parseDocument, validateDesignFile } from '@/lib/document-parser';
+import { consumeImportStream } from '@/lib/import-script-stream';
+import type { ImportProgressEvent } from '@/lib/story-ir/schema';
 import styles from './ImportScriptModal.module.css';
 
 type ImportScriptModalProps = {
@@ -133,6 +135,7 @@ export function ImportScriptModal({
   const [textInput, setTextInput] = useState('');
   const [preview, setPreview] = useState<PreviewInfo | null>(null);
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<ImportProgressEvent | null>(null);
   const [mounted, setMounted] = useState(false);
   const [showFormatGuide, setShowFormatGuide] = useState(false);
 
@@ -154,6 +157,7 @@ export function ImportScriptModal({
       setParsedFileText(null);
       setTextInput('');
       setPreview(null);
+      setImportProgress(null);
       setInputMode('file');
     }
   }, [open]);
@@ -235,6 +239,7 @@ export function ImportScriptModal({
     }
 
     setImporting(true);
+    setImportProgress({ phase: 'source_read', message: 'Reading script source' });
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {
@@ -256,10 +261,7 @@ export function ImportScriptModal({
         body: formData,
       });
 
-      const payload = await res.json().catch(() => ({ error: res.statusText }));
-      if (!res.ok) {
-        throw new Error(payload.error || 'Import failed');
-      }
+      const payload = await consumeImportStream(res, setImportProgress);
 
       showSuccessToast(`Script imported (${payload.rowCount ?? 0} rows)`);
       onImported?.(payload.libraryId);
@@ -269,6 +271,7 @@ export function ImportScriptModal({
       showErrorToast(message);
     } finally {
       setImporting(false);
+      setImportProgress(null);
     }
   };
 
@@ -280,7 +283,7 @@ export function ImportScriptModal({
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) onClose();
+    if (!importing && e.target === e.currentTarget) onClose();
   };
 
   const canImport = inputMode === 'file'
@@ -295,7 +298,7 @@ export function ImportScriptModal({
       <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <div className={styles.title}>Import script</div>
-          <button className={styles.close} onClick={onClose} aria-label="Close">
+          <button className={styles.close} onClick={onClose} aria-label="Close" disabled={importing}>
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="18" y1="6" x2="6" y2="18" />
               <line x1="6" y1="6" x2="18" y2="18" />
@@ -431,6 +434,14 @@ export function ImportScriptModal({
               )}
             </div>
           )}
+          <div
+            className={`${styles.progressRow} ${importing ? styles.progressRowVisible : ''}`}
+            role="status"
+            aria-live="polite"
+          >
+            {importing && <span className={styles.progressSpinner} aria-hidden />}
+            <span>{importProgress?.message ?? ''}</span>
+          </div>
         </div>
         <div className={styles.divider} />
         <div className={styles.footer}>

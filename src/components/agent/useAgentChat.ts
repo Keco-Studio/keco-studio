@@ -224,6 +224,24 @@ export function useAgentChat(ctx: SendContext) {
             setStreamActivity('processing');
             break;
           }
+          case 'tool_progress': {
+            setStreamActivity('tool');
+            const progress = event.progress as { message?: unknown } | undefined;
+            const progressMessage = String(progress?.message ?? '').trim();
+            if (toolCallId && progressMessage) {
+              setItems((prev) =>
+                prev.map((item) =>
+                  item.id === toolCallId && item.toolCall
+                    ? {
+                        ...item,
+                        toolCall: { ...item.toolCall, progressMessage },
+                      }
+                    : item
+                )
+              );
+            }
+            break;
+          }
           case 'tool_result': {
             if (toolCallId) {
               const succeeded = event.success !== false;

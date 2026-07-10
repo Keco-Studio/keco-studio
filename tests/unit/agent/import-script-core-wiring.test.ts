@@ -6,6 +6,14 @@ const coreSource = fs.readFileSync(
   path.join(process.cwd(), 'src/lib/agent/core.ts'),
   'utf8'
 );
+const chatSource = fs.readFileSync(
+  path.join(process.cwd(), 'src/components/agent/useAgentChat.ts'),
+  'utf8'
+);
+const cardSource = fs.readFileSync(
+  path.join(process.cwd(), 'src/components/agent/ToolCallCard.tsx'),
+  'utf8'
+);
 
 describe('Agent import source and progress wiring', () => {
   it('binds the persisted current user message as authoritative tool source', () => {
@@ -19,5 +27,12 @@ describe('Agent import source and progress wiring', () => {
     expect(coreSource).toContain("from './tool-execution-stream'");
     expect(coreSource).toContain("type: 'tool_progress'");
     expect(coreSource).toContain('yield* executeToolWithProgress');
+  });
+
+  it('updates the running tool card with streamed progress', () => {
+    expect(chatSource).toContain("case 'tool_progress'");
+    expect(chatSource).toContain('const progressMessage = String(progress?.message');
+    expect(chatSource).toContain('toolCall: { ...item.toolCall, progressMessage }');
+    expect(cardSource).toContain('toolCall.progressMessage');
   });
 });

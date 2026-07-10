@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
-import { importScriptFromFile } from '@/lib/services/scriptImportService';
-import { resolveScriptTextForImport } from '@/lib/services/scriptConversionService';
+import { importStoryDocument } from '@/lib/services/scriptImportService';
+import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
+import type { ImportProgressEvent } from '@/lib/story-ir/schema';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -66,27 +67,60 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'File exceeds 10 MB limit' }, { status: 400 });
   }
 
-  try {
-    const fileContent = await file.text();
-    const resolved = await resolveScriptTextForImport(fileContent);
-    const result = await importScriptFromFile(supabase, {
-      userId: user.id,
-      projectId,
-      folderId,
-      libraryName,
-      fileContent: resolved.fullText,
-      fileName: file.name,
-    });
-    return NextResponse.json(result, { status: 200 });
-  } catch (e: unknown) {
-    const err = e as { name?: string; message?: string; code?: string };
-    if (err.name === 'AuthorizationError') {
-      return NextResponse.json({ error: err.message || 'Forbidden' }, { status: 403 });
-    }
-    const msg = err.message || 'Import failed';
-    if (msg.toLowerCase().includes('already exists')) {
-      return NextResponse.json({ error: msg }, { status: 409 });
-    }
-    return NextResponse.json({ error: msg }, { status: 400 });
-  }
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const send = (record: unknown) => {
+        controller.enqueue(encoder.encode(`${JSON.stringify(record)}\n`));
+      };
+      void (async () => {
+        try {
+          const fileContent = await file.text();
+          const resolved = await resolveStoryForImport(fileContent, {
+            sourceId: `modal:${crypto.randomUUID()}`,
+            signal: request.signal,
+            onProgress: (progress: ImportProgressEvent) => send({ type: 'progress', progress }),
+          });
+          send({
+            type: 'progress',
+            progress: { phase: 'table_compile', message: 'Compiling script table' },
+          });
+          send({
+            type: 'progress',
+            progress: { phase: 'database_write', message: 'Writing script library' },
+          });
+          const result = await importStoryDocument(supabase, {
+            userId: user.id,
+            projectId,
+            folderId,
+            libraryName,
+            document: resolved.document,
+            fileName: file.name,
+          });
+          send({ type: 'result', result });
+        } catch (error) {
+          send({ type: 'error', error: safeErrorMessage(error) });
+        } finally {
+          controller.close();
+        }
+      })();
+    },
+  });
+
+  return new Response(stream, {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/x-ndjson; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+    },
+  });
+}
+
+function safeErrorMessage(error: unknown): string {
+  const message = error instanceof Error
+    ? error.message
+    : typeof error === 'object' && error && 'message' in error
+      ? String(error.message)
+      : 'Import failed';
+  return message.slice(0, 1000);
 }
