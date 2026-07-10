@@ -188,4 +188,8 @@ describe('visual novel player wiring', () => {
     expect(viewSource).toContain('playerState.error');
     expect(viewSource).toContain('options,');
   });
+
+  it('keeps content on the Start-labelled story node visible', () => {
+    expect(viewSource).toContain("label.toLowerCase() === 'start' && !content");
+  });
 });

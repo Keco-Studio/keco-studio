@@ -197,5 +197,7 @@ function formatIssues(issues: StoryIssue[]): string {
 }
 
 function formatAuditIssues(issues: StoryAuditIssue[]): string {
-  return issues.map((issue) => issue.evidence).join('; ');
+  return issues
+    .map((issue) => issue.outputPath ? `${issue.type} at ${issue.outputPath}` : issue.type)
+    .join('; ');
 }

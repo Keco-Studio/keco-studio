@@ -116,6 +116,30 @@ describe('Story IR LLM conversion', () => {
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(6);
   });
 
+  it('does not expose auditor evidence in the terminal error', async () => {
+    const source = 'Atana woke up beside the keyboard.';
+    const units = unitizeSource(source, 'import');
+    const privateEvidence = 'PRIVATE MODEL EVIDENCE';
+    const rejected = {
+      ...failAudit,
+      issues: failAudit.issues.map((issue) => ({ ...issue, evidence: privateEvidence })),
+    } satisfies StoryAudit;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      mockedCompleteLlm
+        .mockResolvedValueOnce(JSON.stringify(documentFor(units)))
+        .mockResolvedValueOnce(JSON.stringify(rejected));
+    }
+
+    let errorMessage = '';
+    try {
+      await resolveStoryForImport(source);
+    } catch (caught) {
+      errorMessage = caught instanceof Error ? caught.message : String(caught);
+    }
+    expect(errorMessage).not.toContain(privateEvidence);
+    expect(errorMessage).toContain('added_content');
+  });
+
   it('honors an aborted conversion before calling the model', async () => {
     const controller = new AbortController();
     controller.abort();

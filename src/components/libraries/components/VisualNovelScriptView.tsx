@@ -368,8 +368,18 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
         const content = renderPlayerContent(row, contentKey, playerState.variables);
         const label = String(labelVal ?? '').trim();
 
-        if (label.toLowerCase() === 'start') {
+        if (label.toLowerCase() === 'start' && !content) {
           return renderPartTitle(row.id, label);
+        }
+
+        if (label.toLowerCase() === 'start') {
+          const alignment = dialogAlignments.get(row.id) ?? 'left';
+          return (
+            <React.Fragment key={row.id}>
+              {renderPartTitle(`${row.id}-title`, label)}
+              {renderScriptLine(row.id, typeVal, nameVal, content, speakerOrder, alignment)}
+            </React.Fragment>
+          );
         }
 
         if (label === '*') return null;
