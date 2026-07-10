@@ -224,6 +224,7 @@ interface StructuralRepair {
 - Choice commands belong to the selected option and execute before entering its target.
 - Node commands execute when the node is entered.
 - `next` represents an unconditional jump after the node; absent `next` means fall through to the next Story IR node.
+- A branch path must not fall through into a sibling option target. Independent branch endings without a source merge use a generated empty terminal node with explicit structural provenance.
 - Every plot-bearing field has one or more valid `sourceRefs`.
 - A `structuralRepair` may create or normalize labels and targets, but may not justify new plot-bearing content.
 - Commands preserve the source variable name, operator, and numeric value exactly.
@@ -276,7 +277,7 @@ The general Agent Chat prompt remains unchanged except for the `import_script` t
 
 ### 6.2 Structured Output
 
-The Converter response must be parsed as structured JSON and validated against a server-owned schema. Markdown fences, prose explanations, multiple JSON documents, unknown keys, non-finite numbers, prototype keys, and schema coercion are rejected.
+The Converter response must be parsed as structured JSON and validated against a server-owned schema. Markdown fences, prose explanations, multiple JSON documents, unknown keys, non-finite numbers, prototype keys, and schema coercion are rejected. The only normalization exceptions are: known collection fields (`commands`, `options`, `sourceRefs`, and audit `issues`) may fill an omitted/empty value as `[]`, decode a JSON collection string, or wrap a non-empty singleton object as a one-item array; provider objects whose only key is `item` are recursively unwrapped; and a source ref whose `unitId` resolves in the current server-owned chunk is canonicalized to that unit's server-owned `sourceId/start/end`. Every normalized member still passes strict schema validation. Missing or unknown `unitId` values still fail.
 
 Source content is serialized as explicitly delimited untrusted data. Text such as `ignore previous instructions` remains story data and cannot change the system prompt or output contract.
 
@@ -502,8 +503,18 @@ Events never include full source text, prompts, hidden reasoning, or raw model o
 - Both entry points call the same conversion, validation, audit, compilation, and import services.
 - A final success event includes the created library ID and row count.
 - A final failure event includes safe structured issues with source positions and concise messages.
+- Converter and Auditor progress text explicitly says that the service is waiting for an LLM response; the UI must not imply that synchronous chunking is still running.
 
 Closing or interrupting the stream must not be reported as success. Database writes begin only after conversion and audit have completed.
+
+### 9.3 Deadlines and Cancellation
+
+- Each Import Script Converter or Auditor call has a 150-second hard deadline. This deadline is local to Story IR conversion and does not change Agent Chat LLM behavior.
+- Converter and Auditor calls disable MiniMax-M3 thinking (`thinking: { type: 'disabled' }`) because these calls require bounded schema transformation rather than open-ended reasoning. Agent Chat keeps its existing thinking behavior.
+- A deadline failure aborts the upstream request and terminates the import immediately. It is not one of the three semantic conversion attempts.
+- Cancelling the response stream or aborting the incoming request aborts the active Converter/Auditor request.
+- The NDJSON producer tracks its terminal/closed state and never enqueues into or closes an already cancelled stream.
+- Timeout and cancellation paths never begin database writes and never create a partial library.
 
 ---
 
@@ -531,6 +542,8 @@ Closing or interrupting the stream must not be reported as success. Database wri
 | Converter schema failure | Retry affected chunk. |
 | Deterministic validation failure | Retry affected chunk(s). |
 | Auditor major/critical issue | Retry affected chunk(s). |
+| Converter/Auditor exceeds 150 seconds | Abort the upstream request; fail immediately with a concise timeout error; create no library. |
+| Client disconnects or cancels response | Abort conversion; emit no later result; create no library. |
 | Three failed attempts | Fail import; create no library. |
 | Global merge/graph failure | Retry involved chunks, then fail closed. |
 | Table compilation failure | Fail before database write. |

@@ -8,7 +8,7 @@ import type { ImportProgressEvent } from '@/lib/story-ir/schema';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = new Set(['txt', 'md']);
@@ -68,19 +68,37 @@ export async function POST(request: NextRequest) {
   }
 
   const encoder = new TextEncoder();
+  const conversionController = new AbortController();
+  let streamClosed = false;
+  const abortFromRequest = () => conversionController.abort(request.signal.reason);
+  if (request.signal.aborted) {
+    abortFromRequest();
+  } else {
+    request.signal.addEventListener('abort', abortFromRequest, { once: true });
+  }
+
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
       const send = (record: unknown) => {
-        controller.enqueue(encoder.encode(`${JSON.stringify(record)}\n`));
+        if (streamClosed || conversionController.signal.aborted) return false;
+        try {
+          controller.enqueue(encoder.encode(`${JSON.stringify(record)}\n`));
+          return true;
+        } catch {
+          streamClosed = true;
+          conversionController.abort(new DOMException('Import response stream closed', 'AbortError'));
+          return false;
+        }
       };
       void (async () => {
         try {
           const fileContent = await file.text();
           const resolved = await resolveStoryForImport(fileContent, {
             sourceId: `modal:${crypto.randomUUID()}`,
-            signal: request.signal,
+            signal: conversionController.signal,
             onProgress: (progress: ImportProgressEvent) => send({ type: 'progress', progress }),
           });
+          if (conversionController.signal.aborted) return;
           send({
             type: 'progress',
             progress: { phase: 'table_compile', message: 'Compiling script table' },
@@ -99,11 +117,26 @@ export async function POST(request: NextRequest) {
           });
           send({ type: 'result', result });
         } catch (error) {
-          send({ type: 'error', error: safeErrorMessage(error) });
+          if (!conversionController.signal.aborted) {
+            send({ type: 'error', error: safeErrorMessage(error) });
+          }
         } finally {
-          controller.close();
+          request.signal.removeEventListener('abort', abortFromRequest);
+          if (!streamClosed) {
+            streamClosed = true;
+            try {
+              controller.close();
+            } catch {
+              // The consumer may have cancelled between the state check and close.
+            }
+          }
         }
       })();
+    },
+    cancel(reason) {
+      streamClosed = true;
+      conversionController.abort(reason);
+      request.signal.removeEventListener('abort', abortFromRequest);
     },
   });
 

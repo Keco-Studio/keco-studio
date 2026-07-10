@@ -63,6 +63,34 @@ describe('Story IR schema', () => {
     })).toThrow();
   });
 
+  it('defaults only omitted empty structural collections', () => {
+    const parsed = parseStoryDocument({
+      version: 1,
+      entryLabel: 'Start',
+      nodes: [{
+        label: 'Start',
+        type: 'system',
+        content: '',
+        sourceRefs: [ref],
+        options: [{
+          text: 'Choice 1',
+          target: 'O1',
+          sourceRefs: [ref],
+        }],
+      }, {
+        label: 'O1',
+        type: 'narration',
+        content: 'End',
+        sourceRefs: [ref],
+      }],
+    });
+
+    expect(parsed.nodes[0].commands).toEqual([]);
+    expect(parsed.nodes[0].options[0].commands).toEqual([]);
+    expect(parsed.nodes[1].commands).toEqual([]);
+    expect(parsed.nodes[1].options).toEqual([]);
+  });
+
   it('rejects prototype-pollution keys before schema parsing', () => {
     const dangerous = JSON.parse(JSON.stringify({
       version: 1,

@@ -28,7 +28,7 @@ export const StoryCommandSchema = z.object({
 export const StoryOptionSchema = z.object({
   text: z.string().min(1),
   target: z.string().regex(LABEL_PATTERN),
-  commands: z.array(StoryCommandSchema),
+  commands: z.array(StoryCommandSchema).default([]),
   sourceRefs: z.array(SourceRefSchema).min(1),
   structuralRepair: StructuralRepairSchema.optional(),
 }).strict();
@@ -38,9 +38,9 @@ export const StoryNodeSchema = z.object({
   type: z.enum(['dialogue', 'narration', 'scene', 'system']),
   speaker: z.string().min(1).optional(),
   content: z.string(),
-  commands: z.array(StoryCommandSchema),
+  commands: z.array(StoryCommandSchema).default([]),
   next: z.string().regex(LABEL_PATTERN).optional(),
-  options: z.array(StoryOptionSchema),
+  options: z.array(StoryOptionSchema).default([]),
   sourceRefs: z.array(SourceRefSchema).min(1),
   structuralRepair: StructuralRepairSchema.optional(),
 }).strict();

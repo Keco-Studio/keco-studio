@@ -15,6 +15,7 @@ export type StoryIssueType =
   | 'untraceable_content'
   | 'command_mutation'
   | 'omission'
+  | 'branch_fallthrough'
   | 'automatic_cycle';
 
 export interface StoryIssue {
@@ -162,6 +163,21 @@ function validateGraph(
     return issues;
   }
 
+  const optionTargets = new Set(
+    document.nodes.flatMap((node) => node.options.map((option) => option.target))
+  );
+  document.nodes.forEach((node, index) => {
+    if (index === 0 || !optionTargets.has(node.label)) return;
+    const predecessor = document.nodes[index - 1];
+    if (predecessor.options.length === 0 && !predecessor.next) {
+      issues.push({
+        type: 'branch_fallthrough',
+        outputPath: `nodes[${index - 1}]`,
+        message: `Node ${predecessor.label} falls through into sibling branch target ${node.label}`,
+      });
+    }
+  });
+
   document.nodes.forEach((node, nodeIndex) => {
     for (const target of targetsForNode(node)) {
       if (!indexesByLabel.has(target) && !options.allowUnresolvedTargets) {
@@ -214,6 +230,7 @@ function normalizeEvidence(value: string): string {
   return value
     .normalize('NFKC')
     .replace(/^["'“”‘’「」]+|["'“”‘’「」]+$/g, '')
+    .replace(/[\[\]()【】（）［］]/g, '')
     .replace(/\s+/g, ' ')
     .trim();
 }

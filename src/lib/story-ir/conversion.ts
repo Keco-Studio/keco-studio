@@ -1,4 +1,5 @@
 import { completeLlm } from '@/lib/agent/llm-client';
+import type { OpenAITool } from '@/lib/agent/types';
 import type { RoleMap } from '@/lib/script-parser';
 import { chunkSourceUnits, mergeStoryChunks, type StorySourceChunk } from './chunking';
 import { tryLegacyStoryImport } from './legacyAdapter';
@@ -12,17 +13,25 @@ import {
   type StoryDocument,
 } from './schema';
 import { unitizeSource } from './sourceUnits';
-import { buildAuditorMessages, buildConverterMessages } from './prompts';
+import { sourceRefForUnit } from './sourceUnits';
+import {
+  AUDITOR_OUTPUT_TOOL,
+  CONVERTER_OUTPUT_TOOL,
+  buildAuditorMessages,
+  buildConverterMessages,
+} from './prompts';
 import { validateStoryDocument, type StoryIssue } from './validator';
 
 export const MAX_MODEL_JSON_BYTES = 10 * 1024 * 1024;
 export const DEFAULT_CHUNK_CHARS = 24_000;
+export const IMPORT_LLM_TIMEOUT_MS = 150_000;
 const MAX_CONVERSION_ATTEMPTS = 3;
 
 export interface ResolveStoryOptions {
   sourceId?: string;
   roleMap?: RoleMap;
   maxChunkChars?: number;
+  llmTimeoutMs?: number;
   signal?: AbortSignal;
   onProgress?: (event: ImportProgressEvent) => void;
 }
@@ -74,8 +83,8 @@ export async function resolveStoryForImport(
   }
 
   if (chunks.length > 1) {
-    emit(options, { phase: 'semantic_audit', message: 'Auditing global branch relationships' });
-    const globalAudit = await requestAudit(units, document, 'global', options.signal);
+    emit(options, { phase: 'semantic_audit', message: 'Waiting for global Auditor LLM response' });
+    const globalAudit = await requestAudit(units, document, 'global', options);
     audits.push(globalAudit);
     if (!auditPassed(globalAudit)) {
       throw new Error(`Global story audit failed: ${formatAuditIssues(globalAudit.issues)}`);
@@ -101,16 +110,26 @@ async function convertAndAuditChunk(
       attempt,
       chunk: chunk.index + 1,
       totalChunks,
-      message: `Converting chunk ${chunk.index + 1}/${totalChunks}`,
+      message: `Waiting for Converter LLM response (attempt ${attempt}/${MAX_CONVERSION_ATTEMPTS}, chunk ${chunk.index + 1}/${totalChunks})`,
     });
 
     try {
-      const raw = await completeLlm(buildConverterMessages(chunk.units, attempt, previousIssues), {
-        temperature: 0.1,
-        maxTokens: 16_000,
-        signal: options.signal,
-      });
-      const document = parseStoryDocument(parseModelJson(raw));
+      const raw = await completeImportLlm(
+        buildConverterMessages(chunk.units, attempt, previousIssues),
+        {
+          temperature: 0,
+          maxTokens: 16_000,
+          thinking: 'disabled',
+          tools: [CONVERTER_OUTPUT_TOOL],
+          toolName: CONVERTER_OUTPUT_TOOL.function.name,
+        },
+        'Converter',
+        options
+      );
+      const document = parseStoryDocument(canonicalizeStorySourceRefs(
+        normalizeStoryCollections(parseModelJson(raw)),
+        chunk.units
+      ));
       emit(options, {
         phase: 'structure_validation',
         attempt,
@@ -133,14 +152,14 @@ async function convertAndAuditChunk(
         attempt,
         chunk: chunk.index + 1,
         totalChunks,
-        message: `Auditing chunk ${chunk.index + 1}/${totalChunks}`,
+        message: `Waiting for Auditor LLM response (attempt ${attempt}/${MAX_CONVERSION_ATTEMPTS}, chunk ${chunk.index + 1}/${totalChunks})`,
       });
-      const audit = await requestAudit(chunk.units, document, 'chunk', options.signal);
+      const audit = await requestAudit(chunk.units, document, 'chunk', options);
       if (auditPassed(audit)) return { document, audit };
       lastError = formatAuditIssues(audit.issues);
       previousIssues = audit.issues;
     } catch (error) {
-      if (isAbortError(error)) throw error;
+      if (isAbortError(error) || error instanceof ImportLlmTimeoutError) throw error;
       lastError = error instanceof Error ? error.message : String(error);
       previousIssues = [{ evidence: lastError }];
     }
@@ -153,15 +172,91 @@ async function requestAudit(
   units: SourceUnit[],
   document: StoryDocument,
   scope: 'chunk' | 'global',
-  signal?: AbortSignal
+  options: Pick<ResolveStoryOptions, 'signal' | 'llmTimeoutMs'>
 ): Promise<StoryAudit> {
-  throwIfAborted(signal);
-  const raw = await completeLlm(buildAuditorMessages(units, document, scope), {
-    temperature: 0,
-    maxTokens: 8_000,
-    signal,
-  });
-  return parseStoryAudit(parseModelJson(raw));
+  throwIfAborted(options.signal);
+  const raw = await completeImportLlm(
+    buildAuditorMessages(units, document, scope),
+    {
+      temperature: 0,
+      maxTokens: 8_000,
+      thinking: 'disabled',
+      tools: [AUDITOR_OUTPUT_TOOL],
+      toolName: AUDITOR_OUTPUT_TOOL.function.name,
+    },
+    'Auditor',
+    options
+  );
+  return parseStoryAudit(canonicalizeStorySourceRefs(
+    normalizeStoryCollections(parseModelJson(raw)),
+    units
+  ));
+}
+
+class ImportLlmTimeoutError extends Error {
+  constructor(stage: 'Converter' | 'Auditor') {
+    super(`Script import timed out while waiting for the ${stage} LLM response. Please try again.`);
+    this.name = 'ImportLlmTimeoutError';
+  }
+}
+
+async function completeImportLlm(
+  messages: Parameters<typeof completeLlm>[0],
+  llmOptions: {
+    temperature: number;
+    maxTokens: number;
+    thinking: 'adaptive' | 'disabled';
+    tools: OpenAITool[];
+    toolName: string;
+  },
+  stage: 'Converter' | 'Auditor',
+  options: Pick<ResolveStoryOptions, 'signal' | 'llmTimeoutMs'>
+): Promise<string> {
+  const timeoutController = new AbortController();
+  const combined = combineAbortSignals(options.signal, timeoutController.signal);
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    timeoutController.abort(new DOMException('Import LLM deadline exceeded', 'TimeoutError'));
+  }, options.llmTimeoutMs ?? IMPORT_LLM_TIMEOUT_MS);
+
+  try {
+    return await completeLlm(messages, { ...llmOptions, signal: combined.signal });
+  } catch (error) {
+    if (timedOut) throw new ImportLlmTimeoutError(stage);
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+    combined.cleanup();
+  }
+}
+
+function combineAbortSignals(
+  first?: AbortSignal,
+  second?: AbortSignal
+): { signal: AbortSignal; cleanup: () => void } {
+  const controller = new AbortController();
+  const sources = [first, second].filter((signal): signal is AbortSignal => !!signal);
+  const listeners = new Map<AbortSignal, () => void>();
+
+  for (const source of sources) {
+    if (source.aborted) {
+      controller.abort(source.reason);
+      break;
+    }
+    const listener = () => controller.abort(source.reason);
+    listeners.set(source, listener);
+    source.addEventListener('abort', listener, { once: true });
+  }
+
+  return {
+    signal: controller.signal,
+    cleanup: () => {
+      for (const [source, listener] of listeners) {
+        source.removeEventListener('abort', listener);
+      }
+    },
+  };
 }
 
 export function parseModelJson(raw: string): unknown {
@@ -173,6 +268,77 @@ export function parseModelJson(raw: string): unknown {
     throw new Error('Model JSON exceeds the 10 MB limit');
   }
   return JSON.parse(trimmed);
+}
+
+export function canonicalizeStorySourceRefs(value: unknown, units: SourceUnit[]): unknown {
+  const unitsById = new Map(units.map((unit) => [unit.id, unit]));
+
+  const visit = (current: unknown): unknown => {
+    if (Array.isArray(current)) return current.map(visit);
+    if (!current || typeof current !== 'object') return current;
+
+    const result: Record<string, unknown> = Object.create(null);
+    for (const [key, child] of Object.entries(current as Record<string, unknown>)) {
+      if (key === '__proto__' || key === 'prototype' || key === 'constructor') {
+        throw new Error(`Unsafe JSON key: ${key}`);
+      }
+      if (key === 'sourceRefs' && Array.isArray(child)) {
+        result[key] = child.map((rawRef) => {
+          const ref = visit(rawRef);
+          if (!ref || typeof ref !== 'object') return ref;
+          const record = ref as Record<string, unknown>;
+          const unit = typeof record.unitId === 'string'
+            ? unitsById.get(record.unitId)
+            : undefined;
+          if (!unit) return record;
+          return Object.assign(record, sourceRefForUnit(unit));
+        });
+      } else {
+        result[key] = visit(child);
+      }
+    }
+    return result;
+  };
+
+  return visit(value);
+}
+
+export function normalizeStoryCollections(value: unknown): unknown {
+  const collectionKeys = new Set(['commands', 'options', 'sourceRefs', 'issues']);
+  const decodeCollection = (candidate: unknown): unknown => {
+    let decoded = candidate;
+    if (typeof candidate === 'string') {
+      const trimmed = candidate.trim();
+      if (['', 'none', 'null', 'n/a'].includes(trimmed.toLowerCase())) return [];
+      if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) return candidate;
+      try {
+        decoded = JSON.parse(trimmed);
+      } catch {
+        return candidate;
+      }
+    }
+    if (Array.isArray(decoded)) return decoded.flat(Infinity);
+    if (decoded && typeof decoded === 'object') {
+      return Object.keys(decoded as Record<string, unknown>).length === 0 ? [] : [decoded];
+    }
+    return candidate;
+  };
+
+  const visit = (current: unknown): unknown => {
+    if (Array.isArray(current)) return current.flat(Infinity).map(visit).flat(Infinity);
+    if (!current || typeof current !== 'object') return current;
+    const entries = Object.entries(current as Record<string, unknown>);
+    if (entries.length === 1 && entries[0][0] === 'item') {
+      return visit(entries[0][1]);
+    }
+    const result: Record<string, unknown> = Object.create(null);
+    for (const [key, child] of entries) {
+      result[key] = visit(collectionKeys.has(key) ? decodeCollection(child) : child);
+    }
+    return result;
+  };
+
+  return visit(value);
 }
 
 function auditPassed(audit: StoryAudit): boolean {

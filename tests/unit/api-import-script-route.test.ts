@@ -78,4 +78,25 @@ describe('POST /api/import-script streaming protocol', () => {
     expect(await records(response)).toEqual([{ type: 'error', error: 'Semantic audit failed' }]);
     expect(mockedImport).not.toHaveBeenCalled();
   });
+
+  it('aborts conversion when the response consumer cancels the stream', async () => {
+    let conversionSignal: AbortSignal | undefined;
+    mockedResolve.mockImplementation(async (_source, options) => {
+      conversionSignal = options?.signal;
+      await new Promise<void>((_resolve, reject) => {
+        conversionSignal?.addEventListener('abort', () => {
+          reject(new DOMException('aborted', 'AbortError'));
+        }, { once: true });
+      });
+      throw new Error('unreachable');
+    });
+
+    const response = await POST(request());
+    const reader = response.body!.getReader();
+    await reader.cancel();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(conversionSignal?.aborted).toBe(true);
+    expect(mockedImport).not.toHaveBeenCalled();
+  });
 });

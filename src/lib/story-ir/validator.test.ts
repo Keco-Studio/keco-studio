@@ -72,9 +72,62 @@ describe('Story IR deterministic validation', () => {
     expect(issueTypes(document([startNode, isolated, endNode]))).toContain('unreachable_node');
   });
 
+  it('rejects fallthrough from one branch into a sibling option target', () => {
+    const choiceNode: StoryNode = {
+      ...startNode,
+      options: [
+        { ...startNode.options[0], target: 'East' },
+        { ...startNode.options[0], text: 'Other', target: 'West' },
+      ],
+    };
+    const eastNode: StoryNode = { ...endNode, label: 'East', next: undefined };
+    const westNode: StoryNode = { ...endNode, label: 'West' };
+
+    expect(issueTypes(document([choiceNode, eastNode, westNode]))).toContain('branch_fallthrough');
+  });
+
   it('rejects untraceable content', () => {
     const changed = { ...endNode, content: 'LLM explanation' };
     expect(issueTypes(document([startNode, changed]))).toContain('untraceable_content');
+  });
+
+  it('accepts option evidence separated only by structural brackets', () => {
+    const branchUnit: SourceUnit = {
+      id: 'branch:0',
+      sourceId: 'branch',
+      text: '分支一：选择【东侧客房】（安稳谨慎线）',
+      start: 0,
+      end: 22,
+      authoritative: true,
+    };
+    const branchRef = {
+      sourceId: branchUnit.sourceId,
+      unitId: branchUnit.id,
+      start: branchUnit.start,
+      end: branchUnit.end,
+    };
+    const branchDocument: StoryDocument = {
+      version: 1,
+      entryLabel: 'Start',
+      nodes: [{
+        label: 'Start',
+        type: 'system',
+        content: '',
+        commands: [],
+        options: [{
+          text: '选择东侧客房',
+          target: 'EastRoom',
+          commands: [],
+          sourceRefs: [branchRef],
+        }],
+        sourceRefs: [branchRef],
+      }],
+    };
+
+    expect(validateStoryDocument(branchDocument, [branchUnit], {
+      allowUnresolvedTargets: true,
+      allowUnreachableNodes: true,
+    })).toEqual([]);
   });
 
   it('rejects variable command mutation', () => {
