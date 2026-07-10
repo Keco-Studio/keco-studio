@@ -27,6 +27,20 @@ export default function ResetPasswordPage() {
   useEffect(() => {
     // Check if there's a valid session (token from email link)
     const checkSession = async () => {
+      const hashParams = new URLSearchParams(window.location.hash.slice(1));
+      const accessToken = hashParams.get('access_token');
+      const refreshToken = hashParams.get('refresh_token');
+
+      if (accessToken && refreshToken) {
+        const { error: sessionError } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
+        });
+        if (!sessionError) {
+          window.history.replaceState(window.history.state, '', window.location.pathname);
+        }
+      }
+
       // Supabase automatically processes the hash from the reset link
       // Wait a moment for Supabase to process the hash and create a session
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -49,7 +63,7 @@ export default function ResetPasswordPage() {
             setIsValidSession(false);
           }
         } else {
-          setError('Invalid reset link. Please request a new password reset.');
+          setError('Invalid or expired reset link. Please request a new one.');
           setIsValidSession(false);
         }
       }
@@ -293,4 +307,3 @@ export default function ResetPasswordPage() {
     </div>
   );
 }
-
