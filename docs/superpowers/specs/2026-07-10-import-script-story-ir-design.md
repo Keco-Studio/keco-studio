@@ -516,6 +516,8 @@ Events never include full source text, prompts, hidden reasoning, or raw model o
 ### 9.2 Entry Points
 
 - Import Modal consumes a streaming import response and shows the current stage, attempt, and chunk count.
+- Import Modal accepts arbitrary story text and does not present a canonical or preferred script grammar. Remove the standard-format example loader, expandable format guide, format-specific placeholder copy, and their unused UI state/styles.
+- Legacy standard text remains a compatibility input but is not promoted as the format users should author.
 - Agent Chat forwards the same service events through its existing SSE activity stream.
 - Both entry points call the same conversion, validation, audit, compilation, and import services.
 - A final success event includes the created library ID and row count.
@@ -660,3 +662,4 @@ The old parser remains behind the Legacy Adapter. It is not the semantic model f
 13. The four-path acceptance fixture produces final trust values `2`, `0`, `4`, and `0` and only renders selected branches.
 14. Provider-specific wrappers, string values, or mismatched redundant fields cannot block a valid cited command or change its meaning: the server extracts exactly one numeric command token and rebuilds `source`, `variable`, `operator`, and numeric `value`, while ambiguous, malformed, or uncited sources still prevent import.
 15. A structured option source such as `O1: Go left. ($trust+=1; jump O1)` compiles to display text `Go left.`, target `Jump O1`, and command `$trust+=1`; ordinary option punctuation and parentheses remain unchanged.
+16. Import Script contains no standard-format example, format guide, or format-specific input instruction; its text entry remains neutral while legacy formatted scripts continue to import through the same compatibility path.
