@@ -1,0 +1,46 @@
+光球： “你醒了。选一条路。”
+
+O1: 走左边。 ($trust+=1; jump O1)
+O2: 走右边。 ($trust+=2; jump O2)
+
+O1 branch [O1 | 左边小路]
+
+老人： “年轻人，你从哪来？”
+
+O1A: 回答“我不知道”。 ($trust+=1; jump O1A_END)
+O1B: 不回答直接走。 ($trust-=1; jump O1B_END)
+
+O1A_END branch [O1A_END | 老人点头]
+
+老人： “诚实的孩子。”
+
+(Jump Merge)
+
+O1B_END branch [O1B_END | 老人叹气]
+
+老人： “没礼貌啊。”
+
+(Jump Merge)
+
+O2 branch [O2 | 右边大路]
+
+守卫： “站住！报上名来。”
+
+O2A: 报真名。 ($trust+=2; jump O2A_END)
+O2B: 报假名。 ($trust-=2; jump O2B_END)
+
+O2A_END branch [O2A_END | 守卫让路]
+
+守卫： “进去吧。”
+
+(Jump Merge)
+
+O2B_END branch [O2B_END | 守卫怀疑]
+
+守卫： “你在撒谎。”
+
+(Jump Merge)
+
+Oend merge [Oend | 终点]
+
+光球： “你到了。信任值: [trust]。”
