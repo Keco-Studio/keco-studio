@@ -254,10 +254,10 @@ describe('Story IR LLM conversion', () => {
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(2);
   });
 
-  it('rebuilds redundant command fields from the exact command source', () => {
+  it('rebuilds command fields from one source-backed numeric token', () => {
     const value = {
       commands: [{
-        source: '$trust+=1',
+        source: '($trust+=1; jump O1)',
         variable: 'wrong',
         operator: '-=',
         value: '1',
@@ -266,7 +266,7 @@ describe('Story IR LLM conversion', () => {
     };
 
     expect(canonicalizeStoryCommands(value)).toMatchObject({
-      commands: [{ variable: 'trust', operator: '+=', value: 1 }],
+      commands: [{ source: '$trust+=1', variable: 'trust', operator: '+=', value: 1 }],
     });
   });
 
@@ -283,11 +283,12 @@ describe('Story IR LLM conversion', () => {
   });
 
   it('canonicalizes provider command fields in the conversion pipeline', async () => {
-    const source = '$trust+=1';
+    const source = 'Choose left. ($trust+=1; jump O1)';
+    const commandSource = '($trust+=1; jump O1)';
     const units = unitizeSource(source, 'import');
     const candidate = documentFor(units);
     candidate.nodes[0].commands = [{
-      source,
+      source: commandSource,
       variable: 'wrong',
       operator: '-=',
       value: 1,
@@ -301,7 +302,7 @@ describe('Story IR LLM conversion', () => {
     const result = await resolveStoryForImport(source);
 
     expect(result.document.nodes[0].commands[0]).toMatchObject({
-      source,
+      source: '$trust+=1',
       variable: 'trust',
       operator: '+=',
       value: 1,

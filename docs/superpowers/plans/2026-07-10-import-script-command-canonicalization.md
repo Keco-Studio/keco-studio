@@ -13,7 +13,7 @@
 - Do not expand the Legacy Adapter to bypass the LLM for the half-width nested-branch reproduction.
 - Do not use general-purpose Zod coercion or accept arbitrary numeric strings.
 - Supported command operators remain exactly `=`, `+=`, `-=`, `*=`, and `/=`.
-- Preserve the exact model-provided `source` and `sourceRefs`; only rebuild `variable`, `operator`, and `value`.
+- Preserve `sourceRefs`; normalize model-provided `source` only by extracting exactly one supported numeric command token from a structural wrapper such as `($trust+=1; jump O1)`.
 - Missing, malformed, unsupported, or uncited command sources must fail closed before database writes.
 - Unknown JSON properties and unsafe prototype keys must remain rejected.
 - Converter and Auditor prompts, retry count, deadlines, and Agent Chat behavior remain unchanged.
@@ -27,7 +27,7 @@
 - Test: `src/lib/story-ir/conversion.test.ts`
 
 **Interfaces:**
-- Consumes: `parseNumericCommand(source: string): { variable: string; operator: NumericOperator; value: number }` from `src/lib/story-ir/commands.ts`.
+- Consumes: `parseSingleNumericCommandFromText(text: string): { source: string; variable: string; operator: NumericOperator; value: number }` from `src/lib/story-ir/commands.ts`.
 - Produces: `canonicalizeStoryCommands(value: unknown): unknown`, called after collection/source-ref normalization and before `parseStoryDocument`.
 
 - [ ] **Step 1: Write failing command-canonicalization tests**
@@ -74,9 +74,25 @@ Expected: FAIL because `canonicalizeStoryCommands` is not exported and the mocke
 
 - [ ] **Step 3: Implement the minimal source-backed canonicalizer**
 
-Import `parseNumericCommand`, preserve all object keys, and replace derived fields only for members of a `commands` array:
+Add `parseSingleNumericCommandFromText` beside the strict parser. It returns the strict command unchanged, extracts one exact supported numeric token from a structural wrapper, and rejects text containing zero or multiple numeric commands. Preserve all object keys in the Converter and replace canonical command fields only for members of a `commands` array:
 
 ```typescript
+const COMMAND_TOKEN_PATTERN = new RegExp(`${COMMAND_SOURCE_PATTERN}(?![.\\w])`, 'g');
+
+export function parseSingleNumericCommandFromText(
+  text: string
+): ParsedNumericCommand & { source: string } {
+  const trimmed = text.trim();
+  try {
+    return { source: trimmed, ...parseNumericCommand(trimmed) };
+  } catch {
+    const matches = Array.from(trimmed.matchAll(COMMAND_TOKEN_PATTERN), (match) => match[0].trim());
+    if (matches.length !== 1) throw new Error(`Invalid numeric command source: ${text}`);
+    const source = matches[0];
+    return { source, ...parseNumericCommand(source) };
+  }
+}
+
 export function canonicalizeStoryCommands(value: unknown): unknown {
   function visit(current: unknown): unknown {
     if (Array.isArray(current)) return current.map(visit);
@@ -95,7 +111,7 @@ export function canonicalizeStoryCommands(value: unknown): unknown {
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;
     const record = visit(candidate) as Record<string, unknown>;
     if (typeof record.source !== 'string') return record;
-    return Object.assign(record, parseNumericCommand(record.source));
+    return Object.assign(record, parseSingleNumericCommandFromText(record.source));
   }
 
   return visit(value);
@@ -113,7 +129,7 @@ const document = parseStoryDocument(canonicalizeStoryCommands(
 ));
 ```
 
-A missing `source` remains unchanged so strict schema parsing rejects it. An invalid string throws through `parseNumericCommand` and becomes retry feedback. Unknown properties remain present for strict schema rejection.
+A missing `source` remains unchanged so strict schema parsing rejects it. An invalid or ambiguous fragment throws through `parseSingleNumericCommandFromText` and becomes retry feedback. Unknown properties remain present for strict schema rejection.
 
 - [ ] **Step 4: Run focused tests and verify GREEN**
 

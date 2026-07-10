@@ -8,7 +8,9 @@ export interface ParsedNumericCommand {
   value: number;
 }
 
-const COMMAND_PATTERN = /^\$([A-Za-z_]\w*)\s*(=|\+=|-=|\*=|\/=)\s*(-?(?:\d+\.?\d*|\.\d+))$/;
+const COMMAND_SOURCE_PATTERN = String.raw`\$([A-Za-z_]\w*)\s*(=|\+=|-=|\*=|\/=)\s*(-?(?:\d+\.?\d*|\.\d+))`;
+const COMMAND_PATTERN = new RegExp(`^${COMMAND_SOURCE_PATTERN}$`);
+const COMMAND_TOKEN_PATTERN = new RegExp(`${COMMAND_SOURCE_PATTERN}(?![.\w])`, 'g');
 
 export function parseNumericCommand(source: string): ParsedNumericCommand {
   const match = COMMAND_PATTERN.exec(source.trim());
@@ -21,6 +23,20 @@ export function parseNumericCommand(source: string): ParsedNumericCommand {
     operator: match[2] as NumericOperator,
     value,
   };
+}
+
+export function parseSingleNumericCommandFromText(
+  text: string
+): ParsedNumericCommand & { source: string } {
+  const trimmed = text.trim();
+  try {
+    return { source: trimmed, ...parseNumericCommand(trimmed) };
+  } catch {
+    const matches = Array.from(trimmed.matchAll(COMMAND_TOKEN_PATTERN), (match) => match[0].trim());
+    if (matches.length !== 1) throw new Error(`Invalid numeric command source: ${text}`);
+    const source = matches[0];
+    return { source, ...parseNumericCommand(source) };
+  }
 }
 
 export function applyStoryCommands(

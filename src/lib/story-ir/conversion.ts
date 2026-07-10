@@ -2,7 +2,7 @@ import { completeLlm } from '@/lib/agent/llm-client';
 import type { OpenAITool } from '@/lib/agent/types';
 import type { RoleMap } from '@/lib/script-parser';
 import { chunkSourceUnits, mergeStoryChunks, type StorySourceChunk } from './chunking';
-import { parseNumericCommand } from './commands';
+import { parseSingleNumericCommandFromText } from './commands';
 import { tryLegacyStoryImport } from './legacyAdapter';
 import {
   parseStoryAudit,
@@ -362,7 +362,7 @@ export function canonicalizeStoryCommands(value: unknown): unknown {
     if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return candidate;
     const record = visit(candidate) as Record<string, unknown>;
     if (typeof record.source !== 'string') return record;
-    return Object.assign(record, parseNumericCommand(record.source));
+    return Object.assign(record, parseSingleNumericCommandFromText(record.source));
   }
 
   return visit(value);

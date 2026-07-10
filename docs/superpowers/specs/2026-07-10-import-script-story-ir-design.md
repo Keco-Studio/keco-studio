@@ -288,9 +288,9 @@ The Converter response must be parsed as structured JSON and validated against a
 - known collection fields (`commands`, `options`, `sourceRefs`, and audit `issues`) may fill an omitted/empty value as `[]`, decode a JSON collection string, or wrap a non-empty singleton object as a one-item array;
 - provider objects whose only key is `item` are recursively unwrapped;
 - a source ref whose `unitId` resolves in the current server-owned chunk is canonicalized to that unit's server-owned `sourceId/start/end`;
-- every object inside a known `commands` array must contain a parseable `source` string using the supported numeric-command grammar, and the server deterministically replaces or supplies its redundant `variable`, `operator`, and `value` fields from that string before strict schema parsing.
+- every object inside a known `commands` array must contain either one exact numeric command or a source-backed structural fragment containing exactly one numeric command; the server extracts that exact command token and deterministically replaces or supplies `source`, `variable`, `operator`, and `value` before strict schema parsing.
 
-Command canonicalization is source reconstruction, not free-form coercion. It may turn a provider value such as `"1"` into `1`, but only because the cited command source is exactly `$trust+=1`. The later validator still requires that exact command source to occur in the referenced authoritative source unit. A missing, malformed, unsupported, or uncited command source fails conversion; the canonicalizer never guesses a variable, operator, or value from surrounding prose. Unknown properties and missing or unknown `unitId` values still fail.
+Command canonicalization is source reconstruction, not free-form coercion. It may turn a provider value such as `"1"` into `1`, or normalize a provider fragment such as `($trust+=1; jump O1)` to `$trust+=1`, only because that exact numeric token is present in the fragment. The later validator still requires the canonical command source to occur in the referenced authoritative source unit. A fragment containing zero or multiple supported numeric commands is ambiguous and fails conversion. A missing, malformed, unsupported, or uncited command source also fails; the canonicalizer never guesses a variable, operator, or value from surrounding prose. Unknown properties and missing or unknown `unitId` values still fail.
 
 Source content is serialized as explicitly delimited untrusted data. Text such as `ignore previous instructions` remains story data and cannot change the system prompt or output contract.
 
@@ -581,7 +581,7 @@ Implementation follows failing-test-first development.
 - Noise rules reject markdown, explanations, structural markers in content, duplicate dialogue, and untraceable output.
 - Validator covers unique labels, entry resolution, arbitrary nested labels, targets, reachability, and no-progress cycles.
 - Command parsing covers all five operators, exact source preservation, invalid syntax, division by zero, and non-finite results.
-- Provider command canonicalization accepts string-typed redundant numeric values only when the exact command `source` is valid and cited, rebuilds all three derived fields from that source, and rejects malformed or uncited command sources.
+- Provider command canonicalization accepts string-typed redundant numeric values and single-command structural wrappers only when the exact numeric token is valid and cited, rebuilds the canonical command from that token, and rejects ambiguous, malformed, or uncited command sources.
 - Dynamic columns cover 0, 1, 3, and 12 options and numeric ordering beyond 9.
 - Chunk merger covers cross-chunk targets, duplicated overlap, conflicting labels, and affected-chunk retries.
 - Player covers dynamic choices, command timing, interpolation, legacy commands, restart, and malformed data.
@@ -655,4 +655,4 @@ The old parser remains behind the Legacy Adapter. It is not the semantic model f
 11. Both Import Modal and Agent Chat stream consistent progress and use the same audited pipeline.
 12. Agent Chat imports exact stored user content by reference rather than trusting LLM-copied source text.
 13. The four-path acceptance fixture produces final trust values `2`, `0`, `4`, and `0` and only renders selected branches.
-14. Provider-specific string or mismatched values in redundant command fields cannot block a valid cited command or change its meaning: the server rebuilds `variable`, `operator`, and numeric `value` from the exact command `source`, while malformed or uncited sources still prevent import.
+14. Provider-specific wrappers, string values, or mismatched redundant fields cannot block a valid cited command or change its meaning: the server extracts exactly one numeric command token and rebuilds `source`, `variable`, `operator`, and numeric `value`, while ambiguous, malformed, or uncited sources still prevent import.
