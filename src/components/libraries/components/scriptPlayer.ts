@@ -1,20 +1,39 @@
 import type { AssetRow } from '@/lib/types/libraryAssets';
+import {
+  applyStoryCommands,
+  interpolateVariables,
+  parseNumericCommand,
+  type VariableState,
+} from '@/lib/story-ir/commands';
+import type { StoryCommand } from '@/lib/story-ir/schema';
 
-export interface ScriptPlayerColumns {
-  labelKey?: string;
-  option0Key?: string;
-  option0NextKey?: string;
-  option1Key?: string;
-  option1NextKey?: string;
-  option2Key?: string;
-  option2NextKey?: string;
+export interface ScriptOptionColumns {
+  index: number;
+  textKey: string;
+  nextKey: string;
   commandsKey?: string;
 }
 
+export interface ScriptPlayerColumns {
+  labelKey?: string;
+  commandsKey?: string;
+  options?: ScriptOptionColumns[];
+  option0Key?: string;
+  option0NextKey?: string;
+  option0CommandsKey?: string;
+  option1Key?: string;
+  option1NextKey?: string;
+  option1CommandsKey?: string;
+  option2Key?: string;
+  option2NextKey?: string;
+  option2CommandsKey?: string;
+}
+
 export interface ScriptPlayerOption {
-  index: 0 | 1 | 2;
+  index: number;
   text: string;
   targetLabel?: string;
+  commands: string;
 }
 
 export interface ScriptPlayerState {
@@ -22,8 +41,27 @@ export interface ScriptPlayerState {
   revealed: number[];
   atChoice: boolean;
   options: ScriptPlayerOption[];
+  variables: VariableState;
   done: boolean;
   warning?: string;
+  error?: string;
+  automaticTrail: number[];
+}
+
+export function createScriptPlayerState(
+  rows: AssetRow[],
+  columns: ScriptPlayerColumns
+): ScriptPlayerState {
+  const state: ScriptPlayerState = {
+    currentIndex: 0,
+    revealed: [],
+    atChoice: false,
+    options: [],
+    variables: {},
+    done: rows.length === 0,
+    automaticTrail: [],
+  };
+  return rows.length > 0 ? nextPosition(state, rows, columns) : state;
 }
 
 export function buildBranchIndex(
@@ -35,11 +73,8 @@ export function buildBranchIndex(
 
   rows.forEach((row, rowIndex) => {
     const label = readString(row, columns.labelKey).trim();
-    if (label && !index.has(label)) {
-      index.set(label, rowIndex);
-    }
+    if (label && !index.has(label)) index.set(label, rowIndex);
   });
-
   return index;
 }
 
@@ -49,32 +84,32 @@ export function nextPosition(
   columns: ScriptPlayerColumns,
   choice?: number
 ): ScriptPlayerState {
-  if (choice !== undefined) {
-    return chooseBranch(state, rows, columns, choice);
-  }
-
-  if (state.done) return state;
+  if (choice !== undefined) return chooseBranch(state, rows, columns, choice);
+  if (state.done || state.error || state.atChoice) return state;
   if (state.currentIndex < 0 || state.currentIndex >= rows.length) {
-    return {
-      ...state,
-      atChoice: false,
-      options: [],
-      done: true,
-      warning: undefined,
-    };
+    return { ...state, atChoice: false, options: [], done: true, warning: undefined };
   }
 
   const row = rows[state.currentIndex];
   const revealed = revealRow(state.revealed, state.currentIndex);
+  let variables: VariableState;
+  try {
+    variables = executeCommandText(state.variables, readString(row, columns.commandsKey));
+  } catch (error) {
+    return stopWithError(state, revealed, error);
+  }
+
   const options = readOptions(row, columns);
   if (options.length > 0) {
     return {
       ...state,
       revealed,
+      variables,
       atChoice: true,
       options,
       done: false,
       warning: undefined,
+      automaticTrail: [],
     };
   }
 
@@ -85,6 +120,7 @@ export function nextPosition(
       return {
         ...state,
         revealed,
+        variables,
         atChoice: false,
         options: [],
         done: false,
@@ -92,14 +128,25 @@ export function nextPosition(
       };
     }
 
+    const automaticTrail = [...state.automaticTrail, state.currentIndex];
+    if (automaticTrail.includes(targetIndex)) {
+      return stopWithError(
+        { ...state, variables },
+        revealed,
+        new Error(`Automatic jump cycle detected at "${jumpTarget}"`)
+      );
+    }
+
     return {
       ...state,
       currentIndex: targetIndex,
       revealed,
+      variables,
       atChoice: false,
       options: [],
       done: false,
       warning: undefined,
+      automaticTrail,
     };
   }
 
@@ -108,11 +155,21 @@ export function nextPosition(
     ...state,
     currentIndex: nextIndex,
     revealed,
+    variables,
     atChoice: false,
     options: [],
     done: nextIndex >= rows.length,
     warning: undefined,
+    automaticTrail: [],
   };
+}
+
+export function renderPlayerContent(
+  row: AssetRow,
+  contentKey: string | undefined,
+  variables: VariableState
+): string {
+  return interpolateVariables(readString(row, contentKey).trim(), variables);
 }
 
 function chooseBranch(
@@ -123,23 +180,24 @@ function chooseBranch(
 ): ScriptPlayerState {
   const selected = state.options.find((option) => option.index === choice);
   if (!state.atChoice || !selected) {
-    return {
-      ...state,
-      warning: 'Choose one of the available options',
-    };
+    return { ...state, warning: 'Choose one of the available options' };
+  }
+  if (!selected.targetLabel) {
+    return { ...state, warning: `Option "${selected.text}" does not define a jump target` };
   }
 
-  if (!selected.targetLabel) {
-    return {
-      ...state,
-      warning: `Option "${selected.text}" does not define a jump target`,
-    };
+  let variables: VariableState;
+  try {
+    variables = executeCommandText(state.variables, selected.commands);
+  } catch (error) {
+    return stopWithError(state, state.revealed, error);
   }
 
   const targetIndex = buildBranchIndex(rows, columns).get(selected.targetLabel);
   if (targetIndex === undefined) {
     return {
       ...state,
+      variables,
       warning: `Could not resolve jump target "${selected.targetLabel}"`,
     };
   }
@@ -147,45 +205,80 @@ function chooseBranch(
   return nextPosition({
     ...state,
     currentIndex: targetIndex,
+    variables,
     atChoice: false,
     options: [],
     done: false,
     warning: undefined,
+    automaticTrail: [],
   }, rows, columns);
 }
 
 function readOptions(row: AssetRow, columns: ScriptPlayerColumns): ScriptPlayerOption[] {
-  const pairs = [
-    [0, columns.option0Key, columns.option0NextKey],
-    [1, columns.option1Key, columns.option1NextKey],
-    [2, columns.option2Key, columns.option2NextKey],
-  ] as const;
-
-  return pairs.flatMap(([index, textKey, nextKey]) => {
+  const optionColumns = columns.options ?? legacyOptionColumns(columns);
+  return optionColumns.flatMap(({ index, textKey, nextKey, commandsKey }) => {
     const text = readString(row, textKey).trim();
     if (!text) return [];
-
     return [{
       index,
       text,
       targetLabel: parseJumpTarget(readString(row, nextKey)),
+      commands: readString(row, commandsKey),
     }];
   });
+}
+
+function legacyOptionColumns(columns: ScriptPlayerColumns): ScriptOptionColumns[] {
+  return [
+    [0, columns.option0Key, columns.option0NextKey, columns.option0CommandsKey],
+    [1, columns.option1Key, columns.option1NextKey, columns.option1CommandsKey],
+    [2, columns.option2Key, columns.option2NextKey, columns.option2CommandsKey],
+  ].flatMap(([index, textKey, nextKey, commandsKey]) =>
+    typeof index === 'number' && typeof textKey === 'string'
+      ? [{ index, textKey, nextKey: typeof nextKey === 'string' ? nextKey : '', commandsKey: typeof commandsKey === 'string' ? commandsKey : undefined }]
+      : []
+  );
+}
+
+function executeCommandText(variables: VariableState, value: string): VariableState {
+  const commands = value
+    .split(';')
+    .map((command) => command.trim())
+    .filter((command) => command && !/^Jump\s+/i.test(command))
+    .map((source): StoryCommand => ({
+      source,
+      ...parseNumericCommand(source),
+      sourceRefs: [],
+    }));
+  return applyStoryCommands(variables, commands);
+}
+
+function stopWithError(
+  state: ScriptPlayerState,
+  revealed: number[],
+  error: unknown
+): ScriptPlayerState {
+  return {
+    ...state,
+    revealed,
+    atChoice: false,
+    options: [],
+    done: true,
+    warning: undefined,
+    error: error instanceof Error ? error.message : 'Script command failed',
+  };
 }
 
 function readString(row: AssetRow, key: string | undefined): string {
   if (!key) return '';
   const value = row.propertyValues[key];
-  if (value === undefined || value === null) return '';
-  return String(value);
+  return value === undefined || value === null ? '' : String(value);
 }
 
 function revealRow(revealed: number[], index: number): number[] {
-  if (revealed.includes(index)) return revealed;
-  return [...revealed, index];
+  return revealed.includes(index) ? revealed : [...revealed, index];
 }
 
 function parseJumpTarget(value: string): string | undefined {
-  const match = value.match(/\bJump\s+([A-Za-z][A-Za-z0-9_-]*)\b/i);
-  return match?.[1];
+  return value.match(/\bJump\s+([A-Za-z][A-Za-z0-9_-]*)\b/i)?.[1];
 }

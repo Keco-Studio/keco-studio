@@ -9,6 +9,8 @@ import {
   verifyLibraryCreationPermission,
 } from '@/lib/services/authorizationService';
 import { parseText, scriptLineToRow, SCRIPT_COLUMNS } from '@/lib/script-parser';
+import type { StoryDocument } from '@/lib/story-ir/schema';
+import { compileStoryTable } from '@/lib/story-ir/tableCompiler';
 
 const BATCH_SIZE = 200;
 const SCRIPT_SECTION_NAME = 'Section';
@@ -18,6 +20,18 @@ export type ImportScriptResult = {
   rowCount: number;
   fieldCount: number;
 };
+
+interface ImportTableParams {
+  userId: string;
+  projectId: string;
+  folderId: string;
+  libraryName: string;
+  fileName: string;
+}
+
+export interface ImportStoryParams extends ImportTableParams {
+  document: StoryDocument;
+}
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -38,6 +52,33 @@ export async function importScriptFromFile(
   }
 ): Promise<ImportScriptResult> {
   const { userId, projectId, folderId, libraryName, fileContent, fileName, roleMap } = params;
+
+  const script = parseText(fileContent, roleMap);
+  const rows = script.lines.map(scriptLineToRow);
+  return importCompiledScript(supabase, {
+    userId,
+    projectId,
+    folderId,
+    libraryName,
+    fileName,
+  }, [...SCRIPT_COLUMNS], rows);
+}
+
+export async function importStoryDocument(
+  supabase: SupabaseClient,
+  params: ImportStoryParams
+): Promise<ImportScriptResult> {
+  const compiled = compileStoryTable(params.document);
+  return importCompiledScript(supabase, params, compiled.columns, compiled.rows);
+}
+
+async function importCompiledScript(
+  supabase: SupabaseClient,
+  params: ImportTableParams,
+  columns: string[],
+  rows: string[][]
+): Promise<ImportScriptResult> {
+  const { userId, projectId, folderId, libraryName, fileName } = params;
 
   if (!isUuid(folderId)) {
     throw new Error('Invalid folder ID');
@@ -75,9 +116,6 @@ export async function importScriptFromFile(
     throw new Error(`Library name "${trimmedName}" already exists in this folder`);
   }
 
-  const script = parseText(fileContent, roleMap);
-  const rows = script.lines.map(scriptLineToRow);
-
   if (rows.length === 0) {
     throw new Error('No valid content found in script');
   }
@@ -102,7 +140,26 @@ export async function importScriptFromFile(
 
   const libraryId = createdLibrary.id as string;
 
-  const fieldRows = SCRIPT_COLUMNS.map((label, colIdx) => ({
+  try {
+    return await insertScriptTable(supabase, libraryId, columns, rows);
+  } catch (error) {
+    try {
+      await supabase.from('libraries').delete().eq('id', libraryId);
+    } catch {
+      // Preserve the original write error; cleanup is best-effort under RLS/network failure.
+    }
+    throw error;
+  }
+}
+
+async function insertScriptTable(
+  supabase: SupabaseClient,
+  libraryId: string,
+  columns: string[],
+  rows: string[][]
+): Promise<ImportScriptResult> {
+
+  const fieldRows = columns.map((label, colIdx) => ({
     library_id: libraryId,
     section_id: `${libraryId}:${SCRIPT_SECTION_NAME}`,
     section: SCRIPT_SECTION_NAME,
@@ -123,7 +180,7 @@ export async function importScriptFromFile(
 
   if (fieldError) throw fieldError;
 
-  if (!insertedFields || insertedFields.length !== SCRIPT_COLUMNS.length) {
+  if (!insertedFields || insertedFields.length !== columns.length) {
     throw new Error('Failed to create script fields');
   }
 

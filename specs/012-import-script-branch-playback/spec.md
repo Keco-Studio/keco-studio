@@ -1,5 +1,7 @@
 # Feature Specification: Import Script — interactive branch playback & reliable prose→standard conversion
 
+> Superseded by the approved [Import Script Story IR design](../../docs/superpowers/specs/2026-07-10-import-script-story-ir-design.md).
+
 **Feature Branch**: `f/importscript-enhance`
 **Created**: 2026-07-08
 **Status**: Draft

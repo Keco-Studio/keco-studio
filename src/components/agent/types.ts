@@ -13,6 +13,7 @@ export interface ToolCallView {
   tool: string;
   args?: string;
   status: ToolCallStatus;
+  progressMessage?: string;
   data?: unknown;
   displayHint?: string;
   error?: string;

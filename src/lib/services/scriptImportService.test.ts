@@ -2,6 +2,9 @@ import { describe, expect, it, jest } from '@jest/globals';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { SCRIPT_COLUMNS } from '@/lib/script-parser';
 import { importScriptFromFile } from './scriptImportService';
+import { importStoryDocument } from './scriptImportService';
+import type { StoryDocument } from '@/lib/story-ir/schema';
+import { buildStoryColumns } from '@/lib/story-ir/tableCompiler';
 
 jest.mock('@/lib/services/authorizationService', () => ({
   verifyLibraryCreationPermission: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
@@ -12,8 +15,9 @@ type InsertCall = {
   values: unknown;
 };
 
-function fakeSupabase() {
+function fakeSupabase(options: { failValueInsert?: boolean } = {}) {
   const insertCalls: InsertCall[] = [];
+  const deleteCalls: Array<{ table: string; column: string; value: string }> = [];
   let fieldIdCounter = 0;
   let assetIdCounter = 0;
 
@@ -21,10 +25,15 @@ function fakeSupabase() {
     from(table: string) {
       const query = {
         insertedValues: undefined as unknown,
+        deleting: false,
         select() {
           return query;
         },
-        eq() {
+        eq(column?: string, value?: string) {
+          if (query.deleting) {
+            deleteCalls.push({ table, column: column ?? '', value: value ?? '' });
+            return Promise.resolve({ data: null, error: null });
+          }
           return query;
         },
         limit() {
@@ -36,6 +45,10 @@ function fakeSupabase() {
         insert(values: unknown) {
           query.insertedValues = values;
           insertCalls.push({ table, values });
+          return query;
+        },
+        delete() {
+          query.deleting = true;
           return query;
         },
         single() {
@@ -78,6 +91,10 @@ function fakeSupabase() {
             });
             return;
           }
+          if (table === 'library_asset_values' && options.failValueInsert) {
+            resolve({ data: null, error: { message: 'value insert failed' } } as never);
+            return;
+          }
           resolve({ data: null, error: null });
         },
       };
@@ -85,8 +102,28 @@ function fakeSupabase() {
     },
   } as unknown as SupabaseClient;
 
-  return { supabase, insertCalls };
+  return { supabase, insertCalls, deleteCalls };
 }
+
+const ref = { sourceId: 'src', unitId: 'src:0', start: 0, end: 1 };
+const storyDocument: StoryDocument = {
+  version: 1,
+  entryLabel: 'Start',
+  nodes: [{
+    label: 'Start',
+    type: 'dialogue',
+    speaker: 'Guide',
+    content: 'Choose',
+    commands: [],
+    options: Array.from({ length: 4 }, (_, index) => ({
+      text: `Choice ${index}`,
+      target: `O${index}`,
+      commands: [],
+      sourceRefs: [ref],
+    })),
+    sourceRefs: [ref],
+  }],
+};
 
 describe('importScriptFromFile', () => {
   it('bulk inserts script field definitions in one request', async () => {
@@ -104,5 +141,40 @@ describe('importScriptFromFile', () => {
     const fieldDefinitionCalls = insertCalls.filter((call) => call.table === 'library_field_definitions');
     expect(fieldDefinitionCalls).toHaveLength(1);
     expect(fieldDefinitionCalls[0].values).toHaveLength(SCRIPT_COLUMNS.length);
+  });
+
+  it('imports Story IR with dynamic option field definitions', async () => {
+    const { supabase, insertCalls } = fakeSupabase();
+
+    await importStoryDocument(supabase, {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: '11111111-1111-4111-8111-111111111111',
+      libraryName: 'Dynamic fixture',
+      fileName: 'fixture.txt',
+      document: storyDocument,
+    });
+
+    const fieldCall = insertCalls.find((call) => call.table === 'library_field_definitions');
+    expect(fieldCall?.values).toHaveLength(buildStoryColumns(4).length);
+  });
+
+  it('removes a newly created library when a later value insert fails', async () => {
+    const { supabase, deleteCalls } = fakeSupabase({ failValueInsert: true });
+
+    await expect(importStoryDocument(supabase, {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: '11111111-1111-4111-8111-111111111111',
+      libraryName: 'Cleanup fixture',
+      fileName: 'fixture.txt',
+      document: storyDocument,
+    })).rejects.toMatchObject({ message: 'value insert failed' });
+
+    expect(deleteCalls).toContainEqual({
+      table: 'libraries',
+      column: 'id',
+      value: '33333333-3333-4333-8333-333333333333',
+    });
   });
 });

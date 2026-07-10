@@ -26,7 +26,9 @@ export class LlmError extends Error {
 interface StreamLlmOptions {
   temperature?: number;
   maxTokens?: number;
+  thinking?: 'adaptive' | 'disabled';
   tools?: OpenAITool[];
+  toolName?: string;
   signal?: AbortSignal;
 }
 
@@ -53,9 +55,14 @@ async function requestStream(
   if (options.maxTokens != null) {
     body.max_tokens = options.maxTokens;
   }
+  if (options.thinking) {
+    body.thinking = { type: options.thinking };
+  }
   if (options.tools && options.tools.length > 0) {
     body.tools = options.tools;
-    body.tool_choice = 'auto';
+    body.tool_choice = options.toolName
+      ? { type: 'function', function: { name: options.toolName } }
+      : 'auto';
     // v1: one tool call per turn keeps the ReAct loop simple.
     body.parallel_tool_calls = false;
   }
@@ -192,8 +199,20 @@ export async function completeLlm(
   options: StreamLlmOptions = {}
 ): Promise<string> {
   let text = '';
+  let toolArguments = '';
+  let selectedToolIndex: number | null = null;
   for await (const chunk of streamLlm(messages, options)) {
     if (chunk.type === 'text_delta') text += chunk.content;
+    if (chunk.type === 'tool_call_delta' && options.toolName) {
+      if (chunk.name === options.toolName) selectedToolIndex = chunk.index;
+      if (selectedToolIndex === chunk.index && chunk.arguments) {
+        toolArguments += chunk.arguments;
+      }
+    }
+  }
+  if (options.toolName) {
+    if (!toolArguments) throw new LlmError(`LLM did not call required tool ${options.toolName}.`);
+    return toolArguments;
   }
   return text;
 }

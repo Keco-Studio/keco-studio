@@ -32,6 +32,7 @@ export function resolveConversationMeta(
 export function needsConfirmation(tool: AgentTool, meta: ConversationMeta): boolean {
   const resolved = resolveConversationMeta(meta);
   if (tool.category === 'read') return false;
+  if (tool.confirmationRequired === false) return false;
   if (tool.confirmationMode === 'post_preview' || tool.confirmationMode === 'meta') return true;
   if (resolved.autoExecute === true) return false;
   if (tool.confirmationMode === 'pre_execute' && meta.skipConfirmation) return false;

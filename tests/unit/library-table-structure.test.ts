@@ -54,6 +54,7 @@ describe('library table structure helpers', () => {
         typeKey: 'type',
         nameKey: 'speaker',
         contentKey: 'content',
+        options: [],
       },
       hasScriptColumns: true,
     });
@@ -71,22 +72,47 @@ describe('library table structure helpers', () => {
       property('commands', 'section-a', 'Commands', 1),
       property('option0', 'section-a', 'Option0', 2),
       property('option0Next', 'section-a', 'Option0_Next', 3),
-      property('option1', 'section-a', 'Option1', 4),
-      property('option1Next', 'section-a', 'Option1_Next', 5),
-      property('option2', 'section-a', 'Option2', 6),
-      property('option2Next', 'section-a', 'Option2_Next', 7),
+      property('option0Commands', 'section-a', 'Option0_Commands', 4),
+      property('option1', 'section-a', 'Option1', 5),
+      property('option1Next', 'section-a', 'Option1_Next', 6),
+      property('option2', 'section-a', 'Option2', 7),
+      property('option2Next', 'section-a', 'Option2_Next', 8),
     ]);
 
     expect(result.scriptColumns).toMatchObject({
       commandsKey: 'commands',
       option0Key: 'option0',
       option0NextKey: 'option0Next',
+      option0CommandsKey: 'option0Commands',
       option1Key: 'option1',
       option1NextKey: 'option1Next',
       option2Key: 'option2',
       option2NextKey: 'option2Next',
     });
     expect(result.hasScriptColumns).toBe(false);
+  });
+
+  it('discovers sparse dynamic option triplets in numeric order', () => {
+    const result = detectScriptColumns([
+      property('name', 'section-a', 'Name', 1),
+      property('content', 'section-a', 'Content', 2),
+      property('option10', 'section-a', 'Option10', 3),
+      property('option10Next', 'section-a', 'Option10_Next', 4),
+      property('option10Commands', 'section-a', 'Option10_Commands', 5),
+      property('option2', 'section-a', 'Option2', 6),
+      property('option2Next', 'section-a', 'Option2_Next', 7),
+      property('option0', 'section-a', 'Option0', 8),
+      property('option0Next', 'section-a', 'Option0_Next', 9),
+    ]);
+
+    expect(result.scriptColumns.options.map((option) => option.index)).toEqual([0, 2, 10]);
+    expect(result.scriptColumns.options[2]).toEqual({
+      index: 10,
+      textKey: 'option10',
+      nextKey: 'option10Next',
+      commandsKey: 'option10Commands',
+    });
+    expect(result.hasScriptColumns).toBe(true);
   });
 
   it('maps active column counts to stable width class keys', () => {

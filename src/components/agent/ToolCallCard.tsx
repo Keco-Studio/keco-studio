@@ -47,6 +47,9 @@ export function ToolCallCard({ toolCall }: Props) {
         <span>
           <span className={`${styles.statusDot} ${statusClass}`} />
           {toolCall.tool || 'tool'} · {toolCall.status}
+          {toolCall.status === 'running' && toolCall.progressMessage
+            ? ` · ${toolCall.progressMessage}`
+            : ''}
         </span>
         <span>{open ? '▾' : '▸'}</span>
       </div>

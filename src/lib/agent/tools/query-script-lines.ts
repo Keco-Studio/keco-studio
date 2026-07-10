@@ -7,7 +7,6 @@
 
 import { z } from 'zod';
 import { getLibraryAssets } from '../data-access';
-import { SCRIPT_COLUMNS } from '@/lib/script-parser';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import {
   errorFromLookupResult,
@@ -20,7 +19,17 @@ const ParamsSchema = z.object({
   libraryName: z.string().min(1).optional(),
 });
 
-const col = (name: string) => SCRIPT_COLUMNS.indexOf(name as (typeof SCRIPT_COLUMNS)[number]);
+const SCRIPT_CORE_COLUMNS = ['Label', 'Type', 'Name', 'Content', 'If', 'Commands'] as const;
+const DYNAMIC_OPTION_COLUMN = /^Option(\d+)(?:_Next|_Commands)?$/;
+
+export function getScriptOptionIndexes(fieldNames: string[]): number[] {
+  const indexes = new Set<number>();
+  for (const name of fieldNames) {
+    const match = /^Option(\d+)$/.exec(name);
+    if (match) indexes.add(Number(match[1]));
+  }
+  return Array.from(indexes).sort((a, b) => a - b);
+}
 
 async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   const parsed = ParamsSchema.safeParse(params);
@@ -44,16 +53,16 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 
   const properties = await getLibraryProperties(ctx.supabase, library.id);
 
-  // Map SCRIPT_COLUMNS label -> fieldId.
+  // Map core and dynamic script column labels to field ids.
   const fieldIdByColumn = new Map<string, string>();
   for (const p of properties) {
-    if (SCRIPT_COLUMNS.includes(p.name as (typeof SCRIPT_COLUMNS)[number])) {
+    if (SCRIPT_CORE_COLUMNS.includes(p.name as (typeof SCRIPT_CORE_COLUMNS)[number]) || DYNAMIC_OPTION_COLUMN.test(p.name)) {
       fieldIdByColumn.set(p.name, p.key);
     }
   }
 
-  const missing = SCRIPT_COLUMNS.filter((c) => !fieldIdByColumn.has(c));
-  if (missing.length > SCRIPT_COLUMNS.length / 2) {
+  const missing = SCRIPT_CORE_COLUMNS.filter((column) => !fieldIdByColumn.has(column));
+  if (!fieldIdByColumn.has('Name') || !fieldIdByColumn.has('Content')) {
     return {
       success: false,
       error: `Library "${library.name}" is not a script library (missing columns: ${missing.join(', ')}). Use query_assets for regular libraries.`,
@@ -71,11 +80,12 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 
   const lines = assets.map((asset) => {
     const values = asset.propertyValues ?? {};
-    const options: Array<{ text: string; jump: string }> = [];
-    for (const i of [0, 1, 2]) {
+    const options: Array<{ text: string; jump: string; commands: string }> = [];
+    for (const i of getScriptOptionIndexes(Array.from(fieldIdByColumn.keys()))) {
       const text = get(values, `Option${i}`);
       const jump = get(values, `Option${i}_Next`);
-      if (text || jump) options.push({ text, jump });
+      const commands = get(values, `Option${i}_Commands`);
+      if (text || jump || commands) options.push({ text, jump, commands });
     }
     const typeRaw = get(values, 'Type');
     return {

@@ -2,8 +2,11 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AssetRow } from '@/lib/types/libraryAssets';
+import { interpolateVariables } from '@/lib/story-ir/commands';
 import {
+  createScriptPlayerState,
   nextPosition,
+  renderPlayerContent,
   type ScriptPlayerColumns,
   type ScriptPlayerState,
 } from './scriptPlayer';
@@ -221,32 +224,44 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
     nameKey,
     contentKey,
     commandsKey,
+    options,
     option0Key,
     option0NextKey,
+    option0CommandsKey,
     option1Key,
     option1NextKey,
+    option1CommandsKey,
     option2Key,
     option2NextKey,
+    option2CommandsKey,
   } = scriptColumns;
 
   const playerColumns = useMemo<ScriptPlayerColumns>(() => ({
     labelKey,
     commandsKey,
+    options,
     option0Key,
     option0NextKey,
+    option0CommandsKey,
     option1Key,
     option1NextKey,
+    option1CommandsKey,
     option2Key,
     option2NextKey,
+    option2CommandsKey,
   }), [
     labelKey,
     commandsKey,
+    options,
     option0Key,
     option0NextKey,
+    option0CommandsKey,
     option1Key,
     option1NextKey,
+    option1CommandsKey,
     option2Key,
     option2NextKey,
+    option2CommandsKey,
   ]);
 
   const filteredRows = useMemo(() => {
@@ -289,18 +304,7 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
   );
 
   const createInitialPlayerState = useCallback(
-    () => {
-      const initialState: ScriptPlayerState = {
-        currentIndex: 0,
-        revealed: [],
-        atChoice: false,
-        options: [],
-        done: filteredRows.length === 0,
-      };
-      return filteredRows.length > 0
-        ? nextPosition(initialState, filteredRows, playerColumns)
-        : initialState;
-    },
+    () => createScriptPlayerState(filteredRows, playerColumns),
     [filteredRows, playerColumns],
   );
 
@@ -312,7 +316,7 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
 
   const advance = useCallback(() => {
     setPlayerState((state) => {
-      if (state.atChoice || state.done || state.warning) return state;
+      if (state.atChoice || state.done || state.warning || state.error) return state;
       return nextPosition(state, filteredRows, playerColumns);
     });
   }, [filteredRows, playerColumns]);
@@ -361,13 +365,21 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
         const labelVal = labelKey ? row.propertyValues[labelKey] : undefined;
         const typeVal = typeKey ? row.propertyValues[typeKey] : undefined;
         const nameVal = nameKey ? row.propertyValues[nameKey] : undefined;
-        const contentVal = contentKey ? row.propertyValues[contentKey] : undefined;
-
-        const content = String(contentVal ?? '').trim();
+        const content = renderPlayerContent(row, contentKey, playerState.variables);
         const label = String(labelVal ?? '').trim();
 
-        if (label.toLowerCase() === 'start') {
+        if (label.toLowerCase() === 'start' && !content) {
           return renderPartTitle(row.id, label);
+        }
+
+        if (label.toLowerCase() === 'start') {
+          const alignment = dialogAlignments.get(row.id) ?? 'left';
+          return (
+            <React.Fragment key={row.id}>
+              {renderPartTitle(`${row.id}-title`, label)}
+              {renderScriptLine(row.id, typeVal, nameVal, content, speakerOrder, alignment)}
+            </React.Fragment>
+          );
         }
 
         if (label === '*') return null;
@@ -412,7 +424,7 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
               className={styles.choiceButton}
               onClick={() => chooseOption(option.index)}
             >
-              {option.text}
+              {interpolateVariables(option.text, playerState.variables)}
             </button>
           ))}
         </div>
@@ -420,6 +432,11 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
       {playerState.warning && (
         <div className={styles.warningMessage} role="status">
           {playerState.warning}
+        </div>
+      )}
+      {playerState.error && (
+        <div className={styles.errorMessage} role="alert">
+          {playerState.error}
         </div>
       )}
     </div>

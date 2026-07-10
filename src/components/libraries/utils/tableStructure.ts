@@ -57,18 +57,85 @@ export function detectScriptColumns(
     return undefined;
   };
 
+  const dynamicOptions = new Map<number, {
+    index: number;
+    textKey?: string;
+    nextKey?: string;
+    commandsKey?: string;
+  }>();
+  const optionPatterns = [
+    { pattern: /^Option(\d+)$/, field: 'textKey' },
+    { pattern: /^Option(\d+)_Next$/, field: 'nextKey' },
+    { pattern: /^Option(\d+)_Commands$/, field: 'commandsKey' },
+  ] as const;
+
+  for (const property of orderedProperties) {
+    for (const { pattern, field } of optionPatterns) {
+      const match = pattern.exec(property.name);
+      if (!match) continue;
+      const index = Number(match[1]);
+      const option = dynamicOptions.get(index) ?? { index };
+      option[field] = property.key;
+      dynamicOptions.set(index, option);
+      break;
+    }
+  }
+
+  const legacyOptions = [0, 1, 2].map((index) => ({
+    index,
+    textKey: find([`选项${index}`, `Option${index}`, `option${index}`]),
+    nextKey: find([
+      `选项${index}跳转`,
+      `选项${index}下一步`,
+      `Option${index}_Next`,
+      `option${index}_next`,
+    ]),
+    commandsKey: find([
+      `选项${index}命令`,
+      `Option${index}_Commands`,
+      `option${index}_commands`,
+    ]),
+  }));
+  for (const legacy of legacyOptions) {
+    if (!legacy.textKey) continue;
+    const option = dynamicOptions.get(legacy.index) ?? { index: legacy.index };
+    option.textKey ??= legacy.textKey;
+    option.nextKey ??= legacy.nextKey;
+    option.commandsKey ??= legacy.commandsKey;
+    dynamicOptions.set(legacy.index, option);
+  }
+
+  const options = Array.from(dynamicOptions.values())
+    .filter((option): option is {
+      index: number;
+      textKey: string;
+      nextKey?: string;
+      commandsKey?: string;
+    } => !!option.textKey)
+    .sort((a, b) => a.index - b.index)
+    .map((option) => ({
+      index: option.index,
+      textKey: option.textKey,
+      nextKey: option.nextKey ?? '',
+      ...(option.commandsKey ? { commandsKey: option.commandsKey } : {}),
+    }));
+
   const scriptColumns: ScriptColumns = {
     labelKey: find(['这里是跳转的节点', 'Story jump node', 'Label', 'label']),
     typeKey: find(['类型', 'Type', 'type']),
     nameKey: find(['说话人', 'Speaker', 'Name', 'name']),
     contentKey: find(['对话内容', 'Dialogue and options', 'Content', 'content']),
     commandsKey: find(['命令', 'Commands', 'commands']),
-    option0Key: find(['选项0', 'Option0', 'option0']),
-    option0NextKey: find(['选项0跳转', '选项0下一步', 'Option0_Next', 'option0_next']),
-    option1Key: find(['选项1', 'Option1', 'option1']),
-    option1NextKey: find(['选项1跳转', '选项1下一步', 'Option1_Next', 'option1_next']),
-    option2Key: find(['选项2', 'Option2', 'option2']),
-    option2NextKey: find(['选项2跳转', '选项2下一步', 'Option2_Next', 'option2_next']),
+    option0Key: legacyOptions[0].textKey,
+    option0NextKey: legacyOptions[0].nextKey,
+    option0CommandsKey: legacyOptions[0].commandsKey,
+    option1Key: legacyOptions[1].textKey,
+    option1NextKey: legacyOptions[1].nextKey,
+    option1CommandsKey: legacyOptions[1].commandsKey,
+    option2Key: legacyOptions[2].textKey,
+    option2NextKey: legacyOptions[2].nextKey,
+    option2CommandsKey: legacyOptions[2].commandsKey,
+    options,
   };
 
   return {
