@@ -272,6 +272,7 @@ export default function CollaboratorsList({
             event: 'collaborator-change',
             payload: { type: 'role-change', collaboratorId, newRole, affectedUserId }
           });
+          onUpdate?.();
         },
         onError: (err: any) => {
           // Display error to user
@@ -328,6 +329,7 @@ export default function CollaboratorsList({
             event: 'collaborator-change',
             payload: broadcastPayload
           });
+          onUpdate?.();
         },
       }
     );
@@ -379,7 +381,7 @@ export default function CollaboratorsList({
     <div className={styles.container}>
       {/* Error banner */}
       {error && (
-        <div className={styles.errorBanner}>
+        <div className={styles.errorBanner} data-testid="collaborators-error">
           {error}
           <button 
             className={styles.errorClose}
@@ -417,6 +419,9 @@ export default function CollaboratorsList({
             <div 
               key={collab.id}
               className={`${styles.item} ${isLoading ? styles.itemLoading : ''} ${shouldHighlight ? styles.itemHighlight : ''}`}
+              data-testid="collaborator-row"
+              data-collaborator-id={collab.id}
+              data-user-id={collab.userId}
             >
               {/* Member Name Column */}
               <div className={styles.itemName}>
@@ -456,6 +461,7 @@ export default function CollaboratorsList({
                       className={styles.customSelectButton}
                       onClick={() => setOpenDropdownId(openDropdownId === collab.id ? null : collab.id)}
                       disabled={isLoading}
+                      data-testid="collaborator-role-button"
                     >
                       {collab.role.charAt(0).toUpperCase() + collab.role.slice(1)}
                       <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.selectArrow}>
@@ -473,6 +479,7 @@ export default function CollaboratorsList({
                               handleRoleChange(collab.id, role, collab.role);
                               setOpenDropdownId(null);
                             }}
+                            data-testid={`collaborator-role-option-${role}`}
                           >
                             {role.charAt(0).toUpperCase() + role.slice(1)}
                           </button>
@@ -497,6 +504,7 @@ export default function CollaboratorsList({
                       disabled={isLoading}
                       title="Remove collaborator"
                       aria-label={`Remove ${displayName}`}
+                      data-testid="collaborator-remove-button"
                     >
                       <Image src={collaborationDeleteIcon}
                         alt="Delete"
@@ -562,4 +570,3 @@ export default function CollaboratorsList({
     </div>
   );
 }
-
