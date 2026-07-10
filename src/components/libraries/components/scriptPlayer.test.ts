@@ -1,0 +1,191 @@
+import { describe, expect, it } from '@jest/globals';
+import fs from 'node:fs';
+import path from 'node:path';
+import type { AssetRow } from '@/lib/types/libraryAssets';
+import {
+  createScriptPlayerState,
+  nextPosition,
+  renderPlayerContent,
+  type ScriptPlayerColumns,
+  type ScriptPlayerState,
+} from './scriptPlayer';
+
+const columns: ScriptPlayerColumns = {
+  labelKey: 'label',
+  commandsKey: 'commands',
+  options: [0, 1].map((index) => ({
+    index,
+    textKey: `option${index}`,
+    nextKey: `option${index}Next`,
+    commandsKey: `option${index}Commands`,
+  })),
+};
+
+function row(id: string, values: Record<string, unknown>): AssetRow {
+  return { id, libraryId: 'library', name: id, propertyValues: values };
+}
+
+const trustRows = [
+  row('start', {
+    label: 'Start', content: 'Choose',
+    option0: 'Left', option0Next: 'Jump O1', option0Commands: '$trust+=1',
+    option1: 'Right', option1Next: 'Jump O2', option1Commands: '$trust+=2',
+  }),
+  row('o1', {
+    label: 'O1', content: 'Left path',
+    option0: 'Answer', option0Next: 'Jump O1A_END', option0Commands: '$trust+=1',
+    option1: 'Walk away', option1Next: 'Jump O1B_END', option1Commands: '$trust-=1',
+  }),
+  row('o1a', { label: 'O1A_END', content: 'Honest child', commands: 'Jump Oend' }),
+  row('o1b', { label: 'O1B_END', content: 'Rude', commands: 'Jump Oend' }),
+  row('o2', {
+    label: 'O2', content: 'Right path',
+    option0: 'Real name', option0Next: 'Jump O2A_END', option0Commands: '$trust+=2',
+    option1: 'Fake name', option1Next: 'Jump O2B_END', option1Commands: '$trust-=2',
+  }),
+  row('o2a', { label: 'O2A_END', content: 'Enter', commands: 'Jump Oend' }),
+  row('o2b', { label: 'O2B_END', content: 'Liar', commands: 'Jump Oend' }),
+  row('end', { label: 'Oend', content: 'Trust: [trust]' }),
+];
+
+function play(choices: number[]) {
+  let state = createScriptPlayerState(trustRows, columns);
+  const remaining = [...choices];
+  for (let step = 0; step < 30 && !state.done && !state.error && !state.warning; step += 1) {
+    state = state.atChoice
+      ? nextPosition(state, trustRows, columns, remaining.shift())
+      : nextPosition(state, trustRows, columns);
+  }
+  const rendered = state.revealed.map((index) =>
+    renderPlayerContent(trustRows[index], 'content', state.variables)
+  );
+  const revealedLabels = state.revealed.map((index) => trustRows[index].propertyValues.label);
+  return { ...state, rendered, revealedLabels };
+}
+
+describe('script player variable runtime', () => {
+  it.each([
+    [[0, 0], 2],
+    [[0, 1], 0],
+    [[1, 0], 4],
+    [[1, 1], 0],
+  ])('plays nested path %j with trust %d', (choices, trust) => {
+    const result = play(choices);
+    expect(result.variables.trust).toBe(trust);
+    expect(result.rendered.at(-1)).toContain(String(trust));
+  });
+
+  it('does not reveal labels from unselected branches', () => {
+    const result = play([1, 0]);
+    expect(result.revealedLabels).not.toContain('O1A_END');
+    expect(result.revealedLabels).not.toContain('O1B_END');
+    expect(result.revealedLabels).not.toContain('O2B_END');
+  });
+
+  it('shows_all_twelve_choices', () => {
+    const options = Array.from({ length: 12 }, (_, index) => ({
+      index,
+      textKey: `option${index}`,
+      nextKey: `option${index}Next`,
+    }));
+    const values = Object.fromEntries(options.flatMap(({ index }) => [
+      [`option${index}`, `Choice ${index}`],
+      [`option${index}Next`, 'Jump End'],
+    ]));
+    const state = createScriptPlayerState([
+      row('start', { label: 'Start', ...values }),
+      row('end', { label: 'End', content: 'Done' }),
+    ], { labelKey: 'label', options });
+
+    expect(state.options).toHaveLength(12);
+    expect(state.options.at(-1)?.index).toBe(11);
+  });
+
+  it('executes_node_commands_once', () => {
+    const rows = [
+      row('start', {
+        label: 'Start', commands: '$trust+=1',
+        option0: 'Continue', option0Next: 'Jump End',
+      }),
+      row('end', { label: 'End', content: 'Done' }),
+    ];
+    let state = createScriptPlayerState(rows, columns);
+    expect(state.variables.trust).toBe(1);
+    state = nextPosition(state, rows, columns, 0);
+    expect(state.variables.trust).toBe(1);
+  });
+
+  it('keeps_same_target_option_commands_distinct', () => {
+    const rows = [
+      row('start', {
+        label: 'Start', option0: 'One', option0Next: 'Jump End', option0Commands: '$trust+=1',
+        option1: 'Two', option1Next: 'Jump End', option1Commands: '$trust+=2',
+      }),
+      row('end', { label: 'End', content: 'Done' }),
+    ];
+    const first = nextPosition(createScriptPlayerState(rows, columns), rows, columns, 0);
+    const second = nextPosition(createScriptPlayerState(rows, columns), rows, columns, 1);
+    expect(first.variables.trust).toBe(1);
+    expect(second.variables.trust).toBe(2);
+  });
+
+  it('restart_clears_variables', () => {
+    const played = play([1, 0]);
+    expect(played.variables.trust).toBe(4);
+    expect(createScriptPlayerState(trustRows, columns).variables).toEqual({});
+  });
+
+  it('missing_placeholder_is_zero', () => {
+    expect(renderPlayerContent(row('line', { content: 'Value: [missing]' }), 'content', {}))
+      .toBe('Value: 0');
+  });
+
+  it('division_by_zero_stops', () => {
+    const state = createScriptPlayerState([
+      row('start', { label: 'Start', content: 'Bad', commands: '$trust/=0' }),
+    ], columns);
+    expect(state.error).toMatch(/zero/i);
+    expect(state.done).toBe(true);
+  });
+
+  it('invalid_command_stops', () => {
+    const state = createScriptPlayerState([
+      row('start', { label: 'Start', content: 'Bad', commands: '$trust++' }),
+    ], columns);
+    expect(state.error).toMatch(/invalid numeric command/i);
+    expect(state.done).toBe(true);
+  });
+
+  it('unresolved_jump_warns', () => {
+    const state = createScriptPlayerState([
+      row('start', { label: 'Start', content: 'Lost', commands: 'Jump Missing' }),
+    ], columns);
+    expect(state.warning).toContain('Missing');
+    expect(state.error).toBeUndefined();
+  });
+
+  it('automatic_cycle_stops', () => {
+    const rows = [
+      row('a', { label: 'A', content: 'A', commands: 'Jump B' }),
+      row('b', { label: 'B', content: 'B', commands: 'Jump A' }),
+    ];
+    let state: ScriptPlayerState = createScriptPlayerState(rows, columns);
+    state = nextPosition(state, rows, columns);
+    expect(state.error).toMatch(/cycle/i);
+    expect(state.done).toBe(true);
+  });
+});
+
+describe('visual novel player wiring', () => {
+  const viewSource = fs.readFileSync(
+    path.join(process.cwd(), 'src/components/libraries/components/VisualNovelScriptView.tsx'),
+    'utf8'
+  );
+
+  it('renders dynamic state, interpolated content, and runtime errors', () => {
+    expect(viewSource).toContain('createScriptPlayerState');
+    expect(viewSource).toContain('renderPlayerContent(row, contentKey, playerState.variables)');
+    expect(viewSource).toContain('playerState.error');
+    expect(viewSource).toContain('options,');
+  });
+});
