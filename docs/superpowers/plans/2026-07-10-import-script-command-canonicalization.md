@@ -195,3 +195,77 @@ Expected: all Jest suites pass, both TypeScript checks exit `0`, ESLint has `0` 
 Run: `git push origin scriptenhance7-10`
 
 Expected: `origin/scriptenhance7-10` resolves to the same commit as local `HEAD`.
+
+---
+
+### Task 3: Remove Structural Syntax From Visible Option Text
+
+**Files:**
+- Modify: `src/lib/story-ir/conversion.ts`
+- Test: `src/lib/story-ir/conversion.test.ts`
+
+**Interfaces:**
+- Consumes: raw Converter option objects after collection, source-ref, and command canonicalization.
+- Produces: `canonicalizeStoryOptionTexts(value: unknown): unknown`, called before `parseStoryDocument`.
+
+- [ ] **Step 1: Write failing option-text tests**
+
+Add direct tests proving the exact imported value is cleaned, prose parentheses are retained, and non-structural text is unchanged:
+
+```typescript
+expect(canonicalizeStoryOptionTexts({
+  options: [{ text: 'O1: Go left. ($trust+=1; jump O1)' }],
+})).toMatchObject({ options: [{ text: 'Go left.' }] });
+
+expect(canonicalizeStoryOptionTexts({
+  options: [{ text: 'O1: Ask (why). ($trust+=1; jump O1)' }],
+})).toMatchObject({ options: [{ text: 'Ask (why).' }] });
+
+expect(canonicalizeStoryOptionTexts({
+  options: [{ text: 'Ask: why (tomorrow)' }],
+})).toMatchObject({ options: [{ text: 'Ask: why (tomorrow)' }] });
+```
+
+Update the mocked `resolveStoryForImport` regression so its option text contains the complete structured source line and assert that the returned option text is display-only while target and commands remain unchanged.
+
+- [ ] **Step 2: Run tests and verify RED**
+
+Run: `npm run test:unit -- --runInBand src/lib/story-ir/conversion.test.ts`
+
+Expected: FAIL because `canonicalizeStoryOptionTexts` does not exist and the pipeline returns the structural option string unchanged.
+
+- [ ] **Step 3: Implement the minimal canonicalizer**
+
+```typescript
+const OPTION_PREFIX_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}\s*[：:]\s*(.+)$/s;
+const OPTION_JUMP_PATTERN = /(?:jump|跳转)\s+[A-Za-z][A-Za-z0-9_-]{0,63}/i;
+
+function cleanStructuredOptionText(text: string): string {
+  const match = OPTION_PREFIX_PATTERN.exec(text.trim());
+  if (!match) return text;
+  const body = match[1].trim();
+  const closing = body.at(-1);
+  const opening = closing === ')' ? '(' : closing === '）' ? '（' : '';
+  if (!opening) return text;
+
+  const metadataStart = body.lastIndexOf(opening);
+  if (metadataStart < 0) return text;
+  const metadata = body.slice(metadataStart + 1, -1);
+  const displayText = body.slice(0, metadataStart).trim();
+  return displayText && OPTION_JUMP_PATTERN.test(metadata) ? displayText : text;
+}
+```
+
+Traverse only members of known `options` arrays, preserve all other fields and unknown properties, and call the canonicalizer after command canonicalization but before strict Story IR parsing.
+
+- [ ] **Step 4: Run focused and full verification**
+
+Run the focused conversion test, all unit tests, both TypeScript checks, lint, build, and `git diff --check`. Then import the exact user fixture under a unique Library name and query its option cells to verify `O1/O2` prefixes and metadata wrappers are absent.
+
+- [ ] **Step 5: Commit and push**
+
+```bash
+git add docs/superpowers/specs/2026-07-10-import-script-story-ir-design.md docs/superpowers/plans/2026-07-10-import-script-command-canonicalization.md src/lib/story-ir/conversion.ts src/lib/story-ir/conversion.test.ts
+git commit -m "fix: clean structural syntax from story options"
+git push origin scriptenhance7-10
+```

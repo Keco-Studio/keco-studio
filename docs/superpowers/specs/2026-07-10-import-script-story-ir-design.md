@@ -289,8 +289,11 @@ The Converter response must be parsed as structured JSON and validated against a
 - provider objects whose only key is `item` are recursively unwrapped;
 - a source ref whose `unitId` resolves in the current server-owned chunk is canonicalized to that unit's server-owned `sourceId/start/end`;
 - every object inside a known `commands` array must contain either one exact numeric command or a source-backed structural fragment containing exactly one numeric command; the server extracts that exact command token and deterministically replaces or supplies `source`, `variable`, `operator`, and `value` before strict schema parsing.
+- an option `text` that contains a valid ASCII option-label prefix and a final matched metadata wrapper with a supported `Jump` marker is reduced to the display text between them; the option target and commands remain in their dedicated fields. Earlier parentheses inside the display text are preserved.
 
 Command canonicalization is source reconstruction, not free-form coercion. It may turn a provider value such as `"1"` into `1`, or normalize a provider fragment such as `($trust+=1; jump O1)` to `$trust+=1`, only because that exact numeric token is present in the fragment. The later validator still requires the canonical command source to occur in the referenced authoritative source unit. A fragment containing zero or multiple supported numeric commands is ambiguous and fails conversion. A missing, malformed, unsupported, or uncited command source also fails; the canonicalizer never guesses a variable, operator, or value from surrounding prose. Unknown properties and missing or unknown `unitId` values still fail.
+
+Option-text canonicalization is likewise structural and source-backed. For example, `O1: Go left. ($trust+=1; jump O1)` becomes `Go left.` because the label, jump metadata, target, and command already have separate Story IR fields. Text without a final structural jump wrapper is unchanged, including ordinary colons and parenthetical prose.
 
 Source content is serialized as explicitly delimited untrusted data. Text such as `ignore previous instructions` remains story data and cannot change the system prompt or output contract.
 
@@ -335,7 +338,7 @@ Noise is any output that is not supported by source evidence and is not an allow
 
 - fabricated dialogue, narration, characters, events, choices, transitions, or variables;
 - markdown, code fences, explanations, headings added by the model, or prompt text;
-- branch declarations, `Jump` markers, or label syntax stored as dialogue/narration;
+- branch declarations, `Jump` markers, command metadata, or option-label syntax stored as visible dialogue, narration, or option text;
 - duplicate output derived from the same authoritative source unit;
 - content assigned to the wrong speaker or branch;
 - dropped source content hidden by a structurally valid graph;
@@ -656,3 +659,4 @@ The old parser remains behind the Legacy Adapter. It is not the semantic model f
 12. Agent Chat imports exact stored user content by reference rather than trusting LLM-copied source text.
 13. The four-path acceptance fixture produces final trust values `2`, `0`, `4`, and `0` and only renders selected branches.
 14. Provider-specific wrappers, string values, or mismatched redundant fields cannot block a valid cited command or change its meaning: the server extracts exactly one numeric command token and rebuilds `source`, `variable`, `operator`, and numeric `value`, while ambiguous, malformed, or uncited sources still prevent import.
+15. A structured option source such as `O1: Go left. ($trust+=1; jump O1)` compiles to display text `Go left.`, target `Jump O1`, and command `$trust+=1`; ordinary option punctuation and parentheses remain unchanged.
