@@ -8,6 +8,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AgentSelectionContext } from './selection-context';
+import type { ImportProgressEvent } from '@/lib/story-ir/schema';
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
 
@@ -36,6 +37,11 @@ export interface ToolContext {
   currentSectionName?: string;
   supabase: SupabaseClient;
   userRole: UserRole;
+  /** Exact persisted user message for tools that must not trust LLM-copied content. */
+  authoritativeUserSource?: {
+    messageId: string;
+    content: string;
+  };
 }
 
 export interface ToolResult {
@@ -55,6 +61,10 @@ export interface AgentTool {
   confirmationMode: ConfirmationMode;
   requiredPermission?: 'editor' | 'admin';
   execute: (params: unknown, ctx: ToolContext) => Promise<ToolResult>;
+  executeStream?: (
+    params: unknown,
+    ctx: ToolContext
+  ) => AsyncGenerator<ImportProgressEvent, ToolResult>;
   /**
    * Optional second phase for post_preview tools. Called by the ReAct loop in
    * auto-execute mode after preview, and by the /confirm resume handler after approval.
@@ -168,6 +178,7 @@ export type SSEEvent =
   | { type: 'reasoning_delta'; content: string }
   | { type: 'tool_call_start'; tool: string; args: string }
   | { type: 'tool_call_end' }
+  | { type: 'tool_progress'; tool: string; progress: ImportProgressEvent }
   | { type: 'tool_result'; tool: string; data: unknown; displayHint?: DisplayHint; success?: boolean; error?: string }
   | { type: 'confirmation_request'; actionId: string; tool: string; args: unknown; confirmationMode: ConfirmationMode; preview?: unknown }
   | { type: 'cache_invalidated'; paths: string[] }

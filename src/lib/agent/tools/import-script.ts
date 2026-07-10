@@ -1,27 +1,23 @@
 /**
- * import_script — convert free-form narrative text into keco-studio standard
- * script format and import it as a library.
- *
- * Two phases:
- * - execute()       NON-MUTATING. Tries parseText directly, falls back to an
- *                   LLM conversion (with sanitize + validate + retry), returns a
- *                   preview. No DB write.
- * - executeImport() MUTATING. Persists the previewed fullText via
- *                   scriptImportService. Called by the /confirm resume handler.
+ * import_script converts an exact user-message source span into audited Story IR,
+ * then imports the previewed document without reparsing model text.
  */
 
 import { z } from 'zod';
-import { parseText } from '@/lib/script-parser';
-import type { RoleMap, Script } from '@/lib/script-parser';
-import { importScriptFromFile } from '@/lib/services/scriptImportService';
-import { resolveScriptTextForImport } from '@/lib/services/scriptConversionService';
+import type { RoleMap } from '@/lib/script-parser';
+import type { ImportProgressEvent, StoryDocument } from '@/lib/story-ir/schema';
+import { importStoryDocument } from '@/lib/services/scriptImportService';
+import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { getFolderRow } from '../data-access';
+import { resolveAgentImportSource } from '../source-resolver';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 const ParamsSchema = z.object({
   libraryName: z.string().min(1),
   folderId: z.string().uuid({ message: 'folderId must be a valid UUID' }),
-  sourceText: z.string().min(1),
+  sourceText: z.string().min(1).optional(),
+  sourceStart: z.number().int().nonnegative().optional(),
+  sourceEnd: z.number().int().positive().optional(),
   characterMapping: z.record(z.number()).optional(),
 });
 
@@ -31,15 +27,15 @@ interface PreviewData {
   libraryName: string;
   folderId: string;
   fullText: string;
-  lines: Script['lines'];
+  document: StoryDocument;
+  lines: Array<{ label: string; type: number; name?: string; content: string }>;
   stats: { lineCount: number; dialogueCount: number; optionCount: number };
-  characterMapping?: Record<string, number>;
   warnings: string[];
 }
 
-const isUuid = (v: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+const isUuid = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 
-/** characterMapping ({ "Atana": 1 }) -> RoleMap ({ "Atana": { id: "", type: 1 } }). */
 function toRoleMap(mapping?: Record<string, number>): RoleMap {
   const roleMap: RoleMap = {};
   if (!mapping) return roleMap;
@@ -49,88 +45,121 @@ function toRoleMap(mapping?: Record<string, number>): RoleMap {
   return roleMap;
 }
 
-function computeStats(script: Script): PreviewData['stats'] {
-  let dialogueCount = 0;
-  let optionCount = 0;
-  for (const line of script.lines) {
-    if (line.content && line.name) dialogueCount++;
-    optionCount += [line.option0, line.option1, line.option2].filter(Boolean).length;
+function computeStats(document: StoryDocument): PreviewData['stats'] {
+  return {
+    lineCount: document.nodes.length,
+    dialogueCount: document.nodes.filter((node) => node.type === 'dialogue').length,
+    optionCount: document.nodes.reduce((sum, node) => sum + node.options.length, 0),
+  };
+}
+
+async function validateParamsAndFolder(
+  params: unknown,
+  ctx: ToolContext
+): Promise<{ data?: Params; error?: ToolResult }> {
+  const parsed = ParamsSchema.safeParse(params);
+  if (!parsed.success) {
+    return { error: { success: false, error: `Invalid parameters: ${parsed.error.message}` } };
   }
-  return { lineCount: script.lines.length, dialogueCount, optionCount };
+  try {
+    const folder = await getFolderRow(ctx.supabase, parsed.data.folderId);
+    if (!folder || folder.project_id !== ctx.projectId) {
+      return {
+        error: {
+          success: false,
+          error: `Folder "${parsed.data.folderId}" not found in this project. Ask the user which folder to import into.`,
+        },
+      };
+    }
+  } catch {
+    return {
+      error: {
+        success: false,
+        error: `Folder "${parsed.data.folderId}" is not accessible. Ask the user which folder to import into.`,
+      },
+    };
+  }
+  return { data: parsed.data };
+}
+
+async function* executeStream(
+  params: unknown,
+  ctx: ToolContext
+): AsyncGenerator<ImportProgressEvent, ToolResult> {
+  const validated = await validateParamsAndFolder(params, ctx);
+  if (!validated.data) return validated.error!;
+  const data = validated.data;
+
+  let source;
+  try {
+    source = resolveAgentImportSource(data, ctx);
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+
+  const queue = new ProgressQueue();
+  const resultPromise = resolveStoryForImport(source.content, {
+    sourceId: source.sourceId,
+    roleMap: toRoleMap(data.characterMapping),
+    onProgress: (event) => queue.push(event),
+  })
+    .then((resolved): ToolResult => ({
+      success: true,
+      displayHint: 'script_preview',
+      data: {
+        libraryName: data.libraryName,
+        folderId: data.folderId,
+        fullText: source.content,
+        document: resolved.document,
+        lines: resolved.document.nodes.map((node) => ({
+          label: node.label,
+          type: node.type === 'dialogue' ? 1 : 2,
+          name: node.speaker,
+          content: node.content,
+        })),
+        stats: computeStats(resolved.document),
+        warnings: resolved.warnings,
+      } satisfies PreviewData,
+    }))
+    .catch((error): ToolResult => ({
+      success: false,
+      error: (error as Error).message || 'Conversion failed.',
+    }))
+    .finally(() => queue.close());
+
+  for await (const progress of queue) yield progress;
+  return await resultPromise;
 }
 
 async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
-  const parsed = ParamsSchema.safeParse(params);
-  if (!parsed.success) {
-    return { success: false, error: `Invalid parameters: ${parsed.error.message}` };
+  const iterator = executeStream(params, ctx);
+  while (true) {
+    const step = await iterator.next();
+    if (step.done) return step.value;
   }
-  const data = parsed.data;
-
-  // Validate the folder exists and belongs to the project.
-  try {
-    const folder = await getFolderRow(ctx.supabase, data.folderId);
-    if (!folder || folder.project_id !== ctx.projectId) {
-      return { success: false, error: `Folder "${data.folderId}" not found in this project. Ask the user which folder to import into.` };
-    }
-  } catch {
-    return { success: false, error: `Folder "${data.folderId}" is not accessible. Ask the user which folder to import into.` };
-  }
-
-  const roleMap = toRoleMap(data.characterMapping);
-
-  try {
-    const resolved = await resolveScriptTextForImport(data.sourceText, {
-      roleMap,
-      characterMapping: data.characterMapping,
-    });
-    const script = parseText(resolved.fullText, roleMap);
-    return previewResult(data, resolved.fullText, script, resolved.warnings);
-  } catch (e) {
-    return { success: false, error: (e as Error).message || 'Conversion failed.' };
-  }
-}
-
-function previewResult(
-  params: Params,
-  fullText: string,
-  script: Script,
-  warnings: string[]
-): ToolResult {
-  const allWarnings = [...warnings, ...(script.warnings ?? [])];
-  const preview: PreviewData = {
-    libraryName: params.libraryName,
-    folderId: params.folderId,
-    fullText,
-    lines: script.lines,
-    stats: computeStats(script),
-    characterMapping: params.characterMapping,
-    warnings: allWarnings,
-  };
-  return { success: true, displayHint: 'script_preview', data: preview };
 }
 
 async function executeImport(
   toolResult: ToolResult,
-  params: unknown,
+  _params: unknown,
   ctx: ToolContext
 ): Promise<ToolResult> {
   const preview = toolResult.data as PreviewData | undefined;
-  if (!preview || !preview.fullText) {
-    return { success: false, error: 'No preview data available to import.' };
+  if (!preview?.document) {
+    return { success: false, error: 'No Story IR preview is available to import.' };
   }
   if (!isUuid(preview.folderId)) {
     return { success: false, error: 'Invalid target folder.' };
   }
 
   try {
-    const result = await importScriptFromFile(ctx.supabase, {
+    const result = await importStoryDocument(ctx.supabase, {
       userId: ctx.userId,
       projectId: ctx.projectId,
       folderId: preview.folderId,
       libraryName: preview.libraryName,
-      fileContent: preview.fullText,
+      document: preview.document,
       fileName: `${preview.libraryName}.txt`,
-      roleMap: toRoleMap(preview.characterMapping),
     });
     return {
       success: true,
@@ -143,15 +172,45 @@ async function executeImport(
       },
       invalidateCache: [result.libraryId],
     };
-  } catch (e) {
-    return { success: false, error: (e as Error).message || 'Import failed.' };
+  } catch (error) {
+    return { success: false, error: (error as Error).message || 'Import failed.' };
+  }
+}
+
+class ProgressQueue implements AsyncIterable<ImportProgressEvent> {
+  private events: ImportProgressEvent[] = [];
+  private waiting: (() => void) | undefined;
+  private closed = false;
+
+  push(event: ImportProgressEvent): void {
+    this.events.push(event);
+    this.waiting?.();
+    this.waiting = undefined;
+  }
+
+  close(): void {
+    this.closed = true;
+    this.waiting?.();
+    this.waiting = undefined;
+  }
+
+  async *[Symbol.asyncIterator](): AsyncIterator<ImportProgressEvent> {
+    while (!this.closed || this.events.length > 0) {
+      if (this.events.length > 0) {
+        yield this.events.shift()!;
+        continue;
+      }
+      await new Promise<void>((resolve) => {
+        this.waiting = resolve;
+      });
+    }
   }
 }
 
 export const importScript: AgentTool = {
   name: 'import_script',
   description:
-    'Convert free-form narrative text into keco-studio standard script format and import it as a library. Use this when the user pastes story text, wants to create a script from prose, or asks to import narrative content.',
+    'Convert an exact user-message source span into audited Story IR and import it as a script library. The tool, not the agent, parses and repairs story structure.',
   category: 'write',
   confirmationMode: 'post_preview',
   requiredPermission: 'editor',
@@ -159,16 +218,19 @@ export const importScript: AgentTool = {
     type: 'object',
     properties: {
       libraryName: { type: 'string', description: 'Name for the new library' },
-      folderId: { type: 'string', format: 'uuid', description: 'Target folder UUID for the import. If unknown, ask the user.' },
-      sourceText: { type: 'string', description: 'The raw narrative text to convert' },
+      folderId: { type: 'string', format: 'uuid', description: 'Target folder UUID. If unknown, ask the user.' },
+      sourceStart: { type: 'integer', minimum: 0, description: 'Inclusive character offset of the exact story span in the current user message' },
+      sourceEnd: { type: 'integer', minimum: 1, description: 'Exclusive character offset of the exact story span in the current user message' },
+      sourceText: { type: 'string', description: 'Legacy fallback only. Never rewrite or normalize this value.' },
       characterMapping: {
         type: 'object',
-        description: 'Optional mapping of character names to dialogue types. e.g. {"Atana": 1, "AI": 2}. Type 1=player, 2=AI, 3=narrator, 5=fullscreen',
+        description: 'Optional mapping of character names to dialogue types',
         additionalProperties: { type: 'number', enum: [1, 2, 3, 5] },
       },
     },
-    required: ['libraryName', 'folderId', 'sourceText'],
+    required: ['libraryName', 'folderId'],
   },
   execute,
+  executeStream,
   executeImport,
 };

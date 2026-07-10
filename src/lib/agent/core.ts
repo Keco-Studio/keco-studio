@@ -49,8 +49,8 @@ import {
 } from './confirmation';
 import {
   needsConfirmation,
-  executePostPreviewTool,
 } from './conversation-meta';
+import { executeAgentTool } from './tool-execution-stream';
 import {
   TurnTraceCollector,
   loadTraceCollector,
@@ -256,6 +256,19 @@ function checkToolPermission(tool: AgentTool, ctx: ToolContext): ToolResult | nu
     return { success: false, error: `This operation requires the admin role (current role: ${ctx.userRole}).` };
   }
   return null;
+}
+
+async function* executeToolWithProgress(
+  tool: AgentTool,
+  params: unknown,
+  ctx: ToolContext
+): AsyncGenerator<SSEEvent, ToolResult> {
+  const iterator = executeAgentTool(tool, params, ctx);
+  while (true) {
+    const step = await iterator.next();
+    if (step.done === true) return step.value as ToolResult;
+    yield { type: 'tool_progress', tool: tool.name, progress: step.value };
+  }
 }
 
 async function flushTrace(
@@ -479,7 +492,7 @@ async function* continueLoop(
         throwIfAborted(signal);
         yield { type: 'tool_call_start', tool: tool.name, args: call.function.arguments };
         const previewStartMs = Date.now();
-        const result = await tool.execute(parsedArgs, ctx);
+        const result = yield* executeToolWithProgress(tool, parsedArgs, ctx);
         trace?.recordToolCall({
           tool: tool.name,
           args: parsedArgs,
@@ -542,11 +555,11 @@ async function* continueLoop(
 
     if (tool.confirmationMode === 'post_preview') {
       const previewStartMs = Date.now();
-      const { previewResult, importResult, finalResult } = await executePostPreviewTool(
-        tool,
-        parsedArgs,
-        ctx
-      );
+      const previewResult = yield* executeToolWithProgress(tool, parsedArgs, ctx);
+      const importResult = previewResult.success && tool.executeImport
+        ? await tool.executeImport(previewResult, parsedArgs, ctx)
+        : undefined;
+      const finalResult = importResult ?? previewResult;
       trace?.recordToolCall({
         tool: tool.name,
         args: parsedArgs,
@@ -584,7 +597,7 @@ async function* continueLoop(
     }
 
     const toolStartMs = Date.now();
-    const result = await tool.execute(parsedArgs, ctx);
+    const result = yield* executeToolWithProgress(tool, parsedArgs, ctx);
     trace?.recordToolCall({
       tool: tool.name,
       args: parsedArgs,
@@ -645,9 +658,22 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     const userContentForLlm = buildUserContent(llmUserMessage, input.imageUrls);
     const userContentForDb = buildUserContent(input.userMessage, input.imageUrls);
     const messages: ChatMessage[] = [systemMessage, ...compactedHistory, { role: 'user', content: userContentForLlm }];
-    await saveMessage(toolContext.supabase, conversationId, { role: 'user', content: userContentForDb }, indexingContext(toolContext));
+    const savedUserMessage = await saveMessage(
+      toolContext.supabase,
+      conversationId,
+      { role: 'user', content: userContentForDb },
+      indexingContext(toolContext)
+    );
+    if (!savedUserMessage) throw new Error('Failed to bind the current user message');
+    const turnContext: ToolContext = {
+      ...toolContext,
+      authoritativeUserSource: {
+        messageId: savedUserMessage.id,
+        content: input.userMessage,
+      },
+    };
 
-    yield* continueLoop(messages, toolContext, conversationMeta, conversationId, 0, 0, input.signal, trace);
+    yield* continueLoop(messages, turnContext, conversationMeta, conversationId, 0, 0, input.signal, trace);
   } finally {
     await flushTrace(trace, toolContext, conversationId);
   }
