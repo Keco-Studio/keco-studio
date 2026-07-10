@@ -269,3 +269,108 @@ git add docs/superpowers/specs/2026-07-10-import-script-story-ir-design.md docs/
 git commit -m "fix: clean structural syntax from story options"
 git push origin scriptenhance7-10
 ```
+
+---
+
+### Task 4: Remove Misleading Standard-Format Guidance
+
+**Files:**
+- Modify: `src/components/libraries/ImportScriptModal.tsx`
+- Modify: `src/components/libraries/ImportScriptModal.module.css`
+- Create: `tests/unit/import-script-modal-copy.test.ts`
+
+**Interfaces:**
+- Preserves: file/text input modes, preview counts, streaming progress, import submission, and legacy-format compatibility.
+- Removes: standard example constants and loader, format guide constants and toggle state, format-specific placeholder copy, rendered guide controls, and their CSS selectors.
+
+- [ ] **Step 1: Add the failing UI-copy contract test**
+
+```typescript
+import fs from 'node:fs';
+import path from 'node:path';
+import { describe, expect, it } from '@jest/globals';
+
+const componentSource = fs.readFileSync(
+  path.join(process.cwd(), 'src/components/libraries/ImportScriptModal.tsx'),
+  'utf8'
+);
+const styleSource = fs.readFileSync(
+  path.join(process.cwd(), 'src/components/libraries/ImportScriptModal.module.css'),
+  'utf8'
+);
+
+describe('Import Script modal copy', () => {
+  it('does not advertise a standard script format', () => {
+    for (const forbidden of [
+      'STANDARD_FORMAT_EXAMPLE',
+      'FORMAT_GUIDE',
+      'showFormatGuide',
+      'Load standard example',
+      'Format guide',
+      'standard format',
+    ]) {
+      expect(componentSource).not.toContain(forbidden);
+    }
+    expect(componentSource).toContain('placeholder="Enter story text..."');
+  });
+
+  it('does not retain styles for removed guidance controls', () => {
+    for (const forbidden of [
+      '.textActions',
+      '.exampleButton',
+      '.formatGuide',
+      '.formatSection',
+      '.formatTips',
+    ]) {
+      expect(styleSource).not.toContain(forbidden);
+    }
+  });
+});
+```
+
+- [ ] **Step 2: Run the contract test and verify RED**
+
+Run: `npm run test:unit -- --runInBand tests/unit/import-script-modal-copy.test.ts`
+
+Expected: FAIL on `STANDARD_FORMAT_EXAMPLE` and `.textActions` because the misleading reference UI still exists.
+
+- [ ] **Step 3: Remove the guidance UI and dead styles**
+
+In `ImportScriptModal.tsx`, delete `STANDARD_FORMAT_EXAMPLE`, `FORMAT_GUIDE`, `showFormatGuide`, `handleLoadStandardExample`, the `textActions` example button, and the complete `formatGuide` JSX block. Keep the textarea and use neutral copy:
+
+```tsx
+<textarea
+  className={styles.textarea}
+  value={textInput}
+  onChange={(event) => setTextInput(event.target.value)}
+  placeholder="Enter story text..."
+  disabled={importing}
+  rows={10}
+/>
+```
+
+In `ImportScriptModal.module.css`, remove `.textActions`, `.exampleButton` and its states, and all `.formatGuide*`, `.formatSection*`, `.formatCode`, `.formatExample`, `.formatNote`, and `.formatTips*` rules. Rewrite the two `.content` comments so they no longer mention `formatGuide`.
+
+- [ ] **Step 4: Verify GREEN and the rendered modal**
+
+Run:
+
+```bash
+npm run test:unit -- --runInBand tests/unit/import-script-modal-copy.test.ts
+npm run test:unit
+npm run typecheck
+npm run typecheck:api
+npm run lint
+npm run build
+git diff --check
+```
+
+Expected: the contract test and full Jest suite pass, type checks exit `0`, lint has `0` errors, build exits `0`, and no diff whitespace errors remain. Restart port 3000 and verify the text-input tab contains only the neutral textarea, preview, progress row, and import controls.
+
+- [ ] **Step 5: Commit and push**
+
+```bash
+git add docs/superpowers/plans/2026-07-10-import-script-command-canonicalization.md tests/unit/import-script-modal-copy.test.ts src/components/libraries/ImportScriptModal.tsx src/components/libraries/ImportScriptModal.module.css
+git commit -m "fix: remove standard format guidance from script import"
+git push origin scriptenhance7-10
+```
