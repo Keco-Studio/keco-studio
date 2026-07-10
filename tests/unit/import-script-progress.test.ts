@@ -17,7 +17,7 @@ describe('Import Script NDJSON decoder', () => {
     const onProgress = jest.fn();
     const response = streamedResponse([
       '{"type":"progress","progress":{"phase":"conver',
-      'sion","message":"Converting"}}\n{"type":"res',
+      'sion","attempt":1,"message":"Converting"}}\n{"type":"res',
       'ult","result":{"libraryId":"lib-1","rowCount":2,"fieldCount":11}}\n',
     ]);
 
@@ -26,7 +26,7 @@ describe('Import Script NDJSON decoder', () => {
       rowCount: 2,
       fieldCount: 11,
     });
-    expect(onProgress).toHaveBeenCalledWith({ phase: 'conversion', message: 'Converting' });
+    expect(onProgress).toHaveBeenCalledWith({ phase: 'conversion', attempt: 1, message: 'Converting' });
   });
 
   it('throws a streamed terminal error', async () => {
@@ -40,7 +40,7 @@ describe('Import Script NDJSON decoder', () => {
   });
 
   it('rejects a stream without a terminal result', async () => {
-    const response = streamedResponse(['{"type":"progress","progress":{"phase":"merge","message":"Merging"}}\n']);
+    const response = streamedResponse(['{"type":"progress","progress":{"phase":"semantic_audit","attempt":1,"message":"Auditing"}}\n']);
     await expect(consumeImportStream(response, jest.fn())).rejects.toThrow(/ended without a result/i);
   });
 });

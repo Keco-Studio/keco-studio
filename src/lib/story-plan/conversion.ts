@@ -32,6 +32,8 @@ export type StoryPlanProgressPhase =
   | 'deterministic_validation'
   | 'table_projection'
   | 'semantic_audit'
+  | 'table_compile'
+  | 'database_write'
   | 'complete'
   | 'failed';
 

@@ -58,9 +58,9 @@ describe('import_script Story IR tool', () => {
   beforeEach(() => {
     mockedGetFolderRow.mockReset().mockResolvedValue({ id: folderId, project_id: projectId } as never);
     mockedResolve.mockReset().mockImplementation(async (source, options) => {
-      options?.onProgress?.({ phase: 'conversion', message: 'Converting' });
+      options?.onProgress?.({ phase: 'conversion', attempt: 1, message: 'Converting' } as never);
       expect(source).toBe('Original');
-      return { document, units: [], converted: true, audits: [], warnings: [] };
+      return { document } as never;
     });
     mockedImport.mockReset().mockResolvedValue({ libraryId: 'library-1', rowCount: 1, fieldCount: 11 });
   });
@@ -76,7 +76,7 @@ describe('import_script Story IR tool', () => {
     const iterator = executeAgentTool(importScript, params, context());
     expect(await iterator.next()).toEqual({
       done: false,
-      value: { phase: 'conversion', message: 'Converting' },
+      value: { phase: 'conversion', attempt: 1, message: 'Converting' },
     });
     expect(await iterator.next()).toEqual({
       done: false,

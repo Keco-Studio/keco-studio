@@ -568,8 +568,8 @@ Keep internal Story IR schema, command parser, source units if referenced, table
 ```bash
 npm run test:unit -- --runInBand src/lib/story-plan tests/unit/import-script-minimal-plan.integration.test.ts src/lib/story-ir/tableCompiler.test.ts src/components/libraries/components/scriptPlayer.test.ts tests/unit/api-import-script-route.test.ts tests/unit/agent/import-script-story-ir.test.ts
 npm run test:unit -- --runInBand
-npm run type-check:web
-npm run type-check:api
+npm run typecheck
+npm run typecheck:api
 npm run lint
 git diff --check
 npm run build

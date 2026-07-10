@@ -8,7 +8,7 @@
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AgentSelectionContext } from './selection-context';
-import type { ImportProgressEvent } from '@/lib/story-ir/schema';
+import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
 

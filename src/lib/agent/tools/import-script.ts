@@ -1,11 +1,11 @@
 /**
- * import_script converts an exact user-message source span into audited Story IR,
- * then imports the validated document without reparsing model text.
+ * import_script converts an exact user-message source span into an audited flat
+ * relationship plan, then imports the server-hydrated StoryDocument.
  */
 
 import { z } from 'zod';
 import type { RoleMap } from '@/lib/script-parser';
-import type { ImportProgressEvent } from '@/lib/story-ir/schema';
+import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { getFolderRow } from '../data-access';
@@ -165,7 +165,7 @@ class ProgressQueue implements AsyncIterable<ImportProgressEvent> {
 export const importScript: AgentTool = {
   name: 'import_script',
   description:
-    'Convert an exact user-message source span into audited Story IR and import it as a script library. The tool, not the agent, parses and repairs story structure.',
+    'Convert an exact user-message source span into an audited story relationship plan and import it as a script library. The tool, not the agent, owns story text and structure.',
   category: 'write',
   confirmationMode: 'pre_execute',
   confirmationRequired: false,

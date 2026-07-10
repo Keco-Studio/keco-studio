@@ -1,7 +1,14 @@
 /**
- * Public import-conversion facade. All import entry points resolve source text
- * to validated Story IR; legacy standard text is handled inside that pipeline.
+ * Public import-conversion facade. All entry points resolve exact source text
+ * through the flat relationship plan and mandatory semantic audit pipeline.
  */
 
-export { resolveStoryForImport } from '@/lib/story-ir/conversion';
-export type { ResolvedStory, ResolveStoryOptions } from '@/lib/story-ir/conversion';
+export {
+  ImportStoryPlanError,
+  resolveStoryPlanForImport as resolveStoryForImport,
+} from '@/lib/story-plan/conversion';
+export type {
+  ResolveStoryPlanOptions as ResolveStoryOptions,
+  ResolvedAuditedStory as ResolvedStory,
+  StoryPlanProgressEvent as ImportProgressEvent,
+} from '@/lib/story-plan/conversion';
