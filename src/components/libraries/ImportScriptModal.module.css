@@ -75,15 +75,13 @@
   flex-direction: column;
   gap: 1rem;
   /* Single scroll region for the modal body. flex:1 + min-height:0 lets it
-     shrink within the flex column so the footer stays visible and the format
-     guide never overflows the modal's overflow:hidden boundary. */
+     shrink within the flex column so the footer stays visible. */
   flex: 1 1 0%;
   min-height: 0;
   overflow-y: auto;
 }
 
-/* Prevent flex children (especially formatGuide) from being squashed and
-   clipped by overflow:hidden when the modal body runs out of vertical space. */
+/* Prevent flex children from being clipped when the modal body runs out of space. */
 .content > * {
   flex-shrink: 0;
 }
@@ -365,149 +363,4 @@
 
 @keyframes importSpin {
   to { transform: rotate(360deg); }
-}
-
-/* Text input action buttons */
-.textActions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: 0.5rem;
-}
-
-.exampleButton {
-  padding: 0.375rem 0.75rem;
-  background: #f1f5f9;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.25rem;
-  font-size: 0.75rem;
-  color: #0B99FF;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.exampleButton:hover:not(:disabled) {
-  background: #e0f2fe;
-  border-color: #0B99FF;
-}
-
-.exampleButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* Format instructions */
-.formatGuide {
-  border: 1px solid #e2e8f0;
-  border-radius: 0.375rem;
-  margin-top: 0.5rem;
-}
-
-.formatGuideToggle {
-  width: 100%;
-  padding: 0.625rem 0.75rem;
-  background: #f8fafc;
-  border: none;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: #334155;
-  cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  text-align: left;
-  transition: background-color 0.2s;
-}
-
-.formatGuideToggle:hover {
-  background: #f1f5f9;
-}
-
-.formatGuideHint {
-  font-size: 0.75rem;
-  color: #94a3b8;
-  font-weight: 400;
-}
-
-.formatGuideContent {
-  padding: 0.75rem;
-  background: white;
-  border-top: 1px solid #e2e8f0;
-  border-radius: 0 0 0.375rem 0.375rem;
-}
-
-.formatGuideTitle {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: #0f172a;
-  margin: 0 0 0.75rem 0;
-}
-
-.formatSection {
-  margin-bottom: 0.75rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid #f1f5f9;
-}
-
-.formatSection:last-of-type {
-  border-bottom: none;
-  margin-bottom: 0.5rem;
-}
-
-.formatSectionTitle {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #475569;
-  margin: 0 0 0.25rem 0;
-}
-
-.formatCode {
-  display: block;
-  padding: 0.375rem 0.5rem;
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
-  border-radius: 0.25rem;
-  font-family: 'SF Mono', Monaco, monospace;
-  font-size: 0.75rem;
-  color: #0B99FF;
-  margin-bottom: 0.25rem;
-}
-
-.formatExample {
-  font-size: 0.6875rem;
-  color: #64748b;
-  margin: 0.125rem 0;
-}
-
-.formatNote {
-  font-size: 0.6875rem;
-  color: #94a3b8;
-  margin: 0.125rem 0 0 0;
-  font-style: italic;
-}
-
-.formatTips {
-  padding: 0.5rem 0.625rem;
-  background: #fffbeb;
-  border: 1px solid #fef3c7;
-  border-radius: 0.25rem;
-  margin-top: 0.5rem;
-}
-
-.formatTipsTitle {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: #92400e;
-  margin: 0 0 0.375rem 0;
-}
-
-.formatTipsList {
-  margin: 0;
-  padding-left: 1rem;
-  font-size: 0.6875rem;
-  color: #78350f;
-  line-height: 1.5;
-}
-
-.formatTipsList li {
-  margin-bottom: 0.125rem;
 }
