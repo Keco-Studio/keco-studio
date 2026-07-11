@@ -1,79 +1,163 @@
 import { describe, expect, it } from '@jest/globals';
-import type { StoryDocument, StoryOption } from './schema';
+import type { StoryCommand, StoryDocument, StoryNode, StoryOption } from './schema';
 import { buildStoryColumns, compileStoryTable } from './tableCompiler';
 
 const ref = { sourceId: 'src', unitId: 'src:0', start: 0, end: 1 };
 
-function option(index: number): StoryOption {
+function command(source: string, value: number): StoryCommand {
   return {
-    text: `Choice ${index}`,
-    target: `O${index}`,
-    commands: [{
-      source: `$trust+=${index}`,
-      variable: 'trust',
-      operator: '+=',
-      value: index,
-      sourceRefs: [ref],
-    }],
+    source,
+    variable: 'trust',
+    operator: source.includes('+=') ? '+=' : '=',
+    value,
     sourceRefs: [ref],
   };
 }
 
-function document(optionCount: number): StoryDocument {
+function node(label: string, overrides: Partial<StoryNode> = {}): StoryNode {
   return {
-    version: 1,
-    entryLabel: 'Start',
-    nodes: [{
-      label: 'Start',
-      type: 'dialogue',
-      speaker: 'Guide',
-      content: 'Choose',
-      commands: [],
-      options: Array.from({ length: optionCount }, (_, index) => option(index + 1)),
-      sourceRefs: [ref],
-    }],
+    label,
+    type: 'narration',
+    content: label,
+    commands: [],
+    options: [],
+    sourceRefs: [ref],
+    ...overrides,
   };
 }
 
-function cell(columns: string[], row: string[], name: string): string {
-  return row[columns.indexOf(name)];
+function option(text: string, target: string, commands: StoryCommand[] = []): StoryOption {
+  return { text, target, commands, sourceRefs: [ref] };
+}
+
+function story(nodes: StoryNode[], entryLabel = 'Start'): StoryDocument {
+  return { version: 1, entryLabel, nodes };
+}
+
+function cell(
+  compiled: ReturnType<typeof compileStoryTable>,
+  rowIndex: number,
+  column: string
+): string {
+  return compiled.rows[rowIndex][compiled.columns.indexOf(column)];
 }
 
 describe('Story IR table compiler', () => {
-  it('omits option columns for a linear story', () => {
-    expect(compileStoryTable(document(0)).columns).not.toContain('Option0');
-  });
-
-  it('creates text, target, and command columns for every option', () => {
-    const compiled = compileStoryTable(document(3));
-    expect(compiled.columns).toEqual(expect.arrayContaining([
-      'Option2',
-      'Option2_Next',
-      'Option2_Commands',
+  it('always emits the fixed 17-column reference schema', () => {
+    const compiled = compileStoryTable(story([
+      node('Start', { type: 'dialogue', speaker: 'Guide', content: 'Hello' }),
     ]));
-    expect(cell(compiled.columns, compiled.rows[0], 'Option2')).toBe('Choice 3');
-    expect(cell(compiled.columns, compiled.rows[0], 'Option2_Next')).toBe('Jump O3');
-    expect(cell(compiled.columns, compiled.rows[0], 'Option2_Commands')).toBe('$trust+=3');
+
+    expect(compiled.columns).toEqual([
+      'Label', 'Type', 'Name', 'Content', 'If', 'Commands', 'Fg', 'Fg1', 'Cg',
+      'Option0', 'Option0_Next', 'Option1', 'Option1_Next',
+      'Option2', 'Option2_Next', 'Voice', 'Bg',
+    ]);
+    expect(cell(compiled, 0, 'Type')).toBe('1');
   });
 
-  it('sorts dynamic option triplets numerically beyond option nine', () => {
-    const columns = buildStoryColumns(12);
-    expect(columns.indexOf('Option10')).toBe(columns.indexOf('Option9_Commands') + 1);
-    expect(columns.indexOf('Option11_Commands')).toBe(columns.indexOf('Voice') - 1);
+  it('uses physical fallthrough and omits ordinary sequential labels', () => {
+    const compiled = compileStoryTable(story([
+      node('Start', { next: 'Middle' }),
+      node('Middle', { next: 'EndNode' }),
+      node('EndNode'),
+    ]));
+
+    expect(cell(compiled, 0, 'Label')).toBe('Start');
+    expect(cell(compiled, 0, 'Commands')).toBe('');
+    expect(cell(compiled, 1, 'Label')).toBe('');
+    expect(cell(compiled, 1, 'Commands')).toBe('');
+    expect(cell(compiled, 2, 'Label')).toBe('');
   });
 
-  it('serializes node commands and unconditional jumps in order', () => {
-    const story = document(0);
-    story.nodes[0].commands = [{
-      source: '$trust=1',
-      variable: 'trust',
-      operator: '=',
-      value: 1,
-      sourceRefs: [ref],
-    }];
-    story.nodes[0].next = 'Oend';
-    const compiled = compileStoryTable(story);
+  it('labels option and non-fallthrough jump targets', () => {
+    const compiled = compileStoryTable(story([
+      node('Start', { options: [option('Go', 'Branch')] }),
+      node('Spacer', { next: 'Merge' }),
+      node('Branch', { next: 'Merge' }),
+      node('Merge'),
+    ]));
 
-    expect(cell(compiled.columns, compiled.rows[0], 'Commands')).toBe('$trust=1; Jump Oend');
+    expect(cell(compiled, 0, 'Option0_Next')).toBe('Jump Branch');
+    expect(cell(compiled, 1, 'Commands')).toBe('Jump Merge');
+    expect(cell(compiled, 2, 'Label')).toBe('Branch');
+    expect(cell(compiled, 3, 'Label')).toBe('Merge');
+  });
+
+  it('ends a terminal branch before later physical rows', () => {
+    const compiled = compileStoryTable(story([
+      node('Start', { options: [option('Left', 'Left'), option('Right', 'Right')] }),
+      node('Left'),
+      node('Right'),
+    ]));
+
+    expect(cell(compiled, 1, 'Commands')).toBe('End');
+    expect(cell(compiled, 2, 'Commands')).toBe('');
+  });
+
+  it('moves option commands to a uniquely entered target', () => {
+    const compiled = compileStoryTable(story([
+      node('Start', { options: [option('Go', 'Branch', [command('$trust+=1', 1)])] }),
+      node('Branch', { commands: [command('$trust+=2', 2)] }),
+    ]));
+
+    expect(compiled.columns).not.toContain('Option0_Commands');
+    expect(cell(compiled, 1, 'Commands')).toBe('$trust+=1; $trust+=2');
+  });
+
+  it('moves identical commands from option-only shared entries', () => {
+    const shared = command('$trust+=1', 1);
+    const compiled = compileStoryTable(story([
+      node('Start', { options: [option('A', 'Shared', [shared]), option('B', 'Shared', [shared])] }),
+      node('Shared'),
+    ]));
+
+    expect(compiled.columns).not.toContain('Option0_Commands');
+    expect(compiled.columns).not.toContain('Option1_Commands');
+    expect(cell(compiled, 1, 'Commands')).toBe('$trust+=1');
+  });
+
+  it('keeps different shared-target commands on their options', () => {
+    const compiled = compileStoryTable(story([
+      node('Start', {
+        options: [
+          option('A', 'Shared', [command('$trust+=1', 1)]),
+          option('B', 'Shared', [command('$trust+=2', 2)]),
+        ],
+      }),
+      node('Shared'),
+    ]));
+
+    expect(compiled.columns.slice(17)).toEqual(['Option0_Commands', 'Option1_Commands']);
+    expect(cell(compiled, 0, 'Option0_Commands')).toBe('$trust+=1');
+    expect(cell(compiled, 0, 'Option1_Commands')).toBe('$trust+=2');
+    expect(cell(compiled, 1, 'Commands')).toBe('');
+  });
+
+  it('keeps option commands when the target also has a non-option entry', () => {
+    const compiled = compileStoryTable(story([
+      node('Start', { options: [option('Go', 'Shared', [command('$trust+=1', 1)])] }),
+      node('Other', { next: 'Shared' }),
+      node('Shared'),
+    ]));
+
+    expect(compiled.columns.slice(17)).toEqual(['Option0_Commands']);
+    expect(cell(compiled, 0, 'Option0_Commands')).toBe('$trust+=1');
+  });
+
+  it('appends fourth and later options after the fixed schema', () => {
+    expect(buildStoryColumns(4)).toEqual([
+      'Label', 'Type', 'Name', 'Content', 'If', 'Commands', 'Fg', 'Fg1', 'Cg',
+      'Option0', 'Option0_Next', 'Option1', 'Option1_Next',
+      'Option2', 'Option2_Next', 'Voice', 'Bg', 'Option3', 'Option3_Next',
+    ]);
+  });
+
+  it.each([
+    ['missing entry', story([node('Start')], 'Missing'), /entry/i],
+    ['missing target', story([node('Start', { next: 'Missing' })]), /target/i],
+    ['duplicate label', story([node('Start'), node('Start')]), /duplicate/i],
+  ])('rejects %s', (_name, document, message) => {
+    expect(() => compileStoryTable(document)).toThrow(message);
   });
 });
