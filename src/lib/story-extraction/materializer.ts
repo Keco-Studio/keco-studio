@@ -2,7 +2,11 @@ import type { RoleMap } from '@/lib/script-parser';
 import { sourceRefForUnit } from '@/lib/story-ir/sourceUnits';
 import type { StoryCommand, StoryDocument, StoryNode, StoryOption } from '@/lib/story-ir/schema';
 import type { SegmentedStorySource, SourceCommand } from '@/lib/story-plan/sourceSegments';
-import type { StoryExtraction, StoryExtractionNode } from './schema';
+import type {
+  StoryExtraction,
+  StoryExtractionChoice,
+  StoryExtractionNode,
+} from './schema';
 
 export type StoryExtractionIssueCode =
   | 'unknown_unit'
@@ -13,6 +17,7 @@ export type StoryExtractionIssueCode =
   | 'duplicate_command'
   | 'wrong_command_owner'
   | 'duplicate_node'
+  | 'duplicate_choice'
   | 'invalid_entry'
   | 'unresolved_target'
   | 'unreachable_node'
@@ -41,12 +46,16 @@ export function materializeStoryExtraction(
   source: SegmentedStorySource,
   roleMap: RoleMap = {}
 ): StoryDocument {
+  extraction = normalizeStoryExtraction(extraction, source);
   const issues: StoryExtractionIssue[] = [];
   const unitsById = new Map(source.units.map((unit) => [unit.id, unit]));
   const unitOwners = new Map<string, string[]>();
+  const visibleClaims = new Map<string, Array<{ owner: string; value: string }>>();
   const commandUsage = new Map<string, string[]>();
   const commandsBySource = groupCommandsBySource(source.commands);
   const nodesById = new Map<string, StoryExtractionNode>();
+  const choicesByNode = new Map<string, StoryExtractionChoice[]>();
+  const choiceIds = new Set<string>();
 
   const ownUnits = (unitIds: string[], owner: string): void => {
     for (const unitId of unitIds) {
@@ -70,17 +79,32 @@ export function materializeStoryExtraction(
     ownUnits(node.sourceUnitIds, node.id);
     validateTraceability(node.speaker, node.sourceUnitIds, node.id, 'speaker');
     validateTraceability(node.content, node.sourceUnitIds, node.id, 'content');
-    useCommands(node.commandSources, node.sourceUnitIds, node.id);
-    node.choices.forEach((choice, index) => {
-      const owner = `${node.id}.choices.${index}`;
-      ownUnits(choice.sourceUnitIds, owner);
-      validateTraceability(choice.text, choice.sourceUnitIds, owner, 'option text');
-      useCommands(choice.commandSources, choice.sourceUnitIds, owner);
-    });
+    assignCommands(node.commandSources, node.sourceUnitIds, node.id);
+  }
+  for (const choice of extraction.choices) {
+    const owner = `${choice.fromNodeId}.choice.${choice.id}`;
+    if (choiceIds.has(choice.id)) {
+      push('duplicate_choice', `Duplicate choice id ${choice.id}`, [], [choice.fromNodeId]);
+    }
+    choiceIds.add(choice.id);
+    const choices = choicesByNode.get(choice.fromNodeId) ?? [];
+    choices.push(choice);
+    choicesByNode.set(choice.fromNodeId, choices);
+    ownUnits(choice.sourceUnitIds, owner);
+    validateTraceability(choice.text, choice.sourceUnitIds, owner, 'option text');
+    assignCommands(choice.commandSources, choice.sourceUnitIds, owner);
   }
 
   for (const [unitId, owners] of unitOwners) {
-    if (owners.length > 1) {
+    const claims = visibleClaims.get(unitId) ?? [];
+    const duplicateClaim = claims.some((claim, index) =>
+      claim.value
+      && claims.findIndex((candidate) => candidate.value === claim.value) !== index
+    );
+    if (
+      owners.length > 1
+      && (owners.includes('structural') || duplicateClaim)
+    ) {
       push('duplicate_unit', `Source unit ${unitId} is assigned more than once`, [unitId], owners);
     }
   }
@@ -98,7 +122,7 @@ export function materializeStoryExtraction(
     }
   }
 
-  validateGraph(extraction, nodesById, issues);
+  validateGraph(extraction, nodesById, choicesByNode, issues);
   if (issues.length > 0) throw new StoryExtractionValidationError(issues);
 
   return {
@@ -111,7 +135,7 @@ export function materializeStoryExtraction(
       content: node.content,
       commands: hydrateCommands(node.commandSources, node.sourceUnitIds),
       ...(node.nextNodeId ? { next: node.nextNodeId } : {}),
-      options: node.choices.map((choice): StoryOption => ({
+      options: (choicesByNode.get(node.id) ?? []).map((choice): StoryOption => ({
         text: choice.text,
         target: choice.targetNodeId,
         commands: hydrateCommands(choice.commandSources, choice.sourceUnitIds),
@@ -133,10 +157,19 @@ export function materializeStoryExtraction(
       .join('\n');
     if (!isTraceable(value, evidence)) {
       push('untraceable_content', `${field} for ${owner} is not traceable to its source units`, unitIds, [owner]);
+      return;
+    }
+    if (field !== 'speaker') {
+      const normalized = normalizeEvidence(value);
+      unitIds.forEach((unitId) => {
+        const claims = visibleClaims.get(unitId) ?? [];
+        claims.push({ owner, value: normalized });
+        visibleClaims.set(unitId, claims);
+      });
     }
   }
 
-  function useCommands(commandSources: string[], unitIds: string[], owner: string): void {
+  function assignCommands(commandSources: string[], unitIds: string[], owner: string): void {
     for (const commandSource of commandSources) {
       const candidates = commandsBySource.get(normalizeCommand(commandSource)) ?? [];
       const command = candidates.find((candidate) => unitIds.includes(unitForCommand(candidate)))
@@ -182,9 +215,248 @@ export function materializeStoryExtraction(
   }
 }
 
+export function normalizeStoryExtraction(
+  extraction: StoryExtraction,
+  source?: SegmentedStorySource
+): StoryExtraction {
+  let entryNodeId = extraction.entryNodeId;
+  const addedStructuralUnitIds = new Set<string>();
+  const commandUnitId = (command: SourceCommand): string => source?.segments
+    .find((segment) => segment.id === command.segmentId)?.unitId ?? '';
+  const canonicalizeCommandSources = (values: string[]): string[] => values.map((value) => {
+    if (!source) return value;
+    const exact = source.commands.find((command) => normalizeCommand(command.source) === normalizeCommand(value));
+    if (exact) return exact.source;
+    const byId = source.commands.find((command) => command.id === value);
+    if (byId) return byId.source;
+    const unitCommands = source.commands.filter((command) =>
+      source.segments.find((segment) => segment.id === command.segmentId)?.unitId === value
+    );
+    if (unitCommands.length === 1) return unitCommands[0].source;
+    const embeddedCommands = value.match(
+      /\$[A-Za-z_]\w*\s*(?:\+=|-=|\*=|\/=|=)\s*-?(?:\d+\.?\d*|\.\d+)/g
+    ) ?? [];
+    if (embeddedCommands.length !== 1) return value;
+    return source.commands.find((command) =>
+      normalizeCommand(command.source) === normalizeCommand(embeddedCommands[0])
+    )?.source ?? value;
+  });
+  const normalizeEvidenceUnitIds = (
+    value: string,
+    speaker: string,
+    unitIds: string[]
+  ): string[] => {
+    if (!source || !value.trim()) return unitIds;
+    if (unitIds.some((unitId) => !source.units.some((unit) => unit.id === unitId))) {
+      return unitIds;
+    }
+    const currentEvidence = unitIds
+      .map((unitId) => source.units.find((unit) => unit.id === unitId)?.text ?? '')
+      .join('\n');
+    if (
+      isTraceable(value, currentEvidence)
+      && (!speaker.trim() || isTraceable(speaker, currentEvidence))
+    ) {
+      return unitIds;
+    }
+    const matches = source.units.filter((unit) =>
+      isTraceable(value, unit.text)
+      && (!speaker.trim() || isTraceable(speaker, unit.text))
+    );
+    return matches.length === 1 ? [matches[0].id] : unitIds;
+  };
+  const addCommandUnits = (
+    unitIds: string[],
+    commandSources: string[],
+    rawCommandSources: string[]
+  ): string[] => {
+    if (!source) return unitIds;
+    const result = new Set(unitIds);
+    commandSources.forEach((commandSource, index) => {
+      const commands = source.commands.filter((candidate) =>
+        normalizeCommand(candidate.source) === normalizeCommand(commandSource)
+      );
+      if (commands.some((command) => result.has(commandUnitId(command)))) return;
+      const rawSource = rawCommandSources[index] ?? '';
+      const hintedCommands = commands.filter((command) => rawSource.includes(commandUnitId(command)));
+      const selected = hintedCommands.length === 1
+        ? hintedCommands[0]
+        : commands.length === 1 ? commands[0] : undefined;
+      const unitId = selected ? commandUnitId(selected) : '';
+      if (unitId) result.add(unitId);
+    });
+    return [...result];
+  };
+  let nodes = extraction.nodes.map((node) => {
+    const commandSources = canonicalizeCommandSources(node.commandSources);
+    const evidenceUnitIds = normalizeEvidenceUnitIds(
+      node.content,
+      node.speaker,
+      node.sourceUnitIds
+    );
+    return {
+    ...node,
+      commandSources,
+      sourceUnitIds: addCommandUnits(evidenceUnitIds, commandSources, node.commandSources),
+    };
+  });
+  let choices = extraction.choices.map((choice) => {
+    const commandSources = canonicalizeCommandSources(choice.commandSources);
+    const text = cleanChoiceText(choice.text);
+    const evidenceUnitIds = normalizeEvidenceUnitIds(text, '', choice.sourceUnitIds);
+    return {
+      ...choice,
+      text,
+      commandSources,
+      sourceUnitIds: addCommandUnits(evidenceUnitIds, commandSources, choice.commandSources),
+    };
+  });
+
+  for (const structuralNode of [...nodes]) {
+    if (
+      structuralNode.commandSources.length > 0
+      || !isStructuralControlNode(structuralNode.content)
+    ) continue;
+    const incomingNext = nodes.filter((node) => node.nextNodeId === structuralNode.id);
+    const incomingChoices = choices.filter((choice) => choice.targetNodeId === structuralNode.id);
+    const ownedChoices = choices.filter((choice) => choice.fromNodeId === structuralNode.id);
+    let removable = false;
+
+    if (
+      ownedChoices.length > 0
+      && !structuralNode.nextNodeId
+      && incomingNext.length === 1
+      && incomingChoices.length === 0
+    ) {
+      const ownerId = incomingNext[0].id;
+      nodes = nodes.map((node) => node.id === ownerId ? { ...node, nextNodeId: '' } : node);
+      choices = choices.map((choice) => choice.fromNodeId === structuralNode.id
+        ? { ...choice, fromNodeId: ownerId }
+        : choice);
+      removable = true;
+    } else if (ownedChoices.length === 0 && structuralNode.nextNodeId) {
+      nodes = nodes.map((node) => node.nextNodeId === structuralNode.id
+        ? { ...node, nextNodeId: structuralNode.nextNodeId }
+        : node);
+      choices = choices.map((choice) => choice.targetNodeId === structuralNode.id
+        ? { ...choice, targetNodeId: structuralNode.nextNodeId }
+        : choice);
+      if (entryNodeId === structuralNode.id) entryNodeId = structuralNode.nextNodeId;
+      removable = true;
+    } else if (
+      ownedChoices.length === 0
+      && incomingNext.length === 0
+      && incomingChoices.length === 0
+      && entryNodeId !== structuralNode.id
+    ) {
+      removable = true;
+    }
+
+    if (removable) {
+      structuralNode.sourceUnitIds.forEach((unitId) => addedStructuralUnitIds.add(unitId));
+      nodes = nodes.filter((node) => node.id !== structuralNode.id);
+    }
+  }
+
+  if (source) {
+    const commandUnitFor = (commandSource: string, unitIds: string[]): string => {
+      const candidates = source.commands.filter((command) =>
+        normalizeCommand(command.source) === normalizeCommand(commandSource)
+        && unitIds.includes(commandUnitId(command))
+      );
+      return candidates.length === 1 ? commandUnitId(candidates[0]) : '';
+    };
+    const choiceTargetsByCommandUnit = new Map<string, Set<string>>();
+    choices.forEach((choice) => {
+      choice.commandSources.forEach((commandSource) => {
+        const unitId = commandUnitFor(commandSource, choice.sourceUnitIds);
+        if (!unitId) return;
+        const targets = choiceTargetsByCommandUnit.get(unitId) ?? new Set<string>();
+        targets.add(choice.targetNodeId);
+        choiceTargetsByCommandUnit.set(unitId, targets);
+      });
+    });
+    nodes = nodes.map((node) => {
+      const removedUnits = new Set<string>();
+      const commandSources = node.commandSources.filter((commandSource) => {
+        const unitId = commandUnitFor(commandSource, node.sourceUnitIds);
+        const unitText = source.units.find((unit) => unit.id === unitId)?.text ?? '';
+        const duplicatedChoiceTrigger = Boolean(
+          unitId
+          && /选择(?:发生)?时(?:让|执行)/.test(unitText)
+          && choiceTargetsByCommandUnit.get(unitId)?.has(node.id)
+        );
+        if (duplicatedChoiceTrigger) removedUnits.add(unitId);
+        return !duplicatedChoiceTrigger;
+      });
+      if (removedUnits.size === 0) return node;
+      const remainingUnitIds = node.sourceUnitIds.filter((unitId) => !removedUnits.has(unitId));
+      const evidence = remainingUnitIds
+        .map((unitId) => source.units.find((unit) => unit.id === unitId)?.text ?? '')
+        .join('\n');
+      const canDropUnits = isTraceable(node.content, evidence)
+        && (!node.speaker.trim() || isTraceable(node.speaker, evidence));
+      return {
+        ...node,
+        commandSources,
+        sourceUnitIds: canDropUnits ? remainingUnitIds : node.sourceUnitIds,
+      };
+    });
+  }
+
+  const choicesByOwner = new Map<string, StoryExtractionChoice[]>();
+  choices.forEach((choice) => {
+    const ownerChoices = choicesByOwner.get(choice.fromNodeId) ?? [];
+    ownerChoices.push(choice);
+    choicesByOwner.set(choice.fromNodeId, ownerChoices);
+  });
+  const convertedChoiceIds = new Set<string>();
+  nodes = nodes.map((node) => {
+    const ownerChoices = choicesByOwner.get(node.id) ?? [];
+    if (
+      !node.nextNodeId
+      && ownerChoices.length === 1
+      && ownerChoices[0].commandSources.length === 0
+      && /^(?:continue|next|继续)$/i.test(ownerChoices[0].text.trim())
+    ) {
+      convertedChoiceIds.add(ownerChoices[0].id);
+      return { ...node, nextNodeId: ownerChoices[0].targetNodeId };
+    }
+    return node;
+  });
+  choices = choices.filter((choice) => !convertedChoiceIds.has(choice.id));
+  const visibleUnitIds = new Set([
+    ...nodes.flatMap((node) => node.sourceUnitIds),
+    ...choices.flatMap((choice) => choice.sourceUnitIds),
+  ]);
+  const structuralUnitIds = new Set(
+    extraction.structuralUnitIds.filter((unitId) => !visibleUnitIds.has(unitId))
+  );
+  addedStructuralUnitIds.forEach((unitId) => {
+    if (!visibleUnitIds.has(unitId)) structuralUnitIds.add(unitId);
+  });
+  source?.units.forEach((unit) => {
+    if (
+      !visibleUnitIds.has(unit.id)
+      && !structuralUnitIds.has(unit.id)
+      && isClearlyStructuralUnit(unit.text)
+    ) {
+      structuralUnitIds.add(unit.id);
+    }
+  });
+  return {
+    ...extraction,
+    entryNodeId,
+    nodes,
+    choices,
+    structuralUnitIds: [...structuralUnitIds],
+  };
+}
+
 function validateGraph(
   extraction: StoryExtraction,
   nodesById: Map<string, StoryExtractionNode>,
+  choicesByNode: Map<string, StoryExtractionChoice[]>,
   issues: StoryExtractionIssue[]
 ): void {
   const add = (code: StoryExtractionIssueCode, message: string, nodeIds: string[]) => {
@@ -194,16 +466,19 @@ function validateGraph(
     add('invalid_entry', `Entry node ${extraction.entryNodeId} does not exist`, [extraction.entryNodeId]);
   }
   for (const node of extraction.nodes) {
-    if (node.choices.length > 0 && node.nextNodeId) {
+    if ((choicesByNode.get(node.id)?.length ?? 0) > 0 && node.nextNodeId) {
       add('branch_leak', `Node ${node.id} has choices and an automatic transition`, [node.id]);
     }
     if (node.nextNodeId && !nodesById.has(node.nextNodeId)) {
       add('unresolved_target', `Target ${node.nextNodeId} does not exist`, [node.id]);
     }
-    for (const choice of node.choices) {
-      if (!nodesById.has(choice.targetNodeId)) {
-        add('unresolved_target', `Target ${choice.targetNodeId} does not exist`, [node.id]);
-      }
+  }
+  for (const choice of extraction.choices) {
+    if (!nodesById.has(choice.fromNodeId)) {
+      add('unresolved_target', `Choice owner ${choice.fromNodeId} does not exist`, [choice.fromNodeId]);
+    }
+    if (!nodesById.has(choice.targetNodeId)) {
+      add('unresolved_target', `Target ${choice.targetNodeId} does not exist`, [choice.fromNodeId]);
     }
   }
 
@@ -216,7 +491,7 @@ function validateGraph(
       if (!node || reachable.has(id)) continue;
       reachable.add(id);
       if (node.nextNodeId) pending.push(node.nextNodeId);
-      node.choices.forEach((choice) => pending.push(choice.targetNodeId));
+      (choicesByNode.get(node.id) ?? []).forEach((choice) => pending.push(choice.targetNodeId));
     }
     extraction.nodes.forEach((node) => {
       if (!reachable.has(node.id)) {
@@ -254,6 +529,17 @@ function normalizeCommand(value: string): string {
   return value.replace(/\s+/g, '');
 }
 
+function cleanChoiceText(value: string): string {
+  const cleaned = value
+    .trim()
+    .replace(/\$[A-Za-z_]\w*\s*(?:\+=|-=|\*=|\/=|=)\s*-?(?:\d+\.?\d*|\.\d+)/g, '')
+    .replace(/^\s*[-*+]\s+/, '')
+    .replace(/^\s*如果(?:你)?选择\s*/, '')
+    .replace(/[\s，,。.!！;；:：]*(?:选择发生时让|选择发生时执行|选择时执行|选择时让)[\s，,。.!！;；:：]*$/i, '')
+    .trim();
+  return cleaned || value;
+}
+
 function isTraceable(value: string, evidence: string): boolean {
   const normalizedEvidence = normalizeEvidence(evidence);
   const normalizedValue = normalizeEvidence(value);
@@ -273,4 +559,15 @@ function normalizeEvidence(value: string): string {
     .replace(/^\s*(?:[-*+]\s+|\d+[.)、]\s*)/, '')
     .replace(/[\s“”‘’"'「」『』【】()[\]（）:：,，。.!！?？;；]/g, '')
     .toLowerCase();
+}
+
+function isClearlyStructuralUnit(value: string): boolean {
+  const text = value.trim();
+  return /^(?:最终合流|合流|统一收尾|触发分支选择|这里有(?:两个|三个|四个|\d+个)?选择)\s*[：:]?$/i.test(text)
+    || /^[（(]\s*(?:Jump|跳转)\s+[^）)]+[）)]$/i.test(text);
+}
+
+function isStructuralControlNode(value: string): boolean {
+  return isClearlyStructuralUnit(value)
+    || /^如果(?:你)?选择[\s\S]*选择(?:发生)?时(?:让|执行)/.test(value.trim());
 }

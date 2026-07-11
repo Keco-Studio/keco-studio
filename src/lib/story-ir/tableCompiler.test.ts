@@ -95,26 +95,29 @@ describe('Story IR table compiler', () => {
     expect(cell(compiled, 2, 'Commands')).toBe('');
   });
 
-  it('moves option commands to a uniquely entered target', () => {
+  it('keeps option commands on the option even with a uniquely entered target', () => {
     const compiled = compileStoryTable(story([
       node('Start', { options: [option('Go', 'Branch', [command('$trust+=1', 1)])] }),
       node('Branch', { commands: [command('$trust+=2', 2)] }),
     ]));
 
-    expect(compiled.columns).not.toContain('Option0_Commands');
-    expect(cell(compiled, 1, 'Commands')).toBe('$trust+=1; $trust+=2');
+    expect(compiled.columns).toContain('Option0_Commands');
+    expect(cell(compiled, 0, 'Option0_Commands')).toBe('$trust+=1');
+    expect(cell(compiled, 1, 'Commands')).toBe('$trust+=2');
   });
 
-  it('moves identical commands from option-only shared entries', () => {
+  it('keeps identical commands on options that share a target', () => {
     const shared = command('$trust+=1', 1);
     const compiled = compileStoryTable(story([
       node('Start', { options: [option('A', 'Shared', [shared]), option('B', 'Shared', [shared])] }),
       node('Shared'),
     ]));
 
-    expect(compiled.columns).not.toContain('Option0_Commands');
-    expect(compiled.columns).not.toContain('Option1_Commands');
-    expect(cell(compiled, 1, 'Commands')).toBe('$trust+=1');
+    expect(compiled.columns).toContain('Option0_Commands');
+    expect(compiled.columns).toContain('Option1_Commands');
+    expect(cell(compiled, 0, 'Option0_Commands')).toBe('$trust+=1');
+    expect(cell(compiled, 0, 'Option1_Commands')).toBe('$trust+=1');
+    expect(cell(compiled, 1, 'Commands')).toBe('');
   });
 
   it('keeps different shared-target commands on their options', () => {
@@ -143,6 +146,21 @@ describe('Story IR table compiler', () => {
 
     expect(compiled.columns.slice(17)).toEqual(['Option0_Commands']);
     expect(cell(compiled, 0, 'Option0_Commands')).toBe('$trust+=1');
+  });
+
+  it('keeps every option command on its owning row when rows share an option index', () => {
+    const compiled = compileStoryTable(story([
+      node('Start', { options: [option('Safe', 'SafeTarget', [command('$trust+=1', 1)])] }),
+      node('SafeTarget', { next: 'Decision' }),
+      node('Decision', { options: [option('Shared', 'Shared', [command('$trust+=2', 2)])] }),
+      node('Other', { next: 'Shared' }),
+      node('Shared'),
+    ]));
+
+    expect(compiled.columns).toContain('Option0_Commands');
+    expect(cell(compiled, 0, 'Option0_Commands')).toBe('$trust+=1');
+    expect(cell(compiled, 1, 'Commands')).toBe('');
+    expect(cell(compiled, 2, 'Option0_Commands')).toBe('$trust+=2');
   });
 
   it('appends fourth and later options after the fixed schema', () => {

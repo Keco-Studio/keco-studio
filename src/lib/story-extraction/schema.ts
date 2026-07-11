@@ -5,9 +5,11 @@ const IdSchema = z.string().regex(LABEL_PATTERN);
 const UnitIdSchema = z.string().min(1);
 
 export const StoryExtractionChoiceSchema = z.object({
+  id: IdSchema,
+  fromNodeId: IdSchema,
   text: z.string().min(1),
   targetNodeId: IdSchema,
-  sourceUnitIds: z.array(UnitIdSchema).min(1),
+  sourceUnitIds: z.array(UnitIdSchema),
   commandSources: z.array(z.string().min(1)),
 }).strict();
 
@@ -16,10 +18,9 @@ export const StoryExtractionNodeSchema = z.object({
   type: z.enum(['dialogue', 'narration', 'scene', 'system']),
   speaker: z.string(),
   content: z.string(),
-  sourceUnitIds: z.array(UnitIdSchema).min(1),
+  sourceUnitIds: z.array(UnitIdSchema),
   commandSources: z.array(z.string().min(1)),
   nextNodeId: z.string(),
-  choices: z.array(StoryExtractionChoiceSchema),
 }).strict().superRefine((node, context) => {
   if (node.type === 'dialogue' && !node.speaker.trim()) {
     context.addIssue({ code: z.ZodIssueCode.custom, message: 'Dialogue speaker is required' });
@@ -34,6 +35,7 @@ export const StoryExtractionSchema = z.object({
   entryNodeId: IdSchema,
   structuralUnitIds: z.array(UnitIdSchema),
   nodes: z.array(StoryExtractionNodeSchema).min(1),
+  choices: z.array(StoryExtractionChoiceSchema),
 }).strict();
 
 export type StoryExtractionChoice = z.infer<typeof StoryExtractionChoiceSchema>;

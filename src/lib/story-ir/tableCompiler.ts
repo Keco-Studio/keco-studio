@@ -8,25 +8,13 @@ export interface CompiledStoryTable {
   rows: string[][];
 }
 
-type IncomingEdge =
-  | { kind: 'entry' }
-  | { kind: 'next'; sourceLabel: string }
-  | {
-      kind: 'option';
-      sourceLabel: string;
-      optionIndex: number;
-      commands: StoryCommand[];
-    };
-
 type OptionPlacement = {
-  movedCommandsByTarget: Map<string, StoryCommand[]>;
   commandColumnIndexes: Set<number>;
 };
 
 export function compileStoryTable(document: StoryDocument): CompiledStoryTable {
   const nodeIndex = validateDocument(document);
-  const incoming = analyzeIncomingEdges(document);
-  const placement = planOptionCommandPlacement(document, incoming);
+  const placement = planOptionCommandPlacement(document);
   const maxOptions = Math.max(0, ...document.nodes.map((node) => node.options.length));
   const columns = buildStoryColumns(maxOptions, placement.commandColumnIndexes);
   const labels = requiredLabels(document, nodeIndex);
@@ -71,61 +59,17 @@ function validateDocument(document: StoryDocument): Map<string, number> {
   return nodeIndex;
 }
 
-function analyzeIncomingEdges(document: StoryDocument): Map<string, IncomingEdge[]> {
-  const incoming = new Map(document.nodes.map((node) => [node.label, [] as IncomingEdge[]]));
-  incoming.get(document.entryLabel)?.push({ kind: 'entry' });
-
-  for (const node of document.nodes) {
-    if (node.next) {
-      incoming.get(node.next)?.push({ kind: 'next', sourceLabel: node.label });
-    }
-    node.options.forEach((option, optionIndex) => {
-      incoming.get(option.target)?.push({
-        kind: 'option',
-        sourceLabel: node.label,
-        optionIndex,
-        commands: option.commands,
-      });
-    });
-  }
-  return incoming;
-}
-
-function planOptionCommandPlacement(
-  document: StoryDocument,
-  incoming: Map<string, IncomingEdge[]>
-): OptionPlacement {
-  const movedCommandsByTarget = new Map<string, StoryCommand[]>();
-  const safeTargets = new Set<string>();
-
-  for (const node of document.nodes) {
-    const edges = incoming.get(node.label) ?? [];
-    const optionEdges = edges.filter(
-      (edge): edge is Extract<IncomingEdge, { kind: 'option' }> => edge.kind === 'option'
-    );
-    if (
-      node.label !== document.entryLabel
-      && optionEdges.length > 0
-      && optionEdges.length === edges.length
-      && optionEdges.every((edge) => sameCommands(edge.commands, optionEdges[0].commands))
-    ) {
-      safeTargets.add(node.label);
-      if (optionEdges[0].commands.length > 0) {
-        movedCommandsByTarget.set(node.label, optionEdges[0].commands);
-      }
-    }
-  }
-
+function planOptionCommandPlacement(document: StoryDocument): OptionPlacement {
   const commandColumnIndexes = new Set<number>();
   for (const node of document.nodes) {
     node.options.forEach((option, optionIndex) => {
-      if (option.commands.length > 0 && !safeTargets.has(option.target)) {
+      if (option.commands.length > 0) {
         commandColumnIndexes.add(optionIndex);
       }
     });
   }
 
-  return { movedCommandsByTarget, commandColumnIndexes };
+  return { commandColumnIndexes };
 }
 
 function requiredLabels(
@@ -150,7 +94,6 @@ function compileNode(
   labels: Set<string>,
   placement: OptionPlacement
 ): string[] {
-  const movedCommands = placement.movedCommandsByTarget.get(node.label) ?? [];
   const physicalNext = document.nodes[index + 1]?.label;
   const control = node.next
     ? node.next === physicalNext ? '' : `Jump ${node.next}`
@@ -160,7 +103,7 @@ function compileNode(
     ['Type', node.type === 'dialogue' ? '1' : '2'],
     ['Name', node.speaker ?? ''],
     ['Content', node.content],
-    ['Commands', [serializeCommands(movedCommands), serializeCommands(node.commands), control]
+    ['Commands', [serializeCommands(node.commands), control]
       .filter(Boolean)
       .join('; ')],
   ]);
@@ -174,10 +117,6 @@ function compileNode(
   });
 
   return columns.map((column) => values.get(column) ?? '');
-}
-
-function sameCommands(left: StoryCommand[], right: StoryCommand[]): boolean {
-  return serializeCommands(left) === serializeCommands(right);
 }
 
 export function serializeCommands(commands: StoryCommand[]): string {

@@ -33,11 +33,15 @@ describe('story audit projection', () => {
         { text: '走右边。', targetNodeId: 'O2', commands: ['$trust+=2'] },
       ],
     });
-    expect(projection.table.columns).toEqual([...STORY_BASE_COLUMNS]);
+    expect(projection.table.columns).toEqual([
+      ...STORY_BASE_COLUMNS,
+      'Option0_Commands',
+      'Option1_Commands',
+    ]);
     const o1Row = projection.table.rows.find(
       (row) => row[projection.table.columns.indexOf('Label')] === 'O1'
     );
-    expect(o1Row?.[projection.table.columns.indexOf('Commands')]).toBe('$trust+=1');
+    expect(o1Row?.[projection.table.columns.indexOf('Option0_Commands')]).toBe('$trust+=1');
   });
 
   it('enumerates all four terminal paths without sibling leakage', () => {
@@ -48,6 +52,13 @@ describe('story audit projection', () => {
       { labels: ['Start', 'O1', 'O1B_END', 'Oend'], terminalLabel: 'Oend' },
       { labels: ['Start', 'O2', 'O2A_END', 'Oend'], terminalLabel: 'Oend' },
       { labels: ['Start', 'O2', 'O2B_END', 'Oend'], terminalLabel: 'Oend' },
+    ]);
+    expect(projection.tablePaths).toHaveLength(4);
+    expect(projection.tablePaths.map((path) => path.rowIndexes)).toEqual([
+      [0, 1, 2, 7],
+      [0, 1, 3, 7],
+      [0, 4, 5, 7],
+      [0, 4, 6, 7],
     ]);
   });
 

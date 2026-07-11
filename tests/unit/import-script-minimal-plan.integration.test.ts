@@ -14,7 +14,8 @@ import { resolveStoryPlanForImport } from '@/lib/story-plan/conversion';
 import { compileStoryTable } from '@/lib/story-ir/tableCompiler';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { StoryExtraction } from '@/lib/story-extraction/schema';
-import { segmentStorySource } from '@/lib/story-plan/sourceSegments';
+import type { StoryContentExtraction, StoryGraphExtraction } from '@/lib/story-extraction/pipeline';
+import { segmentStorySource, type SegmentedStorySource } from '@/lib/story-plan/sourceSegments';
 import { tryParseExplicitStory, tryParseNaturalBranchStory } from '@/lib/story-plan/explicitParser';
 import { hydrateStoryDocument } from '@/lib/story-plan/hydrator';
 
@@ -37,9 +38,9 @@ function fixtureExtraction(content: string, sourceId: string): StoryExtraction {
   const generatedLabels = new Set(document.nodes
     .filter((node) => node.structuralRepair?.kind === 'generated_label')
     .map((node) => node.label));
-  const nodes = document.nodes
-    .filter((node) => !generatedLabels.has(node.label))
-    .map((node) => ({
+  const sourceNodes = document.nodes
+    .filter((node) => !generatedLabels.has(node.label));
+  const nodes = sourceNodes.map((node) => ({
       id: node.label,
       type: node.type,
       speaker: node.speaker ?? '',
@@ -47,17 +48,19 @@ function fixtureExtraction(content: string, sourceId: string): StoryExtraction {
       sourceUnitIds: node.sourceRefs.map((ref) => ref.unitId),
       commandSources: node.commands.map((command) => command.source),
       nextNodeId: node.next && !generatedLabels.has(node.next) ? node.next : '',
-      choices: node.options.map((option) => ({
-        text: option.text,
-        targetNodeId: option.target,
-        sourceUnitIds: option.sourceRefs.map((ref) => ref.unitId),
-        commandSources: option.commands.map((command) => command.source),
-      })),
     }));
-  const visibleUnits = new Set(nodes.flatMap((node) => [
-    ...node.sourceUnitIds,
-    ...node.choices.flatMap((choice) => choice.sourceUnitIds),
-  ]));
+  const choices = sourceNodes.flatMap((node) => node.options.map((option, index) => ({
+    id: `${node.label}_choice_${index}`,
+    fromNodeId: node.label,
+    text: option.text,
+    targetNodeId: option.target,
+    sourceUnitIds: option.sourceRefs.map((ref) => ref.unitId),
+    commandSources: option.commands.map((command) => command.source),
+  })));
+  const visibleUnits = new Set([
+    ...nodes.flatMap((node) => node.sourceUnitIds),
+    ...choices.flatMap((choice) => choice.sourceUnitIds),
+  ]);
   return {
     version: 3,
     entryNodeId: document.entryLabel,
@@ -65,7 +68,72 @@ function fixtureExtraction(content: string, sourceId: string): StoryExtraction {
       .map((unit) => unit.id)
       .filter((unitId) => !visibleUnits.has(unitId)),
     nodes,
+    choices,
   };
+}
+
+function splitFixtureExtraction(
+  extraction: StoryExtraction,
+  source: SegmentedStorySource
+): {
+  content: StoryContentExtraction;
+  graph: StoryGraphExtraction;
+} {
+  const commandIds = (sources: string[], unitIds: string[]) => sources.map((commandSource) => {
+    const command = source.commands.find((candidate) => {
+      const unitId = source.segments.find((segment) => segment.id === candidate.segmentId)?.unitId;
+      return candidate.source.replace(/\s+/g, '') === commandSource.replace(/\s+/g, '')
+        && Boolean(unitId && unitIds.includes(unitId));
+    });
+    if (!command) throw new Error(`Could not locate command ref for ${commandSource}`);
+    return command.id;
+  });
+  return {
+    content: {
+      version: 3,
+      structuralUnitIds: extraction.structuralUnitIds,
+      nodes: extraction.nodes.map(({ nextNodeId: _nextNodeId, commandSources: _commandSources, ...node }) => ({
+        ...node,
+      })),
+      choices: extraction.choices.map(({
+        fromNodeId: _fromNodeId,
+        targetNodeId: _targetNodeId,
+        commandSources: _commandSources,
+        ...choice
+      }) => ({
+        ...choice,
+      })),
+    },
+    graph: {
+      version: 3,
+      entryNodeId: extraction.entryNodeId,
+      nodeLinks: extraction.nodes.map((node) => `${node.id}->${node.nextNodeId}`),
+      choiceLinks: extraction.choices.map((choice) => (
+        `${choice.id}->${choice.fromNodeId}->${choice.targetNodeId}`
+      )),
+      commandLinks: [
+        ...extraction.nodes.flatMap((node) => commandIds(
+          node.commandSources,
+          node.sourceUnitIds
+        ).map((unitId) => `${unitId}->node->${node.id}`)),
+        ...extraction.choices.flatMap((choice) => commandIds(
+          choice.commandSources,
+          choice.sourceUnitIds
+        ).map((unitId) => `${unitId}->choice->${choice.id}`)),
+      ],
+    },
+  };
+}
+
+function queueFixture(content: string, sourceId: string): void {
+  const extraction = splitFixtureExtraction(
+    fixtureExtraction(content, sourceId),
+    segmentStorySource(content, sourceId)
+  );
+  mockedCompleteLlm
+    .mockResolvedValueOnce(JSON.stringify(extraction.content))
+    .mockResolvedValueOnce(JSON.stringify(extraction.graph))
+    .mockResolvedValueOnce(JSON.stringify(passAudit));
 }
 
 function tableRows(columns: string[], rows: string[][]): AssetRow[] {
@@ -111,13 +179,11 @@ describe('minimal audited story plan integration', () => {
   beforeEach(() => mockedCompleteLlm.mockReset());
 
   it('parses explicit nested choices, audits once, and plays all four trust paths', async () => {
-    mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(fixtureExtraction(nested, 'nested')))
-      .mockResolvedValueOnce(JSON.stringify(passAudit));
+    queueFixture(nested, 'nested');
     const resolved = await resolveStoryPlanForImport(nested, { sourceId: 'nested' });
 
     expect(resolved.converted).toBe(true);
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(2);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(3);
     const paths = [
       { choices: [0, 0], trust: 2, excluded: ['O1B_END', 'O2', 'O2A_END', 'O2B_END'] },
       { choices: [0, 1], trust: 0, excluded: ['O1A_END', 'O2', 'O2A_END', 'O2B_END'] },
@@ -133,9 +199,7 @@ describe('minimal audited story plan integration', () => {
   });
 
   it('parses and audits the numbered rainy manor branches with isolated endings', async () => {
-    mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(fixtureExtraction(rainy, 'rainy')))
-      .mockResolvedValueOnce(JSON.stringify(passAudit));
+    queueFixture(rainy, 'rainy');
 
     const resolved = await resolveStoryPlanForImport(rainy, { sourceId: 'rainy' });
     const east = play(resolved.document, [0]);
@@ -143,7 +207,7 @@ describe('minimal audited story plan integration', () => {
 
     expect(resolved.converted).toBe(true);
     expect(resolved.audit.verdict).toBe('pass');
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(2);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(3);
     expect(east.contents.join('\n')).toContain('此后余生，你岁岁平安');
     expect(east.contents.join('\n')).not.toContain('彻底遗忘了自己进山的初衷');
     expect(west.contents.join('\n')).toContain('彻底遗忘了自己进山的初衷');
