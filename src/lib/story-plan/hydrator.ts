@@ -1,5 +1,10 @@
 import type { RoleMap } from '@/lib/script-parser';
-import type { StoryCommand, StoryDocument, StoryOption } from '@/lib/story-ir/schema';
+import type {
+  StoryCommand,
+  StoryDocument,
+  StoryNode,
+  StoryOption,
+} from '@/lib/story-ir/schema';
 import type { StoryRelationshipPlan } from './schema';
 import {
   sourceRefsForSegmentIds,
@@ -23,19 +28,16 @@ export function hydrateStoryDocument(
     choicesByNode.set(choice.fromNodeId, choices);
   }
 
-  return {
-    version: 1,
-    entryLabel: plan.entryNodeId,
-    nodes: plan.nodes.map((node) => {
-      const speakerSegment = node.speakerSegmentId
-        ? requireSegment(node.speakerSegmentId, segmentsById)
-        : undefined;
-      const contentSegments = sortedSegments(node.contentSegmentIds, segmentsById);
-      const sourceSegmentIds = [
-        ...(speakerSegment ? [speakerSegment.id] : []),
-        ...contentSegments.map((segment) => segment.id),
-      ];
-      return {
+  const nodes: StoryNode[] = plan.nodes.map((node) => {
+    const speakerSegment = node.speakerSegmentId
+      ? requireSegment(node.speakerSegmentId, segmentsById)
+      : undefined;
+    const contentSegments = sortedSegments(node.contentSegmentIds, segmentsById);
+    const sourceSegmentIds = [
+      ...(speakerSegment ? [speakerSegment.id] : []),
+      ...contentSegments.map((segment) => segment.id),
+    ];
+    return {
         label: node.id,
         type: node.type,
         ...(speakerSegment ? {
@@ -60,8 +62,40 @@ export function hydrateStoryDocument(
           };
         }),
         sourceRefs: sourceRefsForSegmentIds(source, sourceSegmentIds),
-      };
-    }),
+    };
+  });
+  const terminalNodes = nodes.filter((node) =>
+    !node.next && node.options.length === 0
+  );
+  const needsSharedTerminal = terminalNodes.length > 1 ||
+    terminalNodes.some((node) => nodes.indexOf(node) !== nodes.length - 1);
+
+  if (needsSharedTerminal) {
+    const label = uniqueTerminalLabel(new Set(nodes.map((node) => node.label)));
+    const sourceRefs = terminalNodes.flatMap((node) => node.sourceRefs)
+      .filter((ref, index, refs) => refs.findIndex((candidate) => candidate.unitId === ref.unitId) === index);
+    terminalNodes.forEach((node) => {
+      node.next = label;
+    });
+    nodes.push({
+      label,
+      type: 'system',
+      content: '',
+      commands: [],
+      options: [],
+      sourceRefs,
+      structuralRepair: {
+        kind: 'generated_label',
+        reason: 'Prevent independent endings from falling through into sibling branches',
+        sourceRefs,
+      },
+    });
+  }
+
+  return {
+    version: 1,
+    entryLabel: plan.entryNodeId,
+    nodes,
   };
 }
 
@@ -100,4 +134,11 @@ function sortedSegments(
   return segmentIds
     .map((segmentId) => requireSegment(segmentId, segmentsById))
     .sort((left, right) => left.start - right.start || left.end - right.end);
+}
+
+function uniqueTerminalLabel(usedLabels: Set<string>): string {
+  let label = 'StoryEnd';
+  let index = 2;
+  while (usedLabels.has(label)) label = `StoryEnd${index++}`;
+  return label;
 }

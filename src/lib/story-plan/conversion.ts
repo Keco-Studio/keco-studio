@@ -2,8 +2,15 @@ import { completeLlm } from '@/lib/agent/llm-client';
 import type { OpenAITool } from '@/lib/agent/types';
 import type { RoleMap } from '@/lib/script-parser';
 import type { StoryDocument } from '@/lib/story-ir/schema';
-import { tryParseExplicitStory } from './explicitParser';
+import {
+  tryParseExplicitStory,
+  tryParseNaturalBranchStory,
+} from './explicitParser';
 import { hydrateStoryDocument } from './hydrator';
+import {
+  buildStoryPlanInventory,
+  materializeStoryRelationshipPlan,
+} from './inventory';
 import {
   AUDITOR_PLAN_TOOL,
   CONVERTER_PLAN_TOOL,
@@ -14,7 +21,7 @@ import {
 import { buildStoryAuditProjection, type StoryAuditProjection } from './projection';
 import {
   parseStoryPlanAudit,
-  parseStoryRelationshipPlan,
+  parseStoryGraphPlan,
   type StoryPlanAudit,
   type StoryRelationshipPlan,
 } from './schema';
@@ -62,6 +69,11 @@ export interface ResolvedAuditedStory {
   attempts: number;
 }
 
+interface StoryPlanLlmBudget {
+  used: number;
+  max: number;
+}
+
 export class ImportStoryPlanError extends Error {
   readonly issues: StoryPlanRetryIssue[];
 
@@ -94,9 +106,10 @@ export async function resolveStoryPlanForImport(
   emit(options, { phase: 'source_segmentation', message: 'Segmenting exact story source' });
   const source = segmentStorySource(sourceText, options.sourceId ?? 'import');
   emit(options, { phase: 'explicit_parse', message: 'Checking explicit story structure' });
-  let candidate = tryParseExplicitStory(source);
+  let candidate = tryParseExplicitStory(source) ?? tryParseNaturalBranchStory(source);
   let priorIssues: StoryPlanRetryIssue[] = [];
   let converted = false;
+  const llmBudget: StoryPlanLlmBudget = { used: 0, max: 4 };
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     throwIfAborted(options.signal);
@@ -107,7 +120,7 @@ export async function resolveStoryPlanForImport(
           attempt,
           message: `Waiting for Converter LLM response (attempt ${attempt}/2)`,
         });
-        candidate = await requestConverter(source, attempt, priorIssues, options);
+        candidate = await requestConverter(source, attempt, priorIssues, options, llmBudget);
         converted = true;
       }
 
@@ -135,7 +148,7 @@ export async function resolveStoryPlanForImport(
         attempt,
         message: `Waiting for Auditor LLM response (attempt ${attempt}/2)`,
       });
-      const audit = await requestAuditor(source, candidate, projection, options);
+      const audit = await requestAuditor(source, candidate, projection, options, llmBudget);
       if (auditPassed(audit)) {
         emit(options, { phase: 'complete', attempt, message: 'Story conversion and audit completed' });
         return { document, source, plan: candidate, projection, audit, converted, attempts: attempt };
@@ -159,28 +172,33 @@ async function requestConverter(
   source: SegmentedStorySource,
   attempt: number,
   priorIssues: StoryPlanRetryIssue[],
-  options: ResolveStoryPlanOptions
+  options: ResolveStoryPlanOptions,
+  budget: StoryPlanLlmBudget
 ): Promise<StoryRelationshipPlan> {
   const raw = await completeStoryPlanLlm(
     buildConverterPlanMessages(source, attempt, priorIssues),
     CONVERTER_PLAN_TOOL,
     'Converter',
-    options
+    options,
+    budget
   );
-  return parseStoryRelationshipPlan(parseModelJson(raw));
+  const graph = parseStoryGraphPlan(parseModelJson(raw));
+  return materializeStoryRelationshipPlan(graph, buildStoryPlanInventory(source));
 }
 
 async function requestAuditor(
   source: SegmentedStorySource,
   plan: StoryRelationshipPlan,
   projection: StoryAuditProjection,
-  options: ResolveStoryPlanOptions
+  options: ResolveStoryPlanOptions,
+  budget: StoryPlanLlmBudget
 ): Promise<StoryPlanAudit> {
   const raw = await completeStoryPlanLlm(
     buildAuditorPlanMessages(source, plan, projection),
     AUDITOR_PLAN_TOOL,
     'Auditor',
-    options
+    options,
+    budget
   );
   return parseStoryPlanAudit(parseModelJson(raw));
 }
@@ -189,32 +207,38 @@ async function completeStoryPlanLlm(
   messages: Parameters<typeof completeLlm>[0],
   tool: OpenAITool,
   stage: 'Converter' | 'Auditor',
-  options: ResolveStoryPlanOptions
+  options: ResolveStoryPlanOptions,
+  budget: StoryPlanLlmBudget
 ): Promise<string> {
-  const timeoutController = new AbortController();
-  const combined = combineAbortSignals(options.signal, timeoutController.signal);
-  let timedOut = false;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    timeoutController.abort(new DOMException('Story plan LLM deadline exceeded', 'TimeoutError'));
-  }, options.llmTimeoutMs ?? STORY_PLAN_LLM_TIMEOUT_MS);
+  while (budget.used < budget.max) {
+    budget.used += 1;
+    const timeoutController = new AbortController();
+    const combined = combineAbortSignals(options.signal, timeoutController.signal);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      timeoutController.abort(new DOMException('Story plan LLM deadline exceeded', 'TimeoutError'));
+    }, options.llmTimeoutMs ?? STORY_PLAN_LLM_TIMEOUT_MS);
 
-  try {
-    return await completeLlm(messages, {
-      temperature: 0,
-      maxTokens: stage === 'Converter' ? 16_000 : 8_000,
-      thinking: 'disabled',
-      tools: [tool],
-      toolName: tool.function.name,
-      signal: combined.signal,
-    });
-  } catch (error) {
-    if (timedOut) throw new StoryPlanLlmTimeoutError(stage);
-    throw error;
-  } finally {
-    clearTimeout(timeout);
-    combined.cleanup();
+    try {
+      return await completeLlm(messages, {
+        temperature: 0,
+        maxCompletionTokens: stage === 'Converter' ? 16_000 : 8_000,
+        thinking: 'disabled',
+        tools: [tool],
+        toolName: tool.function.name,
+        signal: combined.signal,
+      });
+    } catch (error) {
+      if (timedOut) throw new StoryPlanLlmTimeoutError(stage);
+      if (!isProviderAbortedResponse(error) || budget.used >= budget.max) throw error;
+    } finally {
+      clearTimeout(timeout);
+      combined.cleanup();
+    }
   }
+
+  throw new Error('Story import LLM call budget exhausted.');
 }
 
 function parseModelJson(raw: string): unknown {
@@ -252,6 +276,12 @@ function throwIfAborted(signal?: AbortSignal): void {
 
 function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function isProviderAbortedResponse(error: unknown): boolean {
+  return error instanceof Error &&
+    error.name === 'LlmError' &&
+    error.message === 'LLM aborted before completing the response.';
 }
 
 function combineAbortSignals(

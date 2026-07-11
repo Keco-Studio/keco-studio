@@ -60,7 +60,7 @@ export function validateStoryPlan(
     choiceIds.add(choice.id);
   }
 
-  const useSegment = (
+  const recordSegmentUsage = (
     segmentId: string,
     allowedKinds: Set<SourceSegmentKind>,
     nodeId: string
@@ -82,17 +82,21 @@ export function validateStoryPlan(
       if (!node.speakerSegmentId) {
         push(issues, 'segment_kind_mismatch', `Dialogue node ${node.id} has no speaker`, [], [node.id]);
       } else {
-        useSegment(node.speakerSegmentId, new Set(['speaker']), node.id);
+        recordSegmentUsage(node.speakerSegmentId, new Set(['speaker']), node.id);
       }
     } else if (node.speakerSegmentId) {
-      useSegment(node.speakerSegmentId, new Set(), node.id);
+      recordSegmentUsage(node.speakerSegmentId, new Set(), node.id);
     }
-    node.contentSegmentIds.forEach((segmentId) => useSegment(segmentId, CONTENT_KINDS, node.id));
+    node.contentSegmentIds.forEach((segmentId) =>
+      recordSegmentUsage(segmentId, CONTENT_KINDS, node.id)
+    );
     node.commandIds.forEach((commandId) => useCommand(commandId, node.id));
   }
 
   for (const choice of plan.choices) {
-    choice.textSegmentIds.forEach((segmentId) => useSegment(segmentId, new Set(['choice_text']), choice.fromNodeId));
+    choice.textSegmentIds.forEach((segmentId) =>
+      recordSegmentUsage(segmentId, new Set(['choice_text']), choice.fromNodeId)
+    );
     choice.commandIds.forEach((commandId) => useCommand(commandId, choice.fromNodeId));
   }
 
@@ -148,7 +152,7 @@ export function validateStoryPlan(
       return;
     }
     commandUsage.set(commandId, (commandUsage.get(commandId) ?? 0) + 1);
-    useSegment(command.segmentId, new Set(['command']), nodeId);
+    recordSegmentUsage(command.segmentId, new Set(['command']), nodeId);
   }
 
   function segmentUnit(segmentId: string): string {

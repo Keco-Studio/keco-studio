@@ -70,6 +70,16 @@ describe('story source segmentation', () => {
     ]));
   });
 
+  it('does not treat an English speaker as an option without jump metadata', () => {
+    const result = segmentStorySource('Guide: Choose a path.', 'fixture');
+
+    expect(result.segments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'speaker', text: 'Guide' }),
+      expect.objectContaining({ kind: 'dialogue', text: 'Choose a path.' }),
+    ]));
+    expect(result.segments.some((segment) => segment.kind === 'choice_text')).toBe(false);
+  });
+
   it('extracts natural-language branch choice text', () => {
     const content = '分支一：选择【东侧客房】（安稳谨慎线）';
     const result = segmentStorySource(content, 'fixture');

@@ -72,4 +72,56 @@ describe('story plan hydration', () => {
     expect(contents).not.toContain('左边小路');
     expect(contents).not.toContain('老人点头');
   });
+
+  it('adds a shared terminal node so independent endings cannot fall through', () => {
+    const source = segmentStorySource([
+      '引导：选择。',
+      '分支一：选择【Left】（left path）',
+      'Left ending.',
+      '分支二：选择【Right】（right path）',
+      'Right ending.',
+    ].join('\n'), 'fixture');
+    const speaker = source.segments.find((segment) => segment.kind === 'speaker')!;
+    const dialogue = source.segments.find((segment) => segment.kind === 'dialogue')!;
+    const leftChoice = source.segments.find((segment) => segment.kind === 'choice_text' && segment.text === 'Left')!;
+    const rightChoice = source.segments.find((segment) => segment.kind === 'choice_text' && segment.text === 'Right')!;
+    const narrations = source.segments.filter((segment) => segment.kind === 'narration');
+    const document = hydrateStoryDocument({
+      version: 2,
+      entryNodeId: 'Start',
+      nodes: [
+        {
+          id: 'Start', type: 'dialogue', speakerSegmentId: speaker.id,
+          contentSegmentIds: [dialogue.id], commandIds: [], nextNodeId: '',
+        },
+        {
+          id: 'LeftEnd', type: 'narration', speakerSegmentId: '',
+          contentSegmentIds: [narrations[0].id], commandIds: [], nextNodeId: '',
+        },
+        {
+          id: 'RightEnd', type: 'narration', speakerSegmentId: '',
+          contentSegmentIds: [narrations[1].id], commandIds: [], nextNodeId: '',
+        },
+      ],
+      choices: [
+        {
+          id: 'LeftChoice', fromNodeId: 'Start', textSegmentIds: [leftChoice.id],
+          targetNodeId: 'LeftEnd', commandIds: [],
+        },
+        {
+          id: 'RightChoice', fromNodeId: 'Start', textSegmentIds: [rightChoice.id],
+          targetNodeId: 'RightEnd', commandIds: [],
+        },
+      ],
+    }, source);
+
+    expect(document.nodes.find((node) => node.label === 'LeftEnd')?.next).toBe('StoryEnd');
+    expect(document.nodes.find((node) => node.label === 'RightEnd')?.next).toBe('StoryEnd');
+    expect(document.nodes.at(-1)).toMatchObject({
+      label: 'StoryEnd',
+      type: 'system',
+      content: '',
+      options: [],
+    });
+  });
 });

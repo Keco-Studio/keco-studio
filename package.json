@@ -83,6 +83,8 @@
     "test:destructive": "playwright test tests/e2e/specs/destructive.spec.ts",
     "test:e2e:edit-info": "playwright test tests/e2e/specs/edit-info.spec.ts",
     "clean:test-data": "tsx scripts/clean-remote-test-data.ts",
-    "seed:api": "tsx scripts/seed-via-api.ts"
+    "seed:api": "tsx scripts/seed-via-api.ts",
+    "probe:import-story": "node --env-file=.env.local --import tsx scripts/probe-import-story-plan.ts",
+    "probe:import-story:rainy-five": "node --env-file=.env.local --import tsx scripts/probe-import-story-plan.ts tests/fixtures/import-script/rainy-manor-story.txt --runs=5"
   }
 }

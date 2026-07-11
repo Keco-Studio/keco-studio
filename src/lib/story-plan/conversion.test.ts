@@ -5,7 +5,11 @@ import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals
 jest.mock('@/lib/agent/llm-client', () => ({ completeLlm: jest.fn() }));
 
 import { completeLlm } from '@/lib/agent/llm-client';
-import type { StoryPlanAudit, StoryRelationshipPlan } from './schema';
+import type {
+  StoryGraphPlan,
+  StoryPlanAudit,
+  StoryRelationshipPlan,
+} from './schema';
 import { segmentStorySource } from './sourceSegments';
 import {
   resolveStoryPlanForImport,
@@ -29,14 +33,20 @@ const failAudit: StoryPlanAudit = {
   }],
 };
 
+function providerAbort(): Error {
+  return Object.assign(new Error('LLM aborted before completing the response.'), {
+    name: 'LlmError',
+  });
+}
+
 function naturalPlan(content: string): StoryRelationshipPlan {
   const source = segmentStorySource(content, 'fixture');
   const segment = source.segments.find((candidate) => candidate.kind === 'narration')!;
   return {
     version: 2,
-    entryNodeId: 'n1',
+    entryNodeId: 'Node1',
     nodes: [{
-      id: 'n1',
+      id: 'Node1',
       type: 'narration',
       speakerSegmentId: '',
       contentSegmentIds: [segment.id],
@@ -44,6 +54,21 @@ function naturalPlan(content: string): StoryRelationshipPlan {
       nextNodeId: '',
     }],
     choices: [],
+  };
+}
+
+function naturalGraph(content: string): StoryGraphPlan {
+  const plan = naturalPlan(content);
+  return {
+    version: 2,
+    entryNodeId: plan.entryNodeId,
+    breakAfterNodeIds: [],
+    nextOverrides: [],
+    choiceEdges: plan.choices.map((choice) => ({
+      choiceId: choice.id,
+      fromNodeId: choice.fromNodeId,
+      targetNodeId: choice.targetNodeId,
+    })),
   };
 }
 
@@ -65,7 +90,7 @@ describe('audited story plan conversion', () => {
   it('converts natural input and then requires an Auditor pass', async () => {
     const content = 'Rain fell over the empty manor.';
     mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(naturalPlan(content)))
+      .mockResolvedValueOnce(JSON.stringify(naturalGraph(content)))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
     const progress: StoryPlanProgressEvent[] = [];
 
@@ -92,11 +117,11 @@ describe('audited story plan conversion', () => {
 
   it('repairs an audit failure with one fresh Converter and Auditor round', async () => {
     const content = 'Rain fell over the empty manor.';
-    const plan = naturalPlan(content);
+    const graph = naturalGraph(content);
     mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(plan))
+      .mockResolvedValueOnce(JSON.stringify(graph))
       .mockResolvedValueOnce(JSON.stringify(failAudit))
-      .mockResolvedValueOnce(JSON.stringify(plan))
+      .mockResolvedValueOnce(JSON.stringify(graph))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
     const result = await resolveStoryPlanForImport(content, { sourceId: 'fixture' });
@@ -112,23 +137,23 @@ describe('audited story plan conversion', () => {
 
   it('fails closed after two rejected audited candidates', async () => {
     const content = 'Rain fell over the empty manor.';
-    const plan = naturalPlan(content);
+    const graph = naturalGraph(content);
     mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(plan))
+      .mockResolvedValueOnce(JSON.stringify(graph))
       .mockResolvedValueOnce(JSON.stringify(failAudit))
-      .mockResolvedValueOnce(JSON.stringify(plan))
+      .mockResolvedValueOnce(JSON.stringify(graph))
       .mockResolvedValueOnce(JSON.stringify(failAudit));
 
     await expect(resolveStoryPlanForImport(content, { sourceId: 'fixture' }))
       .rejects.toThrow(/two audited attempts/i);
   });
 
-  it('feeds deterministic validation issues into the one repair attempt', async () => {
+  it('feeds deterministic graph validation issues into the one repair attempt', async () => {
     const content = 'Rain fell over the empty manor.';
-    const valid = naturalPlan(content);
+    const valid = naturalGraph(content);
     const invalid = {
       ...valid,
-      nodes: [{ ...valid.nodes[0], contentSegmentIds: [] }],
+      nextOverrides: [{ nodeId: 'Node1', targetNodeId: 'Node1' }],
     };
     mockedCompleteLlm
       .mockResolvedValueOnce(JSON.stringify(invalid))
@@ -140,20 +165,41 @@ describe('audited story plan conversion', () => {
     expect(result.attempts).toBe(2);
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(3);
     const secondConverterInput = mockedCompleteLlm.mock.calls[1][0][1].content;
-    expect(secondConverterInput).toContain('omitted_segment');
+    expect(secondConverterInput).toContain('automatic_cycle');
   });
 
   it('strictly rejects provider wrapper shapes and retries without normalizing them', async () => {
     const content = 'Rain fell over the empty manor.';
     mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify({ item: naturalPlan(content), next: null }))
-      .mockResolvedValueOnce(JSON.stringify(naturalPlan(content)))
+      .mockResolvedValueOnce(JSON.stringify({ item: naturalGraph(content), next: null }))
+      .mockResolvedValueOnce(JSON.stringify(naturalGraph(content)))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
     const result = await resolveStoryPlanForImport(content, { sourceId: 'fixture' });
 
     expect(result.attempts).toBe(2);
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries a provider-aborted response without consuming a candidate attempt', async () => {
+    const content = 'Rain fell over the empty manor.';
+    mockedCompleteLlm
+      .mockRejectedValueOnce(providerAbort())
+      .mockResolvedValueOnce(JSON.stringify(naturalGraph(content)))
+      .mockResolvedValueOnce(JSON.stringify(passAudit));
+
+    const result = await resolveStoryPlanForImport(content, { sourceId: 'fixture' });
+
+    expect(result.attempts).toBe(1);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(3);
+  });
+
+  it('caps repeated provider aborts at four total LLM calls', async () => {
+    mockedCompleteLlm.mockRejectedValue(providerAbort());
+
+    await expect(resolveStoryPlanForImport('Rain fell.', { sourceId: 'fixture' }))
+      .rejects.toThrow(/two audited attempts/i);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(4);
   });
 
   it('rejects oversized input before any LLM request', async () => {

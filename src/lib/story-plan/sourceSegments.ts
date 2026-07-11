@@ -151,7 +151,7 @@ export function segmentStorySource(content: string, sourceId: string): Segmented
     }
 
     const optionPrefix = EXPLICIT_OPTION_PREFIX.exec(line);
-    if (optionPrefix) {
+    if (optionPrefix && JUMP_TOKEN_PATTERN.test(line)) {
       const colonIndex = firstDelimiterIndex(line);
       const bodyStart = skipWhitespace(line, colonIndex + 1);
       const metadataStart = Math.max(line.lastIndexOf('('), line.lastIndexOf('（'));

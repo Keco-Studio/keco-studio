@@ -64,6 +64,31 @@ describe('streamLlm request options', () => {
     });
   });
 
+  it('serializes maxCompletionTokens to the preferred provider field', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+
+    global.fetch = jest.fn(async () => new Response(
+      'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+      { status: 200 }
+    )) as typeof fetch;
+
+    const { streamLlm } = await import('../../../src/lib/agent/llm-client');
+    for await (const _chunk of streamLlm(
+      [{ role: 'user', content: 'hello' }],
+      { maxCompletionTokens: 4321 } as never
+    )) {
+      // Consume the response so the request body can be asserted.
+    }
+
+    const [, init] = (global.fetch as jest.MockedFunction<typeof fetch>).mock.calls[0];
+    expect(JSON.parse(String(init?.body))).toMatchObject({
+      max_completion_tokens: 4321,
+    });
+    expect(JSON.parse(String(init?.body))).not.toHaveProperty('max_tokens');
+  });
+
   it('forces a named output tool and returns its streamed JSON arguments', async () => {
     jest.resetModules();
     process.env.LLM_API_KEY = 'test-key';
@@ -116,5 +141,44 @@ describe('streamLlm request options', () => {
       tools: [tool],
       tool_choice: { type: 'function', function: { name: 'submit_story_ir' } },
     });
+  });
+
+  it('rejects provider-aborted tool output instead of returning partial JSON', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+
+    const event = {
+      choices: [{
+        delta: {
+          tool_calls: [{
+            index: 0,
+            id: 'call-1',
+            function: { name: 'submit_story_plan', arguments: '{"version":2' },
+          }],
+        },
+        finish_reason: 'abort',
+      }],
+    };
+    global.fetch = jest.fn(async () => new Response(
+      `data: ${JSON.stringify(event)}\n\ndata: [DONE]\n\n`,
+      { status: 200 }
+    )) as typeof fetch;
+
+    const { completeLlm } = await import('../../../src/lib/agent/llm-client');
+    await expect(completeLlm(
+      [{ role: 'user', content: 'convert' }],
+      {
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'submit_story_plan',
+            description: 'Submit plan',
+            parameters: { type: 'object' },
+          },
+        }],
+        toolName: 'submit_story_plan',
+      } as never
+    )).rejects.toThrow(/abort/i);
   });
 });

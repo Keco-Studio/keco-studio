@@ -3,12 +3,17 @@ import type {
   PlannedNode,
   StoryRelationshipPlan,
 } from './schema';
+import {
+  buildStoryPlanInventory,
+  materializeStoryRelationshipPlan,
+} from './inventory';
 import type { SegmentedStorySource, SourceSegment } from './sourceSegments';
 
 const DECLARATION_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s+(branch|merge|分支|统一收尾)\s*[【[]\s*([A-Za-z][A-Za-z0-9_-]{0,63})\s*[|｜]/i;
 const OPTION_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s*[：:].*[（(]([\s\S]*)[）)]$/;
 const JUMP_ONLY_PATTERN = /^[（(]\s*(?:Jump|跳转)\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge|分支|统一收尾))?\s*[）)]$/i;
 const JUMP_TOKEN_PATTERN = /(?:Jump|跳转)\s+([A-Za-z][A-Za-z0-9_-]{0,63})/i;
+const NATURAL_BRANCH_PATTERN = /^分支([一二三四五六七八九十\d]+)[：:]\s*选择[【[]/;
 
 export function tryParseExplicitStory(
   source: SegmentedStorySource
@@ -107,6 +112,65 @@ export function tryParseExplicitStory(
   };
 }
 
+export function tryParseNaturalBranchStory(
+  source: SegmentedStorySource
+): StoryRelationshipPlan | null {
+  const inventory = buildStoryPlanInventory(source);
+  if (inventory.choices.length < 2 || inventory.nodes.length === 0) return null;
+  const unitIndexById = new Map(source.units.map((unit, index) => [unit.id, index]));
+  const naturalChoices = inventory.choices.map((choice) => {
+    const unit = source.units.find((candidate) => candidate.id === choice.unitId);
+    const match = unit ? NATURAL_BRANCH_PATTERN.exec(unit.text) : null;
+    return match && unit ? {
+      choice,
+      unitIndex: unitIndexById.get(unit.id)!,
+      ordinal: parseNaturalOrdinal(match[1]),
+    } : null;
+  });
+  if (naturalChoices.some((choice) => !choice || choice.ordinal === null)) return null;
+  const choices = naturalChoices.filter((choice): choice is NonNullable<typeof choice> => Boolean(choice));
+  if (choices.some((choice, index) => choice.ordinal !== index + 1)) return null;
+
+  const nodeUnits = inventory.nodes.map((node) => ({
+    node,
+    unitIndex: unitIndexById.get(node.unitId)!,
+  }));
+  const owner = [...nodeUnits]
+    .reverse()
+    .find((candidate) => candidate.unitIndex < choices[0].unitIndex);
+  if (!owner) return null;
+
+  const choiceEdges = [];
+  const breakAfterNodeIds: string[] = [];
+  for (let index = 0; index < choices.length; index += 1) {
+    const choice = choices[index];
+    const nextChoice = choices[index + 1];
+    const branchNodes = nodeUnits.filter((candidate) =>
+      candidate.unitIndex > choice.unitIndex &&
+      (!nextChoice || candidate.unitIndex < nextChoice.unitIndex)
+    );
+    if (branchNodes.length === 0) return null;
+    choiceEdges.push({
+      choiceId: choice.choice.id,
+      fromNodeId: owner.node.id,
+      targetNodeId: branchNodes[0].node.id,
+    });
+    if (nextChoice) breakAfterNodeIds.push(branchNodes.at(-1)!.node.id);
+  }
+
+  try {
+    return materializeStoryRelationshipPlan({
+      version: 2,
+      entryNodeId: inventory.nodes[0].id,
+      breakAfterNodeIds,
+      nextOverrides: [],
+      choiceEdges,
+    }, inventory);
+  } catch {
+    return null;
+  }
+}
+
 function collectDeclarations(
   source: SegmentedStorySource
 ): { labels: Set<string>; mergeLabels: string[] } | null {
@@ -141,4 +205,24 @@ function isNodeContentSegment(segment: SourceSegment): boolean {
     segment.kind === 'stage_direction' ||
     segment.kind === 'narration' ||
     segment.kind === 'scene_heading';
+}
+
+function parseNaturalOrdinal(value: string): number | null {
+  if (/^\d+$/.test(value)) {
+    const parsed = Number(value);
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }
+  const ordinals: Record<string, number> = {
+    一: 1,
+    二: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+    十: 10,
+  };
+  return ordinals[value] ?? null;
 }

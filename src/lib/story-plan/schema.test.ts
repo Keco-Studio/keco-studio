@@ -1,5 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
-import { parseStoryPlanAudit, parseStoryRelationshipPlan } from './schema';
+import {
+  parseStoryGraphPlan,
+  parseStoryPlanAudit,
+  parseStoryRelationshipPlan,
+} from './schema';
 
 const validPlan = {
   version: 2,
@@ -16,6 +20,33 @@ const validPlan = {
 };
 
 describe('Story relationship plan schema', () => {
+  it('accepts the provider edge-only graph contract', () => {
+    const graph = {
+      version: 2,
+      entryNodeId: 'Node1',
+      breakAfterNodeIds: ['Node2'],
+      nextOverrides: [],
+      choiceEdges: [{
+        choiceId: 'Choice1',
+        fromNodeId: 'Node1',
+        targetNodeId: 'Node2',
+      }],
+    };
+
+    expect(parseStoryGraphPlan(graph)).toEqual(graph);
+  });
+
+  it('rejects full node objects and wrapped edge collections at the provider boundary', () => {
+    expect(() => parseStoryGraphPlan(validPlan)).toThrow();
+    expect(() => parseStoryGraphPlan({
+      version: 2,
+      entryNodeId: 'Node1',
+      breakAfterNodeIds: { item: ['Node1'] },
+      nextOverrides: [],
+      choiceEdges: [],
+    })).toThrow();
+  });
+
   it('accepts the flat required-field contract', () => {
     expect(parseStoryRelationshipPlan(validPlan)).toEqual(validPlan);
   });

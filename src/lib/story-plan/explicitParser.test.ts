@@ -1,11 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
-import { tryParseExplicitStory } from './explicitParser';
+import {
+  tryParseExplicitStory,
+  tryParseNaturalBranchStory,
+} from './explicitParser';
 import { segmentStorySource } from './sourceSegments';
 
 const fixture = fs.readFileSync(
   path.join(process.cwd(), 'tests/fixtures/import-script/nested-trust-story.txt'),
+  'utf8'
+);
+const rainyFixture = fs.readFileSync(
+  path.join(process.cwd(), 'tests/fixtures/import-script/rainy-manor-story.txt'),
   'utf8'
 );
 
@@ -88,5 +95,36 @@ describe('explicit story parser', () => {
     ].join('\n'), 'fixture');
 
     expect(tryParseExplicitStory(source)).toBeNull();
+  });
+
+  it('parses unambiguous numbered natural branches without a Converter call', () => {
+    const source = segmentStorySource(rainyFixture, 'rainy');
+    const plan = tryParseNaturalBranchStory(source);
+
+    expect(plan).not.toBeNull();
+    expect(plan!.entryNodeId).toBe('Node1');
+    expect(plan!.nodes).toHaveLength(24);
+    expect(plan!.choices).toEqual([
+      expect.objectContaining({
+        id: 'Choice1', fromNodeId: 'Node8', targetNodeId: 'Node9',
+      }),
+      expect.objectContaining({
+        id: 'Choice2', fromNodeId: 'Node8', targetNodeId: 'Node17',
+      }),
+    ]);
+    expect(plan!.nodes.find((node) => node.id === 'Node16')?.nextNodeId).toBe('');
+    expect(plan!.nodes.find((node) => node.id === 'Node24')?.nextNodeId).toBe('');
+  });
+
+  it('leaves duplicate natural branch ordinals for the Converter', () => {
+    const source = segmentStorySource([
+      '引导：选择。',
+      '分支一：选择【Left】（first group）',
+      'Left ending.',
+      '分支一：选择【Again】（nested or second group）',
+      'Again ending.',
+    ].join('\n'), 'fixture');
+
+    expect(tryParseNaturalBranchStory(source)).toBeNull();
   });
 });

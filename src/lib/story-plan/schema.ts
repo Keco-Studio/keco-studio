@@ -27,6 +27,25 @@ export const StoryRelationshipPlanSchema = z.object({
   choices: z.array(PlannedChoiceSchema),
 }).strict();
 
+export const StoryNextOverrideSchema = z.object({
+  nodeId: IdSchema,
+  targetNodeId: IdSchema,
+}).strict();
+
+export const StoryChoiceEdgeSchema = z.object({
+  choiceId: IdSchema,
+  fromNodeId: IdSchema,
+  targetNodeId: IdSchema,
+}).strict();
+
+export const StoryGraphPlanSchema = z.object({
+  version: z.literal(2),
+  entryNodeId: IdSchema,
+  breakAfterNodeIds: z.array(IdSchema),
+  nextOverrides: z.array(StoryNextOverrideSchema),
+  choiceEdges: z.array(StoryChoiceEdgeSchema),
+}).strict();
+
 export const StoryPlanAuditIssueSchema = z.object({
   code: z.enum([
     'omission',
@@ -55,11 +74,16 @@ export const StoryPlanAuditSchema = z.object({
 export type PlannedNode = z.infer<typeof PlannedNodeSchema>;
 export type PlannedChoice = z.infer<typeof PlannedChoiceSchema>;
 export type StoryRelationshipPlan = z.infer<typeof StoryRelationshipPlanSchema>;
+export type StoryGraphPlan = z.infer<typeof StoryGraphPlanSchema>;
 export type StoryPlanAuditIssue = z.infer<typeof StoryPlanAuditIssueSchema>;
 export type StoryPlanAudit = z.infer<typeof StoryPlanAuditSchema>;
 
 export function parseStoryRelationshipPlan(value: unknown): StoryRelationshipPlan {
   return StoryRelationshipPlanSchema.parse(value);
+}
+
+export function parseStoryGraphPlan(value: unknown): StoryGraphPlan {
+  return StoryGraphPlanSchema.parse(value);
 }
 
 export function parseStoryPlanAudit(value: unknown): StoryPlanAudit {
