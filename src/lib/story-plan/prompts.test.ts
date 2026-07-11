@@ -118,4 +118,10 @@ describe('flat story plan prompts', () => {
     expect(AUDITOR_PLAN_PROMPT).toContain('Physical row order alone is not branch leakage');
     expect(AUDITOR_PLAN_PROMPT).toContain('matched heading/quote wrappers');
   });
+
+  it('allows audited server-validated legacy grammar without requiring a plan object', () => {
+    expect(AUDITOR_PLAN_PROMPT).toContain('plan may be null');
+    expect(AUDITOR_PLAN_PROMPT).toContain('【Label｜Content】');
+    expect(AUDITOR_PLAN_PROMPT).toContain('（TypeN・Speaker）Content');
+  });
 });

@@ -1,6 +1,7 @@
 import { completeLlm } from '@/lib/agent/llm-client';
 import type { OpenAITool } from '@/lib/agent/types';
 import type { RoleMap } from '@/lib/script-parser';
+import { tryLegacyStoryImport } from '@/lib/story-ir/legacyAdapter';
 import type { StoryDocument } from '@/lib/story-ir/schema';
 import {
   tryParseExplicitStory,
@@ -62,7 +63,7 @@ export interface ResolveStoryPlanOptions {
 export interface ResolvedAuditedStory {
   document: StoryDocument;
   source: SegmentedStorySource;
-  plan: StoryRelationshipPlan;
+  plan: StoryRelationshipPlan | null;
   projection: StoryAuditProjection;
   audit: StoryPlanAudit;
   converted: boolean;
@@ -104,9 +105,13 @@ export async function resolveStoryPlanForImport(
   }
 
   emit(options, { phase: 'source_segmentation', message: 'Segmenting exact story source' });
-  const source = segmentStorySource(sourceText, options.sourceId ?? 'import');
+  const sourceId = options.sourceId ?? 'import';
+  const source = segmentStorySource(sourceText, sourceId);
   emit(options, { phase: 'explicit_parse', message: 'Checking explicit story structure' });
-  let candidate = tryParseExplicitStory(source) ?? tryParseNaturalBranchStory(source);
+  let legacyDocument = tryLegacyStoryImport(sourceText, sourceId, options.roleMap)?.document;
+  let candidate = legacyDocument
+    ? null
+    : tryParseExplicitStory(source) ?? tryParseNaturalBranchStory(source);
   let priorIssues: StoryPlanRetryIssue[] = [];
   let converted = false;
   const llmBudget: StoryPlanLlmBudget = { used: 0, max: 4 };
@@ -114,6 +119,44 @@ export async function resolveStoryPlanForImport(
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     throwIfAborted(options.signal);
     try {
+      if (legacyDocument) {
+        const document = legacyDocument;
+        legacyDocument = undefined;
+        emit(options, {
+          phase: 'deterministic_validation',
+          attempt,
+          message: `Validating legacy story structure (attempt ${attempt}/2)`,
+        });
+        emit(options, {
+          phase: 'table_projection',
+          attempt,
+          message: `Compiling audit projection (attempt ${attempt}/2)`,
+        });
+        const projection = buildStoryAuditProjection(document);
+        emit(options, {
+          phase: 'semantic_audit',
+          attempt,
+          message: `Waiting for Auditor LLM response (attempt ${attempt}/2)`,
+        });
+        const audit = await requestAuditor(source, null, projection, options, llmBudget);
+        if (auditPassed(audit)) {
+          emit(options, { phase: 'complete', attempt, message: 'Story conversion and audit completed' });
+          return {
+            document,
+            source,
+            plan: null,
+            projection,
+            audit,
+            converted: false,
+            attempts: attempt,
+          };
+        }
+        priorIssues = audit.issues.length > 0
+          ? audit.issues
+          : [modelOutputIssue('Auditor rejected the candidate without structured issues')];
+        continue;
+      }
+
       if (!candidate) {
         emit(options, {
           phase: 'conversion',
@@ -188,7 +231,7 @@ async function requestConverter(
 
 async function requestAuditor(
   source: SegmentedStorySource,
-  plan: StoryRelationshipPlan,
+  plan: StoryRelationshipPlan | null,
   projection: StoryAuditProjection,
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget

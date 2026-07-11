@@ -40,6 +40,7 @@ An empty generated terminal system node is allowed when it prevents independent 
 Judge branch isolation from explicit next/choice targets and enumerated projection paths. Physical row order alone is not branch leakage when graph targets skip sibling branches.
 Never report command_mutation when both source commands and projected commands are empty. Report command issues only for a specific supplied command ID and owner.
 Exact source segments may omit matched heading/quote wrappers and keep speaker names in the speaker field instead of visible content; these are not omissions, additions, or meaning changes.
+For a server-validated legacy script, plan may be null. In that case audit sourceUnits directly against the projection. Legacy forms such as 【Label｜Content】 and （TypeN・Speaker）Content split structural labels, types, and speakers from visible content without changing meaning.
 Only report an issue when its code is supported by specific supplied unitIds and nodeIds. If the source, plan, projection rows, compiled table, and enumerated paths agree, return pass with an empty issues array.
 Do not repair or rewrite the candidate. Return only the flat verdict and issue list.`;
 
@@ -170,7 +171,7 @@ const STRUCTURAL_KINDS = new Set<SourceSegmentKind>([
 
 export function buildAuditorPlanMessages(
   source: SegmentedStorySource,
-  plan: StoryRelationshipPlan,
+  plan: StoryRelationshipPlan | null,
   projection: StoryAuditProjection
 ): ChatMessage[] {
   return [

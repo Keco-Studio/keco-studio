@@ -1,7 +1,7 @@
 # Import Script Minimal Story Plan Design
 
 **Date:** 2026-07-11  
-**Status:** Proposed; design direction approved, written spec pending review  
+**Status:** Implemented on `scriptenhance7-10`
 **Scope:** Replace the MiniMax-facing Story IR contract with deterministic source segmentation, a flat relationship plan, mandatory MiniMax semantic audit, and server-owned StoryDocument hydration  
 **Supersedes:** The Converter, Auditor, source-reference, retry, and chunking design in `2026-07-10-import-script-story-ir-design.md`. Existing table compilation and playback requirements remain in force.
 
@@ -41,7 +41,9 @@ The server is responsible for:
 
 - preserving source bytes and offsets;
 - segmenting lines into exact display and structural atoms;
+- building immutable node and choice inventories from exact source units;
 - parsing explicit labels, jumps, and numeric commands;
+- parsing unambiguous numbered natural branches before model conversion;
 - hydrating the final StoryDocument;
 - applying role mappings;
 - validating identifiers, coverage, commands, reachability, branches, merges, and cycles;
@@ -50,10 +52,7 @@ The server is responsible for:
 
 MiniMax is responsible for:
 
-- classifying source segments as dialogue, narration, scene, or system content;
-- grouping exact source segments into ordered story nodes;
-- connecting nodes with unconditional transitions and choices;
-- associating server-parsed commands with the correct node or choice;
+- supplying only graph differences for ambiguous input: branch breaks, non-sequential jumps, and choice edges;
 - auditing every final candidate against the original source and compiled table projection.
 
 MiniMax never authors visible story text, source offsets, numeric command values, or database rows.
