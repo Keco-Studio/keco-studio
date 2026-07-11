@@ -1,37 +1,65 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 jest.mock('@/lib/agent/llm-client', () => ({ completeLlm: jest.fn() }));
 
 import { completeLlm } from '@/lib/agent/llm-client';
-import type {
-  StoryGraphPlan,
-  StoryPlanAudit,
-  StoryRelationshipPlan,
-} from './schema';
+import type { StoryExtraction } from '@/lib/story-extraction/schema';
+import type { StoryPlanAudit } from './schema';
+import { resolveStoryPlanForImport, type StoryPlanProgressEvent } from './conversion';
 import { segmentStorySource } from './sourceSegments';
-import {
-  resolveStoryPlanForImport,
-  type StoryPlanProgressEvent,
-} from './conversion';
 
 const mockedCompleteLlm = completeLlm as jest.MockedFunction<typeof completeLlm>;
-const explicitFixture = fs.readFileSync(
-  path.join(process.cwd(), 'tests/fixtures/import-script/nested-trust-story.txt'),
-  'utf8'
-);
+const naturalContent = [
+  '七号：我们必须选择一条路线。',
+  '- 前往能源舱。选择时执行 $resolve+=1。',
+  '你进入能源舱。',
+].join('\n');
 const passAudit: StoryPlanAudit = { verdict: 'pass', issues: [] };
 const failAudit: StoryPlanAudit = {
   verdict: 'fail',
   issues: [{
     code: 'wrong_branch',
     severity: 'major',
-    unitIds: ['fixture:0'],
-    nodeIds: ['n1'],
+    unitIds: ['fixture:1'],
+    nodeIds: ['start'],
     message: 'Choice targets the wrong branch',
   }],
 };
+
+function naturalExtraction(): StoryExtraction {
+  return {
+    version: 3,
+    entryNodeId: 'start',
+    structuralUnitIds: [],
+    nodes: [
+      {
+        id: 'start',
+        type: 'dialogue',
+        speaker: '七号',
+        content: '我们必须选择一条路线。',
+        sourceUnitIds: ['fixture:0'],
+        commandSources: [],
+        nextNodeId: '',
+        choices: [{
+          text: '前往能源舱。',
+          targetNodeId: 'energy',
+          sourceUnitIds: ['fixture:1'],
+          commandSources: ['$resolve+=1'],
+        }],
+      },
+      {
+        id: 'energy',
+        type: 'narration',
+        speaker: '',
+        content: '你进入能源舱。',
+        sourceUnitIds: ['fixture:2'],
+        commandSources: [],
+        nextNodeId: '',
+        choices: [],
+      },
+    ],
+  };
+}
 
 function providerAbort(): Error {
   return Object.assign(new Error('LLM aborted before completing the response.'), {
@@ -39,189 +67,136 @@ function providerAbort(): Error {
   });
 }
 
-function naturalPlan(content: string): StoryRelationshipPlan {
-  const source = segmentStorySource(content, 'fixture');
-  const segment = source.segments.find((candidate) => candidate.kind === 'narration')!;
-  return {
-    version: 2,
-    entryNodeId: 'Node1',
-    nodes: [{
-      id: 'Node1',
-      type: 'narration',
-      speakerSegmentId: '',
-      contentSegmentIds: [segment.id],
-      commandIds: [],
-      nextNodeId: '',
-    }],
-    choices: [],
-  };
-}
-
-function naturalGraph(content: string): StoryGraphPlan {
-  const plan = naturalPlan(content);
-  return {
-    version: 2,
-    entryNodeId: plan.entryNodeId,
-    breakAfterNodeIds: [],
-    nextOverrides: [],
-    choiceEdges: plan.choices.map((choice) => ({
-      choiceId: choice.id,
-      fromNodeId: choice.fromNodeId,
-      targetNodeId: choice.targetNodeId,
-    })),
-  };
-}
-
-describe('audited story plan conversion', () => {
+describe('complete audited story extraction', () => {
   beforeEach(() => mockedCompleteLlm.mockReset());
   afterEach(() => jest.useRealTimers());
 
-  it('audits an explicit deterministic candidate without a Converter call', async () => {
-    mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify(passAudit));
-
-    const result = await resolveStoryPlanForImport(explicitFixture, { sourceId: 'fixture' });
-
-    expect(result.converted).toBe(false);
-    expect(result.audit.verdict).toBe('pass');
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(1);
-    expect(mockedCompleteLlm.mock.calls[0][1].toolName).toBe('submit_story_plan_audit');
-  });
-
-  it('converts natural input and then requires an Auditor pass', async () => {
-    const content = 'Rain fell over the empty manor.';
+  it('creates choices from arbitrary prose even when deterministic choice inventory is empty', async () => {
+    expect(segmentStorySource(naturalContent, 'fixture').segments
+      .filter((segment) => segment.kind === 'choice_text')).toHaveLength(0);
     mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(naturalGraph(content)))
+      .mockResolvedValueOnce(JSON.stringify(naturalExtraction()))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
     const progress: StoryPlanProgressEvent[] = [];
 
-    const result = await resolveStoryPlanForImport(content, {
+    const result = await resolveStoryPlanForImport(naturalContent, {
       sourceId: 'fixture',
       onProgress: (event) => progress.push(event),
     });
 
     expect(result.converted).toBe(true);
-    expect(result.attempts).toBe(1);
+    expect(result.extraction.version).toBe(3);
+    expect(result.document.nodes[0].options).toHaveLength(1);
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
-      'submit_story_relationship_plan',
+      'submit_complete_story_ir',
       'submit_story_plan_audit',
     ]);
     expect(progress.map((event) => event.phase)).toEqual(expect.arrayContaining([
-      'source_segmentation',
-      'conversion',
-      'deterministic_validation',
-      'table_projection',
-      'semantic_audit',
-      'complete',
+      'conversion', 'deterministic_validation', 'table_projection', 'semantic_audit', 'complete',
     ]));
   });
 
-  it('repairs an audit failure with one fresh Converter and Auditor round', async () => {
-    const content = 'Rain fell over the empty manor.';
-    const graph = naturalGraph(content);
-    mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(graph))
-      .mockResolvedValueOnce(JSON.stringify(failAudit))
-      .mockResolvedValueOnce(JSON.stringify(graph))
-      .mockResolvedValueOnce(JSON.stringify(passAudit));
-
-    const result = await resolveStoryPlanForImport(content, { sourceId: 'fixture' });
-
-    expect(result.attempts).toBe(2);
-    expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
-      'submit_story_relationship_plan',
-      'submit_story_plan_audit',
-      'submit_story_relationship_plan',
-      'submit_story_plan_audit',
-    ]);
-  });
-
-  it('fails closed after two rejected audited candidates', async () => {
-    const content = 'Rain fell over the empty manor.';
-    const graph = naturalGraph(content);
-    mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(graph))
-      .mockResolvedValueOnce(JSON.stringify(failAudit))
-      .mockResolvedValueOnce(JSON.stringify(graph))
-      .mockResolvedValueOnce(JSON.stringify(failAudit));
-
-    await expect(resolveStoryPlanForImport(content, { sourceId: 'fixture' }))
-      .rejects.toThrow(/two audited attempts/i);
-  });
-
-  it('feeds deterministic graph validation issues into the one repair attempt', async () => {
-    const content = 'Rain fell over the empty manor.';
-    const valid = naturalGraph(content);
-    const invalid = {
-      ...valid,
-      nextOverrides: [{ nodeId: 'Node1', targetNodeId: 'Node1' }],
+  it('routes explicit old-format text through the same Converter and Auditor', async () => {
+    const content = '【Start｜Opening】\n（Type1・Guide）Begin.';
+    const extraction: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'Start',
+      structuralUnitIds: [],
+      nodes: [
+        { id: 'Start', type: 'scene', speaker: '', content: 'Opening', sourceUnitIds: ['fixture:0'], commandSources: [], nextNodeId: 'line', choices: [] },
+        { id: 'line', type: 'dialogue', speaker: 'Guide', content: 'Begin.', sourceUnitIds: ['fixture:1'], commandSources: [], nextNodeId: '', choices: [] },
+      ],
     };
     mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(invalid))
-      .mockResolvedValueOnce(JSON.stringify(valid))
+      .mockResolvedValueOnce(JSON.stringify(extraction))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
     const result = await resolveStoryPlanForImport(content, { sourceId: 'fixture' });
 
-    expect(result.attempts).toBe(2);
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(3);
-    const secondConverterInput = mockedCompleteLlm.mock.calls[1][0][1].content;
-    expect(secondConverterInput).toContain('automatic_cycle');
+    expect(result.converted).toBe(true);
+    expect(result.document.entryLabel).toBe('Start');
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(2);
   });
 
-  it('strictly rejects provider wrapper shapes and retries without normalizing them', async () => {
-    const content = 'Rain fell over the empty manor.';
+  it('repairs an Auditor failure with a fresh Converter and Auditor round', async () => {
     mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify({ item: naturalGraph(content), next: null }))
-      .mockResolvedValueOnce(JSON.stringify(naturalGraph(content)))
+      .mockResolvedValueOnce(JSON.stringify(naturalExtraction()))
+      .mockResolvedValueOnce(JSON.stringify(failAudit))
+      .mockResolvedValueOnce(JSON.stringify(naturalExtraction()))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
-    const result = await resolveStoryPlanForImport(content, { sourceId: 'fixture' });
+    const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
+
+    expect(result.attempts).toBe(2);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(4);
+    expect(mockedCompleteLlm.mock.calls[2][0][1].content).toContain('wrong_branch');
+  });
+
+  it('feeds deterministic extraction issues into the repair attempt', async () => {
+    const invalid = naturalExtraction();
+    invalid.nodes[0].choices[0].commandSources = ['$resolve+=9'];
+    mockedCompleteLlm
+      .mockResolvedValueOnce(JSON.stringify(invalid))
+      .mockResolvedValueOnce(JSON.stringify(naturalExtraction()))
+      .mockResolvedValueOnce(JSON.stringify(passAudit));
+
+    const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
 
     expect(result.attempts).toBe(2);
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(3);
+    expect(mockedCompleteLlm.mock.calls[1][0][1].content).toContain('unknown_command');
   });
 
-  it('retries a provider-aborted response without consuming a candidate attempt', async () => {
-    const content = 'Rain fell over the empty manor.';
+  it('strictly rejects wrapper output and retries', async () => {
+    mockedCompleteLlm
+      .mockResolvedValueOnce(JSON.stringify({ item: naturalExtraction() }))
+      .mockResolvedValueOnce(JSON.stringify(naturalExtraction()))
+      .mockResolvedValueOnce(JSON.stringify(passAudit));
+
+    const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
+    expect(result.attempts).toBe(2);
+  });
+
+  it('retries a provider-aborted response without consuming an attempt', async () => {
     mockedCompleteLlm
       .mockRejectedValueOnce(providerAbort())
-      .mockResolvedValueOnce(JSON.stringify(naturalGraph(content)))
+      .mockResolvedValueOnce(JSON.stringify(naturalExtraction()))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
-    const result = await resolveStoryPlanForImport(content, { sourceId: 'fixture' });
-
+    const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
     expect(result.attempts).toBe(1);
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(3);
   });
 
-  it('caps repeated provider aborts at four total LLM calls', async () => {
-    mockedCompleteLlm.mockRejectedValue(providerAbort());
+  it('fails closed after two rejected audited candidates', async () => {
+    mockedCompleteLlm
+      .mockResolvedValueOnce(JSON.stringify(naturalExtraction()))
+      .mockResolvedValueOnce(JSON.stringify(failAudit))
+      .mockResolvedValueOnce(JSON.stringify(naturalExtraction()))
+      .mockResolvedValueOnce(JSON.stringify(failAudit));
 
-    await expect(resolveStoryPlanForImport('Rain fell.', { sourceId: 'fixture' }))
+    await expect(resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' }))
+      .rejects.toThrow(/two audited attempts/i);
+  });
+
+  it('caps repeated provider aborts at four total calls', async () => {
+    mockedCompleteLlm.mockRejectedValue(providerAbort());
+    await expect(resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' }))
       .rejects.toThrow(/two audited attempts/i);
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(4);
   });
 
-  it('rejects oversized input before any LLM request', async () => {
-    await expect(resolveStoryPlanForImport('Too long', {
-      sourceId: 'fixture',
-      maxSourceChars: 4,
-    })).rejects.toThrow(/too long/i);
-    expect(mockedCompleteLlm).not.toHaveBeenCalled();
-  });
-
-  it('honors cancellation before the first model request', async () => {
+  it('rejects oversized or cancelled input before conversion', async () => {
+    await expect(resolveStoryPlanForImport('Too long', { sourceId: 'fixture', maxSourceChars: 4 }))
+      .rejects.toThrow(/too long/i);
     const controller = new AbortController();
     controller.abort();
-
-    await expect(resolveStoryPlanForImport('Rain fell.', {
-      sourceId: 'fixture',
-      signal: controller.signal,
-    })).rejects.toThrow(/aborted/i);
+    await expect(resolveStoryPlanForImport(naturalContent, { signal: controller.signal }))
+      .rejects.toThrow(/aborted/i);
     expect(mockedCompleteLlm).not.toHaveBeenCalled();
   });
 
-  it('aborts a timed-out Converter without consuming a repair attempt', async () => {
+  it('aborts a timed-out Converter', async () => {
     jest.useFakeTimers();
     mockedCompleteLlm.mockImplementation(async (_messages, options) =>
       await new Promise<string>((_resolve, reject) => {
@@ -230,14 +205,12 @@ describe('audited story plan conversion', () => {
         }, { once: true });
       })
     );
-
-    const conversion = resolveStoryPlanForImport('Rain fell.', {
+    const conversion = resolveStoryPlanForImport(naturalContent, {
       sourceId: 'fixture',
       llmTimeoutMs: 25,
     });
     const rejection = expect(conversion).rejects.toThrow(/timed out.*Converter/i);
     await jest.advanceTimersByTimeAsync(26);
-
     await rejection;
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(1);
   });

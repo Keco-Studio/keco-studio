@@ -1,33 +1,22 @@
 import { completeLlm } from '@/lib/agent/llm-client';
 import type { OpenAITool } from '@/lib/agent/types';
 import type { RoleMap } from '@/lib/script-parser';
-import { tryLegacyStoryImport } from '@/lib/story-ir/legacyAdapter';
+import {
+  StoryExtractionValidationError,
+  materializeStoryExtraction,
+} from '@/lib/story-extraction/materializer';
+import {
+  AUDITOR_STORY_EXTRACTION_TOOL,
+  CONVERTER_STORY_EXTRACTION_TOOL,
+  buildAuditorExtractionMessages,
+  buildConverterExtractionMessages,
+  type StoryExtractionRetryIssue,
+} from '@/lib/story-extraction/prompts';
+import { parseStoryExtraction, type StoryExtraction } from '@/lib/story-extraction/schema';
 import type { StoryDocument } from '@/lib/story-ir/schema';
-import {
-  tryParseExplicitStory,
-  tryParseNaturalBranchStory,
-} from './explicitParser';
-import { hydrateStoryDocument } from './hydrator';
-import {
-  buildStoryPlanInventory,
-  materializeStoryRelationshipPlan,
-} from './inventory';
-import {
-  AUDITOR_PLAN_TOOL,
-  CONVERTER_PLAN_TOOL,
-  buildAuditorPlanMessages,
-  buildConverterPlanMessages,
-  type StoryPlanRetryIssue,
-} from './prompts';
 import { buildStoryAuditProjection, type StoryAuditProjection } from './projection';
-import {
-  parseStoryPlanAudit,
-  parseStoryGraphPlan,
-  type StoryPlanAudit,
-  type StoryRelationshipPlan,
-} from './schema';
+import { parseStoryPlanAudit, type StoryPlanAudit } from './schema';
 import { segmentStorySource, type SegmentedStorySource } from './sourceSegments';
-import { validateStoryPlan } from './validator';
 
 export const DEFAULT_STORY_PLAN_MAX_SOURCE_CHARS = 24_000;
 export const STORY_PLAN_LLM_TIMEOUT_MS = 60_000;
@@ -63,10 +52,10 @@ export interface ResolveStoryPlanOptions {
 export interface ResolvedAuditedStory {
   document: StoryDocument;
   source: SegmentedStorySource;
-  plan: StoryRelationshipPlan | null;
+  extraction: StoryExtraction;
   projection: StoryAuditProjection;
   audit: StoryPlanAudit;
-  converted: boolean;
+  converted: true;
   attempts: number;
 }
 
@@ -76,9 +65,9 @@ interface StoryPlanLlmBudget {
 }
 
 export class ImportStoryPlanError extends Error {
-  readonly issues: StoryPlanRetryIssue[];
+  readonly issues: StoryExtractionRetryIssue[];
 
-  constructor(message: string, issues: StoryPlanRetryIssue[] = []) {
+  constructor(message: string, issues: StoryExtractionRetryIssue[] = []) {
     super(message);
     this.name = 'ImportStoryPlanError';
     this.issues = issues;
@@ -105,85 +94,30 @@ export async function resolveStoryPlanForImport(
   }
 
   emit(options, { phase: 'source_segmentation', message: 'Segmenting exact story source' });
-  const sourceId = options.sourceId ?? 'import';
-  const source = segmentStorySource(sourceText, sourceId);
-  emit(options, { phase: 'explicit_parse', message: 'Checking explicit story structure' });
-  let legacyDocument = tryLegacyStoryImport(sourceText, sourceId, options.roleMap)?.document;
-  let candidate = legacyDocument
-    ? null
-    : tryParseExplicitStory(source) ?? tryParseNaturalBranchStory(source);
-  let priorIssues: StoryPlanRetryIssue[] = [];
-  let converted = false;
+  const source = segmentStorySource(sourceText, options.sourceId ?? 'import');
+  emit(options, { phase: 'explicit_parse', message: 'Preparing complete Story IR extraction' });
+  let priorIssues: StoryExtractionRetryIssue[] = [];
   const llmBudget: StoryPlanLlmBudget = { used: 0, max: 4 };
 
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     throwIfAborted(options.signal);
     try {
-      if (legacyDocument) {
-        const document = legacyDocument;
-        legacyDocument = undefined;
-        emit(options, {
-          phase: 'deterministic_validation',
-          attempt,
-          message: `Validating legacy story structure (attempt ${attempt}/2)`,
-        });
-        emit(options, {
-          phase: 'table_projection',
-          attempt,
-          message: `Compiling audit projection (attempt ${attempt}/2)`,
-        });
-        const projection = buildStoryAuditProjection(document);
-        emit(options, {
-          phase: 'semantic_audit',
-          attempt,
-          message: `Waiting for Auditor LLM response (attempt ${attempt}/2)`,
-        });
-        const audit = await requestAuditor(source, null, projection, options, llmBudget);
-        if (auditPassed(audit)) {
-          emit(options, { phase: 'complete', attempt, message: 'Story conversion and audit completed' });
-          return {
-            document,
-            source,
-            plan: null,
-            projection,
-            audit,
-            converted: false,
-            attempts: attempt,
-          };
-        }
-        priorIssues = audit.issues.length > 0
-          ? audit.issues
-          : [modelOutputIssue('Auditor rejected the candidate without structured issues')];
-        continue;
-      }
-
-      if (!candidate) {
-        emit(options, {
-          phase: 'conversion',
-          attempt,
-          message: `Waiting for Converter LLM response (attempt ${attempt}/2)`,
-        });
-        candidate = await requestConverter(source, attempt, priorIssues, options, llmBudget);
-        converted = true;
-      }
-
+      emit(options, {
+        phase: 'conversion',
+        attempt,
+        message: `Waiting for Converter LLM response (attempt ${attempt}/2)`,
+      });
+      const extraction = await requestConverter(source, attempt, priorIssues, options, llmBudget);
       emit(options, {
         phase: 'deterministic_validation',
         attempt,
-        message: `Validating story relationships (attempt ${attempt}/2)`,
+        message: `Validating source evidence and story graph (attempt ${attempt}/2)`,
       });
-      const deterministicIssues = validateStoryPlan(candidate, source);
-      if (deterministicIssues.length > 0) {
-        priorIssues = deterministicIssues;
-        candidate = null;
-        continue;
-      }
-
-      const document = hydrateStoryDocument(candidate, source, options.roleMap);
+      const document = materializeStoryExtraction(extraction, source, options.roleMap);
       emit(options, {
         phase: 'table_projection',
         attempt,
-        message: `Compiling audit projection (attempt ${attempt}/2)`,
+        message: `Compiling table and path projection (attempt ${attempt}/2)`,
       });
       const projection = buildStoryAuditProjection(document);
       emit(options, {
@@ -191,19 +125,27 @@ export async function resolveStoryPlanForImport(
         attempt,
         message: `Waiting for Auditor LLM response (attempt ${attempt}/2)`,
       });
-      const audit = await requestAuditor(source, candidate, projection, options, llmBudget);
+      const audit = await requestAuditor(source, extraction, document, projection, options, llmBudget);
       if (auditPassed(audit)) {
         emit(options, { phase: 'complete', attempt, message: 'Story conversion and audit completed' });
-        return { document, source, plan: candidate, projection, audit, converted, attempts: attempt };
+        return {
+          document,
+          source,
+          extraction,
+          projection,
+          audit,
+          converted: true,
+          attempts: attempt,
+        };
       }
       priorIssues = audit.issues.length > 0
         ? audit.issues
         : [modelOutputIssue('Auditor rejected the candidate without structured issues')];
-      candidate = null;
     } catch (error) {
       if (isAbortError(error) || error instanceof StoryPlanLlmTimeoutError) throw error;
-      priorIssues = [modelOutputIssue(publicModelOutputError(error))];
-      candidate = null;
+      priorIssues = error instanceof StoryExtractionValidationError
+        ? error.issues
+        : [modelOutputIssue(publicModelOutputError(error))];
     }
   }
 
@@ -214,31 +156,31 @@ export async function resolveStoryPlanForImport(
 async function requestConverter(
   source: SegmentedStorySource,
   attempt: number,
-  priorIssues: StoryPlanRetryIssue[],
+  priorIssues: StoryExtractionRetryIssue[],
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget
-): Promise<StoryRelationshipPlan> {
+): Promise<StoryExtraction> {
   const raw = await completeStoryPlanLlm(
-    buildConverterPlanMessages(source, attempt, priorIssues),
-    CONVERTER_PLAN_TOOL,
+    buildConverterExtractionMessages(source, attempt, priorIssues),
+    CONVERTER_STORY_EXTRACTION_TOOL,
     'Converter',
     options,
     budget
   );
-  const graph = parseStoryGraphPlan(parseModelJson(raw));
-  return materializeStoryRelationshipPlan(graph, buildStoryPlanInventory(source));
+  return parseStoryExtraction(parseModelJson(raw));
 }
 
 async function requestAuditor(
   source: SegmentedStorySource,
-  plan: StoryRelationshipPlan | null,
+  extraction: StoryExtraction,
+  document: StoryDocument,
   projection: StoryAuditProjection,
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget
 ): Promise<StoryPlanAudit> {
   const raw = await completeStoryPlanLlm(
-    buildAuditorPlanMessages(source, plan, projection),
-    AUDITOR_PLAN_TOOL,
+    buildAuditorExtractionMessages(source, extraction, document, projection),
+    AUDITOR_STORY_EXTRACTION_TOOL,
     'Auditor',
     options,
     budget
@@ -260,13 +202,13 @@ async function completeStoryPlanLlm(
     let timedOut = false;
     const timeout = setTimeout(() => {
       timedOut = true;
-      timeoutController.abort(new DOMException('Story plan LLM deadline exceeded', 'TimeoutError'));
+      timeoutController.abort(new DOMException('Story extraction LLM deadline exceeded', 'TimeoutError'));
     }, options.llmTimeoutMs ?? STORY_PLAN_LLM_TIMEOUT_MS);
 
     try {
       return await completeLlm(messages, {
         temperature: 0,
-        maxCompletionTokens: stage === 'Converter' ? 16_000 : 8_000,
+        maxCompletionTokens: stage === 'Converter' ? 24_000 : 10_000,
         thinking: 'disabled',
         tools: [tool],
         toolName: tool.function.name,
@@ -280,7 +222,6 @@ async function completeStoryPlanLlm(
       combined.cleanup();
     }
   }
-
   throw new Error('Story import LLM call budget exhausted.');
 }
 
@@ -296,17 +237,17 @@ function parseModelJson(raw: string): unknown {
 }
 
 function auditPassed(audit: StoryPlanAudit): boolean {
-  return audit.verdict === 'pass' &&
-    audit.issues.every((issue) => issue.severity === 'minor');
+  return audit.verdict === 'pass'
+    && audit.issues.every((issue) => issue.severity === 'minor');
 }
 
-function modelOutputIssue(message: string): StoryPlanRetryIssue {
+function modelOutputIssue(message: string): StoryExtractionRetryIssue {
   return { code: 'model_output', message, unitIds: [], nodeIds: [] };
 }
 
 function publicModelOutputError(error: unknown): string {
   if (error instanceof SyntaxError) return 'Model output was not valid JSON';
-  return 'Model output did not match the flat story plan contract';
+  return 'Model output did not match the complete Story IR contract';
 }
 
 function emit(options: ResolveStoryPlanOptions, event: StoryPlanProgressEvent): void {
@@ -322,9 +263,9 @@ function isAbortError(error: unknown): boolean {
 }
 
 function isProviderAbortedResponse(error: unknown): boolean {
-  return error instanceof Error &&
-    error.name === 'LlmError' &&
-    error.message === 'LLM aborted before completing the response.';
+  return error instanceof Error
+    && error.name === 'LlmError'
+    && error.message === 'LLM aborted before completing the response.';
 }
 
 function combineAbortSignals(
