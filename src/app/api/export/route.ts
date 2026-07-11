@@ -10,6 +10,10 @@ import {
 } from '@/components/libraries/utils/formulaEvaluation';
 import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
 import { writeXlsxWorkbook } from '@/lib/utils/workbook';
+import {
+  buildStoryWorkbookSheet,
+  writeStoryXlsxWorkbook,
+} from '@/lib/story-ir/storyWorkbook';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -676,10 +680,12 @@ export async function GET(request: NextRequest) {
     rows: Array<Array<string | number | boolean | null>>;
     columns?: Array<{ width?: number }>;
   }> = [];
+  const exportedSectionProps: PropertyConfig[][] = [];
 
   for (const section of exportSections) {
     const sectionProps =
       section.id === '__default__' ? properties : propertiesBySection.get(section.id) ?? [];
+    exportedSectionProps.push(sectionProps);
     const headerRow = sectionProps.map(
       (p) => `${p.name} (${p.dataType ?? p.valueType ?? 'other'})`
     );
@@ -735,7 +741,16 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const buf = await writeXlsxWorkbook(outputSheets);
+  const storySheet = outputSheets.length === 1
+    ? buildStoryWorkbookSheet(
+        outputSheets[0].name,
+        exportedSectionProps[0],
+        outputSheets[0].rows.slice(1)
+      )
+    : null;
+  const buf = storySheet
+    ? await writeStoryXlsxWorkbook(storySheet)
+    : await writeXlsxWorkbook(outputSheets);
   const responseBody = new ArrayBuffer(buf.byteLength);
   new Uint8Array(responseBody).set(buf);
   return new NextResponse(responseBody, {

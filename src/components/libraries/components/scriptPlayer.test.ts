@@ -2,6 +2,10 @@ import { describe, expect, it } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { AssetRow } from '@/lib/types/libraryAssets';
+import { compileStoryTable } from '@/lib/story-ir/tableCompiler';
+import { tryParseExplicitStory, tryParseNaturalBranchStory } from '@/lib/story-plan/explicitParser';
+import { hydrateStoryDocument } from '@/lib/story-plan/hydrator';
+import { segmentStorySource } from '@/lib/story-plan/sourceSegments';
 import {
   createScriptPlayerState,
   nextPosition,
@@ -23,6 +27,54 @@ const columns: ScriptPlayerColumns = {
 
 function row(id: string, values: Record<string, unknown>): AssetRow {
   return { id, libraryId: 'library', name: id, propertyValues: values };
+}
+
+function compileFixture(fileName: string) {
+  const sourceText = fs.readFileSync(
+    path.join(process.cwd(), 'tests/fixtures/import-script', fileName),
+    'utf8'
+  );
+  const source = segmentStorySource(sourceText, fileName);
+  const plan = tryParseExplicitStory(source) ?? tryParseNaturalBranchStory(source);
+  if (!plan) throw new Error(`Fixture ${fileName} did not produce a story plan`);
+  const compiled = compileStoryTable(hydrateStoryDocument(plan, source));
+  const rows = compiled.rows.map((values, index) => row(
+    `compiled-${index}`,
+    Object.fromEntries(compiled.columns.map((column, columnIndex) => [column, values[columnIndex]]))
+  ));
+  const options = compiled.columns.flatMap((column) => {
+    const match = /^Option(\d+)$/.exec(column);
+    if (!match) return [];
+    const optionIndex = Number(match[1]);
+    const commandsKey = `Option${optionIndex}_Commands`;
+    return [{
+      index: optionIndex,
+      textKey: column,
+      nextKey: `Option${optionIndex}_Next`,
+      ...(compiled.columns.includes(commandsKey) ? { commandsKey } : {}),
+    }];
+  });
+  return {
+    rows,
+    columns: { labelKey: 'Label', commandsKey: 'Commands', options },
+  };
+}
+
+function playCompiledFixture(fileName: string, choices: number[]) {
+  const compiled = compileFixture(fileName);
+  const remaining = [...choices];
+  let state = createScriptPlayerState(compiled.rows, compiled.columns);
+  for (let step = 0; step < 100 && !state.done && !state.error && !state.warning; step += 1) {
+    state = state.atChoice
+      ? nextPosition(state, compiled.rows, compiled.columns, remaining.shift())
+      : nextPosition(state, compiled.rows, compiled.columns);
+  }
+  return {
+    state,
+    content: state.revealed.map((index) => String(
+      compiled.rows[index].propertyValues.Content ?? ''
+    )).join('\n'),
+  };
 }
 
 const trustRows = [
@@ -210,5 +262,32 @@ describe('visual novel player wiring', () => {
 
   it('keeps content on the Start-labelled story node visible', () => {
     expect(viewSource).toContain("label.toLowerCase() === 'start' && !content");
+  });
+});
+
+describe('compiled story fixture playback', () => {
+  it.each([
+    [[0, 0], 2],
+    [[0, 1], 0],
+    [[1, 0], 4],
+    [[1, 1], 0],
+  ])('preserves nested trust path %j with final trust %d', (choices, trust) => {
+    const result = playCompiledFixture('nested-trust-story.txt', choices);
+    expect(result.state.error).toBeUndefined();
+    expect(result.state.warning).toBeUndefined();
+    expect(result.state.done).toBe(true);
+    expect(result.state.variables.trust).toBe(trust);
+  });
+
+  it('keeps rainy manor east and west endings isolated', () => {
+    const east = playCompiledFixture('rainy-manor-story.txt', [0]);
+    const west = playCompiledFixture('rainy-manor-story.txt', [1]);
+
+    expect(east.content).toContain('一夜安然无梦');
+    expect(east.content).not.toContain('彻底遗忘了自己');
+    expect(west.content).toContain('彻底遗忘了自己');
+    expect(west.content).not.toContain('一夜安然无梦');
+    expect(east.state.done).toBe(true);
+    expect(west.state.done).toBe(true);
   });
 });
