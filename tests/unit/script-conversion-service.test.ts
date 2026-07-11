@@ -11,18 +11,29 @@ describe('script conversion service facade', () => {
   beforeEach(() => mockedCompleteLlm.mockReset());
 
   it('returns validated Story IR for canonical scripts', async () => {
-    mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify({ verdict: 'pass', issues: [] }));
     const source = '【Start｜Opening】\n（Type1・Guide）Begin.';
+    mockedCompleteLlm
+      .mockResolvedValueOnce(JSON.stringify({
+        version: 3,
+        entryNodeId: 'Start',
+        structuralUnitIds: [],
+        nodes: [
+          { id: 'Start', type: 'scene', speaker: '', content: 'Opening', sourceUnitIds: ['import:0'], commandSources: [], nextNodeId: 'line', choices: [] },
+          { id: 'line', type: 'dialogue', speaker: 'Guide', content: 'Begin.', sourceUnitIds: ['import:1'], commandSources: [], nextNodeId: '', choices: [] },
+        ],
+      }))
+      .mockResolvedValueOnce(JSON.stringify({ verdict: 'pass', issues: [] }));
     const result = await resolveStoryForImport(source);
 
     expect(result).toMatchObject({
-      converted: false,
+      converted: true,
       document: { version: 1, entryLabel: 'Start' },
       audit: { verdict: 'pass', issues: [] },
-      plan: null,
+      extraction: { version: 3, entryNodeId: 'Start' },
     });
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(1);
-    expect(mockedCompleteLlm.mock.calls[0][1].toolName).toBe('submit_story_plan_audit');
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(2);
+    expect(mockedCompleteLlm.mock.calls[0][1].toolName).toBe('submit_complete_story_ir');
+    expect(mockedCompleteLlm.mock.calls[1][1].toolName).toBe('submit_story_plan_audit');
   });
 
   it('rejects empty source before model conversion', async () => {

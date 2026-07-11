@@ -13,6 +13,10 @@ import {
 import { resolveStoryPlanForImport } from '@/lib/story-plan/conversion';
 import { compileStoryTable } from '@/lib/story-ir/tableCompiler';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import type { StoryExtraction } from '@/lib/story-extraction/schema';
+import { segmentStorySource } from '@/lib/story-plan/sourceSegments';
+import { tryParseExplicitStory, tryParseNaturalBranchStory } from '@/lib/story-plan/explicitParser';
+import { hydrateStoryDocument } from '@/lib/story-plan/hydrator';
 
 const mockedCompleteLlm = completeLlm as jest.MockedFunction<typeof completeLlm>;
 const nested = fs.readFileSync(
@@ -24,6 +28,45 @@ const rainy = fs.readFileSync(
   'utf8'
 );
 const passAudit = { verdict: 'pass', issues: [] };
+
+function fixtureExtraction(content: string, sourceId: string): StoryExtraction {
+  const source = segmentStorySource(content, sourceId);
+  const plan = tryParseExplicitStory(source) ?? tryParseNaturalBranchStory(source);
+  if (!plan) throw new Error(`Could not build extraction fixture for ${sourceId}`);
+  const document = hydrateStoryDocument(plan, source);
+  const generatedLabels = new Set(document.nodes
+    .filter((node) => node.structuralRepair?.kind === 'generated_label')
+    .map((node) => node.label));
+  const nodes = document.nodes
+    .filter((node) => !generatedLabels.has(node.label))
+    .map((node) => ({
+      id: node.label,
+      type: node.type,
+      speaker: node.speaker ?? '',
+      content: node.content,
+      sourceUnitIds: node.sourceRefs.map((ref) => ref.unitId),
+      commandSources: node.commands.map((command) => command.source),
+      nextNodeId: node.next && !generatedLabels.has(node.next) ? node.next : '',
+      choices: node.options.map((option) => ({
+        text: option.text,
+        targetNodeId: option.target,
+        sourceUnitIds: option.sourceRefs.map((ref) => ref.unitId),
+        commandSources: option.commands.map((command) => command.source),
+      })),
+    }));
+  const visibleUnits = new Set(nodes.flatMap((node) => [
+    ...node.sourceUnitIds,
+    ...node.choices.flatMap((choice) => choice.sourceUnitIds),
+  ]));
+  return {
+    version: 3,
+    entryNodeId: document.entryLabel,
+    structuralUnitIds: source.units
+      .map((unit) => unit.id)
+      .filter((unitId) => !visibleUnits.has(unitId)),
+    nodes,
+  };
+}
 
 function tableRows(columns: string[], rows: string[][]): AssetRow[] {
   return rows.map((values, rowIndex) => ({
@@ -68,11 +111,13 @@ describe('minimal audited story plan integration', () => {
   beforeEach(() => mockedCompleteLlm.mockReset());
 
   it('parses explicit nested choices, audits once, and plays all four trust paths', async () => {
-    mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify(passAudit));
+    mockedCompleteLlm
+      .mockResolvedValueOnce(JSON.stringify(fixtureExtraction(nested, 'nested')))
+      .mockResolvedValueOnce(JSON.stringify(passAudit));
     const resolved = await resolveStoryPlanForImport(nested, { sourceId: 'nested' });
 
-    expect(resolved.converted).toBe(false);
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(1);
+    expect(resolved.converted).toBe(true);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(2);
     const paths = [
       { choices: [0, 0], trust: 2, excluded: ['O1B_END', 'O2', 'O2A_END', 'O2B_END'] },
       { choices: [0, 1], trust: 0, excluded: ['O1A_END', 'O2', 'O2A_END', 'O2B_END'] },
@@ -88,15 +133,17 @@ describe('minimal audited story plan integration', () => {
   });
 
   it('parses and audits the numbered rainy manor branches with isolated endings', async () => {
-    mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify(passAudit));
+    mockedCompleteLlm
+      .mockResolvedValueOnce(JSON.stringify(fixtureExtraction(rainy, 'rainy')))
+      .mockResolvedValueOnce(JSON.stringify(passAudit));
 
     const resolved = await resolveStoryPlanForImport(rainy, { sourceId: 'rainy' });
     const east = play(resolved.document, [0]);
     const west = play(resolved.document, [1]);
 
-    expect(resolved.converted).toBe(false);
+    expect(resolved.converted).toBe(true);
     expect(resolved.audit.verdict).toBe('pass');
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(1);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(2);
     expect(east.contents.join('\n')).toContain('此后余生，你岁岁平安');
     expect(east.contents.join('\n')).not.toContain('彻底遗忘了自己进山的初衷');
     expect(west.contents.join('\n')).toContain('彻底遗忘了自己进山的初衷');
