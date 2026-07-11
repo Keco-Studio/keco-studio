@@ -92,11 +92,25 @@ export function nextPosition(
 
   const row = rows[state.currentIndex];
   const revealed = revealRow(state.revealed, state.currentIndex);
+  const commandText = readString(row, columns.commandsKey);
   let variables: VariableState;
   try {
-    variables = executeCommandText(state.variables, readString(row, columns.commandsKey));
+    variables = executeCommandText(state.variables, commandText);
   } catch (error) {
     return stopWithError(state, revealed, error);
+  }
+
+  if (hasEndCommand(commandText)) {
+    return {
+      ...state,
+      revealed,
+      variables,
+      atChoice: false,
+      options: [],
+      done: true,
+      warning: undefined,
+      automaticTrail: [],
+    };
   }
 
   const options = readOptions(row, columns);
@@ -244,13 +258,21 @@ function executeCommandText(variables: VariableState, value: string): VariableSt
   const commands = value
     .split(';')
     .map((command) => command.trim())
-    .filter((command) => command && !/^Jump\s+/i.test(command))
+    .filter((command) => command && !isStructuralCommand(command))
     .map((source): StoryCommand => ({
       source,
       ...parseNumericCommand(source),
       sourceRefs: [],
     }));
   return applyStoryCommands(variables, commands);
+}
+
+function isStructuralCommand(source: string): boolean {
+  return /^Jump\s+\S+$/i.test(source) || /^End$/i.test(source);
+}
+
+function hasEndCommand(value: string): boolean {
+  return value.split(';').some((source) => /^End$/i.test(source.trim()));
 }
 
 function stopWithError(

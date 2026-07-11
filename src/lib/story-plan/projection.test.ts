@@ -5,6 +5,7 @@ import { tryParseExplicitStory } from './explicitParser';
 import { hydrateStoryDocument } from './hydrator';
 import { buildStoryAuditProjection } from './projection';
 import { segmentStorySource } from './sourceSegments';
+import { STORY_BASE_COLUMNS } from '@/lib/story-ir/tableFormat';
 
 const fixture = fs.readFileSync(
   path.join(process.cwd(), 'tests/fixtures/import-script/nested-trust-story.txt'),
@@ -32,11 +33,11 @@ describe('story audit projection', () => {
         { text: '走右边。', targetNodeId: 'O2', commands: ['$trust+=2'] },
       ],
     });
-    expect(projection.table.columns).toEqual(expect.arrayContaining([
-      'Option0',
-      'Option0_Next',
-      'Option0_Commands',
-    ]));
+    expect(projection.table.columns).toEqual([...STORY_BASE_COLUMNS]);
+    const o1Row = projection.table.rows.find(
+      (row) => row[projection.table.columns.indexOf('Label')] === 'O1'
+    );
+    expect(o1Row?.[projection.table.columns.indexOf('Commands')]).toBe('$trust+=1');
   });
 
   it('enumerates all four terminal paths without sibling leakage', () => {

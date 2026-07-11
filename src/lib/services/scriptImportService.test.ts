@@ -122,7 +122,14 @@ const storyDocument: StoryDocument = {
       sourceRefs: [ref],
     })),
     sourceRefs: [ref],
-  }],
+  }, ...Array.from({ length: 4 }, (_, index) => ({
+    label: `O${index}`,
+    type: 'narration' as const,
+    content: `Ending ${index}`,
+    commands: [],
+    options: [],
+    sourceRefs: [ref],
+  }))],
 };
 
 describe('importScriptFromFile', () => {
@@ -146,7 +153,7 @@ describe('importScriptFromFile', () => {
   it('imports Story IR with dynamic option field definitions', async () => {
     const { supabase, insertCalls } = fakeSupabase();
 
-    await importStoryDocument(supabase, {
+    const result = await importStoryDocument(supabase, {
       userId: '44444444-4444-4444-8444-444444444444',
       projectId: '22222222-2222-4222-8222-222222222222',
       folderId: '11111111-1111-4111-8111-111111111111',
@@ -157,6 +164,8 @@ describe('importScriptFromFile', () => {
 
     const fieldCall = insertCalls.find((call) => call.table === 'library_field_definitions');
     expect(fieldCall?.values).toHaveLength(buildStoryColumns(4).length);
+    expect(buildStoryColumns(4).slice(17)).toEqual(['Option3', 'Option3_Next']);
+    expect(result.rowCount).toBe(storyDocument.nodes.length);
   });
 
   it('removes a newly created library when a later value insert fails', async () => {

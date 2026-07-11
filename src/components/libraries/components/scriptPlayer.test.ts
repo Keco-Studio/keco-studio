@@ -156,6 +156,25 @@ describe('script player variable runtime', () => {
     expect(state.done).toBe(true);
   });
 
+  it('ends without revealing a later sibling branch', () => {
+    const rows = [
+      row('start', {
+        label: 'Start',
+        option0: 'Left', option0Next: 'Jump Left',
+        option1: 'Right', option1Next: 'Jump Right',
+      }),
+      row('left', { label: 'Left', content: 'Left ending', commands: '$trust+=1; End' }),
+      row('right', { label: 'Right', content: 'Right ending', commands: '$trust+=2' }),
+    ];
+
+    const state = nextPosition(createScriptPlayerState(rows, columns), rows, columns, 0);
+
+    expect(state.done).toBe(true);
+    expect(state.error).toBeUndefined();
+    expect(state.variables.trust).toBe(1);
+    expect(state.revealed).toEqual([0, 1]);
+  });
+
   it('unresolved_jump_warns', () => {
     const state = createScriptPlayerState([
       row('start', { label: 'Start', content: 'Lost', commands: 'Jump Missing' }),
