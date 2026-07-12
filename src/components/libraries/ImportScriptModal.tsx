@@ -7,7 +7,7 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { validateName } from '@/lib/utils/nameValidation';
 import { parseDocument, validateDesignFile } from '@/lib/document-parser';
 import { consumeImportStream } from '@/lib/import-script-stream';
-import type { ImportProgressEvent } from '@/lib/story-ir/schema';
+import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 import styles from './ImportScriptModal.module.css';
 
 type ImportScriptModalProps = {
@@ -164,7 +164,7 @@ export function ImportScriptModal({
     }
 
     setImporting(true);
-    setImportProgress({ phase: 'source_read', message: 'Reading script source' });
+    setImportProgress({ phase: 'source_segmentation', message: 'Segmenting exact story source' });
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) {

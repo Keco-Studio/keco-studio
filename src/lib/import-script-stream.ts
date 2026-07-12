@@ -1,4 +1,4 @@
-import type { ImportProgressEvent } from './story-ir/schema';
+import type { StoryPlanProgressEvent as ImportProgressEvent } from './story-plan/conversion';
 import type { ImportScriptResult } from './services/scriptImportService';
 
 type ImportStreamRecord =

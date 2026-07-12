@@ -1,4 +1,4 @@
-import type { ImportProgressEvent } from '@/lib/story-ir/schema';
+import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 import type { AgentTool, ToolContext, ToolResult } from './types';
 
 export async function* executeAgentTool(

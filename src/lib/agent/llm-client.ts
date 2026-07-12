@@ -26,6 +26,7 @@ export class LlmError extends Error {
 interface StreamLlmOptions {
   temperature?: number;
   maxTokens?: number;
+  maxCompletionTokens?: number;
   thinking?: 'adaptive' | 'disabled';
   tools?: OpenAITool[];
   toolName?: string;
@@ -52,7 +53,9 @@ async function requestStream(
     temperature: options.temperature ?? 0.3,
     stream: true,
   };
-  if (options.maxTokens != null) {
+  if (options.maxCompletionTokens != null) {
+    body.max_completion_tokens = options.maxCompletionTokens;
+  } else if (options.maxTokens != null) {
     body.max_tokens = options.maxTokens;
   }
   if (options.thinking) {
@@ -202,6 +205,9 @@ export async function completeLlm(
   let toolArguments = '';
   let selectedToolIndex: number | null = null;
   for await (const chunk of streamLlm(messages, options)) {
+    if (chunk.type === 'finish' && chunk.reason === 'abort') {
+      throw new LlmError('LLM aborted before completing the response.');
+    }
     if (chunk.type === 'text_delta') text += chunk.content;
     if (chunk.type === 'tool_call_delta' && options.toolName) {
       if (chunk.name === options.toolName) selectedToolIndex = chunk.index;
@@ -211,10 +217,24 @@ export async function completeLlm(
     }
   }
   if (options.toolName) {
-    if (!toolArguments) throw new LlmError(`LLM did not call required tool ${options.toolName}.`);
+    if (!toolArguments) {
+      const fallback = text.trim();
+      if (isPlainJsonObject(fallback)) return fallback;
+      throw new LlmError(`LLM did not call required tool ${options.toolName}.`);
+    }
     return toolArguments;
   }
   return text;
+}
+
+function isPlainJsonObject(value: string): boolean {
+  if (!value.startsWith('{') || !value.endsWith('}')) return false;
+  try {
+    const parsed = JSON.parse(value);
+    return Boolean(parsed) && typeof parsed === 'object' && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
 }
 
 interface LlmChunk {

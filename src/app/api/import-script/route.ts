@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
-import type { ImportProgressEvent } from '@/lib/story-ir/schema';
+import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;

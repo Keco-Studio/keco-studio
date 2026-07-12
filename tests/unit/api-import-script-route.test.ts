@@ -49,9 +49,9 @@ describe('POST /api/import-script streaming protocol', () => {
       auth: { getUser: async () => ({ data: { user: { id: 'user-1' } }, error: null }) },
     } as never);
     mockedResolve.mockImplementation(async (_source, options) => {
-      options?.onProgress?.({ phase: 'direct_import_check', message: 'Checking' });
-      options?.onProgress?.({ phase: 'semantic_audit', message: 'Auditing' });
-      return { document, units: [], converted: true, audits: [], warnings: [] };
+      options?.onProgress?.({ phase: 'source_segmentation', attempt: 1, message: 'Segmenting' } as never);
+      options?.onProgress?.({ phase: 'semantic_audit', attempt: 1, message: 'Auditing' } as never);
+      return { document } as never;
     });
     mockedImport.mockResolvedValue({ libraryId: 'library-1', rowCount: 1, fieldCount: 11 });
   });
@@ -61,13 +61,17 @@ describe('POST /api/import-script streaming protocol', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('Content-Type')).toContain('application/x-ndjson');
-    expect(await records(response)).toEqual([
-      { type: 'progress', progress: { phase: 'direct_import_check', message: 'Checking' } },
-      { type: 'progress', progress: { phase: 'semantic_audit', message: 'Auditing' } },
+    const streamed = await records(response);
+    expect(streamed).toEqual([
+      { type: 'progress', progress: { phase: 'source_segmentation', attempt: 1, message: 'Segmenting' } },
+      { type: 'progress', progress: { phase: 'semantic_audit', attempt: 1, message: 'Auditing' } },
       { type: 'progress', progress: { phase: 'table_compile', message: 'Compiling script table' } },
       { type: 'progress', progress: { phase: 'database_write', message: 'Writing script library' } },
       { type: 'result', result: { libraryId: 'library-1', rowCount: 1, fieldCount: 11 } },
     ]);
+    expect(streamed.some((record) =>
+      record.type === 'progress' && 'chunk' in (record.progress as object)
+    )).toBe(false);
     expect(mockedImport).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ document }));
   });
 

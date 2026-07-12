@@ -36,6 +36,7 @@ export const StoryOptionSchema = z.object({
 export const StoryNodeSchema = z.object({
   label: z.string().regex(LABEL_PATTERN),
   type: z.enum(['dialogue', 'narration', 'scene', 'system']),
+  presentationType: z.number().int().min(1).max(5).optional(),
   speaker: z.string().min(1).optional(),
   content: z.string(),
   commands: z.array(StoryCommandSchema).default([]),

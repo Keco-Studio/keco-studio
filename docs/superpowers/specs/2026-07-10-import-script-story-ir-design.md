@@ -1,7 +1,7 @@
 # Import Script Story IR Design Spec
 
 **Date:** 2026-07-10  
-**Status:** Draft; command canonicalization amendment approved, pending written spec review
+**Status:** Superseded by `2026-07-11-import-script-minimal-story-plan-design.md`
 **Scope:** Replace prose-to-standard-text conversion with an audited Story IR pipeline, support dynamic choices and nested branches, and execute numeric story variables during playback  
 **Related:** [Import Script branch playback spec](../../../specs/012-import-script-branch-playback/spec.md), [Agent design](./2026-06-10-keco-studio-agent-design.md)
 
