@@ -1,5 +1,3 @@
-'use client';
-
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
   verifyProjectAccess,
@@ -34,6 +32,8 @@ export type Folder = {
     avatar_color: string | null;
   } | null;
 };
+
+export type FolderReference = Pick<Folder, 'id' | 'name' | 'project_id'>;
 
 type CreateFolderInput = {
   projectId: string;
@@ -132,6 +132,23 @@ export async function listFolders(
     ...folder,
     updater: folder.updater || null,
   })) as Folder[];
+}
+
+export async function listFolderReferences(
+  supabase: SupabaseClient,
+  projectId: string
+): Promise<FolderReference[]> {
+  const resolvedProjectId = await resolveProjectId(supabase, projectId);
+  await verifyProjectAccess(supabase, resolvedProjectId);
+
+  const { data, error } = await supabase
+    .from('folders')
+    .select('id, name, project_id')
+    .eq('project_id', resolvedProjectId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as FolderReference[];
 }
 
 export async function getFolder(

@@ -9,8 +9,6 @@
  * - Delete versions
  */
 
-'use client';
-
 import { SupabaseClient } from '@supabase/supabase-js';
 import { verifyLibraryAccess } from './authorizationService';
 import { getCurrentUserId } from './authorizationService';

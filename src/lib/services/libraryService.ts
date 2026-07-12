@@ -1,5 +1,3 @@
-'use client';
-
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
   verifyProjectOwnership,
@@ -39,6 +37,8 @@ export type Library = {
     avatar_color: string | null;
   } | null;
 };
+
+export type LibraryReference = Pick<Library, 'id' | 'name' | 'project_id' | 'folder_id'>;
 
 type CreateLibraryInput = {
   projectId: string;
@@ -261,6 +261,23 @@ export async function listLibraries(
   });
 }
 
+export async function listLibraryReferences(
+  supabase: SupabaseClient,
+  projectId: string
+): Promise<LibraryReference[]> {
+  const resolvedProjectId = await resolveProjectId(supabase, projectId);
+  await verifyProjectAccess(supabase, resolvedProjectId);
+
+  const { data, error } = await supabase
+    .from('libraries')
+    .select('id, name, project_id, folder_id')
+    .eq('project_id', resolvedProjectId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as LibraryReference[];
+}
+
 export async function getLibrary(
   supabase: SupabaseClient,
   libraryId: string,
@@ -307,6 +324,30 @@ export async function deleteLibrary(
     throw error;
   }
   
+}
+
+export async function renameLibrary(
+  supabase: SupabaseClient,
+  libraryId: string,
+  newName: string
+): Promise<void> {
+  const name = newName.trim();
+  if (!name) {
+    throw new Error('Library name is required.');
+  }
+
+  await verifyLibraryUpdatePermission(supabase, libraryId);
+  const { error } = await supabase
+    .from('libraries')
+    .update({ name, updated_at: new Date().toISOString() })
+    .eq('id', libraryId);
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error('A library with this name already exists in the project or folder.');
+    }
+    throw error;
+  }
 }
 
 export async function checkLibraryNameExists(

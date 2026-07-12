@@ -8,6 +8,7 @@ import {
 import { computeFormulaValuesForRow, createFormulaFieldByName } from '@/lib/utils/formula';
 import { getLibrary } from '@/lib/services/libraryService';
 import { syncReferencesForSourceChanges } from '@/lib/services/referenceSyncService';
+import { fetchAllPaged } from '@/lib/services/pagination';
 import {
   verifyLibraryAccess,
   verifyLibraryUpdatePermission,
@@ -445,6 +446,7 @@ export async function getLibrarySchema(
       referenceLibraries: row.reference_libraries || undefined,
       enumOptions: row.enum_options || undefined,
       formulaExpression: row.formula_expression || undefined,
+      required: row.required ?? false,
       orderIndex: row.order_index,
     });
   }
@@ -743,20 +745,16 @@ export async function getLibraryAssetsWithProperties(
   // verify library access
   await verifyLibraryAccess(supabase, libraryId);
 
-  const { data: assetData, error: assetError } = await supabase
-    .from('library_assets')
-    .select('id, library_id, name, created_at, row_index')
-    .eq('library_id', libraryId)
-    // IMPORTANT: keep this ordering identical to frontend allAssets sorting:
-    // row_index first, then id, so clients agree on row order.
-    .order('row_index', { ascending: true })
-    .order('id', { ascending: true });
-
-  if (assetError) {
-    throw assetError;
-  }
-
-  const assets = (assetData ?? []) as AssetRowDb[];
+  const assets = await fetchAllPaged<AssetRowDb>((from, to) =>
+    supabase
+      .from('library_assets')
+      .select('id, library_id, name, created_at, row_index')
+      .eq('library_id', libraryId)
+      // Keep this ordering identical to frontend allAssets sorting.
+      .order('row_index', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to)
+  );
 
   if (assets.length === 0) {
     return [];
@@ -764,16 +762,15 @@ export async function getLibraryAssetsWithProperties(
 
   const assetIds = assets.map((a) => a.id);
 
-  const { data: valueData, error: valueError } = await supabase
-    .from('library_asset_values')
-    .select('asset_id, field_id, value_json')
-    .in('asset_id', assetIds);
-
-  if (valueError) {
-    throw valueError;
-  }
-
-  const values = (valueData ?? []) as AssetValueRow[];
+  const values = await fetchAllPaged<AssetValueRow>((from, to) =>
+    supabase
+      .from('library_asset_values')
+      .select('asset_id, field_id, value_json')
+      .in('asset_id', assetIds)
+      .order('asset_id', { ascending: true })
+      .order('field_id', { ascending: true })
+      .range(from, to)
+  );
 
   const rowsByAssetId = new Map<string, AssetRow>();
 
