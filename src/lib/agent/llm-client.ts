@@ -217,10 +217,24 @@ export async function completeLlm(
     }
   }
   if (options.toolName) {
-    if (!toolArguments) throw new LlmError(`LLM did not call required tool ${options.toolName}.`);
+    if (!toolArguments) {
+      const fallback = text.trim();
+      if (isPlainJsonObject(fallback)) return fallback;
+      throw new LlmError(`LLM did not call required tool ${options.toolName}.`);
+    }
     return toolArguments;
   }
   return text;
+}
+
+function isPlainJsonObject(value: string): boolean {
+  if (!value.startsWith('{') || !value.endsWith('}')) return false;
+  try {
+    const parsed = JSON.parse(value);
+    return Boolean(parsed) && typeof parsed === 'object' && !Array.isArray(parsed);
+  } catch {
+    return false;
+  }
 }
 
 interface LlmChunk {

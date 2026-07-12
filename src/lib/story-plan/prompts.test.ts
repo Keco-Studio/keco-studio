@@ -4,9 +4,12 @@ import {
   AUDITOR_STORY_EXTRACTION_TOOL,
   EXTRACTOR_STORY_CONTENT_PROMPT,
   EXTRACTOR_STORY_CONTENT_TOOL,
+  GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT,
+  GRAPH_AUDITOR_STORY_EXTRACTION_TOOL,
   GRAPH_STORY_PLAN_PROMPT,
   GRAPH_STORY_PLAN_TOOL,
   buildContentExtractionMessages,
+  buildGraphAuditorExtractionMessages,
   buildGraphExtractionMessages,
 } from '@/lib/story-extraction/prompts';
 import { segmentStorySource } from './sourceSegments';
@@ -43,6 +46,24 @@ describe('two-stage full story extraction prompts', () => {
     expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('Never create Continue');
     expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('command ownership');
     expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('Do not duplicate a decision');
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('presentationType 1 and 2 are both dialogue boxes');
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('MUST follow that order');
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain('known character name followed by an action cue');
+  });
+
+  it('gives structural declarations and option rows one unambiguous owner', () => {
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain(
+      'A branch or merge declaration names the next visible node'
+    );
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain(
+      'Never create a separate empty node for the declaration'
+    );
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain(
+      'An option source unit belongs only to its choice item'
+    );
+    expect(EXTRACTOR_STORY_CONTENT_PROMPT).toContain(
+      'Never also create a node from that option unit'
+    );
   });
 
   it('sends raw units to Extractor and LLM-created inventories to Graph Planner', () => {
@@ -80,6 +101,67 @@ describe('two-stage full story extraction prompts', () => {
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('blank Label');
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Jump in Commands');
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('tablePaths');
+  });
+
+  it('gives the Graph Auditor only source-grounded graph and path evidence', () => {
+    expect(GRAPH_AUDITOR_STORY_EXTRACTION_TOOL.function.name).toBe('submit_story_graph_audit');
+    expect(GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT).toContain('exclusive outcome scope');
+    expect(GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT).toContain('repeats an earlier decision unexpectedly');
+    expect(GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Never infer termination or fallthrough');
+    expect(GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT).toContain('does not create shared visible content');
+    expect(GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Do not invent narrative prerequisites');
+
+    const source = segmentStorySource('请选择。\n- 左边。\n左边结局。', 'audit');
+    const extraction = {
+      version: 3 as const,
+      entryNodeId: 'start',
+      structuralUnitIds: [],
+      nodes: [
+        { id: 'start', type: 'narration' as const, speaker: '', content: '请选择。', sourceUnitIds: ['audit:0'], commandSources: [], nextNodeId: '' },
+        { id: 'left', type: 'narration' as const, speaker: '', content: '左边结局。', sourceUnitIds: ['audit:2'], commandSources: [], nextNodeId: '' },
+      ],
+      choices: [{ id: 'go_left', fromNodeId: 'start', text: '左边。', targetNodeId: 'left', sourceUnitIds: ['audit:1'], commandSources: [] }],
+    };
+    const messages = buildGraphAuditorExtractionMessages(source, extraction, {
+      rows: [],
+      table: { columns: [], rows: [] },
+      paths: [{ labels: ['start', 'left'], terminalLabel: 'left' }],
+      tablePaths: [],
+    });
+    const input = JSON.parse(messages[1].content as string);
+    expect(input).toMatchObject({ extraction, paths: [{ labels: ['start', 'left'] }] });
+    expect(input).not.toHaveProperty('table');
+    expect(input).not.toHaveProperty('rows');
+  });
+
+  it('audits structural decorators and reference Type values consistently', () => {
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
+      'does not require its own empty node or table row'
+    );
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
+      'Types 1 and 2 are both dialogue boxes'
+    );
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
+      'must not collapse every speaker to Type 1'
+    );
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
+      'next target is the immediately following physical table row, Commands must be blank'
+    );
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
+      'Never include an issue whose own message says the candidate is correct, acceptable, or needs no action'
+    );
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
+      'standalone command line immediately after a visible node'
+    );
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
+      'Do not invent narrative prerequisites'
+    );
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
+      'Choice-control prompts such as "you can choose"'
+    );
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
+      'A complete grammatical sentence can still be a pure merge control'
+    );
   });
 
   it('keeps Graph Planner focused on real choices and automatic edges', () => {

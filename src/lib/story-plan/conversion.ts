@@ -1,6 +1,7 @@
 import { completeLlm } from '@/lib/agent/llm-client';
 import type { OpenAITool } from '@/lib/agent/types';
 import type { RoleMap } from '@/lib/script-parser';
+import { buildStoryExtractionFromPlan } from '@/lib/story-extraction/fromPlan';
 import {
   StoryExtractionValidationError,
   materializeStoryExtraction,
@@ -16,9 +17,11 @@ import {
 import {
   AUDITOR_STORY_EXTRACTION_TOOL,
   EXTRACTOR_STORY_CONTENT_TOOL,
+  GRAPH_AUDITOR_STORY_EXTRACTION_TOOL,
   GRAPH_STORY_PLAN_TOOL,
   buildAuditorExtractionMessages,
   buildContentExtractionMessages,
+  buildGraphAuditorExtractionMessages,
   buildGraphExtractionMessages,
   type StoryExtractionRetryIssue,
 } from '@/lib/story-extraction/prompts';
@@ -26,15 +29,18 @@ import type { StoryExtraction } from '@/lib/story-extraction/schema';
 import type { StoryDocument } from '@/lib/story-ir/schema';
 import { buildStoryAuditProjection, type StoryAuditProjection } from './projection';
 import { parseStoryPlanAudit, type StoryPlanAudit } from './schema';
+import { tryParseExplicitStory } from './explicitParser';
 import { segmentStorySource, type SegmentedStorySource } from './sourceSegments';
 
 export const DEFAULT_STORY_PLAN_MAX_SOURCE_CHARS = 24_000;
 export const STORY_PLAN_LLM_TIMEOUT_MS = 150_000;
 const MAX_MODEL_JSON_BYTES = 10 * 1024 * 1024;
 const MAX_CANDIDATE_ATTEMPTS = 3;
+const MAX_GRAPH_ATTEMPTS = 5;
 const MAX_LLM_CALLS = 15;
+const MAX_PROVIDER_ABORT_RETRIES_PER_STAGE = 3;
 
-type LlmStage = 'Extractor' | 'Graph Planner' | 'Auditor';
+type LlmStage = 'Extractor' | 'Graph Planner' | 'Graph Auditor' | 'Auditor';
 
 export type StoryPlanProgressPhase =
   | 'source_segmentation'
@@ -69,7 +75,7 @@ export interface ResolvedAuditedStory {
   extraction: StoryExtraction;
   projection: StoryAuditProjection;
   audit: StoryPlanAudit;
-  converted: true;
+  converted: boolean;
   attempts: number;
 }
 
@@ -121,9 +127,45 @@ export async function resolveStoryPlanForImport(
 
   emit(options, { phase: 'source_segmentation', message: 'Segmenting exact story source' });
   const source = segmentStorySource(sourceText, options.sourceId ?? 'import');
-  emit(options, { phase: 'explicit_parse', message: 'Preparing complete Story IR extraction' });
+  emit(options, { phase: 'explicit_parse', message: 'Checking explicit story structure' });
   let priorIssues: StoryExtractionRetryIssue[] = [];
   const llmBudget: StoryPlanLlmBudget = { used: 0, max: MAX_LLM_CALLS };
+
+  const explicitPlan = tryParseExplicitStory(source);
+  if (explicitPlan) {
+    try {
+      const extraction = buildStoryExtractionFromPlan(explicitPlan, source);
+      emit(options, {
+        phase: 'deterministic_validation',
+        attempt: 1,
+        message: 'Validating explicit source evidence and story graph',
+      });
+      const document = materializeStoryExtraction(extraction, source, options.roleMap);
+      emit(options, {
+        phase: 'table_projection',
+        attempt: 1,
+        message: 'Compiling explicit table and path projection',
+      });
+      const projection = buildStoryAuditProjection(document);
+      return await auditExplicitCandidate(
+        source,
+        extraction,
+        document,
+        projection,
+        options,
+        llmBudget
+      );
+    } catch (error) {
+      if (
+        isAbortError(error)
+        || error instanceof StoryPlanLlmTimeoutError
+        || error instanceof ImportStoryPlanError
+      ) throw error;
+      priorIssues = error instanceof StoryExtractionValidationError
+        ? error.issues
+        : [modelOutputIssue(publicModelOutputError(error))];
+    }
+  }
 
   for (let attempt = 1; attempt <= MAX_CANDIDATE_ATTEMPTS; attempt += 1) {
     throwIfAborted(options.signal);
@@ -134,12 +176,7 @@ export async function resolveStoryPlanForImport(
         message: `Waiting for Extractor LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
       });
       const content = await requestContentExtractor(source, attempt, priorIssues, options, llmBudget);
-      emit(options, {
-        phase: 'conversion',
-        attempt,
-        message: `Waiting for Graph Planner LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
-      });
-      const graph = await requestGraphPlanner(
+      const extraction = await buildExtractionWithGraphRetries(
         source,
         content,
         attempt,
@@ -147,7 +184,6 @@ export async function resolveStoryPlanForImport(
         options,
         llmBudget
       );
-      const extraction = normalizeStoryExtraction(combineStoryExtraction(content, graph), source);
       emit(options, {
         phase: 'deterministic_validation',
         attempt,
@@ -163,9 +199,34 @@ export async function resolveStoryPlanForImport(
       emit(options, {
         phase: 'semantic_audit',
         attempt,
-        message: `Waiting for Auditor LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
+        message: `Waiting for Graph Auditor LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
       });
-      const audit = await requestAuditor(source, extraction, document, projection, options, llmBudget);
+      const graphAudit = await requestAuditConsensus(() => requestGraphAuditor(
+        source,
+        extraction,
+        projection,
+        options,
+        llmBudget
+      ));
+      if (!auditPassed(graphAudit)) {
+        priorIssues = graphAudit.issues.length > 0
+          ? graphAudit.issues
+          : [modelOutputIssue('Graph Auditor rejected the candidate without structured issues')];
+        continue;
+      }
+      emit(options, {
+        phase: 'semantic_audit',
+        attempt,
+        message: `Waiting for Content and Table Auditor LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
+      });
+      const audit = await requestAuditConsensus(() => requestAuditor(
+        source,
+        extraction,
+        document,
+        projection,
+        options,
+        llmBudget
+      ));
       if (auditPassed(audit)) {
         emit(options, { phase: 'complete', attempt, message: 'Story conversion and audit completed' });
         return {
@@ -186,6 +247,89 @@ export async function resolveStoryPlanForImport(
       priorIssues = error instanceof StoryExtractionValidationError
         ? error.issues
         : [modelOutputIssue(publicModelOutputError(error))];
+    }
+  }
+
+  emit(options, {
+    phase: 'failed',
+    attempt: MAX_CANDIDATE_ATTEMPTS,
+    message: 'Story import failed after three audited attempts',
+  });
+  throw new ImportStoryPlanError('Story import failed after three audited attempts.', priorIssues);
+}
+
+async function buildExtractionWithGraphRetries(
+  source: SegmentedStorySource,
+  content: StoryContentExtraction,
+  candidateAttempt: number,
+  priorIssues: StoryExtractionRetryIssue[],
+  options: ResolveStoryPlanOptions,
+  budget: StoryPlanLlmBudget
+): Promise<StoryExtraction> {
+  let graphIssues = priorIssues;
+  for (let graphAttempt = 1; graphAttempt <= MAX_GRAPH_ATTEMPTS; graphAttempt += 1) {
+    emit(options, {
+      phase: 'conversion',
+      attempt: candidateAttempt,
+      message: `Waiting for Graph Planner LLM response (graph attempt ${graphAttempt}/${MAX_GRAPH_ATTEMPTS})`,
+    });
+    try {
+      const graph = await requestGraphPlanner(
+        source,
+        content,
+        graphAttempt,
+        graphIssues,
+        options,
+        budget
+      );
+      return normalizeStoryExtraction(combineStoryExtraction(content, graph), source);
+    } catch (error) {
+      if (isAbortError(error) || error instanceof StoryPlanLlmTimeoutError) throw error;
+      graphIssues = error instanceof StoryExtractionValidationError
+        ? error.issues
+        : [modelOutputIssue(publicModelOutputError(error))];
+      if (graphAttempt === MAX_GRAPH_ATTEMPTS || budget.used >= budget.max) throw error;
+    }
+  }
+  throw new Error('Graph Planner retry loop exhausted.');
+}
+
+async function auditExplicitCandidate(
+  source: SegmentedStorySource,
+  extraction: StoryExtraction,
+  document: StoryDocument,
+  projection: StoryAuditProjection,
+  options: ResolveStoryPlanOptions,
+  budget: StoryPlanLlmBudget
+): Promise<ResolvedAuditedStory> {
+  let priorIssues: StoryExtractionRetryIssue[] = [];
+  for (let attempt = 1; attempt <= MAX_CANDIDATE_ATTEMPTS; attempt += 1) {
+    throwIfAborted(options.signal);
+    try {
+      emit(options, {
+        phase: 'semantic_audit',
+        attempt,
+        message: `Waiting for Auditor LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
+      });
+      const audit = await requestAuditor(source, extraction, document, projection, options, budget);
+      if (auditPassed(audit)) {
+        emit(options, { phase: 'complete', attempt, message: 'Story conversion and audit completed' });
+        return {
+          document,
+          source,
+          extraction,
+          projection,
+          audit,
+          converted: false,
+          attempts: attempt,
+        };
+      }
+      priorIssues = audit.issues.length > 0
+        ? audit.issues
+        : [modelOutputIssue('Auditor rejected the candidate without structured issues')];
+    } catch (error) {
+      if (isAbortError(error) || error instanceof StoryPlanLlmTimeoutError) throw error;
+      priorIssues = [modelOutputIssue(publicModelOutputError(error))];
     }
   }
 
@@ -262,6 +406,68 @@ async function requestAuditor(
   }
 }
 
+async function requestGraphAuditor(
+  source: SegmentedStorySource,
+  extraction: StoryExtraction,
+  projection: StoryAuditProjection,
+  options: ResolveStoryPlanOptions,
+  budget: StoryPlanLlmBudget
+): Promise<StoryPlanAudit> {
+  const raw = await completeStoryPlanLlm(
+    buildGraphAuditorExtractionMessages(source, extraction, projection),
+    GRAPH_AUDITOR_STORY_EXTRACTION_TOOL,
+    'Graph Auditor',
+    options,
+    budget
+  );
+  try {
+    return parseStoryPlanAudit(parseModelJson(raw));
+  } catch (error) {
+    throw new StoryModelContractError('Graph Auditor', error);
+  }
+}
+
+async function requestAuditConsensus(
+  request: () => Promise<StoryPlanAudit>
+): Promise<StoryPlanAudit> {
+  let passVotes = 0;
+  let failVotes = 0;
+  let passingAudit: StoryPlanAudit = { verdict: 'pass', issues: [] };
+  const failureIssues: StoryPlanAudit['issues'] = [];
+
+  for (let vote = 1; vote <= 3; vote += 1) {
+    const audit = await request();
+    if (auditPassed(audit)) {
+      passVotes += 1;
+      passingAudit = audit;
+      if (passVotes === 2) return passingAudit;
+    } else {
+      failVotes += 1;
+      failureIssues.push(...audit.issues);
+      if (failVotes === 2) {
+        return {
+          verdict: 'fail',
+          issues: deduplicateAuditIssues(failureIssues),
+        };
+      }
+    }
+  }
+
+  return { verdict: 'fail', issues: deduplicateAuditIssues(failureIssues) };
+}
+
+function deduplicateAuditIssues(
+  issues: StoryPlanAudit['issues']
+): StoryPlanAudit['issues'] {
+  const seen = new Set<string>();
+  return issues.filter((issue) => {
+    const key = JSON.stringify([issue.code, issue.unitIds, issue.nodeIds, issue.message]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 async function completeStoryPlanLlm(
   messages: Parameters<typeof completeLlm>[0],
   tool: OpenAITool,
@@ -269,6 +475,7 @@ async function completeStoryPlanLlm(
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget
 ): Promise<string> {
+  let providerAbortRetries = 0;
   while (budget.used < budget.max) {
     budget.used += 1;
     const timeoutController = new AbortController();
@@ -290,7 +497,12 @@ async function completeStoryPlanLlm(
       });
     } catch (error) {
       if (timedOut) throw new StoryPlanLlmTimeoutError(stage);
-      if (!isProviderAbortedResponse(error) || budget.used >= budget.max) throw error;
+      if (!isProviderAbortedResponse(error)) throw error;
+      providerAbortRetries += 1;
+      if (
+        providerAbortRetries > MAX_PROVIDER_ABORT_RETRIES_PER_STAGE
+        || budget.used >= budget.max
+      ) throw error;
     } finally {
       clearTimeout(timeout);
       combined.cleanup();

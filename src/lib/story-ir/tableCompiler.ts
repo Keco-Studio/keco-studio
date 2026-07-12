@@ -100,7 +100,7 @@ function compileNode(
     : node.options.length === 0 && index < document.nodes.length - 1 ? 'End' : '';
   const values = new Map<string, string>([
     ['Label', labels.has(node.label) ? node.label : ''],
-    ['Type', node.type === 'dialogue' ? '1' : '2'],
+    ['Type', compileNodeType(node)],
     ['Name', node.speaker ?? ''],
     ['Content', node.content],
     ['Commands', [serializeCommands(node.commands), control]
@@ -117,6 +117,20 @@ function compileNode(
   });
 
   return columns.map((column) => values.get(column) ?? '');
+}
+
+function compileNodeType(node: StoryNode): string {
+  if (node.presentationType) return String(node.presentationType);
+  switch (node.type) {
+    case 'dialogue':
+      return '1';
+    case 'narration':
+      return '3';
+    case 'scene':
+      return '4';
+    case 'system':
+      return '5';
+  }
 }
 
 export function serializeCommands(commands: StoryCommand[]): string {

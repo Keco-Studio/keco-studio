@@ -87,5 +87,36 @@ export function parseStoryGraphPlan(value: unknown): StoryGraphPlan {
 }
 
 export function parseStoryPlanAudit(value: unknown): StoryPlanAudit {
-  return StoryPlanAuditSchema.parse(value);
+  const parsed = StoryPlanAuditSchema.parse(value);
+  const issues = parsed.issues.filter((issue) => !isSelfNegatingAuditIssue(issue.message));
+  return {
+    verdict: parsed.verdict === 'fail' && issues.length === 0 ? 'pass' : parsed.verdict,
+    issues,
+  };
+}
+
+function isSelfNegatingAuditIssue(message: string): boolean {
+  const conclusions = [
+    /\bno(?: [a-z_]+){0,3} issue(?: here)?\b/gi,
+    /\bthis is (?:correct|acceptable)\b/gi,
+    /\bthis is (?:structurally |semantically )?faithful\b/gi,
+    /\bthis (?:ordering|sequence|structure|mapping|branch) is (?:structurally |semantically )?faithful\b/gi,
+    /\bno [^.!?]{1,80} detected\b/gi,
+    /\bacceptable decoration omission\b/gi,
+    /\bno action (?:is )?required\b/gi,
+    /(?:没有|不存在|无)(?:任何)?问题/g,
+    /(?:这是|该行为|该结果)(?:完全)?正确/g,
+    /(?:可以接受|无需处理|不需要处理)/g,
+  ];
+  let conclusionEnd = -1;
+  for (const pattern of conclusions) {
+    for (const match of message.matchAll(pattern)) {
+      conclusionEnd = Math.max(conclusionEnd, (match.index ?? 0) + match[0].length);
+    }
+  }
+  if (conclusionEnd < 0) return false;
+
+  const suffix = message.slice(conclusionEnd);
+  return !/\b(?:but|however|except|yet|missing|omitted|wrong|invalid|mismatch|fail(?:s|ed)?|error)\b/i.test(suffix)
+    && !/(?:但是|然而|不过|除外|缺失|遗漏|错误|无效|不一致|失败)/.test(suffix);
 }

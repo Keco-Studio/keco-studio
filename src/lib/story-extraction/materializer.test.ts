@@ -157,6 +157,49 @@ describe('full story extraction materializer', () => {
     expect(materializeStoryExtraction(value, source).nodes).toHaveLength(1);
   });
 
+  it('removes a visible path-merge control node and reconnects incoming branches', () => {
+    const text = '选择路线。\n- 左路\n- 右路\n左路结束。\n右路结束。\n两条路径最终在大厅合流。\n共同结尾。';
+    const source = segmentStorySource(text, 'path-merge');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'start',
+      structuralUnitIds: [],
+      nodes: [
+        { id: 'start', type: 'narration', speaker: '', content: '选择路线。', sourceUnitIds: ['path-merge:0'], commandSources: [], nextNodeId: '' },
+        { id: 'left', type: 'narration', speaker: '', content: '左路结束。', sourceUnitIds: ['path-merge:3'], commandSources: [], nextNodeId: 'merge' },
+        { id: 'right', type: 'narration', speaker: '', content: '右路结束。', sourceUnitIds: ['path-merge:4'], commandSources: [], nextNodeId: 'merge' },
+        { id: 'merge', type: 'narration', speaker: '', content: '两条路径最终在大厅合流。', sourceUnitIds: ['path-merge:5'], commandSources: [], nextNodeId: 'end' },
+        { id: 'end', type: 'narration', speaker: '', content: '共同结尾。', sourceUnitIds: ['path-merge:6'], commandSources: [], nextNodeId: '' },
+      ],
+      choices: [
+        { id: 'go_left', fromNodeId: 'start', text: '左路', targetNodeId: 'left', sourceUnitIds: ['path-merge:1'], commandSources: [] },
+        { id: 'go_right', fromNodeId: 'start', text: '右路', targetNodeId: 'right', sourceUnitIds: ['path-merge:2'], commandSources: [] },
+      ],
+    };
+
+    const document = materializeStoryExtraction(value, source);
+    expect(document.nodes.map((node) => node.label)).toEqual(['start', 'left', 'right', 'end']);
+    expect(document.nodes.find((node) => node.label === 'left')?.next).toBe('end');
+    expect(document.nodes.find((node) => node.label === 'right')?.next).toBe('end');
+  });
+
+  it('classifies omitted natural branch headings as structural evidence', () => {
+    const text = '如果你检查甲板：\n你在甲板上发现湿脚印。';
+    const source = segmentStorySource(text, 'branch-heading');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'deck',
+      structuralUnitIds: [],
+      nodes: [{
+        id: 'deck', type: 'narration', speaker: '', content: '你在甲板上发现湿脚印。',
+        sourceUnitIds: ['branch-heading:1'], commandSources: [], nextNodeId: '',
+      }],
+      choices: [],
+    };
+
+    expect(materializeStoryExtraction(value, source).nodes).toHaveLength(1);
+  });
+
   it('removes structural choice prompts and moves their choices to the preceding node', () => {
     const text = '请选择路线。\n这里有两个选择：\n- 左边。\n左边结局。';
     const source = segmentStorySource(text, 'prompt');
@@ -203,6 +246,118 @@ describe('full story extraction materializer', () => {
     const value = extraction();
     value.nodes[1].content = '你修好了整个空间站。';
     expect(() => materialize(value)).toThrow(/not traceable/i);
+  });
+
+  it('rejects collapsing multiple dialogue speakers onto one presentation Type', () => {
+    const text = '守灯人：你是谁？\n少年：我是海上的过客。';
+    const source = segmentStorySource(text, 'dialogue-types');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'keeper',
+      structuralUnitIds: [],
+      nodes: [
+        {
+          id: 'keeper', type: 'dialogue', presentationType: 1, speaker: '守灯人',
+          content: '你是谁？', sourceUnitIds: ['dialogue-types:0'], commandSources: [], nextNodeId: 'youth',
+        },
+        {
+          id: 'youth', type: 'dialogue', presentationType: 1, speaker: '少年',
+          content: '我是海上的过客。', sourceUnitIds: ['dialogue-types:1'], commandSources: [], nextNodeId: '',
+        },
+      ],
+      choices: [],
+    };
+
+    expect(() => materializeStoryExtraction(value, source)).toThrow(/presentation Type/i);
+  });
+
+  it('rejects changing presentation Type for the same speaker', () => {
+    const text = '少年：第一句。\n少年：第二句。';
+    const source = segmentStorySource(text, 'speaker-type');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'first',
+      structuralUnitIds: [],
+      nodes: [
+        {
+          id: 'first', type: 'dialogue', presentationType: 1, speaker: '少年',
+          content: '第一句。', sourceUnitIds: ['speaker-type:0'], commandSources: [], nextNodeId: 'second',
+        },
+        {
+          id: 'second', type: 'dialogue', presentationType: 2, speaker: '少年',
+          content: '第二句。', sourceUnitIds: ['speaker-type:1'], commandSources: [], nextNodeId: '',
+        },
+      ],
+      choices: [],
+    };
+
+    expect(() => materializeStoryExtraction(value, source)).toThrow(/presentation Type/i);
+  });
+
+  it('normalizes a character-list role name to the exact dialogue cue alias', () => {
+    const text = '人物：你（守灯人）、海客少年\n少年（站在码头边缘）：灯塔还亮着。\n少年身影渐渐透明：我该走了。';
+    const source = segmentStorySource(text, 'speaker-alias');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'boy',
+      structuralUnitIds: ['speaker-alias:0'],
+      nodes: [
+        {
+          id: 'boy', type: 'dialogue', presentationType: 2, speaker: '海客少年',
+          content: '灯塔还亮着。', sourceUnitIds: ['speaker-alias:1'], commandSources: [], nextNodeId: 'fade',
+        },
+        {
+          id: 'fade', type: 'dialogue', presentationType: 2, speaker: '海客少年',
+          content: '我该走了。', sourceUnitIds: ['speaker-alias:2'], commandSources: [], nextNodeId: '',
+        },
+      ],
+      choices: [],
+    };
+
+    expect(materializeStoryExtraction(value, source).nodes.map((node) => node.speaker))
+      .toEqual(['少年', '少年']);
+  });
+
+  it('does not accept an incidental one-character prefix as a speaker alias', () => {
+    const text = '人物：海客少年\n海风吹过礁石：灯塔仍然亮着。';
+    const source = segmentStorySource(text, 'false-alias');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'wind',
+      structuralUnitIds: ['false-alias:0'],
+      nodes: [{
+        id: 'wind', type: 'dialogue', presentationType: 1, speaker: '海客少年',
+        content: '灯塔仍然亮着。', sourceUnitIds: ['false-alias:1'], commandSources: [], nextNodeId: '',
+      }],
+      choices: [],
+    };
+
+    expect(() => materializeStoryExtraction(value, source)).toThrow(/speaker.*not traceable/i);
+  });
+
+  it('normalizes dialogue presentation Types to explicit character-list order', () => {
+    const text = '人物：你（守灯人）、海客少年\n少年：灯塔还亮着。\n你：我知道。';
+    const source = segmentStorySource(text, 'role-order');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'boy',
+      structuralUnitIds: ['role-order:0'],
+      nodes: [
+        {
+          id: 'boy', type: 'dialogue', presentationType: 1, speaker: '少年',
+          content: '灯塔还亮着。', sourceUnitIds: ['role-order:1'], commandSources: [], nextNodeId: 'you',
+        },
+        {
+          id: 'you', type: 'dialogue', presentationType: 2, speaker: '你',
+          content: '我知道。', sourceUnitIds: ['role-order:2'], commandSources: [], nextNodeId: '',
+        },
+      ],
+      choices: [],
+    };
+
+    const document = materializeStoryExtraction(value, source);
+    expect(document.nodes.map((node) => [node.speaker, node.presentationType]))
+      .toEqual([['少年', 2], ['你', 1]]);
   });
 
   it('rejects a changed source command', () => {
@@ -354,6 +509,37 @@ describe('full story extraction materializer', () => {
     expect(document.nodes[0].options[0].commands[0].source).toBe('$resolve+=1');
     expect(document.nodes[1].commands).toEqual([]);
     expect(document.nodes[1].sourceRefs.map((ref) => ref.unitId)).toEqual(['fixture:3']);
+  });
+
+  it('removes a direct option placeholder node duplicated from its choice row', () => {
+    const text = [
+      '请选择路线。',
+      '- 前往能源舱。选择时执行 $resolve+=1。',
+      '你进入能源舱。',
+    ].join('\n');
+    const source = segmentStorySource(text, 'option-node');
+    const value: StoryExtraction = {
+      version: 3,
+      entryNodeId: 'start',
+      structuralUnitIds: [],
+      nodes: [
+        { id: 'start', type: 'narration', speaker: '', content: '请选择路线。', sourceUnitIds: ['option-node:0'], commandSources: [], nextNodeId: '' },
+        { id: 'option_placeholder', type: 'narration', speaker: '', content: '前往能源舱。', sourceUnitIds: ['option-node:1'], commandSources: ['$resolve+=1'], nextNodeId: 'energy' },
+        { id: 'energy', type: 'narration', speaker: '', content: '你进入能源舱。', sourceUnitIds: ['option-node:2'], commandSources: [], nextNodeId: '' },
+      ],
+      choices: [{
+        id: 'go_energy', fromNodeId: 'start', text: '前往能源舱。', targetNodeId: 'option_placeholder',
+        sourceUnitIds: ['option-node:1'], commandSources: ['$resolve+=1'],
+      }],
+    };
+
+    const document = materializeStoryExtraction(value, source);
+    expect(document.nodes.map((node) => node.label)).toEqual(['start', 'energy']);
+    expect(document.nodes[0].options[0]).toMatchObject({
+      text: '前往能源舱。',
+      target: 'energy',
+      commands: [expect.objectContaining({ source: '$resolve+=1' })],
+    });
   });
 
   it('rejects unresolved and unreachable graph nodes', () => {

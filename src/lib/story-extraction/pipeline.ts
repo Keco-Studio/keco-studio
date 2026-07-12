@@ -8,10 +8,20 @@ const UnitIdsSchema = z.array(z.string().min(1));
 const ContentNodeSchema = z.object({
   id: IdSchema,
   type: z.enum(['dialogue', 'narration', 'scene', 'system']),
+  presentationType: z.union([
+    z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5),
+  ]),
   speaker: z.string(),
   content: z.string(),
   sourceUnitIds: UnitIdsSchema,
-}).strict();
+}).strict().superRefine((node, context) => {
+  if ((node.presentationType === 1 || node.presentationType === 2) && node.type !== 'dialogue') {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Dialogue presentation Type requires a dialogue node' });
+  }
+  if (node.type === 'dialogue' && node.presentationType !== 1 && node.presentationType !== 2) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'Dialogue nodes require presentation Type 1 or 2' });
+  }
+});
 
 const ContentChoiceSchema = z.object({
   id: IdSchema,

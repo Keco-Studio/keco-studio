@@ -16,6 +16,7 @@ export const StoryExtractionChoiceSchema = z.object({
 export const StoryExtractionNodeSchema = z.object({
   id: IdSchema,
   type: z.enum(['dialogue', 'narration', 'scene', 'system']),
+  presentationType: z.number().int().min(1).max(5).optional(),
   speaker: z.string(),
   content: z.string(),
   sourceUnitIds: z.array(UnitIdSchema),

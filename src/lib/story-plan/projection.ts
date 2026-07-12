@@ -13,6 +13,7 @@ export interface StoryAuditProjectionChoice {
 export interface StoryAuditProjectionRow {
   label: string;
   type: StoryNode['type'];
+  presentationType: StoryNode['presentationType'];
   speaker: string;
   content: string;
   commands: string[];
@@ -57,6 +58,7 @@ export function buildStoryAuditProjection(document: StoryDocument): StoryAuditPr
     rows: document.nodes.map((node) => ({
       label: node.label,
       type: node.type,
+      presentationType: node.presentationType,
       speaker: node.speaker ?? '',
       content: node.content,
       commands: node.commands.map((command) => command.source),

@@ -18,6 +18,7 @@ export type StoryExtractionIssueCode =
   | 'wrong_command_owner'
   | 'duplicate_node'
   | 'duplicate_choice'
+  | 'invalid_presentation_type'
   | 'invalid_entry'
   | 'unresolved_target'
   | 'unreachable_node'
@@ -56,6 +57,7 @@ export function materializeStoryExtraction(
   const nodesById = new Map<string, StoryExtractionNode>();
   const choicesByNode = new Map<string, StoryExtractionChoice[]>();
   const choiceIds = new Set<string>();
+  const dialogueTypesBySpeaker = new Map<string, Set<1 | 2>>();
 
   const ownUnits = (unitIds: string[], owner: string): void => {
     for (const unitId of unitIds) {
@@ -79,7 +81,21 @@ export function materializeStoryExtraction(
     ownUnits(node.sourceUnitIds, node.id);
     validateTraceability(node.speaker, node.sourceUnitIds, node.id, 'speaker');
     validateTraceability(node.content, node.sourceUnitIds, node.id, 'content');
+    validatePresentationType(node);
     assignCommands(node.commandSources, node.sourceUnitIds, node.id);
+  }
+  const explicitDialogueTypes = new Set(
+    [...dialogueTypesBySpeaker.values()].flatMap((types) => [...types])
+  );
+  if (dialogueTypesBySpeaker.size >= 2 && explicitDialogueTypes.size < 2) {
+    push(
+      'invalid_presentation_type',
+      'Multiple dialogue speakers must use both presentation Type 1 and Type 2',
+      [],
+      extraction.nodes
+        .filter((node) => node.type === 'dialogue' && node.presentationType !== undefined)
+        .map((node) => node.id)
+    );
   }
   for (const choice of extraction.choices) {
     const owner = `${choice.fromNodeId}.choice.${choice.id}`;
@@ -131,6 +147,7 @@ export function materializeStoryExtraction(
     nodes: extraction.nodes.map((node): StoryNode => ({
       label: node.id,
       type: node.type,
+      ...(node.presentationType ? { presentationType: node.presentationType } : {}),
       ...(node.speaker.trim() ? { speaker: roleMap[node.speaker]?.id ?? node.speaker } : {}),
       content: node.content,
       commands: hydrateCommands(node.commandSources, node.sourceUnitIds),
@@ -184,6 +201,34 @@ export function materializeStoryExtraction(
       if (!unitIds.includes(unitForCommand(command))) {
         push('wrong_command_owner', `Command ${commandSource} is not in ${owner}'s source units`, unitIds, [owner]);
       }
+    }
+  }
+
+  function validatePresentationType(node: StoryExtractionNode): void {
+    if (node.presentationType === undefined) return;
+    const isDialogueType = node.presentationType === 1 || node.presentationType === 2;
+    if (isDialogueType !== (node.type === 'dialogue')) {
+      push(
+        'invalid_presentation_type',
+        `Node ${node.id} has presentation Type ${node.presentationType}, which does not match ${node.type}`,
+        node.sourceUnitIds,
+        [node.id]
+      );
+      return;
+    }
+    if (!isDialogueType) return;
+
+    const speaker = node.speaker.trim();
+    const types = dialogueTypesBySpeaker.get(speaker) ?? new Set<1 | 2>();
+    types.add(node.presentationType as 1 | 2);
+    dialogueTypesBySpeaker.set(speaker, types);
+    if (types.size > 1) {
+      push(
+        'invalid_presentation_type',
+        `Dialogue speaker ${speaker} changes presentation Type between 1 and 2`,
+        node.sourceUnitIds,
+        extraction.nodes.filter((candidate) => candidate.speaker.trim() === speaker).map((candidate) => candidate.id)
+      );
     }
   }
 
@@ -287,19 +332,71 @@ export function normalizeStoryExtraction(
     });
     return [...result];
   };
+  const normalizeSpeakerAlias = (speaker: string, unitIds: string[]): string => {
+    const roleName = speaker.trim();
+    if (!source || !roleName) return speaker;
+    const localEvidence = unitIds
+      .map((unitId) => source.units.find((unit) => unit.id === unitId)?.text ?? '')
+      .join('\n')
+      .trimStart();
+    if (isTraceable(roleName, localEvidence)) return speaker;
+    const allEvidence = source.units.map((unit) => unit.text).join('\n');
+    if (!isTraceable(roleName, allEvidence)) return speaker;
+
+    const aliases = new Set<string>();
+    for (let length = 1; length < roleName.length; length += 1) {
+      aliases.add(roleName.slice(0, length).trim());
+      aliases.add(roleName.slice(roleName.length - length).trim());
+    }
+    return [...aliases]
+      .filter(Boolean)
+      .sort((left, right) => right.length - left.length)
+      .find((alias) => (
+        localEvidence.startsWith(alias)
+        && (alias.length > 1 || /^[：:（(]/.test(localEvidence.slice(alias.length)))
+      )) ?? speaker;
+  };
   let nodes = extraction.nodes.map((node) => {
     const commandSources = canonicalizeCommandSources(node.commandSources);
+    const speaker = normalizeSpeakerAlias(node.speaker, node.sourceUnitIds);
     const evidenceUnitIds = normalizeEvidenceUnitIds(
       node.content,
-      node.speaker,
+      speaker,
       node.sourceUnitIds
     );
     return {
     ...node,
+      speaker,
       commandSources,
       sourceUnitIds: addCommandUnits(evidenceUnitIds, commandSources, node.commandSources),
     };
   });
+  const explicitRoleOrder = source?.units
+    .map((unit) => unit.text.match(/^(?:人物|角色|characters?)\s*[：:]\s*(.+)$/i)?.[1] ?? '')
+    .find(Boolean)
+    ?.split(/[、,，;；/]/)
+    .map((role) => role.replace(/[（(][^）)]*[）)]/g, '').trim())
+    .filter(Boolean) ?? [];
+  const speakingRoles = explicitRoleOrder.filter((role, index) => (
+    explicitRoleOrder.indexOf(role) === index
+    && nodes.some((node) => (
+      node.type === 'dialogue'
+      && (role.includes(node.speaker.trim()) || node.speaker.trim().includes(role))
+    ))
+  ));
+  if (speakingRoles.length >= 2) {
+    const orderedTypes = new Map(speakingRoles.slice(0, 2).map((role, index) => (
+      [role, (index + 1) as 1 | 2]
+    )));
+    nodes = nodes.map((node) => {
+      if (node.type !== 'dialogue' || node.presentationType === undefined) return node;
+      const speaker = node.speaker.trim();
+      const role = [...orderedTypes.keys()].find((candidate) => (
+        candidate.includes(speaker) || speaker.includes(candidate)
+      ));
+      return role ? { ...node, presentationType: orderedTypes.get(role)! } : node;
+    });
+  }
   let choices = extraction.choices.map((choice) => {
     const commandSources = canonicalizeCommandSources(choice.commandSources);
     const text = cleanChoiceText(choice.text);
@@ -311,6 +408,27 @@ export function normalizeStoryExtraction(
       sourceUnitIds: addCommandUnits(evidenceUnitIds, commandSources, choice.commandSources),
     };
   });
+
+  for (const choice of [...choices]) {
+    const placeholder = nodes.find((node) => node.id === choice.targetNodeId);
+    if (
+      !placeholder
+      || !placeholder.nextNodeId
+      || placeholder.speaker.trim()
+      || entryNodeId === placeholder.id
+      || nodes.some((node) => node.nextNodeId === placeholder.id)
+      || choices.filter((candidate) => candidate.targetNodeId === placeholder.id).length !== 1
+      || choices.some((candidate) => candidate.fromNodeId === placeholder.id)
+      || !sameValues(placeholder.sourceUnitIds, choice.sourceUnitIds, (value) => value)
+      || normalizeEvidence(cleanChoiceText(placeholder.content)) !== normalizeEvidence(choice.text)
+      || !sameValues(placeholder.commandSources, choice.commandSources, normalizeCommand)
+    ) continue;
+
+    choices = choices.map((candidate) => candidate.id === choice.id
+      ? { ...candidate, targetNodeId: placeholder.nextNodeId }
+      : candidate);
+    nodes = nodes.filter((node) => node.id !== placeholder.id);
+  }
 
   for (const structuralNode of [...nodes]) {
     if (
@@ -561,9 +679,22 @@ function normalizeEvidence(value: string): string {
     .toLowerCase();
 }
 
+function sameValues(
+  left: string[],
+  right: string[],
+  normalize: (value: string) => string
+): boolean {
+  const normalizedLeft = [...new Set(left.map(normalize))].sort();
+  const normalizedRight = [...new Set(right.map(normalize))].sort();
+  return normalizedLeft.length === normalizedRight.length
+    && normalizedLeft.every((value, index) => value === normalizedRight[index]);
+}
+
 function isClearlyStructuralUnit(value: string): boolean {
   const text = value.trim();
   return /^(?:最终合流|合流|统一收尾|触发分支选择|这里有(?:两个|三个|四个|\d+个)?选择)\s*[：:]?$/i.test(text)
+    || /^(?:所有|全部|两条|三条|各条|上述|以上|这些)?[^。！？!?]{0,20}(?:路径|分支)[^。！？!?]{0,40}合流[。.!！]?$/.test(text)
+    || /^如果(?:你)?[^。！？!?；;]{1,80}[：:]$/.test(text)
     || /^[（(]\s*(?:Jump|跳转)\s+[^）)]+[）)]$/i.test(text);
 }
 

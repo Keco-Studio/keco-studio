@@ -79,6 +79,14 @@ function splitFixtureExtraction(
   content: StoryContentExtraction;
   graph: StoryGraphExtraction;
 } {
+  const dialogueTypes = new Map<string, 1 | 2>();
+  extraction.nodes.forEach((node) => {
+    if (node.type !== 'dialogue' || node.presentationType) return;
+    const speaker = node.speaker.trim();
+    if (!dialogueTypes.has(speaker)) {
+      dialogueTypes.set(speaker, dialogueTypes.size === 0 ? 1 : 2);
+    }
+  });
   const commandIds = (sources: string[], unitIds: string[]) => sources.map((commandSource) => {
     const command = source.commands.find((candidate) => {
       const unitId = source.segments.find((segment) => segment.id === candidate.segmentId)?.unitId;
@@ -94,6 +102,11 @@ function splitFixtureExtraction(
       structuralUnitIds: extraction.structuralUnitIds,
       nodes: extraction.nodes.map(({ nextNodeId: _nextNodeId, commandSources: _commandSources, ...node }) => ({
         ...node,
+        presentationType: node.presentationType ?? (
+          node.type === 'dialogue'
+            ? dialogueTypes.get(node.speaker.trim()) ?? 1
+            : node.type === 'scene' ? 4 : node.type === 'system' ? 5 : 3
+        ),
       })),
       choices: extraction.choices.map(({
         fromNodeId: _fromNodeId,
@@ -133,6 +146,9 @@ function queueFixture(content: string, sourceId: string): void {
   mockedCompleteLlm
     .mockResolvedValueOnce(JSON.stringify(extraction.content))
     .mockResolvedValueOnce(JSON.stringify(extraction.graph))
+    .mockResolvedValueOnce(JSON.stringify(passAudit))
+    .mockResolvedValueOnce(JSON.stringify(passAudit))
+    .mockResolvedValueOnce(JSON.stringify(passAudit))
     .mockResolvedValueOnce(JSON.stringify(passAudit));
 }
 
@@ -179,11 +195,12 @@ describe('minimal audited story plan integration', () => {
   beforeEach(() => mockedCompleteLlm.mockReset());
 
   it('parses explicit nested choices, audits once, and plays all four trust paths', async () => {
-    queueFixture(nested, 'nested');
+    mockedCompleteLlm.mockResolvedValueOnce(JSON.stringify(passAudit));
     const resolved = await resolveStoryPlanForImport(nested, { sourceId: 'nested' });
 
-    expect(resolved.converted).toBe(true);
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(3);
+    expect(resolved.converted).toBe(false);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(1);
+    expect(mockedCompleteLlm.mock.calls[0][1].toolName).toBe('submit_story_plan_audit');
     const paths = [
       { choices: [0, 0], trust: 2, excluded: ['O1B_END', 'O2', 'O2A_END', 'O2B_END'] },
       { choices: [0, 1], trust: 0, excluded: ['O1A_END', 'O2', 'O2A_END', 'O2B_END'] },
@@ -207,7 +224,7 @@ describe('minimal audited story plan integration', () => {
 
     expect(resolved.converted).toBe(true);
     expect(resolved.audit.verdict).toBe('pass');
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(3);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(6);
     expect(east.contents.join('\n')).toContain('此后余生，你岁岁平安');
     expect(east.contents.join('\n')).not.toContain('彻底遗忘了自己进山的初衷');
     expect(west.contents.join('\n')).toContain('彻底遗忘了自己进山的初衷');

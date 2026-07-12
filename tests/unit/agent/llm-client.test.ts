@@ -181,4 +181,38 @@ describe('streamLlm request options', () => {
       } as never
     )).rejects.toThrow(/abort/i);
   });
+
+  it('accepts a plain JSON object when MiniMax skips the required tool envelope', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+
+    global.fetch = jest.fn(async () => new Response(
+      'data: {"choices":[{"delta":{"content":"{\\"verdict\\":\\"pass\\",\\"issues\\":[]}"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+      { status: 200 }
+    )) as typeof fetch;
+
+    const { completeLlm } = await import('../../../src/lib/agent/llm-client');
+    await expect(completeLlm(
+      [{ role: 'user', content: 'audit' }],
+      { tools: [], toolName: 'submit_story_plan_audit' } as never
+    )).resolves.toBe('{"verdict":"pass","issues":[]}');
+  });
+
+  it('still rejects plain prose when the required tool envelope is missing', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+
+    global.fetch = jest.fn(async () => new Response(
+      'data: {"choices":[{"delta":{"content":"The candidate passes."},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+      { status: 200 }
+    )) as typeof fetch;
+
+    const { completeLlm } = await import('../../../src/lib/agent/llm-client');
+    await expect(completeLlm(
+      [{ role: 'user', content: 'audit' }],
+      { tools: [], toolName: 'submit_story_plan_audit' } as never
+    )).rejects.toThrow(/did not call required tool/i);
+  });
 });

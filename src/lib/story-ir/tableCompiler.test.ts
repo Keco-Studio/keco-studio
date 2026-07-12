@@ -56,6 +56,39 @@ describe('Story IR table compiler', () => {
     expect(cell(compiled, 0, 'Type')).toBe('1');
   });
 
+  it.each([
+    ['dialogue', '1'],
+    ['narration', '3'],
+    ['scene', '4'],
+    ['system', '5'],
+  ] as const)('maps %s nodes to reference Type %s', (type, expectedType) => {
+    const compiled = compileStoryTable(story([
+      node('Start', {
+        type,
+        speaker: type === 'dialogue' ? 'Guide' : undefined,
+        content: 'Content',
+      }),
+    ]));
+
+    expect(cell(compiled, 0, 'Type')).toBe(expectedType);
+  });
+
+  it('uses the LLM-selected presentation Type instead of semantic fallback', () => {
+    const dialogue = node('Start', {
+      type: 'dialogue',
+      speaker: 'Second speaker',
+      ...({ presentationType: 2 } as object),
+    });
+    const background = node('Background', {
+      type: 'narration',
+      ...({ presentationType: 4 } as object),
+    });
+    const compiled = compileStoryTable(story([dialogue, background]));
+
+    expect(cell(compiled, 0, 'Type')).toBe('2');
+    expect(cell(compiled, 1, 'Type')).toBe('4');
+  });
+
   it('uses physical fallthrough and omits ordinary sequential labels', () => {
     const compiled = compileStoryTable(story([
       node('Start', { next: 'Middle' }),

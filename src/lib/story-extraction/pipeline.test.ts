@@ -9,9 +9,9 @@ const content = {
   version: 3,
   structuralUnitIds: ['fixture:2'],
   nodes: [
-    { id: 'start', type: 'dialogue', speaker: '七号', content: '选择路线。', sourceUnitIds: ['fixture:0'] },
-    { id: 'left', type: 'narration', speaker: '', content: '左边。', sourceUnitIds: ['fixture:3'] },
-    { id: 'right', type: 'narration', speaker: '', content: '右边。', sourceUnitIds: ['fixture:4'] },
+    { id: 'start', type: 'dialogue', presentationType: 2, speaker: '七号', content: '选择路线。', sourceUnitIds: ['fixture:0'] },
+    { id: 'left', type: 'narration', presentationType: 4, speaker: '', content: '左边。', sourceUnitIds: ['fixture:3'] },
+    { id: 'right', type: 'narration', presentationType: 3, speaker: '', content: '右边。', sourceUnitIds: ['fixture:4'] },
   ],
   choices: [
     { id: 'left_choice', text: '走左边', sourceUnitIds: ['fixture:1'] },
@@ -36,6 +36,7 @@ describe('two-stage story extraction pipeline', () => {
 
     expect(result.entryNodeId).toBe('start');
     expect(result.nodes[0].nextNodeId).toBe('');
+    expect(result.nodes.map((node) => node.presentationType)).toEqual([2, 4, 3]);
     expect(result.choices[0]).toMatchObject({
       id: 'left_choice',
       fromNodeId: 'start',
