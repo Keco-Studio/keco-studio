@@ -21,7 +21,7 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
   const label = TOOL_LABELS[tool] ?? tool;
 
   return (
-    <div className={styles.confirmCard}>
+    <div className={styles.confirmCard} data-testid="agent-confirmation">
       <div className={styles.confirmTitle}>Confirm: {label}</div>
       <pre className={styles.pre}>{JSON.stringify(args, null, 2)}</pre>
 
@@ -33,6 +33,7 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
         <div className={styles.confirmActions}>
           <button
             className={`${styles.btn} ${styles.btnPrimary}`}
+            data-testid="agent-confirm"
             disabled={disabled}
             onClick={() => onDecision(actionId, 'approve')}
           >

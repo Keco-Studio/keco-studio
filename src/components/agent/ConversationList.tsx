@@ -81,7 +81,7 @@ export function ConversationList({ activeId, onSelect, onDelete }: Props) {
   };
 
   return (
-    <div className={styles.convList}>
+    <div className={styles.convList} data-testid="agent-conversation-list">
       {loading ? (
         <div className={styles.convItem} style={{ color: '#9ca3af' }}>
           Loading…
@@ -95,6 +95,7 @@ export function ConversationList({ activeId, onSelect, onDelete }: Props) {
           <div
             key={c.id}
             className={styles.convItem}
+            data-testid={`agent-conversation-${c.id}`}
             style={c.id === activeId ? { background: '#eff6ff' } : undefined}
             onClick={() => onSelect(c.id)}
           >

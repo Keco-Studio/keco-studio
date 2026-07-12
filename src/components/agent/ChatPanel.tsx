@@ -200,6 +200,7 @@ export function ChatPanel() {
     return (
       <button
         className={styles.launcher}
+        data-testid="agent-launcher"
         title="Keco Assistant"
         onClick={() => {
           setPendingSelectionContext(undefined);
@@ -212,7 +213,7 @@ export function ChatPanel() {
   }
 
   return (
-    <div className={styles.panel}>
+    <div className={styles.panel} data-testid="agent-panel">
       <div className={styles.header}>
         <div className={styles.headerTitleGroup}>
           <span className={styles.headerTitle}>Keco Assistant</span>
@@ -253,7 +254,11 @@ export function ChatPanel() {
           >
             New
           </button>
-          <button className={styles.iconButton} onClick={() => setShowHistory((v) => !v)}>
+          <button
+            className={styles.iconButton}
+            data-testid="agent-history"
+            onClick={() => setShowHistory((v) => !v)}
+          >
             History
           </button>
           <button
