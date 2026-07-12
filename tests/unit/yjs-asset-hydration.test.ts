@@ -98,4 +98,28 @@ describe('Yjs asset hydration helpers', () => {
       row_index: 3,
     });
   });
+
+  it('does not rewrite unchanged property values during repeated hydration', () => {
+    const yDoc = new Y.Doc();
+    const yAssets = yDoc.getMap<Y.Map<unknown>>('assets');
+    const rows: AssetRow[] = [{
+      id: 'asset-stable',
+      libraryId: 'library-1',
+      name: 'Stable',
+      propertyValues: { stats: { hp: 10 }, tags: ['a', 'b'] },
+      created_at: '2026-07-08T00:00:00.000Z',
+      rowIndex: 1,
+    }];
+
+    hydrateYAssetsFromRows(yDoc, yAssets, rows);
+    const propertyValues = yAssets.get('asset-stable')?.get('propertyValues') as Y.Map<unknown>;
+    let propertyEvents = 0;
+    propertyValues.observe(() => {
+      propertyEvents += 1;
+    });
+
+    hydrateYAssetsFromRows(yDoc, yAssets, rows);
+
+    expect(propertyEvents).toBe(0);
+  });
 });

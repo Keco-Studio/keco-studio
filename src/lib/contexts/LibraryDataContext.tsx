@@ -415,8 +415,18 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   }, [presenceTracking]);
 
   // Convert Map to ordered array (sort by rowIndex then created_at/id — matches table row numbers)
+  const orderedAssetsRef = useRef<AssetRow[]>([]);
   const allAssets = useMemo(() => {
-    return Array.from(assets.values()).sort(compareAssetsForUiRow);
+    const nextAssets = Array.from(assets.values());
+    const previousAssets = orderedAssetsRef.current;
+    const orderIsUnchanged =
+      nextAssets.length === previousAssets.length &&
+      nextAssets.every((asset, index) => asset.id === previousAssets[index]?.id);
+    const orderedAssets = orderIsUnchanged
+      ? nextAssets
+      : nextAssets.sort(compareAssetsForUiRow);
+    orderedAssetsRef.current = orderedAssets;
+    return orderedAssets;
   }, [assets]);
 
   // Cleanup

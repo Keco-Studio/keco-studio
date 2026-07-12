@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type React from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 
@@ -59,36 +59,40 @@ export type UseClickOutsideAutoSaveParams = {
  * - Edit cell: auto-save edited cell; then remove listener.
  */
 export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
-  const {
-    tableContainerRef,
-    addRowFormRef,
-    isAddingRow,
-    newRowData,
-    setIsAddingRow,
-    setNewRowData,
-    isSaving,
-    setIsSaving,
-    referenceModalOpen,
-    onSaveAsset,
-    library,
-    properties,
-    setOptimisticNewAssets,
-    editingCell,
-    editingCellInitialValueRef,
-    editingCellRef,
-    setEditingCell,
-    setCurrentFocusedCell,
-    onUpdateAsset,
-    rows,
-    yRows,
-    setOptimisticEditUpdates,
-    presenceTracking,
-    validateValueByType,
-    setTypeValidationError,
-  } = params;
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+  const { isAddingRow, editingCell } = params;
+  const hasEditingCell = Boolean(editingCell);
 
   useEffect(() => {
     const handleClickOutside = async (event: MouseEvent) => {
+      const {
+        tableContainerRef,
+        addRowFormRef,
+        isAddingRow: liveIsAddingRow,
+        newRowData,
+        setIsAddingRow,
+        setNewRowData,
+        isSaving,
+        setIsSaving,
+        referenceModalOpen,
+        onSaveAsset,
+        library,
+        properties,
+        setOptimisticNewAssets,
+        editingCell: liveEditingCell,
+        editingCellInitialValueRef,
+        editingCellRef,
+        setEditingCell,
+        setCurrentFocusedCell,
+        onUpdateAsset,
+        rows,
+        yRows,
+        setOptimisticEditUpdates,
+        presenceTracking,
+        validateValueByType,
+        setTypeValidationError,
+      } = paramsRef.current;
       if (isSaving) return;
       if (referenceModalOpen) return;
 
@@ -108,11 +112,11 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
       }
 
       // When editing a cell: only react to clicks outside the whole table
-      if (editingCell && (!tableContainerRef.current || tableContainerRef.current.contains(target))) return;
+      if (liveEditingCell && (!tableContainerRef.current || tableContainerRef.current.contains(target))) return;
       // When adding a row: react to clicks outside the add-row form (including other table cells)
-      if (isAddingRow && addRowFormRef?.current?.contains(target)) return;
+      if (liveIsAddingRow && addRowFormRef?.current?.contains(target)) return;
 
-      if (isAddingRow) {
+      if (liveIsAddingRow) {
         const hasData = Object.keys(newRowData).some((key) => {
           const v = newRowData[key];
           return v != null && v !== '';
@@ -209,8 +213,8 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
         return;
       }
 
-      if (editingCell && onUpdateAsset) {
-        const { rowId, propertyKey } = editingCell;
+      if (liveEditingCell && onUpdateAsset) {
+        const { rowId, propertyKey } = liveEditingCell;
         const currentEditingValue = editingCellRef?.current?.textContent ?? editingCellInitialValueRef.current;
         const row = rows.find((r) => r.id === rowId);
         if (!row) return;
@@ -293,35 +297,9 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
       }
     };
 
-    if (!isAddingRow && !editingCell) return;
+    if (!isAddingRow && !hasEditingCell) return;
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [
-    isAddingRow,
-    editingCell,
-    editingCellInitialValueRef,
-    editingCellRef,
-    isSaving,
-    newRowData,
-    onSaveAsset,
-    onUpdateAsset,
-    properties,
-    rows,
-    referenceModalOpen,
-    tableContainerRef,
-    addRowFormRef,
-    library,
-    setIsAddingRow,
-    setNewRowData,
-    setIsSaving,
-    setOptimisticNewAssets,
-    setEditingCell,
-    setCurrentFocusedCell,
-    setOptimisticEditUpdates,
-    yRows,
-    presenceTracking,
-    validateValueByType,
-    setTypeValidationError,
-  ]);
+  }, [isAddingRow, hasEditingCell]);
 }

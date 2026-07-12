@@ -599,13 +599,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   // Context menu handlers
-  const handleContextMenu = (e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
     e.preventDefault();
     e.stopPropagation();
     // Get the element that triggered the context menu
     const targetElement = e.currentTarget as HTMLElement;
     openContextMenu(e.clientX, e.clientY, type, id, targetElement);
-  };
+  }, [openContextMenu]);
 
   const { treeData, selectedKeys } = useSidebarTree(
     currentIds,

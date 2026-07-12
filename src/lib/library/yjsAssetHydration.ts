@@ -13,9 +13,29 @@ export type LibrarySnapshotData = {
 
 const cloneForYjs = (value: unknown): unknown => {
   if (value !== null && typeof value === 'object') {
-    return JSON.parse(JSON.stringify(value)) as unknown;
+    const cloned = structuredClone(value);
+    const containsCrossRealmObject = (candidate: unknown): boolean => {
+      if (candidate === null || typeof candidate !== 'object') return false;
+      if (Array.isArray(candidate)) {
+        return Object.getPrototypeOf(candidate) !== Array.prototype || candidate.some(containsCrossRealmObject);
+      }
+      if (Object.getPrototypeOf(candidate) !== Object.prototype) return true;
+      return Object.values(candidate as Record<string, unknown>).some(containsCrossRealmObject);
+    };
+    // Jest executes structuredClone in a host realm; Yjs rejects those object
+    // prototypes. Browser clones stay on the fast path.
+    return containsCrossRealmObject(cloned)
+      ? JSON.parse(JSON.stringify(cloned)) as unknown
+      : cloned;
   }
   return value;
+};
+
+const valuesAreEqual = (current: unknown, next: unknown): boolean => {
+  if (Object.is(current, next)) return true;
+  if (current === null || next === null) return false;
+  if (typeof current !== 'object' || typeof next !== 'object') return false;
+  return JSON.stringify(current) === JSON.stringify(next);
 };
 
 const createYAsset = ({
@@ -69,6 +89,7 @@ function syncPropertyValues(
     }
   });
   Object.entries(propertyValues).forEach(([fieldId, value]) => {
+    if (valuesAreEqual(yPropertyValues.get(fieldId), value)) return;
     yPropertyValues.set(fieldId, cloneForYjs(value));
   });
 }
@@ -91,16 +112,20 @@ function upsertYAsset(
     return;
   }
 
-  existing.set('name', asset.name);
+  if (existing.get('name') !== asset.name) existing.set('name', asset.name);
   syncPropertyValues(existing, asset.propertyValues);
   if (asset.createdAt) {
-    existing.set('created_at', asset.createdAt);
-  } else {
+    if (existing.get('created_at') !== asset.createdAt) {
+      existing.set('created_at', asset.createdAt);
+    }
+  } else if (existing.has('created_at')) {
     existing.delete('created_at');
   }
   if (typeof asset.rowIndex === 'number') {
-    existing.set('row_index', asset.rowIndex);
-  } else {
+    if (existing.get('row_index') !== asset.rowIndex) {
+      existing.set('row_index', asset.rowIndex);
+    }
+  } else if (existing.has('row_index')) {
     existing.delete('row_index');
   }
 }

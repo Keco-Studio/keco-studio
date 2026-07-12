@@ -150,8 +150,18 @@ export function compareAssetsForUiRow(a: AssetRow, b: AssetRow): number {
   if (!a.created_at && !b.created_at) return a.id.localeCompare(b.id);
   if (!a.created_at) return 1;
   if (!b.created_at) return -1;
-  const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+  const timeDiff = getAssetCreatedAtTime(a) - getAssetCreatedAtTime(b);
   return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id);
+}
+
+const createdAtTimeByAsset = new WeakMap<AssetRow, { source: string | undefined; time: number }>();
+
+function getAssetCreatedAtTime(asset: AssetRow): number {
+  const cached = createdAtTimeByAsset.get(asset);
+  if (cached?.source === asset.created_at) return cached.time;
+  const time = asset.created_at ? Date.parse(asset.created_at) : Number.POSITIVE_INFINITY;
+  createdAtTimeByAsset.set(asset, { source: asset.created_at, time });
+  return time;
 }
 
 /** Same ordering as the library table UI (matches left-side row numbers). */
