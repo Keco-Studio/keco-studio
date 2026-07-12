@@ -158,7 +158,7 @@ const createdAtTimeByAsset = new WeakMap<AssetRow, { source: string | undefined;
 
 function getAssetCreatedAtTime(asset: AssetRow): number {
   const cached = createdAtTimeByAsset.get(asset);
-  if (cached?.source === asset.created_at) return cached.time;
+  if (cached && cached.source === asset.created_at) return cached.time;
   const time = asset.created_at ? Date.parse(asset.created_at) : Number.POSITIVE_INFINITY;
   createdAtTimeByAsset.set(asset, { source: asset.created_at, time });
   return time;
