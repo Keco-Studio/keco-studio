@@ -23,6 +23,8 @@ type FilePreview = {
   rowCount: number;
 };
 
+const MAX_IMPORT_FILE_BYTES = 10 * 1024 * 1024;
+
 function previewImportFile(file: File): Promise<FilePreview> {
   return previewWorkbookFile(file).then(({ sheetCount, columnCount, rowCount }) => {
     return {
@@ -74,6 +76,10 @@ export function ImportLibraryModal({
     const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
     if (!['csv', 'xlsx', 'xls'].includes(ext)) {
       showErrorToast('Please select a .csv or .xlsx file');
+      return;
+    }
+    if (file.size > MAX_IMPORT_FILE_BYTES) {
+      showErrorToast('File exceeds 10 MB limit');
       return;
     }
 
@@ -156,7 +162,7 @@ export function ImportLibraryModal({
 
   return createPortal(
     <div className={styles.backdrop} onClick={handleBackdropClick}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+      <div className={styles.modal} data-testid="import-library-modal" onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <div className={styles.title}>Import</div>
           <button className={styles.close} onClick={onClose} aria-label="Close">
@@ -176,6 +182,7 @@ export function ImportLibraryModal({
             <label htmlFor="import-library-name" className={styles.nameLabel}>Library Name</label>
             <input
               id="import-library-name"
+              data-testid="import-library-name"
               className={styles.nameInput}
               value={libraryName}
               onChange={(e) => setLibraryName(e.target.value)}
@@ -189,6 +196,7 @@ export function ImportLibraryModal({
             <input
               ref={fileInputRef}
               type="file"
+              data-testid="import-library-file"
               accept=".csv,.xlsx,.xls"
               style={{ display: 'none' }}
               onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
@@ -203,7 +211,11 @@ export function ImportLibraryModal({
               {selectedFile ? 'Change file' : 'Choose file'}
             </button>
             {preview && (
-              <p className={styles.hint} style={{ margin: '0.5rem 0 0', fontSize: '0.875rem' }}>
+              <p
+                className={styles.hint}
+                data-testid="import-library-preview"
+                style={{ margin: '0.5rem 0 0', fontSize: '0.875rem' }}
+              >
                 {preview.fileName}: {preview.columnCount} columns, {preview.rowCount} rows
                 {preview.sectionCount > 1 ? `, ${preview.sectionCount} sheets` : ''}
               </p>
@@ -214,6 +226,7 @@ export function ImportLibraryModal({
         <div className={styles.footer}>
           <button
             className={`${styles.button} ${styles.primary}`}
+            data-testid="import-library-submit"
             onClick={handleImport}
             disabled={importing || !selectedFile || !libraryName.trim()}
           >

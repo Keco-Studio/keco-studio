@@ -113,6 +113,22 @@ export async function removeProjectFixture(admin: SupabaseClient, projectId: str
   if (error) throw error;
 }
 
+export async function createFolderFixture(
+  admin: SupabaseClient,
+  projectId: string,
+  prefix: string
+): Promise<{ id: string; name: string }> {
+  const name = `${prefix} ${Date.now()} ${crypto.randomUUID().slice(0, 6)}`;
+  const { data, error } = await admin
+    .from('folders')
+    .insert({ project_id: projectId, name, description: 'Isolated Playwright folder fixture' })
+    .select('id')
+    .single();
+
+  if (error || !data) throw error ?? new Error('Failed to create E2E folder');
+  return { id: data.id as string, name };
+}
+
 export async function getBrowserAccessToken(page: Page): Promise<string> {
   const authCookies = (await page.context().cookies())
     .filter((cookie) => cookie.name.includes('sb-') && cookie.name.includes('auth-token'))
