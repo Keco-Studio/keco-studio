@@ -131,7 +131,7 @@ test.describe('Script import', () => {
     await expect(page.getByTestId('import-script-preview')).toContainText('2 lines');
   });
 
-  test('surfaces malformed input errors and renders the format guide', async ({ page }) => {
+  test('surfaces malformed input errors without advertising a required format', async ({ page }) => {
     await page.route('**/api/import-script', async (route) => {
       await route.fulfill({
         status: 200,
@@ -146,8 +146,10 @@ test.describe('Script import', () => {
     await page.getByTestId('import-script-submit').click();
 
     await expect(page.getByText('No valid content found in script', { exact: true })).toBeVisible();
-    await page.getByTestId('import-script-format-guide-toggle').click();
-    await expect(page.getByTestId('import-script-format-guide')).toContainText('Standard input format');
-    await expect(page.getByTestId('import-script-format-guide')).toContainText('Example:');
+    await expect(page.getByTestId('import-script-text')).toHaveAttribute(
+      'placeholder',
+      'Enter story text...'
+    );
+    await expect(page.getByText(/standard format|format guide/i)).toHaveCount(0);
   });
 });
