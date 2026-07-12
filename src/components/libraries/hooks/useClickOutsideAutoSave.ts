@@ -26,11 +26,10 @@ export type UseClickOutsideAutoSaveParams = {
   properties: PropertyConfig[];
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
   editingCell: { rowId: string; propertyKey: string } | null;
-  editingCellValue: string;
+  editingCellInitialValueRef: React.MutableRefObject<string>;
   /** DOM ref for the active edit cell, used to refocus after validation failure. */
   editingCellRef?: React.MutableRefObject<HTMLSpanElement | null>;
   setEditingCell: React.Dispatch<React.SetStateAction<{ rowId: string; propertyKey: string } | null>>;
-  setEditingCellValue: React.Dispatch<React.SetStateAction<string>>;
   setCurrentFocusedCell: React.Dispatch<React.SetStateAction<{ assetId: string; propertyKey: string } | null>>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   rows: AssetRow[];
@@ -75,10 +74,9 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
     properties,
     setOptimisticNewAssets,
     editingCell,
-    editingCellValue,
+    editingCellInitialValueRef,
     editingCellRef,
     setEditingCell,
-    setEditingCellValue,
     setCurrentFocusedCell,
     onUpdateAsset,
     rows,
@@ -213,6 +211,7 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
 
       if (editingCell && onUpdateAsset) {
         const { rowId, propertyKey } = editingCell;
+        const currentEditingValue = editingCellRef?.current?.textContent ?? editingCellInitialValueRef.current;
         const row = rows.find((r) => r.id === rowId);
         if (!row) return;
 
@@ -223,9 +222,9 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
         // Reuse double-click edit validation when outside-click autosaves:
         // - Complete [] and validate format for array types.
         // - Validate numeric types.
-        let normalizedValue: string | number | null = editingCellValue;
+        let normalizedValue: string | number | null = currentEditingValue;
         if (!isNameField && prop && validateValueByType) {
-          const validation = validateValueByType(editingCellValue, prop.dataType);
+          const validation = validateValueByType(currentEditingValue, prop.dataType);
           if (!validation.isValid) {
             // Validation failed: show the error and keep edit mode active.
             setTypeValidationError?.(validation.error);
@@ -245,7 +244,7 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
           ...row.propertyValues,
           [propertyKey]: normalizedValue,
         };
-        const assetName = isNameField ? editingCellValue : (row.name || 'Untitled');
+        const assetName = isNameField ? currentEditingValue : (row.name || 'Untitled');
 
         const allRows = yRows.toArray();
         const rowIndex = allRows.findIndex((r) => r.id === rowId);
@@ -263,9 +262,9 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
           return next;
         });
 
-        const savedValue = editingCellValue;
+        const savedValue = currentEditingValue;
         setEditingCell(null);
-        setEditingCellValue('');
+        editingCellInitialValueRef.current = '';
         setCurrentFocusedCell(null);
         setTimeout(() => presenceTracking?.updateActiveCell(null, null), 1000);
         setIsSaving(true);
@@ -287,8 +286,8 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
               next.delete(rowId);
               return next;
             });
+            editingCellInitialValueRef.current = savedValue;
             setEditingCell({ rowId, propertyKey });
-            setEditingCellValue(savedValue);
           })
           .finally(() => setIsSaving(false));
       }
@@ -301,7 +300,7 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
   }, [
     isAddingRow,
     editingCell,
-    editingCellValue,
+    editingCellInitialValueRef,
     editingCellRef,
     isSaving,
     newRowData,
@@ -318,7 +317,6 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
     setIsSaving,
     setOptimisticNewAssets,
     setEditingCell,
-    setEditingCellValue,
     setCurrentFocusedCell,
     setOptimisticEditUpdates,
     yRows,

@@ -382,13 +382,12 @@ export function LibraryAssetsTable({
 
   const {
     editingCell,
-    editingCellValue,
+    editingCellInitialValueRef,
     editingCellRef,
     isComposingRef,
     typeValidationError,
     typeValidationErrorRef,
     setEditingCell,
-    setEditingCellValue,
     setTypeValidationError,
     handleSaveEditedCell,
     handleCellDoubleClick,
@@ -446,10 +445,9 @@ export function LibraryAssetsTable({
     properties,
     setOptimisticNewAssets,
     editingCell,
-    editingCellValue,
+    editingCellInitialValueRef,
     editingCellRef,
     setEditingCell,
-    setEditingCellValue,
     setCurrentFocusedCell,
     onUpdateAsset,
     rows,
@@ -1067,13 +1065,12 @@ export function LibraryAssetsTable({
               fillPreviewMap={fillPreviewMap}
               editingCell={editingCell}
               editingCellRef={editingCellRef}
-              editingCellValue={editingCellValue}
+              editingCellInitialValueRef={editingCellInitialValueRef}
               isComposingRef={isComposingRef}
               typeValidationError={typeValidationError}
               typeValidationErrorRef={typeValidationErrorRef}
               setHoveredRowId={setHoveredRowId}
               setHoveredCellForExpand={setHoveredCellForExpand}
-              setEditingCellValue={setEditingCellValue}
               setTypeValidationError={setTypeValidationError}
               setOpenEnumSelects={setOpenEnumSelects}
               setToastMessage={setToastMessage}

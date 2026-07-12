@@ -8,11 +8,10 @@ export type CellEditorProps = {
   property: PropertyConfig;
   editingCell: { rowId: string; propertyKey: string } | null;
   editingCellRef: React.RefObject<HTMLSpanElement | null>;
-  editingCellValue: string;
+  initialValue: string;
   isComposingRef: React.MutableRefObject<boolean>;
   typeValidationError: string | null;
   typeValidationErrorRef: React.RefObject<HTMLDivElement | null>;
-  setEditingCellValue: (value: string) => void;
   setTypeValidationError: (error: string | null) => void;
   handleSaveEditedCell: (submittedValue?: string) => void;
   handleCancelEditing: () => void;
@@ -27,16 +26,17 @@ export function CellEditor({
   property,
   editingCell,
   editingCellRef,
-  editingCellValue,
+  initialValue,
   isComposingRef,
   typeValidationError,
   typeValidationErrorRef,
-  setEditingCellValue,
   setTypeValidationError,
   handleSaveEditedCell,
   handleCancelEditing,
   handleCellFocus,
 }: CellEditorProps) {
+  const lastValidValueRef = React.useRef(initialValue);
+
   return (
     <div style={{ position: 'relative', width: '100%' }}>
       <span
@@ -72,7 +72,6 @@ export function CellEditor({
         onBlur={(e) => {
           if (!isComposingRef.current) {
             const newValue = e.currentTarget.textContent || '';
-            setEditingCellValue(newValue);
             handleSaveEditedCell(newValue);
           }
         }}
@@ -80,7 +79,6 @@ export function CellEditor({
           if (e.key === 'Enter' && !isComposingRef.current) {
             e.preventDefault();
             const newValue = e.currentTarget.textContent || '';
-            setEditingCellValue(newValue);
             handleSaveEditedCell(newValue);
           } else if (e.key === 'Escape') {
             e.preventDefault();
@@ -89,7 +87,7 @@ export function CellEditor({
             e.preventDefault();
             const el = e.currentTarget;
             el.textContent = '';
-            setEditingCellValue('');
+            lastValidValueRef.current = '';
             setTypeValidationError(null);
             const sel = window.getSelection();
             const range = document.createRange();
@@ -152,11 +150,11 @@ export function CellEditor({
               // Non-numeric input (e.g. letters): show type mismatch
               if (cleaned === '' && newValue.trim() !== '') {
                 setTypeValidationError('type mismatch');
-                e.currentTarget.textContent = editingCellValue;
+                e.currentTarget.textContent = lastValidValueRef.current;
                 return;
               }
               if (!/^-?\d*$/.test(intValue)) {
-                e.currentTarget.textContent = editingCellValue;
+                e.currentTarget.textContent = lastValidValueRef.current;
                 return;
               }
               if (intValue !== newValue) {
@@ -193,12 +191,12 @@ export function CellEditor({
               // Non-numeric input (e.g. letters) or invalid number: show type mismatch
               if ((finalValue === '' && newValue.trim() !== '') || (finalValue !== '' && Number.isNaN(parseFloat(finalValue)))) {
                 setTypeValidationError('type mismatch');
-                e.currentTarget.textContent = editingCellValue;
+                e.currentTarget.textContent = lastValidValueRef.current;
                 return;
               }
               setTypeValidationError(null);
               if (!/^-?\d*\.?\d*$/.test(finalValue)) {
-                e.currentTarget.textContent = editingCellValue;
+                e.currentTarget.textContent = lastValidValueRef.current;
                 return;
               }
               if (finalValue !== newValue) {
@@ -226,7 +224,7 @@ export function CellEditor({
             } else {
               setTypeValidationError(null);
             }
-            setEditingCellValue(newValue);
+            lastValidValueRef.current = newValue;
           }
         }}
         onCompositionStart={() => {
@@ -250,11 +248,11 @@ export function CellEditor({
               : cleaned.replace(/-/g, '');
             if (cleaned === '' && newValue.trim() !== '') {
               setTypeValidationError('type mismatch');
-              e.currentTarget.textContent = editingCellValue;
+              e.currentTarget.textContent = lastValidValueRef.current;
               return;
             }
             if (!/^-?\d*$/.test(intValue)) {
-              e.currentTarget.textContent = editingCellValue;
+              e.currentTarget.textContent = lastValidValueRef.current;
               return;
             }
             if (intValue !== newValue) {
@@ -272,12 +270,12 @@ export function CellEditor({
               : floatValue;
             if ((finalValue === '' && newValue.trim() !== '') || (finalValue !== '' && Number.isNaN(parseFloat(finalValue)))) {
               setTypeValidationError('type mismatch');
-              e.currentTarget.textContent = editingCellValue;
+              e.currentTarget.textContent = lastValidValueRef.current;
               return;
             }
             setTypeValidationError(null);
             if (!/^-?\d*\.?\d*$/.test(finalValue)) {
-              e.currentTarget.textContent = editingCellValue;
+              e.currentTarget.textContent = lastValidValueRef.current;
               return;
             }
             if (finalValue !== newValue) {
@@ -287,7 +285,7 @@ export function CellEditor({
           } else {
             setTypeValidationError(null);
           }
-          setEditingCellValue(newValue);
+          lastValidValueRef.current = newValue;
         }}
         style={{
           outline: 'none',
@@ -295,7 +293,9 @@ export function CellEditor({
           display: 'block',
           width: '100%',
         }}
-      />
+      >
+        {initialValue}
+      </span>
       {typeValidationError && (
         <Tooltip
           title={typeValidationError}

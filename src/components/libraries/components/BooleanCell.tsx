@@ -62,7 +62,7 @@ export interface BooleanCellProps {
  * Boolean cell component for LibraryAssetsTable
  * Renders a switch control for boolean values with optimistic updates
  */
-export const BooleanCell: React.FC<BooleanCellProps> = ({
+const BooleanCellComponent: React.FC<BooleanCellProps> = ({
   row,
   property,
   propertyIndex,
@@ -228,3 +228,4 @@ export const BooleanCell: React.FC<BooleanCellProps> = ({
   );
 };
 
+export const BooleanCell = React.memo(BooleanCellComponent);

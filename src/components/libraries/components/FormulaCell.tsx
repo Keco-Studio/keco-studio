@@ -61,7 +61,7 @@ type FormulaCellProps = {
   getSelectionBorderClasses: (rowId: string, propertyIndex: number) => string;
 };
 
-export function FormulaCell({
+function FormulaCellComponent({
   row,
   property,
   propertyIndex,
@@ -173,3 +173,4 @@ export function FormulaCell({
   );
 }
 
+export const FormulaCell = React.memo(FormulaCellComponent);

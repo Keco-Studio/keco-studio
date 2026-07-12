@@ -64,7 +64,7 @@ export interface EnumCellProps {
  * Enum/Select cell component for LibraryAssetsTable
  * Renders a select dropdown for enum values with optimistic updates
  */
-export const EnumCell: React.FC<EnumCellProps> = ({
+const EnumCellComponent: React.FC<EnumCellProps> = ({
   row,
   property,
   propertyIndex,
@@ -287,3 +287,4 @@ export const EnumCell: React.FC<EnumCellProps> = ({
   );
 };
 
+export const EnumCell = React.memo(EnumCellComponent);

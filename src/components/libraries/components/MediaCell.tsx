@@ -73,7 +73,7 @@ export interface MediaCellProps {
  * Media/Image/File cell component for LibraryAssetsTable
  * Renders a file upload control for media files with immediate save on change
  */
-export const MediaCell: React.FC<MediaCellProps> = ({
+const MediaCellComponent: React.FC<MediaCellProps> = ({
   row,
   property,
   propertyIndex,
@@ -238,3 +238,5 @@ export const MediaCell: React.FC<MediaCellProps> = ({
     </td>
   );
 };
+
+export const MediaCell = React.memo(MediaCellComponent);

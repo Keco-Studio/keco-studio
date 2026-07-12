@@ -68,13 +68,12 @@ type LibraryAssetsTableBodyProps = {
   fillPreviewMap: Map<string, number>;
   editingCell: { rowId: string; propertyKey: string } | null;
   editingCellRef: React.MutableRefObject<HTMLSpanElement | null>;
-  editingCellValue: string;
+  editingCellInitialValueRef: React.MutableRefObject<string>;
   isComposingRef: React.MutableRefObject<boolean>;
   typeValidationError: string | null;
   typeValidationErrorRef: React.MutableRefObject<HTMLDivElement | null>;
   setHoveredRowId: React.Dispatch<React.SetStateAction<string | null>>;
   setHoveredCellForExpand: React.Dispatch<React.SetStateAction<{ rowId: string; propertyKey: string } | null>>;
-  setEditingCellValue: React.Dispatch<React.SetStateAction<string>>;
   setTypeValidationError: React.Dispatch<React.SetStateAction<string | null>>;
   setOpenEnumSelects: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   setToastMessage: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'error' | 'default' } | null>>;
@@ -160,13 +159,12 @@ export function LibraryAssetsTableBody({
   fillPreviewMap,
   editingCell,
   editingCellRef,
-  editingCellValue,
+  editingCellInitialValueRef,
   isComposingRef,
   typeValidationError,
   typeValidationErrorRef,
   setHoveredRowId,
   setHoveredCellForExpand,
-  setEditingCellValue,
   setTypeValidationError,
   setOpenEnumSelects,
   setToastMessage,
@@ -691,7 +689,7 @@ export function LibraryAssetsTableBody({
                   fillPreviewValue={fillPreviewValue}
                   editingCell={editingCell}
                   editingCellRef={editingCellRef}
-                  editingCellValue={editingCellValue}
+                  editingCellInitialValueRef={editingCellInitialValueRef}
                   isComposingRef={isComposingRef}
                   typeValidationError={typeValidationError}
                   typeValidationErrorRef={typeValidationErrorRef}
@@ -709,7 +707,6 @@ export function LibraryAssetsTableBody({
                   onCellFillDragStart={onCellFillDragStart}
                   onCellDragStart={onCellDragStart}
                   onCellFocus={onCellFocus}
-                  setEditingCellValue={setEditingCellValue}
                   setTypeValidationError={setTypeValidationError}
                   setHoveredCellForExpand={setHoveredCellForExpand}
                   handleSaveEditedCell={handleSaveEditedCell}

@@ -41,7 +41,7 @@ export function useCellEditing({
 }) {
   // Edit mode state: track which cell is being edited (rowId and propertyKey)
   const [editingCell, setEditingCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
-  const [editingCellValue, setEditingCellValue] = useState<string>('');
+  const editingCellInitialValueRef = useRef('');
   const editingCellRef = useRef<HTMLSpanElement | null>(null);
   const isComposingRef = useRef(false);
   
@@ -328,7 +328,7 @@ export function useCellEditing({
     const isNameField = property && property.name === 'name' && property.dataType === 'string';
     
     // Validate value based on data type (only for non-name fields)
-    const valueToSave = submittedValue ?? editingCellValue;
+    const valueToSave = submittedValue ?? editingCellRef.current?.textContent ?? editingCellInitialValueRef.current;
     let normalizedValue: string | number | null = valueToSave;
     if (!isNameField && property) {
       const validation = validateValueByType(valueToSave, property.dataType);
@@ -391,7 +391,7 @@ export function useCellEditing({
     const savedRowId = editingCell.rowId;
     const savedPropertyKey = editingCell.propertyKey;
     setEditingCell(null);
-    setEditingCellValue('');
+    editingCellInitialValueRef.current = '';
     setTypeValidationError(null); // Clear validation error
     editingCellRef.current = null;
     isComposingRef.current = false;
@@ -425,15 +425,14 @@ export function useCellEditing({
         return newMap;
       });
       // Restore editing state so user can try again
+      editingCellInitialValueRef.current = savedValue;
       setEditingCell({ rowId, propertyKey });
-      setEditingCellValue(savedValue);
       alert('Failed to update cell. Please try again.');
     } finally {
       setIsSaving(false);
     }
   }, [
     editingCell,
-    editingCellValue,
     onUpdateAsset,
     properties,
     rows,
@@ -514,7 +513,7 @@ export function useCellEditing({
       stringValue = '[]';
     }
     setEditingCell({ rowId: row.id, propertyKey: property.key });
-    setEditingCellValue(stringValue);
+    editingCellInitialValueRef.current = stringValue;
     isComposingRef.current = false;
     
     // Update presence tracking when starting to edit
@@ -538,7 +537,7 @@ export function useCellEditing({
   const handleCancelEditing = useCallback(() => {
     setTypeValidationError(null); // Clear validation error when canceling
     setEditingCell(null);
-    setEditingCellValue('');
+    editingCellInitialValueRef.current = '';
     editingCellRef.current = null;
     isComposingRef.current = false;
     setCurrentFocusedCell(null); // Clear focused cell when canceling editing
@@ -552,7 +551,7 @@ export function useCellEditing({
   return {
     // State
     editingCell,
-    editingCellValue,
+    editingCellInitialValueRef,
     editingCellRef,
     isComposingRef,
     typeValidationError,
@@ -560,7 +559,6 @@ export function useCellEditing({
     
     // Setters
     setEditingCell,
-    setEditingCellValue,
     setTypeValidationError,
     
     // Handlers

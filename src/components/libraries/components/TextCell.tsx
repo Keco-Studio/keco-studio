@@ -20,7 +20,7 @@ export interface TextCellProps {
   // Cell editing state
   editingCell: { rowId: string; propertyKey: string } | null;
   editingCellRef: React.MutableRefObject<HTMLSpanElement | null>;
-  editingCellValue: string;
+  editingCellInitialValueRef: React.MutableRefObject<string>;
   isComposingRef: React.MutableRefObject<boolean>;
   typeValidationError: string | null;
   typeValidationErrorRef: React.MutableRefObject<HTMLDivElement | null>;
@@ -58,7 +58,6 @@ export interface TextCellProps {
   onCellFillDragStart: (rowId: string, propertyKey: string, e: React.MouseEvent) => void;
   onCellDragStart: (rowId: string, propertyKey: string, e: React.MouseEvent) => void;
   onCellFocus: (assetId: string, propertyKey: string) => void;
-  setEditingCellValue: React.Dispatch<React.SetStateAction<string>>;
   setTypeValidationError: React.Dispatch<React.SetStateAction<string | null>>;
   setHoveredCellForExpand: React.Dispatch<React.SetStateAction<{ rowId: string; propertyKey: string } | null>>;
   handleSaveEditedCell: (submittedValue?: string) => void;
@@ -74,7 +73,7 @@ export interface TextCellProps {
  * Text cell component for LibraryAssetsTable
  * Renders text fields with inline editing support
  */
-export const TextCell: React.FC<TextCellProps> = ({
+const TextCellComponent: React.FC<TextCellProps> = ({
   row,
   property,
   propertyIndex,
@@ -85,7 +84,7 @@ export const TextCell: React.FC<TextCellProps> = ({
   fillPreviewValue,
   editingCell,
   editingCellRef,
-  editingCellValue,
+  editingCellInitialValueRef,
   isComposingRef,
   typeValidationError,
   typeValidationErrorRef,
@@ -103,7 +102,6 @@ export const TextCell: React.FC<TextCellProps> = ({
   onCellFillDragStart,
   onCellDragStart,
   onCellFocus,
-  setEditingCellValue,
   setTypeValidationError,
   setHoveredCellForExpand,
   handleSaveEditedCell,
@@ -220,11 +218,10 @@ export const TextCell: React.FC<TextCellProps> = ({
           property={property}
           editingCell={editingCell}
           editingCellRef={editingCellRef}
-          editingCellValue={editingCellValue}
+          initialValue={editingCellInitialValueRef.current}
           isComposingRef={isComposingRef}
           typeValidationError={typeValidationError}
           typeValidationErrorRef={typeValidationErrorRef}
-          setEditingCellValue={setEditingCellValue}
           setTypeValidationError={setTypeValidationError}
           handleSaveEditedCell={handleSaveEditedCell}
           handleCancelEditing={handleCancelEditing}
@@ -287,3 +284,5 @@ export const TextCell: React.FC<TextCellProps> = ({
     </td>
   );
 };
+
+export const TextCell = React.memo(TextCellComponent);
