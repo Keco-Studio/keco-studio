@@ -97,7 +97,7 @@ export function useTableDataManager({
    * Get complete row list with optimistic updates (for rendering and selection)
    * This function replaces the original getAllRowsForCellSelection
    */
-  const getRowsWithOptimisticUpdates = useCallback((): AssetRow[] => {
+  const rowsWithOptimisticUpdates = useMemo((): AssetRow[] => {
     const allRowsMap = new Map<string, AssetRow>();
     
     // Add base rows (excluding deleted ones)
@@ -152,6 +152,11 @@ export function useTableDataManager({
     
     return allRows;
   }, [baseRows, deletedAssetIds, optimisticEditUpdates, optimisticNewAssets]);
+
+  const getRowsWithOptimisticUpdates = useCallback(
+    (): AssetRow[] => rowsWithOptimisticUpdates,
+    [rowsWithOptimisticUpdates],
+  );
 
   /**
    * Set optimistic update for a single property

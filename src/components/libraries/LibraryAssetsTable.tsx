@@ -48,6 +48,7 @@ import { FormulaCellPanel } from './components/FormulaCellPanel';
 import { VisualNovelScriptView } from './components/VisualNovelScriptView';
 import { LibraryTableTopBar } from './components/LibraryTableTopBar';
 import { ViewerBanner } from './components/ViewerBanner';
+import { buildTableIndexes } from './utils/tableIndexes';
 import { LibraryAssetsTableBody } from './components/LibraryAssetsTableBody';
 import { LibraryAssetDetailDrawerWiring } from './components/LibraryAssetDetailDrawerWiring';
 import styles from './LibraryAssetsTable.module.css';
@@ -582,6 +583,11 @@ export function LibraryAssetsTable({
   const getAllRowsForCellSelection = useCallback(() => {
     return dataManager.getRowsWithOptimisticUpdates();
   }, [dataManager]);
+  const allRowsForSelection = getAllRowsForCellSelection();
+  const tableIndexes = useMemo(
+    () => buildTableIndexes(allRowsForSelection, orderedProperties),
+    [allRowsForSelection, orderedProperties],
+  );
 
   const { fillDown, fillDownIntSequence, getIntSequencePreviewValues } = useBatchFill({
     dataManager,
@@ -613,6 +619,7 @@ export function LibraryAssetsTable({
     orderedProperties,
     navigationProperties: activeProperties,
     getAllRowsForCellSelection,
+    tableIndexes,
     fillDown,
     fillDownIntSequence,
     currentFocusedCell,
@@ -629,6 +636,7 @@ export function LibraryAssetsTable({
     dataManager,
     orderedProperties,
     getAllRowsForCellSelection,
+    tableIndexes,
     selectedCells,
     selectedRowIds,
     onSaveAsset,
@@ -720,7 +728,7 @@ export function LibraryAssetsTable({
     cutCells,
     copyCells,
     orderedProperties,
-    getAllRowsForCellSelection,
+    tableIndexes,
     borderClassNames: {
       cutBorderTop: styles.cutBorderTop,
       cutBorderBottom: styles.cutBorderBottom,
@@ -1041,7 +1049,7 @@ export function LibraryAssetsTable({
             <LibraryAssetsTableBody
               displayRows={displayRows}
               rows={rows}
-              allRowsForSelection={getAllRowsForCellSelection()}
+              tableIndexes={tableIndexes}
               properties={properties}
               activeProperties={activeProperties}
               orderedProperties={orderedProperties}

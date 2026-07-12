@@ -20,6 +20,7 @@ import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
 import tableAssetDetailIcon from '@/assets/images/ProjectDescIcon.svg';
 import styles from '../LibraryAssetsTable.module.css';
+import type { TableIndexes } from '../utils/tableIndexes';
 
 type EditingUser = {
   userId: string;
@@ -44,7 +45,7 @@ type SelectionBounds = {
 type LibraryAssetsTableBodyProps = {
   displayRows: AssetRow[];
   rows: AssetRow[];
-  allRowsForSelection: AssetRow[];
+  tableIndexes: TableIndexes;
   properties: PropertyConfig[];
   activeProperties: PropertyConfig[];
   orderedProperties: PropertyConfig[];
@@ -135,7 +136,7 @@ type LibraryAssetsTableBodyProps = {
 export function LibraryAssetsTableBody({
   displayRows,
   rows,
-  allRowsForSelection,
+  tableIndexes,
   properties,
   activeProperties,
   orderedProperties,
@@ -205,7 +206,7 @@ export function LibraryAssetsTableBody({
       {displayRows.map((row, index) => {
         const isRowHovered = hoveredRowId === row.id;
         const isRowSelected = selectedRowIds.has(row.id);
-        const actualRowIndex = allRowsForSelection.findIndex((candidate) => candidate.id === row.id);
+        const actualRowIndex = tableIndexes.rowIndexById.get(row.id) ?? -1;
 
         return (
           <tr
@@ -252,7 +253,7 @@ export function LibraryAssetsTableBody({
               />
             </td>
             {activeProperties.map((property) => {
-              const globalPropertyIndex = orderedProperties.findIndex((candidate) => candidate.id === property.id);
+              const globalPropertyIndex = tableIndexes.propertyIndexByKey.get(property.key) ?? -1;
               const propertyIndex = globalPropertyIndex >= 0 ? globalPropertyIndex : 0;
               const isNameField = property.name === 'name' && property.dataType === 'string';
               const isFirstColumn = activeProperties[0]?.id === property.id;
