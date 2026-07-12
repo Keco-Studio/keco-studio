@@ -7,6 +7,7 @@ import formulaIcon from '@/assets/images/formula.svg';
 import { BooleanCell } from './BooleanCell';
 import { CellPresenceAvatars } from './CellPresenceAvatars';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
+import { createPropertyByName } from '../utils/formulaEvaluation';
 
 type EditingUser = {
   userId: string;
@@ -45,7 +46,8 @@ type FormulaCellProps = {
     expression: string | undefined,
     row: AssetRow,
     allProperties: PropertyConfig[],
-    visited?: Set<string>
+    visited?: Set<string>,
+    propertyByName?: ReadonlyMap<string, PropertyConfig>
   ) => any | null;
   getCustomFormulaExpressionFromCellValue: (rawValue: unknown) => string | null;
   openFormulaEditor: (rowId: string, propertyKey: string) => void;
@@ -94,7 +96,14 @@ function FormulaCellComponent({
   const isCellSelected = selectedCells.has(cellKey);
   const customFormulaExpression = getCustomFormulaExpressionFromCellValue(row.propertyValues[property.key]);
   const effectiveFormulaExpression = customFormulaExpression ?? property.formulaExpression;
-  const formulaResult = evaluateFormulaForRow(effectiveFormulaExpression, row, properties);
+  const propertyByName = React.useMemo(() => createPropertyByName(properties), [properties]);
+  const formulaResult = evaluateFormulaForRow(
+    effectiveFormulaExpression,
+    row,
+    properties,
+    new Set(),
+    propertyByName,
+  );
   const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
   const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
 

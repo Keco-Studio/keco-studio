@@ -5,7 +5,7 @@ import {
   PropertyConfig,
   SectionConfig,
 } from '@/lib/types/libraryAssets';
-import { computeFormulaValuesForRow } from '@/lib/utils/formula';
+import { computeFormulaValuesForRow, createFormulaFieldByName } from '@/lib/utils/formula';
 import { getLibrary } from '@/lib/services/libraryService';
 import { syncReferencesForSourceChanges } from '@/lib/services/referenceSyncService';
 import {
@@ -306,6 +306,7 @@ async function recalculateAndPersistFormulaFieldValues(
     dataType: f.data_type,
     formulaExpression: f.formula_expression,
   }));
+  const fieldByName = createFormulaFieldByName(evaluableFields);
 
   const upsertRows: Array<{ asset_id: string; field_id: string; value_json: number }> = [];
   for (const asset of assets) {
@@ -314,7 +315,7 @@ async function recalculateAndPersistFormulaFieldValues(
       // Respect cell-level custom formulas: schema-level recalculation should not overwrite them.
       continue;
     }
-    const computed = computeFormulaValuesForRow(evaluableFields, asset.propertyValues);
+    const computed = computeFormulaValuesForRow(evaluableFields, asset.propertyValues, fieldByName);
     const value = computed[targetFormulaFieldId];
     // Persist any non-empty result so formulas can return numbers, booleans, or strings.
     if (value !== null && value !== undefined) {

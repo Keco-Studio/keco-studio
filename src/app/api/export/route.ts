@@ -3,8 +3,9 @@ import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SectionConfig, PropertyConfig, AssetRow } from '@/lib/types/libraryAssets';
 import type { FormulaEvaluableField } from '@/lib/utils/formula';
-import { computeFormulaValuesForRow } from '@/lib/utils/formula';
+import { computeFormulaValuesForRow, createFormulaFieldByName } from '@/lib/utils/formula';
 import {
+  createPropertyByName,
   evaluateFormulaForRow,
   getCustomFormulaExpressionFromCellValue,
 } from '@/components/libraries/utils/formulaEvaluation';
@@ -472,6 +473,7 @@ export async function GET(request: NextRequest) {
   const baseName = `${safeFileName(libraryName)}_${exportedAt}`;
   const sections = schema.sections;
   const properties = schema.properties;
+  const propertyByName = createPropertyByName(properties);
 
   if (format === 'json') {
     // For formula cells, export computed values.
@@ -497,7 +499,13 @@ export async function GET(request: NextRequest) {
           const raw = row.propertyValues?.[p.key];
           const customExpression = getCustomFormulaExpressionFromCellValue(raw);
           if (customExpression) {
-            const computed = evaluateFormulaForRow(customExpression, row, properties);
+            const computed = evaluateFormulaForRow(
+              customExpression,
+              row,
+              properties,
+              new Set(),
+              propertyByName,
+            );
             exportPropertyValues[p.key] = computed;
           }
         }
@@ -640,9 +648,13 @@ export async function GET(request: NextRequest) {
     dataType: p.dataType,
     formulaExpression: p.formulaExpression,
   }));
+  const formulaFieldByName = createFormulaFieldByName(formulaFields);
   const computedFormulaByRowId = new Map<string, Record<string, unknown>>();
   for (const row of assets) {
-    computedFormulaByRowId.set(row.id, computeFormulaValuesForRow(formulaFields, row.propertyValues));
+    computedFormulaByRowId.set(
+      row.id,
+      computeFormulaValuesForRow(formulaFields, row.propertyValues, formulaFieldByName),
+    );
   }
 
   const makeUniqueSheetName = (base: string, used: Set<string>) => {
@@ -692,7 +704,13 @@ export async function GET(request: NextRequest) {
           // export the computed result instead of exporting the expression itself.
           const customExpression = getCustomFormulaExpressionFromCellValue(raw);
           if (customExpression) {
-            const computed = evaluateFormulaForRow(customExpression, row, properties);
+            const computed = evaluateFormulaForRow(
+              customExpression,
+              row,
+              properties,
+              new Set(),
+              propertyByName,
+            );
             if (computed === null || computed === undefined) return null;
             // Force string output so Excel uses left alignment (numbers are right-aligned by default).
             return String(computed);

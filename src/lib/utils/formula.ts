@@ -32,6 +32,24 @@ const OP_PRECEDENCE: Record<'+' | '-' | '*' | '/', number> = {
 
 const FORMULA_DECIMAL_DIGITS = 4;
 
+type ServerFormulaHelper = {
+  IF: (condition: any, whenTrue: any, whenFalse: any) => any;
+  SUM: (...args: any[]) => number;
+  AVERAGE: (...args: any[]) => number | null;
+  MIN: (...args: any[]) => number | null;
+  MAX: (...args: any[]) => number | null;
+  ROUND: (value: any, digits: any) => number | null;
+  COL: (name: string) => any;
+};
+
+type CompiledServerFormula = {
+  tokens: FormulaToken[];
+  rpn: FormulaToken[];
+  advancedEvaluators: Map<string, (helper: ServerFormulaHelper) => unknown>;
+};
+
+const compiledFormulaCache = new Map<string, CompiledServerFormula>();
+
 function roundFormulaNumber(n: number): number {
   if (!Number.isFinite(n)) return n;
   return Number(mathRound(n, FORMULA_DECIMAL_DIGITS));
@@ -259,6 +277,73 @@ function evalRpn(
   return stack[0];
 }
 
+function getCompiledFormula(trimmedExpr: string): CompiledServerFormula {
+  const cached = compiledFormulaCache.get(trimmedExpr);
+  if (cached) return cached;
+
+  const tokens = tokenizeFormula(trimmedExpr);
+  const compiled = {
+    tokens,
+    rpn: tokens.length > 0 ? toRpn(tokens) : [],
+    advancedEvaluators: new Map<string, (helper: ServerFormulaHelper) => unknown>(),
+  };
+  compiledFormulaCache.set(trimmedExpr, compiled);
+  return compiled;
+}
+
+function getAdvancedEvaluator(
+  compiled: CompiledServerFormula,
+  trimmedExpr: string,
+  propertyByName: ReadonlyMap<string, FormulaEvaluableField>
+): (helper: ServerFormulaHelper) => unknown {
+  const columnNames = Array.from(propertyByName.keys()).sort((a, b) => b.length - a.length);
+  const columnSignature = columnNames.join('\u0000');
+  const cached = compiled.advancedEvaluators.get(columnSignature);
+  if (cached) return cached;
+
+  const stringLiterals: string[] = [];
+  let jsExpr = trimmedExpr.replace(
+    /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g,
+    (match) => {
+      const idx = stringLiterals.length;
+      stringLiterals.push(match);
+      return `__STR_LITERAL_${idx}__`;
+    }
+  );
+
+  for (const name of columnNames) {
+    const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    jsExpr = jsExpr.replace(new RegExp(`\\b${safeName}\\b`, 'g'), `COL(${JSON.stringify(name)})`);
+  }
+
+  jsExpr = jsExpr
+    .replace(/\bIF\s*\(/g, 'IF(')
+    .replace(/\bSUM\s*\(/g, 'SUM(')
+    .replace(/\bAVERAGE\s*\(/g, 'AVERAGE(')
+    .replace(/\bMIN\s*\(/g, 'MIN(')
+    .replace(/\bMAX\s*\(/g, 'MAX(')
+    .replace(/\bROUND\s*\(/g, 'ROUND(')
+    .replace(/>=/g, '__GTE__')
+    .replace(/<=/g, '__LTE__')
+    .replace(/=/g, '==')
+    .replace(/__GTE__/g, '>=')
+    .replace(/__LTE__/g, '<=')
+    .replace(/__STR_LITERAL_(\d+)__/g, (_, indexStr) => {
+      const index = Number(indexStr);
+      return Number.isFinite(index) && stringLiterals[index] !== undefined
+        ? stringLiterals[index]
+        : '';
+    });
+
+  // eslint-disable-next-line no-new-func
+  const evaluator = new Function(
+    'helper',
+    `const { IF, SUM, AVERAGE, MIN, MAX, ROUND, COL } = helper; return (${jsExpr});`
+  ) as (helper: ServerFormulaHelper) => unknown;
+  compiled.advancedEvaluators.set(columnSignature, evaluator);
+  return evaluator;
+}
+
 /**
  * Calculate the value of a single formula field on a row of data.
  *
@@ -273,7 +358,8 @@ function evaluateFormulaForRowInternal(
   expression: string | null | undefined,
   fields: FormulaEvaluableField[],
   propertyValues: Record<string, any>,
-  visited: Set<string> = new Set()
+  visited: Set<string> = new Set(),
+  propertyByNameOverride?: ReadonlyMap<string, FormulaEvaluableField>
 ): any | null {
   if (!expression || !expression.trim()) return null;
 
@@ -281,10 +367,9 @@ function evaluateFormulaForRowInternal(
     ? expression.trim().slice(1)
     : expression.trim();
 
-  const propertyByName = new Map<string, FormulaEvaluableField>();
-  for (const field of fields) {
-    if (field.name) propertyByName.set(field.name, field);
-  }
+  const propertyByName = propertyByNameOverride ?? new Map(
+    fields.filter((field) => Boolean(field.name)).map((field) => [field.name, field]),
+  );
 
   const resolveFieldValue = (field: FormulaEvaluableField): any | null => {
     if (!field.id) return null;
@@ -300,7 +385,8 @@ function evaluateFormulaForRowInternal(
         field.formulaExpression,
         fields,
         propertyValues,
-        nextVisited
+        nextVisited,
+        propertyByName
       );
     }
 
@@ -310,9 +396,9 @@ function evaluateFormulaForRowInternal(
   };
 
   // First try the simple arithmetic parser when tokenization succeeds.
-  const tokens = tokenizeFormula(trimmedExpr);
+  const compiled = getCompiledFormula(trimmedExpr);
+  const { tokens, rpn } = compiled;
   if (tokens.length > 0) {
-    const rpn = toRpn(tokens);
     if (rpn.length > 0) {
       const numericValue = evalRpn(rpn, (name) => {
         const field = propertyByName.get(name);
@@ -380,58 +466,9 @@ function evaluateFormulaForRowInternal(
         const num = Number(raw);
         return Number.isNaN(num) ? raw : num;
       },
-    } as const;
+    };
 
-    const columnNames = Array.from(propertyByName.keys()).sort(
-      (a, b) => b.length - a.length
-    );
-
-    // Hold string literals in placeholders before replacing column names.
-    const stringLiterals: string[] = [];
-    let jsExpr = trimmedExpr.replace(
-      /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g,
-      (match) => {
-        const idx = stringLiterals.length;
-        stringLiterals.push(match);
-        return `__STR_LITERAL_${idx}__`;
-      }
-    );
-
-    for (const name of columnNames) {
-      const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const re = new RegExp(`\\b${safeName}\\b`, 'g');
-      jsExpr = jsExpr.replace(re, `COL(${JSON.stringify(name)})`);
-    }
-
-    jsExpr = jsExpr
-      .replace(/\bIF\s*\(/g, 'IF(')
-      .replace(/\bSUM\s*\(/g, 'SUM(')
-      .replace(/\bAVERAGE\s*\(/g, 'AVERAGE(')
-      .replace(/\bMIN\s*\(/g, 'MIN(')
-      .replace(/\bMAX\s*\(/g, 'MAX(')
-      .replace(/\bROUND\s*\(/g, 'ROUND(');
-
-    jsExpr = jsExpr
-      .replace(/>=/g, '__GTE__')
-      .replace(/<=/g, '__LTE__')
-      .replace(/=/g, '==')
-      .replace(/__GTE__/g, '>=')
-      .replace(/__LTE__/g, '<=');
-
-    // Restore the string literals that were held in placeholders.
-    jsExpr = jsExpr.replace(/__STR_LITERAL_(\d+)__/g, (_, indexStr) => {
-      const index = Number(indexStr);
-      return Number.isFinite(index) && stringLiterals[index] !== undefined
-        ? stringLiterals[index]
-        : '';
-    });
-
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(
-      'helper',
-      `const { IF, SUM, AVERAGE, MIN, MAX, ROUND, COL } = helper; return (${jsExpr});`
-    );
-    const result = fn(helper);
+    const result = getAdvancedEvaluator(compiled, trimmedExpr, propertyByName)(helper);
     if (result === undefined) return null;
     if (typeof result === 'number') {
       return roundFormulaNumber(result);
@@ -442,15 +479,19 @@ function evaluateFormulaForRowInternal(
   }
 }
 
+export function createFormulaFieldByName(
+  fields: FormulaEvaluableField[]
+): Map<string, FormulaEvaluableField> {
+  return new Map(
+    fields.filter((field) => Boolean(field.name)).map((field) => [field.name, field]),
+  );
+}
+
 export function computeFormulaValuesForRow(
   fields: FormulaEvaluableField[],
-  propertyValues: Record<string, any>
+  propertyValues: Record<string, any>,
+  fieldByName: ReadonlyMap<string, FormulaEvaluableField> = createFormulaFieldByName(fields)
 ): Record<string, any | null> {
-  const byName = new Map<string, FormulaEvaluableField>();
-  for (const field of fields) {
-    if (field.name) byName.set(field.name, field);
-  }
-
   const result: Record<string, any | null> = {};
   const formulaFields = fields.filter((f) => f.dataType === 'formula');
 
@@ -458,7 +499,9 @@ export function computeFormulaValuesForRow(
     const computed = evaluateFormulaForRowInternal(
       formulaField.formulaExpression ?? null,
       fields,
-      propertyValues
+      propertyValues,
+      new Set(),
+      fieldByName
     );
     result[formulaField.id] = computed;
   }
