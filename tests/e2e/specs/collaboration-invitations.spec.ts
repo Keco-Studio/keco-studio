@@ -128,8 +128,24 @@ test.describe('Collaboration invitations', () => {
     await expect(page).toHaveURL(/\/projects\?redirect=/, { timeout: 30000 });
 
     const loginPage = new LoginPage(page);
+    const acceptanceResponsePromise = page.waitForResponse(
+      (response) =>
+        response.url().endsWith('/api/invitations/accept') &&
+        response.request().method() === 'POST',
+    );
     await loginPage.login(invitee);
-    await expect(page.getByText('Invitation accepted!', { exact: true })).toBeVisible({ timeout: 30000 });
+    const acceptanceResponse = await acceptanceResponsePromise;
+    expect(acceptanceResponse.ok()).toBe(true);
+    await expect(acceptanceResponse.json()).resolves.toMatchObject({ success: true, projectId });
+    await expect.poll(async () => {
+      const { data } = await admin
+        .from('project_collaborators')
+        .select('role')
+        .eq('project_id', projectId)
+        .eq('user_id', invitee.id)
+        .maybeSingle();
+      return data?.role ?? null;
+    }).toBe('viewer');
   });
 
   test('declines a token and deletes its invitation', async ({ page }) => {
