@@ -8,6 +8,7 @@ import moveToFolderIcon from "@/assets/images/moveToFolder.svg";
 import moveToFolderDisabledIcon from "@/assets/images/moveToFolder2.svg";
 import moveToSelectIcon from "@/assets/images/moveToSelect.svg";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
@@ -24,7 +25,6 @@ import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
 import { EditLibraryModal } from "@/components/libraries/EditLibraryModal";
 import { DuplicateLibraryModal } from "@/components/libraries/DuplicateLibraryModal";
 import { ExportLibraryModal } from "@/components/libraries/ExportLibraryModal";
-import { ImportLibraryModal } from "@/components/libraries/ImportLibraryModal";
 import { ImportScriptModal } from "@/components/libraries/ImportScriptModal";
 import { NewFolderModal } from "@/components/folders/NewFolderModal";
 import { EditFolderModal } from "@/components/folders/EditFolderModal";
@@ -65,6 +65,11 @@ import styles from "./Sidebar.module.css";
 const MIN_SIDEBAR_WIDTH = 267;
 const MAX_SIDEBAR_WIDTH = 400;
 const DEFAULT_SIDEBAR_WIDTH = 267; // 16.6875rem
+
+const ImportLibraryModal = dynamic(
+  () => import("@/components/libraries/ImportLibraryModal").then((mod) => mod.ImportLibraryModal),
+  { ssr: false },
+);
 
 type SidebarProps = {
   userProfile?: UserProfileDisplay | null;
