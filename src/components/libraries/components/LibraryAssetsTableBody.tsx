@@ -128,7 +128,7 @@ type LibraryAssetsTableBodyProps = {
   openFormulaEditor: (rowId: string, propertyKey: string) => void;
   handleInputChange: (key: string, value: unknown) => void;
   handleMediaFileChange: (key: string, value: MediaFileMetadata | null) => void;
-  handleSaveEditedCell: () => void;
+  handleSaveEditedCell: (submittedValue?: string) => void;
   handleCancelEditing: () => void;
   handleAddRowDirect: () => void;
 };

@@ -61,7 +61,7 @@ export interface TextCellProps {
   setEditingCellValue: React.Dispatch<React.SetStateAction<string>>;
   setTypeValidationError: React.Dispatch<React.SetStateAction<string | null>>;
   setHoveredCellForExpand: React.Dispatch<React.SetStateAction<{ rowId: string; propertyKey: string } | null>>;
-  handleSaveEditedCell: () => void;
+  handleSaveEditedCell: (submittedValue?: string) => void;
   handleCancelEditing: () => void;
   // Border classes
   getCopyBorderClasses: (rowId: string, propertyIndex: number) => string;

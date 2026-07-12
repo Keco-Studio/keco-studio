@@ -14,7 +14,7 @@ export type CellEditorProps = {
   typeValidationErrorRef: React.RefObject<HTMLDivElement | null>;
   setEditingCellValue: (value: string) => void;
   setTypeValidationError: (error: string | null) => void;
-  handleSaveEditedCell: () => void;
+  handleSaveEditedCell: (submittedValue?: string) => void;
   handleCancelEditing: () => void;
   handleCellFocus: (assetId: string, propertyKey: string) => void;
 };
@@ -73,7 +73,7 @@ export function CellEditor({
           if (!isComposingRef.current) {
             const newValue = e.currentTarget.textContent || '';
             setEditingCellValue(newValue);
-            handleSaveEditedCell();
+            handleSaveEditedCell(newValue);
           }
         }}
         onKeyDown={(e) => {
@@ -81,7 +81,7 @@ export function CellEditor({
             e.preventDefault();
             const newValue = e.currentTarget.textContent || '';
             setEditingCellValue(newValue);
-            handleSaveEditedCell();
+            handleSaveEditedCell(newValue);
           } else if (e.key === 'Escape') {
             e.preventDefault();
             handleCancelEditing();

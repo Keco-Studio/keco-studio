@@ -310,7 +310,7 @@ export function useCellEditing({
   }, []);
 
   // Handle save edited cell
-  const handleSaveEditedCell = useCallback(async () => {
+  const handleSaveEditedCell = useCallback(async (submittedValue?: string) => {
     // Prevent editing if user is a viewer
     if (userRole === 'viewer') {
       return;
@@ -328,9 +328,10 @@ export function useCellEditing({
     const isNameField = property && property.name === 'name' && property.dataType === 'string';
     
     // Validate value based on data type (only for non-name fields)
-    let normalizedValue: string | number | null = editingCellValue;
+    const valueToSave = submittedValue ?? editingCellValue;
+    let normalizedValue: string | number | null = valueToSave;
     if (!isNameField && property) {
-      const validation = validateValueByType(editingCellValue, property.dataType);
+      const validation = validateValueByType(valueToSave, property.dataType);
       
       if (!validation.isValid) {
         // Show error message and prevent saving
@@ -356,7 +357,7 @@ export function useCellEditing({
     };
     
     // Get asset name (use first property value or row name)
-    const assetName = isNameField ? editingCellValue : (row.name || 'Untitled');
+    const assetName = isNameField ? valueToSave : (row.name || 'Untitled');
     
     // Immediately update Yjs (optimistic update)
     const allRows = yRows.toArray();
@@ -386,7 +387,7 @@ export function useCellEditing({
     });
 
     // Reset editing state immediately for better UX
-    const savedValue = editingCellValue;
+    const savedValue = valueToSave;
     const savedRowId = editingCell.rowId;
     const savedPropertyKey = editingCell.propertyKey;
     setEditingCell(null);
