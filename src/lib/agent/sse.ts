@@ -5,6 +5,9 @@
 import type { SSEEvent } from './types';
 
 const encoder = new TextEncoder();
+const keepalive = encoder.encode(': keepalive\n\n');
+
+export const DEFAULT_SSE_HEARTBEAT_INTERVAL_MS = 15_000;
 
 function formatEvent(event: SSEEvent): Uint8Array {
   return encoder.encode(`data: ${JSON.stringify(event)}\n\n`);
@@ -16,13 +19,36 @@ function formatEvent(event: SSEEvent): Uint8Array {
  */
 export function sseResponse(
   generator: AsyncGenerator<SSEEvent>,
-  options: { abortController?: AbortController } = {}
+  options: {
+    abortController?: AbortController;
+    heartbeatIntervalMs?: number;
+  } = {}
 ): Response {
   const abortController = options.abortController ?? new AbortController();
+  const heartbeatIntervalMs =
+    options.heartbeatIntervalMs ?? DEFAULT_SSE_HEARTBEAT_INTERVAL_MS;
   let cancelled = false;
+  let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
+
+  const stopHeartbeat = () => {
+    if (heartbeatTimer) {
+      clearInterval(heartbeatTimer);
+      heartbeatTimer = undefined;
+    }
+  };
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      if (heartbeatIntervalMs > 0) {
+        heartbeatTimer = setInterval(() => {
+          if (cancelled || abortController.signal.aborted) return;
+          try {
+            controller.enqueue(keepalive);
+          } catch {
+            stopHeartbeat();
+          }
+        }, heartbeatIntervalMs);
+      }
       try {
         for await (const event of generator) {
           if (cancelled || abortController.signal.aborted) return;
@@ -34,6 +60,7 @@ export function sseResponse(
         controller.enqueue(formatEvent({ type: 'error', message }));
         controller.enqueue(formatEvent({ type: 'done' }));
       } finally {
+        stopHeartbeat();
         if (!cancelled) {
           controller.close();
         }
@@ -41,6 +68,7 @@ export function sseResponse(
     },
     cancel() {
       cancelled = true;
+      stopHeartbeat();
       abortController.abort();
       void generator.return?.(undefined);
     },

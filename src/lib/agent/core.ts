@@ -61,7 +61,10 @@ import {
   AGENT_TURN_TOKEN_BUDGET,
   addTokenUsageTotal,
   compactLargeUserContentInMessages,
+  createTurnDeadline,
+  isTurnDeadlineExceeded,
   isOverTokenBudget,
+  timeLimitExceededMessage,
   tokenBudgetExceededMessage,
 } from './turn-budget';
 import { createAccessVerificationCache } from '@/lib/services/authorizationService';
@@ -294,6 +297,7 @@ async function* continueLoop(
   meta: ConversationMeta,
   conversationId: string,
   startIterations: number,
+  deadlineMs: number,
   startTokenUsageTotal = 0,
   signal?: AbortSignal,
   trace?: TurnTraceCollector
@@ -312,6 +316,11 @@ async function* continueLoop(
         type: 'error',
         message: tokenBudgetExceededMessage(usedTokenTotal, AGENT_TURN_TOKEN_BUDGET),
       };
+      yield { type: 'done' };
+      return;
+    }
+    if (isTurnDeadlineExceeded(deadlineMs)) {
+      yield { type: 'error', message: timeLimitExceededMessage() };
       yield { type: 'done' };
       return;
     }
@@ -354,6 +363,12 @@ async function* continueLoop(
       }
     }
     usedTokenTotal = addTokenUsageTotal(usedTokenTotal, llmUsage);
+
+    if (isTurnDeadlineExceeded(deadlineMs)) {
+      yield { type: 'error', message: timeLimitExceededMessage() };
+      yield { type: 'done' };
+      return;
+    }
 
     trace?.recordLlmCall({
       iteration: iterations,
@@ -633,6 +648,7 @@ async function* continueLoop(
 /** Run a fresh agent turn from a new user message. */
 export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEvent> {
   const { toolContext, conversationId, conversationMeta } = input;
+  const deadlineMs = createTurnDeadline();
   const trace = new TurnTraceCollector({
     turnId: crypto.randomUUID(),
     userMessage: input.userMessage,
@@ -675,7 +691,17 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
       },
     };
 
-    yield* continueLoop(messages, turnContext, conversationMeta, conversationId, 0, 0, input.signal, trace);
+    yield* continueLoop(
+      messages,
+      turnContext,
+      conversationMeta,
+      conversationId,
+      0,
+      deadlineMs,
+      0,
+      input.signal,
+      trace
+    );
   } finally {
     await flushTrace(trace, toolContext, conversationId);
   }
@@ -684,6 +710,7 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
 /** Resume a suspended turn after the user approves or rejects a pending action. */
 export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEvent> {
   const { toolContext } = input;
+  const deadlineMs = createTurnDeadline();
   const turnContext: ToolContext = {
     ...toolContext,
     accessCache: createAccessVerificationCache(),
@@ -798,6 +825,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       meta,
       conversationId,
       resumeIteration,
+      deadlineMs,
       resumeTokenUsageTotal,
       input.signal,
       trace ?? undefined
