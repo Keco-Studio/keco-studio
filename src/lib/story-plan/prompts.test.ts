@@ -4,12 +4,9 @@ import {
   AUDITOR_STORY_EXTRACTION_TOOL,
   EXTRACTOR_STORY_CONTENT_PROMPT,
   EXTRACTOR_STORY_CONTENT_TOOL,
-  GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT,
-  GRAPH_AUDITOR_STORY_EXTRACTION_TOOL,
   GRAPH_STORY_PLAN_PROMPT,
   GRAPH_STORY_PLAN_TOOL,
   buildContentExtractionMessages,
-  buildGraphAuditorExtractionMessages,
   buildGraphExtractionMessages,
 } from '@/lib/story-extraction/prompts';
 import { segmentStorySource } from './sourceSegments';
@@ -101,37 +98,11 @@ describe('two-stage full story extraction prompts', () => {
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('blank Label');
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Jump in Commands');
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('tablePaths');
-  });
-
-  it('gives the Graph Auditor only source-grounded graph and path evidence', () => {
-    expect(GRAPH_AUDITOR_STORY_EXTRACTION_TOOL.function.name).toBe('submit_story_graph_audit');
-    expect(GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT).toContain('exclusive outcome scope');
-    expect(GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT).toContain('repeats an earlier decision unexpectedly');
-    expect(GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Never infer termination or fallthrough');
-    expect(GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT).toContain('does not create shared visible content');
-    expect(GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Do not invent narrative prerequisites');
-
-    const source = segmentStorySource('请选择。\n- 左边。\n左边结局。', 'audit');
-    const extraction = {
-      version: 3 as const,
-      entryNodeId: 'start',
-      structuralUnitIds: [],
-      nodes: [
-        { id: 'start', type: 'narration' as const, speaker: '', content: '请选择。', sourceUnitIds: ['audit:0'], commandSources: [], nextNodeId: '' },
-        { id: 'left', type: 'narration' as const, speaker: '', content: '左边结局。', sourceUnitIds: ['audit:2'], commandSources: [], nextNodeId: '' },
-      ],
-      choices: [{ id: 'go_left', fromNodeId: 'start', text: '左边。', targetNodeId: 'left', sourceUnitIds: ['audit:1'], commandSources: [] }],
-    };
-    const messages = buildGraphAuditorExtractionMessages(source, extraction, {
-      rows: [],
-      table: { columns: [], rows: [] },
-      paths: [{ labels: ['start', 'left'], terminalLabel: 'left' }],
-      tablePaths: [],
-    });
-    const input = JSON.parse(messages[1].content as string);
-    expect(input).toMatchObject({ extraction, paths: [{ labels: ['start', 'left'] }] });
-    expect(input).not.toHaveProperty('table');
-    expect(input).not.toHaveProperty('rows');
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('exclusive outcome scope');
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('repeats an earlier decision unexpectedly');
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Never infer termination or fallthrough');
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('does not create shared visible content');
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Do not invent narrative prerequisites');
   });
 
   it('audits structural decorators and reference Type values consistently', () => {

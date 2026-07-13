@@ -17,7 +17,7 @@ Natural-language imports use this pipeline:
 Extractor -> Graph Planner -> Combined Auditor -> deterministic acceptance
 ```
 
-Explicit legacy-format imports continue to use deterministic parsing followed by the same Combined Auditor.
+Explicit legacy-format imports and unambiguous consecutively numbered natural branches continue to use deterministic parsing followed by the same Combined Auditor. The numbered parser only accepts `分支一/二/...：选择【...】` sections with consecutive ordinals and non-empty branch content; ambiguous prose falls back to the three-stage LLM pipeline.
 
 The Combined Auditor remains an independent MiniMax request. It checks all semantic and presentation concerns previously split across the Graph Auditor and Content/Table Auditor:
 
@@ -32,7 +32,8 @@ The server continues to reject invalid model contracts, unresolved targets, unre
 
 ## Retry And Failure Behavior
 
-- A passing first candidate requires exactly three LLM calls.
+- A passing first candidate for arbitrary prose requires exactly three LLM calls.
+- Explicit and unambiguous numbered-branch candidates require exactly one LLM audit call.
 - An Auditor rejection starts a fresh candidate attempt with its structured issues supplied to the next Extractor.
 - Candidate attempts remain capped at three.
 - Provider-aborted responses retain the existing bounded retry behavior.
@@ -45,7 +46,7 @@ The existing full Auditor becomes the Combined Auditor. Its prompt explicitly ow
 
 ## Progress
 
-Progress reports one `Combined Auditor` wait after table projection. Existing phases and stream contracts stay unchanged so API and UI consumers need no migration.
+Progress reports one `Combined Auditor` wait after table projection. Deterministic candidates report deterministic parsing, validation, and projection rather than calling all such candidates explicit. Existing phases and stream contracts stay unchanged so API and UI consumers need no migration.
 
 ## Verification
 
@@ -54,6 +55,12 @@ Progress reports one `Combined Auditor` wait after table projection. Existing ph
 - Prompt tests prove the Combined Auditor covers branch exclusivity, merges, repeated decisions, and absence of invented prerequisites.
 - Existing explicit-format, deterministic-validation, timeout, cancellation, table, and playback tests remain green.
 - A real MiniMax import of the rainy-manor fixture records total duration, stage durations, result node count, and audit verdict.
+
+## Measured Result
+
+- Rainy-manor numbered branches: 3.634 seconds, 23 nodes, one Combined Auditor call, passed.
+- Arbitrary unformatted fog-port story: 12.796 seconds, 8 nodes, one Extractor, one Graph Planner, one Combined Auditor, passed.
+- Previous rainy-manor baseline: 48.161 seconds and seven LLM calls.
 
 ## Non-Goals
 

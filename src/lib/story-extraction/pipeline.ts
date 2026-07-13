@@ -83,11 +83,12 @@ export function combineStoryExtraction(
   assertExactEdges('node', nodeIds, nodeLinks.map((edge) => edge.nodeId));
   assertExactEdges('choice', choiceIds, choiceLinks.map((edge) => edge.choiceId));
   const knownNodes = new Set(nodeIds);
+  const choiceOwnerIds = new Set(choiceLinks.map((edge) => edge.fromNodeId));
   if (!knownNodes.has(graph.entryNodeId)) {
     throw new Error(`Story graph entry references unknown node ${graph.entryNodeId}`);
   }
   for (const edge of nodeLinks) {
-    if (edge.nextNodeId && !knownNodes.has(edge.nextNodeId)) {
+    if (edge.nextNodeId && !choiceOwnerIds.has(edge.nodeId) && !knownNodes.has(edge.nextNodeId)) {
       throw new Error(`Story graph references unknown node ${edge.nextNodeId}`);
     }
   }
@@ -97,7 +98,10 @@ export function combineStoryExtraction(
     }
   }
 
-  const nodeEdges = new Map(nodeLinks.map((edge) => [edge.nodeId, edge.nextNodeId]));
+  const nodeEdges = new Map(nodeLinks.map((edge) => [
+    edge.nodeId,
+    choiceOwnerIds.has(edge.nodeId) ? '' : edge.nextNodeId,
+  ]));
   const choiceEdges = new Map(choiceLinks.map((edge) => [edge.choiceId, edge]));
   const nodeCommandIds = new Map<string, string[]>();
   const choiceCommandIds = new Map<string, string[]>();

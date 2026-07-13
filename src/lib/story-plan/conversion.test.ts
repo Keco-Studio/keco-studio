@@ -59,9 +59,6 @@ function queueSuccess(audit: StoryPlanAudit = passAudit): void {
   mockedCompleteLlm
     .mockResolvedValueOnce(JSON.stringify(contentInventory()))
     .mockResolvedValueOnce(JSON.stringify(graphPlan()))
-    .mockResolvedValueOnce(JSON.stringify(passAudit))
-    .mockResolvedValueOnce(JSON.stringify(passAudit))
-    .mockResolvedValueOnce(JSON.stringify(audit))
     .mockResolvedValueOnce(JSON.stringify(audit));
 }
 
@@ -92,16 +89,10 @@ describe('two-stage audited story extraction', () => {
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
       'submit_story_content_inventory',
       'submit_story_graph',
-      'submit_story_graph_audit',
-      'submit_story_graph_audit',
-      'submit_story_plan_audit',
       'submit_story_plan_audit',
     ]);
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].maxCompletionTokens)).toEqual([
       24_000,
-      10_000,
-      10_000,
-      10_000,
       10_000,
       10_000,
     ]);
@@ -131,9 +122,6 @@ describe('two-stage audited story extraction', () => {
     mockedCompleteLlm
       .mockResolvedValueOnce(JSON.stringify(content))
       .mockResolvedValueOnce(JSON.stringify(graph))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
     const result = await resolveStoryPlanForImport(source, { sourceId: 'roles' });
@@ -144,13 +132,10 @@ describe('two-stage audited story extraction', () => {
       .toEqual([['少年', 2], ['你', 1]]);
   });
 
-  it('requires a focused graph audit before the full table audit', async () => {
+  it('uses one combined semantic and table audit per candidate', async () => {
     mockedCompleteLlm
       .mockResolvedValueOnce(JSON.stringify(contentInventory()))
       .mockResolvedValueOnce(JSON.stringify(graphPlan()))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
     await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
@@ -158,47 +143,8 @@ describe('two-stage audited story extraction', () => {
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
       'submit_story_content_inventory',
       'submit_story_graph',
-      'submit_story_graph_audit',
-      'submit_story_graph_audit',
-      'submit_story_plan_audit',
       'submit_story_plan_audit',
     ]);
-  });
-
-  it('uses a third Graph Auditor vote to resolve a split verdict', async () => {
-    mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(contentInventory()))
-      .mockResolvedValueOnce(JSON.stringify(graphPlan()))
-      .mockResolvedValueOnce(JSON.stringify(failAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit));
-
-    const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
-
-    expect(result.attempts).toBe(1);
-    expect(mockedCompleteLlm.mock.calls.filter((call) => (
-      call[1].toolName === 'submit_story_graph_audit'
-    ))).toHaveLength(3);
-  });
-
-  it('uses a third Content and Table Auditor vote to resolve a split verdict', async () => {
-    mockedCompleteLlm
-      .mockResolvedValueOnce(JSON.stringify(contentInventory()))
-      .mockResolvedValueOnce(JSON.stringify(graphPlan()))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(failAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit));
-
-    const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
-
-    expect(result.attempts).toBe(1);
-    expect(mockedCompleteLlm.mock.calls.filter((call) => (
-      call[1].toolName === 'submit_story_plan_audit'
-    ))).toHaveLength(3);
   });
 
   it('uses an explicit structure candidate and calls only the Auditor LLM', async () => {
@@ -223,14 +169,11 @@ describe('two-stage audited story extraction', () => {
     mockedCompleteLlm
       .mockResolvedValueOnce(JSON.stringify(content))
       .mockResolvedValueOnce(JSON.stringify(graphPlan()))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
     const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
     expect(result.extraction.structuralUnitIds).toEqual([]);
-    const auditorInput = JSON.parse(mockedCompleteLlm.mock.calls[4][0][1].content as string);
+    const auditorInput = JSON.parse(mockedCompleteLlm.mock.calls[2][0][1].content as string);
     expect(auditorInput.extraction.structuralUnitIds).toEqual([]);
   });
 
@@ -240,8 +183,8 @@ describe('two-stage audited story extraction', () => {
 
     const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
     expect(result.attempts).toBe(2);
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(12);
-    expect(mockedCompleteLlm.mock.calls[6][0][1].content).toContain('wrong_branch');
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(6);
+    expect(mockedCompleteLlm.mock.calls[3][0][1].content).toContain('wrong_branch');
   });
 
   it('feeds deterministic issues into the next Extractor attempt', async () => {
@@ -267,7 +210,7 @@ describe('two-stage audited story extraction', () => {
 
     const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
     expect(result.attempts).toBe(3);
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(8);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(5);
   });
 
   it('identifies Graph Planner contract failures', async () => {
@@ -290,9 +233,6 @@ describe('two-stage audited story extraction', () => {
         nodeLinks: ['start->'],
       }))
       .mockResolvedValueOnce(JSON.stringify(graphPlan()))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
     const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
@@ -302,9 +242,6 @@ describe('two-stage audited story extraction', () => {
       'submit_story_content_inventory',
       'submit_story_graph',
       'submit_story_graph',
-      'submit_story_graph_audit',
-      'submit_story_graph_audit',
-      'submit_story_plan_audit',
       'submit_story_plan_audit',
     ]);
   });
@@ -316,9 +253,6 @@ describe('two-stage audited story extraction', () => {
     }
     mockedCompleteLlm
       .mockResolvedValueOnce(JSON.stringify(graphPlan()))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
-      .mockResolvedValueOnce(JSON.stringify(passAudit))
       .mockResolvedValueOnce(JSON.stringify(passAudit));
 
     const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
@@ -337,8 +271,6 @@ describe('two-stage audited story extraction', () => {
       mockedCompleteLlm
         .mockResolvedValueOnce(JSON.stringify(contentInventory()))
         .mockResolvedValueOnce(JSON.stringify(graphPlan()))
-        .mockResolvedValueOnce(JSON.stringify(passAudit))
-        .mockResolvedValueOnce(JSON.stringify(passAudit))
         .mockResolvedValueOnce(JSON.stringify({ verdict: 'pass' }));
     }
     await expect(resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' }))
@@ -352,7 +284,7 @@ describe('two-stage audited story extraction', () => {
     queueSuccess();
     const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
     expect(result.attempts).toBe(1);
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(7);
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(4);
   });
 
   it('fails closed after three rejected audits', async () => {

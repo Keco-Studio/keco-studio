@@ -47,6 +47,18 @@ describe('two-stage story extraction pipeline', () => {
     });
   });
 
+  it('discards an automatic edge from a node whose choices already define its successors', () => {
+    const result = combineStoryExtraction(
+      parseStoryContentExtraction(content),
+      parseStoryGraphExtraction({
+        ...graph,
+        nodeLinks: ['start->left', 'left->', 'right->'],
+      })
+    );
+
+    expect(result.nodes.find((node) => node.id === 'start')?.nextNodeId).toBe('');
+  });
+
   it('rejects missing, duplicate, or unknown graph edges', () => {
     expect(() => combineStoryExtraction(
       parseStoryContentExtraction(content),
