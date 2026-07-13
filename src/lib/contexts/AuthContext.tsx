@@ -5,6 +5,10 @@ import type { QueryClient } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { UserProfile } from '@/lib/types/user';
+import {
+  areUserProfilesEqual,
+  shouldFetchUserProfileForAuthEvent,
+} from '@/lib/auth/profile-stability';
 
 function clearAllCaches(queryClient: QueryClient) {
   queryClient.clear();
@@ -72,6 +76,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   
   const profileFetchInProgress = useRef<boolean>(false);
   const currentUserId = useRef<string | null>(null);
+  const loadedProfileUserId = useRef<string | null>(null);
+
+  const setStableUserProfile = useCallback((profile: UserProfile | null) => {
+    loadedProfileUserId.current = profile?.id ?? null;
+    setUserProfile((currentProfile) =>
+      areUserProfilesEqual(currentProfile, profile) ? currentProfile : profile
+    );
+  }, []);
 
   const fetchUserProfile = useCallback(async (userId: string): Promise<void> => {
     // Skip only if already in progress
@@ -109,7 +121,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               .single();
             
             if (!insertError && newProfile) {
-              setUserProfile(newProfile);
+              setStableUserProfile(newProfile);
               profileFetchInProgress.current = false;
               return;
             }
@@ -122,29 +134,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           // Reset currentUserId to allow retry
           currentUserId.current = null;
         }
-        setUserProfile(null);
+        setStableUserProfile(null);
       } else if (profile) {
-        setUserProfile(profile);
+        setStableUserProfile(profile);
       } else {
         // Reset currentUserId to allow retry
         currentUserId.current = null;
-        setUserProfile(null);
+        setStableUserProfile(null);
       }
     } catch (err) {
       console.error(`Failed to fetch profile (exception): ${formatSupabaseLikeError(err)}`);
       // Reset currentUserId to allow retry
       currentUserId.current = null;
-      setUserProfile(null);
+      setStableUserProfile(null);
     } finally {
       profileFetchInProgress.current = false;
     }
-  }, [supabase]);
+  }, [setStableUserProfile, supabase]);
 
   const signOut = useCallback(async () => {
     try {
       await supabase.auth.signOut();
       setIsAuthenticated(false);
-      setUserProfile(null);
+      setStableUserProfile(null);
       currentUserId.current = null;
       
       // Clear all caches when user signs out
@@ -157,7 +169,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       console.error('Logout failed', e);
     }
-  }, [supabase, queryClient]);
+  }, [setStableUserProfile, supabase, queryClient]);
 
   useEffect(() => {
     let mounted = true;
@@ -165,7 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     setIsLoading(true);
     setIsAuthenticated(false);
-    setUserProfile(null);
+    setStableUserProfile(null);
 
     // On initial mount, try to restore session from cookies
     const initializeAuth = async () => {
@@ -184,7 +196,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             void fetchUserProfile(session.user.id);
           } else {
             setIsAuthenticated(false);
-            setUserProfile(null);
+            setStableUserProfile(null);
             currentUserId.current = null;
           }
         }
@@ -192,7 +204,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Failed to initialize auth session:', err);
         if (mounted) {
           setIsAuthenticated(false);
-          setUserProfile(null);
+          setStableUserProfile(null);
           currentUserId.current = null;
         }
       } finally {
@@ -220,6 +232,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (session?.user) {
           setIsAuthenticated(true);
           const newUserId = session.user.id;
+          const shouldFetchProfile = shouldFetchUserProfileForAuthEvent(
+            event,
+            newUserId,
+            currentUserId.current,
+            loadedProfileUserId.current
+          );
           
           // If user changed (not just initial load), clear caches
           if (currentUserId.current !== null && currentUserId.current !== newUserId) {
@@ -232,7 +250,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             currentUserId.current = null;
           }
           currentUserId.current = newUserId;
-          void fetchUserProfile(newUserId);
+          if (shouldFetchProfile) {
+            void fetchUserProfile(newUserId);
+          }
         } else {
           // User signed out or no session
           // Clear caches if there was a previous user
@@ -241,13 +261,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
           
           setIsAuthenticated(false);
-          setUserProfile(null);
+          setStableUserProfile(null);
           currentUserId.current = null;
         }
       } catch (err) {
         console.error('Auth state change failed:', err);
         setIsAuthenticated(false);
-        setUserProfile(null);
+        setStableUserProfile(null);
         currentUserId.current = null;
       } finally {
         // Ensure loading is false after any auth state change
@@ -261,7 +281,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchUserProfile, supabase, queryClient]);
+  }, [fetchUserProfile, setStableUserProfile, supabase, queryClient]);
 
   const value: AuthContextType = {
     isAuthenticated,

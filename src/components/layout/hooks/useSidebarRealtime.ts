@@ -14,7 +14,7 @@ import {
 export type UseSidebarRealtimeParams = {
   supabase: SupabaseClient;
   queryClient: QueryClient;
-  userProfile: { id: string } | null | undefined;
+  userId: string | null | undefined;
   currentProjectId: string | null;
   router: AppRouterInstance;
   refetchUserRole: () => void | Promise<void>;
@@ -27,16 +27,16 @@ export type UseSidebarRealtimeParams = {
 export function useSidebarRealtime({
   supabase,
   queryClient,
-  userProfile,
+  userId,
   currentProjectId,
   router,
   refetchUserRole,
 }: UseSidebarRealtimeParams) {
   useEffect(() => {
-    if (!userProfile) return;
+    if (!userId) return;
 
     const projectsChannel = supabase
-      .channel(`projects:user:${userProfile.id}`)
+      .channel(`projects:user:${userId}`)
       .on(
         'postgres_changes',
         {
@@ -84,10 +84,10 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(projectsChannel);
     };
-  }, [userProfile, supabase, queryClient, currentProjectId, router]);
+  }, [userId, supabase, queryClient, currentProjectId, router]);
 
   useEffect(() => {
-    if (!currentProjectId || !userProfile) return;
+    if (!currentProjectId || !userId) return;
 
     const librariesChannel = supabase
       .channel(`libraries:project:${currentProjectId}`)
@@ -130,10 +130,10 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(librariesChannel);
     };
-  }, [currentProjectId, userProfile, supabase, queryClient]);
+  }, [currentProjectId, userId, supabase, queryClient]);
 
   useEffect(() => {
-    if (!currentProjectId || !userProfile) return;
+    if (!currentProjectId || !userId) return;
 
     const foldersChannel = supabase
       .channel(`folders:project:${currentProjectId}`)
@@ -172,10 +172,10 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(foldersChannel);
     };
-  }, [currentProjectId, userProfile, supabase, queryClient]);
+  }, [currentProjectId, userId, supabase, queryClient]);
 
   useEffect(() => {
-    if (!currentProjectId || !userProfile) return;
+    if (!currentProjectId || !userId) return;
 
     const collaboratorsChannel = supabase
       .channel(`collaborators:project:${currentProjectId}`)
@@ -193,7 +193,7 @@ export function useSidebarRealtime({
               .from('project_collaborators')
               .select('id')
               .eq('project_id', currentProjectId)
-              .eq('user_id', userProfile.id)
+              .eq('user_id', userId)
               .single();
 
             const { data: projectCheck } = await supabase
@@ -202,7 +202,7 @@ export function useSidebarRealtime({
               .eq('id', currentProjectId)
               .single();
 
-            const isOwner = projectCheck?.owner_id === userProfile.id;
+            const isOwner = projectCheck?.owner_id === userId;
             const hasCollaboratorAccess = !!accessCheck;
             const hasAccess = isOwner || hasCollaboratorAccess;
 
@@ -231,7 +231,7 @@ export function useSidebarRealtime({
             (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') &&
             payload.new &&
             'user_id' in payload.new &&
-            payload.new.user_id === userProfile.id
+            payload.new.user_id === userId
           ) {
             refetchUserRole();
           }
@@ -248,10 +248,10 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(collaboratorsChannel);
     };
-  }, [currentProjectId, userProfile, supabase, queryClient, router, refetchUserRole]);
+  }, [currentProjectId, userId, supabase, queryClient, router, refetchUserRole]);
 
   useEffect(() => {
-    if (!currentProjectId || !userProfile) return;
+    if (!currentProjectId || !userId) return;
 
     const predefineChannel = supabase
       .channel(`predefine:project:${currentProjectId}`)
@@ -280,5 +280,5 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(predefineChannel);
     };
-  }, [currentProjectId, userProfile, supabase, queryClient]);
+  }, [currentProjectId, userId, supabase, queryClient]);
 }

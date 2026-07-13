@@ -44,6 +44,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   const { isAuthenticated, userProfile } = useAuth();
+  const userId = userProfile?.id;
   const [projectName, setProjectName] = useState<string | null>(null);
   const [libraryName, setLibraryName] = useState<string | null>(null);
   const [assetName, setAssetName] = useState<string | null>(null);
@@ -76,18 +77,18 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     console.log('[NavigationContext] User check:', {
       isAuthenticated,
-      hasUserProfile: !!userProfile,
-      userProfileId: userProfile?.id,
+      hasUserProfile: !!userId,
+      userProfileId: userId,
       previousUserId: currentUserIdRef.current,
       currentProjectId,
     });
     
-    if (!isAuthenticated || !userProfile) {
+    if (!isAuthenticated || !userId) {
       currentUserIdRef.current = null;
       return;
     }
 
-    const newUserId = userProfile.id;
+    const newUserId = userId;
     const previousUserId = currentUserIdRef.current;
 
     // If user switched and we're on a resource page, redirect to projects
@@ -114,14 +115,14 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }
 
     currentUserIdRef.current = newUserId;
-  }, [isAuthenticated, userProfile, currentProjectId, currentLibraryId, currentAssetId, router]);
+  }, [isAuthenticated, userId, currentProjectId, currentLibraryId, currentAssetId, router]);
 
   useEffect(() => {
     let mounted = true;
     const fetchNames = async () => {
       // Don't fetch if user is not authenticated or userProfile is not loaded
       // Wait for userProfile to be available to ensure authentication state is fully established
-      if (!isAuthenticated || !userProfile) {
+      if (!isAuthenticated || !userId) {
         if (mounted) {
           setProjectName(null);
           setLibraryName(null);
@@ -395,7 +396,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     return () => {
       mounted = false;
     };
-  }, [currentProjectId, currentLibraryId, currentAssetId, currentFolderId, supabase, isAuthenticated, userProfile, router, queryClient]);
+  }, [currentProjectId, currentLibraryId, currentAssetId, currentFolderId, supabase, isAuthenticated, userId, router, queryClient]);
 
   // Build breadcrumbs from current route params
   const buildBreadcrumbs = (): BreadcrumbItem[] => {

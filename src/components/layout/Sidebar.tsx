@@ -115,7 +115,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     });
   }, []);
 
-  const { userRole, isProjectOwner, refetchUserRole } = useSidebarProjectRole(currentIds.projectId, userProfile);
+  const userId = userProfile?.id;
+  const { userRole, isProjectOwner, refetchUserRole } = useSidebarProjectRole(
+    currentIds.projectId,
+    userId
+  );
   const { assets, fetchAssets } = useSidebarAssets(currentIds.libraryId);
 
   const modals = useSidebarModals();
@@ -338,7 +342,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   useSidebarRealtime({
     supabase,
     queryClient,
-    userProfile,
+    userId,
     currentProjectId: currentIds.projectId,
     router,
     refetchUserRole,
@@ -350,13 +354,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // 1. User is on /projects page (pathname === '/projects')
     // 2. Projects list is loaded and not empty
     // 3. User is not a guest (userProfile exists)
-    if (pathname === '/projects' && projects.length > 0 && !loadingProjects && userProfile) {
+    if (pathname === '/projects' && projects.length > 0 && !loadingProjects && userId) {
       const firstProject = projects[0];
       if (firstProject?.id) {
         router.push(`/${firstProject.id}`);
       }
     }
-  }, [pathname, projects, loadingProjects, userProfile, router]);
+  }, [pathname, projects, loadingProjects, userId, router]);
 
   // Track current project ID to detect project switching
   const prevProjectIdRef = useRef<string | null>(null);

@@ -98,6 +98,10 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   const { userProfile, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const profileUserId = userProfile?.id;
+  const profileEmail = userProfile?.email ?? '';
+  const profileDisplayName =
+    userProfile?.username || userProfile?.full_name || profileEmail || 'Anonymous';
 
   // Yjs setup - shared data structure
   const yDoc = useMemo(() => new Y.Doc(), [libraryId]);
@@ -191,7 +195,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
   // Load initial data from database (can be reused after restore)
   const loadInitialData = useCallback(async () => {
-    if (!libraryId || !isAuthenticated || !userProfile) return;
+    if (!libraryId || !isAuthenticated || !profileUserId) return;
 
     await runLatestLibraryHydration({
       generationRef: loadInitialDataGenerationRef,
@@ -206,7 +210,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
         console.error('[LibraryDataContext] Failed to load initial data:', error);
       },
     });
-  }, [libraryId, isAuthenticated, userProfile, supabase, yDoc, yAssets]);
+  }, [libraryId, isAuthenticated, profileUserId, supabase, yDoc, yAssets]);
 
   const invalidateFormulaFieldMeta = useCallback(() => {
     formulaFieldMetaCache.invalidate(libraryId);
@@ -220,9 +224,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
   // Initial load (wait for auth so RLS-backed queries have a valid session)
   useEffect(() => {
-    if (isAuthLoading || !isAuthenticated || !userProfile) return;
+    if (isAuthLoading || !isAuthenticated || !profileUserId) return;
     loadInitialData();
-  }, [loadInitialData, isAuthLoading, isAuthenticated, userProfile]);
+  }, [loadInitialData, isAuthLoading, isAuthenticated, profileUserId]);
 
   // Realtime restore events cause collaborators to reload from the server.
   useEffect(() => {
@@ -280,16 +284,16 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
   // Initialize realtime subscription
   const realtimeConfig = useMemo(() => {
-    if (!userProfile || !libraryId) {
+    if (!profileUserId || !libraryId) {
       return null;
     }
 
     return {
       libraryId,
-      currentUserId: userProfile.id,
-      currentUserName: userProfile.username || userProfile.full_name || userProfile.email,
-      currentUserEmail: userProfile.email,
-      avatarColor: getUserAvatarColor(userProfile.id),
+      currentUserId: profileUserId,
+      currentUserName: profileDisplayName,
+      currentUserEmail: profileEmail,
+      avatarColor: getUserAvatarColor(profileUserId),
       onCellUpdate: handleCellUpdateEvent,
       onAssetCreate: handleAssetCreateEvent,
       onAssetDelete: handleAssetDeleteEvent,
@@ -298,7 +302,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onCellsBatchUpdate: handleCellsBatchUpdateEvent,
       onReconnect: loadInitialData,
     };
-  }, [libraryId, userProfile, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData]);
+  }, [libraryId, profileUserId, profileDisplayName, profileEmail, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData]);
 
   const realtimeSubscription = useRealtimeSubscription(
     realtimeConfig || {
@@ -330,12 +334,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   // Presence tracking - use useMemo to avoid recreating config on every render
   const presenceConfig = useMemo(() => ({
     libraryId: libraryId || '',
-    userId: userProfile?.id || '',
-    userName: userProfile?.username || userProfile?.full_name || userProfile?.email || 'Anonymous',
-    userEmail: userProfile?.email || '',
-    avatarColor: userProfile ? getUserAvatarColor(userProfile.id) : '#999999',
+    userId: profileUserId || '',
+    userName: profileDisplayName,
+    userEmail: profileEmail,
+    avatarColor: profileUserId ? getUserAvatarColor(profileUserId) : '#999999',
     debugLabel: 'LibraryData',
-  }), [libraryId, userProfile]);
+  }), [libraryId, profileUserId, profileDisplayName, profileEmail]);
 
   const presenceTracking = usePresenceTracking(presenceConfig);
 

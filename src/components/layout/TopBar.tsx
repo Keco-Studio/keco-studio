@@ -59,6 +59,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   } = useNavigation();
   const showCreateProjectBreadcrumb = propShowCreateProjectBreadcrumb ?? contextShowCreateProjectBreadcrumb;
   const { userProfile, signOut } = useAuth();
+  const userId = userProfile?.id;
   const supabase = useSupabase();
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -824,7 +825,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
       const projectId = currentProjectId;
       const isValidUUID = projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
 
-      if (!isValidUUID || !userProfile) {
+      if (!isValidUUID || !userId) {
         setUserRole(null);
         return;
       }
@@ -855,14 +856,14 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     };
 
     fetchUserRole();
-  }, [currentProjectId, userProfile, supabase]);
+  }, [currentProjectId, userId, supabase]);
 
   // Real-time collaboration: Subscribe to collaborators table for permission updates
   useEffect(() => {
     const projectId = currentProjectId;
     const isValidUUID = projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
 
-    if (!isValidUUID || !userProfile) {
+    if (!isValidUUID || !userId) {
       return;
     }
 
@@ -880,7 +881,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         async (payload) => {
           // Handle DELETE event - user access was removed or project was deleted
           if (payload.eventType === 'DELETE' && payload.old && 'user_id' in payload.old) {
-            if (payload.old.user_id === userProfile.id) {
+            if (payload.old.user_id === userId) {
               // User access removed or project deleted - role becomes null
               setUserRole(null);
             }
@@ -888,7 +889,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
 
           // Handle INSERT/UPDATE events - check if the change affects current user
           if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') &&
-            payload.new && 'user_id' in payload.new && payload.new.user_id === userProfile.id) {
+            payload.new && 'user_id' in payload.new && payload.new.user_id === userId) {
             try {
               const { data: { session } } = await supabase.auth.getSession();
               if (!session) return;
@@ -918,7 +919,7 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     return () => {
       supabase.removeChannel(collaboratorsChannel);
     };
-  }, [currentProjectId, userProfile, supabase]);
+  }, [currentProjectId, userId, supabase]);
 
   // Listen to asset page mode updates (for create/view/edit detection)
   useEffect(() => {

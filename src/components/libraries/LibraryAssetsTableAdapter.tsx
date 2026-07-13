@@ -30,6 +30,10 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   const params = useParams();
   const libraryId = params.libraryId as string;
   const { userProfile } = useAuth();
+  const profileUserId = userProfile?.id;
+  const profileEmail = userProfile?.email ?? '';
+  const profileDisplayName =
+    userProfile?.username || userProfile?.full_name || profileEmail;
   const {
     allAssets,
     createAsset,
@@ -132,14 +136,14 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   
   // Current user info
   const currentUser = useMemo(() => {
-    if (!userProfile) return null;
+    if (!profileUserId) return null;
     return {
-      id: userProfile.id,
-      name: userProfile.username || userProfile.full_name || userProfile.email,
-      email: userProfile.email,
-      avatarColor: getUserAvatarColor(userProfile.id),
+      id: profileUserId,
+      name: profileDisplayName,
+      email: profileEmail,
+      avatarColor: getUserAvatarColor(profileUserId),
     };
-  }, [userProfile]);
+  }, [profileUserId, profileDisplayName, profileEmail]);
   
   // Presence tracking adapter
   const presenceTracking = useMemo(() => ({

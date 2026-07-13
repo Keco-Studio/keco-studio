@@ -16,14 +16,14 @@ function isValidProjectId(projectId: string | null): boolean {
  */
 export function useSidebarProjectRole(
   currentProjectId: string | null,
-  userProfile: { id: string } | null | undefined
+  userId: string | null | undefined
 ) {
   const supabase = useSupabase();
   const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
   const [isProjectOwner, setIsProjectOwner] = useState(false);
 
   const fetchUserRole = useCallback(async () => {
-    if (!isValidProjectId(currentProjectId) || !userProfile) {
+    if (!isValidProjectId(currentProjectId) || !userId) {
       setUserRole(null);
       setIsProjectOwner(false);
       return;
@@ -45,7 +45,7 @@ export function useSidebarProjectRole(
       setUserRole(null);
       setIsProjectOwner(false);
     }
-  }, [currentProjectId, userProfile, supabase]);
+  }, [currentProjectId, userId, supabase]);
 
   useEffect(() => {
     fetchUserRole();
