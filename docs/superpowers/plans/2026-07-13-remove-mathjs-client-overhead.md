@@ -66,7 +66,7 @@ describe('lightweight formula runtime', () => {
       maximum: 9,
       rounded: -1.01,
       arithmetic: 0.3,
-      divideByZero: null,
+      divideByZero: Infinity,
     });
   });
 
@@ -74,10 +74,12 @@ describe('lightweight formula runtime', () => {
     const root = process.cwd();
     const formulaSource = fs.readFileSync(path.join(root, 'src/lib/utils/formula.ts'), 'utf8');
     const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+    const packageLock = JSON.parse(fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8'));
 
-    expect(formulaSource).not.toMatch(/from ['"]mathjs['"]/);
+    expect(formulaSource).not.toContain('mathjs');
     expect(packageJson.dependencies?.mathjs).toBeUndefined();
     expect(packageJson.devDependencies?.mathjs).toBeUndefined();
+    expect(packageLock.packages?.['node_modules/mathjs']).toBeUndefined();
   });
 });
 ```
