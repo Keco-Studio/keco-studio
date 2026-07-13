@@ -1,6 +1,7 @@
 import { completeLlm } from '@/lib/agent/llm-client';
 import type { OpenAITool } from '@/lib/agent/types';
 import type { RoleMap } from '@/lib/script-parser';
+import { buildStoryAuditView, type StoryAuditView } from './auditView';
 import { buildStoryExtractionFromPlan } from '@/lib/story-extraction/fromPlan';
 import {
   StoryExtractionValidationError,
@@ -16,8 +17,10 @@ import {
 } from '@/lib/story-extraction/pipeline';
 import {
   AUDITOR_STORY_EXTRACTION_TOOL,
+  AUDITOR_STORY_ADJUDICATION_TOOL,
   EXTRACTOR_STORY_CONTENT_TOOL,
   GRAPH_STORY_PLAN_TOOL,
+  buildAuditAdjudicationMessages,
   buildAuditorExtractionMessages,
   buildContentExtractionMessages,
   buildGraphExtractionMessages,
@@ -26,7 +29,13 @@ import {
 import type { StoryExtraction } from '@/lib/story-extraction/schema';
 import type { StoryDocument } from '@/lib/story-ir/schema';
 import { buildStoryAuditProjection, type StoryAuditProjection } from './projection';
-import { parseStoryPlanAudit, type StoryPlanAudit } from './schema';
+import {
+  parseStoryAuditAdjudication,
+  parseStoryPlanAudit,
+  type StoryAuditAdjudication,
+  type StoryPlanAudit,
+  type StoryPlanAuditIssue,
+} from './schema';
 import { tryParseExplicitStory, tryParseNaturalBranchStory } from './explicitParser';
 import { segmentStorySource, type SegmentedStorySource } from './sourceSegments';
 
@@ -38,7 +47,7 @@ const MAX_GRAPH_ATTEMPTS = 5;
 const MAX_LLM_CALLS = 15;
 const MAX_PROVIDER_ABORT_RETRIES_PER_STAGE = 3;
 
-type LlmStage = 'Extractor' | 'Graph Planner' | 'Auditor';
+type LlmStage = 'Extractor' | 'Graph Planner' | 'Auditor' | 'Adjudicator';
 
 export type StoryPlanProgressPhase =
   | 'source_segmentation'
@@ -73,8 +82,20 @@ export interface ResolvedAuditedStory {
   extraction: StoryExtraction;
   projection: StoryAuditProjection;
   audit: StoryPlanAudit;
+  primaryAudit: StoryPlanAudit;
+  adjudication?: StoryAuditAdjudication;
+  approval: 'primary_pass' | 'adjudicated_pass';
   converted: boolean;
   attempts: number;
+}
+
+interface CandidateReview {
+  approved: boolean;
+  audit: StoryPlanAudit;
+  primaryAudit: StoryPlanAudit;
+  adjudication?: StoryAuditAdjudication;
+  approval?: ResolvedAuditedStory['approval'];
+  confirmedIssues: StoryPlanAuditIssue[];
 }
 
 interface StoryPlanLlmBudget {
@@ -145,11 +166,13 @@ export async function resolveStoryPlanForImport(
         message: 'Compiling deterministic table and path projection',
       });
       const projection = buildStoryAuditProjection(document);
+      const auditView = buildStoryAuditView(document, extraction, projection);
       return await auditExplicitCandidate(
         source,
         extraction,
         document,
         projection,
+        auditView,
         options,
         llmBudget
       );
@@ -194,34 +217,24 @@ export async function resolveStoryPlanForImport(
         message: `Compiling table and path projection (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
       });
       const projection = buildStoryAuditProjection(document);
-      emit(options, {
-        phase: 'semantic_audit',
-        attempt,
-        message: `Waiting for Combined Auditor LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
-      });
-      const audit = await requestAuditor(
-        source,
-        extraction,
-        document,
-        projection,
-        options,
-        llmBudget
-      );
-      if (auditPassed(audit)) {
+      const auditView = buildStoryAuditView(document, extraction, projection);
+      const review = await reviewCandidate(source, auditView, attempt, options, llmBudget);
+      if (review.approved) {
         emit(options, { phase: 'complete', attempt, message: 'Story conversion and audit completed' });
         return {
           document,
           source,
           extraction,
           projection,
-          audit,
+          audit: review.audit,
+          primaryAudit: review.primaryAudit,
+          ...(review.adjudication ? { adjudication: review.adjudication } : {}),
+          approval: review.approval!,
           converted: true,
           attempts: attempt,
         };
       }
-      priorIssues = audit.issues.length > 0
-        ? audit.issues
-        : [modelOutputIssue('Auditor rejected the candidate without structured issues')];
+      priorIssues = review.confirmedIssues;
     } catch (error) {
       if (isAbortError(error) || error instanceof StoryPlanLlmTimeoutError) throw error;
       priorIssues = error instanceof StoryExtractionValidationError
@@ -279,46 +292,47 @@ async function auditExplicitCandidate(
   extraction: StoryExtraction,
   document: StoryDocument,
   projection: StoryAuditProjection,
+  auditView: StoryAuditView,
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget
 ): Promise<ResolvedAuditedStory> {
-  let priorIssues: StoryExtractionRetryIssue[] = [];
-  for (let attempt = 1; attempt <= MAX_CANDIDATE_ATTEMPTS; attempt += 1) {
-    throwIfAborted(options.signal);
-    try {
+  try {
+    const review = await reviewCandidate(source, auditView, 1, options, budget);
+    if (!review.approved) {
       emit(options, {
-        phase: 'semantic_audit',
-        attempt,
-        message: `Waiting for Auditor LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
+        phase: 'failed',
+        attempt: 1,
+        message: 'Story import failed confirmed semantic audit',
       });
-      const audit = await requestAuditor(source, extraction, document, projection, options, budget);
-      if (auditPassed(audit)) {
-        emit(options, { phase: 'complete', attempt, message: 'Story conversion and audit completed' });
-        return {
-          document,
-          source,
-          extraction,
-          projection,
-          audit,
-          converted: false,
-          attempts: attempt,
-        };
-      }
-      priorIssues = audit.issues.length > 0
-        ? audit.issues
-        : [modelOutputIssue('Auditor rejected the candidate without structured issues')];
-    } catch (error) {
-      if (isAbortError(error) || error instanceof StoryPlanLlmTimeoutError) throw error;
-      priorIssues = [modelOutputIssue(publicModelOutputError(error))];
+      throw new ImportStoryPlanError(
+        'Story import failed confirmed semantic audit issues.',
+        review.confirmedIssues
+      );
     }
+    emit(options, { phase: 'complete', attempt: 1, message: 'Story conversion and audit completed' });
+    return {
+      document,
+      source,
+      extraction,
+      projection,
+      audit: review.audit,
+      primaryAudit: review.primaryAudit,
+      ...(review.adjudication ? { adjudication: review.adjudication } : {}),
+      approval: review.approval!,
+      converted: false,
+      attempts: 1,
+    };
+  } catch (error) {
+    if (
+      isAbortError(error)
+      || error instanceof StoryPlanLlmTimeoutError
+      || error instanceof ImportStoryPlanError
+    ) throw error;
+    throw new ImportStoryPlanError(
+      'Story audit adjudication failed.',
+      [modelOutputIssue(publicModelOutputError(error))]
+    );
   }
-
-  emit(options, {
-    phase: 'failed',
-    attempt: MAX_CANDIDATE_ATTEMPTS,
-    message: 'Story import failed after three audited attempts',
-  });
-  throw new ImportStoryPlanError('Story import failed after three audited attempts.', priorIssues);
 }
 
 async function requestContentExtractor(
@@ -364,16 +378,72 @@ async function requestGraphPlanner(
   }
 }
 
+async function reviewCandidate(
+  source: SegmentedStorySource,
+  auditView: StoryAuditView,
+  attempt: number,
+  options: ResolveStoryPlanOptions,
+  budget: StoryPlanLlmBudget
+): Promise<CandidateReview> {
+  emit(options, {
+    phase: 'semantic_audit',
+    attempt,
+    message: `Waiting for Primary Auditor LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
+  });
+  const primaryAudit = await requestAuditor(source, auditView, options, budget);
+  if (auditPassed(primaryAudit)) {
+    return {
+      approved: true,
+      audit: primaryAudit,
+      primaryAudit,
+      approval: 'primary_pass',
+      confirmedIssues: [],
+    };
+  }
+  if (primaryAudit.issues.length === 0) {
+    throw new StoryModelContractError('Auditor', new Error('Fail verdict requires issues'));
+  }
+
+  emit(options, {
+    phase: 'semantic_audit',
+    attempt,
+    message: `Verifying Auditor issues with Targeted Adjudicator (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
+  });
+  const adjudication = await requestAdjudicator(
+    source,
+    auditView,
+    primaryAudit.issues,
+    options,
+    budget
+  );
+  const confirmedIssues = validateAdjudication(primaryAudit.issues, adjudication);
+  if (confirmedIssues.length === 0) {
+    return {
+      approved: true,
+      audit: { verdict: 'pass', issues: [] },
+      primaryAudit,
+      adjudication,
+      approval: 'adjudicated_pass',
+      confirmedIssues: [],
+    };
+  }
+  return {
+    approved: false,
+    audit: primaryAudit,
+    primaryAudit,
+    adjudication,
+    confirmedIssues,
+  };
+}
+
 async function requestAuditor(
   source: SegmentedStorySource,
-  extraction: StoryExtraction,
-  document: StoryDocument,
-  projection: StoryAuditProjection,
+  auditView: StoryAuditView,
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget
 ): Promise<StoryPlanAudit> {
   const raw = await completeStoryPlanLlm(
-    buildAuditorExtractionMessages(source, extraction, document, projection),
+    buildAuditorExtractionMessages(source, auditView),
     AUDITOR_STORY_EXTRACTION_TOOL,
     'Auditor',
     options,
@@ -384,6 +454,49 @@ async function requestAuditor(
   } catch (error) {
     throw new StoryModelContractError('Auditor', error);
   }
+}
+
+async function requestAdjudicator(
+  source: SegmentedStorySource,
+  auditView: StoryAuditView,
+  issues: StoryPlanAuditIssue[],
+  options: ResolveStoryPlanOptions,
+  budget: StoryPlanLlmBudget
+): Promise<StoryAuditAdjudication> {
+  const raw = await completeStoryPlanLlm(
+    buildAuditAdjudicationMessages(source, auditView, issues),
+    AUDITOR_STORY_ADJUDICATION_TOOL,
+    'Adjudicator',
+    options,
+    budget
+  );
+  try {
+    return parseStoryAuditAdjudication(parseModelJson(raw));
+  } catch (error) {
+    throw new StoryModelContractError('Adjudicator', error);
+  }
+}
+
+function validateAdjudication(
+  issues: StoryPlanAuditIssue[],
+  adjudication: StoryAuditAdjudication
+): StoryPlanAuditIssue[] {
+  const expectedIds = issues.map((_, index) => `issue-${index + 1}`);
+  const actualIds = adjudication.decisions.map((decision) => decision.issueId);
+  if (
+    actualIds.length !== expectedIds.length
+    || new Set(actualIds).size !== actualIds.length
+    || expectedIds.some((issueId) => !actualIds.includes(issueId))
+  ) {
+    throw new StoryModelContractError(
+      'Adjudicator',
+      new Error('Adjudication decisions must match every allegation exactly once')
+    );
+  }
+  const decisionsById = new Map(
+    adjudication.decisions.map((decision) => [decision.issueId, decision.status])
+  );
+  return issues.filter((_, index) => decisionsById.get(`issue-${index + 1}`) === 'confirmed');
 }
 
 async function completeStoryPlanLlm(

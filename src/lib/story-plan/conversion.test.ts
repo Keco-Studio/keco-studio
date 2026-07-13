@@ -6,7 +6,7 @@ jest.mock('@/lib/agent/llm-client', () => ({ completeLlm: jest.fn() }));
 
 import { completeLlm } from '@/lib/agent/llm-client';
 import type { StoryContentExtraction, StoryGraphExtraction } from '@/lib/story-extraction/pipeline';
-import type { StoryPlanAudit } from './schema';
+import type { StoryAuditAdjudication, StoryPlanAudit } from './schema';
 import {
   STORY_PLAN_LLM_TIMEOUT_MS,
   resolveStoryPlanForImport,
@@ -29,6 +29,12 @@ const naturalCommandId = segmentStorySource(naturalContent, 'fixture').commands[
 const failAudit: StoryPlanAudit = {
   verdict: 'fail',
   issues: [{ code: 'wrong_branch', severity: 'major', unitIds: ['fixture:1'], nodeIds: ['start'], message: 'Choice targets the wrong branch' }],
+};
+const unsupportedAdjudication: StoryAuditAdjudication = {
+  decisions: [{ issueId: 'issue-1', status: 'unsupported' }],
+};
+const confirmedAdjudication: StoryAuditAdjudication = {
+  decisions: [{ issueId: 'issue-1', status: 'confirmed' }],
 };
 
 function contentInventory(): StoryContentExtraction {
@@ -62,6 +68,17 @@ function queueSuccess(audit: StoryPlanAudit = passAudit): void {
     .mockResolvedValueOnce(JSON.stringify(audit));
 }
 
+function queueAuditedCandidate(
+  audit: StoryPlanAudit,
+  adjudication: StoryAuditAdjudication
+): void {
+  mockedCompleteLlm
+    .mockResolvedValueOnce(JSON.stringify(contentInventory()))
+    .mockResolvedValueOnce(JSON.stringify(graphPlan()))
+    .mockResolvedValueOnce(JSON.stringify(audit))
+    .mockResolvedValueOnce(JSON.stringify(adjudication));
+}
+
 function providerAbort(): Error {
   return Object.assign(new Error('LLM aborted before completing the response.'), { name: 'LlmError' });
 }
@@ -86,6 +103,7 @@ describe('two-stage audited story extraction', () => {
     });
 
     expect(result.document.nodes[0].options).toHaveLength(1);
+    expect(result.approval).toBe('primary_pass');
     expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
       'submit_story_content_inventory',
       'submit_story_graph',
@@ -174,17 +192,62 @@ describe('two-stage audited story extraction', () => {
     const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
     expect(result.extraction.structuralUnitIds).toEqual([]);
     const auditorInput = JSON.parse(mockedCompleteLlm.mock.calls[2][0][1].content as string);
-    expect(auditorInput.extraction.structuralUnitIds).toEqual([]);
+    expect(auditorInput.auditView.structuralUnitIds).toEqual([]);
+    expect(auditorInput).not.toHaveProperty('extraction');
+    expect(auditorInput).not.toHaveProperty('document');
+    expect(auditorInput).not.toHaveProperty('projection');
   });
 
-  it('repairs an Auditor failure with a fresh Extractor and Graph Planner round', async () => {
-    queueSuccess(failAudit);
+  it('accepts a Primary Auditor failure only after all allegations are unsupported', async () => {
+    queueAuditedCandidate(failAudit, unsupportedAdjudication);
+
+    const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
+
+    expect(result.attempts).toBe(1);
+    expect(result.approval).toBe('adjudicated_pass');
+    expect(result.primaryAudit).toEqual(failAudit);
+    expect(result.adjudication).toEqual(unsupportedAdjudication);
+    expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
+      'submit_story_content_inventory',
+      'submit_story_graph',
+      'submit_story_plan_audit',
+      'submit_story_audit_adjudication',
+    ]);
+  });
+
+  it('repairs only a confirmed Auditor failure with a fresh candidate', async () => {
+    queueAuditedCandidate(failAudit, confirmedAdjudication);
     queueSuccess(passAudit);
 
     const result = await resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' });
     expect(result.attempts).toBe(2);
-    expect(mockedCompleteLlm).toHaveBeenCalledTimes(6);
-    expect(mockedCompleteLlm.mock.calls[3][0][1].content).toContain('wrong_branch');
+    expect(mockedCompleteLlm).toHaveBeenCalledTimes(7);
+    expect(mockedCompleteLlm.mock.calls[4][0][1].content).toContain('wrong_branch');
+  });
+
+  it('rejects a confirmed defect in an immutable deterministic candidate without re-auditing it', async () => {
+    mockedCompleteLlm
+      .mockResolvedValueOnce(JSON.stringify(failAudit))
+      .mockResolvedValueOnce(JSON.stringify(confirmedAdjudication));
+
+    await expect(resolveStoryPlanForImport(explicitContent, { sourceId: 'explicit' }))
+      .rejects.toThrow(/confirmed semantic audit/i);
+    expect(mockedCompleteLlm.mock.calls.map((call) => call[1].toolName)).toEqual([
+      'submit_story_plan_audit',
+      'submit_story_audit_adjudication',
+    ]);
+  });
+
+  it('fails closed when adjudication does not return one decision per allegation', async () => {
+    mockedCompleteLlm
+      .mockResolvedValueOnce(JSON.stringify(failAudit))
+      .mockResolvedValueOnce(JSON.stringify({ decisions: [
+        { issueId: 'issue-1', status: 'unsupported' },
+        { issueId: 'issue-1', status: 'unsupported' },
+      ] }));
+
+    await expect(resolveStoryPlanForImport(explicitContent, { sourceId: 'explicit' }))
+      .rejects.toThrow(/adjudication/i);
   });
 
   it('feeds deterministic issues into the next Extractor attempt', async () => {
@@ -288,9 +351,9 @@ describe('two-stage audited story extraction', () => {
   });
 
   it('fails closed after three rejected audits', async () => {
-    queueSuccess(failAudit);
-    queueSuccess(failAudit);
-    queueSuccess(failAudit);
+    queueAuditedCandidate(failAudit, confirmedAdjudication);
+    queueAuditedCandidate(failAudit, confirmedAdjudication);
+    queueAuditedCandidate(failAudit, confirmedAdjudication);
     await expect(resolveStoryPlanForImport(naturalContent, { sourceId: 'fixture' }))
       .rejects.toThrow(/three audited attempts/i);
   });
