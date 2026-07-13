@@ -18,13 +18,6 @@ type SharedFixture = {
   rightFieldId: string;
 };
 
-let touchTimestamp = Date.now();
-
-function nextTouchTimestamp(): string {
-  touchTimestamp += 1;
-  return new Date(touchTimestamp).toISOString();
-}
-
 function tableCell(page: Page, assetId: string, fieldId: string): Locator {
   return page.locator(`tbody tr[data-row-id="${assetId}"] td[data-property-key="${fieldId}"]`);
 }
@@ -60,13 +53,6 @@ async function openLibrary(
 ): Promise<{ context: BrowserContext; page: Page }> {
   const context = await browser.newContext();
   const page = await context.newPage();
-  await page.route('**/rest/v1/rpc/touch_library_asset_edit_updated_at', async (route) => {
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(nextTouchTimestamp()),
-    });
-  });
   const loginPage = new LoginPage(page);
   await loginPage.goto();
   await loginPage.login(user);

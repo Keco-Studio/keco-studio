@@ -109,4 +109,52 @@ describeDb('touch_library_asset_edit_updated_at RPC (issue #161, live DB)', () =
 
     expect(error).not.toBeNull();
   });
+
+  it('atomically upserts values and returns the authoritative timestamp for an editor', async () => {
+    const asset = await seedAsset('upsert-editor');
+    const { data: field, error: fieldError } = await fx.svc
+      .from('library_field_definitions')
+      .insert({
+        library_id: fx.libraryId,
+        section: 'main',
+        section_id: `${fx.libraryId}::main`,
+        label: `rpc-upsert-${fx.suffix}`,
+        data_type: 'string',
+        order_index: 0,
+      })
+      .select('id')
+      .single();
+    if (fieldError || !field) throw new Error(`seed field failed: ${fieldError?.message}`);
+
+    const { data: updatedAt, error } = await fx.editor.client.rpc(
+      'upsert_library_asset_values_and_touch',
+      {
+        p_asset_id: asset.assetId,
+        p_library_id: fx.libraryId,
+        p_values: { [field.id as string]: 'atomic value' },
+      }
+    );
+
+    expect(error).toBeNull();
+    expect(updatedAt).toEqual(expect.any(String));
+    const { data: storedValue, error: valueError } = await fx.svc
+      .from('library_asset_values')
+      .select('value_json')
+      .eq('asset_id', asset.assetId)
+      .eq('field_id', field.id)
+      .single();
+    expect(valueError).toBeNull();
+    expect(storedValue?.value_json).toBe('atomic value');
+  });
+
+  it('blocks a viewer from the atomic upsert RPC', async () => {
+    const asset = await seedAsset('upsert-viewer');
+    const { error } = await fx.viewer.client.rpc('upsert_library_asset_values_and_touch', {
+      p_asset_id: asset.assetId,
+      p_library_id: fx.libraryId,
+      p_values: {},
+    });
+
+    expect(error).not.toBeNull();
+  });
 });
