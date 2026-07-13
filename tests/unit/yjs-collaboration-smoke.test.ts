@@ -47,7 +47,7 @@ describe('Yjs collaboration reference sync smoke', () => {
 
     expect(yPropertyValues.get('ref-field')).toEqual(nextReferenceValue);
     expect(yPropertyValues.get('ref-field')).not.toBe(nextReferenceValue);
-    expect(loadInitialData).toHaveBeenCalledTimes(1);
+    expect(loadInitialData).not.toHaveBeenCalled();
 
     await Promise.resolve();
     expect(invalidateQueries).toHaveBeenCalledWith({

@@ -15,7 +15,7 @@ import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
 import LibraryAssetsTable, { type LibraryAssetsTableProps } from './LibraryAssetsTable';
-import type { AssetRow } from '@/lib/types/libraryAssets';
+import type { AssetRow, CreateLibraryAssetOptions } from '@/lib/types/libraryAssets';
 
 type AdapterProps = Omit<
   LibraryAssetsTableProps,
@@ -74,7 +74,7 @@ export function LibraryAssetsTableAdapter(props: AdapterProps) {
   const handleSaveAsset = useCallback(async (
     assetName: string,
   propertyValues: Record<string, any>,
-  options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }
+  options?: CreateLibraryAssetOptions
   ) => {
     // Pass options through unchanged to match LibraryDataContext.createAsset.
     await createAsset(assetName, propertyValues, options);

@@ -917,6 +917,24 @@ export async function shiftRowIndices(
   await touchLibraryUpdatedAt(supabase, libraryId);
 }
 
+/** Normalize displayed assets to consecutive 1-based row indices in one RPC. */
+export async function normalizeRowIndices(
+  supabase: SupabaseClient,
+  libraryId: string,
+  displayOrderedRows: Array<{ id: string }>
+): Promise<void> {
+  if (displayOrderedRows.length === 0) return;
+
+  const { error } = await supabase.rpc('normalize_row_indices', {
+    p_library_id: libraryId,
+    p_asset_ids: displayOrderedRows.map((row) => row.id),
+  });
+
+  if (error) {
+    throw new Error(`Failed to normalize row indices: ${error.message}`);
+  }
+}
+
 // T011: Update an existing asset and its property values
 export async function updateAsset(
   supabase: SupabaseClient,

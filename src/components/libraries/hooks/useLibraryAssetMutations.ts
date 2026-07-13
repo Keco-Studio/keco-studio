@@ -2,7 +2,8 @@ import { useMemo } from 'react';
 import * as Y from 'yjs';
 import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { AssetRow } from '@/lib/types/libraryAssets';
+import type { AssetRow, CreateLibraryAssetOptions } from '@/lib/types/libraryAssets';
+import type { RowOrderChangePayload } from '@/lib/types/collaboration';
 import { applyBooleanFieldDefaults, getBooleanFieldIdsByLibraryId } from '@/lib/services/libraryAssetsService';
 import { touchLibraryUpdatedAt, upsertLibraryAssetValuesAndTouch } from '@/lib/library/updatedAt';
 import { syncReferencesAfterSourceChange } from '@/lib/library/referenceSync';
@@ -45,7 +46,7 @@ type RealtimeMutationConfig = {
       updatedAt?: string | null;
     }>
   ) => Promise<void>;
-  broadcastRowOrderChange: () => Promise<void>;
+  broadcastRowOrderChange: (changes: RowOrderChangePayload) => Promise<void>;
 };
 
 type UseLibraryAssetMutationsArgs = {
@@ -71,14 +72,6 @@ type PersistedCellUpdate = {
   oldValue: unknown;
   updatedAt: string | null;
 };
-type CreateAssetOptions = {
-  insertAfterRowId?: string;
-  insertBeforeRowId?: string;
-  createdAt?: Date;
-  rowIndex?: number;
-  skipReload?: boolean;
-};
-
 function isCustomFormulaCellValue(value: unknown): boolean {
   if (typeof value === 'string') {
     return value.trim().startsWith('=');
@@ -326,7 +319,7 @@ export function createLibraryAssetMutations({
   const createAsset = async (
     name: string,
     propertyValues: Record<string, unknown>,
-    options?: CreateAssetOptions
+    options?: CreateLibraryAssetOptions
   ): Promise<string> => {
     let nextRowIndex: number;
     if (typeof options?.rowIndex === 'number') {
@@ -381,10 +374,6 @@ export function createLibraryAssetMutations({
     const createdAsset = newAsset as { id: string; created_at?: string; row_index?: number | null };
     const assetId = createdAsset.id;
 
-    if (typeof options?.rowIndex === 'number') {
-      pendingBatchInsertIdsRef.current.add(assetId);
-    }
-
     const fieldValues = Object.entries(valuesWithBooleanDefaults).map(([fieldId, fieldValue]) => ({
       asset_id: assetId,
       field_id: fieldId,
@@ -401,21 +390,28 @@ export function createLibraryAssetMutations({
 
     await touchLibraryUpdatedAt(supabase, libraryId, projectId);
 
-    if (typeof options?.rowIndex !== 'number') {
-      const yAsset = new Y.Map<unknown>();
-      yAsset.set('name', name);
+    const createdAt =
+      createdAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString();
+    const persistedRowIndex = createdAsset.row_index ?? nextRowIndex;
+    const yAsset = new Y.Map<unknown>();
+    yAsset.set('name', name);
+    const yPropertyValues = new Y.Map<unknown>();
+    Object.entries(valuesWithBooleanDefaults).forEach(([fieldId, fieldValue]) => {
+      yPropertyValues.set(fieldId, cloneForYjs(fieldValue));
+    });
+    yAsset.set('propertyValues', yPropertyValues);
+    yAsset.set('created_at', createdAt);
+    yAsset.set('row_index', persistedRowIndex);
 
-      const yPropertyValues = new Y.Map<unknown>();
-      Object.entries(valuesWithBooleanDefaults).forEach(([fieldId, fieldValue]) => {
-        yPropertyValues.set(fieldId, cloneForYjs(fieldValue));
-      });
-      yAsset.set('propertyValues', yPropertyValues);
-      yAsset.set('created_at', createdAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString());
-      yAsset.set('row_index', createdAsset.row_index ?? nextRowIndex);
+    yDoc.transact(() => {
+      for (const update of options?.rowIndexUpdates ?? []) {
+        yAssets.get(update.assetId)?.set('row_index', update.rowIndex);
+      }
+      yAssets.set(assetId, yAsset);
+    });
 
-      yDoc.transact(() => {
-        yAssets.set(assetId, yAsset);
-      });
+    if (typeof options?.rowIndex === 'number') {
+      pendingBatchInsertIdsRef.current.add(assetId);
     }
 
     if (realtimeConfig) {
@@ -427,12 +423,30 @@ export function createLibraryAssetMutations({
         });
       }
       if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
-        void realtime.broadcastRowOrderChange();
+        const insertedRows = Array.from(pendingBatchInsertIdsRef.current).flatMap((insertedId) => {
+          const insertedAsset = yAssets.get(insertedId);
+          if (!insertedAsset) return [];
+          const insertedValues = insertedAsset.get('propertyValues') as Y.Map<unknown> | undefined;
+          const propertyValues: Record<string, unknown> = {};
+          insertedValues?.forEach((fieldValue, fieldId) => {
+            propertyValues[fieldId] = cloneForYjs(fieldValue);
+          });
+          return [{
+            assetId: insertedId,
+            assetName: String(insertedAsset.get('name') ?? ''),
+            propertyValues,
+            createdAt: String(insertedAsset.get('created_at') ?? createdAt),
+            rowIndex: Number(insertedAsset.get('row_index') ?? persistedRowIndex),
+          }];
+        });
+        await realtime.broadcastRowOrderChange({
+          insertedRows,
+          rowIndexUpdates: options.rowIndexUpdates ?? [],
+        });
       }
     }
 
     if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
-      await loadInitialData();
       if (pendingBatchInsertIdsRef.current.size > 0) {
         pendingBatchInsertIdsRef.current.clear();
       }

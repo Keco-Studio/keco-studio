@@ -3,6 +3,7 @@ import { App } from 'antd';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   AssetRow,
+  CreateLibraryAssetOptions,
   PropertyConfig,
   SectionConfig,
 } from '@/lib/types/libraryAssets';
@@ -67,7 +68,11 @@ export type LibraryAssetsTableProps = {
   sections: SectionConfig[];
   properties: PropertyConfig[];
   rows: AssetRow[];
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
+  onSaveAsset?: (
+    assetName: string,
+    propertyValues: Record<string, any>,
+    options?: CreateLibraryAssetOptions
+  ) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   /** Clear Content path: batch update and broadcast once, matching Delete Row sync. */

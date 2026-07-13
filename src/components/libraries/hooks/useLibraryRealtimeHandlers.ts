@@ -5,12 +5,12 @@ import type {
   AssetDeleteEvent,
   CellUpdateEvent,
   CellsBatchUpdateEvent,
+  RowOrderChangeEvent,
 } from '@/lib/types/collaboration';
 
 type UseLibraryRealtimeHandlersArgs = {
   yDoc: Y.Doc;
   yAssets: Y.Map<Y.Map<unknown>>;
-  loadInitialData: () => Promise<void>;
   pendingBatchInsertIdsRef: React.MutableRefObject<Set<string>>;
 };
 
@@ -21,10 +21,35 @@ function cloneForYjs(value: unknown): unknown {
   return value;
 }
 
+export function applyRowOrderChangeToYAssets(
+  yDoc: Y.Doc,
+  yAssets: Y.Map<Y.Map<unknown>>,
+  event: RowOrderChangeEvent
+): void {
+  yDoc.transact(() => {
+    for (const update of event.rowIndexUpdates ?? []) {
+      yAssets.get(update.assetId)?.set('row_index', update.rowIndex);
+    }
+
+    for (const row of event.insertedRows ?? []) {
+      if (yAssets.has(row.assetId)) continue;
+      const yAsset = new Y.Map<unknown>();
+      yAsset.set('name', row.assetName);
+      yAsset.set('created_at', row.createdAt);
+      yAsset.set('row_index', row.rowIndex);
+      const yPropertyValues = new Y.Map<unknown>();
+      for (const [fieldId, value] of Object.entries(row.propertyValues)) {
+        yPropertyValues.set(fieldId, cloneForYjs(value));
+      }
+      yAsset.set('propertyValues', yPropertyValues);
+      yAssets.set(row.assetId, yAsset);
+    }
+  });
+}
+
 export function useLibraryRealtimeHandlers({
   yDoc,
   yAssets,
-  loadInitialData,
   pendingBatchInsertIdsRef,
 }: UseLibraryRealtimeHandlersArgs) {
   const cellUpdateQueueRef = useRef<CellUpdateEvent[]>([]);
@@ -100,9 +125,9 @@ export function useLibraryRealtimeHandlers({
     handleCellUpdateEvent(event);
   }, [handleCellUpdateEvent]);
 
-  const handleRowOrderChangeEvent = useCallback(() => {
-    void loadInitialData();
-  }, [loadInitialData]);
+  const handleRowOrderChangeEvent = useCallback((event: RowOrderChangeEvent) => {
+    applyRowOrderChangeToYAssets(yDoc, yAssets, event);
+  }, [yAssets, yDoc]);
 
   const handleCellsBatchUpdateEvent = useCallback((event: CellsBatchUpdateEvent) => {
     if (event.cells.length === 0) return;

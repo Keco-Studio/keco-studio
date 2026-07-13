@@ -275,7 +275,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   } = useLibraryRealtimeHandlers({
     yDoc,
     yAssets,
-    loadInitialData,
     pendingBatchInsertIdsRef,
   });
 

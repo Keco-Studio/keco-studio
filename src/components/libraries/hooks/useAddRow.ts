@@ -1,5 +1,5 @@
 import { useState, useCallback } from 'react';
-import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import type { AssetRow, CreateLibraryAssetOptions, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 
 // Compatible interface for yRows (supports both Y.Array and mock objects)
@@ -13,7 +13,11 @@ interface YRowsLike {
 export type UseAddRowParams = {
   properties: PropertyConfig[];
   library: { id: string; name: string; description?: string | null } | null;
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
+  onSaveAsset?: (
+    assetName: string,
+    propertyValues: Record<string, any>,
+    options?: CreateLibraryAssetOptions
+  ) => Promise<void>;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   yRows: YRowsLike;
   /** The rows of the current table (from the Adapter), used to calculate the rowIndex of the newly added row (appended at the end with a value of max + 1). */

@@ -44,9 +44,6 @@ export function applyReferenceSyncToLocalState({
     refUpdates.map((update) => update.referencingLibraryId).filter(Boolean)
   );
   libraryIdsToReload.forEach((id) => {
-    if (id === libraryId) {
-      void loadInitialData();
-    }
     void invalidateLibraryAssetsData(queryClient, { libraryId: id });
   });
 

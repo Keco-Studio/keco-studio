@@ -54,6 +54,17 @@ function createSupabaseFake() {
             single: async () => {
               call.single = true;
               if (table === 'library_assets') {
+                if (call.insertValues) {
+                  const inserted = call.insertValues as { row_index?: number };
+                  return {
+                    data: {
+                      id: 'created-asset',
+                      created_at: '2026-07-13T00:00:00.000Z',
+                      row_index: inserted.row_index ?? null,
+                    },
+                    error: null,
+                  };
+                }
                 return { data: { updated_at: '2026-07-08T00:00:00.000Z' }, error: null };
               }
               return {
@@ -98,6 +109,69 @@ function createSupabaseFake() {
 }
 
 describe('useLibraryAssetMutations', () => {
+  it('applies and broadcasts row inserts incrementally without reloading the library', async () => {
+    const { supabase } = createSupabaseFake();
+    const yDoc = new Y.Doc();
+    const yAssets = yDoc.getMap<Y.Map<unknown>>('assets');
+    const existing = new Y.Map<unknown>();
+    existing.set('name', 'Existing');
+    existing.set('propertyValues', new Y.Map<unknown>());
+    existing.set('row_index', 2);
+    yAssets.set('asset-existing', existing);
+
+    const loadInitialData = jest.fn<() => Promise<void>>(() => Promise.resolve());
+    const broadcastRowOrderChange = jest.fn<MutationHookArgs['realtime']['broadcastRowOrderChange']>();
+    const mutations = createLibraryAssetMutations({
+      supabase,
+      queryClient: new QueryClient(),
+      libraryId: 'library-1',
+      projectId: 'project-1',
+      yDoc,
+      yAssets,
+      assetsRef: {
+        current: new Map<string, AssetRow>([
+          ['asset-existing', {
+            id: 'asset-existing',
+            libraryId: 'library-1',
+            name: 'Existing',
+            propertyValues: {},
+            rowIndex: 2,
+          }],
+        ]),
+      },
+      pendingBatchInsertIdsRef: { current: new Set<string>() },
+      getFormulaFieldMeta: async () => [],
+      loadInitialData,
+      realtimeConfig: {},
+      realtime: {
+        broadcastCellUpdate: async () => {},
+        broadcastAssetCreate: async () => {},
+        broadcastAssetDelete: async () => {},
+        broadcastCellsBatchUpdate: async () => {},
+        broadcastRowOrderChange,
+      },
+    });
+
+    await mutations.createAsset('Inserted', {}, {
+      rowIndex: 2,
+      rowIndexUpdates: [{ assetId: 'asset-existing', rowIndex: 3 }],
+    });
+
+    expect(loadInitialData).not.toHaveBeenCalled();
+    expect(existing.get('row_index')).toBe(3);
+    expect(yAssets.get('created-asset')?.get('name')).toBe('Inserted');
+    expect(broadcastRowOrderChange).toHaveBeenCalledWith({
+      insertedRows: [{
+        assetId: 'created-asset',
+        assetName: 'Inserted',
+        propertyValues: {},
+        createdAt: '2026-07-13T00:00:00.000Z',
+        rowIndex: 2,
+      }],
+      rowIndexUpdates: [{ assetId: 'asset-existing', rowIndex: 3 }],
+    });
+  });
+
   it('persists a cell value and authoritative timestamp in one RPC round trip', async () => {
     const { calls, rpcCalls, supabase } = createSupabaseFake();
     const yDoc = new Y.Doc();

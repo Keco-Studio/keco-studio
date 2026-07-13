@@ -1,9 +1,14 @@
 import { useCallback, useEffect } from 'react';
 import type * as Y from 'yjs';
-import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import type {
+  AssetRow,
+  CreateLibraryAssetOptions,
+  PropertyConfig,
+  RowIndexUpdate,
+} from '@/lib/types/libraryAssets';
 import type { CellKey } from './useCellSelection';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { shiftRowIndices } from '@/lib/services/libraryAssetsService';
+import { normalizeRowIndices, shiftRowIndices } from '@/lib/services/libraryAssetsService';
 
 // Compatible interface for yRows (supports both Y.Array and mock objects)
 interface YRowsLike {
@@ -14,7 +19,11 @@ interface YRowsLike {
 }
 
 export type UseRowOperationsParams = {
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
+  onSaveAsset?: (
+    assetName: string,
+    propertyValues: Record<string, any>,
+    options?: CreateLibraryAssetOptions
+  ) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   /** Batch update: all updates then one dispatch and one invalidate, avoiding flicker. */
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
@@ -57,34 +66,20 @@ export type UseRowOperationsParams = {
   rows: AssetRow[];
 };
 
-/**
- * Normalize all row_index values in the DB to be sequential (1-based) matching the
- * current display order.  This guarantees that every row has a unique index so that
- * `shiftRowIndices` and the subsequent insert work correctly — even when existing
- * rows share the same (or NULL) row_index.
- */
-async function normalizeRowIndices(
-  supabase: SupabaseClient,
-  libraryId: string,
-  displayOrderedRows: AssetRow[]
-): Promise<void> {
-  const updates: PromiseLike<any>[] = [];
-  for (let idx = 0; idx < displayOrderedRows.length; idx++) {
-    const row = displayOrderedRows[idx];
-    const expectedIndex = idx + 1; // 1-based sequential
-    if (row.rowIndex !== expectedIndex) {
-      updates.push(
-        supabase
-          .from('library_assets')
-          .update({ row_index: expectedIndex })
-          .eq('id', row.id)
-          .eq('library_id', libraryId)
-      );
-    }
-  }
-  if (updates.length > 0) {
-    await Promise.all(updates);
-  }
+function buildRowIndexUpdatesAfterInsertion(
+  rows: AssetRow[],
+  insertionRowIndex: number,
+  insertedCount: number
+): RowIndexUpdate[] {
+  return rows.flatMap((row, index) => {
+    const normalizedIndex = index + 1;
+    const nextIndex = normalizedIndex >= insertionRowIndex
+      ? normalizedIndex + insertedCount
+      : normalizedIndex;
+    return row.rowIndex === nextIndex
+      ? []
+      : [{ assetId: row.id, rowIndex: nextIndex }];
+  });
 }
 
 function closeRowOpMenus(
@@ -242,6 +237,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
       // baseRowIndex = 1-based index of the first selected row (after normalization)
       const baseRowIndex = firstDisplayIndex + 1;
+      const rowIndexUpdates = buildRowIndexUpdatesAfterInsertion(
+        allRowsForSelection,
+        baseRowIndex,
+        numRowsToInsert
+      );
 
       // Shift existing rows to make room for N new rows at once
       if (supabase) {
@@ -253,7 +253,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
       // calls that would wipe out the temp rows and cause flicker.
       for (let i = 0; i < numRowsToInsert; i++) {
         const isLast = i === numRowsToInsert - 1;
-        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i, skipReload: !isLast });
+        await onSaveAsset('Untitled', {}, {
+          rowIndex: baseRowIndex + i,
+          skipReload: !isLast,
+          rowIndexUpdates: isLast ? rowIndexUpdates : undefined,
+        });
       }
     } catch (e) {
       console.error('Failed to insert rows above:', e);
@@ -369,6 +373,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
       // baseRowIndex = one position after the last selected row (1-based)
       const baseRowIndex = lastDisplayIndex + 2;
+      const rowIndexUpdates = buildRowIndexUpdatesAfterInsertion(
+        allRowsForSelection,
+        baseRowIndex,
+        numRowsToInsert
+      );
 
       // Shift existing rows to make room for N new rows at once
       if (supabase) {
@@ -380,7 +389,11 @@ export function useRowOperations(params: UseRowOperationsParams) {
       // calls that would wipe out the temp rows and cause flicker.
       for (let i = 0; i < numRowsToInsert; i++) {
         const isLast = i === numRowsToInsert - 1;
-        await onSaveAsset('Untitled', {}, { rowIndex: baseRowIndex + i, skipReload: !isLast });
+        await onSaveAsset('Untitled', {}, {
+          rowIndex: baseRowIndex + i,
+          skipReload: !isLast,
+          rowIndexUpdates: isLast ? rowIndexUpdates : undefined,
+        });
       }
     } catch (e) {
       console.error('Failed to insert rows below:', e);

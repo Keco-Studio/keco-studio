@@ -26,6 +26,7 @@ import type {
   AssetDeleteEvent,
   OptimisticUpdate,
   RowOrderChangeEvent,
+  RowOrderChangePayload,
   CellsBatchUpdateEvent,
 } from '@/lib/types/collaboration';
 
@@ -473,12 +474,10 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     }
   }, [currentUserId, currentUserName]);
 
-  /**
-   * Broadcast a row order change hint to all clients.
-   * The event does not carry rowIndex details; callers usually reload from the
-   * database so server order stays authoritative.
-   */
-  const broadcastRowOrderChange = useCallback(async (): Promise<void> => {
+  /** Broadcast inserted rows and index shifts so peers update incrementally. */
+  const broadcastRowOrderChange = useCallback(async (
+    changes: RowOrderChangePayload
+  ): Promise<void> => {
     if (!channelRef.current) {
       console.warn('Cannot broadcast row order change: channel not initialized');
       return;
@@ -489,6 +488,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       userId: currentUserId,
       userName: currentUserName,
       timestamp: Date.now(),
+      ...changes,
     };
 
     try {
