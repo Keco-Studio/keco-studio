@@ -7,7 +7,10 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { getUserProjectRole } from '@/lib/services/collaborationService';
+import {
+  AuthorizationError,
+  getUserProjectRole,
+} from '@/lib/services/authorizationService';
 import type { UserRole } from './types';
 
 export class AgentAccessError extends Error {
@@ -26,16 +29,17 @@ export async function resolveUserRole(
   projectId: string,
   userId: string
 ): Promise<UserRole> {
-  const { role, isOwner } = await getUserProjectRole(supabase, projectId, userId);
+  let role: UserRole;
+  try {
+    ({ role } = await getUserProjectRole(supabase, projectId, userId));
+  } catch (error) {
+    if (error instanceof AuthorizationError) {
+      throw new AgentAccessError('You do not have access to this project.');
+    }
+    throw error;
+  }
 
-  if (role) {
-    return role as UserRole;
-  }
-  if (isOwner) {
-    // Owner without an explicit collaborator role still administers the project.
-    return 'admin';
-  }
-  throw new AgentAccessError('You do not have access to this project.');
+  return role;
 }
 
 export function isWriteAllowed(role: UserRole): boolean {

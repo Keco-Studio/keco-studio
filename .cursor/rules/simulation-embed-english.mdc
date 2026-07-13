@@ -1,15 +1,14 @@
 ---
-description: Simulation embed shell and sidebar entries use English for UI copy and code comments
+description: Simulation embed shell uses English for UI copy and code comments
 globs:
   - src/app/(dashboard)/simulation-system/**/*
   - src/components/simulation/**/*
-  - src/components/layout/components/SidebarSimulationSystemEntry.tsx
 alwaysApply: false
 ---
 
 # English for simulation embed (keco-studio)
 
-- The iframe shell under `src/app/(dashboard)/simulation-system/` and `SidebarSimulationSystemEntry` are part of the Keco dashboard: use **English** for user-visible strings, `title` attributes, Suspense fallbacks, and **comments** in these files.
+- The iframe shell under `src/app/(dashboard)/simulation-system/` is part of the Keco dashboard: use **English** for user-visible strings, `title` attributes, Suspense fallbacks, and **comments** in these files.
 - The full simulation UI lives in the sibling repo **`keco-simulation`**; keep terminology aligned (e.g. “Simulation system”, “Battle simulator”, “Battle skills”).
 
 For the rest of keco-studio, follow `.cursor/rules/compatibility-modular-english-i18n.mdc` (product copy elsewhere may follow existing locale rules).

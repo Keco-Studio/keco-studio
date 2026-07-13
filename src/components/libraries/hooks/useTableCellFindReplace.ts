@@ -4,9 +4,16 @@ import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
 import {
   REPLACEABLE_CELL_DATA_TYPES,
-  findNormalizedMatchSpan,
+  buildNormalizedIndexMap,
   valueToDisplayString,
 } from '@/lib/utils/cellValueReplace';
+import { normalizeSearchString } from '@/lib/utils/normalizeSearchString';
+import { useSupabase } from '@/lib/SupabaseContext';
+import {
+  broadcastCellReplacementBatches,
+  requestLibraryReconciliation,
+  type CellReplacementUpdate,
+} from '@/lib/realtime/cell-replacement-broadcast';
 
 export type TableCellSearchHit = {
   assetId: string;
@@ -31,35 +38,48 @@ export type TableCellReplacePreview = {
 };
 
 const PAGE_SIZE = 10;
+const FIND_DEBOUNCE_MS = 200;
+
+type SearchableCell = TableCellSearchHit & { normalizedDisplay: string };
+
+function buildSearchableCells(
+  rows: AssetRow[],
+  properties: PropertyConfig[],
+): SearchableCell[] {
+  const cells: SearchableCell[] = [];
+  for (const row of rows) {
+    for (const prop of properties) {
+      const dataType = prop.dataType ?? '';
+      if (!REPLACEABLE_CELL_DATA_TYPES.has(dataType)) continue;
+      const valueDisplay = valueToDisplayString(row.propertyValues[prop.key], dataType);
+      cells.push({
+        assetId: row.id,
+        assetName: row.name,
+        fieldId: prop.key,
+        fieldLabel: prop.name,
+        sectionId: prop.sectionId,
+        valueDisplay,
+        normalizedDisplay: buildNormalizedIndexMap(valueDisplay).normalized,
+      });
+    }
+  }
+  return cells;
+}
+
+function searchPreparedCells(cells: SearchableCell[], find: string): TableCellSearchHit[] {
+  const normalizedFind = normalizeSearchString(find.trim());
+  if (!normalizedFind) return [];
+  return cells
+    .filter((cell) => cell.normalizedDisplay.includes(normalizedFind))
+    .map(({ normalizedDisplay: _normalizedDisplay, ...hit }) => hit);
+}
 
 export function searchCellsInTable(
   rows: AssetRow[],
   properties: PropertyConfig[],
   find: string
 ): TableCellSearchHit[] {
-  const findTrimmed = find.trim();
-  if (!findTrimmed) return [];
-
-  const hits: TableCellSearchHit[] = [];
-  for (const row of rows) {
-    for (const prop of properties) {
-      const dataType = prop.dataType ?? '';
-      if (!REPLACEABLE_CELL_DATA_TYPES.has(dataType)) continue;
-
-      const display = valueToDisplayString(row.propertyValues[prop.key], dataType);
-      if (!findNormalizedMatchSpan(display, findTrimmed)) continue;
-
-      hits.push({
-        assetId: row.id,
-        assetName: row.name,
-        fieldId: prop.key,
-        fieldLabel: prop.name,
-        sectionId: prop.sectionId,
-        valueDisplay: display,
-      });
-    }
-  }
-  return hits;
+  return searchPreparedCells(buildSearchableCells(rows, properties), find);
 }
 
 type UseTableCellFindReplaceParams = {
@@ -86,7 +106,9 @@ export function useTableCellFindReplace({
   scrollToCell,
 }: UseTableCellFindReplaceParams) {
   const queryClient = useQueryClient();
+  const supabase = useSupabase();
   const [findText, setFindText] = useState('');
+  const [debouncedFindText, setDebouncedFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [page, setPage] = useState(1);
   const [replaceModalOpen, setReplaceModalOpen] = useState(false);
@@ -95,10 +117,19 @@ export function useTableCellFindReplace({
   const [replacePendingHit, setReplacePendingHit] = useState<TableCellSearchHit | null>(null);
   const [replacePreview, setReplacePreview] = useState<TableCellReplacePreview | null>(null);
 
-  const hits = useMemo(
-    () => searchCellsInTable(rows, properties, findText),
-    [rows, properties, findText]
+  const searchableCells = useMemo(
+    () => buildSearchableCells(rows, properties),
+    [rows, properties],
   );
+  const hits = useMemo(
+    () => searchPreparedCells(searchableCells, debouncedFindText),
+    [searchableCells, debouncedFindText],
+  );
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedFindText(findText), FIND_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [findText]);
 
   const totalPages = useMemo(
     () => Math.max(1, Math.ceil(hits.length / PAGE_SIZE)),
@@ -172,15 +203,28 @@ export function useTableCellFindReplace({
         }
         throw err;
       }
-      return payload as {
+      const result = payload as {
         updated: number;
         skipped: number;
         affectedLibraryIds?: string[];
         previews: TableCellReplacePreview['previews'];
         skips?: TableCellReplacePreview['skips'];
+        cells?: CellReplacementUpdate[];
       };
+      if (!params.dryRun && result.updated > 0) {
+        const cells = result.cells ?? [];
+        requestLibraryReconciliation(
+          result.affectedLibraryIds ?? cells.map((cell) => cell.libraryId)
+        );
+        try {
+          await broadcastCellReplacementBatches({ supabase, cells, accessToken: token });
+        } catch (error) {
+          console.warn('[useTableCellFindReplace] Realtime broadcast failed:', error);
+        }
+      }
+      return result;
     },
-    [findText, getAccessToken, libraryId, replaceText]
+    [findText, getAccessToken, libraryId, replaceText, supabase]
   );
 
   const openReplaceConfirm = useCallback(

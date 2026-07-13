@@ -42,6 +42,7 @@ export interface EnumCellProps {
     connectionStatus: 'online' | 'away';
   }>;
   borderColor?: string;
+  isSearchHit?: boolean;
   // Event handlers
   onChange: (newValue: string) => Promise<void>;
   onOpenChange: (open: boolean) => void;
@@ -64,7 +65,7 @@ export interface EnumCellProps {
  * Enum/Select cell component for LibraryAssetsTable
  * Renders a select dropdown for enum values with optimistic updates
  */
-export const EnumCell: React.FC<EnumCellProps> = ({
+const EnumCellComponent: React.FC<EnumCellProps> = ({
   row,
   property,
   propertyIndex,
@@ -79,6 +80,7 @@ export const EnumCell: React.FC<EnumCellProps> = ({
   cutSelectionBounds,
   editingUsers,
   borderColor,
+  isSearchHit = false,
   onChange,
   onOpenChange,
   onCellClick,
@@ -184,7 +186,7 @@ export const EnumCell: React.FC<EnumCellProps> = ({
     <td
       key={property.id}
       data-property-key={property.key}
-      className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+      className={`${styles.cell} ${isSearchHit ? styles.searchCellHit : ''} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
       style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
       onClick={(e) => {
         // Trigger focus when clicking on enum cell (single-click to edit)
@@ -287,3 +289,4 @@ export const EnumCell: React.FC<EnumCellProps> = ({
   );
 };
 
+export const EnumCell = React.memo(EnumCellComponent);

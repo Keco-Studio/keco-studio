@@ -6,29 +6,21 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { withAuth } from '@/lib/auth/route-auth';
 import { validateInvitationToken } from '@/lib/utils/invitationToken';
 import { getSupabaseServiceRoleClient } from '@/lib/server/supabaseServiceRole';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 /**
  * POST /api/invitations/accept
  * Accept a collaboration invitation
  */
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async function POST(
+  request: NextRequest,
+  _context,
+  { supabase: userSupabase, user }
+) {
   try {
-    // 1. Get authorization header
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader) {
-      return NextResponse.json(
-        { success: false, error: 'Missing authorization header' },
-        { status: 401 }
-      );
-    }
-
-    // 2. Get JWT token and invitation token from request body
+    // Get invitation token from request body
     const body = await request.json();
     const { invitationToken } = body;
 
@@ -39,33 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 3. Extract user JWT from Bearer header
-    const jwtToken = authHeader.replace('Bearer ', '');
-
-    // 4. Create Supabase client with user auth to verify user
-    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
-
-    // 5. Verify user is authenticated
-    const { data: { user }, error: authError } = await userSupabase.auth.getUser(jwtToken);
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { success: false, error: 'You must be logged in to accept invitations' },
-        { status: 401 }
-      );
-    }
-
-    // 6. Validate invitation token
+    // Validate invitation token
     let tokenPayload;
     try {
       tokenPayload = await validateInvitationToken(invitationToken);
@@ -74,7 +40,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: error instanceof Error ? error.message : 'Invalid invitation token',
+          error: 'Invalid invitation token',
         },
         { status: 400 }
       );
@@ -190,7 +156,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: 'Failed to add collaborator: ' + collaboratorError.message,
+          error: 'Failed to add collaborator',
         },
         { status: 500 }
       );
@@ -220,9 +186,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'An unexpected error occurred',
+        error: 'An unexpected error occurred',
       },
       { status: 500 }
     );
   }
-}
+}, {
+  unauthorizedResponse: () => NextResponse.json(
+    { success: false, error: 'You must be logged in to accept invitations' },
+    { status: 401 }
+  ),
+});

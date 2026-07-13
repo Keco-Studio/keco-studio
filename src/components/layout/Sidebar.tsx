@@ -8,6 +8,7 @@ import moveToFolderIcon from "@/assets/images/moveToFolder.svg";
 import moveToFolderDisabledIcon from "@/assets/images/moveToFolder2.svg";
 import moveToSelectIcon from "@/assets/images/moveToSelect.svg";
 import Image from "next/image";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, usePathname } from "next/navigation";
@@ -24,7 +25,6 @@ import { NewLibraryModal } from "@/components/libraries/NewLibraryModal";
 import { EditLibraryModal } from "@/components/libraries/EditLibraryModal";
 import { DuplicateLibraryModal } from "@/components/libraries/DuplicateLibraryModal";
 import { ExportLibraryModal } from "@/components/libraries/ExportLibraryModal";
-import { ImportLibraryModal } from "@/components/libraries/ImportLibraryModal";
 import { ImportScriptModal } from "@/components/libraries/ImportScriptModal";
 import { NewFolderModal } from "@/components/folders/NewFolderModal";
 import { EditFolderModal } from "@/components/folders/EditFolderModal";
@@ -65,6 +65,11 @@ import styles from "./Sidebar.module.css";
 const MIN_SIDEBAR_WIDTH = 267;
 const MAX_SIDEBAR_WIDTH = 400;
 const DEFAULT_SIDEBAR_WIDTH = 267; // 16.6875rem
+
+const ImportLibraryModal = dynamic(
+  () => import("@/components/libraries/ImportLibraryModal").then((mod) => mod.ImportLibraryModal),
+  { ssr: false },
+);
 
 type SidebarProps = {
   userProfile?: UserProfileDisplay | null;
@@ -110,7 +115,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     });
   }, []);
 
-  const { userRole, isProjectOwner, refetchUserRole } = useSidebarProjectRole(currentIds.projectId, userProfile);
+  const userId = userProfile?.id;
+  const { userRole, isProjectOwner } = useSidebarProjectRole(
+    currentIds.projectId,
+    userId
+  );
   const { assets, fetchAssets } = useSidebarAssets(currentIds.libraryId);
 
   const modals = useSidebarModals();
@@ -333,10 +342,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   useSidebarRealtime({
     supabase,
     queryClient,
-    userProfile,
+    userId,
     currentProjectId: currentIds.projectId,
     router,
-    refetchUserRole,
   });
 
   // Auto-navigate to first project on login if user has projects
@@ -345,13 +353,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // 1. User is on /projects page (pathname === '/projects')
     // 2. Projects list is loaded and not empty
     // 3. User is not a guest (userProfile exists)
-    if (pathname === '/projects' && projects.length > 0 && !loadingProjects && userProfile) {
+    if (pathname === '/projects' && projects.length > 0 && !loadingProjects && userId) {
       const firstProject = projects[0];
       if (firstProject?.id) {
         router.push(`/${firstProject.id}`);
       }
     }
-  }, [pathname, projects, loadingProjects, userProfile, router]);
+  }, [pathname, projects, loadingProjects, userId, router]);
 
   // Track current project ID to detect project switching
   const prevProjectIdRef = useRef<string | null>(null);
@@ -599,13 +607,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   // Context menu handlers
-  const handleContextMenu = (e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
     e.preventDefault();
     e.stopPropagation();
     // Get the element that triggered the context menu
     const targetElement = e.currentTarget as HTMLElement;
     openContextMenu(e.clientX, e.clientY, type, id, targetElement);
-  };
+  }, [openContextMenu]);
 
   const { treeData, selectedKeys } = useSidebarTree(
     currentIds,

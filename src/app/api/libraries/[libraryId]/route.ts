@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { verifyLibraryAccess } from '@/lib/services/authorizationService';
+import { withAuth } from '@/lib/auth/route-auth';
 
 type Params = { params: Promise<{ libraryId: string }> };
 
@@ -13,22 +13,17 @@ const errorName = (error: unknown) =>
 const errorMessage = (error: unknown, fallback: string) =>
   error instanceof Error ? error.message : fallback;
 
-export async function GET(_req: Request, { params }: Params) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const GET = withAuth(async function GET(
+  _req,
+  { params }: Params,
+  { supabase, user }
+) {
   const { libraryId } = await params;
   
   // verify library access
   if (isUuid(libraryId)) {
     try {
-      await verifyLibraryAccess(supabase, libraryId);
+      await verifyLibraryAccess(supabase, libraryId, user.id);
     } catch (e: unknown) {
       if (errorName(e) === 'AuthorizationError') {
         return NextResponse.json({ error: errorMessage(e, 'Unauthorized') }, { status: 403 });
@@ -47,7 +42,8 @@ export async function GET(_req: Request, { params }: Params) {
   const { data, error } = await query.single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    console.error('[GET /api/libraries/:libraryId] Failed to load library:', error);
+    return NextResponse.json({ error: 'Failed to load library' }, { status: 400 });
   }
 
   if (!data) {
@@ -55,4 +51,7 @@ export async function GET(_req: Request, { params }: Params) {
   }
 
   return NextResponse.json(data);
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});

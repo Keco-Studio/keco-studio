@@ -41,4 +41,17 @@ export type AssetRow = {
   rowIndex?: number; // explicit row order per library
 };
 
+export type RowIndexUpdate = {
+  assetId: string;
+  rowIndex: number;
+};
+
+export type CreateLibraryAssetOptions = {
+  insertAfterRowId?: string;
+  insertBeforeRowId?: string;
+  createdAt?: Date;
+  rowIndex?: number;
+  skipReload?: boolean;
+  rowIndexUpdates?: RowIndexUpdate[];
+};
 

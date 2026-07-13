@@ -80,7 +80,7 @@ async function executeUpdateRow(params: unknown, ctx: ToolContext): Promise<Tool
   }
   const library = libraryFromLookupResult(libraryResult);
 
-  const assets = await getLibraryAssets(ctx.supabase, library.id);
+  const assets = await getLibraryAssets(ctx.supabase, library.id, ctx);
   const sorted = sortAssetsForUiRow(assets);
   if (rowIndex > sorted.length) {
     return {
@@ -96,7 +96,7 @@ async function executeUpdateRow(params: unknown, ctx: ToolContext): Promise<Tool
   }
 
   const [properties, { resolved, unresolved, availableFields }] = await Promise.all([
-    getLibraryProperties(ctx.supabase, library.id),
+    getLibraryProperties(ctx.supabase, library.id, ctx),
     resolvePropertyValues(ctx.supabase, library.id, propertyValues),
   ]);
   if (unresolved.length > 0) {

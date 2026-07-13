@@ -14,11 +14,29 @@ import type {
   Collaborator,
   PendingInvitation,
   SendInvitationInput,
-  SendInvitationOutput,
   GetCollaboratorsOutput,
 } from '@/lib/types/collaboration';
 import { generateInvitationToken } from '@/lib/utils/invitationToken';
 import { sendInvitationEmail } from '@/lib/services/emailService';
+
+export type CollaborationServiceErrorCode =
+  | 'SELF_INVITATION'
+  | 'ALREADY_COLLABORATOR'
+  | 'INVITATION_PENDING'
+  | 'TOKEN_GENERATION_FAILED'
+  | 'INVITATION_CREATE_FAILED'
+  | 'EMAIL_DELIVERY_FAILED'
+  | 'UNEXPECTED';
+
+export class CollaborationServiceError extends Error {
+  constructor(
+    public readonly code: CollaborationServiceErrorCode,
+    message: string
+  ) {
+    super(message);
+    this.name = 'CollaborationServiceError';
+  }
+}
 
 /**
  * Send invitation to collaborate on a project
@@ -43,7 +61,7 @@ export async function sendInvitation(
   inviterId: string,
   inviterName: string,
   projectName: string
-): Promise<SendInvitationOutput> {
+): Promise<string> {
   const { projectId, recipientEmail, role } = input;
   
   try {
@@ -58,7 +76,7 @@ export async function sendInvitation(
     
     // Check if user is trying to invite themselves
     if (inviterEmail && inviterEmail.toLowerCase() === recipientEmail.toLowerCase()) {
-      return { success: false, error: 'Cannot invite yourself' };
+      throw new CollaborationServiceError('SELF_INVITATION', 'Cannot invite yourself');
     }
     
     // 1. Check if recipient email already has a user account and is a collaborator
@@ -80,7 +98,7 @@ export async function sendInvitation(
         .maybeSingle();
       
       if (existingCollaborator) {
-        return { success: false, error: 'User already exists' };
+        throw new CollaborationServiceError('ALREADY_COLLABORATOR', 'User already exists');
       }
     }
     
@@ -96,10 +114,10 @@ export async function sendInvitation(
       .maybeSingle();
     
     if (existingInvitation) {
-      return { 
-        success: false, 
-        error: 'An invitation has already been sent to this email address' 
-      };
+      throw new CollaborationServiceError(
+        'INVITATION_PENDING',
+        'An invitation has already been sent to this email address'
+      );
     }
     
     // 3. Generate JWT token BEFORE creating invitation
@@ -115,7 +133,10 @@ export async function sendInvitation(
       });
     } catch (tokenError) {
       console.error('Error generating token:', tokenError);
-      return { success: false, error: 'Failed to generate invitation token' };
+      throw new CollaborationServiceError(
+        'TOKEN_GENERATION_FAILED',
+        'Failed to generate invitation token'
+      );
     }
     
     // 4. Create invitation record with token (RLS will check inviter permissions)
@@ -134,10 +155,10 @@ export async function sendInvitation(
     
     if (insertError || !invitation) {
       console.error('Error creating invitation:', insertError);
-      return { 
-        success: false, 
-        error: insertError?.message || 'Failed to create invitation' 
-      };
+      throw new CollaborationServiceError(
+        'INVITATION_CREATE_FAILED',
+        'Failed to create invitation'
+      );
     }
     
     // 5. Send email (inviterEmail already fetched at the beginning)
@@ -156,19 +177,17 @@ export async function sendInvitation(
       console.log('[sendInvitation] Invitation email sent successfully to', recipientEmail);
     } catch (emailError) {
       console.error('Error sending invitation email:', emailError);
-      return { 
-        success: false, 
-        error: 'Invitation created but email failed to send. Please try resending.' 
-      };
+      throw new CollaborationServiceError(
+        'EMAIL_DELIVERY_FAILED',
+        'Invitation created but email failed to send. Please try resending.'
+      );
     }
-    
-    return { success: true, invitationId: invitation.id };
+
+    return invitation.id;
   } catch (error) {
     console.error('Unexpected error in sendInvitation:', error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'An unexpected error occurred' 
-    };
+    if (error instanceof CollaborationServiceError) throw error;
+    throw new CollaborationServiceError('UNEXPECTED', 'Failed to send invitation');
   }
 }
 
@@ -281,59 +300,5 @@ export async function getProjectCollaborators(
   } catch (error) {
     console.error('Error in getProjectCollaborators:', error);
     throw error;
-  }
-}
-
-/**
- * Get user's role in a project
- * 
- * @param supabase - Supabase client with user auth
- * @param projectId - Project ID
- * @param userId - User ID
- * @returns User's role and owner status
- * 
- * IMPORTANT: Access is determined by project_collaborators table ONLY.
- * Even project owners must have a collaborator record to access the project.
- * If an owner is removed from collaborators, they lose access (isOwner is for info only).
- */
-export async function getUserProjectRole(
-  supabase: SupabaseClient,
-  projectId: string,
-  userId: string
-): Promise<{ role: CollaboratorRole | null; isOwner: boolean }> {
-  try {
-    // Check if user is project owner
-    const { data: project } = await supabase
-      .from('projects')
-      .select('owner_id')
-      .eq('id', projectId)
-      .single();
-    
-    const isOwner = project?.owner_id === userId;
-    
-    // Get user's collaborator role
-    const { data: collaborator } = await supabase
-      .from('project_collaborators')
-      .select('role')
-      .eq('project_id', projectId)
-      .eq('user_id', userId)
-      .not('accepted_at', 'is', null)
-      .maybeSingle();
-
-    let role = (collaborator?.role ?? null) as CollaboratorRole | null;
-
-    // Fallback: project owners always have admin access even if their
-    // collaborator record hasn't propagated yet (e.g. right after creation).
-    if (role === null && isOwner) {
-      role = 'admin';
-    }
-
-    return {
-      role,
-      isOwner,
-    };
-  } catch (error) {
-    console.error('Error getting user project role:', error);
-    return { role: null, isOwner: false };
   }
 }

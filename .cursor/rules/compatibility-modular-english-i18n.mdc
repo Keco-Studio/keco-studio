@@ -24,7 +24,7 @@ alwaysApply: true
 - **Code comments** (including `//`, `/* */`, JSDoc on non-trivial functions): write in **English**, concise and accurate; explain *why* when non-obvious, not what the syntax already says.
 - **User-visible strings** (UI labels, `message.*`, `notification`, toast, modal titles, form validation text, error strings returned to clients, `msg` / `errorMessage` fields, logging messages intended for operators): use **English**, consistent tense and capitalization (sentence case for sentences; title case only where the design system requires it).
 - For **new** comments and strings you introduce, use English. If a file already uses Chinese product copy or an i18n key scheme, **match that file’s pattern** for user-facing text; do not silently rewrite existing locale choices.
-- **Exception (simulation)**: code under the simulation embed (`src/app/(dashboard)/simulation-system/**`), `src/components/simulation/**`, and `SidebarSimulationSystemEntry.tsx` uses **English** for copy and comments. The standalone app lives in `../keco-simulation` (see that repo’s `.cursor/rules/english-simulation.mdc`).
+- **Exception (simulation)**: code under the simulation embed (`src/app/(dashboard)/simulation-system/**`) and `src/components/simulation/**` uses **English** for copy and comments. The standalone app lives in `../keco-simulation` (see that repo’s `.cursor/rules/english-simulation.mdc`).
 - Match existing tone: professional, no slang, no emoji in code or messages.
 
 ## Examples

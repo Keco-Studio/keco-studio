@@ -19,6 +19,9 @@ dotenv.config({
   override: true // Allow .env.local variables to override .env
 });
 
+process.env.INVITATION_SECRET ??= 'keco-playwright-invitation-secret-2026-07-10';
+process.env.SKIP_INVITATION_EMAIL = 'true';
+
 export default defineConfig({
   testDir: './tests',
   /**

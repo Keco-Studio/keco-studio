@@ -37,7 +37,7 @@ import type { PresenceState, CollaboratorRole } from '@/lib/types/collaboration'
 import { VersionControlSidebar } from '@/components/version-control/VersionControlSidebar';
 import { getVersionsByLibrary } from '@/lib/services/versionService';
 import type { LibraryVersion } from '@/lib/types/version';
-import { YjsProvider } from '@/lib/contexts/YjsContext';
+import { RowStoreProvider } from '@/lib/contexts/RowStoreContext';
 import {
   invalidateLibraryAssetsData,
   invalidateLibraryData,
@@ -649,7 +649,7 @@ export default function LibraryPage() {
             Later phases will replace placeholder service logic with real Supabase-backed data
             and upgrade the table to a two-level header that mirrors predefine + Figma. */}
         <div className={styles.tableContainer}>
-          <YjsProvider libraryId={libraryId}>
+          <RowStoreProvider libraryId={libraryId}>
             <LibraryAssetsTableAdapter
               library={
                 librarySummary
@@ -671,7 +671,7 @@ export default function LibraryPage() {
               onAddSection={handleAddSection}
               onAddProperty={handleAddProperty}
             />
-          </YjsProvider>
+          </RowStoreProvider>
         </div>
 
         {/* Version Control Sidebar */}

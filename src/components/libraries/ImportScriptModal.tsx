@@ -88,12 +88,9 @@ export function ImportScriptModal({
   }, [open]);
 
   useEffect(() => {
-    if (inputMode === 'text' && textInput.trim()) {
-      setPreview(previewScript(textInput));
-    } else if (inputMode === 'file' && !selectedFile) {
-      setPreview(null);
-    }
-  }, [textInput, inputMode, selectedFile]);
+    const source = inputMode === 'text' ? textInput : parsedFileText;
+    setPreview(source?.trim() ? previewScript(source) : null);
+  }, [textInput, inputMode, parsedFileText]);
 
   const handleFileChange = async (file: File | null) => {
     if (!file) {
@@ -213,7 +210,7 @@ export function ImportScriptModal({
 
   return createPortal(
     <div className={styles.backdrop} onClick={handleBackdropClick}>
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
+      <div className={styles.modal} data-testid="import-script-modal" onClick={(e) => e.stopPropagation()}>
         <div className={styles.header}>
           <div className={styles.title}>Import script</div>
           <button className={styles.close} onClick={onClose} aria-label="Close" disabled={importing}>
@@ -233,6 +230,7 @@ export function ImportScriptModal({
             <label htmlFor="import-script-name" className={styles.nameLabel}>Library name</label>
             <input
               id="import-script-name"
+              data-testid="import-script-name"
               className={styles.nameInput}
               value={libraryName}
               onChange={(e) => setLibraryName(e.target.value)}
@@ -244,6 +242,7 @@ export function ImportScriptModal({
           <div className={styles.tabContainer}>
             <button
               className={`${styles.tab} ${inputMode === 'file' ? styles.tabActive : ''}`}
+              data-testid="import-script-file-mode"
               onClick={() => setInputMode('file')}
               disabled={importing}
             >
@@ -251,6 +250,7 @@ export function ImportScriptModal({
             </button>
             <button
               className={`${styles.tab} ${inputMode === 'text' ? styles.tabActive : ''}`}
+              data-testid="import-script-text-mode"
               onClick={() => setInputMode('text')}
               disabled={importing}
             >
@@ -263,6 +263,7 @@ export function ImportScriptModal({
               <input
                 ref={fileInputRef}
                 type="file"
+                data-testid="import-script-file"
                 accept=".txt,.md,.docx"
                 style={{ display: 'none' }}
                 onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
@@ -285,6 +286,7 @@ export function ImportScriptModal({
             <div className={styles.textContainer}>
               <textarea
                 className={styles.textarea}
+                data-testid="import-script-text"
                 value={textInput}
                 onChange={(e) => setTextInput(e.target.value)}
                 placeholder="Enter story text..."
@@ -295,7 +297,7 @@ export function ImportScriptModal({
           )}
 
           {preview && (
-            <div className={styles.preview}>
+            <div className={styles.preview} data-testid="import-script-preview">
               <span className={styles.previewLabel}>Preview:</span>
               <span>{preview.lineCount} lines</span>
               <span className={styles.previewDot}>·</span>
@@ -328,6 +330,7 @@ export function ImportScriptModal({
           </button>
           <button
             className={styles.primaryButton}
+            data-testid="import-script-submit"
             onClick={handleImport}
             disabled={importing || !canImport}
           >

@@ -5,6 +5,7 @@ import {
   resolveReferenceSelectionLabel,
 } from '@/lib/utils/referenceValue';
 import {
+  createPropertyByName,
   evaluateFormulaForRow,
   getCustomFormulaExpressionFromCellValue,
 } from '@/components/libraries/utils/formulaEvaluation';
@@ -17,6 +18,7 @@ export type RowVisibilityFilterState = {
 /** Optional context for column filters (e.g. reference label cache). */
 export type ColumnFilterOptions = {
   assetNamesCache?: Record<string, string>;
+  propertyByName?: ReadonlyMap<string, PropertyConfig>;
 };
 
 export function buildPropertyById(properties: PropertyConfig[]): Map<string, PropertyConfig> {
@@ -50,7 +52,13 @@ export function getFilterDisplayValue(
     const effectiveExpr = customExpr ?? property.formulaExpression;
     if (!effectiveExpr) return '';
 
-    const result = evaluateFormulaForRow(effectiveExpr, row, allProperties);
+    const result = evaluateFormulaForRow(
+      effectiveExpr,
+      row,
+      allProperties,
+      new Set(),
+      options.propertyByName,
+    );
     if (typeof result === 'boolean') return result ? 'true' : 'false';
     if (result === null || result === undefined) return '';
     return String(result);
@@ -89,11 +97,15 @@ export function getCheckedFilterValuesForColumn(
   properties: PropertyConfig[],
   options: ColumnFilterOptions = {}
 ): Set<string> {
+  const evaluationOptions = {
+    ...options,
+    propertyByName: options.propertyByName ?? createPropertyByName(properties),
+  };
   const checked = new Set<string>();
   const rowsByValue = new Map<string, AssetRow[]>();
 
   for (const row of rows) {
-    const value = getFilterDisplayValue(row, property, properties, options);
+    const value = getFilterDisplayValue(row, property, properties, evaluationOptions);
     const bucket = rowsByValue.get(value);
     if (bucket) {
       bucket.push(row);
@@ -122,9 +134,13 @@ export function applyColumnFilterByRowIds(
 ): Set<string> {
   const next = new Set(hiddenRowIds);
   const rowIdSet = new Set(rows.map((row) => row.id));
+  const evaluationOptions = {
+    ...options,
+    propertyByName: options.propertyByName ?? createPropertyByName(properties),
+  };
 
   for (const row of rows) {
-    const value = getFilterDisplayValue(row, property, properties, options);
+    const value = getFilterDisplayValue(row, property, properties, evaluationOptions);
     if (selectedValues.has(value)) {
       next.delete(row.id);
     } else {
@@ -166,8 +182,12 @@ export function collectColumnUniqueValues(
   if (!property) return [];
 
   const values = new Set<string>();
+  const evaluationOptions = {
+    ...options,
+    propertyByName: options.propertyByName ?? createPropertyByName(allProperties),
+  };
   for (const row of rows) {
-    values.add(getFilterDisplayValue(row, property, allProperties, options));
+    values.add(getFilterDisplayValue(row, property, allProperties, evaluationOptions));
   }
 
   return Array.from(values).sort((a, b) => {

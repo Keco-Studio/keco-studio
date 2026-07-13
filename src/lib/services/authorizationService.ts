@@ -14,6 +14,37 @@ export class AuthorizationError extends Error {
   }
 }
 
+export type AccessVerificationCache = Map<string, Promise<void>>;
+
+export type AccessVerificationContext = {
+  userId: string;
+  cache: AccessVerificationCache;
+};
+
+export function createAccessVerificationCache(): AccessVerificationCache {
+  return new Map<string, Promise<void>>();
+}
+
+async function withAccessVerificationCache(
+  cache: AccessVerificationCache | undefined,
+  key: string,
+  verify: () => Promise<void>
+): Promise<void> {
+  if (!cache) return verify();
+
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const pending = verify();
+  cache.set(key, pending);
+  try {
+    await pending;
+  } catch (error) {
+    cache.delete(key);
+    throw error;
+  }
+}
+
 /** Execute an authorization lookup. React Query handles caching at caller boundaries. */
 async function withAuthCache<T>(cacheKey: string, fn: () => Promise<T>): Promise<T> {
   void cacheKey;
@@ -81,13 +112,14 @@ export async function verifyProjectOwnership(
 export async function verifyProjectAccess(
   supabase: SupabaseClient,
   projectId: string,
-  userId?: string
+  userId?: string,
+  accessCache?: AccessVerificationCache
 ): Promise<void> {
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   const cacheKey = `auth:project-access:${projectId}:${currentUserId}`;
 
-  await withAuthCache(cacheKey, async () => {
+  await withAccessVerificationCache(accessCache, cacheKey, async () => {
     const { data: project, error } = await supabase
       .from('projects')
       .select('owner_id')
@@ -100,7 +132,7 @@ export async function verifyProjectAccess(
     
     // Check if user is the owner
     if (project.owner_id === currentUserId) {
-      return true;
+      return;
     }
     
     // Check if user is a collaborator with accepted invitation
@@ -120,7 +152,7 @@ export async function verifyProjectAccess(
       throw new AuthorizationError('Unauthorized access to this project');
     }
     
-    return true; // Return a value for caching
+    return;
   });
 }
 
@@ -135,10 +167,16 @@ export async function getUserProjectRole(
   supabase: SupabaseClient,
   projectId: string,
   userId?: string
-): Promise<'admin' | 'editor' | 'viewer'> {
+): Promise<{
+  role: 'admin' | 'editor' | 'viewer';
+  isOwner: boolean;
+}> {
   const currentUserId = userId || await getCurrentUserId(supabase);
 
-  const resolveRole = async (): Promise<'admin' | 'editor' | 'viewer'> => {
+  const resolveRole = async (): Promise<{
+    role: 'admin' | 'editor' | 'viewer';
+    isOwner: boolean;
+  }> => {
     const { data: project, error } = await supabase
       .from('projects')
       .select('owner_id')
@@ -160,12 +198,17 @@ export async function getUserProjectRole(
       throw new AuthorizationError('Error checking collaborator status');
     }
 
+    const isOwner = project.owner_id === currentUserId;
+
     if (collaborator && collaborator.accepted_at) {
-      return collaborator.role as 'admin' | 'editor' | 'viewer';
+      return {
+        role: collaborator.role as 'admin' | 'editor' | 'viewer',
+        isOwner,
+      };
     }
 
-    if (project.owner_id === currentUserId) {
-      return 'admin';
+    if (isOwner) {
+      return { role: 'admin', isOwner: true };
     }
 
     throw new AuthorizationError('User is not a collaborator of this project');
@@ -181,13 +224,14 @@ export async function getUserProjectRole(
 export async function verifyLibraryAccess(
   supabase: SupabaseClient,
   libraryId: string,
-  userId?: string
+  userId?: string,
+  accessCache?: AccessVerificationCache
 ): Promise<void> {
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   const cacheKey = `auth:library-access:${libraryId}:${currentUserId}`;
 
-  await withAuthCache(cacheKey, async () => {
+  await withAccessVerificationCache(accessCache, cacheKey, async () => {
     // Get the project that owns the library
     const { data: library, error: libraryError } = await supabase
       .from('libraries')
@@ -205,9 +249,9 @@ export async function verifyLibraryAccess(
     }
     
     // Verify project access (owner or collaborator)
-    await verifyProjectAccess(supabase, library.project_id, currentUserId);
+    await verifyProjectAccess(supabase, library.project_id, currentUserId, accessCache);
     
-    return true; // Return a value for caching
+    return;
   });
 }
 
@@ -337,7 +381,7 @@ export async function verifyLibraryDeletionPermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
   
   // Only admin can delete library
   if (role !== 'admin') {
@@ -368,7 +412,7 @@ export async function verifyFolderDeletionPermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, folder.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, folder.project_id, currentUserId);
   
   // Only admin can delete folder
   if (role !== 'admin') {
@@ -410,7 +454,7 @@ export async function verifyAssetDeletionPermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
   
   // Admin and editor can delete asset, viewer cannot
   if (role !== 'admin' && role !== 'editor') {
@@ -441,7 +485,7 @@ export async function verifyAssetsDeletionPermission(
     .eq('id', libraryId)
     .single();
   if (libErr || !library) throw new AuthorizationError('Library not found');
-  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
   if (role !== 'admin' && role !== 'editor')
     throw new AuthorizationError('Only admin and editor users can delete assets');
 }
@@ -458,7 +502,7 @@ export async function verifyLibraryCreationPermission(
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  const { role } = await getUserProjectRole(supabase, projectId, currentUserId);
   
   // Only admin can create library
   if (role !== 'admin') {
@@ -478,7 +522,7 @@ export async function verifyFolderCreationPermission(
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  const { role } = await getUserProjectRole(supabase, projectId, currentUserId);
   
   // Only admin can create folder
   if (role !== 'admin') {
@@ -509,7 +553,7 @@ export async function verifyAssetCreationPermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
   
   // Admin and editor can create asset, viewer cannot
   if (role !== 'admin' && role !== 'editor') {
@@ -529,7 +573,7 @@ export async function verifyProjectUpdatePermission(
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  const { role } = await getUserProjectRole(supabase, projectId, currentUserId);
   
   // Only admin can update project
   if (role !== 'admin') {
@@ -549,7 +593,7 @@ export async function verifyProjectDeletionPermission(
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  const { role } = await getUserProjectRole(supabase, projectId, currentUserId);
   
   // Only admin can delete project
   if (role !== 'admin') {
@@ -564,7 +608,8 @@ export async function verifyProjectDeletionPermission(
 export async function verifyLibraryUpdatePermission(
   supabase: SupabaseClient,
   libraryId: string,
-  userId?: string
+  userId?: string,
+  options?: { allowEditor?: boolean }
 ): Promise<void> {
   const currentUserId = userId || await getCurrentUserId(supabase);
   
@@ -580,11 +625,15 @@ export async function verifyLibraryUpdatePermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
-  
-  // Only admin can update library
-  if (role !== 'admin') {
-    throw new AuthorizationError('Only admin users can update libraries');
+  const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
+
+  const canUpdate = role === 'admin' || (options?.allowEditor === true && role === 'editor');
+  if (!canUpdate) {
+    throw new AuthorizationError(
+      options?.allowEditor
+        ? 'Only admin and editor users can update library content'
+        : 'Only admin users can update libraries'
+    );
   }
 }
 
@@ -611,7 +660,7 @@ export async function verifyFolderUpdatePermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, folder.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, folder.project_id, currentUserId);
   
   // Only admin can update folder
   if (role !== 'admin') {
@@ -680,7 +729,7 @@ export async function verifyAssetUpdatePermission(
     return;
   }
 
-  const role = await getUserProjectRole(supabase, resolvedProjectId, currentUserId);
+  const { role } = await getUserProjectRole(supabase, resolvedProjectId, currentUserId);
 
   if (role !== 'admin' && role !== 'editor') {
     throw new AuthorizationError('Only admin and editor users can update assets');

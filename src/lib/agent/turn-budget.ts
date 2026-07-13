@@ -7,6 +7,14 @@ function parsePositiveInt(value: string | undefined, fallback: number): number {
 
 export const AGENT_LLM_MAX_TOKENS = parsePositiveInt(process.env.AGENT_LLM_MAX_TOKENS, 4096);
 export const AGENT_TURN_TOKEN_BUDGET = parsePositiveInt(process.env.AGENT_TURN_TOKEN_BUDGET, 120_000);
+export const AGENT_TURN_MAX_DURATION_MS = parsePositiveInt(
+  process.env.AGENT_TURN_MAX_DURATION_MS,
+  120_000
+);
+export const AGENT_TURN_SAFETY_MARGIN_MS = parsePositiveInt(
+  process.env.AGENT_TURN_SAFETY_MARGIN_MS,
+  10_000
+);
 export const AGENT_LARGE_USER_CONTENT_CHARS = parsePositiveInt(
   process.env.AGENT_LARGE_USER_CONTENT_CHARS,
   24_000
@@ -30,6 +38,25 @@ export function isOverTokenBudget(usedTokens: number, budget: number): boolean {
 
 export function tokenBudgetExceededMessage(usedTokens: number, budget: number): string {
   return `Agent stopped because this turn reached the token budget (${usedTokens}/${budget}). Start a new message with a narrower request to continue.`;
+}
+
+export function createTurnDeadline(
+  nowMs = Date.now(),
+  maxDurationMs = AGENT_TURN_MAX_DURATION_MS,
+  safetyMarginMs = AGENT_TURN_SAFETY_MARGIN_MS
+): number {
+  return nowMs + Math.max(0, maxDurationMs - safetyMarginMs);
+}
+
+export function isTurnDeadlineExceeded(
+  deadlineMs: number,
+  nowMs = Date.now()
+): boolean {
+  return nowMs >= deadlineMs;
+}
+
+export function timeLimitExceededMessage(): string {
+  return 'Agent stopped because this turn reached the time limit. Start a new message to continue.';
 }
 
 function compactLargeText(text: string, maxChars: number): string {

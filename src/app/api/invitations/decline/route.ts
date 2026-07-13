@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: error instanceof Error ? error.message : 'Invalid invitation token',
+          error: 'Invalid invitation token',
         },
         { status: 400 }
       );
@@ -121,7 +121,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'An unexpected error occurred',
+        error: 'An unexpected error occurred',
       },
       { status: 500 }
     );

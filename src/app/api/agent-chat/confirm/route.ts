@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/agent/route-auth';
+import { withAuth } from '@/lib/auth/route-auth';
 import { resumeAgentTurn } from '@/lib/agent/core';
 import { resolveUserRole, AgentAccessError } from '@/lib/agent/permissions';
 import { getConversation } from '@/lib/agent/conversation-store';
@@ -10,11 +10,11 @@ import type { ToolContext } from '@/lib/agent/types';
 
 export const maxDuration = 120;
 
-export async function POST(request: NextRequest) {
-  const authed = await authenticate(request);
-  if (authed instanceof NextResponse) return authed;
-  const { supabase, user } = authed;
-
+export const POST = withAuth(async function POST(
+  request: NextRequest,
+  _context,
+  { supabase, user }
+) {
   let body: {
     actionId?: string;
     decision?: 'approve' | 'reject';
@@ -78,10 +78,10 @@ export async function POST(request: NextRequest) {
     response.headers.set('X-Conversation-Id', conversation.id);
     return response;
   } catch (e) {
+    console.error('[POST /api/agent-chat/confirm] Resume failed:', e);
     if (e instanceof AgentAccessError) {
-      return NextResponse.json({ error: e.message }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    const err = e as { message?: string };
-    return NextResponse.json({ error: err.message || 'Resume failed' }, { status: 400 });
+    return NextResponse.json({ error: 'Resume failed' }, { status: 400 });
   }
-}
+});

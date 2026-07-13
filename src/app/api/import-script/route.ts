@@ -1,12 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { NextResponse } from 'next/server';
+import { withAuth } from '@/lib/auth/route-auth';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export const maxDuration = 300;
 
@@ -17,23 +13,11 @@ function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
-export async function POST(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const supabase = authHeader
-    ? createClient(supabaseUrl, supabaseAnonKey, {
-        global: { headers: { Authorization: authHeader } },
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : createSupabaseServerClient(request);
-
-  const { data: { user }, error: authError } = authHeader
-    ? await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
-    : await supabase.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Please sign in to continue' }, { status: 401 });
-  }
-
+export const POST = withAuth(async function POST(
+  request,
+  _context,
+  { supabase, user }
+) {
   let formData: FormData;
   try {
     formData = await request.formData();
@@ -148,7 +132,7 @@ export async function POST(request: NextRequest) {
       'Cache-Control': 'no-cache, no-transform',
     },
   });
-}
+});
 
 function safeErrorMessage(error: unknown): string {
   const message = error instanceof Error

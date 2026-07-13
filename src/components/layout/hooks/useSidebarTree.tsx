@@ -221,10 +221,6 @@ export function useSidebarTree(
     return result;
   }, [
     currentIds.projectId,
-    currentIds.libraryId,
-    currentIds.isLibraryPage,
-    currentIds.assetId,
-    currentIds.isPredefinePage,
     folders,
     libraries,
     handleContextMenu,
@@ -235,7 +231,6 @@ export function useSidebarTree(
     setError,
     setEditingKey,
     sidebarWidth,
-    userRole,
   ]);
 
   const selectedKeys = useMemo(() => {

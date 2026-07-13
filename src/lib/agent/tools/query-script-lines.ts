@@ -51,7 +51,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
   const library = libraryFromLookupResult(libraryResult);
 
-  const properties = await getLibraryProperties(ctx.supabase, library.id);
+  const properties = await getLibraryProperties(ctx.supabase, library.id, ctx);
 
   // Map core and dynamic script column labels to field ids.
   const fieldIdByColumn = new Map<string, string>();
@@ -76,7 +76,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     return v == null ? '' : String(v);
   };
 
-  const assets = await getLibraryAssets(ctx.supabase, library.id);
+  const assets = await getLibraryAssets(ctx.supabase, library.id, ctx);
 
   const lines = assets.map((asset) => {
     const values = asset.propertyValues ?? {};

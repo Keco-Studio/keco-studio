@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/agent/route-auth';
+import { withAuth } from '@/lib/auth/route-auth';
 import { resolveUserRole } from '@/lib/agent/permissions';
 import {
   reindexProjectConversations,
@@ -14,11 +14,11 @@ const isUuid = (v: string) =>
 /**
  * Admin-only endpoint to backfill embedding chunks for a project.
  */
-export async function POST(request: NextRequest) {
-  const authed = await authenticate(request);
-  if (authed instanceof NextResponse) return authed;
-  const { supabase, user } = authed;
-
+export const POST = withAuth(async function POST(
+  request: NextRequest,
+  _context,
+  { supabase, user }
+) {
   let body: { projectId?: string };
   try {
     body = await request.json();
@@ -48,4 +48,4 @@ export async function POST(request: NextRequest) {
     const message = e instanceof Error ? e.message : 'Reindex failed.';
     return NextResponse.json({ error: message }, { status: 500 });
   }
-}
+});

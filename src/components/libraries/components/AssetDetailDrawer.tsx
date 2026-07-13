@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import Image from 'next/image';
 import { App, Input, Select, Switch, Tooltip } from 'antd';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
@@ -8,7 +8,7 @@ import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { MediaFileUpload } from '@/components/media/MediaFileUpload';
 import { ReferenceField } from './ReferenceField';
 import { getFieldTypeIcon } from '@/app/(dashboard)/[projectId]/[libraryId]/predefine/utils';
-import { evaluateFormulaForRow, getCustomFormulaExpressionFromCellValue } from '@/components/libraries/utils/formulaEvaluation';
+import { createPropertyByName, evaluateFormulaForRow, getCustomFormulaExpressionFromCellValue } from '@/components/libraries/utils/formulaEvaluation';
 import formulaIcon from '@/assets/images/formula.svg';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
 import { normalizeReferenceSelections, normalizeReferenceValueToAssetIds } from '@/lib/utils/referenceValue';
@@ -132,6 +132,10 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
   const isViewer = userRole === 'viewer';
   const readOnly = isViewer;
   const { message } = App.useApp();
+  const propertyByName = useMemo(
+    () => createPropertyByName(orderedProperties),
+    [orderedProperties],
+  );
 
   const [localTextValues, setLocalTextValues] = useState<Record<string, string>>({});
   useEffect(() => {
@@ -419,7 +423,9 @@ export const AssetDetailDrawer: React.FC<AssetDetailDrawerProps> = ({
               const formulaResult = evaluateFormulaForRow(
                 effectiveFormulaExpression,
                 row,
-                orderedProperties
+                orderedProperties,
+                new Set(),
+                propertyByName,
               );
 
               if (typeof formulaResult === 'boolean') {

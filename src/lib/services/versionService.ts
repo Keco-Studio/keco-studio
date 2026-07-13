@@ -9,8 +9,6 @@
  * - Delete versions
  */
 
-'use client';
-
 import { SupabaseClient } from '@supabase/supabase-js';
 import { verifyLibraryAccess } from './authorizationService';
 import { getCurrentUserId } from './authorizationService';
@@ -99,6 +97,9 @@ function dbVersionToAppVersion(dbVersion: LibraryVersionDb, createdByProfile?: a
   };
 }
 
+const VERSION_LIST_COLUMNS =
+  'id, library_id, version_name, version_type, parent_version_id, created_by, created_at, restore_from_version_id, restored_by, restored_at, is_current, metadata' as const;
+
 /**
  * Create a complete snapshot of a library
  * Includes all assets, field definitions, and configuration.
@@ -109,18 +110,18 @@ async function createLibrarySnapshot(
   libraryId: string,
   currentAssetsFromClient?: AssetRow[]
 ): Promise<any> {
-  const library = await getLibrary(supabase, libraryId);
+  const [library, schema, assets] = await Promise.all([
+    getLibrary(supabase, libraryId),
+    getLibrarySchema(supabase, libraryId),
+    currentAssetsFromClient?.length
+      ? Promise.resolve(currentAssetsFromClient)
+      : getLibraryAssetsWithProperties(supabase, libraryId),
+  ]);
   if (!library) {
     throw new Error('Library not found');
   }
 
-  const schema = await getLibrarySchema(supabase, libraryId);
-
-  const assets: AssetRow[] = currentAssetsFromClient?.length
-    ? currentAssetsFromClient
-    : await getLibraryAssetsWithProperties(supabase, libraryId);
-
-  const snapshotAssets = assets.map((asset) => ({
+  const snapshotAssets = (assets as AssetRow[]).map((asset) => ({
     ...asset,
     createdAt: asset.created_at || new Date().toISOString(),
     rowIndex: asset.rowIndex ?? null,
@@ -161,111 +162,32 @@ async function restoreLibraryFromSnapshot(
   }
 
   const useNewAssetIds = options?.useNewAssetIds ?? false;
-
-  // Step 1: Delete all existing assets and their values
-  // First, get all asset IDs for this library
-  const { data: existingAssets, error: assetsError } = await supabase
-    .from('library_assets')
-    .select('id')
-    .eq('library_id', libraryId);
-
-  if (assetsError) {
-    throw new Error(`Failed to fetch existing assets: ${assetsError.message}`);
-  }
-
-  if (existingAssets && existingAssets.length > 0) {
-    const assetIds = existingAssets.map(a => a.id);
-
-    // Delete asset values first (due to foreign key constraints)
-    const { error: valuesError } = await supabase
-      .from('library_asset_values')
-      .delete()
-      .in('asset_id', assetIds);
-
-    if (valuesError) {
-      throw new Error(`Failed to delete asset values: ${valuesError.message}`);
-    }
-
-    // Delete assets
-    const { error: deleteError } = await supabase
-      .from('library_assets')
-      .delete()
-      .eq('library_id', libraryId);
-
-    if (deleteError) {
-      throw new Error(`Failed to delete existing assets: ${deleteError.message}`);
-    }
-  }
-
-  // Step 2: Restore assets from snapshot
   const snapshotAssets: any[] = snapshotData.assets;
-  if (snapshotAssets.length === 0) {
-    return; // No assets to restore
-  }
+  let snapshotForRestore = snapshotData;
 
-  // When duplicating to a new library, snapshot asset IDs already exist in library_assets (original library).
-  // We must use new UUIDs to avoid duplicate key violation on library_assets_pkey.
-  const oldToNewAssetId = new Map<string, string>();
+  // Duplicating a version must replace source asset ids before the transactional restore.
   if (useNewAssetIds) {
+    const oldToNewAssetId = new Map<string, string>();
     snapshotAssets.forEach((asset: any) => {
       if (asset.id) oldToNewAssetId.set(asset.id, crypto.randomUUID());
     });
-  }
 
-  const assetsToInsert = snapshotAssets.map((asset: any) => {
-    const id = useNewAssetIds ? (oldToNewAssetId.get(asset.id) ?? crypto.randomUUID()) : asset.id;
-    return {
-      id,
-      library_id: libraryId,
-      name: asset.name,
-      created_at: asset.createdAt || new Date().toISOString(),
-      row_index: asset.rowIndex ?? null,
+    snapshotForRestore = {
+      ...snapshotData,
+      assets: snapshotAssets.map((asset: any) => ({
+        ...asset,
+        id: oldToNewAssetId.get(asset.id) ?? crypto.randomUUID(),
+      })),
     };
-  });
-
-  const { error: insertError } = await supabase
-    .from('library_assets')
-    .insert(assetsToInsert);
-
-  if (insertError) {
-    throw new Error(`Failed to insert restored assets: ${insertError.message}`);
   }
 
-  // Step 3: Restore asset values (use new asset_id when useNewAssetIds)
-  const valuesToInsert: Array<{ asset_id: string; field_id: string; value_json: any }> = [];
-  
-  snapshotAssets.forEach(originalAsset => {
-    const assetId = useNewAssetIds
-      ? (originalAsset.id ? oldToNewAssetId.get(originalAsset.id) : undefined)
-      : originalAsset.id;
-    if (!assetId || !originalAsset.propertyValues) {
-      return;
-    }
-
-    Object.entries(originalAsset.propertyValues).forEach(([fieldId, value]) => {
-      if (value !== null && value !== undefined && value !== '') {
-        valuesToInsert.push({
-          asset_id: assetId,
-          field_id: fieldId,
-          value_json: value,
-        });
-      }
-    });
+  const { error } = await supabase.rpc('restore_library_from_snapshot', {
+    p_library_id: libraryId,
+    p_snapshot_data: snapshotForRestore,
   });
 
-  // Insert values in batches to avoid query size limits
-  if (valuesToInsert.length > 0) {
-    const batchSize = 100;
-    for (let i = 0; i < valuesToInsert.length; i += batchSize) {
-      const batch = valuesToInsert.slice(i, i + batchSize);
-      const { error: valuesInsertError } = await supabase
-        .from('library_asset_values')
-        .insert(batch);
-
-      if (valuesInsertError) {
-        throw new Error(`Failed to insert asset values: ${valuesInsertError.message}`);
-      }
-    }
+  if (error) {
+    throw new Error(`Failed to restore snapshot data: ${error.message}`);
   }
 }
 
@@ -300,7 +222,7 @@ export async function getVersionsByLibrary(
   // Fetch versions
   const { data: versions, error } = await supabase
     .from('library_versions')
-    .select('*')
+    .select(VERSION_LIST_COLUMNS)
     .eq('library_id', libraryId)
     .order('created_at', { ascending: false });
 

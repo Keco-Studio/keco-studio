@@ -14,13 +14,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
 import Image from 'next/image';
-import { useSupabase } from '@/lib/SupabaseContext';
 import { useUpdateCollaboratorRole, useRemoveCollaborator } from '@/lib/hooks/useCacheMutations';
-import { queryKeys } from '@/lib/utils/queryKeys';
 import { showSuccessToast } from '@/lib/utils/toast';
 import type { Collaborator } from '@/lib/types/collaboration';
+import { useCollaboratorChangeBroadcast } from '@/lib/hooks/useProjectCollaboratorsRealtime';
 import styles from './CollaboratorsList.module.css';
 import collaborationDeleteIcon from '@/assets/images/collaborationDeleteIcon.svg';
 
@@ -36,45 +34,17 @@ interface CollaboratorsListProps {
 
 export default function CollaboratorsList({
   projectId,
-  collaborators: initialCollaborators,
+  collaborators,
   currentUserId,
   currentUserRole,
   onUpdate,
   onSelfRemoved,
   highlightUserId = null,
 }: CollaboratorsListProps) {
-  const supabase = useSupabase();
-  const queryClient = useQueryClient();
-  
   // Cache mutation hooks
   const updateRole = useUpdateCollaboratorRole();
   const removeCollaborator = useRemoveCollaborator();
-  
-  // Track if we're performing a local mutation to avoid unnecessary refetches
-  const isLocalMutation = useRef(false);
-  
-  // Ref for collaborators list used in subscription handler (avoids re-subscribing on every list change)
-  const collaboratorsRef = useRef<Collaborator[]>(initialCollaborators);
-  
-  // Ref for the broadcast channel to send messages after mutations
-  const channelRef = useRef<any>(null);
-  
-  // Use React Query to read from cache
-  // The cache will be updated by our mutation hooks
-  const { data: cachedCollaborators } = useQuery<Collaborator[]>({
-    queryKey: queryKeys.projectCollaborators(projectId),
-    queryFn: async () => initialCollaborators,
-    initialData: initialCollaborators,
-    staleTime: Infinity, // Don't automatically refetch, rely on parent for initial data
-  });
-  
-  // Use cached data if available, otherwise fall back to prop
-  const collaborators = cachedCollaborators || initialCollaborators;
-  
-  // Keep collaboratorsRef in sync (used by subscription handler without re-subscribing)
-  useEffect(() => {
-    collaboratorsRef.current = collaborators;
-  }, [collaborators]);
+  const broadcastCollaboratorChange = useCollaboratorChangeBroadcast();
   
   // State management
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
@@ -118,133 +88,6 @@ export default function CollaboratorsList({
     }
   }, [openDropdownId]);
   
-  // Real-time subscription for database changes (from other users)
-  // Uses separate event listeners:
-  // - INSERT/UPDATE: with project_id filter (works reliably)
-  // - DELETE: without filter (Supabase DELETE events don't include non-PK columns by default)
-  // - Broadcast: custom channel as reliable backup for all mutation types
-  useEffect(() => {
-    if (!projectId) return;
-    
-    const handleInsertOrUpdate = (payload: any) => {
-      console.log('[CollaboratorsList] 📥 INSERT/UPDATE event received:', payload);
-      console.log('[CollaboratorsList] isLocalMutation.current:', isLocalMutation.current);
-      
-      // Skip if this is our own mutation (already updated via optimistic update)
-      if (isLocalMutation.current) {
-        console.log('[CollaboratorsList] ⏭️ Skipping - local mutation');
-        isLocalMutation.current = false;
-        return;
-      }
-      
-      // For changes from other users, call onUpdate to refresh data
-      console.log('[CollaboratorsList] 🔄 Calling onUpdate to refresh data');
-      if (onUpdate) {
-        onUpdate();
-      }
-    };
-    
-    const handleDelete = (payload: any) => {
-      console.log('[CollaboratorsList] 🗑️ DELETE event received:', payload);
-      console.log('[CollaboratorsList] isLocalMutation.current:', isLocalMutation.current);
-      
-      // Skip if this is our own mutation
-      if (isLocalMutation.current) {
-        console.log('[CollaboratorsList] ⏭️ Skipping - local mutation');
-        isLocalMutation.current = false;
-        return;
-      }
-      
-      // For DELETE events without filter, old record only contains id (primary key).
-      // Check if the deleted record belongs to our collaborators list.
-      const deletedId = (payload.old as any)?.id;
-      console.log('[CollaboratorsList] Deleted ID:', deletedId);
-      if (deletedId) {
-        const isOurCollaborator = collaboratorsRef.current.some(c => c.id === deletedId);
-        console.log('[CollaboratorsList] Is our collaborator?', isOurCollaborator);
-        if (isOurCollaborator) {
-          // Check if the deleted collaborator is the current user
-          const deletedCollab = collaboratorsRef.current.find(c => c.id === deletedId);
-          if (deletedCollab && deletedCollab.userId === currentUserId && onSelfRemoved) {
-            console.log('[CollaboratorsList] 🚨 Current user was removed, calling onSelfRemoved');
-            onSelfRemoved();
-            return;
-          }
-          console.log('[CollaboratorsList] 🔄 Calling onUpdate to refresh data');
-          if (onUpdate) {
-            onUpdate();
-          }
-        }
-      }
-    };
-    
-    const handleBroadcast = (payload: any) => {
-      console.log('[CollaboratorsList] 📡 BROADCAST event received:', payload);
-      // Broadcast messages are NOT delivered to the sender (Supabase default),
-      // so no need to check isLocalMutation here.
-      const data = payload.payload;
-      
-      // If current user was removed, trigger redirect
-      if (data?.type === 'delete' && data?.removedUserId === currentUserId) {
-        console.log('[CollaboratorsList] 🚨 Current user was removed (broadcast), calling onSelfRemoved');
-        if (onSelfRemoved) {
-          onSelfRemoved();
-          return;
-        }
-      }
-      
-      console.log('[CollaboratorsList] 🔄 Calling onUpdate to refresh data (broadcast)');
-      if (onUpdate) {
-        onUpdate();
-      }
-    };
-    
-    console.log('[CollaboratorsList] 🔌 Setting up subscription for project:', projectId);
-    
-    const channel = supabase
-      .channel(`collaborators-list:project:${projectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'project_collaborators',
-          filter: `project_id=eq.${projectId}`,
-        },
-        handleInsertOrUpdate
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'project_collaborators',
-          filter: `project_id=eq.${projectId}`,
-        },
-        handleInsertOrUpdate
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'project_collaborators',
-        },
-        handleDelete
-      )
-      .on('broadcast', { event: 'collaborator-change' }, handleBroadcast)
-      .subscribe((status) => {
-        console.log('[CollaboratorsList] Subscription status:', status);
-      });
-    
-    channelRef.current = channel;
-    
-    return () => {
-      channel.unsubscribe();
-      channelRef.current = null;
-    };
-  }, [projectId, supabase, onUpdate, onSelfRemoved, currentUserId]);
-  
   // Handle role change
   const handleRoleChange = (collaboratorId: string, newRole: 'admin' | 'editor' | 'viewer', currentRole: string) => {
     if (!canManage) return;
@@ -257,9 +100,6 @@ export default function CollaboratorsList({
     // Clear any previous errors
     setError(null);
     
-    // Mark as local mutation to skip real-time subscription update
-    isLocalMutation.current = true;
-    
     // Use cache mutation hook for optimistic update
     updateRole.mutate(
       { collaboratorId, projectId, newRole },
@@ -267,17 +107,17 @@ export default function CollaboratorsList({
         onSuccess: () => {
           // Broadcast to other users so they refresh (including the affected user)
           // Include affectedUserId so ProjectLayout can detect if current user's role changed
-          channelRef.current?.send({
-            type: 'broadcast',
-            event: 'collaborator-change',
-            payload: { type: 'role-change', collaboratorId, newRole, affectedUserId }
+          void broadcastCollaboratorChange({
+            type: 'role-change',
+            collaboratorId,
+            newRole,
+            affectedUserId,
           });
+          onUpdate?.();
         },
         onError: (err: any) => {
           // Display error to user
           setError(err.message || 'Failed to update role');
-          // Reset flag on error
-          isLocalMutation.current = false;
         }
       }
     );
@@ -300,9 +140,6 @@ export default function CollaboratorsList({
     setError(null);
     setConfirmingDelete(null);
     
-    // Mark as local mutation to skip real-time subscription update
-    isLocalMutation.current = true;
-    
     // Use cache mutation hook for optimistic update
     removeCollaborator.mutate(
       { collaboratorId, projectId },
@@ -310,8 +147,6 @@ export default function CollaboratorsList({
         onError: (err: any) => {
           // Display error to user
           setError(err.message || 'Failed to remove collaborator');
-          // Reset flag on error
-          isLocalMutation.current = false;
         },
         onSuccess: () => {
           const name = (userName && userName.trim()) ? userName : 'Collaborator';
@@ -319,15 +154,9 @@ export default function CollaboratorsList({
           
           // Broadcast to other users so they refresh
           // Include removedUserId so the removed user can detect self-removal and redirect
-          console.log('[CollaboratorsList] Broadcasting delete event for user:', removedUserId);
-          const broadcastPayload = { type: 'delete', collaboratorId, removedUserId };
-          console.log('[CollaboratorsList] Broadcast payload:', broadcastPayload);
-          
-          channelRef.current?.send({
-            type: 'broadcast',
-            event: 'collaborator-change',
-            payload: broadcastPayload
-          });
+          const broadcastPayload = { type: 'delete' as const, collaboratorId, removedUserId };
+          void broadcastCollaboratorChange(broadcastPayload);
+          onUpdate?.();
         },
       }
     );
@@ -379,7 +208,7 @@ export default function CollaboratorsList({
     <div className={styles.container}>
       {/* Error banner */}
       {error && (
-        <div className={styles.errorBanner}>
+        <div className={styles.errorBanner} data-testid="collaborators-error">
           {error}
           <button 
             className={styles.errorClose}
@@ -417,6 +246,9 @@ export default function CollaboratorsList({
             <div 
               key={collab.id}
               className={`${styles.item} ${isLoading ? styles.itemLoading : ''} ${shouldHighlight ? styles.itemHighlight : ''}`}
+              data-testid="collaborator-row"
+              data-collaborator-id={collab.id}
+              data-user-id={collab.userId}
             >
               {/* Member Name Column */}
               <div className={styles.itemName}>
@@ -456,6 +288,7 @@ export default function CollaboratorsList({
                       className={styles.customSelectButton}
                       onClick={() => setOpenDropdownId(openDropdownId === collab.id ? null : collab.id)}
                       disabled={isLoading}
+                      data-testid="collaborator-role-button"
                     >
                       {collab.role.charAt(0).toUpperCase() + collab.role.slice(1)}
                       <svg width="14" height="8" viewBox="0 0 14 8" fill="none" xmlns="http://www.w3.org/2000/svg" className={styles.selectArrow}>
@@ -473,6 +306,7 @@ export default function CollaboratorsList({
                               handleRoleChange(collab.id, role, collab.role);
                               setOpenDropdownId(null);
                             }}
+                            data-testid={`collaborator-role-option-${role}`}
                           >
                             {role.charAt(0).toUpperCase() + role.slice(1)}
                           </button>
@@ -497,6 +331,7 @@ export default function CollaboratorsList({
                       disabled={isLoading}
                       title="Remove collaborator"
                       aria-label={`Remove ${displayName}`}
+                      data-testid="collaborator-remove-button"
                     >
                       <Image src={collaborationDeleteIcon}
                         alt="Delete"
@@ -562,4 +397,3 @@ export default function CollaboratorsList({
     </div>
   );
 }
-

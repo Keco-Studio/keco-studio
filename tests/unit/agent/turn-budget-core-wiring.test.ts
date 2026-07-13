@@ -16,6 +16,14 @@ describe('agent turn budget core wiring', () => {
     expect(coreSource).toContain('addTokenUsageTotal');
   });
 
+  it('checks a fresh wall-clock deadline for new and resumed turns', () => {
+    expect(coreSource).toContain('createTurnDeadline');
+    expect(coreSource).toContain('isTurnDeadlineExceeded');
+    expect(coreSource).toContain('timeLimitExceededMessage');
+    expect(coreSource.match(/createTurnDeadline\(\)/g)).toHaveLength(2);
+    expect(coreSource).toMatch(/continueLoop\([\s\S]*deadlineMs/);
+  });
+
   it('persists and resumes the next iteration counter across confirmations', () => {
     expect(coreSource).toContain('nextIteration: iterations');
     expect(coreSource).toMatch(/pending\.suspendedState\.nextIteration\s*\?\?/);

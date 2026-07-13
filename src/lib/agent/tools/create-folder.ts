@@ -21,7 +21,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   const { name, description } = parsed.data;
 
   try {
-    const existing = await listProjectFolders(ctx.supabase, ctx.projectId);
+    const existing = await listProjectFolders(ctx.supabase, ctx.projectId, ctx);
     if (existing.some((folder) => norm(folder.name) === norm(name))) {
       return { success: false, error: `Folder "${name.trim()}" already exists in this project.` };
     }

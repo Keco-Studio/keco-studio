@@ -83,7 +83,9 @@ describe('GET /api/projects/[projectId]/libraries', () => {
     createClientMock.mockReturnValue(createLibrariesClient(null));
 
     const response = await GET(
-      new Request(`https://example.test/api/projects/${projectId}/libraries`),
+      new Request(`https://example.test/api/projects/${projectId}/libraries`, {
+        headers: { authorization: 'Bearer token' },
+      }),
       { params: Promise.resolve({ projectId }) }
     );
 
@@ -97,11 +99,13 @@ describe('GET /api/projects/[projectId]/libraries', () => {
     verifyProjectOwnershipMock.mockResolvedValue(undefined);
 
     const response = await GET(
-      new Request(`https://example.test/api/projects/${projectId}/libraries`),
+      new Request(`https://example.test/api/projects/${projectId}/libraries`, {
+        headers: { authorization: 'Bearer token' },
+      }),
       { params: Promise.resolve({ projectId }) }
     );
 
-    expect(verifyProjectOwnershipMock).toHaveBeenCalledWith(client, projectId);
+    expect(verifyProjectOwnershipMock).toHaveBeenCalledWith(client, projectId, 'user-1');
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual([
       {

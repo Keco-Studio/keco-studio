@@ -34,6 +34,7 @@ export function DocumentDropZone({
   return (
     <div
       className={`${styles.zone} ${dragOver ? styles.dragOver : ''} ${disabled ? styles.disabled : ''}`}
+      data-testid="design-upload-drop-zone"
       onClick={openPicker}
       onDragOver={(e) => {
         e.preventDefault();
@@ -51,6 +52,7 @@ export function DocumentDropZone({
       <input
         ref={inputRef}
         type="file"
+        data-testid="design-upload-file-input"
         accept={ACCEPT}
         className={styles.input}
         disabled={disabled}
@@ -61,11 +63,12 @@ export function DocumentDropZone({
       />
 
       {selectedFile ? (
-        <div className={styles.selected}>
+        <div className={styles.selected} data-testid="design-upload-selected-file">
           <span className={styles.fileName}>{selectedFile.name}</span>
           <button
             type="button"
             className={styles.clearButton}
+            data-testid="design-upload-clear-file"
             onClick={(e) => {
               e.stopPropagation();
               onClear();

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { verifyProjectOwnership, verifyFolderCreationPermission } from '@/lib/services/authorizationService';
+import { withAuth } from '@/lib/auth/route-auth';
 
 type Params = { params: Promise<{ projectId: string }> };
 
@@ -28,22 +28,17 @@ async function resolveProjectId(supabase: SupabaseClient, projectIdOrName: strin
   return data.id;
 }
 
-export async function GET(_req: Request, { params }: Params) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const GET = withAuth(async function GET(
+  _req,
+  { params }: Params,
+  { supabase, user }
+) {
   const { projectId: projectIdParam } = await params;
   let projectId: string;
   try {
     projectId = await resolveProjectId(supabase, projectIdParam);
     // verify project ownership
-    await verifyProjectOwnership(supabase, projectId);
+    await verifyProjectOwnership(supabase, projectId, user.id);
   } catch (e: unknown) {
     if (errorName(e) === 'AuthorizationError') {
       return NextResponse.json({ error: errorMessage(e, 'Unauthorized') }, { status: 403 });
@@ -58,22 +53,21 @@ export async function GET(_req: Request, { params }: Params) {
     .order('created_at', { ascending: true });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    console.error('[GET /api/projects/:projectId/folders] Failed to load folders:', error);
+    return NextResponse.json({ error: 'Failed to load folders' }, { status: 400 });
   }
 
   return NextResponse.json(data ?? []);
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});
 
-export async function POST(request: Request, { params }: Params) {
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const POST = withAuth(async function POST(
+  request,
+  { params }: Params,
+  { supabase, user }
+) {
   const body = await request.json().catch(() => null);
   const name: string = body?.name ?? '';
   const description: string | null = body?.description ?? null;
@@ -88,7 +82,7 @@ export async function POST(request: Request, { params }: Params) {
   try {
     projectId = await resolveProjectId(supabase, projectIdParam);
     // Verify user has admin permission to create folder
-    await verifyFolderCreationPermission(supabase, projectId);
+    await verifyFolderCreationPermission(supabase, projectId, user.id);
   } catch (e: unknown) {
     if (errorName(e) === 'AuthorizationError') {
       return NextResponse.json({ error: errorMessage(e, 'Unauthorized') }, { status: 403 });
@@ -110,7 +104,8 @@ export async function POST(request: Request, { params }: Params) {
     if (error.code === '23505') {
       return NextResponse.json({ error: 'A folder with this name already exists in the project' }, { status: 400 });
     }
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    console.error('[POST /api/projects/:projectId/folders] Failed to create folder:', error);
+    return NextResponse.json({ error: 'Failed to create folder' }, { status: 400 });
   }
 
   return NextResponse.json(
@@ -122,4 +117,7 @@ export async function POST(request: Request, { params }: Params) {
     },
     { status: 201 }
   );
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});

@@ -8,7 +8,7 @@ export type ClipboardMatrix = Array<Array<string | number | null>>;
 
 /** Pure function: apply one paste to current row snapshot; returns rows to update and rows to create */
 export type ApplyPasteResult = {
-  /** Updates to existing rows, sorted by rowIndex ascending for writing back to Yjs in order */
+  /** Updates to existing rows, sorted by rowIndex ascending for writing back to row store in order */
   updates: Array<{ rowIndex: number; row: AssetRow }>;
   /** New rows to append (no id), order is append order */
   creates: Array<{ name: string; propertyValues: Record<string, any> }>;
@@ -134,7 +134,7 @@ function convertCellValue(
  * Apply one paste to the current row snapshot (pure function, unit-testable).
  * Uses anchor as top-left; pastes matrix onto rows by row/column; missing rows are treated as new rows.
  *
- * @param rows Current row list snapshot (typically from yRows.toArray())
+ * @param rows Current row list snapshot (typically from rowStore.toArray())
  * @param properties Column definitions (order matches table)
  * @param anchor Paste start { rowIndex, colIndex }
  * @param matrix Clipboard 2D array

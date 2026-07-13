@@ -29,7 +29,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   const library = libraryFromLookupResult(libraryResult);
 
   try {
-    const existing = await listProjectLibraries(ctx.supabase, ctx.projectId);
+    const existing = await listProjectLibraries(ctx.supabase, ctx.projectId, ctx);
     const conflict = existing.some(
       (lib) => lib.id !== library.id && norm(lib.name) === norm(newName)
     );

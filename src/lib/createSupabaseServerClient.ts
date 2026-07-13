@@ -4,6 +4,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
+import { createServerClient, parseCookieHeader } from '@supabase/ssr';
 import type { SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -15,25 +16,37 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
  * @returns Supabase client instance
  */
 export function createSupabaseServerClient(request: Request): SupabaseClient {
-  // Extract the authorization header from the request
   const authHeader = request.headers.get('authorization');
   
   // Do not log token material: report only presence, never any part of the JWT.
   console.log('[createSupabaseServerClient] Auth header:', authHeader ? 'present' : 'MISSING');
   
-  // Create a client with the auth token if present
-  const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    global: {
-      headers: authHeader ? {
-        Authorization: authHeader, // Capital 'A' is important!
-      } : {},
-    },
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
+  if (authHeader) {
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      global: {
+        headers: {
+          Authorization: authHeader,
+        },
+      },
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    });
+  }
+
+  const requestCookies = parseCookieHeader(request.headers.get('cookie') ?? '')
+    .filter((cookie): cookie is { name: string; value: string } => cookie.value !== undefined);
+
+  return createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return requestCookies;
+      },
+      setAll() {
+        // Route handlers cannot mutate their request. The browser client owns
+        // cookie persistence and refreshes the session for subsequent calls.
+      },
     },
   });
-
-  return supabase;
 }
-

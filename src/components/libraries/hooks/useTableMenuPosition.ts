@@ -1,5 +1,6 @@
 import { useRef, useCallback, useEffect } from 'react';
-import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import type { PropertyConfig } from '@/lib/types/libraryAssets';
+import type { TableIndexes } from '../utils/tableIndexes';
 
 export type SelectionBounds = {
   minRowIndex: number;
@@ -31,7 +32,7 @@ export type UseTableMenuPositionParams = {
   cutCells: Set<string>;
   copyCells: Set<string>;
   orderedProperties: PropertyConfig[];
-  getAllRowsForCellSelection: () => AssetRow[];
+  tableIndexes: TableIndexes;
   borderClassNames: BorderClassNames;
 };
 
@@ -46,7 +47,7 @@ export function useTableMenuPosition(params: UseTableMenuPositionParams) {
     cutCells,
     copyCells,
     orderedProperties,
-    getAllRowsForCellSelection,
+    tableIndexes,
     borderClassNames,
   } = params;
 
@@ -99,8 +100,7 @@ export function useTableMenuPosition(params: UseTableMenuPositionParams) {
     (rowId: string, propertyIndex: number): string => {
       const prop = orderedProperties[propertyIndex];
       if (!prop || !cutSelectionBounds || !cutCells.has(`${rowId}-${prop.key}`)) return '';
-      const allRows = getAllRowsForCellSelection();
-      const rowIndex = allRows.findIndex((r) => r.id === rowId);
+      const rowIndex = tableIndexes.rowIndexById.get(rowId) ?? -1;
       if (rowIndex === -1) return '';
       const { minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex } = cutSelectionBounds;
       const classes: string[] = [];
@@ -114,7 +114,7 @@ export function useTableMenuPosition(params: UseTableMenuPositionParams) {
       cutSelectionBounds,
       cutCells,
       orderedProperties,
-      getAllRowsForCellSelection,
+      tableIndexes,
       borderClassNames.cutBorderTop,
       borderClassNames.cutBorderBottom,
       borderClassNames.cutBorderLeft,
@@ -126,8 +126,7 @@ export function useTableMenuPosition(params: UseTableMenuPositionParams) {
     (rowId: string, propertyIndex: number): string => {
       const prop = orderedProperties[propertyIndex];
       if (!prop || !copySelectionBounds || !copyCells.has(`${rowId}-${prop.key}`)) return '';
-      const allRows = getAllRowsForCellSelection();
-      const rowIndex = allRows.findIndex((r) => r.id === rowId);
+      const rowIndex = tableIndexes.rowIndexById.get(rowId) ?? -1;
       if (rowIndex === -1) return '';
       const { minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex } = copySelectionBounds;
       const classes: string[] = [];
@@ -141,7 +140,7 @@ export function useTableMenuPosition(params: UseTableMenuPositionParams) {
       copySelectionBounds,
       copyCells,
       orderedProperties,
-      getAllRowsForCellSelection,
+      tableIndexes,
       borderClassNames.copyBorderTop,
       borderClassNames.copyBorderBottom,
       borderClassNames.copyBorderLeft,

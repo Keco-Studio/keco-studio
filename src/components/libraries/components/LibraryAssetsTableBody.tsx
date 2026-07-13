@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
 import { Checkbox } from 'antd';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { getFirstUserColor } from '@/components/collaboration/StackedAvatars';
@@ -20,6 +21,8 @@ import assetTableIcon from '@/assets/images/AssetTableIcon.svg';
 import libraryAssetTableAddIcon from '@/assets/images/LibraryAssetTableAddIcon.svg';
 import tableAssetDetailIcon from '@/assets/images/ProjectDescIcon.svg';
 import styles from '../LibraryAssetsTable.module.css';
+import type { TableIndexes } from '../utils/tableIndexes';
+import type { TableCellScrollTarget } from '../hooks/useLibraryTableFindReplaceWiring';
 
 type EditingUser = {
   userId: string;
@@ -44,7 +47,7 @@ type SelectionBounds = {
 type LibraryAssetsTableBodyProps = {
   displayRows: AssetRow[];
   rows: AssetRow[];
-  allRowsForSelection: AssetRow[];
+  tableIndexes: TableIndexes;
   properties: PropertyConfig[];
   activeProperties: PropertyConfig[];
   orderedProperties: PropertyConfig[];
@@ -66,15 +69,16 @@ type LibraryAssetsTableBodyProps = {
   copySelectionBounds: SelectionBounds;
   fillDragStartCell: { rowId: string; propertyKey: string; secondRowId?: string } | null;
   fillPreviewMap: Map<string, number>;
+  searchHighlightedCellKeys: ReadonlySet<string>;
+  scrollTargetCell: TableCellScrollTarget | null;
   editingCell: { rowId: string; propertyKey: string } | null;
   editingCellRef: React.MutableRefObject<HTMLSpanElement | null>;
-  editingCellValue: string;
+  editingCellInitialValueRef: React.MutableRefObject<string>;
   isComposingRef: React.MutableRefObject<boolean>;
   typeValidationError: string | null;
   typeValidationErrorRef: React.MutableRefObject<HTMLDivElement | null>;
   setHoveredRowId: React.Dispatch<React.SetStateAction<string | null>>;
   setHoveredCellForExpand: React.Dispatch<React.SetStateAction<{ rowId: string; propertyKey: string } | null>>;
-  setEditingCellValue: React.Dispatch<React.SetStateAction<string>>;
   setTypeValidationError: React.Dispatch<React.SetStateAction<string | null>>;
   setOpenEnumSelects: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
   setToastMessage: React.Dispatch<React.SetStateAction<{ message: string; type: 'success' | 'error' | 'default' } | null>>;
@@ -128,15 +132,25 @@ type LibraryAssetsTableBodyProps = {
   openFormulaEditor: (rowId: string, propertyKey: string) => void;
   handleInputChange: (key: string, value: unknown) => void;
   handleMediaFileChange: (key: string, value: MediaFileMetadata | null) => void;
-  handleSaveEditedCell: () => void;
+  handleSaveEditedCell: (submittedValue?: string) => void;
   handleCancelEditing: () => void;
   handleAddRowDirect: () => void;
 };
 
+function findVerticalScrollElement(element: HTMLElement): HTMLElement | null {
+  let parent = element.parentElement;
+  while (parent) {
+    const overflowY = window.getComputedStyle(parent).overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll') return parent;
+    parent = parent.parentElement;
+  }
+  return null;
+}
+
 export function LibraryAssetsTableBody({
   displayRows,
   rows,
-  allRowsForSelection,
+  tableIndexes,
   properties,
   activeProperties,
   orderedProperties,
@@ -158,15 +172,16 @@ export function LibraryAssetsTableBody({
   copySelectionBounds,
   fillDragStartCell,
   fillPreviewMap,
+  searchHighlightedCellKeys,
+  scrollTargetCell,
   editingCell,
   editingCellRef,
-  editingCellValue,
+  editingCellInitialValueRef,
   isComposingRef,
   typeValidationError,
   typeValidationErrorRef,
   setHoveredRowId,
   setHoveredCellForExpand,
-  setEditingCellValue,
   setTypeValidationError,
   setOpenEnumSelects,
   setToastMessage,
@@ -202,15 +217,88 @@ export function LibraryAssetsTableBody({
   handleCancelEditing,
   handleAddRowDirect,
 }: LibraryAssetsTableBodyProps) {
+  const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const bodyElementRef = useRef<HTMLTableSectionElement | null>(null);
+
+  const setBodyElement = useCallback((element: HTMLTableSectionElement | null) => {
+    bodyElementRef.current = element;
+    if (!element) return;
+    const nextScrollElement = findVerticalScrollElement(element);
+    if (!nextScrollElement) return;
+    const nextMargin =
+      element.getBoundingClientRect().top -
+      nextScrollElement.getBoundingClientRect().top +
+      nextScrollElement.scrollTop;
+    setScrollElement(nextScrollElement);
+    setScrollMargin(nextMargin);
+  }, []);
+
+  const rowVirtualizer = useVirtualizer<HTMLElement, HTMLTableRowElement>({
+    count: displayRows.length,
+    estimateSize: () => 32,
+    getScrollElement: () => scrollElement,
+    getItemKey: (index) => displayRows[index]?.id ?? index,
+    overscan: 10,
+    scrollMargin,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const scrollTargetIndex = useMemo(
+    () => scrollTargetCell
+      ? displayRows.findIndex((row) => row.id === scrollTargetCell.assetId)
+      : -1,
+    [displayRows, scrollTargetCell?.assetId]
+  );
+  const isScrollTargetMounted = virtualRows.some((row) => row.index === scrollTargetIndex);
+
+  useEffect(() => {
+    if (!scrollElement || scrollTargetIndex < 0) return;
+    rowVirtualizer.scrollToIndex(scrollTargetIndex, { align: 'center' });
+  }, [rowVirtualizer, scrollElement, scrollTargetCell?.requestId, scrollTargetIndex]);
+
+  useEffect(() => {
+    if (!scrollTargetCell || !isScrollTargetMounted) return;
+    const frame = window.requestAnimationFrame(() => {
+      const cell = bodyElementRef.current?.querySelector(
+        `tr[data-row-id="${scrollTargetCell.assetId}"] td[data-property-key="${scrollTargetCell.fieldId}"]`
+      ) as HTMLElement | null;
+      cell?.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [isScrollTargetMounted, scrollTargetCell]);
+
+  const firstVirtualRow = virtualRows[0];
+  const lastVirtualRow = virtualRows[virtualRows.length - 1];
+  const paddingTop = firstVirtualRow
+    ? Math.max(0, firstVirtualRow.start - scrollMargin)
+    : 0;
+  const paddingBottom = lastVirtualRow
+    ? Math.max(
+        0,
+        rowVirtualizer.getTotalSize() - (lastVirtualRow.end - scrollMargin)
+      )
+    : 0;
+  const spacerColSpan = activeProperties.length + 2;
+
   return (
-    <tbody className={styles.body}>
-      {displayRows.map((row, index) => {
+    <tbody ref={setBodyElement} className={styles.body}>
+      {paddingTop > 0 && (
+        <tr aria-hidden="true">
+          <td colSpan={spacerColSpan} style={{ height: paddingTop, padding: 0, border: 0 }} />
+        </tr>
+      )}
+      {virtualRows.map((virtualRow) => {
+        const index = virtualRow.index;
+        const row = displayRows[index];
+        if (!row) return null;
         const isRowHovered = hoveredRowId === row.id;
         const isRowSelected = selectedRowIds.has(row.id);
-        const actualRowIndex = allRowsForSelection.findIndex((candidate) => candidate.id === row.id);
+        const actualRowIndex = tableIndexes.rowIndexById.get(row.id) ?? -1;
 
         return (
           <tr
+            ref={rowVirtualizer.measureElement}
+            data-index={virtualRow.index}
             key={row.id}
             data-row-id={row.id}
             className={`${styles.row} ${isRowSelected ? styles.rowSelected : ''} ${hasCustomRowHeight(row.id) ? styles.rowCustomHeight : ''}`}
@@ -254,12 +342,13 @@ export function LibraryAssetsTableBody({
               />
             </td>
             {activeProperties.map((property) => {
-              const globalPropertyIndex = orderedProperties.findIndex((candidate) => candidate.id === property.id);
+              const globalPropertyIndex = tableIndexes.propertyIndexByKey.get(property.key) ?? -1;
               const propertyIndex = globalPropertyIndex >= 0 ? globalPropertyIndex : 0;
               const isNameField = property.name === 'name' && property.dataType === 'string';
               const isFirstColumn = activeProperties[0]?.id === property.id;
               const editingUsers = getUsersEditingCell(row.id, property.key);
               const borderColor = getFirstUserColor(editingUsers);
+              const isSearchHit = searchHighlightedCellKeys.has(`${row.id}:${property.key}`);
 
               if (property.dataType === 'reference' && property.referenceLibraries) {
                 const value = row.propertyValues[property.key];
@@ -330,7 +419,7 @@ export function LibraryAssetsTableBody({
                   <td
                     key={property.id}
                     data-property-key={property.key}
-                    className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellEditing : (selectedCells.size === 1 && isCellSelected ? styles.cellSelected : '')} ${selectedCells.size > 1 && isCellSelected && editingUsers.length === 0 ? styles.cellMultipleSelected : ''} ${cutCells.has(cellKey) ? styles.cellCut : ''} ${getCutBorderClasses(row.id, propertyIndex)} ${getSelectionBorderClasses(row.id, propertyIndex)}`}
+                    className={`${styles.cell} ${isSearchHit ? styles.searchCellHit : ''} ${editingUsers.length > 0 ? styles.cellEditing : (selectedCells.size === 1 && isCellSelected ? styles.cellSelected : '')} ${selectedCells.size > 1 && isCellSelected && editingUsers.length === 0 ? styles.cellMultipleSelected : ''} ${cutCells.has(cellKey) ? styles.cellCut : ''} ${getCutBorderClasses(row.id, propertyIndex)} ${getSelectionBorderClasses(row.id, propertyIndex)}`}
                     style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
                     onClick={(event) => {
                       onCellFocus(row.id, property.key);
@@ -433,6 +522,7 @@ export function LibraryAssetsTableBody({
                     cutSelectionBounds={cutSelectionBounds}
                     editingUsers={editingUsers}
                     borderColor={borderColor}
+                    isSearchHit={isSearchHit}
                     evaluateFormulaForRow={evaluateFormulaForRow}
                     getCustomFormulaExpressionFromCellValue={getCustomFormulaExpressionFromCellValue}
                     openFormulaEditor={openFormulaEditor}
@@ -489,6 +579,7 @@ export function LibraryAssetsTableBody({
                     copySelectionBounds={copySelectionBounds}
                     editingUsers={editingUsers}
                     borderColor={borderColor}
+                    isSearchHit={isSearchHit}
                     onChange={(mediaFile) => onEditMediaFileChange(row.id, property.key, mediaFile)}
                     onCellClick={onCellClick}
                     onCellContextMenu={onCellContextMenu}
@@ -529,6 +620,7 @@ export function LibraryAssetsTableBody({
                     cutSelectionBounds={cutSelectionBounds}
                     editingUsers={editingUsers}
                     borderColor={borderColor}
+                    isSearchHit={isSearchHit}
                     isFirstColumn={isFirstColumn}
                     onViewAssetDetail={onViewAssetDetail}
                     onChange={async (newValue) => {
@@ -592,6 +684,7 @@ export function LibraryAssetsTableBody({
                     cutSelectionBounds={cutSelectionBounds}
                     editingUsers={editingUsers}
                     borderColor={borderColor}
+                    isSearchHit={isSearchHit}
                     isFirstColumn={isFirstColumn}
                     onViewAssetDetail={onViewAssetDetail}
                     onChange={async (newValue) => {
@@ -691,7 +784,7 @@ export function LibraryAssetsTableBody({
                   fillPreviewValue={fillPreviewValue}
                   editingCell={editingCell}
                   editingCellRef={editingCellRef}
-                  editingCellValue={editingCellValue}
+                  editingCellInitialValueRef={editingCellInitialValueRef}
                   isComposingRef={isComposingRef}
                   typeValidationError={typeValidationError}
                   typeValidationErrorRef={typeValidationErrorRef}
@@ -702,6 +795,7 @@ export function LibraryAssetsTableBody({
                   cutSelectionBounds={cutSelectionBounds}
                   editingUsers={editingUsers}
                   borderColor={borderColor}
+                  isSearchHit={isSearchHit}
                   onViewAssetDetail={onViewAssetDetail}
                   onCellDoubleClick={onCellDoubleClick}
                   onCellClick={onCellClick}
@@ -709,7 +803,6 @@ export function LibraryAssetsTableBody({
                   onCellFillDragStart={onCellFillDragStart}
                   onCellDragStart={onCellDragStart}
                   onCellFocus={onCellFocus}
-                  setEditingCellValue={setEditingCellValue}
                   setTypeValidationError={setTypeValidationError}
                   setHoveredCellForExpand={setHoveredCellForExpand}
                   handleSaveEditedCell={handleSaveEditedCell}
@@ -725,6 +818,11 @@ export function LibraryAssetsTableBody({
           </tr>
         );
       })}
+      {paddingBottom > 0 && (
+        <tr aria-hidden="true">
+          <td colSpan={spacerColSpan} style={{ height: paddingBottom, padding: 0, border: 0 }} />
+        </tr>
+      )}
       {isAddingRow ? (
         <tr className={styles.editRow} ref={addRowFormRef}>
           <td className={styles.numberCell}>{rows.length + 1}</td>

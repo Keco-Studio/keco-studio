@@ -8,6 +8,7 @@ import {
   persistLibraryClipboard,
   readLibraryClipboard,
 } from './libraryClipboardStorage';
+import type { TableIndexes } from '../utils/tableIndexes';
 
 type CellKey = `${string}-${string}`; // Format: "rowId-propertyKey"
 
@@ -26,13 +27,14 @@ export function useClipboardOperations({
   dataManager,
   orderedProperties,
   getAllRowsForCellSelection,
+  tableIndexes,
   selectedCells,
   selectedRowIds,
   onSaveAsset,
   onUpdateAsset,
   onUpdateAssets,
   library,
-  yRows,
+  rowStore,
   setSelectedCells,
   setSelectedRowIds,
   setCutCells,
@@ -57,13 +59,14 @@ export function useClipboardOperations({
   dataManager: DataManager;
   orderedProperties: PropertyConfig[];
   getAllRowsForCellSelection: () => AssetRow[];
+  tableIndexes: TableIndexes;
   selectedCells: Set<CellKey>;
   selectedRowIds: Set<string>;
   onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   library: { id: string; name: string; description?: string | null } | null;
-  yRows: any; // Yjs array type
+  rowStore: any; // row store array type
   setSelectedCells: React.Dispatch<React.SetStateAction<Set<CellKey>>>;
   setSelectedRowIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   setCutCells: React.Dispatch<React.SetStateAction<Set<CellKey>>>;
@@ -120,24 +123,12 @@ export function useClipboardOperations({
    * Handles UUIDs that may contain multiple dashes
    */
   const parseCellKey = useCallback((cellKey: string): { rowId: string; propertyKey: string; property: PropertyConfig | null } => {
-    let rowId = '';
-    let propertyKey = '';
-    let foundProperty = null;
-    
-    // Try each property.key to find a match (starting from the end)
-    for (const property of orderedProperties) {
-      const propertyKeyWithDash = '-' + property.key;
-      if (cellKey.endsWith(propertyKeyWithDash)) {
-        // Found a match: cellKey ends with "-{property.key}"
-        rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-        propertyKey = property.key;
-        foundProperty = property;
-        break;
-      }
-    }
-    
-    return { rowId, propertyKey, property: foundProperty };
-  }, [orderedProperties]);
+    const coordinates = tableIndexes.cellCoordinatesByKey.get(cellKey);
+    if (!coordinates) return { rowId: '', propertyKey: '', property: null };
+    const row = tableIndexes.rows[coordinates.rowIndex];
+    const property = tableIndexes.properties[coordinates.propertyIndex];
+    return { rowId: row.id, propertyKey: property.key, property };
+  }, [tableIndexes]);
 
   /**
    * Get cell value with proper type conversion
@@ -235,10 +226,8 @@ export function useClipboardOperations({
       return;
     }
 
-    const allRowsForSelection = getAllRowsForCellSelection();
-    
     // Group selected cells by row to build a 2D array
-    const cellsByRow = new Map<string, Array<{ propertyKey: string; rowId: string; value: string | number | null }>>();
+    const cellsByRow = new Map<string, Map<string, string | number | null>>();
     const validCells: CellKey[] = [];
 
     // Check each selected cell and validate data type
@@ -260,7 +249,7 @@ export function useClipboardOperations({
       }
       
       // Find the row
-      const row = allRowsForSelection.find(r => r.id === rowId);
+      const row = tableIndexes.rowById.get(rowId);
       if (!row) {
         return;
       }
@@ -282,9 +271,9 @@ export function useClipboardOperations({
       }
       
       if (!cellsByRow.has(rowId)) {
-        cellsByRow.set(rowId, []);
+        cellsByRow.set(rowId, new Map());
       }
-      cellsByRow.get(rowId)!.push({ propertyKey, rowId, value });
+      cellsByRow.get(rowId)!.set(propertyKey, value);
       validCells.push(cellKey);
     });
 
@@ -312,8 +301,8 @@ export function useClipboardOperations({
 
     // Sort rows by their index in allRowsForSelection
     rowIds.sort((a, b) => {
-      const indexA = allRowsForSelection.findIndex(r => r.id === a);
-      const indexB = allRowsForSelection.findIndex(r => r.id === b);
+      const indexA = tableIndexes.rowIndexById.get(a) ?? -1;
+      const indexB = tableIndexes.rowIndexById.get(b) ?? -1;
       return indexA - indexB;
     });
 
@@ -322,18 +311,18 @@ export function useClipboardOperations({
     const sortedPropertyKeys = isRowSelectionCut
       ? orderedProperties.map((p) => p.key)
       : Array.from(propertyKeys).sort((a, b) => {
-          const indexA = orderedProperties.findIndex(p => p.key === a);
-          const indexB = orderedProperties.findIndex(p => p.key === b);
+          const indexA = tableIndexes.propertyIndexByKey.get(a) ?? -1;
+          const indexB = tableIndexes.propertyIndexByKey.get(b) ?? -1;
           return indexA - indexB;
         });
     
     // Calculate selection bounds for border rendering (only show outer border)
     const rowIndices = rowIds.map(rowId => {
-      return allRowsForSelection.findIndex(r => r.id === rowId);
+      return tableIndexes.rowIndexById.get(rowId) ?? -1;
     }).filter(idx => idx !== -1);
     
     const propertyIndices = sortedPropertyKeys.map(propKey => {
-      return orderedProperties.findIndex(p => p.key === propKey);
+      return tableIndexes.propertyIndexByKey.get(propKey) ?? -1;
     }).filter(idx => idx !== -1);
     
     const minRowIndex = Math.min(...rowIndices);
@@ -344,13 +333,12 @@ export function useClipboardOperations({
     // Build 2D array
     const clipboardArray: Array<Array<string | number | null>> = [];
     rowIds.forEach(rowId => {
-      const row = allRowsForSelection.find(r => r.id === rowId);
+      const row = tableIndexes.rowById.get(rowId);
       if (!row) return;
       
       const rowData: Array<string | number | null> = [];
       sortedPropertyKeys.forEach(propertyKey => {
-        const cell = cellsByRow.get(rowId)?.find(c => c.propertyKey === propertyKey);
-        rowData.push(cell?.value ?? null);
+        rowData.push(cellsByRow.get(rowId)?.get(propertyKey) ?? null);
       });
       clipboardArray.push(rowData);
     });
@@ -368,7 +356,7 @@ export function useClipboardOperations({
     }
 
     const propertyDataTypes = sortedPropertyKeys.map((k) =>
-      orderedProperties.find((p) => p.key === k)?.dataType,
+      tableIndexes.propertyByKey.get(k)?.dataType,
     );
     persistLibraryClipboard({
       matrix: clipboardArray,
@@ -405,10 +393,10 @@ export function useClipboardOperations({
       
       validCells.forEach((cellKey) => {
         const { rowId, propertyKey } = parseCellKey(cellKey);
-        const propertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
+        const propertyIndex = tableIndexes.propertyIndexByKey.get(propertyKey) ?? -1;
         
         if (rowId && propertyKey) {
-          const row = allRowsForSelection.find(r => r.id === rowId);
+          const row = tableIndexes.rowById.get(rowId);
           if (row) {
             if (!cutCellsByRow.has(rowId)) {
               // Copy all existing property values (may include boolean and other types)
@@ -437,25 +425,31 @@ export function useClipboardOperations({
         }
       });
       
-      // Update Yjs synchronously first, then persist in parallel without blocking Paste.
+      // Update row store synchronously first, then persist in parallel without blocking Paste.
       (async () => {
         try {
-          const allRows = yRows.toArray();
+          const allRows = rowStore.toArray();
+          const rowById = new Map<string, AssetRow>();
+          const rowIndexById = new Map<string, number>();
+          allRows.forEach((row: AssetRow, index: number) => {
+            rowById.set(row.id, row);
+            rowIndexById.set(row.id, index);
+          });
           const toUpdate: Array<{ rowId: string; rowIndex: number; assetName: string; propertyValues: Record<string, any>; updatedRow: AssetRow }> = [];
           for (const [rowId, rowData] of cutCellsByRow.entries()) {
-            const row = allRows.find(r => r.id === rowId);
+            const row = rowById.get(rowId);
             if (!row) continue;
             const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
-            const rowIndex = allRows.findIndex(r => r.id === rowId);
+            const rowIndex = rowIndexById.get(rowId) ?? -1;
             if (rowIndex < 0) continue;
             const updatedRow = { ...row, name: assetName, propertyValues: rowData.propertyValues };
             toUpdate.push({ rowId, rowIndex, assetName, propertyValues: rowData.propertyValues, updatedRow });
           }
-          // Update Yjs from high index to low index so delete+insert does not shift later indexes.
+          // Update row store from high index to low index so delete+insert does not shift later indexes.
           toUpdate.sort((a, b) => b.rowIndex - a.rowIndex);
           toUpdate.forEach(({ rowIndex, updatedRow }) => {
-            yRows.delete(rowIndex, 1);
-            yRows.insert(rowIndex, [updatedRow]);
+            rowStore.delete(rowIndex, 1);
+            rowStore.insert(rowIndex, [updatedRow]);
           });
           // Match delete-row behavior: use the batch API for multiple rows.
           const cutUpdates = toUpdate.map(({ rowId, assetName, propertyValues }) => ({ assetId: rowId, assetName, propertyValues }));
@@ -491,11 +485,11 @@ export function useClipboardOperations({
     dataManager,
     selectedCells,
     selectedRowIds,
-    getAllRowsForCellSelection,
+    tableIndexes,
     orderedProperties,
     onUpdateAsset,
     onUpdateAssets,
-    yRows,
+    rowStore,
     parseCellKey,
     getCellValue,
     convertRowsToCells,
@@ -531,10 +525,8 @@ export function useClipboardOperations({
       return;
     }
 
-    const allRowsForSelection = getAllRowsForCellSelection();
-    
     // Group selected cells by row to build a 2D array
-    const cellsByRow = new Map<string, Array<{ propertyKey: string; rowId: string; value: string | number | null }>>();
+    const cellsByRow = new Map<string, Map<string, string | number | null>>();
     const validCells: CellKey[] = [];
 
     // Check each selected cell and validate data type
@@ -556,7 +548,7 @@ export function useClipboardOperations({
       }
       
       // Find the row
-      const row = allRowsForSelection.find(r => r.id === rowId);
+      const row = tableIndexes.rowById.get(rowId);
       if (!row) {
         return;
       }
@@ -578,9 +570,9 @@ export function useClipboardOperations({
       }
       
       if (!cellsByRow.has(rowId)) {
-        cellsByRow.set(rowId, []);
+        cellsByRow.set(rowId, new Map());
       }
-      cellsByRow.get(rowId)!.push({ propertyKey, rowId, value });
+      cellsByRow.get(rowId)!.set(propertyKey, value);
       validCells.push(cellKey);
     });
 
@@ -606,8 +598,8 @@ export function useClipboardOperations({
 
     // Sort rows and properties
     rowIds.sort((a, b) => {
-      const indexA = allRowsForSelection.findIndex(r => r.id === a);
-      const indexB = allRowsForSelection.findIndex(r => r.id === b);
+      const indexA = tableIndexes.rowIndexById.get(a) ?? -1;
+      const indexB = tableIndexes.rowIndexById.get(b) ?? -1;
       return indexA - indexB;
     });
 
@@ -615,18 +607,18 @@ export function useClipboardOperations({
     const sortedPropertyKeys = isRowSelectionCopy
       ? orderedProperties.map((p) => p.key)
       : Array.from(propertyKeys).sort((a, b) => {
-          const indexA = orderedProperties.findIndex(p => p.key === a);
-          const indexB = orderedProperties.findIndex(p => p.key === b);
+          const indexA = tableIndexes.propertyIndexByKey.get(a) ?? -1;
+          const indexB = tableIndexes.propertyIndexByKey.get(b) ?? -1;
           return indexA - indexB;
         });
     
     // Calculate selection bounds
     const rowIndices = rowIds.map(rowId => {
-      return allRowsForSelection.findIndex(r => r.id === rowId);
+      return tableIndexes.rowIndexById.get(rowId) ?? -1;
     }).filter(idx => idx !== -1);
     
     const propertyIndices = sortedPropertyKeys.map(propKey => {
-      return orderedProperties.findIndex(p => p.key === propKey);
+      return tableIndexes.propertyIndexByKey.get(propKey) ?? -1;
     }).filter(idx => idx !== -1);
     
     const minRowIndex = Math.min(...rowIndices);
@@ -637,13 +629,12 @@ export function useClipboardOperations({
     // Build 2D array
     const clipboardArray: Array<Array<string | number | null>> = [];
     rowIds.forEach(rowId => {
-      const row = allRowsForSelection.find(r => r.id === rowId);
+      const row = tableIndexes.rowById.get(rowId);
       if (!row) return;
       
       const rowData: Array<string | number | null> = [];
       sortedPropertyKeys.forEach(propertyKey => {
-        const cell = cellsByRow.get(rowId)?.find(c => c.propertyKey === propertyKey);
-        rowData.push(cell?.value ?? null);
+        rowData.push(cellsByRow.get(rowId)?.get(propertyKey) ?? null);
       });
       clipboardArray.push(rowData);
     });
@@ -660,7 +651,7 @@ export function useClipboardOperations({
     }
 
     const copyPropertyDataTypes = sortedPropertyKeys.map((k) =>
-      orderedProperties.find((p) => p.key === k)?.dataType,
+      tableIndexes.propertyByKey.get(k)?.dataType,
     );
     persistLibraryClipboard({
       matrix: clipboardArray,
@@ -705,7 +696,7 @@ export function useClipboardOperations({
     dataManager,
     selectedCells,
     selectedRowIds,
-    getAllRowsForCellSelection,
+    tableIndexes,
     orderedProperties,
     parseCellKey,
     getCellValue,
@@ -808,9 +799,9 @@ export function useClipboardOperations({
     cellsToUse.forEach((cellKey) => {
       const { rowId, propertyKey, property } = parseCellKey(cellKey);
       if (!rowId || !propertyKey || !property) return;
-      const rowIndex = viewRows.findIndex((r: AssetRow) => r.id === rowId);
+      const rowIndex = tableIndexes.rowIndexById.get(rowId) ?? -1;
       if (rowIndex < 0) return;
-      const propertyIndex = orderedProperties.findIndex((p) => p.key === propertyKey);
+      const propertyIndex = tableIndexes.propertyIndexByKey.get(propertyKey) ?? -1;
       if (propertyIndex < 0) return;
       if (rowIndex < bestRowIndex || (rowIndex === bestRowIndex && propertyIndex < bestPropertyIndex)) {
         bestRowIndex = rowIndex;
@@ -867,19 +858,19 @@ export function useClipboardOperations({
       setIsSaving(true);
       try {
         
-        const ySnapshot = yRows.toArray();
-        const idToYIndex = new Map<string, number>();
-        ySnapshot.forEach((r: AssetRow, idx: number) => idToYIndex.set(r.id, idx));
+        const rowSnapshot = rowStore.toArray();
+        const indexById = new Map<string, number>();
+        rowSnapshot.forEach((row: AssetRow, index: number) => indexById.set(row.id, index));
 
         const rowsToUpdate: Array<{ index: number; row: AssetRow }> = [];
         result.updates.forEach(({ row }) => {
-          const yIndex = idToYIndex.get(row.id);
-          if (yIndex !== undefined) rowsToUpdate.push({ index: yIndex, row });
+          const rowIndex = indexById.get(row.id);
+          if (rowIndex !== undefined) rowsToUpdate.push({ index: rowIndex, row });
         });
         rowsToUpdate.sort((a, b) => a.index - b.index);
         rowsToUpdate.forEach(({ index, row }) => {
-          yRows.delete(index, 1);
-          yRows.insert(index, [row]);
+          rowStore.delete(index, 1);
+          rowStore.insert(index, [row]);
         });
 
         
@@ -918,7 +909,7 @@ export function useClipboardOperations({
       try {
         // Allocate consecutive rowIndex values for pasted rows from the current visible max.
         const currentRows = getAllRowsForCellSelection();
-        let maxRowIndex =
+        const maxRowIndex =
           currentRows.length > 0
             ? currentRows.reduce((max, r) => {
                 const idx = typeof r.rowIndex === 'number' ? r.rowIndex : 0;
@@ -926,14 +917,14 @@ export function useClipboardOperations({
               }, 0)
             : 0;
 
-        for (let i = 0; i < result.creates.length; i++) {
-          const rowData = result.creates[i];
-          const assetName = rowData.name || '';
-          const nextRowIndex = maxRowIndex + 1;
-          maxRowIndex = nextRowIndex;
-          const isLast = i === result.creates.length - 1;
-          await onSaveAsset(assetName, rowData.propertyValues, { rowIndex: nextRowIndex, skipReload: !isLast });
-        }
+        await Promise.all(result.creates.map((rowData, index) => {
+          const rowIndex = maxRowIndex + index + 1;
+          const isLast = index === result.creates.length - 1;
+          return onSaveAsset(rowData.name || '', rowData.propertyValues, {
+            rowIndex,
+            skipReload: !isLast,
+          });
+        }));
       } catch (error) {
         console.error('Failed to create rows for paste:', error);
         setIsSaving(false);
@@ -957,6 +948,7 @@ export function useClipboardOperations({
     selectedCells,
     selectedRowIds,
     getAllRowsForCellSelection,
+    tableIndexes,
     orderedProperties,
     onSaveAsset,
     onUpdateAsset,

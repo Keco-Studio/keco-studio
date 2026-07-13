@@ -21,7 +21,7 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
   switch (item.role) {
     case 'user':
       return (
-        <div className={`${styles.bubble} ${styles.user}`}>
+        <div className={`${styles.bubble} ${styles.user}`} data-testid="agent-message-user">
           {item.attachments && item.attachments.length > 0 && (
             <div className={styles.userAttachments}>
               {item.attachments.map((att, idx) =>
@@ -103,7 +103,7 @@ function AssistantBubble({ item, streaming }: { item: ChatItem; streaming: boole
   const label = reasoningLabel(item.reasoningStartedAt, item.reasoningEndedAt, isThinking, now);
 
   return (
-    <div className={`${styles.bubble} ${styles.assistant}`}>
+    <div className={`${styles.bubble} ${styles.assistant}`} data-testid="agent-message-assistant">
       {hasReasoning && (
         <div className={styles.reasoningBlock}>
           <button

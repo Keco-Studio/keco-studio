@@ -15,7 +15,7 @@ import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 export function useCellEditing({
   properties,
   rows,
-  yRows,
+  rowStore,
   onUpdateAsset,
   userRole,
   isAddingRow,
@@ -27,7 +27,7 @@ export function useCellEditing({
 }: {
   properties: PropertyConfig[];
   rows: AssetRow[];
-  yRows: any; // Yjs array type
+  rowStore: any; // row store array type
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   isAddingRow: boolean;
@@ -41,7 +41,7 @@ export function useCellEditing({
 }) {
   // Edit mode state: track which cell is being edited (rowId and propertyKey)
   const [editingCell, setEditingCell] = useState<{ rowId: string; propertyKey: string } | null>(null);
-  const [editingCellValue, setEditingCellValue] = useState<string>('');
+  const editingCellInitialValueRef = useRef('');
   const editingCellRef = useRef<HTMLSpanElement | null>(null);
   const isComposingRef = useRef(false);
   
@@ -310,7 +310,7 @@ export function useCellEditing({
   }, []);
 
   // Handle save edited cell
-  const handleSaveEditedCell = useCallback(async () => {
+  const handleSaveEditedCell = useCallback(async (submittedValue?: string) => {
     // Prevent editing if user is a viewer
     if (userRole === 'viewer') {
       return;
@@ -328,9 +328,10 @@ export function useCellEditing({
     const isNameField = property && property.name === 'name' && property.dataType === 'string';
     
     // Validate value based on data type (only for non-name fields)
-    let normalizedValue: string | number | null = editingCellValue;
+    const valueToSave = submittedValue ?? editingCellRef.current?.textContent ?? editingCellInitialValueRef.current;
+    let normalizedValue: string | number | null = valueToSave;
     if (!isNameField && property) {
-      const validation = validateValueByType(editingCellValue, property.dataType);
+      const validation = validateValueByType(valueToSave, property.dataType);
       
       if (!validation.isValid) {
         // Show error message and prevent saving
@@ -356,10 +357,10 @@ export function useCellEditing({
     };
     
     // Get asset name (use first property value or row name)
-    const assetName = isNameField ? editingCellValue : (row.name || 'Untitled');
+    const assetName = isNameField ? valueToSave : (row.name || 'Untitled');
     
-    // Immediately update Yjs (optimistic update)
-    const allRows = yRows.toArray();
+    // Immediately update row store (optimistic update)
+    const allRows = rowStore.toArray();
     const rowIndex = allRows.findIndex(r => r.id === rowId);
     
     if (rowIndex >= 0) {
@@ -370,9 +371,9 @@ export function useCellEditing({
         propertyValues: updatedPropertyValues
       };
       
-      // Update Yjs
-      yRows.delete(rowIndex, 1);
-      yRows.insert(rowIndex, [updatedRow]);
+      // Update row store
+      rowStore.delete(rowIndex, 1);
+      rowStore.insert(rowIndex, [updatedRow]);
     }
 
     // Apply optimistic update
@@ -386,11 +387,11 @@ export function useCellEditing({
     });
 
     // Reset editing state immediately for better UX
-    const savedValue = editingCellValue;
+    const savedValue = valueToSave;
     const savedRowId = editingCell.rowId;
     const savedPropertyKey = editingCell.propertyKey;
     setEditingCell(null);
-    setEditingCellValue('');
+    editingCellInitialValueRef.current = '';
     setTypeValidationError(null); // Clear validation error
     editingCellRef.current = null;
     isComposingRef.current = false;
@@ -424,19 +425,18 @@ export function useCellEditing({
         return newMap;
       });
       // Restore editing state so user can try again
+      editingCellInitialValueRef.current = savedValue;
       setEditingCell({ rowId, propertyKey });
-      setEditingCellValue(savedValue);
       alert('Failed to update cell. Please try again.');
     } finally {
       setIsSaving(false);
     }
   }, [
     editingCell,
-    editingCellValue,
     onUpdateAsset,
     properties,
     rows,
-    yRows,
+    rowStore,
     setOptimisticEditUpdates,
     userRole,
     validateValueByType,
@@ -513,7 +513,7 @@ export function useCellEditing({
       stringValue = '[]';
     }
     setEditingCell({ rowId: row.id, propertyKey: property.key });
-    setEditingCellValue(stringValue);
+    editingCellInitialValueRef.current = stringValue;
     isComposingRef.current = false;
     
     // Update presence tracking when starting to edit
@@ -537,7 +537,7 @@ export function useCellEditing({
   const handleCancelEditing = useCallback(() => {
     setTypeValidationError(null); // Clear validation error when canceling
     setEditingCell(null);
-    setEditingCellValue('');
+    editingCellInitialValueRef.current = '';
     editingCellRef.current = null;
     isComposingRef.current = false;
     setCurrentFocusedCell(null); // Clear focused cell when canceling editing
@@ -551,7 +551,7 @@ export function useCellEditing({
   return {
     // State
     editingCell,
-    editingCellValue,
+    editingCellInitialValueRef,
     editingCellRef,
     isComposingRef,
     typeValidationError,
@@ -559,7 +559,6 @@ export function useCellEditing({
     
     // Setters
     setEditingCell,
-    setEditingCellValue,
     setTypeValidationError,
     
     // Handlers

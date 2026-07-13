@@ -1,18 +1,15 @@
 import { NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { withAuth } from '@/lib/auth/route-auth';
 
 type Params = {
   searchParams?: Record<string, string | string[] | undefined>;
 };
 
-export async function GET(req: Request) {
-  const supabase = createSupabaseServerClient(req);
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const GET = withAuth(async function GET(
+  req,
+  _context,
+  { supabase }
+) {
   const url = new URL(req.url);
   const q = (url.searchParams.get('q') ?? '').trim();
   const limitParam = Number(url.searchParams.get('limit') ?? '30');
@@ -28,12 +25,15 @@ export async function GET(req: Request) {
   });
 
   if (error) {
+    console.error('[GET /api/search/cell-values] Search failed:', error);
     return NextResponse.json(
-      { error: error.message ?? 'search failed' },
+      { error: 'Cell value search failed' },
       { status: 400 }
     );
   }
 
   return NextResponse.json({ results: data ?? [] });
-}
-
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});

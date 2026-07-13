@@ -1,22 +1,21 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SectionConfig, PropertyConfig, AssetRow } from '@/lib/types/libraryAssets';
 import type { FormulaEvaluableField } from '@/lib/utils/formula';
-import { computeFormulaValuesForRow } from '@/lib/utils/formula';
+import { computeFormulaValuesForRow, createFormulaFieldByName } from '@/lib/utils/formula';
 import {
+  createPropertyByName,
   evaluateFormulaForRow,
   getCustomFormulaExpressionFromCellValue,
 } from '@/components/libraries/utils/formulaEvaluation';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { withAuth } from '@/lib/auth/route-auth';
+import { getUserProjectRole } from '@/lib/services/authorizationService';
+import { fetchAllPaged } from '@/lib/services/pagination';
 import { writeXlsxWorkbook } from '@/lib/utils/workbook';
 import {
   buildStoryWorkbookSheet,
   writeStoryXlsxWorkbook,
 } from '@/lib/story-ir/storyWorkbook';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -128,32 +127,7 @@ async function verifyLibraryAccessDirect(
     throw new Error('Library not found');
   }
 
-  const { data: project, error: projectError } = await supabase
-    .from('projects')
-    .select('owner_id')
-    .eq('id', library.project_id)
-    .single();
-
-  if (projectError || !project) {
-    throw new Error('Project not found');
-  }
-
-  if (project.owner_id === userId) {
-    return { name: library.name };
-  }
-
-  const { data: collaborator, error: collabError } = await supabase
-    .from('project_collaborators')
-    .select('id, accepted_at')
-    .eq('project_id', library.project_id)
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (collabError || !collaborator || !collaborator.accepted_at) {
-    const authErr = new Error('Unauthorized access to this project');
-    (authErr as Error & { name: string }).name = 'AuthorizationError';
-    throw authErr;
-  }
+  await getUserProjectRole(supabase, library.project_id, userId);
 
   return { name: library.name };
 }
@@ -232,26 +206,29 @@ async function getLibraryAssetsWithPropertiesDirect(
   supabase: SupabaseClient,
   libraryId: string
 ): Promise<AssetRow[]> {
-  const { data: assetData, error: assetError } = await supabase
-    .from('library_assets')
-    .select('id, library_id, name, created_at, row_index')
-    .eq('library_id', libraryId)
-    .order('row_index', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true });
+  const assets = await fetchAllPaged<AssetRowDb>((from, to) =>
+    supabase
+      .from('library_assets')
+      .select('id, library_id, name, created_at, row_index')
+      .eq('library_id', libraryId)
+      .order('row_index', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to)
+  );
 
-  if (assetError) throw assetError;
-
-  const assets = (assetData ?? []) as AssetRowDb[];
   if (assets.length === 0) return [];
 
   const assetIds = assets.map((a) => a.id);
-  const { data: valueData, error: valueError } = await supabase
-    .from('library_asset_values')
-    .select('asset_id, field_id, value_json')
-    .in('asset_id', assetIds);
-
-  if (valueError) throw valueError;
+  const values = await fetchAllPaged<AssetValueRow>((from, to) =>
+    supabase
+      .from('library_asset_values')
+      .select('asset_id, field_id, value_json')
+      .in('asset_id', assetIds)
+      .order('asset_id', { ascending: true })
+      .order('field_id', { ascending: true })
+      .range(from, to)
+  );
 
   const rowsByAssetId = new Map<string, AssetRow>();
   for (const asset of assets) {
@@ -267,7 +244,7 @@ async function getLibraryAssetsWithPropertiesDirect(
     });
   }
 
-  for (const value of (valueData ?? []) as AssetValueRow[]) {
+  for (const value of values) {
     const row = rowsByAssetId.get(value.asset_id);
     if (!row) continue;
     row.propertyValues[value.field_id] = normalizeValue(value.value_json) as string | number | boolean | null;
@@ -424,21 +401,11 @@ function buildAttachmentFileName(fileNameWithExt: string): string {
   return `attachment; filename="${fallbackAscii}"; filename*=UTF-8''${encoded}`;
 }
 
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const supabase = authHeader
-    ? createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-    : createSupabaseServerClient(request);
-  const { data: { user }, error: authError } = authHeader
-    ? await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
-    : await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const GET = withAuth(async function GET(
+  request,
+  _context,
+  { supabase, user }
+) {
   const { searchParams } = new URL(request.url);
   const libraryId = searchParams.get('libraryId');
   const format = (searchParams.get('format') || 'xlsx').toLowerCase();
@@ -456,14 +423,15 @@ export async function GET(request: NextRequest) {
     libraryNameFromAccess = result.name || libraryNameFromAccess;
   } catch (e: unknown) {
     const err = e as { name?: string; message?: string };
+    console.error('[GET /api/export] Library access check failed:', e);
     if (err.name === 'AuthorizationError') {
-      return NextResponse.json({ error: err.message }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const msg = (err.message || '').toLowerCase();
     if (msg.includes('not logged in') || msg.includes('jwt') || msg.includes('session')) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
-    return NextResponse.json({ error: (err as Error)?.message || 'Library not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Library not found' }, { status: 404 });
   }
 
   const [schema, assets] = await Promise.all([
@@ -476,6 +444,7 @@ export async function GET(request: NextRequest) {
   const baseName = `${safeFileName(libraryName)}_${exportedAt}`;
   const sections = schema.sections;
   const properties = schema.properties;
+  const propertyByName = createPropertyByName(properties);
 
   if (format === 'json') {
     // For formula cells, export computed values.
@@ -501,7 +470,13 @@ export async function GET(request: NextRequest) {
           const raw = row.propertyValues?.[p.key];
           const customExpression = getCustomFormulaExpressionFromCellValue(raw);
           if (customExpression) {
-            const computed = evaluateFormulaForRow(customExpression, row, properties);
+            const computed = evaluateFormulaForRow(
+              customExpression,
+              row,
+              properties,
+              new Set(),
+              propertyByName,
+            );
             exportPropertyValues[p.key] = computed;
           }
         }
@@ -644,9 +619,13 @@ export async function GET(request: NextRequest) {
     dataType: p.dataType,
     formulaExpression: p.formulaExpression,
   }));
+  const formulaFieldByName = createFormulaFieldByName(formulaFields);
   const computedFormulaByRowId = new Map<string, Record<string, unknown>>();
   for (const row of assets) {
-    computedFormulaByRowId.set(row.id, computeFormulaValuesForRow(formulaFields, row.propertyValues));
+    computedFormulaByRowId.set(
+      row.id,
+      computeFormulaValuesForRow(formulaFields, row.propertyValues, formulaFieldByName),
+    );
   }
 
   const makeUniqueSheetName = (base: string, used: Set<string>) => {
@@ -698,7 +677,13 @@ export async function GET(request: NextRequest) {
           // export the computed result instead of exporting the expression itself.
           const customExpression = getCustomFormulaExpressionFromCellValue(raw);
           if (customExpression) {
-            const computed = evaluateFormulaForRow(customExpression, row, properties);
+            const computed = evaluateFormulaForRow(
+              customExpression,
+              row,
+              properties,
+              new Set(),
+              propertyByName,
+            );
             if (computed === null || computed === undefined) return null;
             // Force string output so Excel uses left alignment (numbers are right-aligned by default).
             return String(computed);
@@ -760,4 +745,7 @@ export async function GET(request: NextRequest) {
       'Content-Disposition': buildAttachmentFileName(`${baseName}.xlsx`),
     },
   });
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});

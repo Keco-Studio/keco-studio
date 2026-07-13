@@ -31,8 +31,8 @@ export default function DesignUploadPage() {
     let active = true;
     if (!projectId) return;
     getUserProjectRole(supabase, projectId)
-      .then((r) => {
-        if (active) setRole(r);
+      .then(({ role }) => {
+        if (active) setRole(role);
       })
       .catch(() => {
         if (active) setRole(null);
@@ -128,7 +128,7 @@ export default function DesignUploadPage() {
         />
 
         {showLargeWarning && (
-          <div className={styles.warning}>
+          <div className={styles.warning} data-testid="design-upload-large-warning">
             This document is fairly long. The assistant may take a while to process it.
           </div>
         )}
@@ -152,7 +152,7 @@ export default function DesignUploadPage() {
         </div>
 
         {isViewer && (
-          <div className={styles.warning}>
+          <div className={styles.warning} data-testid="design-upload-viewer-warning">
             Your role is viewer; creating tables requires editor or admin permission.
           </div>
         )}
@@ -169,6 +169,7 @@ export default function DesignUploadPage() {
           <button
             type="button"
             className={styles.primaryButton}
+            data-testid="design-upload-submit"
             onClick={handleSubmit}
             disabled={!file || submitting || isViewer}
           >

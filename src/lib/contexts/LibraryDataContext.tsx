@@ -6,7 +6,7 @@
  * - AssetPage (detail view)
  * 
  * Features:
- * - Single source of truth (Yjs)
+ * - Single observable asset store
  * - Realtime synchronization (Supabase Realtime)
  * - Presence tracking
  * - Optimistic updates
@@ -15,8 +15,7 @@
 
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
-import * as Y from 'yjs';
+import React, { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from 'react';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { getUserAvatarColor } from '@/lib/utils/avatarColors';
@@ -28,25 +27,23 @@ import { getLibraryAssetsWithProperties } from '@/lib/services/libraryAssetsServ
 import { compareAssetsForUiRow } from '@/lib/utils/assetEmptiness';
 import { createFormulaFieldMetaCache } from '@/lib/library/formulaFieldMetaCache';
 import {
-  applyReferenceSyncToLocalState,
-  syncReferencesAfterSourceChange,
-} from '@/lib/library/referenceSync';
-import {
-  hydrateYAssetsFromRows,
-  hydrateYAssetsFromSnapshot,
+  hydrateAssetStoreFromRows,
+  hydrateAssetStoreFromSnapshot,
+  ObservableAssetStore,
   type LibrarySnapshotData,
-} from '@/lib/library/yjsAssetHydration';
+} from '@/lib/library/assetStore';
 import { runLatestLibraryHydration } from '@/lib/library/loadInitialLibraryData';
 import { useLibraryAssetMutations } from '@/components/libraries/hooks/useLibraryAssetMutations';
 import { useLibraryRealtimeHandlers } from '@/components/libraries/hooks/useLibraryRealtimeHandlers';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
+import { LIBRARY_RECONCILE_EVENT } from '@/lib/realtime/cell-replacement-broadcast';
 
 interface LibraryDataContextValue {
   // Data access
-  assets: Map<string, AssetRow>;
+  assets: ReadonlyMap<string, AssetRow>;
   getAsset: (assetId: string) => AssetRow | undefined;
-  allAssets: AssetRow[]; // Ordered array (from Yjs)
+  allAssets: AssetRow[];
 
   // Data operations
   updateAssetField: (assetId: string, fieldId: string, value: any, options?: { skipBroadcast?: boolean }) => Promise<void>;
@@ -69,9 +66,7 @@ interface LibraryDataContextValue {
   setActiveField: (assetId: string | null, fieldId: string | null) => void;
   presenceUsers: PresenceState[];
 
-  // Yjs access (for advanced operations)
-  yDoc: Y.Doc;
-  yAssets: Y.Map<Y.Map<any>>;
+  assetStore: ObservableAssetStore;
 
   // Loading states
   isLoading: boolean;
@@ -79,6 +74,22 @@ interface LibraryDataContextValue {
 }
 
 const LibraryDataContext = createContext<LibraryDataContextValue | null>(null);
+type LibraryActionsContextValue = Pick<
+  LibraryDataContextValue,
+  | 'getAsset'
+  | 'updateAssetField'
+  | 'updateAssetName'
+  | 'createAsset'
+  | 'deleteAsset'
+  | 'refreshAssetsFromServer'
+  | 'applySnapshot'
+  | 'invalidateFormulaFieldMeta'
+  | 'updateMultipleFields'
+  | 'updateAssetsBatch'
+  | 'getUsersEditingField'
+  | 'setActiveField'
+>;
+const LibraryActionsContext = createContext<LibraryActionsContextValue | null>(null);
 
 interface LibraryDataProviderProps {
   children: React.ReactNode;
@@ -97,22 +108,31 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   const supabase = useSupabase();
   const queryClient = useQueryClient();
   const { userProfile, isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const profileUserId = userProfile?.id;
+  const profileEmail = userProfile?.email ?? '';
+  const profileDisplayName =
+    userProfile?.username || userProfile?.full_name || profileEmail || 'Anonymous';
 
-  // Yjs setup - shared data structure
-  const yDoc = useMemo(() => new Y.Doc(), [libraryId]);
-  const yAssets = useMemo(() => yDoc.getMap<Y.Map<any>>('assets'), [yDoc]);
+  const assetStore = useMemo(() => {
+    void libraryId;
+    return new ObservableAssetStore();
+  }, [libraryId]);
 
   // State
-  const [assets, setAssets] = useState<Map<string, AssetRow>>(new Map());
+  const assets = useSyncExternalStore(
+    assetStore.subscribe,
+    assetStore.getSnapshot,
+    assetStore.getSnapshot
+  );
   const [isLoading, setIsLoading] = useState(true);
   const [isSynced, setIsSynced] = useState(false);
 
   // Refs to avoid stale closures
-  const assetsRef = useRef<Map<string, AssetRow>>(new Map());
+  const assetsRef = useRef<ReadonlyMap<string, AssetRow>>(new Map());
   const isMountedRef = useRef(true);
   const loadInitialDataGenerationRef = useRef(0);
   // Track asset IDs created during a batch insert (skipReload=true) so that
-  // postgres_changes INSERT events don't add them to yAssets with missing row_index.
+  // Track batch inserts until the complete row-order payload is broadcast.
   const pendingBatchInsertIdsRef = useRef<Set<string>>(new Set());
 
   const formulaFieldMetaCache = useMemo(
@@ -134,63 +154,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     assetsRef.current = assets;
   }, [assets]);
 
-  // Sync Yjs Map to React state
-  useEffect(() => {
-    const updateAssetsFromYjs = () => {
-      const newAssets = new Map<string, AssetRow>();
-
-      yAssets.forEach((yAsset, assetId) => {
-        const name = yAsset.get('name') || 'Untitled';
-        const yPropertyValues = yAsset.get('propertyValues');
-        const createdAt = yAsset.get('created_at');
-        const rowIndex = yAsset.get('row_index');
-
-        // Convert Y.Map to plain object
-        const propertyValues: Record<string, any> = {};
-        if (yPropertyValues && typeof yPropertyValues.forEach === 'function') {
-          yPropertyValues.forEach((value: any, key: string) => {
-            propertyValues[key] = value;
-          });
-        } else if (yPropertyValues && typeof yPropertyValues === 'object') {
-          // Fallback for plain objects (shouldn't happen after initialization)
-          Object.assign(propertyValues, yPropertyValues);
-        }
-
-        newAssets.set(assetId, {
-          id: assetId,
-          libraryId,
-          name,
-          propertyValues,
-          created_at: createdAt,
-          rowIndex: typeof rowIndex === 'number' ? rowIndex : undefined,
-        });
-      });
-
-
-      if (isMountedRef.current) {
-        setAssets(newAssets);
-      } else {
-      }
-    };
-
-    // Initial sync
-    updateAssetsFromYjs();
-
-    // Listen to Yjs changes (using observeDeep to catch nested Y.Map changes)
-    const observer = () => {
-      updateAssetsFromYjs();
-    };
-
-    yAssets.observeDeep(observer);
-
-    return () => {
-      yAssets.unobserveDeep(observer);
-    };
-  }, [yAssets, libraryId]);
-
   // Load initial data from database (can be reused after restore)
   const loadInitialData = useCallback(async () => {
-    if (!libraryId || !isAuthenticated || !userProfile) return;
+    if (!libraryId || !isAuthenticated || !profileUserId) return;
 
     await runLatestLibraryHydration({
       generationRef: loadInitialDataGenerationRef,
@@ -198,14 +164,14 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       // Use the same service as version snapshots so the current view and
       // saved snapshots read the same row shape.
       fetchAssetRows: () => getLibraryAssetsWithProperties(supabase, libraryId),
-      hydrate: (assetRows) => hydrateYAssetsFromRows(yDoc, yAssets, assetRows),
+      hydrate: (assetRows) => hydrateAssetStoreFromRows(assetStore, assetRows),
       setIsLoading,
       setIsSynced,
       onError: (error) => {
         console.error('[LibraryDataContext] Failed to load initial data:', error);
       },
     });
-  }, [libraryId, isAuthenticated, userProfile, supabase, yDoc, yAssets]);
+  }, [assetStore, libraryId, isAuthenticated, profileUserId, supabase]);
 
   const invalidateFormulaFieldMeta = useCallback(() => {
     formulaFieldMetaCache.invalidate(libraryId);
@@ -213,48 +179,15 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
 
   // After restore, apply the snapshot directly so the current view matches
   // the restored version before the next server refresh arrives.
-  const applySnapshotToYjs = useCallback((snapshotData: LibrarySnapshotData) => {
-    hydrateYAssetsFromSnapshot(yDoc, yAssets, snapshotData);
-  }, [yDoc, yAssets]);
+  const applySnapshotToStore = useCallback((snapshotData: LibrarySnapshotData) => {
+    hydrateAssetStoreFromSnapshot(assetStore, libraryId, snapshotData);
+  }, [assetStore, libraryId]);
 
   // Initial load (wait for auth so RLS-backed queries have a valid session)
   useEffect(() => {
-    if (isAuthLoading || !isAuthenticated || !userProfile) return;
+    if (isAuthLoading || !isAuthenticated || !profileUserId) return;
     loadInitialData();
-  }, [loadInitialData, isAuthLoading, isAuthenticated, userProfile]);
-
-  // Realtime restore events cause collaborators to reload from the server.
-  useEffect(() => {
-    if (!libraryId) return;
-
-    const channel = supabase
-      .channel(`library-versions-restore:${libraryId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'library_versions',
-          filter: `library_id=eq.${libraryId}`,
-        },
-        (payload) => {
-          try {
-            const row: any = payload.new;
-            if (row?.version_type === 'restore') {
-              // A restore version means the library was rolled back to a snapshot.
-              loadInitialData();
-            }
-          } catch (err) {
-            console.error('[LibraryDataContext] Failed to handle restore realtime event', err);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [libraryId, supabase, loadInitialData]);
+  }, [loadInitialData, isAuthLoading, isAuthenticated, profileUserId]);
 
   useEffect(() => {
     formulaFieldMetaCache.clear();
@@ -272,101 +205,56 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     handleRowOrderChangeEvent,
     handleCellsBatchUpdateEvent,
   } = useLibraryRealtimeHandlers({
-    yDoc,
-    yAssets,
-    loadInitialData,
+    assetStore,
+    libraryId,
     pendingBatchInsertIdsRef,
   });
 
-  // Initialize realtime subscription
-  const realtimeConfig = useMemo(() => {
-    if (!userProfile || !libraryId) {
-      return null;
-    }
+  const handleVersionChange = useCallback((payload: any) => {
+    const newRecord = payload.new as Record<string, unknown> | undefined;
+    const oldRecord = payload.old as Record<string, unknown> | undefined;
+    const eventLibraryId = newRecord?.library_id ?? oldRecord?.library_id;
+    if (eventLibraryId && eventLibraryId !== libraryId) return;
 
-    return {
-      libraryId,
-      currentUserId: userProfile.id,
-      currentUserName: userProfile.username || userProfile.full_name || userProfile.email,
-      currentUserEmail: userProfile.email,
-      avatarColor: getUserAvatarColor(userProfile.id),
+    void queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
+    if (payload.eventType === 'INSERT' && newRecord?.version_type === 'restore') {
+      void loadInitialData();
+    }
+  }, [libraryId, loadInitialData, queryClient]);
+
+  // Initialize realtime subscription
+  const realtimeConfig = useMemo(() => ({
+      libraryId: profileUserId ? libraryId : '',
+      currentUserId: profileUserId ?? '',
+      currentUserName: profileDisplayName,
+      currentUserEmail: profileEmail,
+      avatarColor: profileUserId ? getUserAvatarColor(profileUserId) : '#999999',
       onCellUpdate: handleCellUpdateEvent,
       onAssetCreate: handleAssetCreateEvent,
       onAssetDelete: handleAssetDeleteEvent,
       onConflict: handleConflictEvent,
       onRowOrderChange: handleRowOrderChangeEvent,
       onCellsBatchUpdate: handleCellsBatchUpdateEvent,
-    };
-  }, [libraryId, userProfile, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent]);
+      onReconnect: loadInitialData,
+      onVersionChange: handleVersionChange,
+  }), [libraryId, profileUserId, profileDisplayName, profileEmail, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData, handleVersionChange]);
 
-  const realtimeSubscription = useRealtimeSubscription(
-    realtimeConfig || {
-      libraryId: '',
-      currentUserId: '',
-      currentUserName: '',
-      currentUserEmail: '',
-      avatarColor: '',
-      onCellUpdate: () => { },
-      onAssetCreate: () => { },
-      onAssetDelete: () => { },
-      onConflict: () => { },
-      onRowOrderChange: () => { },
-      onCellsBatchUpdate: () => { },
-    }
-  );
+  const realtimeSubscription = useRealtimeSubscription(realtimeConfig);
 
   const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete, broadcastCellsBatchUpdate, broadcastRowOrderChange } =
-    realtimeConfig ? realtimeSubscription : {
-      connectionStatus: 'disconnected' as const,
-      broadcastCellUpdate: async () => { },
-      broadcastAssetCreate: async () => { },
-      broadcastAssetDelete: async () => { },
-      broadcastCellsBatchUpdate: async () => { },
-      broadcastRowOrderChange: async () => { },
-    };
+    realtimeSubscription;
 
   // Presence tracking - use useMemo to avoid recreating config on every render
   const presenceConfig = useMemo(() => ({
     libraryId: libraryId || '',
-    userId: userProfile?.id || '',
-    userName: userProfile?.username || userProfile?.full_name || userProfile?.email || 'Anonymous',
-    userEmail: userProfile?.email || '',
-    avatarColor: userProfile ? getUserAvatarColor(userProfile.id) : '#999999',
+    userId: profileUserId || '',
+    userName: profileDisplayName,
+    userEmail: profileEmail,
+    avatarColor: profileUserId ? getUserAvatarColor(profileUserId) : '#999999',
     debugLabel: 'LibraryData',
-  }), [libraryId, userProfile]);
+  }), [libraryId, profileUserId, profileDisplayName, profileEmail]);
 
   const presenceTracking = usePresenceTracking(presenceConfig);
-
-  const applyReferenceSync = useCallback(
-    (refUpdates: Parameters<typeof applyReferenceSyncToLocalState>[0]['refUpdates']) => {
-      applyReferenceSyncToLocalState({
-        refUpdates,
-        libraryId,
-        yDoc,
-        yAssets,
-        queryClient,
-        loadInitialData,
-      });
-    },
-    [libraryId, loadInitialData, queryClient, yDoc, yAssets]
-  );
-
-  const syncReferenceChange = useCallback(
-    async (assetId: string, fieldId: string, valueJson: unknown) => {
-      await syncReferencesAfterSourceChange({
-        supabase,
-        queryClient,
-        libraryId,
-        yDoc,
-        yAssets,
-        loadInitialData,
-        assetId,
-        fieldId,
-        valueJson,
-      });
-    },
-    [libraryId, loadInitialData, queryClient, supabase, yDoc, yAssets]
-  );
 
   const {
     updateAssetField,
@@ -380,12 +268,10 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     queryClient,
     libraryId,
     projectId,
-    yDoc,
-    yAssets,
+    assetStore,
     assetsRef,
     pendingBatchInsertIdsRef,
     getFormulaFieldMeta,
-    loadInitialData,
     realtimeConfig,
     realtime: {
       broadcastCellUpdate,
@@ -400,6 +286,16 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     await loadInitialData();
     await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
   }, [libraryId, loadInitialData, queryClient]);
+
+  useEffect(() => {
+    const reconcile = (rawEvent: Event) => {
+      const event = rawEvent as CustomEvent<{ libraryIds?: string[] }>;
+      if (!event.detail?.libraryIds?.includes(libraryId)) return;
+      void loadInitialData();
+    };
+    window.addEventListener(LIBRARY_RECONCILE_EVENT, reconcile);
+    return () => window.removeEventListener(LIBRARY_RECONCILE_EVENT, reconcile);
+  }, [libraryId, loadInitialData]);
 
   // Helper functions
   const getAsset = useCallback((assetId: string) => {
@@ -427,33 +323,60 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     };
   }, []);
 
-  const contextValue: LibraryDataContextValue = {
-    assets,
+  const actionsValue = useMemo<LibraryActionsContextValue>(() => ({
     getAsset,
-    allAssets,
     updateAssetField,
     updateAssetName,
     createAsset,
     deleteAsset,
     refreshAssetsFromServer,
-    applySnapshot: applySnapshotToYjs,
+    applySnapshot: applySnapshotToStore,
     invalidateFormulaFieldMeta,
     updateMultipleFields,
     updateAssetsBatch,
-    connectionStatus,
     getUsersEditingField,
     setActiveField,
+  }), [
+    applySnapshotToStore,
+    createAsset,
+    deleteAsset,
+    getAsset,
+    getUsersEditingField,
+    invalidateFormulaFieldMeta,
+    refreshAssetsFromServer,
+    setActiveField,
+    updateAssetField,
+    updateAssetName,
+    updateAssetsBatch,
+    updateMultipleFields,
+  ]);
+
+  const contextValue = useMemo<LibraryDataContextValue>(() => ({
+    assets,
+    allAssets,
+    ...actionsValue,
+    connectionStatus,
     presenceUsers: presenceTracking.presenceUsers || [],
-    yDoc,
-    yAssets,
+    assetStore,
     isLoading,
     isSynced,
-  };
+  }), [
+    actionsValue,
+    allAssets,
+    assets,
+    connectionStatus,
+    isLoading,
+    isSynced,
+    presenceTracking.presenceUsers,
+    assetStore,
+  ]);
 
   return (
-    <LibraryDataContext.Provider value={contextValue}>
-      {children}
-    </LibraryDataContext.Provider>
+    <LibraryActionsContext.Provider value={actionsValue}>
+      <LibraryDataContext.Provider value={contextValue}>
+        {children}
+      </LibraryDataContext.Provider>
+    </LibraryActionsContext.Provider>
   );
 }
 
@@ -473,4 +396,12 @@ export function useLibraryData() {
  */
 export function useLibraryDataOptional(): LibraryDataContextValue | null {
   return useContext(LibraryDataContext);
+}
+
+export function useLibraryActions(): LibraryActionsContextValue {
+  const context = useContext(LibraryActionsContext);
+  if (!context) {
+    throw new Error('useLibraryActions must be used within LibraryDataProvider');
+  }
+  return context;
 }

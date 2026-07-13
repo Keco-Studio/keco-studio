@@ -7,6 +7,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import type { AccessVerificationCache } from '@/lib/services/authorizationService';
 import type { AgentSelectionContext } from './selection-context';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 
@@ -37,6 +38,8 @@ export interface ToolContext {
   currentSectionName?: string;
   supabase: SupabaseClient;
   userRole: UserRole;
+  /** Request-scoped authorization results; a new map is created for every turn. */
+  accessCache?: AccessVerificationCache;
   /** Exact persisted user message for tools that must not trust LLM-copied content. */
   authoritativeUserSource?: {
     messageId: string;

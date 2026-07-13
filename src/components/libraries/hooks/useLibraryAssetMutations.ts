@@ -1,14 +1,15 @@
 import { useMemo } from 'react';
-import * as Y from 'yjs';
 import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { AssetRow } from '@/lib/types/libraryAssets';
+import type { AssetRow, CreateLibraryAssetOptions } from '@/lib/types/libraryAssets';
+import type { RowOrderChangePayload } from '@/lib/types/collaboration';
 import { applyBooleanFieldDefaults, getBooleanFieldIdsByLibraryId } from '@/lib/services/libraryAssetsService';
-import { touchLibraryAssetEditUpdatedAt, touchLibraryUpdatedAt } from '@/lib/library/updatedAt';
+import { touchLibraryUpdatedAt, upsertLibraryAssetValuesAndTouch } from '@/lib/library/updatedAt';
 import { syncReferencesAfterSourceChange } from '@/lib/library/referenceSync';
 import { computeFormulaValuesForRow } from '@/lib/utils/formula';
 import { serializeError } from '@/lib/utils/errorUtils';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
+import { cloneStoreValue, type ObservableAssetStore } from '@/lib/library/assetStore';
 
 type FormulaFieldMetaRow = {
   id: string;
@@ -45,7 +46,7 @@ type RealtimeMutationConfig = {
       updatedAt?: string | null;
     }>
   ) => Promise<void>;
-  broadcastRowOrderChange: () => Promise<void>;
+  broadcastRowOrderChange: (changes: RowOrderChangePayload) => Promise<void>;
 };
 
 type UseLibraryAssetMutationsArgs = {
@@ -53,12 +54,10 @@ type UseLibraryAssetMutationsArgs = {
   queryClient: QueryClient;
   libraryId: string;
   projectId: string;
-  yDoc: Y.Doc;
-  yAssets: Y.Map<Y.Map<unknown>>;
-  assetsRef: React.MutableRefObject<Map<string, AssetRow>>;
+  assetStore: ObservableAssetStore;
+  assetsRef: React.MutableRefObject<ReadonlyMap<string, AssetRow>>;
   pendingBatchInsertIdsRef: React.MutableRefObject<Set<string>>;
   getFormulaFieldMeta: () => Promise<FormulaFieldMetaRow[]>;
-  loadInitialData: () => Promise<void>;
   realtimeConfig: unknown;
   realtime: RealtimeMutationConfig;
 };
@@ -71,14 +70,6 @@ type PersistedCellUpdate = {
   oldValue: unknown;
   updatedAt: string | null;
 };
-type CreateAssetOptions = {
-  insertAfterRowId?: string;
-  insertBeforeRowId?: string;
-  createdAt?: Date;
-  rowIndex?: number;
-  skipReload?: boolean;
-};
-
 function isCustomFormulaCellValue(value: unknown): boolean {
   if (typeof value === 'string') {
     return value.trim().startsWith('=');
@@ -91,18 +82,11 @@ function isCustomFormulaCellValue(value: unknown): boolean {
   return false;
 }
 
-function cloneForYjs(value: unknown): unknown {
-  if (value !== null && typeof value === 'object') {
-    return JSON.parse(JSON.stringify(value)) as unknown;
-  }
-  return value;
-}
-
-function normalizeForYjs(value: unknown): unknown {
+function normalizeStoreValue(value: unknown): unknown {
   if (typeof value === 'number' && Number.isNaN(value)) {
     return null;
   }
-  return cloneForYjs(value);
+  return cloneStoreValue(value);
 }
 
 export function createLibraryAssetMutations({
@@ -110,12 +94,10 @@ export function createLibraryAssetMutations({
   queryClient,
   libraryId,
   projectId,
-  yDoc,
-  yAssets,
+  assetStore,
   assetsRef,
   pendingBatchInsertIdsRef,
   getFormulaFieldMeta,
-  loadInitialData,
   realtimeConfig,
   realtime,
 }: UseLibraryAssetMutationsArgs) {
@@ -126,34 +108,27 @@ export function createLibraryAssetMutations({
     options?: MutationOptions
   ): Promise<PersistedCellUpdate> => {
     const formulaMeta = await getFormulaFieldMeta();
-    const yAsset = yAssets.get(assetId);
-    if (!yAsset) {
+    const asset = assetStore.get(assetId);
+    if (!asset) {
       throw new Error(`Asset ${assetId} not found`);
     }
 
-    const yPropertyValues = yAsset.get('propertyValues') as Y.Map<unknown> | undefined;
-    if (!yPropertyValues) {
-      throw new Error(`propertyValues not found for asset ${assetId}`);
-    }
-
-    const oldValue = yPropertyValues.get(fieldId);
+    const oldValue = asset.propertyValues[fieldId];
     const oldFormulaValues: Record<string, unknown> = {};
     for (const field of formulaMeta) {
       if (field.data_type === 'formula') {
-        oldFormulaValues[field.id] = yPropertyValues.get(field.id);
+        oldFormulaValues[field.id] = asset.propertyValues[field.id];
       }
     }
 
-    const valueForYjs = normalizeForYjs(value);
+    const valueForStore = normalizeStoreValue(value);
     let computedFormulaValues: Record<string, unknown> = {};
-    yDoc.transact(() => {
-      yPropertyValues.set(fieldId, valueForYjs);
-
-      if (formulaMeta.length > 0) {
-        const currentValues: Record<string, unknown> = {};
-        yPropertyValues.forEach((storedValue, key) => {
-          currentValues[key] = storedValue;
-        });
+    const nextPropertyValues = {
+      ...asset.propertyValues,
+      [fieldId]: valueForStore,
+    };
+    if (formulaMeta.length > 0) {
+        const currentValues: Record<string, unknown> = { ...nextPropertyValues };
         const rawComputed = computeFormulaValuesForRow(
           formulaMeta.map((field) => ({
             id: field.id,
@@ -170,18 +145,18 @@ export function createLibraryAssetMutations({
           const currentFormulaValue = currentValues[formulaFieldId];
           if (isCustomFormulaCellValue(currentFormulaValue)) {
             computedFormulaValues[formulaFieldId] = currentFormulaValue;
-            yPropertyValues.set(formulaFieldId, currentFormulaValue);
+            nextPropertyValues[formulaFieldId] = currentFormulaValue;
           } else {
             const formulaValue = rawComputed[formulaFieldId];
             computedFormulaValues[formulaFieldId] = formulaValue;
-            yPropertyValues.set(formulaFieldId, formulaValue);
+            nextPropertyValues[formulaFieldId] = formulaValue;
           }
         }
-      }
-    });
+    }
+    assetStore.set({ ...asset, propertyValues: nextPropertyValues });
 
     const valuesToPersist: Record<string, unknown> = {
-      [fieldId]: valueForYjs,
+      [fieldId]: valueForStore,
       ...computedFormulaValues,
     };
 
@@ -190,44 +165,27 @@ export function createLibraryAssetMutations({
     });
 
     try {
-      const serverUpdatedAt = await touchLibraryAssetEditUpdatedAt(supabase, {
+      const serverUpdatedAt = await upsertLibraryAssetValuesAndTouch(supabase, {
         assetId,
         libraryId,
+        values: valuesToPersist,
       });
-
-      const upsertRows = Object.entries(valuesToPersist).map(([fieldKey, fieldValue]) => ({
-        asset_id: assetId,
-        field_id: fieldKey,
-        value_json: fieldValue,
-      }));
-
-      const { error } = await supabase
-        .from('library_asset_values')
-        .upsert(upsertRows, {
-          onConflict: 'asset_id,field_id',
-        });
-
-      if (error) throw error;
 
       await syncReferencesAfterSourceChange({
         supabase,
         queryClient,
         libraryId,
-        yDoc,
-        yAssets,
-        loadInitialData,
+        assetStore,
         assetId,
         fieldId,
-        valueJson: valueForYjs,
+        valueJson: valueForStore,
       });
       for (const [formulaFieldId, formulaValue] of changedFormulaEntries) {
         await syncReferencesAfterSourceChange({
           supabase,
           queryClient,
           libraryId,
-          yDoc,
-          yAssets,
-          loadInitialData,
+          assetStore,
           assetId,
           fieldId: formulaFieldId,
           valueJson: formulaValue,
@@ -235,7 +193,7 @@ export function createLibraryAssetMutations({
       }
 
       if (!options?.skipBroadcast && realtimeConfig) {
-        await realtime.broadcastCellUpdate(assetId, fieldId, valueForYjs, oldValue, serverUpdatedAt);
+        await realtime.broadcastCellUpdate(assetId, fieldId, valueForStore, oldValue, serverUpdatedAt);
         for (const [formulaFieldId, formulaValue] of changedFormulaEntries) {
           await realtime.broadcastCellUpdate(
             assetId,
@@ -251,7 +209,7 @@ export function createLibraryAssetMutations({
       return {
         assetId,
         propertyKey: fieldId,
-        newValue: valueForYjs,
+        newValue: valueForStore,
         oldValue,
         updatedAt: serverUpdatedAt,
       };
@@ -260,14 +218,7 @@ export function createLibraryAssetMutations({
       console.error(
         `[LibraryDataContext] ❌ Error in updateAssetField: assetId=${assetId} fieldId=${fieldId} | ${errMsg}`
       );
-      yDoc.transact(() => {
-        yPropertyValues.set(fieldId, oldValue);
-        for (const field of formulaMeta) {
-          if (field.data_type === 'formula') {
-            yPropertyValues.set(field.id, oldFormulaValues[field.id]);
-          }
-        }
-      });
+      assetStore.set(asset);
       throw error;
     }
   };
@@ -286,16 +237,13 @@ export function createLibraryAssetMutations({
     newName: string,
     options?: MutationOptions
   ): Promise<PersistedCellUpdate> => {
-    const yAsset = yAssets.get(assetId);
-    if (!yAsset) {
+    const asset = assetStore.get(assetId);
+    if (!asset) {
       throw new Error(`Asset ${assetId} not found`);
     }
 
-    const oldName = yAsset.get('name');
-
-    yDoc.transact(() => {
-      yAsset.set('name', newName);
-    });
+    const oldName = asset.name;
+    assetStore.set({ ...asset, name: newName });
 
     try {
       const { data, error } = await supabase
@@ -321,9 +269,7 @@ export function createLibraryAssetMutations({
         updatedAt: serverUpdatedAt,
       };
     } catch (error) {
-      yDoc.transact(() => {
-        yAsset.set('name', oldName);
-      });
+      assetStore.set(asset);
       throw error;
     }
   };
@@ -339,7 +285,7 @@ export function createLibraryAssetMutations({
   const createAsset = async (
     name: string,
     propertyValues: Record<string, unknown>,
-    options?: CreateAssetOptions
+    options?: CreateLibraryAssetOptions
   ): Promise<string> => {
     let nextRowIndex: number;
     if (typeof options?.rowIndex === 'number') {
@@ -394,10 +340,6 @@ export function createLibraryAssetMutations({
     const createdAsset = newAsset as { id: string; created_at?: string; row_index?: number | null };
     const assetId = createdAsset.id;
 
-    if (typeof options?.rowIndex === 'number') {
-      pendingBatchInsertIdsRef.current.add(assetId);
-    }
-
     const fieldValues = Object.entries(valuesWithBooleanDefaults).map(([fieldId, fieldValue]) => ({
       asset_id: assetId,
       field_id: fieldId,
@@ -414,21 +356,28 @@ export function createLibraryAssetMutations({
 
     await touchLibraryUpdatedAt(supabase, libraryId, projectId);
 
-    if (typeof options?.rowIndex !== 'number') {
-      const yAsset = new Y.Map<unknown>();
-      yAsset.set('name', name);
-
-      const yPropertyValues = new Y.Map<unknown>();
-      Object.entries(valuesWithBooleanDefaults).forEach(([fieldId, fieldValue]) => {
-        yPropertyValues.set(fieldId, cloneForYjs(fieldValue));
+    const createdAt =
+      createdAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString();
+    const persistedRowIndex = createdAsset.row_index ?? nextRowIndex;
+    assetStore.transact(() => {
+      for (const update of options?.rowIndexUpdates ?? []) {
+        const existingAsset = assetStore.get(update.assetId);
+        if (existingAsset) {
+          assetStore.set({ ...existingAsset, rowIndex: update.rowIndex });
+        }
+      }
+      assetStore.set({
+        id: assetId,
+        libraryId,
+        name,
+        propertyValues: cloneStoreValue(valuesWithBooleanDefaults),
+        created_at: createdAt,
+        rowIndex: persistedRowIndex,
       });
-      yAsset.set('propertyValues', yPropertyValues);
-      yAsset.set('created_at', createdAsset.created_at ?? options?.createdAt?.toISOString() ?? new Date().toISOString());
-      yAsset.set('row_index', createdAsset.row_index ?? nextRowIndex);
+    });
 
-      yDoc.transact(() => {
-        yAssets.set(assetId, yAsset);
-      });
+    if (typeof options?.rowIndex === 'number') {
+      pendingBatchInsertIdsRef.current.add(assetId);
     }
 
     if (realtimeConfig) {
@@ -440,12 +389,25 @@ export function createLibraryAssetMutations({
         });
       }
       if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
-        void realtime.broadcastRowOrderChange();
+        const insertedRows = Array.from(pendingBatchInsertIdsRef.current).flatMap((insertedId) => {
+          const insertedAsset = assetStore.get(insertedId);
+          if (!insertedAsset) return [];
+          return [{
+            assetId: insertedId,
+            assetName: insertedAsset.name,
+            propertyValues: cloneStoreValue(insertedAsset.propertyValues),
+            createdAt: insertedAsset.created_at ?? createdAt,
+            rowIndex: insertedAsset.rowIndex ?? persistedRowIndex,
+          }];
+        });
+        await realtime.broadcastRowOrderChange({
+          insertedRows,
+          rowIndexUpdates: options.rowIndexUpdates ?? [],
+        });
       }
     }
 
     if (typeof options?.rowIndex === 'number' && !options?.skipReload) {
-      await loadInitialData();
       if (pendingBatchInsertIdsRef.current.size > 0) {
         pendingBatchInsertIdsRef.current.clear();
       }
@@ -467,9 +429,7 @@ export function createLibraryAssetMutations({
 
     if (error) throw error;
 
-    yDoc.transact(() => {
-      yAssets.delete(assetId);
-    });
+    assetStore.delete(assetId);
 
     if (realtimeConfig) {
       await realtime.broadcastAssetDelete(assetId, asset.name);
@@ -540,12 +500,10 @@ export function useLibraryAssetMutations({
   queryClient,
   libraryId,
   projectId,
-  yDoc,
-  yAssets,
+  assetStore,
   assetsRef,
   pendingBatchInsertIdsRef,
   getFormulaFieldMeta,
-  loadInitialData,
   realtimeConfig,
   realtime,
 }: UseLibraryAssetMutationsArgs) {
@@ -556,12 +514,10 @@ export function useLibraryAssetMutations({
         queryClient,
         libraryId,
         projectId,
-        yDoc,
-        yAssets,
+        assetStore,
         assetsRef,
         pendingBatchInsertIdsRef,
         getFormulaFieldMeta,
-        loadInitialData,
         realtimeConfig,
         realtime,
       }),
@@ -569,15 +525,13 @@ export function useLibraryAssetMutations({
       assetsRef,
       getFormulaFieldMeta,
       libraryId,
-      loadInitialData,
       pendingBatchInsertIdsRef,
       projectId,
       queryClient,
       realtime,
       realtimeConfig,
       supabase,
-      yAssets,
-      yDoc,
+      assetStore,
     ]
   );
 }

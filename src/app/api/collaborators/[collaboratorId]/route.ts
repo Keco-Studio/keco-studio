@@ -7,44 +7,32 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
-import { getUserProjectRole } from '@/lib/services/collaborationService';
+import { withAuth, type AuthedRequest } from '@/lib/auth/route-auth';
+import {
+  AuthorizationError,
+  getUserProjectRole,
+} from '@/lib/services/authorizationService';
 import { canUserManageCollaborators } from '@/lib/types/collaboration';
 
 /**
  * PATCH /api/collaborators/[collaboratorId]
  * Update a collaborator's role
  */
-export async function PATCH(
+const patchHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ collaboratorId: string }> }
-) {
+  { params }: { params: Promise<{ collaboratorId: string }> },
+  { supabase, user }: AuthedRequest
+) => {
   try {
     const { collaboratorId } = await params;
     const body = await request.json();
     const { newRole } = body;
-
-    // Debug: Check authorization header
-    const authHeader = request.headers.get('authorization');
 
     // Validate input
     if (!newRole || !['admin', 'editor', 'viewer'].includes(newRole)) {
       return NextResponse.json(
         { error: 'Valid role is required (admin, editor, or viewer)' },
         { status: 400 }
-      );
-    }
-
-    // Create Supabase client from request (extracts auth from headers)
-    const supabase = createSupabaseServerClient(request);
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'You must be logged in to update roles' },
-        { status: 401 }
       );
     }
 
@@ -64,11 +52,17 @@ export async function PATCH(
 
     // Check user is admin
     // SECURITY: Access is determined ONLY by collaborator role
-    const { role: userRole } = await getUserProjectRole(
-      supabase,
-      collaborator.project_id,
-      user.id
-    );
+    let userRole;
+    try {
+      ({ role: userRole } = await getUserProjectRole(
+        supabase,
+        collaborator.project_id,
+        user.id
+      ));
+    } catch (error) {
+      if (!(error instanceof AuthorizationError)) throw error;
+      userRole = null;
+    }
     
     // User must have a valid role and be able to manage collaborators
     const canManage = userRole && canUserManageCollaborators(userRole);
@@ -130,31 +124,26 @@ export async function PATCH(
       { status: 500 }
     );
   }
-}
+};
+
+export const PATCH = withAuth(patchHandler, {
+  unauthorizedResponse: () => NextResponse.json(
+    { error: 'You must be logged in to update roles' },
+    { status: 401 }
+  ),
+});
 
 /**
  * DELETE /api/collaborators/[collaboratorId]
  * Remove a collaborator from the project
  */
-export async function DELETE(
+const deleteHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ collaboratorId: string }> }
-) {
+  { params }: { params: Promise<{ collaboratorId: string }> },
+  { supabase, user }: AuthedRequest
+) => {
   try {
     const { collaboratorId } = await params;
-
-    // Create Supabase client from request (extracts auth from headers)
-    const supabase = createSupabaseServerClient(request);
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'You must be logged in to remove collaborators' },
-        { status: 401 }
-      );
-    }
 
     // Get collaborator details
     const { data: collaborator, error: collabError } = await supabase
@@ -172,11 +161,17 @@ export async function DELETE(
 
     // Check user is admin
     // SECURITY: Access is determined ONLY by collaborator role
-    const { role: userRole } = await getUserProjectRole(
-      supabase,
-      collaborator.project_id,
-      user.id
-    );
+    let userRole;
+    try {
+      ({ role: userRole } = await getUserProjectRole(
+        supabase,
+        collaborator.project_id,
+        user.id
+      ));
+    } catch (error) {
+      if (!(error instanceof AuthorizationError)) throw error;
+      userRole = null;
+    }
     
     // User must have a valid role and be able to manage collaborators
     const canManage = userRole && canUserManageCollaborators(userRole);
@@ -235,5 +230,11 @@ export async function DELETE(
       { status: 500 }
     );
   }
-}
+};
 
+export const DELETE = withAuth(deleteHandler, {
+  unauthorizedResponse: () => NextResponse.json(
+    { error: 'You must be logged in to remove collaborators' },
+    { status: 401 }
+  ),
+});

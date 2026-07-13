@@ -30,8 +30,14 @@ export default function ForgotPasswordPage() {
     setMessage(null);
     setErrorMsg(null);
 
-    if (!email) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
       setErrorMsg('Email is required');
+      return;
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setErrorMsg('Please enter a valid email address');
       return;
     }
 
@@ -39,7 +45,7 @@ export default function ForgotPasswordPage() {
     try {
       const redirectTo = `${window.location.origin}/auth/reset-password`;
       
-      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
         redirectTo: redirectTo,
       });
 
@@ -109,7 +115,7 @@ export default function ForgotPasswordPage() {
             </div>
 
             {/* Send Reset Email Form */}
-            <form className={styles.form} onSubmit={handleSendResetEmail}>
+            <form className={styles.form} onSubmit={handleSendResetEmail} noValidate>
               <label className={styles.label}>
                 Email or username
                 <input
@@ -119,14 +125,13 @@ export default function ForgotPasswordPage() {
                   placeholder="type your email or username..."
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  required
                 />
               </label>
 
               {errorMsg && <div className={styles.error}>{errorMsg}</div>}
               {message && <div className={styles.success}>{message}</div>}
 
-              <button type="submit" className={styles.submit} disabled={!email || loading}>
+              <button type="submit" className={styles.submit} disabled={loading}>
                 {loading ? 'Sending...' : 'Send reset link'}
               </button>
             </form>
@@ -147,4 +152,3 @@ export default function ForgotPasswordPage() {
     </div>
   );
 }
-

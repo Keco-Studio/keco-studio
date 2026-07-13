@@ -110,8 +110,8 @@ async function executeSetReference(params: unknown, ctx: ToolContext): Promise<T
 
   // Build reference selections from every non-empty source cell.
   const [sourceProperties, sourceAssets] = await Promise.all([
-    getLibraryProperties(ctx.supabase, source.id),
-    getLibraryAssets(ctx.supabase, source.id),
+    getLibraryProperties(ctx.supabase, source.id, ctx),
+    getLibraryAssets(ctx.supabase, source.id, ctx),
   ]);
   const references = buildLibraryReferenceSelections(sourceAssets, toReferenceFields(sourceProperties));
   if (references.length === 0) {
@@ -122,7 +122,7 @@ async function executeSetReference(params: unknown, ctx: ToolContext): Promise<T
   }
 
   // Validate the target reference field.
-  const targetProperties = await getLibraryProperties(ctx.supabase, target.id);
+  const targetProperties = await getLibraryProperties(ctx.supabase, target.id, ctx);
   const targetProperty = findFieldByName(targetProperties, targetField);
   if (!targetProperty) {
     const available = targetProperties.map((p) => p.name).join(', ') || '(none)';
@@ -146,7 +146,9 @@ async function executeSetReference(params: unknown, ctx: ToolContext): Promise<T
   }
 
   // Resolve the target row.
-  const targetAssets = sortAssetsForUiRow(await getLibraryAssets(ctx.supabase, target.id));
+  const targetAssets = sortAssetsForUiRow(
+    await getLibraryAssets(ctx.supabase, target.id, ctx)
+  );
   if (targetRow > targetAssets.length) {
     return {
       success: false,

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { withAuth } from '@/lib/auth/route-auth';
 import {
   applyCellValueReplace,
   normalizeValue,
   type CellReplacePreview,
   type CellReplaceSkip,
 } from '@/lib/utils/cellValueReplace';
-import { verifyAssetUpdatePermission } from '@/lib/services/authorizationService';
+import { verifyLibraryUpdatePermission } from '@/lib/services/authorizationService';
 import { syncReferencesForSourceChanges } from '@/lib/services/referenceSyncService';
 
 type ReplaceBody = {
@@ -37,16 +37,11 @@ type FieldRow = {
   data_type: string | null;
 };
 
-export async function POST(req: Request) {
-  const supabase = createSupabaseServerClient(req);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const POST = withAuth(async function POST(
+  req,
+  _context,
+  { supabase, user }
+) {
   let body: ReplaceBody;
   try {
     body = await req.json();
@@ -113,8 +108,9 @@ export async function POST(req: Request) {
     );
 
     if (searchError) {
+      console.error('[POST /api/search/cell-values/replace] Search failed:', searchError);
       return NextResponse.json(
-        { error: searchError.message ?? 'search failed' },
+        { error: 'Cell value search failed' },
         { status: 400 }
       );
     }
@@ -144,8 +140,9 @@ export async function POST(req: Request) {
     .in('field_id', fieldIds);
 
   if (valueError) {
+    console.error('[POST /api/search/cell-values/replace] Failed to load values:', valueError);
     return NextResponse.json(
-      { error: valueError.message ?? 'failed to load cell values' },
+      { error: 'Failed to load cell values' },
       { status: 400 }
     );
   }
@@ -161,8 +158,9 @@ export async function POST(req: Request) {
     .in('id', fieldIds);
 
   if (fieldError) {
+    console.error('[POST /api/search/cell-values/replace] Failed to load fields:', fieldError);
     return NextResponse.json(
-      { error: fieldError.message ?? 'failed to load field definitions' },
+      { error: 'Failed to load field definitions' },
       { status: 400 }
     );
   }
@@ -225,46 +223,62 @@ export async function POST(req: Request) {
   }
 
   if (upserts.length > 0) {
-    const permissionCache = new Map<string, boolean>();
-    const denyReasonByAsset = new Map<string, string>();
-    const allowedUpserts: typeof upserts = [];
+    const libraryIdByAssetId = new Map(
+      targets
+        .filter((target): target is SearchRow & { library_id: string } => Boolean(target.library_id))
+        .map((target) => [target.asset_id, target.library_id])
+    );
+    const previewByCell = new Map(
+      previews.map((preview) => [`${preview.assetId}:${preview.fieldId}`, preview])
+    );
+    const libraryIds = [...new Set(
+      upserts
+        .map((row) => libraryIdByAssetId.get(row.asset_id))
+        .filter((libraryId): libraryId is string => Boolean(libraryId))
+    )];
+    const permissionByLibrary = new Map<string, { allowed: boolean; reason?: string }>();
 
-    for (const row of upserts) {
-      if (!permissionCache.has(row.asset_id)) {
-        try {
-          await verifyAssetUpdatePermission(supabase, row.asset_id, user.id);
-          permissionCache.set(row.asset_id, true);
-        } catch (err) {
-          const denyReason =
-            err instanceof Error ? err.message : 'No permission to edit';
-          permissionCache.set(row.asset_id, false);
-          denyReasonByAsset.set(row.asset_id, denyReason);
-          if (process.env.NODE_ENV !== 'production') {
-            console.warn(
-              '[cell-values/replace] permission denied for asset',
-              row.asset_id,
-              'user',
-              user.id,
-              denyReason
-            );
-          }
+    await Promise.all(libraryIds.map(async (libraryId) => {
+      try {
+        await verifyLibraryUpdatePermission(
+          supabase,
+          libraryId,
+          user.id,
+          { allowEditor: true }
+        );
+        permissionByLibrary.set(libraryId, { allowed: true });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'No permission to edit';
+        permissionByLibrary.set(libraryId, { allowed: false, reason });
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            '[cell-values/replace] permission denied for library',
+            libraryId,
+            'user',
+            user.id,
+            reason
+          );
         }
       }
-      if (permissionCache.get(row.asset_id)) {
+    }));
+
+    const allowedUpserts: typeof upserts = [];
+    for (const row of upserts) {
+      const libraryId = libraryIdByAssetId.get(row.asset_id);
+      const permission = libraryId ? permissionByLibrary.get(libraryId) : undefined;
+      if (permission?.allowed) {
         allowedUpserts.push(row);
-      } else {
-        const preview = previews.find(
-          (p) => p.assetId === row.asset_id && p.fieldId === row.field_id
-        );
-        if (preview) {
-          skips.push({
-            assetId: row.asset_id,
-            fieldId: row.field_id,
-            fieldLabel: preview.fieldLabel,
-            reason:
-              denyReasonByAsset.get(row.asset_id) ?? 'No permission to edit',
-          });
-        }
+        continue;
+      }
+
+      const preview = previewByCell.get(`${row.asset_id}:${row.field_id}`);
+      if (preview) {
+        skips.push({
+          assetId: row.asset_id,
+          fieldId: row.field_id,
+          fieldLabel: preview.fieldLabel,
+          reason: permission?.reason ?? 'No permission to edit',
+        });
       }
     }
 
@@ -274,6 +288,17 @@ export async function POST(req: Request) {
     const finalPreviews = previews.filter((p) =>
       allowedKeys.has(`${p.assetId}:${p.fieldId}`)
     );
+    const updatedCells = allowedUpserts.flatMap((row) => {
+      const libraryId = libraryIdByAssetId.get(row.asset_id);
+      if (!libraryId) return [];
+      return [{
+        libraryId,
+        assetId: row.asset_id,
+        propertyKey: row.field_id,
+        newValue: row.value_json,
+        oldValue: valueMap.get(`${row.asset_id}:${row.field_id}`),
+      }];
+    });
 
     const affectedLibraryIdsFromTargets = new Set(
       targets
@@ -301,8 +326,9 @@ export async function POST(req: Request) {
         .upsert(allowedUpserts, { onConflict: 'asset_id,field_id' });
 
       if (upsertError) {
+        console.error('[POST /api/search/cell-values/replace] Replace failed:', upsertError);
         return NextResponse.json(
-          { error: upsertError.message ?? 'replace failed' },
+          { error: 'Cell value replacement failed' },
           { status: 400 }
         );
       }
@@ -323,6 +349,13 @@ export async function POST(req: Request) {
         for (const u of refUpdates) {
           if (u.referencingLibraryId) {
             affectedLibraryIdsFromTargets.add(u.referencingLibraryId);
+            updatedCells.push({
+              libraryId: u.referencingLibraryId,
+              assetId: u.referencingAssetId,
+              propertyKey: u.referencingFieldId,
+              newValue: u.newReferenceValue,
+              oldValue: undefined,
+            });
           }
         }
       } catch (syncError) {
@@ -340,6 +373,7 @@ export async function POST(req: Request) {
       previews: finalPreviews,
       skips,
       affectedLibraryIds,
+      cells: dryRun ? [] : updatedCells,
       ...(dryRun ? { dryRun: true } : {}),
     });
   }
@@ -360,4 +394,7 @@ export async function POST(req: Request) {
     dryRun,
     affectedLibraryIds,
   });
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});

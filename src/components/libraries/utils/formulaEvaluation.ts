@@ -9,6 +9,26 @@ type FormulaToken =
 const FORMULA_DECIMAL_DIGITS = 4;
 const FORMULA_REF_ERROR = '#REF!';
 const FORMULA_DIV0_ERROR = '#DIV/0!';
+const FUNCTION_NAMES = new Set(['SUM', 'IF', 'AVERAGE', 'MIN', 'MAX', 'ROUND']);
+
+type CompiledFormula = {
+  tokens: FormulaToken[];
+  hasFunctionIdentifier: boolean;
+  rpn: FormulaToken[];
+  advancedEvaluator?: (helper: FormulaHelper) => unknown;
+};
+
+type FormulaHelper = {
+  IF: (condition: any, whenTrue: any, whenFalse: any) => any;
+  SUM: (...args: any[]) => number;
+  AVERAGE: (...args: any[]) => number | null;
+  MIN: (...args: any[]) => number | null;
+  MAX: (...args: any[]) => number | null;
+  ROUND: (value: any, digits: any) => number | null;
+  COL: (name: string) => any;
+};
+
+const compiledFormulaCache = new Map<string, Map<string, CompiledFormula>>();
 
 const roundFormulaNumber = (n: number): number => {
   if (!Number.isFinite(n)) return n;
@@ -186,11 +206,100 @@ const evalRpn = (
   return roundFormulaNumber(final);
 };
 
+export const createPropertyByName = (
+  properties: PropertyConfig[],
+): Map<string, PropertyConfig> => {
+  const propertyByName = new Map<string, PropertyConfig>();
+  properties.forEach((property) => {
+    if (property.name) propertyByName.set(property.name, property);
+  });
+  return propertyByName;
+};
+
+const getCompiledFormula = (
+  trimmedExpr: string,
+  propertyByName: ReadonlyMap<string, PropertyConfig>,
+): CompiledFormula => {
+  const columnNames = Array.from(propertyByName.keys()).sort((a, b) => b.length - a.length);
+  const columnSignature = columnNames.join('\u0000');
+  let variants = compiledFormulaCache.get(trimmedExpr);
+  if (!variants) {
+    variants = new Map();
+    compiledFormulaCache.set(trimmedExpr, variants);
+  }
+
+  const cached = variants.get(columnSignature);
+  if (cached) return cached;
+
+  const tokens = tokenizeFormula(trimmedExpr);
+  const hasFunctionIdentifier = tokens.some(
+    (token) => token.type === 'identifier' && FUNCTION_NAMES.has(token.value.toUpperCase()),
+  );
+  const compiled = {
+    tokens,
+    hasFunctionIdentifier,
+    rpn: hasFunctionIdentifier ? [] : toRpn(tokens),
+  };
+  variants.set(columnSignature, compiled);
+  return compiled;
+};
+
+const getAdvancedEvaluator = (
+  compiled: CompiledFormula,
+  trimmedExpr: string,
+  propertyByName: ReadonlyMap<string, PropertyConfig>,
+): ((helper: FormulaHelper) => unknown) => {
+  if (compiled.advancedEvaluator) return compiled.advancedEvaluator;
+
+  const columnNames = Array.from(propertyByName.keys()).sort((a, b) => b.length - a.length);
+  const stringLiterals: string[] = [];
+  let jsExpr = trimmedExpr.replace(
+    /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g,
+    (match) => {
+      const idx = stringLiterals.length;
+      stringLiterals.push(match);
+      return `__STR_LITERAL_${idx}__`;
+    },
+  );
+
+  for (const name of columnNames) {
+    const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    jsExpr = jsExpr.replace(new RegExp(`\\b${safeName}\\b`, 'g'), `COL(${JSON.stringify(name)})`);
+  }
+
+  jsExpr = jsExpr
+    .replace(/\bIF\s*\(/g, 'IF(')
+    .replace(/\bSUM\s*\(/g, 'SUM(')
+    .replace(/\bAVERAGE\s*\(/g, 'AVERAGE(')
+    .replace(/\bMIN\s*\(/g, 'MIN(')
+    .replace(/\bMAX\s*\(/g, 'MAX(')
+    .replace(/\bROUND\s*\(/g, 'ROUND(')
+    .replace(/>=/g, '__GTE__')
+    .replace(/<=/g, '__LTE__')
+    .replace(/=/g, '==')
+    .replace(/__GTE__/g, '>=')
+    .replace(/__LTE__/g, '<=')
+    .replace(/__STR_LITERAL_(\d+)__/g, (_, indexStr) => {
+      const index = Number(indexStr);
+      return Number.isFinite(index) && stringLiterals[index] !== undefined
+        ? stringLiterals[index]
+        : '';
+    });
+
+  // eslint-disable-next-line no-new-func
+  compiled.advancedEvaluator = new Function(
+    'helper',
+    `const { IF, SUM, AVERAGE, MIN, MAX, ROUND, COL } = helper; return (${jsExpr});`,
+  ) as (helper: FormulaHelper) => unknown;
+  return compiled.advancedEvaluator;
+};
+
 export const evaluateFormulaForRow = (
   expression: string | undefined,
   row: AssetRow,
   allProperties: PropertyConfig[],
   visited: Set<string> = new Set(),
+  propertyByNameOverride?: ReadonlyMap<string, PropertyConfig>,
 ): any | null => {
   if (!expression || !expression.trim()) return null;
 
@@ -198,20 +307,10 @@ export const evaluateFormulaForRow = (
     ? expression.trim().slice(1)
     : expression.trim();
 
-  const tokens = tokenizeFormula(trimmedExpr);
+  const propertyByName = propertyByNameOverride ?? createPropertyByName(allProperties);
+  const compiled = getCompiledFormula(trimmedExpr, propertyByName);
+  const { tokens, hasFunctionIdentifier, rpn } = compiled;
   if (tokens.length === 0) return null;
-
-  const FUNCTION_NAMES = new Set(['SUM', 'IF', 'AVERAGE', 'MIN', 'MAX', 'ROUND']);
-  const hasFunctionIdentifier = tokens.some(
-    (t) => t.type === 'identifier' && FUNCTION_NAMES.has(t.value.toUpperCase())
-  );
-
-  const propertyByName = new Map<string, PropertyConfig>();
-  allProperties.forEach((p) => {
-    if (p.name) {
-      propertyByName.set(p.name, p);
-    }
-  });
 
   if (!hasFunctionIdentifier) {
     for (const token of tokens) {
@@ -224,8 +323,6 @@ export const evaluateFormulaForRow = (
     }
   }
 
-  const rpn = hasFunctionIdentifier ? [] : toRpn(tokens);
-
   const resolvePropertyValue = (prop: PropertyConfig): any | null => {
     if (visited.has(prop.id)) return null;
 
@@ -236,7 +333,13 @@ export const evaluateFormulaForRow = (
       }
       const nextVisited = new Set(visited);
       nextVisited.add(prop.id);
-      return evaluateFormulaForRow(anyProp.formulaExpression, row, allProperties, nextVisited);
+      return evaluateFormulaForRow(
+        anyProp.formulaExpression,
+        row,
+        allProperties,
+        nextVisited,
+        propertyByName,
+      );
     }
 
     const raw = row.propertyValues[prop.key];
@@ -323,56 +426,9 @@ export const evaluateFormulaForRow = (
         const num = Number(raw);
         return Number.isNaN(num) ? raw : num;
       },
-    } as const;
+    };
 
-    const columnNames = Array.from(propertyByName.keys()).sort(
-      (a, b) => b.length - a.length,
-    );
-
-    const stringLiterals: string[] = [];
-    let jsExpr = trimmedExpr.replace(
-      /"([^"\\]|\\.)*"|'([^'\\]|\\.)*'/g,
-      (match) => {
-        const idx = stringLiterals.length;
-        stringLiterals.push(match);
-        return `__STR_LITERAL_${idx}__`;
-      },
-    );
-
-    for (const name of columnNames) {
-      const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const re = new RegExp(`\\b${safeName}\\b`, 'g');
-      jsExpr = jsExpr.replace(re, `COL(${JSON.stringify(name)})`);
-    }
-
-    jsExpr = jsExpr
-      .replace(/\bIF\s*\(/g, 'IF(')
-      .replace(/\bSUM\s*\(/g, 'SUM(')
-      .replace(/\bAVERAGE\s*\(/g, 'AVERAGE(')
-      .replace(/\bMIN\s*\(/g, 'MIN(')
-      .replace(/\bMAX\s*\(/g, 'MAX(')
-      .replace(/\bROUND\s*\(/g, 'ROUND(');
-
-    jsExpr = jsExpr
-      .replace(/>=/g, '__GTE__')
-      .replace(/<=/g, '__LTE__')
-      .replace(/=/g, '==')
-      .replace(/__GTE__/g, '>=')
-      .replace(/__LTE__/g, '<=');
-
-    jsExpr = jsExpr.replace(/__STR_LITERAL_(\d+)__/g, (_, indexStr) => {
-      const index = Number(indexStr);
-      return Number.isFinite(index) && stringLiterals[index] !== undefined
-        ? stringLiterals[index]
-        : '';
-    });
-
-    // eslint-disable-next-line no-new-func
-    const fn = new Function(
-      'helper',
-      `const { IF, SUM, AVERAGE, MIN, MAX, ROUND, COL } = helper; return (${jsExpr});`,
-    );
-    const result = fn(helper);
+    const result = getAdvancedEvaluator(compiled, trimmedExpr, propertyByName)(helper);
     if (result === undefined) return null;
     if (typeof result === 'number') {
       if (!Number.isFinite(result)) {
@@ -408,4 +464,3 @@ export const getCustomFormulaExpressionFromCellValue = (rawValue: unknown): stri
   }
   return null;
 };
-

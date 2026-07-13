@@ -61,9 +61,13 @@ import {
   AGENT_TURN_TOKEN_BUDGET,
   addTokenUsageTotal,
   compactLargeUserContentInMessages,
+  createTurnDeadline,
+  isTurnDeadlineExceeded,
   isOverTokenBudget,
+  timeLimitExceededMessage,
   tokenBudgetExceededMessage,
 } from './turn-budget';
+import { createAccessVerificationCache } from '@/lib/services/authorizationService';
 
 const MAX_ITERATIONS = 50;
 
@@ -293,6 +297,7 @@ async function* continueLoop(
   meta: ConversationMeta,
   conversationId: string,
   startIterations: number,
+  deadlineMs: number,
   startTokenUsageTotal = 0,
   signal?: AbortSignal,
   trace?: TurnTraceCollector
@@ -311,6 +316,11 @@ async function* continueLoop(
         type: 'error',
         message: tokenBudgetExceededMessage(usedTokenTotal, AGENT_TURN_TOKEN_BUDGET),
       };
+      yield { type: 'done' };
+      return;
+    }
+    if (isTurnDeadlineExceeded(deadlineMs)) {
+      yield { type: 'error', message: timeLimitExceededMessage() };
       yield { type: 'done' };
       return;
     }
@@ -353,6 +363,12 @@ async function* continueLoop(
       }
     }
     usedTokenTotal = addTokenUsageTotal(usedTokenTotal, llmUsage);
+
+    if (isTurnDeadlineExceeded(deadlineMs)) {
+      yield { type: 'error', message: timeLimitExceededMessage() };
+      yield { type: 'done' };
+      return;
+    }
 
     trace?.recordLlmCall({
       iteration: iterations,
@@ -632,6 +648,7 @@ async function* continueLoop(
 /** Run a fresh agent turn from a new user message. */
 export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEvent> {
   const { toolContext, conversationId, conversationMeta } = input;
+  const deadlineMs = createTurnDeadline();
   const trace = new TurnTraceCollector({
     turnId: crypto.randomUUID(),
     userMessage: input.userMessage,
@@ -667,13 +684,24 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
     if (!savedUserMessage) throw new Error('Failed to bind the current user message');
     const turnContext: ToolContext = {
       ...toolContext,
+      accessCache: createAccessVerificationCache(),
       authoritativeUserSource: {
         messageId: savedUserMessage.id,
         content: input.userMessage,
       },
     };
 
-    yield* continueLoop(messages, turnContext, conversationMeta, conversationId, 0, 0, input.signal, trace);
+    yield* continueLoop(
+      messages,
+      turnContext,
+      conversationMeta,
+      conversationId,
+      0,
+      deadlineMs,
+      0,
+      input.signal,
+      trace
+    );
   } finally {
     await flushTrace(trace, toolContext, conversationId);
   }
@@ -682,7 +710,12 @@ export async function* runAgentTurn(input: AgentTurnInput): AsyncGenerator<SSEEv
 /** Resume a suspended turn after the user approves or rejects a pending action. */
 export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEvent> {
   const { toolContext } = input;
-  const pending = await loadPendingAction(toolContext.supabase, input.actionId);
+  const deadlineMs = createTurnDeadline();
+  const turnContext: ToolContext = {
+    ...toolContext,
+    accessCache: createAccessVerificationCache(),
+  };
+  const pending = await loadPendingAction(turnContext.supabase, input.actionId);
   if (!pending) {
     yield { type: 'error', message: 'This action has expired or was already handled.' };
     yield { type: 'done' };
@@ -691,17 +724,17 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
 
   const conversationId = pending.conversationId;
   const turnId = pending.suspendedState.turnId;
-  const trace = turnId ? await loadTraceCollector(toolContext.supabase, turnId) : undefined;
+  const trace = turnId ? await loadTraceCollector(turnContext.supabase, turnId) : undefined;
   trace?.recordConfirmationDecision(
     input.actionId,
     input.decision === 'approve' ? 'approved' : 'rejected'
   );
 
   try {
-    const conversation = await getConversation(toolContext.supabase, conversationId);
+    const conversation = await getConversation(turnContext.supabase, conversationId);
     const meta = conversation?.meta ?? input.conversationMeta;
 
-    const systemMessage = await buildSystemMessage(toolContext);
+    const systemMessage = await buildSystemMessage(turnContext);
     const { messages: suspendedMessages, pendingToolCall, toolResult: savedResult } = pending.suspendedState;
 
     // Ensure the working messages start with the current system prompt.
@@ -713,7 +746,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     // suspend time. The user may have navigated elsewhere before approving, so
     // refresh that injected context from the current ToolContext to avoid the
     // system prompt and the user message disagreeing within the same turn.
-    refreshLastUserContext(messages, toolContext);
+    refreshLastUserContext(messages, turnContext);
 
     const tool = resolveTool(pending.toolName);
     const resumeArgs =
@@ -734,7 +767,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
         throwIfAborted(input.signal);
         yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
         const toolStartMs = Date.now();
-        result = await tool.executeImport(savedResult, pending.args, toolContext);
+        result = await tool.executeImport(savedResult, pending.args, turnContext);
         trace?.recordToolCall({
           tool: tool.name,
           args: resumeArgs,
@@ -750,7 +783,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       throwIfAborted(input.signal);
       yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
       const toolStartMs = Date.now();
-      result = await tool.execute(pending.args, toolContext);
+      result = await tool.execute(pending.args, turnContext);
       trace?.recordToolCall({
         tool: tool.name,
         args: resumeArgs,
@@ -777,26 +810,27 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     };
     messages.push(assistantMessage);
     messages.push(toolMessage);
-    await persistMessage(toolContext, conversationId, assistantMessage);
-    await saveMessage(toolContext.supabase, conversationId, toolMessage);
+    await persistMessage(turnContext, conversationId, assistantMessage);
+    await saveMessage(turnContext.supabase, conversationId, toolMessage);
 
-    await markPendingAction(toolContext.supabase, input.actionId, input.decision === 'approve' ? 'approved' : 'rejected');
-    await deletePendingAction(toolContext.supabase, input.actionId);
+    await markPendingAction(turnContext.supabase, input.actionId, input.decision === 'approve' ? 'approved' : 'rejected');
+    await deletePendingAction(turnContext.supabase, input.actionId);
 
     // Continue the loop so the LLM can summarize the result.
     const resumeIteration = pending.suspendedState.nextIteration ?? 0;
     const resumeTokenUsageTotal = pending.suspendedState.tokenUsageTotal ?? 0;
     yield* continueLoop(
       messages,
-      toolContext,
+      turnContext,
       meta,
       conversationId,
       resumeIteration,
+      deadlineMs,
       resumeTokenUsageTotal,
       input.signal,
       trace ?? undefined
     );
   } finally {
-    await flushTrace(trace ?? undefined, toolContext, conversationId);
+    await flushTrace(trace ?? undefined, turnContext, conversationId);
   }
 }

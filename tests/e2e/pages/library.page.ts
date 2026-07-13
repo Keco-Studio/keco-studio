@@ -95,12 +95,10 @@ export class LibraryPage {
     // Button has aria-label="Create new library", no text content (icon only). Only visible for admin.
     this.createLibraryButton = page.getByRole('tree').getByRole('button', { name: /create new library/i }).first();
 
-    // Folder page "Create Library" button in header (LibraryToolbar)
-    // This button appears in the folder preview page header (LibraryToolbar component)
-    // Strategy: Use getByLabel to find button with aria-label="Create Library"
-    // Only the LibraryToolbar button has aria-label="Create Library"
-    // The empty state button doesn't have aria-label, only text content
-    this.folderPageCreateLibraryButton = page.getByLabel('Create Library');
+    // Folder pages expose the action either in the toolbar or in the empty state.
+    this.folderPageCreateLibraryButton = page
+      .getByRole('button', { name: 'Create Library', exact: true })
+      .first();
 
     // Sidebar add button (for creating library/folder directly under project)
     this.sidebarAddButton = page.locator('button[title="Add new folder or library"]')
@@ -146,15 +144,18 @@ export class LibraryPage {
    * @param folderName - Name of the folder (default: "Resource Folder")
    */
   async openFolder(folderName: string): Promise<void> {
-    // Find folder in sidebar tree by title attribute (avoids matching breadcrumb buttons)
-    const sidebar = this.page.locator('aside');
-    const folderCard = sidebar.locator(`[title="${folderName}"]`).first();
+    const sidebarTree = this.page.getByRole('tree');
+    const folderLabel = sidebarTree.locator(`[title="${folderName}"]`).first();
+    const folderTreeItem = sidebarTree
+      .getByRole('treeitem')
+      .filter({ has: this.page.locator(`[title="${folderName}"]`) })
+      .first();
 
-    await expect(folderCard).toBeVisible({ timeout: 5000 });
-    await folderCard.click();
+    await expect(folderLabel).toBeVisible({ timeout: 15000 });
+    await expect(folderTreeItem).toBeVisible({ timeout: 15000 });
+    await folderTreeItem.click();
 
-    // Wait for navigation to folder content (libraries list)
-    await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 });
+    await this.page.waitForURL(/\/folder\/[^/]+$/, { timeout: 15000 });
   }
 
   /**
@@ -751,4 +752,3 @@ export class LibraryPage {
     await this.page.waitForLoadState('networkidle', { timeout: 15000 }).catch(() => { });
   }
 }
-

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { withAuth } from '@/lib/auth/route-auth';
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
@@ -48,33 +47,11 @@ function isLibrarySearchRow(value: unknown): value is LibrarySearchRow {
   );
 }
 
-export async function GET(req: Request) {
-  const cookieStore = await cookies();
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return cookieStore.getAll();
-      },
-      setAll(cookiesToSet) {
-        try {
-          cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options)
-          );
-        } catch {
-          // ignore writes from Route Handlers when not permitted
-        }
-      },
-    },
-  });
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const GET = withAuth(async function GET(
+  req,
+  _context,
+  { supabase }
+) {
   const url = new URL(req.url);
   const q = (url.searchParams.get('q') ?? '').trim();
   const limitParam = Number(url.searchParams.get('limit') ?? '10');
@@ -96,7 +73,8 @@ export async function GET(req: Request) {
     .limit(limit);
 
   if (assetsError) {
-    return NextResponse.json({ error: assetsError.message }, { status: 400 });
+    console.error('[GET /api/search/assets] Failed to search assets:', assetsError);
+    return NextResponse.json({ error: 'Asset search failed' }, { status: 400 });
   }
 
   const safeAssets = (assets ?? []).filter(isAssetSearchRow);
@@ -110,7 +88,8 @@ export async function GET(req: Request) {
     .in('id', libraryIds);
 
   if (librariesError) {
-    return NextResponse.json({ error: librariesError.message }, { status: 400 });
+    console.error('[GET /api/search/assets] Failed to load libraries:', librariesError);
+    return NextResponse.json({ error: 'Asset search failed' }, { status: 400 });
   }
 
   const libById = new Map<string, LibrarySearchRow>();
@@ -135,4 +114,7 @@ export async function GET(req: Request) {
     .filter(Boolean);
 
   return NextResponse.json({ results });
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});

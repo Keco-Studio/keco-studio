@@ -5,10 +5,16 @@ import {
   PropertyConfig,
   SectionConfig,
 } from '@/lib/types/libraryAssets';
-import { computeFormulaValuesForRow } from '@/lib/utils/formula';
+import {
+  computeFormulaValueForField,
+  computeFormulaValuesForRow,
+  createFormulaFieldByName,
+} from '@/lib/utils/formula';
 import { getLibrary } from '@/lib/services/libraryService';
 import { syncReferencesForSourceChanges } from '@/lib/services/referenceSyncService';
+import { fetchAllPaged } from '@/lib/services/pagination';
 import {
+  type AccessVerificationContext,
   verifyLibraryAccess,
   verifyLibraryUpdatePermission,
   verifyAssetAccess,
@@ -306,16 +312,21 @@ async function recalculateAndPersistFormulaFieldValues(
     dataType: f.data_type,
     formulaExpression: f.formula_expression,
   }));
+  const fieldByName = createFormulaFieldByName(evaluableFields);
 
-  const upsertRows: Array<{ asset_id: string; field_id: string; value_json: number }> = [];
+  const upsertRows: Array<{ asset_id: string; field_id: string; value_json: unknown }> = [];
   for (const asset of assets) {
     const existingTargetValue = asset.propertyValues?.[targetFormulaFieldId];
     if (isCustomFormulaCellValue(existingTargetValue)) {
       // Respect cell-level custom formulas: schema-level recalculation should not overwrite them.
       continue;
     }
-    const computed = computeFormulaValuesForRow(evaluableFields, asset.propertyValues);
-    const value = computed[targetFormulaFieldId];
+    const value = computeFormulaValueForField(
+      evaluableFields,
+      targetFormulaFieldId,
+      asset.propertyValues,
+      fieldByName
+    );
     // Persist any non-empty result so formulas can return numbers, booleans, or strings.
     if (value !== null && value !== undefined) {
       upsertRows.push({
@@ -375,13 +386,14 @@ export async function getLibrarySummary(
 // T008: Load predefine schema for a library and aggregate Sections + Properties.
 export async function getLibrarySchema(
   supabase: SupabaseClient,
-  libraryId: string
+  libraryId: string,
+  access?: AccessVerificationContext
 ): Promise<{
   sections: SectionConfig[];
   properties: PropertyConfig[];
 }> {
   // verify library access
-  await verifyLibraryAccess(supabase, libraryId);
+  await verifyLibraryAccess(supabase, libraryId, access?.userId, access?.cache);
 
   const { data, error } = await supabase
     .from('library_field_definitions')
@@ -444,6 +456,7 @@ export async function getLibrarySchema(
       referenceLibraries: row.reference_libraries || undefined,
       enumOptions: row.enum_options || undefined,
       formulaExpression: row.formula_expression || undefined,
+      required: row.required ?? false,
       orderIndex: row.order_index,
     });
   }
@@ -737,25 +750,22 @@ export async function updateLibraryField(
 // T009: Load assets and property values for a library and aggregate into AssetRow[].
 export async function getLibraryAssetsWithProperties(
   supabase: SupabaseClient,
-  libraryId: string
+  libraryId: string,
+  access?: AccessVerificationContext
 ): Promise<AssetRow[]> {
   // verify library access
-  await verifyLibraryAccess(supabase, libraryId);
+  await verifyLibraryAccess(supabase, libraryId, access?.userId, access?.cache);
 
-  const { data: assetData, error: assetError } = await supabase
-    .from('library_assets')
-    .select('id, library_id, name, created_at, row_index')
-    .eq('library_id', libraryId)
-    // IMPORTANT: keep this ordering identical to frontend allAssets sorting:
-    // row_index first, then id, so clients agree on row order.
-    .order('row_index', { ascending: true })
-    .order('id', { ascending: true });
-
-  if (assetError) {
-    throw assetError;
-  }
-
-  const assets = (assetData ?? []) as AssetRowDb[];
+  const assets = await fetchAllPaged<AssetRowDb>((from, to) =>
+    supabase
+      .from('library_assets')
+      .select('id, library_id, name, created_at, row_index')
+      .eq('library_id', libraryId)
+      // Keep this ordering identical to frontend allAssets sorting.
+      .order('row_index', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to)
+  );
 
   if (assets.length === 0) {
     return [];
@@ -763,16 +773,15 @@ export async function getLibraryAssetsWithProperties(
 
   const assetIds = assets.map((a) => a.id);
 
-  const { data: valueData, error: valueError } = await supabase
-    .from('library_asset_values')
-    .select('asset_id, field_id, value_json')
-    .in('asset_id', assetIds);
-
-  if (valueError) {
-    throw valueError;
-  }
-
-  const values = (valueData ?? []) as AssetValueRow[];
+  const values = await fetchAllPaged<AssetValueRow>((from, to) =>
+    supabase
+      .from('library_asset_values')
+      .select('asset_id, field_id, value_json')
+      .in('asset_id', assetIds)
+      .order('asset_id', { ascending: true })
+      .order('field_id', { ascending: true })
+      .range(from, to)
+  );
 
   const rowsByAssetId = new Map<string, AssetRow>();
 
@@ -813,8 +822,10 @@ export async function createAsset(
   // verify creation permission (admin and editor can create)
   await verifyAssetCreationPermission(supabase, libraryId);
 
-  const formulaMeta = await getFormulaFieldMetaByLibraryId(supabase, libraryId);
-  const booleanFieldIds = await getBooleanFieldIdsByLibraryId(supabase, libraryId);
+  const [formulaMeta, booleanFieldIds] = await Promise.all([
+    getFormulaFieldMetaByLibraryId(supabase, libraryId),
+    getBooleanFieldIdsByLibraryId(supabase, libraryId),
+  ]);
   const mergedPropertyValues = applyBooleanFieldDefaults(
     mergeFormulaValuesPreservingCustom(formulaMeta, propertyValues),
     booleanFieldIds
@@ -893,35 +904,35 @@ export async function shiftRowIndices(
 ): Promise<void> {
   if (!delta) return;
 
-  const { data, error } = await supabase
-    .from('library_assets')
-    .select('id, row_index')
-    .eq('library_id', libraryId)
-    .gte('row_index', fromRowIndex)
-    .order('row_index', { ascending: delta > 0 });
+  const { error } = await supabase.rpc('shift_row_indices', {
+    library_id: libraryId,
+    from_row_index: fromRowIndex,
+    delta,
+  });
 
   if (error) {
-    throw new Error(`Failed to load rows for shifting indices: ${error.message}`);
-  }
-
-  const rows = (data || []) as { id: string; row_index: number | null }[];
-  if (rows.length === 0) return;
-
-  const ordered = delta > 0 ? rows.reverse() : rows;
-
-  for (const row of ordered) {
-    if (row.row_index == null) continue;
-    const newIndex = row.row_index + delta;
-    const { error: updateError } = await supabase
-      .from('library_assets')
-      .update({ row_index: newIndex })
-      .eq('id', row.id);
-    if (updateError) {
-      throw new Error(`Failed to shift row_index for asset ${row.id}: ${updateError.message}`);
-    }
+    throw new Error(`Failed to shift row indices: ${error.message}`);
   }
 
   await touchLibraryUpdatedAt(supabase, libraryId);
+}
+
+/** Normalize displayed assets to consecutive 1-based row indices in one RPC. */
+export async function normalizeRowIndices(
+  supabase: SupabaseClient,
+  libraryId: string,
+  displayOrderedRows: Array<{ id: string }>
+): Promise<void> {
+  if (displayOrderedRows.length === 0) return;
+
+  const { error } = await supabase.rpc('normalize_row_indices', {
+    p_library_id: libraryId,
+    p_asset_ids: displayOrderedRows.map((row) => row.id),
+  });
+
+  if (error) {
+    throw new Error(`Failed to normalize row indices: ${error.message}`);
+  }
 }
 
 // T011: Update an existing asset and its property values

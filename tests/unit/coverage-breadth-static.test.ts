@@ -12,11 +12,11 @@ const requiredCoverageFiles = [
   'tests/unit/api-search-assets-route.test.ts',
   'tests/unit/api-export-route.test.ts',
   'tests/unit/services-touched-breadth.test.ts',
-  'tests/unit/yjs-collaboration-smoke.test.ts',
+  'tests/unit/asset-store-reference-sync.test.ts',
 ];
 
 describe('coverage breadth guard', () => {
-  it('keeps Batch D coverage across auth, API routes, services, and Yjs/collaboration', () => {
+  it('keeps Batch D coverage across auth, API routes, services, and collaboration', () => {
     const missing = requiredCoverageFiles.filter((file) => !existsSync(path.join(repoRoot, file)));
     expect(missing).toEqual([]);
   });

@@ -173,16 +173,31 @@ export async function importLibraryFromFile(
   const libraryId = createdLibrary.id as string;
 
   const fieldIdsBySectionColumn = new Map<string, string>();
-  let fieldCount = 0;
   let globalFieldOrder = 0;
+  const fieldRows: Array<{
+    key: string;
+    row: {
+      library_id: string;
+      section_id: string;
+      section: string;
+      label: string;
+      description: null;
+      data_type: 'string';
+      formula_expression: null;
+      required: false;
+      order_index: number;
+      enum_options: null;
+      reference_libraries: null;
+    };
+  }> = [];
 
   for (const section of parsed.sections) {
     const sectionId = `${libraryId}:${section.name}`;
     for (let colIdx = 0; colIdx < section.columns.length; colIdx += 1) {
       const label = section.columns[colIdx];
-      const { data: inserted, error } = await supabase
-        .from('library_field_definitions')
-        .insert({
+      fieldRows.push({
+        key: `${section.name}:${colIdx}`,
+        row: {
           library_id: libraryId,
           section_id: sectionId,
           section: section.name,
@@ -194,16 +209,25 @@ export async function importLibraryFromFile(
           order_index: globalFieldOrder,
           enum_options: null,
           reference_libraries: null,
-        })
-        .select('id')
-        .single();
-
-      if (error) throw error;
-      fieldIdsBySectionColumn.set(`${section.name}:${colIdx}`, inserted.id);
-      fieldCount += 1;
+        },
+      });
       globalFieldOrder += 1;
     }
   }
+
+  const { data: insertedFields, error: fieldError } = await supabase
+    .from('library_field_definitions')
+    .insert(fieldRows.map(({ row }) => row))
+    .select('id');
+
+  if (fieldError) throw fieldError;
+  if (!insertedFields || insertedFields.length !== fieldRows.length) {
+    throw new Error('Failed to create all imported fields');
+  }
+  fieldRows.forEach(({ key }, index) => {
+    fieldIdsBySectionColumn.set(key, insertedFields[index].id);
+  });
+  const fieldCount = fieldRows.length;
 
   // One asset per row index; multiple sheets (sections) merge into the same asset row.
   const maxRows = Math.max(...parsed.sections.map((s) => s.rows.length), 0);

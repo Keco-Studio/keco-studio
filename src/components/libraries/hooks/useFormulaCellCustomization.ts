@@ -8,7 +8,7 @@ type UseFormulaCellCustomizationParams = {
   rows: AssetRow[];
   properties: PropertyConfig[];
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
-  yRows: any;
+  rowStore: any;
   setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, { name: string; propertyValues: Record<string, any> }>>>;
   setIsSaving: React.Dispatch<React.SetStateAction<boolean>>;
   message: { error: (msg: string) => void };
@@ -23,7 +23,7 @@ export function useFormulaCellCustomization({
   rows,
   properties,
   onUpdateAsset,
-  yRows,
+  rowStore,
   setOptimisticEditUpdates,
   setIsSaving,
   message,
@@ -103,7 +103,7 @@ export function useFormulaCellCustomization({
       [formulaModalPropertyKey]: normalizedFormula,
     };
 
-    const allRows = yRows.toArray();
+    const allRows = rowStore.toArray();
     const rowIndex = allRows.findIndex((r: any) => r.id === formulaModalRowId);
     if (rowIndex >= 0) {
       const existingRow = allRows[rowIndex];
@@ -111,8 +111,8 @@ export function useFormulaCellCustomization({
         ...existingRow,
         propertyValues: updatedPropertyValues,
       };
-      yRows.delete(rowIndex, 1);
-      yRows.insert(rowIndex, [updatedRow]);
+      rowStore.delete(rowIndex, 1);
+      rowStore.insert(rowIndex, [updatedRow]);
     }
 
     setOptimisticEditUpdates((prev) => {
@@ -146,7 +146,7 @@ export function useFormulaCellCustomization({
     } finally {
       setIsSaving(false);
     }
-  }, [onUpdateAsset, formulaModalRowId, formulaModalPropertyKey, rows, formulaInputValue, yRows, setOptimisticEditUpdates, setIsSaving, closeFormulaEditor, message]);
+  }, [onUpdateAsset, formulaModalRowId, formulaModalPropertyKey, rows, formulaInputValue, rowStore, setOptimisticEditUpdates, setIsSaving, closeFormulaEditor, message]);
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {

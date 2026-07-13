@@ -3,6 +3,7 @@ import { App } from 'antd';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import {
   AssetRow,
+  CreateLibraryAssetOptions,
   PropertyConfig,
   SectionConfig,
 } from '@/lib/types/libraryAssets';
@@ -17,8 +18,8 @@ import { useClipboardOperations } from './hooks/useClipboardOperations';
 import { useCellEditing } from './hooks/useCellEditing';
 import { useCellSelection, type CellKey } from './hooks/useCellSelection';
 import { useUserRole } from './hooks/useUserRole';
-import { useYjsSync } from './hooks/useYjsSync';
-import { useYjs } from '@/lib/contexts/YjsContext';
+import { useRowSync } from './hooks/useRowSync';
+import { useRowStore } from '@/lib/contexts/RowStoreContext';
 import { persistActiveSection } from '@/lib/agent/page-context';
 import { useAssetHover } from './hooks/useAssetHover';
 import { useRowOperations } from './hooks/useRowOperations';
@@ -48,6 +49,7 @@ import { FormulaCellPanel } from './components/FormulaCellPanel';
 import { VisualNovelScriptView } from './components/VisualNovelScriptView';
 import { LibraryTableTopBar } from './components/LibraryTableTopBar';
 import { ViewerBanner } from './components/ViewerBanner';
+import { buildTableIndexes } from './utils/tableIndexes';
 import { LibraryAssetsTableBody } from './components/LibraryAssetsTableBody';
 import { LibraryAssetDetailDrawerWiring } from './components/LibraryAssetDetailDrawerWiring';
 import styles from './LibraryAssetsTable.module.css';
@@ -66,7 +68,11 @@ export type LibraryAssetsTableProps = {
   sections: SectionConfig[];
   properties: PropertyConfig[];
   rows: AssetRow[];
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
+  onSaveAsset?: (
+    assetName: string,
+    propertyValues: Record<string, any>,
+    options?: CreateLibraryAssetOptions
+  ) => Promise<void>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   /** Clear Content path: batch update and broadcast once, matching Delete Row sync. */
@@ -123,9 +129,8 @@ export function LibraryAssetsTable({
   // Get message API from App context to support dynamic theme
   const { message } = App.useApp();
 
-  // Same as main-again: real Yjs + useYjsSync so insert row keeps position (temp replaced at correct index)
-  const { yRows } = useYjs();
-  const { allRowsSource } = useYjsSync(rows, yRows);
+  const rowStore = useRowStore();
+  const { allRowsSource } = useRowSync(rows, rowStore);
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -357,7 +362,7 @@ export function LibraryAssetsTable({
     library,
     onSaveAsset,
     userRole,
-    yRows,
+    rowStore,
     rows,
     setOptimisticNewAssets,
     setIsSaving,
@@ -369,7 +374,7 @@ export function LibraryAssetsTable({
   const cellEditing = useCellEditing({
     properties,
     rows,
-    yRows,
+    rowStore,
     onUpdateAsset,
     userRole,
     isAddingRow,
@@ -382,13 +387,12 @@ export function LibraryAssetsTable({
 
   const {
     editingCell,
-    editingCellValue,
+    editingCellInitialValueRef,
     editingCellRef,
     isComposingRef,
     typeValidationError,
     typeValidationErrorRef,
     setEditingCell,
-    setEditingCellValue,
     setTypeValidationError,
     handleSaveEditedCell,
     handleCellDoubleClick,
@@ -411,7 +415,7 @@ export function LibraryAssetsTable({
   } = useReferenceModal({
     setNewRowData,
     allRowsSource,
-    yRows,
+    rowStore,
     onUpdateAsset,
     cacheRows: resolvedRows,
     newRowData,
@@ -446,14 +450,13 @@ export function LibraryAssetsTable({
     properties,
     setOptimisticNewAssets,
     editingCell,
-    editingCellValue,
+    editingCellInitialValueRef,
     editingCellRef,
     setEditingCell,
-    setEditingCellValue,
     setCurrentFocusedCell,
     onUpdateAsset,
     rows,
-    yRows,
+    rowStore,
     setOptimisticEditUpdates,
     presenceTracking,
     validateValueByType,
@@ -552,6 +555,8 @@ export function LibraryAssetsTable({
     isResizingRow,
   } = useTableResize(library?.id, resizeColumnKeys);
   const {
+    searchHighlightedCellKeys,
+    scrollTargetCell,
     handleTableFindHighlightCells,
     handleTableFindClearHighlight,
     handleTableFindFocusSection,
@@ -559,15 +564,11 @@ export function LibraryAssetsTable({
   } = useLibraryTableFindReplaceWiring({
     libraryId: library?.id,
     groups,
-    activeSectionId,
     sectionStateStorageKey,
     focusSectionIdFromQuery,
     focusAssetIdFromQuery,
     focusFieldIdFromQuery,
-    activeProperties,
-    resolvedRows,
     setActiveSectionId,
-    searchCellHitClassName: styles.searchCellHit,
   });
 
   const handlePredefineClick = () => {
@@ -584,6 +585,11 @@ export function LibraryAssetsTable({
   const getAllRowsForCellSelection = useCallback(() => {
     return dataManager.getRowsWithOptimisticUpdates();
   }, [dataManager]);
+  const allRowsForSelection = getAllRowsForCellSelection();
+  const tableIndexes = useMemo(
+    () => buildTableIndexes(allRowsForSelection, orderedProperties),
+    [allRowsForSelection, orderedProperties],
+  );
 
   const { fillDown, fillDownIntSequence, getIntSequencePreviewValues } = useBatchFill({
     dataManager,
@@ -615,6 +621,7 @@ export function LibraryAssetsTable({
     orderedProperties,
     navigationProperties: activeProperties,
     getAllRowsForCellSelection,
+    tableIndexes,
     fillDown,
     fillDownIntSequence,
     currentFocusedCell,
@@ -631,13 +638,14 @@ export function LibraryAssetsTable({
     dataManager,
     orderedProperties,
     getAllRowsForCellSelection,
+    tableIndexes,
     selectedCells,
     selectedRowIds,
     onSaveAsset,
     onUpdateAsset,
     onUpdateAssets,
     library,
-    yRows,
+    rowStore,
     setSelectedCells,
     setSelectedRowIds,
     setCutCells,
@@ -677,7 +685,7 @@ export function LibraryAssetsTable({
     supabase,
     orderedProperties,
     getAllRowsForCellSelection,
-    yRows,
+    rowStore,
     selectedCells,
     selectedRowIds,
     selectedCellsRef,
@@ -722,7 +730,7 @@ export function LibraryAssetsTable({
     cutCells,
     copyCells,
     orderedProperties,
-    getAllRowsForCellSelection,
+    tableIndexes,
     borderClassNames: {
       cutBorderTop: styles.cutBorderTop,
       cutBorderBottom: styles.cutBorderBottom,
@@ -816,7 +824,7 @@ export function LibraryAssetsTable({
 
   const handleUpdateRowFromDrawer = useLibraryAssetDetailDrawerUpdate({
     onUpdateAsset,
-    yRows,
+    rowStore,
     setOptimisticEditUpdates,
     setIsSaving,
   });
@@ -834,7 +842,7 @@ export function LibraryAssetsTable({
     rows,
     properties,
     onUpdateAsset,
-    yRows,
+    rowStore,
     setOptimisticEditUpdates,
     setIsSaving,
     message,
@@ -1043,7 +1051,7 @@ export function LibraryAssetsTable({
             <LibraryAssetsTableBody
               displayRows={displayRows}
               rows={rows}
-              allRowsForSelection={getAllRowsForCellSelection()}
+              tableIndexes={tableIndexes}
               properties={properties}
               activeProperties={activeProperties}
               orderedProperties={orderedProperties}
@@ -1065,15 +1073,16 @@ export function LibraryAssetsTable({
               copySelectionBounds={copySelectionBounds}
               fillDragStartCell={fillDragStartCell}
               fillPreviewMap={fillPreviewMap}
+              searchHighlightedCellKeys={searchHighlightedCellKeys}
+              scrollTargetCell={scrollTargetCell}
               editingCell={editingCell}
               editingCellRef={editingCellRef}
-              editingCellValue={editingCellValue}
+              editingCellInitialValueRef={editingCellInitialValueRef}
               isComposingRef={isComposingRef}
               typeValidationError={typeValidationError}
               typeValidationErrorRef={typeValidationErrorRef}
               setHoveredRowId={setHoveredRowId}
               setHoveredCellForExpand={setHoveredCellForExpand}
-              setEditingCellValue={setEditingCellValue}
               setTypeValidationError={setTypeValidationError}
               setOpenEnumSelects={setOpenEnumSelects}
               setToastMessage={setToastMessage}

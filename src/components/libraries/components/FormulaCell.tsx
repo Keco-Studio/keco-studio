@@ -7,6 +7,7 @@ import formulaIcon from '@/assets/images/formula.svg';
 import { BooleanCell } from './BooleanCell';
 import { CellPresenceAvatars } from './CellPresenceAvatars';
 import styles from '@/components/libraries/LibraryAssetsTable.module.css';
+import { createPropertyByName } from '../utils/formulaEvaluation';
 
 type EditingUser = {
   userId: string;
@@ -41,11 +42,13 @@ type FormulaCellProps = {
   } | null;
   editingUsers: EditingUser[];
   borderColor?: string;
+  isSearchHit?: boolean;
   evaluateFormulaForRow: (
     expression: string | undefined,
     row: AssetRow,
     allProperties: PropertyConfig[],
-    visited?: Set<string>
+    visited?: Set<string>,
+    propertyByName?: ReadonlyMap<string, PropertyConfig>
   ) => any | null;
   getCustomFormulaExpressionFromCellValue: (rawValue: unknown) => string | null;
   openFormulaEditor: (rowId: string, propertyKey: string) => void;
@@ -61,7 +64,7 @@ type FormulaCellProps = {
   getSelectionBorderClasses: (rowId: string, propertyIndex: number) => string;
 };
 
-export function FormulaCell({
+function FormulaCellComponent({
   row,
   property,
   propertyIndex,
@@ -76,6 +79,7 @@ export function FormulaCell({
   cutSelectionBounds,
   editingUsers,
   borderColor,
+  isSearchHit = false,
   evaluateFormulaForRow,
   getCustomFormulaExpressionFromCellValue,
   openFormulaEditor,
@@ -94,7 +98,14 @@ export function FormulaCell({
   const isCellSelected = selectedCells.has(cellKey);
   const customFormulaExpression = getCustomFormulaExpressionFromCellValue(row.propertyValues[property.key]);
   const effectiveFormulaExpression = customFormulaExpression ?? property.formulaExpression;
-  const formulaResult = evaluateFormulaForRow(effectiveFormulaExpression, row, properties);
+  const propertyByName = React.useMemo(() => createPropertyByName(properties), [properties]);
+  const formulaResult = evaluateFormulaForRow(
+    effectiveFormulaExpression,
+    row,
+    properties,
+    new Set(),
+    propertyByName,
+  );
   const selectionBorderClass = getSelectionBorderClasses(row.id, propertyIndex);
   const copyBorderClass = getCopyBorderClasses(row.id, propertyIndex);
 
@@ -116,6 +127,7 @@ export function FormulaCell({
         cutSelectionBounds={cutSelectionBounds}
         editingUsers={editingUsers}
         borderColor={borderColor}
+        isSearchHit={isSearchHit}
         isFirstColumn={isFirstColumn}
         onViewAssetDetail={onViewAssetDetail}
         onChange={async () => {}}
@@ -137,7 +149,7 @@ export function FormulaCell({
     <td
       key={property.id}
       data-property-key={property.key}
-      className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellEditing : (selectedCells.size === 1 && isCellSelected ? styles.cellSelected : '')} ${selectedCells.size > 1 && isCellSelected && editingUsers.length === 0 ? styles.cellMultipleSelected : ''} ${cutCells.has(cellKey) ? styles.cellCut : ''} ${selectionBorderClass} ${copyBorderClass}`}
+      className={`${styles.cell} ${isSearchHit ? styles.searchCellHit : ''} ${editingUsers.length > 0 ? styles.cellEditing : (selectedCells.size === 1 && isCellSelected ? styles.cellSelected : '')} ${selectedCells.size > 1 && isCellSelected && editingUsers.length === 0 ? styles.cellMultipleSelected : ''} ${cutCells.has(cellKey) ? styles.cellCut : ''} ${selectionBorderClass} ${copyBorderClass}`}
       style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
       onClick={(e) => {
         onCellFocus(row.id, property.key);
@@ -173,3 +185,4 @@ export function FormulaCell({
   );
 }
 
+export const FormulaCell = React.memo(FormulaCellComponent);

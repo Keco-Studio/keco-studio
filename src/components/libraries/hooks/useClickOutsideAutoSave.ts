@@ -1,8 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type React from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 
-type YRows = {
+type RowStoreShape = {
   toArray: () => AssetRow[];
   delete: (index: number, count: number) => void;
   insert: (index: number, rows: AssetRow[]) => void;
@@ -26,15 +26,14 @@ export type UseClickOutsideAutoSaveParams = {
   properties: PropertyConfig[];
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
   editingCell: { rowId: string; propertyKey: string } | null;
-  editingCellValue: string;
+  editingCellInitialValueRef: React.MutableRefObject<string>;
   /** DOM ref for the active edit cell, used to refocus after validation failure. */
   editingCellRef?: React.MutableRefObject<HTMLSpanElement | null>;
   setEditingCell: React.Dispatch<React.SetStateAction<{ rowId: string; propertyKey: string } | null>>;
-  setEditingCellValue: React.Dispatch<React.SetStateAction<string>>;
   setCurrentFocusedCell: React.Dispatch<React.SetStateAction<{ assetId: string; propertyKey: string } | null>>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   rows: AssetRow[];
-  yRows: YRows;
+  rowStore: RowStoreShape;
   setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, OptimisticEditUpdate>>>;
   presenceTracking?: {
     updateActiveCell: (assetId: string | null, propertyKey: string | null) => void;
@@ -60,37 +59,40 @@ export type UseClickOutsideAutoSaveParams = {
  * - Edit cell: auto-save edited cell; then remove listener.
  */
 export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
-  const {
-    tableContainerRef,
-    addRowFormRef,
-    isAddingRow,
-    newRowData,
-    setIsAddingRow,
-    setNewRowData,
-    isSaving,
-    setIsSaving,
-    referenceModalOpen,
-    onSaveAsset,
-    library,
-    properties,
-    setOptimisticNewAssets,
-    editingCell,
-    editingCellValue,
-    editingCellRef,
-    setEditingCell,
-    setEditingCellValue,
-    setCurrentFocusedCell,
-    onUpdateAsset,
-    rows,
-    yRows,
-    setOptimisticEditUpdates,
-    presenceTracking,
-    validateValueByType,
-    setTypeValidationError,
-  } = params;
+  const paramsRef = useRef(params);
+  paramsRef.current = params;
+  const { isAddingRow, editingCell } = params;
+  const hasEditingCell = Boolean(editingCell);
 
   useEffect(() => {
     const handleClickOutside = async (event: MouseEvent) => {
+      const {
+        tableContainerRef,
+        addRowFormRef,
+        isAddingRow: liveIsAddingRow,
+        newRowData,
+        setIsAddingRow,
+        setNewRowData,
+        isSaving,
+        setIsSaving,
+        referenceModalOpen,
+        onSaveAsset,
+        library,
+        properties,
+        setOptimisticNewAssets,
+        editingCell: liveEditingCell,
+        editingCellInitialValueRef,
+        editingCellRef,
+        setEditingCell,
+        setCurrentFocusedCell,
+        onUpdateAsset,
+        rows,
+        rowStore,
+        setOptimisticEditUpdates,
+        presenceTracking,
+        validateValueByType,
+        setTypeValidationError,
+      } = paramsRef.current;
       if (isSaving) return;
       if (referenceModalOpen) return;
 
@@ -110,11 +112,11 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
       }
 
       // When editing a cell: only react to clicks outside the whole table
-      if (editingCell && (!tableContainerRef.current || tableContainerRef.current.contains(target))) return;
+      if (liveEditingCell && (!tableContainerRef.current || tableContainerRef.current.contains(target))) return;
       // When adding a row: react to clicks outside the add-row form (including other table cells)
-      if (isAddingRow && addRowFormRef?.current?.contains(target)) return;
+      if (liveIsAddingRow && addRowFormRef?.current?.contains(target)) return;
 
-      if (isAddingRow) {
+      if (liveIsAddingRow) {
         const hasData = Object.keys(newRowData).some((key) => {
           const v = newRowData[key];
           return v != null && v !== '';
@@ -211,8 +213,9 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
         return;
       }
 
-      if (editingCell && onUpdateAsset) {
-        const { rowId, propertyKey } = editingCell;
+      if (liveEditingCell && onUpdateAsset) {
+        const { rowId, propertyKey } = liveEditingCell;
+        const currentEditingValue = editingCellRef?.current?.textContent ?? editingCellInitialValueRef.current;
         const row = rows.find((r) => r.id === rowId);
         if (!row) return;
 
@@ -223,9 +226,9 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
         // Reuse double-click edit validation when outside-click autosaves:
         // - Complete [] and validate format for array types.
         // - Validate numeric types.
-        let normalizedValue: string | number | null = editingCellValue;
+        let normalizedValue: string | number | null = currentEditingValue;
         if (!isNameField && prop && validateValueByType) {
-          const validation = validateValueByType(editingCellValue, prop.dataType);
+          const validation = validateValueByType(currentEditingValue, prop.dataType);
           if (!validation.isValid) {
             // Validation failed: show the error and keep edit mode active.
             setTypeValidationError?.(validation.error);
@@ -245,14 +248,14 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
           ...row.propertyValues,
           [propertyKey]: normalizedValue,
         };
-        const assetName = isNameField ? editingCellValue : (row.name || 'Untitled');
+        const assetName = isNameField ? currentEditingValue : (row.name || 'Untitled');
 
-        const allRows = yRows.toArray();
+        const allRows = rowStore.toArray();
         const rowIndex = allRows.findIndex((r) => r.id === rowId);
         if (rowIndex >= 0) {
           const existing = allRows[rowIndex];
-          yRows.delete(rowIndex, 1);
-          yRows.insert(rowIndex, [
+          rowStore.delete(rowIndex, 1);
+          rowStore.insert(rowIndex, [
             { ...existing, name: String(assetName), propertyValues: updatedPropertyValues },
           ]);
         }
@@ -263,9 +266,9 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
           return next;
         });
 
-        const savedValue = editingCellValue;
+        const savedValue = currentEditingValue;
         setEditingCell(null);
-        setEditingCellValue('');
+        editingCellInitialValueRef.current = '';
         setCurrentFocusedCell(null);
         setTimeout(() => presenceTracking?.updateActiveCell(null, null), 1000);
         setIsSaving(true);
@@ -287,43 +290,16 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
               next.delete(rowId);
               return next;
             });
+            editingCellInitialValueRef.current = savedValue;
             setEditingCell({ rowId, propertyKey });
-            setEditingCellValue(savedValue);
           })
           .finally(() => setIsSaving(false));
       }
     };
 
-    if (!isAddingRow && !editingCell) return;
+    if (!isAddingRow && !hasEditingCell) return;
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [
-    isAddingRow,
-    editingCell,
-    editingCellValue,
-    editingCellRef,
-    isSaving,
-    newRowData,
-    onSaveAsset,
-    onUpdateAsset,
-    properties,
-    rows,
-    referenceModalOpen,
-    tableContainerRef,
-    addRowFormRef,
-    library,
-    setIsAddingRow,
-    setNewRowData,
-    setIsSaving,
-    setOptimisticNewAssets,
-    setEditingCell,
-    setEditingCellValue,
-    setCurrentFocusedCell,
-    setOptimisticEditUpdates,
-    yRows,
-    presenceTracking,
-    validateValueByType,
-    setTypeValidationError,
-  ]);
+  }, [isAddingRow, hasEditingCell]);
 }

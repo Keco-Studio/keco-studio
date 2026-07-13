@@ -2,7 +2,10 @@ import { describe, expect, it } from '@jest/globals';
 import {
   addTokenUsageTotal,
   compactLargeUserContentInMessages,
+  createTurnDeadline,
+  isTurnDeadlineExceeded,
   isOverTokenBudget,
+  timeLimitExceededMessage,
   tokenUsageTotal,
 } from '../../../src/lib/agent/turn-budget';
 import type { ChatMessage } from '../../../src/lib/agent/types';
@@ -18,6 +21,15 @@ describe('agent turn budget helpers', () => {
     expect(isOverTokenBudget(99, 100)).toBe(false);
     expect(isOverTokenBudget(100, 100)).toBe(true);
     expect(isOverTokenBudget(101, 100)).toBe(true);
+  });
+
+  it('creates a deadline before the platform ceiling and detects expiry', () => {
+    const deadline = createTurnDeadline(1_000, 120_000, 10_000);
+
+    expect(deadline).toBe(111_000);
+    expect(isTurnDeadlineExceeded(deadline, 110_999)).toBe(false);
+    expect(isTurnDeadlineExceeded(deadline, 111_000)).toBe(true);
+    expect(timeLimitExceededMessage()).toContain('time limit');
   });
 
   it('compacts large text user messages so the full body is not re-sent', () => {

@@ -41,6 +41,7 @@ export interface BooleanCellProps {
     connectionStatus: 'online' | 'away';
   }>;
   borderColor?: string;
+  isSearchHit?: boolean;
   // Event handlers
   onChange: (newValue: boolean) => Promise<void>;
   onCellClick: (rowId: string, propertyKey: string, e: React.MouseEvent) => void;
@@ -62,7 +63,7 @@ export interface BooleanCellProps {
  * Boolean cell component for LibraryAssetsTable
  * Renders a switch control for boolean values with optimistic updates
  */
-export const BooleanCell: React.FC<BooleanCellProps> = ({
+const BooleanCellComponent: React.FC<BooleanCellProps> = ({
   row,
   property,
   propertyIndex,
@@ -77,6 +78,7 @@ export const BooleanCell: React.FC<BooleanCellProps> = ({
   cutSelectionBounds,
   editingUsers,
   borderColor,
+  isSearchHit = false,
   onChange,
   onCellClick,
   onCellContextMenu,
@@ -165,7 +167,7 @@ export const BooleanCell: React.FC<BooleanCellProps> = ({
     <td
       key={property.id}
       data-property-key={property.key}
-      className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+      className={`${styles.cell} ${isSearchHit ? styles.searchCellHit : ''} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
       style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
       onClick={(e) => {
         // Trigger focus when clicking on boolean cell (single-click to edit)
@@ -228,3 +230,4 @@ export const BooleanCell: React.FC<BooleanCellProps> = ({
   );
 };
 
+export const BooleanCell = React.memo(BooleanCellComponent);

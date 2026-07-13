@@ -1,9 +1,9 @@
 import { useState, useCallback } from 'react';
-import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import type { AssetRow, CreateLibraryAssetOptions, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 
-// Compatible interface for yRows (supports both Y.Array and mock objects)
-interface YRowsLike {
+// Compatible interface for rowStore (supports both row store and mock objects)
+interface RowStoreLike {
   length: number;
   toArray: () => AssetRow[];
   insert: (index: number, content: AssetRow[]) => void;
@@ -13,9 +13,13 @@ interface YRowsLike {
 export type UseAddRowParams = {
   properties: PropertyConfig[];
   library: { id: string; name: string; description?: string | null } | null;
-  onSaveAsset?: (assetName: string, propertyValues: Record<string, any>, options?: { createdAt?: Date; rowIndex?: number; skipReload?: boolean }) => Promise<void>;
+  onSaveAsset?: (
+    assetName: string,
+    propertyValues: Record<string, any>,
+    options?: CreateLibraryAssetOptions
+  ) => Promise<void>;
   userRole: 'admin' | 'editor' | 'viewer' | null;
-  yRows: YRowsLike;
+  rowStore: RowStoreLike;
   /** The rows of the current table (from the Adapter), used to calculate the rowIndex of the newly added row (appended at the end with a value of max + 1). */
   rows: AssetRow[];
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
@@ -31,7 +35,7 @@ export function useAddRow(params: UseAddRowParams) {
     library,
     onSaveAsset,
     userRole,
-    yRows,
+    rowStore,
     rows,
     setOptimisticNewAssets,
     setIsSaving,
@@ -68,7 +72,7 @@ export function useAddRow(params: UseAddRowParams) {
       rowIndex: nextRowIndex,
     };
 
-    yRows.insert(yRows.length, [optimisticAsset]);
+    rowStore.insert(rowStore.length, [optimisticAsset]);
     setOptimisticNewAssets((prev) => {
       const next = new Map(prev);
       next.set(tempId, optimisticAsset);
@@ -86,8 +90,8 @@ export function useAddRow(params: UseAddRowParams) {
         await broadcastAssetCreate(tempId, assetName, savedNewRowData);
       }
       setTimeout(() => {
-        const idx = yRows.toArray().findIndex((r) => r.id === tempId);
-        if (idx >= 0) yRows.delete(idx, 1);
+        const idx = rowStore.toArray().findIndex((r) => r.id === tempId);
+        if (idx >= 0) rowStore.delete(idx, 1);
         setOptimisticNewAssets((prev) => {
           const next = new Map(prev);
           next.delete(tempId);
@@ -96,8 +100,8 @@ export function useAddRow(params: UseAddRowParams) {
       }, 500);
     } catch (e) {
       console.error('Failed to save asset:', e);
-      const idx = yRows.toArray().findIndex((r) => r.id === tempId);
-      if (idx >= 0) yRows.delete(idx, 1);
+      const idx = rowStore.toArray().findIndex((r) => r.id === tempId);
+      if (idx >= 0) rowStore.delete(idx, 1);
       setOptimisticNewAssets((prev) => {
         const next = new Map(prev);
         next.delete(tempId);
@@ -115,7 +119,7 @@ export function useAddRow(params: UseAddRowParams) {
     library,
     properties,
     newRowData,
-    yRows,
+    rowStore,
     rows,
     setOptimisticNewAssets,
     setIsSaving,
@@ -151,7 +155,7 @@ export function useAddRow(params: UseAddRowParams) {
       rowIndex: nextRowIndex,
     };
 
-    yRows.insert(yRows.length, [optimisticAsset]);
+    rowStore.insert(rowStore.length, [optimisticAsset]);
     setOptimisticNewAssets((prev) => {
       const next = new Map(prev);
       next.set(tempId, optimisticAsset);
@@ -165,8 +169,8 @@ export function useAddRow(params: UseAddRowParams) {
         await broadcastAssetCreate(tempId, 'Untitled', {});
       }
       setTimeout(() => {
-        const idx = yRows.toArray().findIndex((r) => r.id === tempId);
-        if (idx >= 0) yRows.delete(idx, 1);
+        const idx = rowStore.toArray().findIndex((r) => r.id === tempId);
+        if (idx >= 0) rowStore.delete(idx, 1);
         setOptimisticNewAssets((prev) => {
           const next = new Map(prev);
           next.delete(tempId);
@@ -175,8 +179,8 @@ export function useAddRow(params: UseAddRowParams) {
       }, 500);
     } catch (e) {
       console.error('Failed to save asset:', e);
-      const idx = yRows.toArray().findIndex((r) => r.id === tempId);
-      if (idx >= 0) yRows.delete(idx, 1);
+      const idx = rowStore.toArray().findIndex((r) => r.id === tempId);
+      if (idx >= 0) rowStore.delete(idx, 1);
       setOptimisticNewAssets((prev) => {
         const next = new Map(prev);
         next.delete(tempId);
@@ -191,7 +195,7 @@ export function useAddRow(params: UseAddRowParams) {
     onSaveAsset,
     library,
     rows,
-    yRows,
+    rowStore,
     setOptimisticNewAssets,
     setIsSaving,
     enableRealtime,

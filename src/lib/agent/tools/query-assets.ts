@@ -62,10 +62,10 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
   const library = libraryFromLookupResult(libraryResult);
 
-  const properties = await getLibraryProperties(ctx.supabase, library.id);
+  const properties = await getLibraryProperties(ctx.supabase, library.id, ctx);
   const labelMap = buildFieldLabelMap(properties);
   const labelToFieldId = invertLabelMap(labelMap);
-  const assets = await getLibraryAssets(ctx.supabase, library.id);
+  const assets = await getLibraryAssets(ctx.supabase, library.id, ctx);
 
   const typeFieldId = properties.find((p) => TYPE_FIELD_LABELS.includes(p.name))?.key;
   const typeFieldLabel = typeFieldId ? labelMap[typeFieldId] : undefined;

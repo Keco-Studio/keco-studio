@@ -12,7 +12,7 @@ function sectionNameFromId(sectionId: string, libraryId: string): string {
 
 async function execute(_params: unknown, ctx: ToolContext): Promise<ToolResult> {
   try {
-    const folders = await listProjectFolders(ctx.supabase, ctx.projectId);
+    const folders = await listProjectFolders(ctx.supabase, ctx.projectId, ctx);
 
     const { data: libraryRows, error } = await ctx.supabase
       .from('libraries')
@@ -25,7 +25,7 @@ async function execute(_params: unknown, ctx: ToolContext): Promise<ToolResult> 
     const librariesDetailed = await Promise.all(
       (libraryRows ?? []).map(async (row) => {
         const libraryId = row.id as string;
-        const properties = await getLibraryProperties(ctx.supabase, libraryId);
+        const properties = await getLibraryProperties(ctx.supabase, libraryId, ctx);
         const sectionIds = [...new Set(properties.map((p) => p.sectionId))];
 
         return {

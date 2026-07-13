@@ -5,7 +5,6 @@
  * Handles:
  * - User presence in library (online/away status)
  * - Active cell tracking (which cell user is editing)
- * - Heartbeat mechanism (5-second intervals for reliable updates)
  * - Presence join/leave notifications
  * - Broadcast-based backup mechanism for immediate sync
  * - Cleanup on unmount
@@ -53,7 +52,6 @@ export function usePresenceTracking(config: PresenceConfig) {
   const [isTracking, setIsTracking] = useState(false);
 
   const channelRef = useRef<RealtimeChannel | null>(null);
-  const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const activeCellRef = useRef<{ assetId: string; propertyKey: string } | null>(null);
   const cursorPositionRef = useRef<{ row: number; col: number } | null>(null);
 
@@ -220,12 +218,6 @@ export function usePresenceTracking(config: PresenceConfig) {
 
     // Cleanup on unmount
     return () => {
-      // Clear heartbeat interval
-      if (heartbeatIntervalRef.current) {
-        clearInterval(heartbeatIntervalRef.current);
-        heartbeatIntervalRef.current = null;
-      }
-
       // Untrack presence and unsubscribe
       if (channelRef.current) {
         channelRef.current.untrack();
@@ -298,4 +290,3 @@ export function usePresenceTracking(config: PresenceConfig) {
     getActiveUsers,
   };
 }
-

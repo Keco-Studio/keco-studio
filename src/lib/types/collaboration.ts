@@ -144,7 +144,23 @@ export type RowOrderChangeEvent = {
   userId: string;
   userName: string;
   timestamp: number;
+  insertedRows: Array<{
+    assetId: string;
+    assetName: string;
+    propertyValues: Record<string, any>;
+    createdAt: string;
+    rowIndex: number;
+  }>;
+  rowIndexUpdates: Array<{
+    assetId: string;
+    rowIndex: number;
+  }>;
 };
+
+export type RowOrderChangePayload = Pick<
+  RowOrderChangeEvent,
+  'insertedRows' | 'rowIndexUpdates'
+>;
 
 /** Batched cell update event for Clear Content and similar bulk operations. */
 export type CellsBatchUpdateEvent = {

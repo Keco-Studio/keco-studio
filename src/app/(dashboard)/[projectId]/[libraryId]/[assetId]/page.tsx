@@ -84,8 +84,7 @@ export default function AssetPage() {
     setActiveField,
     connectionStatus,
     presenceUsers,
-    yAssets,
-    yDoc,
+    assetStore,
     isLoading: contextLoading,
   } = useLibraryData();
   
@@ -128,66 +127,37 @@ export default function AssetPage() {
   // Presence tracking state
   const [currentFocusedField, setCurrentFocusedField] = useState<string | null>(null);
 
-  // Re-run when context has finished loading so yAsset exists and observeDeep can be attached
-  // (yAssets ref is stable; only contents change after loadInitialData, so we depend on contextLoading)
   useEffect(() => {
     if (isNewAsset || !assetId) return;
-    
-    const yAsset = yAssets.get(assetId);
-    if (!yAsset) return;
-    
-    
-    // Observe changes to the Yjs asset (including nested Y.Map changes)
-    const observer = () => {
-      
-      const name = yAsset.get('name');
-      const yPropertyValues = yAsset.get('propertyValues');
-      
-      // Convert Y.Map to plain object
-      const propertyValues: Record<string, any> = {};
-      if (yPropertyValues && typeof yPropertyValues.forEach === 'function') {
-        // It's a Y.Map
-        yPropertyValues.forEach((value: any, key: string) => {
-          propertyValues[key] = value;
-        });
-      } else if (yPropertyValues && typeof yPropertyValues === 'object') {
-        // Fallback for plain objects (shouldn't happen with new structure)
-        Object.assign(propertyValues, yPropertyValues);
-      }
-      
-      
-      // Update asset name (only if not in view mode)
+
+    const syncAsset = () => {
+      const storedAsset = assetStore.get(assetId);
+      if (!storedAsset) return;
       if (mode !== 'view') {
         setAsset(prev => {
-          if (prev && prev.name !== name) {
-            return { ...prev, name };
+          if (prev && prev.name !== storedAsset.name) {
+            return { ...prev, name: storedAsset.name };
           }
           return prev;
         });
       }
-      
-      // Update property values from Yjs for all fields (no skip by focus).
-      // So when both edit the same field, last save wins and everyone sees it without refresh.
+
       setValues(prev => {
         const newValues = { ...prev };
         let hasChanges = false;
-        Object.keys(propertyValues).forEach(fieldId => {
-          if (JSON.stringify(prev[fieldId]) !== JSON.stringify(propertyValues[fieldId])) {
-            newValues[fieldId] = propertyValues[fieldId];
+        Object.keys(storedAsset.propertyValues).forEach(fieldId => {
+          if (JSON.stringify(prev[fieldId]) !== JSON.stringify(storedAsset.propertyValues[fieldId])) {
+            newValues[fieldId] = storedAsset.propertyValues[fieldId];
             hasChanges = true;
           }
         });
         return hasChanges ? newValues : prev;
       });
     };
-    
-    // Use observeDeep to catch nested Y.Map changes
-    yAsset.observeDeep(observer);
-    
-    return () => {
-      yAsset.unobserveDeep(observer);
-    };
-  }, [isNewAsset, assetId, yAssets, contextLoading, mode]);
+
+    syncAsset();
+    return assetStore.subscribe(syncAsset);
+  }, [isNewAsset, assetId, assetStore, contextLoading, mode]);
 
   // Presence tracking is now handled by LibraryDataContext
   // getUsersEditingField and setActiveField are available from context
@@ -588,7 +558,7 @@ export default function AssetPage() {
           propertyValues[f.id] = v;
         });
 
-        // Create asset using context (handles database + Yjs + broadcast)
+        // Create through the shared context so persistence and broadcast stay coordinated.
         const newAssetId = await createAssetFromContext(nameValue, propertyValues);
 
         setValues({});
@@ -634,7 +604,7 @@ export default function AssetPage() {
           setAsset({ ...asset, name: newAssetName });
         }
         
-        // Update changed fields using context (handles database + Yjs + broadcast)
+        // Update through the shared context so persistence and broadcast stay coordinated.
         for (const f of fieldDefs) {
           const raw = values[f.id];
           const previousValue = previousValuesRef.current[f.id];
@@ -1400,4 +1370,3 @@ export default function AssetPage() {
     </ConfigProvider>
   );
 }
-

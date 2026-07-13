@@ -411,6 +411,7 @@ export function ChatInput({
         />
         <textarea
           ref={textareaRef}
+          data-testid="agent-input"
           className={styles.textarea}
           rows={1}
           disabled={isStreaming}
@@ -434,6 +435,7 @@ export function ChatInput({
         />
         <button
           className={`${styles.sendBtn} ${isStreaming || parsing ? styles.sendBtnWorking : ''}`}
+          data-testid="agent-send"
           disabled={sendDisabled}
           onClick={() => void submit()}
           aria-busy={isStreaming || parsing}

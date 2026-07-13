@@ -5,32 +5,20 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
-import { getUserProjectRole } from '@/lib/services/collaborationService';
+import { withAuth, type AuthedRequest } from '@/lib/auth/route-auth';
+import { getUserProjectRole } from '@/lib/services/authorizationService';
 
 /**
  * GET /api/projects/[projectId]/role
  * Get current user's role in the project
  */
-export async function GET(
+const getHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ projectId: string }> }
-) {
+  { params }: { params: Promise<{ projectId: string }> },
+  { supabase, user }: AuthedRequest
+) => {
   try {
     const { projectId } = await params;
-
-    // Create Supabase client from request (extracts auth from headers)
-    const supabase = createSupabaseServerClient(request);
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json({
-        role: null,
-        isOwner: false,
-      });
-    }
 
     // Get role via service
     const result = await getUserProjectRole(supabase, projectId, user.id);
@@ -43,5 +31,11 @@ export async function GET(
       isOwner: false,
     });
   }
-}
+};
 
+export const GET = withAuth(getHandler, {
+  unauthorizedResponse: () => NextResponse.json({
+    role: null,
+    isOwner: false,
+  }),
+});

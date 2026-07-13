@@ -11,6 +11,10 @@ jest.mock('@/lib/createSupabaseServerClient', () => ({
   createSupabaseServerClient: jest.fn(),
 }));
 
+jest.mock('@/lib/services/authorizationService', () => ({
+  getUserProjectRole: jest.fn(async () => ({ role: 'admin', isOwner: true })),
+}));
+
 type ExportClientFake = {
   auth: {
     getUser: (token?: string) => Promise<{ data: { user: { id: string } | null }; error?: { message: string } | null }>;
@@ -33,70 +37,64 @@ type QueryPayload = {
   error: { message: string } | null;
 };
 
-function resolveTableQuery(table: string): QueryPayload {
-  if (table === 'library_field_definitions') {
-    return {
-      data: [
-        {
-          id: fieldId,
-          library_id: libraryId,
-          section: 'Main',
-          label: 'Title',
-          description: null,
-          data_type: 'string',
-          enum_options: null,
-          reference_libraries: null,
-          formula_expression: null,
-          order_index: 1,
-        },
-      ],
-      error: null,
-    };
-  }
+type ExportDataset = {
+  fields: Record<string, unknown>[];
+  assets: Record<string, unknown>[];
+  values: Record<string, unknown>[];
+};
 
-  if (table === 'library_assets') {
-    return {
-      data: [
-        {
-          id: assetId,
-          library_id: libraryId,
-          name: 'Castle',
-          created_at: '2026-07-07T00:00:00.000Z',
-          row_index: 1,
-        },
-      ],
-      error: null,
-    };
-  }
+const defaultDataset: ExportDataset = {
+  fields: [
+    {
+      id: fieldId,
+      library_id: libraryId,
+      section: 'Main',
+      label: 'Title',
+      description: null,
+      data_type: 'string',
+      enum_options: null,
+      reference_libraries: null,
+      formula_expression: null,
+      order_index: 1,
+    },
+  ],
+  assets: [
+    {
+      id: assetId,
+      library_id: libraryId,
+      name: 'Castle',
+      created_at: '2026-07-07T00:00:00.000Z',
+      row_index: 1,
+    },
+  ],
+  values: [{ asset_id: assetId, field_id: fieldId, value_json: 'Fortress' }],
+};
 
-  throw new Error(`Unexpected awaited table ${table}`);
-}
-
-function createExportClient(user: { id: string } | null): ExportClientFake {
+function createExportClient(
+  user: { id: string } | null,
+  dataset: ExportDataset = defaultDataset
+): ExportClientFake {
   return {
     auth: {
       getUser: async () => ({ data: { user }, error: null }),
     },
     from: (table: string) => {
+      const rows = table === 'library_field_definitions'
+        ? dataset.fields
+        : table === 'library_assets'
+          ? dataset.assets
+          : table === 'library_asset_values'
+            ? dataset.values
+            : null;
       const builder = {
         select: () => builder,
         eq: () => builder,
         order: () => builder,
-        in: async () => {
-          if (table === 'library_asset_values') {
-            return {
-              data: [
-                {
-                  asset_id: assetId,
-                  field_id: fieldId,
-                  value_json: 'Fortress',
-                },
-              ],
-              error: null,
-            };
-          }
-          throw new Error(`Unexpected in() table ${table}`);
-        },
+        in: () => builder,
+        range: async (from: number, to: number) => ({
+          data: rows?.slice(from, to + 1) ?? [],
+          error: null,
+        }),
         single: async () => {
           if (table === 'libraries') {
             return {
@@ -119,7 +117,7 @@ function createExportClient(user: { id: string } | null): ExportClientFake {
         then: (
           resolve: (value: QueryPayload) => void,
           reject?: (reason: unknown) => void
-        ) => Promise.resolve(resolveTableQuery(table)).then(resolve, reject),
+        ) => Promise.resolve({ data: rows?.slice(0, 1000) ?? null, error: null }).then(resolve, reject),
       };
       return builder;
     },
@@ -172,5 +170,44 @@ describe('GET /api/export', () => {
       ],
     });
     expect(typeof payload.exportedAt).toBe('string');
+  });
+
+  it('exports every cell value beyond the PostgREST page limit', async () => {
+    const fields = Array.from({ length: 3 }, (_, index) => ({
+      ...defaultDataset.fields[0],
+      id: `field-${index}`,
+      label: `Field ${index}`,
+      order_index: index,
+    }));
+    const assets = Array.from({ length: 501 }, (_, index) => ({
+      ...defaultDataset.assets[0],
+      id: `asset-${String(index).padStart(3, '0')}`,
+      name: `Asset ${index}`,
+      row_index: index,
+    }));
+    const values = assets.flatMap((asset) =>
+      fields.map((field) => ({
+        asset_id: asset.id,
+        field_id: field.id,
+        value_json: `${asset.id}:${field.id}`,
+      }))
+    );
+    createClientMock.mockReturnValue(createExportClient({ id: userId }, { fields, assets, values }));
+
+    const response = await GET(
+      new NextRequest(`https://example.test/api/export?libraryId=${libraryId}&format=json`, {
+        headers: { Authorization: 'Bearer token' },
+      })
+    );
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(values).toHaveLength(1503);
+    expect(payload.rows).toHaveLength(501);
+    expect(payload.rows[500].propertyValues).toEqual({
+      'field-0': 'asset-500:field-0',
+      'field-1': 'asset-500:field-1',
+      'field-2': 'asset-500:field-2',
+    });
   });
 });

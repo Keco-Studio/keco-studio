@@ -14,10 +14,9 @@ import {
 export type UseSidebarRealtimeParams = {
   supabase: SupabaseClient;
   queryClient: QueryClient;
-  userProfile: { id: string } | null | undefined;
+  userId: string | null | undefined;
   currentProjectId: string | null;
   router: AppRouterInstance;
-  refetchUserRole: () => void | Promise<void>;
 };
 
 type RealtimeRow = Record<string, unknown> | null;
@@ -51,16 +50,15 @@ function stringField(row: RealtimeRow, key: string): string | null {
 export function useSidebarRealtime({
   supabase,
   queryClient,
-  userProfile,
+  userId,
   currentProjectId,
   router,
-  refetchUserRole,
 }: UseSidebarRealtimeParams) {
   useEffect(() => {
-    if (!userProfile) return;
+    if (!userId) return;
 
     const projectsChannel = supabase
-      .channel(`projects:user:${userProfile.id}`)
+      .channel(`projects:user:${userId}`)
       .on(
         'postgres_changes',
         {
@@ -108,10 +106,10 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(projectsChannel);
     };
-  }, [userProfile, supabase, queryClient, currentProjectId, router]);
+  }, [userId, supabase, queryClient, currentProjectId, router]);
 
   useEffect(() => {
-    if (!currentProjectId || !userProfile) return;
+    if (!currentProjectId || !userId) return;
 
     const librariesChannel = supabase
       .channel(`libraries:project:${currentProjectId}`)
@@ -143,10 +141,10 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(librariesChannel);
     };
-  }, [currentProjectId, userProfile, supabase, queryClient]);
+  }, [currentProjectId, userId, supabase, queryClient]);
 
   useEffect(() => {
-    if (!currentProjectId || !userProfile) return;
+    if (!currentProjectId || !userId) return;
 
     const foldersChannel = supabase
       .channel(`folders:project:${currentProjectId}`)
@@ -185,86 +183,10 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(foldersChannel);
     };
-  }, [currentProjectId, userProfile, supabase, queryClient]);
+  }, [currentProjectId, userId, supabase, queryClient]);
 
   useEffect(() => {
-    if (!currentProjectId || !userProfile) return;
-
-    const collaboratorsChannel = supabase
-      .channel(`collaborators:project:${currentProjectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'project_collaborators',
-          filter: `project_id=eq.${currentProjectId}`,
-        },
-        async (payload) => {
-          if (payload.eventType === 'DELETE') {
-            const { data: accessCheck } = await supabase
-              .from('project_collaborators')
-              .select('id')
-              .eq('project_id', currentProjectId)
-              .eq('user_id', userProfile.id)
-              .single();
-
-            const { data: projectCheck } = await supabase
-              .from('projects')
-              .select('id, owner_id')
-              .eq('id', currentProjectId)
-              .single();
-
-            const isOwner = projectCheck?.owner_id === userProfile.id;
-            const hasCollaboratorAccess = !!accessCheck;
-            const hasAccess = isOwner || hasCollaboratorAccess;
-
-            if (!projectCheck) {
-              queryClient.setQueryData<Project[]>(['projects'], (old) =>
-                old ? old.filter((p) => p.id !== currentProjectId) : []
-              );
-              await invalidateProjectData(queryClient, {
-                projectId: currentProjectId,
-                userProjectList: true,
-              });
-              router.push('/projects');
-            } else if (!hasAccess) {
-              queryClient.setQueryData<Project[]>(['projects'], (old) =>
-                old ? old.filter((p) => p.id !== currentProjectId) : []
-              );
-              await invalidateProjectData(queryClient, {
-                projectId: currentProjectId,
-                userProjectList: true,
-              });
-              router.push('/projects');
-            }
-          }
-
-          if (
-            (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') &&
-            payload.new &&
-            'user_id' in payload.new &&
-            payload.new.user_id === userProfile.id
-          ) {
-            refetchUserRole();
-          }
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) {
-          console.error('[Sidebar] Collaborators channel ERROR:', err);
-        } else if (status === 'TIMED_OUT') {
-          console.warn('[Sidebar] Collaborators channel TIMED OUT');
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(collaboratorsChannel);
-    };
-  }, [currentProjectId, userProfile, supabase, queryClient, router, refetchUserRole]);
-
-  useEffect(() => {
-    if (!currentProjectId || !userProfile) return;
+    if (!currentProjectId || !userId) return;
 
     const predefineChannel = supabase
       .channel(`predefine:project:${currentProjectId}`)
@@ -293,5 +215,5 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(predefineChannel);
     };
-  }, [currentProjectId, userProfile, supabase, queryClient]);
+  }, [currentProjectId, userId, supabase, queryClient]);
 }

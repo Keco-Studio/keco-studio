@@ -156,7 +156,13 @@ export function InviteCollaboratorModal({
       open={open}
       onCancel={handleCancel}
       footer={[
-        <Button key="submit" type="primary" loading={loading} onClick={handleSubmit}>
+        <Button
+          key="submit"
+          type="primary"
+          loading={loading}
+          onClick={handleSubmit}
+          data-testid="invite-submit-button"
+        >
           Send Invitation
         </Button>,
       ]}
@@ -165,7 +171,7 @@ export function InviteCollaboratorModal({
       destroyOnHidden
       className={styles.modal}
     >
-      <div className={styles.content}>
+      <div className={styles.content} data-testid="invite-collaborator-modal">
         {error && (
           <Alert
             message="Error"
@@ -194,6 +200,7 @@ export function InviteCollaboratorModal({
             ]}
           >
             <Input
+              data-testid="invite-email-input"
               size="large"
               placeholder="colleague@example.com"
               autoComplete="off"
@@ -208,6 +215,7 @@ export function InviteCollaboratorModal({
             rules={[{ required: true, message: 'Please select a role' }]}
           >
             <Select
+              data-testid="invite-role-select"
               size="large"
               placeholder="Select a role"
               disabled={loading}

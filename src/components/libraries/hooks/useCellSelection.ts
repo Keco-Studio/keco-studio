@@ -2,6 +2,10 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 import type { AssetRow } from '@/lib/types/libraryAssets';
 import { resolveArrowKeyCellSelection, shouldIgnoreCellNavigationTarget } from './cellNavigation';
+import {
+  getSelectionBounds as calculateSelectionBounds,
+  type TableIndexes,
+} from '../utils/tableIndexes';
 
 export type CellKey = `${string}-${string}`;
 
@@ -34,6 +38,7 @@ export function useCellSelection({
   orderedProperties,
   navigationProperties,
   getAllRowsForCellSelection,
+  tableIndexes,
   fillDown,
   fillDownIntSequence,
   currentFocusedCell,
@@ -43,6 +48,7 @@ export function useCellSelection({
   orderedProperties: PropertyConfig[];
   navigationProperties?: PropertyConfig[];
   getAllRowsForCellSelection: () => AssetRow[];
+  tableIndexes: TableIndexes;
   fillDown: (startRowId: string, endRowId: string, propertyKey: string) => Promise<void>;
   /** Int sequence fill: step equals second cell minus first cell when two adjacent cells are selected. */
   fillDownIntSequence: (startRowId: string, secondRowId: string, endRowId: string, propertyKey: string) => Promise<void>;
@@ -191,6 +197,7 @@ export function useCellSelection({
       setDragStartCell(startCell);
       setDragCurrentCell(startCell);
       dragCurrentCellRef.current = startCell;
+      let dragFrame: number | null = null;
 
       const dragMoveHandler = (moveEvent: MouseEvent) => {
         if (!isDraggingCellsRef.current) return;
@@ -212,8 +219,17 @@ export function useCellSelection({
         const currentPropertyKey = cellElement.getAttribute('data-property-key');
         if (currentRowId && currentPropertyKey) {
           const newCell = { rowId: currentRowId, propertyKey: currentPropertyKey };
+          const currentCell = dragCurrentCellRef.current;
+          if (currentCell?.rowId === newCell.rowId && currentCell.propertyKey === newCell.propertyKey) {
+            return;
+          }
           dragCurrentCellRef.current = newCell;
-          setDragCurrentCell(newCell);
+          if (dragFrame === null) {
+            dragFrame = requestAnimationFrame(() => {
+              dragFrame = null;
+              setDragCurrentCell(dragCurrentCellRef.current);
+            });
+          }
         }
       };
 
@@ -222,13 +238,14 @@ export function useCellSelection({
         isDraggingCellsRef.current = false;
         document.removeEventListener('mousemove', dragMoveHandler);
         document.removeEventListener('mouseup', dragEndHandler);
+        if (dragFrame !== null) cancelAnimationFrame(dragFrame);
         document.body.style.userSelect = '';
         const allRowsForSelection = getAllRowsForCellSelection();
         const endCell = dragCurrentCellRef.current || { rowId, propertyKey };
-        const startRowIndex = allRowsForSelection.findIndex(r => r.id === rowId);
-        const endRowIndex = allRowsForSelection.findIndex(r => r.id === endCell.rowId);
-        const startPropertyIndex = orderedProperties.findIndex(p => p.key === propertyKey);
-        const endPropertyIndex = orderedProperties.findIndex(p => p.key === endCell.propertyKey);
+        const startRowIndex = tableIndexes.rowIndexById.get(rowId) ?? -1;
+        const endRowIndex = tableIndexes.rowIndexById.get(endCell.rowId) ?? -1;
+        const startPropertyIndex = tableIndexes.propertyIndexByKey.get(propertyKey) ?? -1;
+        const endPropertyIndex = tableIndexes.propertyIndexByKey.get(endCell.propertyKey) ?? -1;
         if (
           startRowIndex !== -1 &&
           endRowIndex !== -1 &&
@@ -267,6 +284,7 @@ export function useCellSelection({
       handleCellBlur,
       getAllRowsForCellSelection,
       orderedProperties,
+      tableIndexes,
     ]
   );
 
@@ -284,7 +302,7 @@ export function useCellSelection({
       if (!selectedCells.has(cellKey)) {
         return;
       }
-      const property = orderedProperties.find(p => p.key === propertyKey);
+      const property = tableIndexes.propertyByKey.get(propertyKey);
       const fillableTypes: readonly string[] = [
         'string',
         'int',
@@ -305,7 +323,7 @@ export function useCellSelection({
         .filter(k => k.endsWith(suffix))
         .map(k => k.slice(0, k.length - suffix.length));
       const selectedRowIndices = selectedRowIdsForCol
-        .map(rid => allRowsAtStart.findIndex(r => r.id === rid))
+        .map(rid => tableIndexes.rowIndexById.get(rid) ?? -1)
         .filter(i => i !== -1)
         .sort((a, b) => a - b);
       let startRowId: string;
@@ -413,8 +431,8 @@ export function useCellSelection({
         if (!targetCell) return;
         if (targetCell.propertyKey === startPropertyKey) {
           const allRowsForSelection = getAllRowsForCellSelection();
-          const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
-          const currentRowIndex = allRowsForSelection.findIndex(r => r.id === targetCell.rowId);
+          const startRowIndex = tableIndexes.rowIndexById.get(startRowId) ?? -1;
+          const currentRowIndex = tableIndexes.rowIndexById.get(targetCell.rowId) ?? -1;
           if (startRowIndex === -1 || currentRowIndex === -1) return;
           if (currentRowIndex > startRowIndex) {
             const cellsToSelect = new Set<CellKey>();
@@ -441,7 +459,7 @@ export function useCellSelection({
           }
           if (!isFillingCellsRef.current) return;
           const allRowsForSelection = getAllRowsForCellSelection();
-          const startRowIndex = allRowsForSelection.findIndex(r => r.id === startRowId);
+          const startRowIndex = tableIndexes.rowIndexById.get(startRowId) ?? -1;
           const targetCell = resolveFillTargetCell(endEvent.clientX, endEvent.clientY);
           const endRowId = targetCell?.rowId ?? null;
           const endPropertyKey = targetCell?.propertyKey ?? null;
@@ -449,7 +467,7 @@ export function useCellSelection({
             setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
             return;
           }
-          const endRowIndex = allRowsForSelection.findIndex(r => r.id === endRowId);
+          const endRowIndex = tableIndexes.rowIndexById.get(endRowId) ?? -1;
           if (startRowIndex === -1 || endRowIndex === -1) {
             setSelectedCells(new Set<CellKey>([`${startRowId}-${startPropertyKey}` as CellKey]));
             return;
@@ -460,7 +478,9 @@ export function useCellSelection({
             document.body.style.cursor = '';
             document.body.classList.remove('filling-cells');
             setFillDragStartCell(null);
-            const secondRowIndex = secondRowId != null ? allRowsForSelection.findIndex(r => r.id === secondRowId) : -1;
+            const secondRowIndex = secondRowId != null
+              ? tableIndexes.rowIndexById.get(secondRowId) ?? -1
+              : -1;
             if (secondRowId != null && secondRowIndex !== -1 && endRowIndex > secondRowIndex) {
               void fillDownIntSequence(startRowId, secondRowId, endRowId, startPropertyKey);
             } else {
@@ -484,17 +504,17 @@ export function useCellSelection({
       document.addEventListener('mousemove', fillDragMoveHandler);
       document.addEventListener('mouseup', fillDragEndHandlerWrapper);
     },
-    [selectedCells, orderedProperties, getAllRowsForCellSelection, fillDown, fillDownIntSequence]
+    [selectedCells, orderedProperties, getAllRowsForCellSelection, fillDown, fillDownIntSequence, tableIndexes]
   );
 
   // Update selected cells during drag (for visual feedback)
   useEffect(() => {
     if (!isDraggingCellsRef.current || !dragStartCell || !dragCurrentCell) return;
     const allRowsForSelection = getAllRowsForCellSelection();
-    const startRowIndex = allRowsForSelection.findIndex(r => r.id === dragStartCell.rowId);
-    const endRowIndex = allRowsForSelection.findIndex(r => r.id === dragCurrentCell.rowId);
-    const startPropertyIndex = orderedProperties.findIndex(p => p.key === dragStartCell.propertyKey);
-    const endPropertyIndex = orderedProperties.findIndex(p => p.key === dragCurrentCell.propertyKey);
+    const startRowIndex = tableIndexes.rowIndexById.get(dragStartCell.rowId) ?? -1;
+    const endRowIndex = tableIndexes.rowIndexById.get(dragCurrentCell.rowId) ?? -1;
+    const startPropertyIndex = tableIndexes.propertyIndexByKey.get(dragStartCell.propertyKey) ?? -1;
+    const endPropertyIndex = tableIndexes.propertyIndexByKey.get(dragCurrentCell.propertyKey) ?? -1;
     if (
       startRowIndex !== -1 &&
       endRowIndex !== -1 &&
@@ -515,7 +535,7 @@ export function useCellSelection({
       }
       setSelectedCells(cellsToSelect);
     }
-  }, [dragStartCell, dragCurrentCell, getAllRowsForCellSelection, orderedProperties]);
+  }, [dragStartCell, dragCurrentCell, getAllRowsForCellSelection, orderedProperties, tableIndexes]);
 
   // Calculate selection bounds when selectedCells changes.
   // Only call setSelectionBounds when bounds actually change to avoid "Maximum update depth exceeded"
@@ -528,35 +548,8 @@ export function useCellSelection({
       }
       return;
     }
-    const allRowsForSelection = getAllRowsForCellSelection();
-    let minRowIndex = Infinity;
-    let maxRowIndex = -Infinity;
-    let minPropertyIndex = Infinity;
-    let maxPropertyIndex = -Infinity;
-    selectedCells.forEach(cellKey => {
-      for (const property of orderedProperties) {
-        const propertyKeyWithDash = '-' + property.key;
-        if (cellKey.endsWith(propertyKeyWithDash)) {
-          const rowId = cellKey.substring(0, cellKey.length - propertyKeyWithDash.length);
-          const rowIndex = allRowsForSelection.findIndex(r => r.id === rowId);
-          const propertyIndex = orderedProperties.findIndex(p => p.key === property.key);
-          if (rowIndex !== -1 && propertyIndex !== -1) {
-            minRowIndex = Math.min(minRowIndex, rowIndex);
-            maxRowIndex = Math.max(maxRowIndex, rowIndex);
-            minPropertyIndex = Math.min(minPropertyIndex, propertyIndex);
-            maxPropertyIndex = Math.max(maxPropertyIndex, propertyIndex);
-          }
-          break;
-        }
-      }
-    });
-    if (
-      minRowIndex !== Infinity &&
-      maxRowIndex !== -Infinity &&
-      minPropertyIndex !== Infinity &&
-      maxPropertyIndex !== -Infinity
-    ) {
-      const next = { minRowIndex, maxRowIndex, minPropertyIndex, maxPropertyIndex };
+    const next = calculateSelectionBounds(selectedCells, tableIndexes);
+    if (next) {
       const prev = prevSelectionBoundsRef.current;
       if (
         !prev ||
@@ -574,7 +567,7 @@ export function useCellSelection({
         setSelectionBounds(null);
       }
     }
-  }, [selectedCells, getAllRowsForCellSelection, orderedProperties]);
+  }, [selectedCells, tableIndexes]);
 
   // Sync selectedCells to ref
   useEffect(() => {
@@ -594,8 +587,7 @@ export function useCellSelection({
   const getSelectionBorderClasses = useCallback(
     (rowId: string, propertyIndex: number): string => {
       if (!selectionBounds || selectedCells.size <= 1) return '';
-      const allRowsForSelection = getAllRowsForCellSelection();
-      const rowIndex = allRowsForSelection.findIndex(r => r.id === rowId);
+      const rowIndex = tableIndexes.rowIndexById.get(rowId) ?? -1;
       if (rowIndex === -1) return '';
       const cellKey = `${rowId}-${orderedProperties[propertyIndex].key}` as CellKey;
       if (!selectedCells.has(cellKey)) return '';
@@ -611,7 +603,7 @@ export function useCellSelection({
       selectionBounds,
       selectedCells,
       orderedProperties,
-      getAllRowsForCellSelection,
+      tableIndexes,
       selectionBorderClassNames,
     ]
   );
