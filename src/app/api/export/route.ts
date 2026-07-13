@@ -10,6 +10,7 @@ import {
   getCustomFormulaExpressionFromCellValue,
 } from '@/components/libraries/utils/formulaEvaluation';
 import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { fetchAllPaged } from '@/lib/services/pagination';
 import { writeXlsxWorkbook } from '@/lib/utils/workbook';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -229,26 +230,29 @@ async function getLibraryAssetsWithPropertiesDirect(
   supabase: SupabaseClient,
   libraryId: string
 ): Promise<AssetRow[]> {
-  const { data: assetData, error: assetError } = await supabase
-    .from('library_assets')
-    .select('id, library_id, name, created_at, row_index')
-    .eq('library_id', libraryId)
-    .order('row_index', { ascending: true, nullsFirst: false })
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true });
+  const assets = await fetchAllPaged<AssetRowDb>((from, to) =>
+    supabase
+      .from('library_assets')
+      .select('id, library_id, name, created_at, row_index')
+      .eq('library_id', libraryId)
+      .order('row_index', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to)
+  );
 
-  if (assetError) throw assetError;
-
-  const assets = (assetData ?? []) as AssetRowDb[];
   if (assets.length === 0) return [];
 
   const assetIds = assets.map((a) => a.id);
-  const { data: valueData, error: valueError } = await supabase
-    .from('library_asset_values')
-    .select('asset_id, field_id, value_json')
-    .in('asset_id', assetIds);
-
-  if (valueError) throw valueError;
+  const values = await fetchAllPaged<AssetValueRow>((from, to) =>
+    supabase
+      .from('library_asset_values')
+      .select('asset_id, field_id, value_json')
+      .in('asset_id', assetIds)
+      .order('asset_id', { ascending: true })
+      .order('field_id', { ascending: true })
+      .range(from, to)
+  );
 
   const rowsByAssetId = new Map<string, AssetRow>();
   for (const asset of assets) {
@@ -264,7 +268,7 @@ async function getLibraryAssetsWithPropertiesDirect(
     });
   }
 
-  for (const value of (valueData ?? []) as AssetValueRow[]) {
+  for (const value of values) {
     const row = rowsByAssetId.get(value.asset_id);
     if (!row) continue;
     row.propertyValues[value.field_id] = normalizeValue(value.value_json) as string | number | boolean | null;
