@@ -6,58 +6,26 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { withAuth } from '@/lib/auth/route-auth';
+import {
+  AuthorizationError,
+  getUserProjectRole,
+} from '@/lib/services/authorizationService';
 import { generateInvitationToken } from '@/lib/utils/invitationToken';
 import { sendInvitationEmail, isEmailConfigured } from '@/lib/services/emailService';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 /**
  * POST /api/invitations
  * Send a collaboration invitation via email
  */
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async function POST(
+  request: NextRequest,
+  _context,
+  { supabase, user }
+) {
   try {
-    // 1. Get authorization header
-    const authHeader = request.headers.get('authorization');
-    
-    if (!authHeader) {
-      return NextResponse.json(
-        { success: false, error: 'Missing authorization header' },
-        { status: 401 }
-      );
-    }
-
-    // 2. Extract JWT token from Bearer header
-    const jwtToken = authHeader.replace('Bearer ', '');
-    
-    // 3. Create Supabase client with the JWT token
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: authHeader,
-        },
-      },
-      auth: {
-        persistSession: false,
-        autoRefreshToken: false,
-      },
-    });
-
-    // 4. Verify JWT token and get user
-    const { data: { user }, error: authError } = await supabase.auth.getUser(jwtToken);
-    
-    if (authError || !user) {
-      console.error('[API /invitations] Authentication failed');
-      return NextResponse.json(
-        { success: false, error: 'You must be logged in to send invitations' },
-        { status: 401 }
-      );
-    }
-
-    // 5. Parse request body
+    // Parse request body
     const body = await request.json();
     const { projectId, recipientEmail, role } = body;
 
@@ -89,22 +57,18 @@ export async function POST(request: NextRequest) {
       .eq('id', projectId)
       .maybeSingle();
 
-    let inviterRole: CollaboratorRole | 'owner' | null =
-      project && project.owner_id === user.id ? 'owner' : null;
-
-    if (!inviterRole) {
-      const { data: membership } = await supabase
-        .from('project_collaborators')
-        .select('role')
-        .eq('project_id', projectId)
-        .eq('user_id', user.id)
-        .not('accepted_at', 'is', null)
-        .maybeSingle();
-      inviterRole = (membership?.role as CollaboratorRole | undefined) ?? null;
+    let inviterRole: CollaboratorRole | null = null;
+    try {
+      ({ role: inviterRole } = await getUserProjectRole(
+        supabase,
+        projectId,
+        user.id
+      ));
+    } catch (error) {
+      if (!(error instanceof AuthorizationError)) throw error;
     }
 
     const canGrant =
-      inviterRole === 'owner' ||
       inviterRole === 'admin' ||
       (inviterRole === 'editor' && (role === 'editor' || role === 'viewer'));
 
@@ -327,4 +291,9 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, {
+  unauthorizedResponse: () => NextResponse.json(
+    { success: false, error: 'You must be logged in to send invitations' },
+    { status: 401 }
+  ),
+});

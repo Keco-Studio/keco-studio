@@ -1,15 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/agent/route-auth';
+import { withAuth, type AuthedRequest } from '@/lib/auth/route-auth';
 import { getConversation, getMessages } from '@/lib/agent/conversation-store';
 
-export async function GET(
+const getHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const authed = await authenticate(request);
-  if (authed instanceof NextResponse) return authed;
-  const { supabase, user } = authed;
-
+  { params }: { params: Promise<{ id: string }> },
+  { supabase, user }: AuthedRequest
+) => {
   const { id } = await params;
 
   const conversation = await getConversation(supabase, id);
@@ -28,4 +25,6 @@ export async function GET(
     console.error('[GET /api/agent-chat/conversations/:id/messages] Failed:', e);
     return NextResponse.json({ error: 'Failed to load messages' }, { status: 400 });
   }
-}
+};
+
+export const GET = withAuth(getHandler);

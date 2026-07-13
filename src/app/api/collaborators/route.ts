@@ -6,15 +6,21 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
-import { getUserProjectRole } from '@/lib/services/collaborationService';
-import { canUserManageCollaborators } from '@/lib/types/collaboration';
+import { withAuth } from '@/lib/auth/route-auth';
+import {
+  AuthorizationError,
+  getUserProjectRole,
+} from '@/lib/services/authorizationService';
 
 /**
  * GET /api/collaborators?projectId=xxx
  * Get all collaborators and pending invitations for a project
  */
-export async function GET(request: NextRequest) {
+export const GET = withAuth(async function GET(
+  request: NextRequest,
+  _context,
+  { supabase, user }
+) {
   try {
     const { searchParams } = new URL(request.url);
     const projectId = searchParams.get('projectId');
@@ -26,23 +32,12 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Create Supabase client from request (extracts auth from headers)
-    const supabase = createSupabaseServerClient(request);
-
-    // Get current user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'You must be logged in' },
-        { status: 401 }
-      );
-    }
-
     // Check user has access to project
-    const { role } = await getUserProjectRole(supabase, projectId, user.id);
-    
-    if (!role) {
+    let role;
+    try {
+      ({ role } = await getUserProjectRole(supabase, projectId, user.id));
+    } catch (error) {
+      if (!(error instanceof AuthorizationError)) throw error;
       return NextResponse.json(
         { error: 'You do not have access to this project' },
         { status: 403 }
@@ -121,4 +116,9 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
-}
+}, {
+  unauthorizedResponse: () => NextResponse.json(
+    { error: 'You must be logged in' },
+    { status: 401 }
+  ),
+});

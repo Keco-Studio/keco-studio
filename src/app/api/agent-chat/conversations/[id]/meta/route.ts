@@ -1,16 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/agent/route-auth';
+import { withAuth, type AuthedRequest } from '@/lib/auth/route-auth';
 import { getConversation, updateConversationMeta } from '@/lib/agent/conversation-store';
 import { resolveConversationMeta } from '@/lib/agent/conversation-meta';
 
-export async function GET(
+const getHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const authed = await authenticate(request);
-  if (authed instanceof NextResponse) return authed;
-  const { supabase, user } = authed;
-
+  { params }: { params: Promise<{ id: string }> },
+  { supabase, user }: AuthedRequest
+) => {
   const { id } = await params;
   const conversation = await getConversation(supabase, id);
   if (!conversation || conversation.user_id !== user.id) {
@@ -18,16 +15,15 @@ export async function GET(
   }
 
   return NextResponse.json({ meta: conversation.meta });
-}
+};
 
-export async function PATCH(
+export const GET = withAuth(getHandler);
+
+const patchHandler = async (
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const authed = await authenticate(request);
-  if (authed instanceof NextResponse) return authed;
-  const { supabase, user } = authed;
-
+  { params }: { params: Promise<{ id: string }> },
+  { supabase, user }: AuthedRequest
+) => {
   const { id } = await params;
 
   let body: { autoExecute?: unknown };
@@ -53,4 +49,6 @@ export async function PATCH(
     console.error('[PATCH /api/agent-chat/conversations/:id/meta] Failed:', e);
     return NextResponse.json({ error: 'Failed to update conversation settings' }, { status: 400 });
   }
-}
+};
+
+export const PATCH = withAuth(patchHandler);

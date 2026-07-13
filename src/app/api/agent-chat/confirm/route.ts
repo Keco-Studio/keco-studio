@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/agent/route-auth';
+import { withAuth } from '@/lib/auth/route-auth';
 import { resumeAgentTurn } from '@/lib/agent/core';
 import { resolveUserRole, AgentAccessError } from '@/lib/agent/permissions';
 import { getConversation } from '@/lib/agent/conversation-store';
@@ -10,11 +10,11 @@ import type { ToolContext } from '@/lib/agent/types';
 
 export const maxDuration = 120;
 
-export async function POST(request: NextRequest) {
-  const authed = await authenticate(request);
-  if (authed instanceof NextResponse) return authed;
-  const { supabase, user } = authed;
-
+export const POST = withAuth(async function POST(
+  request: NextRequest,
+  _context,
+  { supabase, user }
+) {
   let body: {
     actionId?: string;
     decision?: 'approve' | 'reject';
@@ -84,4 +84,4 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: 'Resume failed' }, { status: 400 });
   }
-}
+});

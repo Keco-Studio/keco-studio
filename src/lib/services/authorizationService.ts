@@ -167,10 +167,16 @@ export async function getUserProjectRole(
   supabase: SupabaseClient,
   projectId: string,
   userId?: string
-): Promise<'admin' | 'editor' | 'viewer'> {
+): Promise<{
+  role: 'admin' | 'editor' | 'viewer';
+  isOwner: boolean;
+}> {
   const currentUserId = userId || await getCurrentUserId(supabase);
 
-  const resolveRole = async (): Promise<'admin' | 'editor' | 'viewer'> => {
+  const resolveRole = async (): Promise<{
+    role: 'admin' | 'editor' | 'viewer';
+    isOwner: boolean;
+  }> => {
     const { data: project, error } = await supabase
       .from('projects')
       .select('owner_id')
@@ -192,12 +198,17 @@ export async function getUserProjectRole(
       throw new AuthorizationError('Error checking collaborator status');
     }
 
+    const isOwner = project.owner_id === currentUserId;
+
     if (collaborator && collaborator.accepted_at) {
-      return collaborator.role as 'admin' | 'editor' | 'viewer';
+      return {
+        role: collaborator.role as 'admin' | 'editor' | 'viewer',
+        isOwner,
+      };
     }
 
-    if (project.owner_id === currentUserId) {
-      return 'admin';
+    if (isOwner) {
+      return { role: 'admin', isOwner: true };
     }
 
     throw new AuthorizationError('User is not a collaborator of this project');
@@ -370,7 +381,7 @@ export async function verifyLibraryDeletionPermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
   
   // Only admin can delete library
   if (role !== 'admin') {
@@ -401,7 +412,7 @@ export async function verifyFolderDeletionPermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, folder.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, folder.project_id, currentUserId);
   
   // Only admin can delete folder
   if (role !== 'admin') {
@@ -443,7 +454,7 @@ export async function verifyAssetDeletionPermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
   
   // Admin and editor can delete asset, viewer cannot
   if (role !== 'admin' && role !== 'editor') {
@@ -474,7 +485,7 @@ export async function verifyAssetsDeletionPermission(
     .eq('id', libraryId)
     .single();
   if (libErr || !library) throw new AuthorizationError('Library not found');
-  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
   if (role !== 'admin' && role !== 'editor')
     throw new AuthorizationError('Only admin and editor users can delete assets');
 }
@@ -491,7 +502,7 @@ export async function verifyLibraryCreationPermission(
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  const { role } = await getUserProjectRole(supabase, projectId, currentUserId);
   
   // Only admin can create library
   if (role !== 'admin') {
@@ -511,7 +522,7 @@ export async function verifyFolderCreationPermission(
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  const { role } = await getUserProjectRole(supabase, projectId, currentUserId);
   
   // Only admin can create folder
   if (role !== 'admin') {
@@ -542,7 +553,7 @@ export async function verifyAssetCreationPermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
   
   // Admin and editor can create asset, viewer cannot
   if (role !== 'admin' && role !== 'editor') {
@@ -562,7 +573,7 @@ export async function verifyProjectUpdatePermission(
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  const { role } = await getUserProjectRole(supabase, projectId, currentUserId);
   
   // Only admin can update project
   if (role !== 'admin') {
@@ -582,7 +593,7 @@ export async function verifyProjectDeletionPermission(
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, projectId, currentUserId);
+  const { role } = await getUserProjectRole(supabase, projectId, currentUserId);
   
   // Only admin can delete project
   if (role !== 'admin') {
@@ -614,7 +625,7 @@ export async function verifyLibraryUpdatePermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
   
   const canUpdate = role === 'admin' || (options?.allowEditor === true && role === 'editor');
   if (!canUpdate) {
@@ -649,7 +660,7 @@ export async function verifyFolderUpdatePermission(
   }
   
   // Get user's role in the project
-  const role = await getUserProjectRole(supabase, folder.project_id, currentUserId);
+  const { role } = await getUserProjectRole(supabase, folder.project_id, currentUserId);
   
   // Only admin can update folder
   if (role !== 'admin') {
@@ -718,7 +729,7 @@ export async function verifyAssetUpdatePermission(
     return;
   }
 
-  const role = await getUserProjectRole(supabase, resolvedProjectId, currentUserId);
+  const { role } = await getUserProjectRole(supabase, resolvedProjectId, currentUserId);
 
   if (role !== 'admin' && role !== 'editor') {
     throw new AuthorizationError('Only admin and editor users can update assets');

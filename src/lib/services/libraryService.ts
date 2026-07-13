@@ -609,7 +609,7 @@ export async function duplicateLibrary(
   if (!originalLib) throw new Error('Original library not found');
 
   // Duplicate permission: admin/editor only.
-  const role = await getUserProjectRole(supabase, originalLib.project_id);
+  const { role } = await getUserProjectRole(supabase, originalLib.project_id);
   if (role !== 'admin' && role !== 'editor') {
     throw new Error('Only admin and editor users can duplicate libraries');
   }

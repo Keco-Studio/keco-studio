@@ -161,7 +161,7 @@ export default function ProjectPage() {
       }
       
       try {
-        const role = await getUserProjectRole(supabase, projectId);
+        const { role } = await getUserProjectRole(supabase, projectId);
         setUserRole(role);
       } catch (error) {
         console.error('[ProjectPage] Error fetching user role:', error);

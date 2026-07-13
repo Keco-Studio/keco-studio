@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { withAuth } from '@/lib/auth/route-auth';
 import {
   applyCellValueReplace,
   normalizeValue,
@@ -37,16 +37,11 @@ type FieldRow = {
   data_type: string | null;
 };
 
-export async function POST(req: Request) {
-  const supabase = createSupabaseServerClient(req);
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const POST = withAuth(async function POST(
+  req,
+  _context,
+  { supabase, user }
+) {
   let body: ReplaceBody;
   try {
     body = await req.json();
@@ -380,4 +375,7 @@ export async function POST(req: Request) {
     dryRun,
     affectedLibraryIds,
   });
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});

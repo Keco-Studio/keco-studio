@@ -1,5 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { NextResponse } from 'next/server';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { SectionConfig, PropertyConfig, AssetRow } from '@/lib/types/libraryAssets';
 import type { FormulaEvaluableField } from '@/lib/utils/formula';
@@ -9,12 +8,10 @@ import {
   evaluateFormulaForRow,
   getCustomFormulaExpressionFromCellValue,
 } from '@/components/libraries/utils/formulaEvaluation';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { withAuth } from '@/lib/auth/route-auth';
+import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { fetchAllPaged } from '@/lib/services/pagination';
 import { writeXlsxWorkbook } from '@/lib/utils/workbook';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 function isUuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -126,32 +123,7 @@ async function verifyLibraryAccessDirect(
     throw new Error('Library not found');
   }
 
-  const { data: project, error: projectError } = await supabase
-    .from('projects')
-    .select('owner_id')
-    .eq('id', library.project_id)
-    .single();
-
-  if (projectError || !project) {
-    throw new Error('Project not found');
-  }
-
-  if (project.owner_id === userId) {
-    return { name: library.name };
-  }
-
-  const { data: collaborator, error: collabError } = await supabase
-    .from('project_collaborators')
-    .select('id, accepted_at')
-    .eq('project_id', library.project_id)
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (collabError || !collaborator || !collaborator.accepted_at) {
-    const authErr = new Error('Unauthorized access to this project');
-    (authErr as Error & { name: string }).name = 'AuthorizationError';
-    throw authErr;
-  }
+  await getUserProjectRole(supabase, library.project_id, userId);
 
   return { name: library.name };
 }
@@ -425,21 +397,11 @@ function buildAttachmentFileName(fileNameWithExt: string): string {
   return `attachment; filename="${fallbackAscii}"; filename*=UTF-8''${encoded}`;
 }
 
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get('authorization');
-  const supabase = authHeader
-    ? createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
-    : createSupabaseServerClient(request);
-  const { data: { user }, error: authError } = authHeader
-    ? await supabase.auth.getUser(authHeader.replace('Bearer ', ''))
-    : await supabase.auth.getUser();
-  if (authError || !user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const GET = withAuth(async function GET(
+  request,
+  _context,
+  { supabase, user }
+) {
   const { searchParams } = new URL(request.url);
   const libraryId = searchParams.get('libraryId');
   const format = (searchParams.get('format') || 'xlsx').toLowerCase();
@@ -768,4 +730,7 @@ export async function GET(request: NextRequest) {
       'Content-Disposition': buildAttachmentFileName(`${baseName}.xlsx`),
     },
   });
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});

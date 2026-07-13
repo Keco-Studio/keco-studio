@@ -80,7 +80,7 @@ export default function FolderPage() {
       }
       
       try {
-        const role = await getUserProjectRole(supabase, projectId);
+        const { role } = await getUserProjectRole(supabase, projectId);
         setUserRole(role);
       } catch (error) {
         console.error('[FolderPage] Error fetching user role:', error);

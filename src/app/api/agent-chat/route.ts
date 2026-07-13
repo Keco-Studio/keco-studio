@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { authenticate } from '@/lib/agent/route-auth';
+import { withAuth } from '@/lib/auth/route-auth';
 import { runAgentTurn } from '@/lib/agent/core';
 import { resolveUserRole, AgentAccessError } from '@/lib/agent/permissions';
 import { getOrCreateConversation } from '@/lib/agent/conversation-store';
@@ -16,11 +16,11 @@ export const maxDuration = 120;
 const isUuid = (v: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 
-export async function POST(request: NextRequest) {
-  const authed = await authenticate(request);
-  if (authed instanceof NextResponse) return authed;
-  const { supabase, user } = authed;
-
+export const POST = withAuth(async function POST(
+  request: NextRequest,
+  _context,
+  { supabase, user }
+) {
   let body: {
     conversationId?: string;
     projectId?: string;
@@ -138,4 +138,4 @@ export async function POST(request: NextRequest) {
     }
     return NextResponse.json({ error: 'Agent request failed' }, { status: 400 });
   }
-}
+});

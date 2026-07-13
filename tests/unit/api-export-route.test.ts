@@ -11,6 +11,10 @@ jest.mock('@/lib/createSupabaseServerClient', () => ({
   createSupabaseServerClient: jest.fn(),
 }));
 
+jest.mock('@/lib/services/authorizationService', () => ({
+  getUserProjectRole: jest.fn(async () => ({ role: 'admin', isOwner: true })),
+}));
+
 type ExportClientFake = {
   auth: {
     getUser: (token?: string) => Promise<{ data: { user: { id: string } | null }; error?: { message: string } | null }>;

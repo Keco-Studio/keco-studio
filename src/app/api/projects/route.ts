@@ -1,5 +1,5 @@
 import { NextResponse, NextRequest } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { withAuth } from '@/lib/auth/route-auth';
 
 type ProjectCreateRpcResult = {
   project_id?: unknown;
@@ -13,14 +13,11 @@ type ProjectCreateRpcResult = {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-export async function GET(request: NextRequest) {
-  const supabase = createSupabaseServerClient(request);
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const GET = withAuth(async function GET(
+  _request,
+  _context,
+  { supabase, user }
+) {
   // only return projects owned by the current user
   const { data, error } = await supabase
     .from('projects')
@@ -34,16 +31,16 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json(data ?? []);
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});
 
-export async function POST(request: NextRequest) {
-  const supabase = createSupabaseServerClient(request);
-
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-  }
-
+export const POST = withAuth(async function POST(
+  request: NextRequest,
+  _context,
+  { supabase }
+) {
   const body = await request.json().catch(() => null);
   const name: string = body?.name ?? '';
   const description: string | null = body?.description ?? null;
@@ -126,4 +123,7 @@ export async function POST(request: NextRequest) {
     },
     { status: 201 }
   );
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'unauthorized' }, { status: 401 }),
+});

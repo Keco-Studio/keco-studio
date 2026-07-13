@@ -31,8 +31,8 @@ export default function DesignUploadPage() {
     let active = true;
     if (!projectId) return;
     getUserProjectRole(supabase, projectId)
-      .then((r) => {
-        if (active) setRole(r);
+      .then(({ role }) => {
+        if (active) setRole(role);
       })
       .catch(() => {
         if (active) setRole(null);
