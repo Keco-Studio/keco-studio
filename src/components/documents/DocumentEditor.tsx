@@ -22,6 +22,7 @@ import {
 import { uploadImageFiles } from '@/lib/services/documentImageUpload';
 import { broadcastDocumentUpdated } from '@/lib/documents/documentBroadcast';
 import { registerDocumentFlushHandler } from '@/lib/documents/documentFlushRegistry';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import type { MdxDocumentEditorProps } from './MdxDocumentEditor';
 import type { MDXEditorMethods } from '@mdxeditor/editor';
 import type { DocumentRecord } from '@/lib/services/documentService';
@@ -57,10 +58,14 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
   const markdownRef = useRef<string>('');
   const lastSavedMarkdownRef = useRef<string>('');
   const dirtyRef = useRef(false);
+  // Set when an edit arrives while a save is in flight, so the save loop makes
+  // another pass instead of dropping the newer content (coalescing).
+  const pendingRef = useRef(false);
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const editorRef = useRef<MDXEditorMethods | null>(null);
   const savingRef = useRef(false);
   const userIdRef = useRef<string | null>(null);
+  const accessTokenRef = useRef<string | null>(null);
   const readOnlyRef = useRef(true);
   const documentIdRef = useRef(documentId);
   const projectIdRef = useRef(projectId);
@@ -73,7 +78,7 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
     isLoading,
     error,
   } = useQuery({
-    queryKey: ['document', documentId],
+    queryKey: queryKeys.document(documentId),
     queryFn: () => getDocument(supabase, documentId),
     enabled: !!documentId,
     staleTime: 0,
@@ -86,12 +91,15 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
     Promise.all([
       getUserProjectRole(supabase, projectId),
       getCurrentUserId(supabase),
+      supabase.auth.getSession(),
     ])
-      .then(([r, id]) => {
+      .then(([r, id, session]) => {
         if (!active) return;
         setRole(r);
         setUserId(id);
         userIdRef.current = id;
+        // Cached for the beforeunload keepalive beacon (cannot await there).
+        accessTokenRef.current = session.data.session?.access_token ?? null;
       })
       .catch(() => {
         if (active) {
@@ -126,7 +134,7 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
   const writeCache = useCallback(
     (targetDocumentId: string, content: string, updatedAt: string) => {
       queryClient.setQueryData<DocumentRecord>(
-        ['document', targetDocumentId],
+        queryKeys.document(targetDocumentId),
         (prev) =>
           prev
             ? { ...prev, content, updated_at: updatedAt }
@@ -136,41 +144,43 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
     [queryClient]
   );
 
+  /**
+   * Decide what to write for a given reason. An empty snapshot produced by an
+   * editor that is being torn down (navigate/unmount/visibility) must NOT clobber
+   * a previously saved non-empty body. An explicit clear during 'debounce' IS
+   * saved, because the user really did empty the document.
+   */
+  const resolveToSave = useCallback(
+    (content: string, reason: 'debounce' | 'navigate' | 'unmount' | 'visibility'): string => {
+      if (
+        content === '' &&
+        lastSavedMarkdownRef.current.length > 0 &&
+        reason !== 'debounce'
+      ) {
+        return lastSavedMarkdownRef.current;
+      }
+      return content;
+    },
+    []
+  );
+
+  /**
+   * Serialized, coalescing save. A single in-flight save is allowed; edits that
+   * arrive during it set pendingRef so the loop makes another pass. Rejections
+   * propagate so navigation can decide whether to block.
+   */
   const persistNow = useCallback(
-    async (reason: 'debounce' | 'navigate' | 'unmount' | 'visibility') => {
+    async (reason: 'debounce' | 'navigate' | 'unmount' | 'visibility'): Promise<void> => {
       if (readOnlyRef.current) return;
       const uid = userIdRef.current;
       const targetId = documentIdRef.current;
       if (!uid || !targetId) return;
 
-      const content = snapshotMarkdown();
-      markdownRef.current = content;
-
-      // Navigation/unmount can run after the editor is already torn down and
-      // snapshot as "". Never clobber a previously saved non-empty body with "".
-      const toSave =
-        content === '' &&
-        lastSavedMarkdownRef.current.length > 0 &&
-        (reason === 'navigate' || reason === 'unmount' || reason === 'visibility')
-          ? lastSavedMarkdownRef.current
-          : content;
-
-      if (toSave === lastSavedMarkdownRef.current && !dirtyRef.current) {
-        return;
-      }
-
+      // Coalesce: if a save is already running, record that more work is pending
+      // and let the running loop pick it up.
       if (savingRef.current) {
-        // Wait for in-flight save then retry once for navigate/unmount.
-        if (reason === 'navigate' || reason === 'unmount') {
-          const started = Date.now();
-          while (savingRef.current && Date.now() - started < 5000) {
-            await new Promise((r) => setTimeout(r, 50));
-          }
-          if (toSave === lastSavedMarkdownRef.current) return;
-        } else {
-          dirtyRef.current = true;
-          return;
-        }
+        pendingRef.current = true;
+        return;
       }
 
       if (persistTimerRef.current) {
@@ -178,32 +188,47 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
         persistTimerRef.current = null;
       }
 
-      dirtyRef.current = false;
       savingRef.current = true;
-      if (targetId === documentIdRef.current) {
-        setPersistState('saving');
-        setPersistError(null);
-      }
-
       try {
-        const { updatedAt } = await updateDocumentContent(
-          supabase,
-          targetId,
-          toSave,
-          uid
-        );
-        lastSavedMarkdownRef.current = toSave;
-        markdownRef.current = toSave;
-        writeCache(targetId, toSave, updatedAt);
-        void broadcastDocumentUpdated(supabase, {
-          documentId: targetId,
-          projectId: projectIdRef.current,
-          updatedAt,
-          action: 'save',
-        });
+        do {
+          pendingRef.current = false;
+          const content = snapshotMarkdown();
+          markdownRef.current = content;
+          const toSave = resolveToSave(content, reason);
+
+          if (toSave === lastSavedMarkdownRef.current) {
+            dirtyRef.current = false;
+            break;
+          }
+
+          if (targetId === documentIdRef.current) {
+            setPersistState('saving');
+            setPersistError(null);
+          }
+
+          const { updatedAt } = await updateDocumentContent(
+            supabase,
+            targetId,
+            toSave,
+            uid
+          );
+          lastSavedMarkdownRef.current = toSave;
+          writeCache(targetId, toSave, updatedAt);
+          void broadcastDocumentUpdated(supabase, {
+            documentId: targetId,
+            projectId: projectIdRef.current,
+            updatedAt,
+            action: 'save',
+          });
+          if (targetId === documentIdRef.current) {
+            setLastSavedAt(updatedAt);
+          }
+          // Loop again only if edits arrived during the await (pendingRef).
+        } while (pendingRef.current);
+
+        dirtyRef.current = pendingRef.current;
         if (targetId === documentIdRef.current) {
-          setLastSavedAt(updatedAt);
-          setPersistState('saved');
+          setPersistState(dirtyRef.current ? 'dirty' : 'saved');
         }
       } catch (err) {
         console.error(`[DocumentEditor] persist failed (${reason})`, err);
@@ -223,15 +248,32 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
         savingRef.current = false;
       }
     },
-    [snapshotMarkdown, supabase, writeCache]
+    [snapshotMarkdown, resolveToSave, supabase, writeCache]
   );
 
   const persistNowRef = useRef(persistNow);
   persistNowRef.current = persistNow;
 
+  /** Await any in-flight save, then flush remaining edits. Rethrows on failure. */
+  const flushForNavigation = useCallback(async (): Promise<void> => {
+    if (persistTimerRef.current) {
+      clearTimeout(persistTimerRef.current);
+      persistTimerRef.current = null;
+    }
+    const started = Date.now();
+    while (savingRef.current && Date.now() - started < 5000) {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+    await persistNowRef.current('navigate');
+  }, []);
+
+  const flushForNavigationRef = useRef(flushForNavigation);
+  flushForNavigationRef.current = flushForNavigation;
+
   const schedulePersist = useCallback(() => {
     if (readOnlyRef.current) return;
     dirtyRef.current = true;
+    if (savingRef.current) pendingRef.current = true;
     setPersistState((prev) => (prev === 'saving' ? prev : 'dirty'));
     if (persistTimerRef.current) clearTimeout(persistTimerRef.current);
     persistTimerRef.current = setTimeout(() => {
@@ -243,6 +285,7 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
     (markdown: string) => {
       markdownRef.current = markdown;
       dirtyRef.current = true;
+      if (savingRef.current) pendingRef.current = true;
       schedulePersist();
     },
     [schedulePersist]
@@ -260,25 +303,58 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
     setPersistError(null);
   }, [document, documentId]);
 
+  /**
+   * Synchronous keepalive flush for tab close. An async save started in
+   * `beforeunload` cannot block unload, so we PATCH the row via a keepalive
+   * fetch that the browser is allowed to finish after the page is gone.
+   */
+  const beaconFlush = useCallback(() => {
+    if (readOnlyRef.current || !dirtyRef.current) return;
+    const targetId = documentIdRef.current;
+    const token = accessTokenRef.current;
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (!targetId || !token || !url || !anon) return;
+    const content = snapshotMarkdown();
+    const toSave = resolveToSave(content, 'visibility');
+    if (toSave === lastSavedMarkdownRef.current) return;
+    try {
+      void fetch(`${url}/rest/v1/documents?id=eq.${targetId}`, {
+        method: 'PATCH',
+        keepalive: true,
+        headers: {
+          apikey: anon,
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({ content: toSave }),
+      });
+      lastSavedMarkdownRef.current = toSave;
+    } catch {
+      // Best-effort only.
+    }
+  }, [snapshotMarkdown, resolveToSave]);
+
+  const beaconFlushRef = useRef(beaconFlush);
+  beaconFlushRef.current = beaconFlush;
+
   // Sidebar awaits this before router.push to another doc/library/folder.
+  // Errors propagate so the navigator can keep the user on the page.
   useEffect(() => {
-    return registerDocumentFlushHandler(async () => {
-      if (persistTimerRef.current) {
-        clearTimeout(persistTimerRef.current);
-        persistTimerRef.current = null;
-      }
-      await persistNowRef.current('navigate');
-    });
+    return registerDocumentFlushHandler(() => flushForNavigationRef.current());
   }, []);
 
   useEffect(() => {
     const onVisibility = () => {
       if (window.document.visibilityState === 'hidden') {
+        // Try a normal async save first (usually completes on tab switch);
+        // the beacon is the fallback if the page is actually being unloaded.
         void persistNowRef.current('visibility').catch(() => undefined);
       }
     };
     const onBeforeUnload = () => {
-      void persistNowRef.current('visibility').catch(() => undefined);
+      beaconFlushRef.current();
     };
     window.addEventListener('beforeunload', onBeforeUnload);
     window.document.addEventListener('visibilitychange', onVisibility);
@@ -315,6 +391,16 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
       );
     }
     return <div className={styles.loading}>Loading document…</div>;
+  }
+
+  // The document is loaded by ID but the role/permissions were resolved from the
+  // project in the URL. Reject a document that belongs to a different project.
+  if (document.project_id !== projectId) {
+    return (
+      <div className={styles.error}>
+        This document does not belong to this project.
+      </div>
+    );
   }
 
   return (

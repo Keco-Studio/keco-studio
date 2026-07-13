@@ -14,6 +14,7 @@
  */
 
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isUuid } from '@/lib/utils/uuid';
 import {
   verifyProjectAccess,
   getUserProjectRole,
@@ -27,8 +28,6 @@ export type DocumentRecord = {
   folder_id: string | null;
   name: string;
   content: string;
-  /** Base64 Y.encodeStateAsUpdate; null until the first collab persist. */
-  yjs_state: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -40,10 +39,41 @@ export type DocumentSummary = Pick<
   'id' | 'project_id' | 'folder_id' | 'name' | 'created_at' | 'updated_at'
 >;
 
+const DOCUMENT_RECORD_COLUMNS =
+  'id, project_id, folder_id, name, content, created_by, created_at, updated_at';
 const DOCUMENT_SUMMARY_COLUMNS = 'id, project_id, folder_id, name, created_at, updated_at';
 
-const isUuid = (value: string) =>
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+/**
+ * Thrown when a document does not exist OR the caller cannot read it (RLS makes
+ * these indistinguishable). Consumers should render an error state instead of a
+ * perpetual loading spinner.
+ */
+export class DocumentNotFoundError extends Error {
+  constructor(documentId: string) {
+    super(`Document ${documentId} not found or not accessible`);
+    this.name = 'DocumentNotFoundError';
+  }
+}
+
+/** Assert a folder exists and belongs to `projectId`; returns the validated id. */
+async function assertFolderInProject(
+  supabase: SupabaseClient,
+  folderId: string,
+  projectId: string
+): Promise<string> {
+  if (!isUuid(folderId)) {
+    throw new Error('Invalid folder ID format');
+  }
+  const { data: folder, error } = await supabase
+    .from('folders')
+    .select('project_id')
+    .eq('id', folderId)
+    .single();
+  if (error || !folder || folder.project_id !== projectId) {
+    throw new Error('Folder not found or does not belong to the project');
+  }
+  return folderId;
+}
 
 /** Owner or accepted admin/editor collaborator may mutate documents. */
 async function verifyDocumentWritePermission(
@@ -99,29 +129,34 @@ export async function listDocuments(
   return (data ?? []) as DocumentSummary[];
 }
 
-/** Fetch a single document including its Markdown content. */
+/**
+ * Fetch a single document including its Markdown content.
+ * Throws {@link DocumentNotFoundError} when the row is missing or unreadable so
+ * the editor can distinguish "no access / deleted" from "still loading".
+ */
 export async function getDocument(
   supabase: SupabaseClient,
   documentId: string
-): Promise<DocumentRecord | null> {
+): Promise<DocumentRecord> {
   if (!isUuid(documentId)) {
     throw new Error('Invalid document ID format');
   }
 
   const { data, error } = await supabase
     .from('documents')
-    .select('*')
+    .select(DOCUMENT_RECORD_COLUMNS)
     .eq('id', documentId)
     .single();
 
   if (error) {
+    // PGRST116 = no rows: either missing or hidden by RLS.
     if (error.code === 'PGRST116') {
-      return null;
+      throw new DocumentNotFoundError(documentId);
     }
     throw error;
   }
 
-  return data as DocumentRecord;
+  return data as unknown as DocumentRecord;
 }
 
 type CreateDocumentInput = {
@@ -147,12 +182,11 @@ export async function createDocument(
   await verifyDocumentWritePermission(supabase, input.projectId);
   const createdBy = await getCurrentUserId(supabase);
 
+  // Cross-project integrity: a folder, when given, must live in this project.
+  // The DB trigger enforces this too; validating here yields a clearer error.
   let folderId: string | null = null;
   if (input.folderId) {
-    if (!isUuid(input.folderId)) {
-      throw new Error('Invalid folder ID format');
-    }
-    folderId = input.folderId;
+    folderId = await assertFolderInProject(supabase, input.folderId, input.projectId);
   }
 
   const { data, error } = await supabase
@@ -164,14 +198,14 @@ export async function createDocument(
       content: input.content ?? '',
       created_by: createdBy,
     })
-    .select('*')
+    .select(DOCUMENT_RECORD_COLUMNS)
     .single();
 
   if (error) {
     throw error;
   }
 
-  return data as DocumentRecord;
+  return data as unknown as DocumentRecord;
 }
 
 /** Rename a document. */
@@ -202,43 +236,9 @@ export async function updateDocumentName(
 }
 
 /**
- * Persist collaborative document state: authoritative Yjs snapshot plus a
- * Markdown derivative for export/agent/sidebar consumers. Concurrent editing
- * is resolved by Yjs CRDT over Realtime; this write is durability only (no LWW).
- */
-export async function persistDocumentCollabState(
-  supabase: SupabaseClient,
-  documentId: string,
-  input: { yjsStateBase64: string; content: string }
-): Promise<{ updatedAt: string }> {
-  if (!isUuid(documentId)) {
-    throw new Error('Invalid document ID format');
-  }
-
-  const projectId = await getDocumentProjectId(supabase, documentId);
-  await verifyDocumentWritePermission(supabase, projectId);
-
-  const { data, error } = await supabase
-    .from('documents')
-    .update({
-      yjs_state: input.yjsStateBase64,
-      content: input.content,
-    })
-    .eq('id', documentId)
-    .select('updated_at')
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return { updatedAt: (data as { updated_at: string }).updated_at };
-}
-
-/**
- * Persist Markdown content for a document.
- * Pass `userId` when the caller already resolved auth (e.g. editor shell) so
- * we do not re-hit Auth during autosave / Fast Refresh.
+ * Persist Markdown content for a document. This is the single authoritative
+ * content writer for Phase 1 (no Yjs). Pass `userId` when the caller already
+ * resolved auth (e.g. editor shell) so we do not re-hit Auth during autosave.
  */
 export async function updateDocumentContent(
   supabase: SupabaseClient,
@@ -286,18 +286,7 @@ export async function moveDocument(
 
   let folderId: string | null = null;
   if (input.folderId) {
-    if (!isUuid(input.folderId)) {
-      throw new Error('Invalid folder ID format');
-    }
-    const { data: folder, error: folderError } = await supabase
-      .from('folders')
-      .select('project_id')
-      .eq('id', input.folderId)
-      .single();
-    if (folderError || !folder || folder.project_id !== projectId) {
-      throw new Error('Folder not found or does not belong to the project');
-    }
-    folderId = input.folderId;
+    folderId = await assertFolderInProject(supabase, input.folderId, projectId);
   }
 
   const { error } = await supabase

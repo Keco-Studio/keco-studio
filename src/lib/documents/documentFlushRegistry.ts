@@ -19,13 +19,20 @@ export function registerDocumentFlushHandler(
   };
 }
 
-/** Awaitable flush of whatever document editor is currently mounted. */
-export async function flushOpenDocumentEditor(): Promise<void> {
+/**
+ * Awaitable flush of whatever document editor is currently mounted.
+ * Returns true when there is nothing to flush or the flush succeeded, and false
+ * when the flush FAILED. Callers should NOT navigate away on a false result, so
+ * unsaved edits are not silently lost.
+ */
+export async function flushOpenDocumentEditor(): Promise<boolean> {
   const handler = activeFlush;
-  if (!handler) return;
+  if (!handler) return true;
   try {
     await handler();
+    return true;
   } catch (err) {
     console.error('[documentFlush] flush before navigation failed', err);
+    return false;
   }
 }

@@ -90,15 +90,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     currentLibraryId,
     currentFolderId,
     currentAssetId,
+    currentDocumentId,
     isPredefinePage,
     isLibraryPage,
   } = useNavigation();
-  // Derive the active document id from the URL (/[projectId]/doc/[documentId]);
-  // NavigationContext does not track documents, so parse it here for highlighting.
-  const currentDocumentId = useMemo(() => {
-    const match = pathname.match(/\/[^/]+\/doc\/([^/]+)/);
-    return match ? match[1] : null;
-  }, [pathname]);
   const currentIds = useMemo(
     () => ({
       projectId: currentProjectId,
@@ -288,7 +283,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         } else if (key.startsWith('document-')) {
           const id = key.replace('document-', '');
           const documentsKey = currentIds.projectId
-            ? (['documents', currentIds.projectId] as const)
+            ? queryKeys.documents(currentIds.projectId)
             : null;
           if (documentsKey) {
             queryClient.setQueryData<DocumentSummary[]>(documentsKey, (old) =>
@@ -308,7 +303,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             showSuccessToast('Document name updated');
           } catch (docErr) {
             if (currentIds.projectId) {
-              queryClient.invalidateQueries({ queryKey: ['documents', currentIds.projectId] });
+              queryClient.invalidateQueries({ queryKey: queryKeys.documents(currentIds.projectId) });
             }
             throw docErr;
           }
@@ -472,10 +467,23 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
   }, []);
 
-  /** Flush open document autosave before leaving the editor route. */
+  /**
+   * Flush open document autosave before leaving the editor route. If the flush
+   * fails we keep the user on the page (the editor shows the error) rather than
+   * navigating away and losing unsaved edits.
+   */
   const navigateWithFlush = useCallback(
     async (href: string) => {
-      await flushOpenDocumentEditor();
+      const flushed = await flushOpenDocumentEditor();
+      if (!flushed) {
+        Modal.error({
+          title: 'Unsaved changes could not be saved',
+          content:
+            'We could not save your latest changes. Please check your connection and try again before leaving this document.',
+          zIndex: 11000,
+        });
+        return;
+      }
       router.push(href);
     },
     [router]
@@ -792,7 +800,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           projectId: currentIds.projectId,
           action: 'move',
         });
-        await queryClient.invalidateQueries({ queryKey: ['documents', currentIds.projectId] });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.documents(currentIds.projectId) });
       }
       expandFolder(folderId);
       showSuccessToast('Document moved successfully');
@@ -811,12 +819,29 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     const createdFolderId = selectedFolderId;
     setSelectedFolderId(null);
     if (currentIds.projectId) {
-      await flushOpenDocumentEditor();
-      await queryClient.invalidateQueries({ queryKey: ['documents', currentIds.projectId] });
+      // Tell other clients a document appeared so their sidebar refreshes.
+      void broadcastDocumentUpdated(supabase, {
+        documentId,
+        projectId: currentIds.projectId,
+        action: 'create',
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.documents(currentIds.projectId) });
       expandFolder(createdFolderId);
+      // Persist the currently open document before navigating to the new one;
+      // keep the user in place if that flush fails.
+      const flushed = await flushOpenDocumentEditor();
+      if (!flushed) {
+        Modal.error({
+          title: 'Unsaved changes could not be saved',
+          content:
+            'The new document was created, but we could not save your current document. Please retry before switching.',
+          zIndex: 11000,
+        });
+        return;
+      }
       router.push(`/${currentIds.projectId}/doc/${documentId}`);
     }
-  }, [closeDocumentModal, selectedFolderId, currentIds.projectId, queryClient, expandFolder, router]);
+  }, [closeDocumentModal, selectedFolderId, currentIds.projectId, supabase, queryClient, expandFolder, router]);
 
   const movingLibrary = useMemo(
     () => libraries.find((lib) => lib.id === movingLibraryId) ?? null,

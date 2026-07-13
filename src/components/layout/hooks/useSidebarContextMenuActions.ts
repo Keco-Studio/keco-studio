@@ -10,6 +10,7 @@ import { deleteLibrary } from '@/lib/services/libraryService';
 import { deleteFolder } from '@/lib/services/folderService';
 import { deleteDocument } from '@/lib/services/documentService';
 import { broadcastDocumentUpdated } from '@/lib/documents/documentBroadcast';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import {
   invalidateFolderData,
   invalidateLibraryAssetsData,
@@ -271,7 +272,7 @@ export function useSidebarContextMenuActions({
                       action: 'delete',
                     });
                     await queryClient.invalidateQueries({
-                      queryKey: ['documents', currentIds.projectId],
+                      queryKey: queryKeys.documents(currentIds.projectId),
                     });
                   }
                   if (currentIds.documentId === documentId && currentIds.projectId) {
