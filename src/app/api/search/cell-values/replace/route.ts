@@ -288,6 +288,17 @@ export const POST = withAuth(async function POST(
     const finalPreviews = previews.filter((p) =>
       allowedKeys.has(`${p.assetId}:${p.fieldId}`)
     );
+    const updatedCells = allowedUpserts.flatMap((row) => {
+      const libraryId = libraryIdByAssetId.get(row.asset_id);
+      if (!libraryId) return [];
+      return [{
+        libraryId,
+        assetId: row.asset_id,
+        propertyKey: row.field_id,
+        newValue: row.value_json,
+        oldValue: valueMap.get(`${row.asset_id}:${row.field_id}`),
+      }];
+    });
 
     const affectedLibraryIdsFromTargets = new Set(
       targets
@@ -338,6 +349,13 @@ export const POST = withAuth(async function POST(
         for (const u of refUpdates) {
           if (u.referencingLibraryId) {
             affectedLibraryIdsFromTargets.add(u.referencingLibraryId);
+            updatedCells.push({
+              libraryId: u.referencingLibraryId,
+              assetId: u.referencingAssetId,
+              propertyKey: u.referencingFieldId,
+              newValue: u.newReferenceValue,
+              oldValue: undefined,
+            });
           }
         }
       } catch (syncError) {
@@ -355,6 +373,7 @@ export const POST = withAuth(async function POST(
       previews: finalPreviews,
       skips,
       affectedLibraryIds,
+      cells: dryRun ? [] : updatedCells,
       ...(dryRun ? { dryRun: true } : {}),
     });
   }

@@ -29,6 +29,11 @@ import { useSidebarFoldersLibraries } from './hooks/useSidebarFoldersLibraries';
 import { normalizeSearchString } from '@/lib/utils/normalizeSearchString';
 import { buildNormalizedIndexMap } from '@/lib/utils/cellValueReplace';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
+import {
+  broadcastCellReplacementBatches,
+  requestLibraryReconciliation,
+  type CellReplacementUpdate,
+} from '@/lib/realtime/cell-replacement-broadcast';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -622,10 +627,11 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         }
         throw err;
       }
-      return payload as {
+      const result = payload as {
         updated: number;
         skipped: number;
         affectedLibraryIds?: string[];
+        cells?: CellReplacementUpdate[];
         previews: Array<{
           assetId: string;
           fieldId: string;
@@ -635,6 +641,18 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
         }>;
         skips?: Array<{ fieldLabel: string; reason: string }>;
       };
+      if (!params.dryRun && result.updated > 0) {
+        const cells = result.cells ?? [];
+        requestLibraryReconciliation(
+          result.affectedLibraryIds ?? cells.map((cell) => cell.libraryId)
+        );
+        try {
+          await broadcastCellReplacementBatches({ supabase, cells, accessToken: token });
+        } catch (error) {
+          console.warn('[TopBar] Realtime cell replacement broadcast failed:', error);
+        }
+      }
+      return result;
     },
     [cellReplaceText, searchQuery, supabase]
   );

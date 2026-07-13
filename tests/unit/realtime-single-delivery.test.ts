@@ -37,6 +37,10 @@ describe('single-path realtime delivery', () => {
     expect(source).not.toContain('recentBatchCellKeysRef');
     expect(source).toContain('onReconnect');
     expect(source).toContain('advanceRealtimeConnection');
+    expect(source).toContain('optimisticUpdatesRef');
+    expect(source).toContain('queuedUpdatesRef');
+    expect(source).toContain('handlersRef');
+    expect(source).toMatch(/\}, \[libraryId, supabase\]\);/);
   });
 
   it('uses a forward migration to remove both library tables from the publication', () => {

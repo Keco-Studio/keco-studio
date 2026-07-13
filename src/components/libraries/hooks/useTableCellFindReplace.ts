@@ -8,6 +8,12 @@ import {
   valueToDisplayString,
 } from '@/lib/utils/cellValueReplace';
 import { normalizeSearchString } from '@/lib/utils/normalizeSearchString';
+import { useSupabase } from '@/lib/SupabaseContext';
+import {
+  broadcastCellReplacementBatches,
+  requestLibraryReconciliation,
+  type CellReplacementUpdate,
+} from '@/lib/realtime/cell-replacement-broadcast';
 
 export type TableCellSearchHit = {
   assetId: string;
@@ -100,6 +106,7 @@ export function useTableCellFindReplace({
   scrollToCell,
 }: UseTableCellFindReplaceParams) {
   const queryClient = useQueryClient();
+  const supabase = useSupabase();
   const [findText, setFindText] = useState('');
   const [debouncedFindText, setDebouncedFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
@@ -196,15 +203,28 @@ export function useTableCellFindReplace({
         }
         throw err;
       }
-      return payload as {
+      const result = payload as {
         updated: number;
         skipped: number;
         affectedLibraryIds?: string[];
         previews: TableCellReplacePreview['previews'];
         skips?: TableCellReplacePreview['skips'];
+        cells?: CellReplacementUpdate[];
       };
+      if (!params.dryRun && result.updated > 0) {
+        const cells = result.cells ?? [];
+        requestLibraryReconciliation(
+          result.affectedLibraryIds ?? cells.map((cell) => cell.libraryId)
+        );
+        try {
+          await broadcastCellReplacementBatches({ supabase, cells, accessToken: token });
+        } catch (error) {
+          console.warn('[useTableCellFindReplace] Realtime broadcast failed:', error);
+        }
+      }
+      return result;
     },
-    [findText, getAccessToken, libraryId, replaceText]
+    [findText, getAccessToken, libraryId, replaceText, supabase]
   );
 
   const openReplaceConfirm = useCallback(

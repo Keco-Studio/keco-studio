@@ -41,6 +41,7 @@ import { useLibraryAssetMutations } from '@/components/libraries/hooks/useLibrar
 import { useLibraryRealtimeHandlers } from '@/components/libraries/hooks/useLibraryRealtimeHandlers';
 import { useQueryClient } from '@tanstack/react-query';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
+import { LIBRARY_RECONCILE_EVENT } from '@/lib/realtime/cell-replacement-broadcast';
 
 interface LibraryDataContextValue {
   // Data access
@@ -402,6 +403,16 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     await loadInitialData();
     await invalidateLibraryAssetsData(queryClient, { libraryId, refetchActiveAssets: true });
   }, [libraryId, loadInitialData, queryClient]);
+
+  useEffect(() => {
+    const reconcile = (rawEvent: Event) => {
+      const event = rawEvent as CustomEvent<{ libraryIds?: string[] }>;
+      if (!event.detail?.libraryIds?.includes(libraryId)) return;
+      void loadInitialData();
+    };
+    window.addEventListener(LIBRARY_RECONCILE_EVENT, reconcile);
+    return () => window.removeEventListener(LIBRARY_RECONCILE_EVENT, reconcile);
+  }, [libraryId, loadInitialData]);
 
   // Helper functions
   const getAsset = useCallback((assetId: string) => {

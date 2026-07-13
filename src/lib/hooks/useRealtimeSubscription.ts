@@ -69,7 +69,30 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [optimisticUpdates, setOptimisticUpdates] = useState<Map<string, OptimisticUpdate>>(new Map());
   const [queuedUpdates, setQueuedUpdates] = useState<CellUpdateEvent[]>([]);
-  
+
+  const optimisticUpdatesRef = useRef<Map<string, OptimisticUpdate>>(new Map());
+  const queuedUpdatesRef = useRef<CellUpdateEvent[]>([]);
+  const handlersRef = useRef({
+    currentUserId,
+    onCellUpdate,
+    onAssetCreate,
+    onAssetDelete,
+    onConflict,
+    onRowOrderChange,
+    onCellsBatchUpdate,
+    onReconnect,
+  });
+  handlersRef.current = {
+    currentUserId,
+    onCellUpdate,
+    onAssetCreate,
+    onAssetDelete,
+    onConflict,
+    onRowOrderChange,
+    onCellsBatchUpdate,
+    onReconnect,
+  };
+
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const broadcastDebounceRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -82,6 +105,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     setOptimisticUpdates(prev => {
       const next = new Map(prev);
       next.set(cellKey, update);
+      optimisticUpdatesRef.current = next;
       return next;
     });
   }, []);
@@ -94,6 +118,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     setOptimisticUpdates(prev => {
       const next = new Map(prev);
       next.delete(cellKey);
+      optimisticUpdatesRef.current = next;
       return next;
     });
   }, []);
@@ -103,8 +128,8 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
    */
   const getOptimisticUpdate = useCallback((assetId: string, propertyKey: string): OptimisticUpdate | undefined => {
     const cellKey = `${assetId}-${propertyKey}`;
-    return optimisticUpdates.get(cellKey);
-  }, [optimisticUpdates]);
+    return optimisticUpdatesRef.current.get(cellKey);
+  }, []);
 
   /**
    * Handle incoming cell update events with conflict detection
@@ -112,6 +137,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   const handleCellUpdateEvent = useCallback((payload: any) => {
     // console.log('[useRealtimeSubscription] 📨 Received broadcast message:', payload);
     const event = payload.payload as CellUpdateEvent;
+    const { currentUserId, onCellUpdate, onConflict } = handlersRef.current;
     // console.log('[useRealtimeSubscription] Event details:', { 
     //   eventUserId: event.userId, 
     //   currentUserId, 
@@ -140,13 +166,14 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       // console.log('[useRealtimeSubscription] ✅ No conflict, applying update');
       onCellUpdate(event);
     }
-  }, [currentUserId, getOptimisticUpdate, onCellUpdate, onConflict, removeOptimisticUpdate]);
+  }, [getOptimisticUpdate, removeOptimisticUpdate]);
 
   /**
    * Handle incoming asset creation events
    */
   const handleAssetCreateEvent = useCallback((payload: any) => {
     const event = payload.payload as AssetCreateEvent;
+    const { currentUserId, onAssetCreate } = handlersRef.current;
 
     // Ignore our own broadcasts
     if (event.userId === currentUserId) {
@@ -154,13 +181,14 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     }
 
     onAssetCreate(event);
-  }, [currentUserId, onAssetCreate]);
+  }, []);
 
   /**
    * Handle incoming asset deletion events
    */
   const handleAssetDeleteEvent = useCallback((payload: any) => {
     const event = payload.payload as AssetDeleteEvent;
+    const { currentUserId, onAssetDelete } = handlersRef.current;
 
     // Ignore our own broadcasts
     if (event.userId === currentUserId) {
@@ -168,7 +196,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     }
 
     onAssetDelete(event);
-  }, [currentUserId, onAssetDelete]);
+  }, []);
 
   /**
    * Handle incoming row order change events.
@@ -178,23 +206,33 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
    * newly inserted row to flicker (appear → disappear → reappear).
    */
   const handleRowOrderChangeEvent = useCallback((payload: any) => {
+    const { currentUserId, onRowOrderChange } = handlersRef.current;
     if (!onRowOrderChange) return;
     const event = payload.payload as RowOrderChangeEvent;
     if (event.userId === currentUserId) return;
 
     onRowOrderChange(event);
-  }, [currentUserId, onRowOrderChange]);
+  }, []);
 
   /**
    * Handle incoming cells batch update events (e.g. Clear Content).
    * Like Delete Row, collaborators receive and apply every change at once.
    */
   const handleCellsBatchUpdateEvent = useCallback((payload: any) => {
+    const { currentUserId, onCellsBatchUpdate } = handlersRef.current;
     if (!onCellsBatchUpdate) return;
     const event = payload.payload as CellsBatchUpdateEvent;
     if (event.userId === currentUserId) return;
     onCellsBatchUpdate(event);
-  }, [currentUserId, onCellsBatchUpdate]);
+  }, []);
+
+  const queueUpdate = useCallback((event: CellUpdateEvent) => {
+    setQueuedUpdates((previous) => {
+      const next = [...previous, event];
+      queuedUpdatesRef.current = next;
+      return next;
+    });
+  }, []);
 
   /**
    * Broadcast a cell update to all other clients
@@ -268,7 +306,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       // For immediate broadcasts (debounceDelay=0), check if channel is still valid
       if (debounceDelay === 0 && !channelRef.current) {
         console.warn('[useRealtimeSubscription] ❌ Channel lost during immediate broadcast, queuing update');
-        setQueuedUpdates(prev => [...prev, event]);
+        queueUpdate(event);
         broadcastDebounceRef.current.delete(cellKey);
         return;
       }
@@ -277,7 +315,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
         // If disconnected, queue the update
         if (connectionStatus !== 'connected') {
           console.warn('[useRealtimeSubscription] ⚠️ Not connected, queuing update. Status:', connectionStatus);
-          setQueuedUpdates(prev => [...prev, event]);
+          queueUpdate(event);
           broadcastDebounceRef.current.delete(cellKey);
           return;
         }
@@ -324,6 +362,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     connectionStatus,
     addOptimisticUpdate,
     removeOptimisticUpdate,
+    queueUpdate,
   ]);
 
   /**
@@ -467,11 +506,12 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
    * Process queued updates after reconnection
    */
   const processQueuedUpdates = useCallback(async () => {
-    if (queuedUpdates.length === 0 || !channelRef.current) {
+    const queued = queuedUpdatesRef.current;
+    if (queued.length === 0 || !channelRef.current) {
       return;
     }
 
-    for (const event of queuedUpdates) {
+    for (const event of queued) {
       try {
         await channelRef.current.send({
           type: 'broadcast',
@@ -483,8 +523,9 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       }
     }
 
+    queuedUpdatesRef.current = [];
     setQueuedUpdates([]);
-  }, [queuedUpdates]);
+  }, []);
 
   /**
    * Initialize the realtime channel and subscriptions
@@ -526,10 +567,11 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       if (status === 'SUBSCRIBED') {
         setConnectionStatus('connected');
         void processQueuedUpdates();
-        if (transition.shouldReconcile && onReconnect) {
+        const reconnect = handlersRef.current.onReconnect;
+        if (transition.shouldReconcile && reconnect) {
           void (async () => {
             try {
-              await onReconnect();
+              await reconnect();
             } catch (error) {
               console.error('[useRealtimeSubscription] Reconnect reconciliation failed:', error);
             }
@@ -598,17 +640,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       channelRef.current = null;
       setConnectionStatus('disconnected');
     };
-  }, [
-    libraryId,
-    supabase,
-    handleCellUpdateEvent,
-    handleAssetCreateEvent,
-    handleAssetDeleteEvent,
-    processQueuedUpdates,
-    handleRowOrderChangeEvent,
-    handleCellsBatchUpdateEvent,
-    onReconnect,
-  ]);
+  }, [libraryId, supabase]);
 
   return {
     connectionStatus,
