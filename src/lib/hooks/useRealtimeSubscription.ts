@@ -16,6 +16,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { RealtimeChannel } from '@supabase/supabase-js';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { resolveConflict } from '@/lib/realtime/conflict-resolution';
+import {
+  advanceRealtimeConnection,
+  type RealtimeConnectionPhase,
+} from '@/lib/realtime/reconnect-reconciliation';
 import type {
   CellUpdateEvent,
   AssetCreateEvent,
@@ -39,6 +43,8 @@ export type RealtimeSubscriptionConfig = {
   onRowOrderChange?: (event: RowOrderChangeEvent) => void;
   /** Callback for batched cell updates, such as Clear Content. */
   onCellsBatchUpdate?: (event: CellsBatchUpdateEvent) => void;
+  /** Reconcile authoritative data after a disconnected channel resubscribes. */
+  onReconnect?: () => void | Promise<void>;
 };
 
 export type ConnectionStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting';
@@ -57,23 +63,13 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     onConflict,
     onRowOrderChange,
     onCellsBatchUpdate,
+    onReconnect,
   } = config;
 
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connecting');
   const [optimisticUpdates, setOptimisticUpdates] = useState<Map<string, OptimisticUpdate>>(new Map());
   const [queuedUpdates, setQueuedUpdates] = useState<CellUpdateEvent[]>([]);
   
-  // Track recent broadcasts to prevent processing our own database updates
-  const recentBroadcastsRef = useRef<Map<string, number>>(new Map());
-  // After cells:batch-update, briefly ignore matching postgres_changes so
-  // collaborators do not see cells clear one by one.
-  const recentBatchCellKeysRef = useRef<{ keys: Set<string>; at: number }>({ keys: new Set(), at: 0 });
-  // Buffer postgres_changes INSERT events for library_assets to coalesce with roworder:change.
-  // Without this, INSERT events arrive before roworder:change and cause rows to appear at
-  // wrong positions (because local rows haven't been shifted yet) before loadInitialData() corrects them.
-  const pendingPgInsertEventsRef = useRef<any[]>([]);
-  const pgInsertCoalesceTimerRef = useRef<NodeJS.Timeout | null>(null);
-
   const channelRef = useRef<RealtimeChannel | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const broadcastDebounceRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -186,32 +182,17 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     const event = payload.payload as RowOrderChangeEvent;
     if (event.userId === currentUserId) return;
 
-    // Clear buffered postgres_changes INSERT events — loadInitialData() will bring in
-    // all rows with correct row_index, so processing buffered INSERTs would only cause
-    // rows to flash at wrong positions before being corrected.
-    pendingPgInsertEventsRef.current = [];
-    if (pgInsertCoalesceTimerRef.current) {
-      clearTimeout(pgInsertCoalesceTimerRef.current);
-      pgInsertCoalesceTimerRef.current = null;
-    }
-
     onRowOrderChange(event);
   }, [currentUserId, onRowOrderChange]);
 
   /**
    * Handle incoming cells batch update events (e.g. Clear Content).
    * Like Delete Row, collaborators receive and apply every change at once.
-   * Track the batch briefly so matching postgres_changes do not replay cells one by one.
    */
   const handleCellsBatchUpdateEvent = useCallback((payload: any) => {
     if (!onCellsBatchUpdate) return;
     const event = payload.payload as CellsBatchUpdateEvent;
     if (event.userId === currentUserId) return;
-    const batchKeys = new Set(event.cells.map((c) => `${c.assetId}-${c.propertyKey}`));
-    recentBatchCellKeysRef.current = { keys: batchKeys, at: Date.now() };
-    setTimeout(() => {
-      recentBatchCellKeysRef.current = { keys: new Set(), at: 0 };
-    }, 2500);
     onCellsBatchUpdate(event);
   }, [currentUserId, onCellsBatchUpdate]);
 
@@ -322,14 +303,6 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
         
         // console.log('[useRealtimeSubscription] 📤 Broadcast send result:', sendResult);
         
-        // Track this broadcast to prevent processing our own database update
-        recentBroadcastsRef.current.set(cellKey, Date.now());
-        
-        // Clean up old broadcasts after 3 seconds
-        setTimeout(() => {
-          recentBroadcastsRef.current.delete(cellKey);
-        }, 3000);
-
         // Remove optimistic update after successful broadcast
         setTimeout(() => {
           removeOptimisticUpdate(assetId, propertyKey);
@@ -534,6 +507,46 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     });
 
     channelRef.current = channel;
+    let connectionPhase: RealtimeConnectionPhase = 'initial';
+
+    const scheduleReconnect = () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      reconnectTimeoutRef.current = setTimeout(() => {
+        setConnectionStatus('reconnecting');
+        channel.subscribe();
+      }, 2000);
+    };
+
+    const handleChannelStatus = (status: string) => {
+      const transition = advanceRealtimeConnection(connectionPhase, status);
+      connectionPhase = transition.phase;
+
+      if (status === 'SUBSCRIBED') {
+        setConnectionStatus('connected');
+        void processQueuedUpdates();
+        if (transition.shouldReconcile && onReconnect) {
+          void (async () => {
+            try {
+              await onReconnect();
+            } catch (error) {
+              console.error('[useRealtimeSubscription] Reconnect reconciliation failed:', error);
+            }
+          })();
+        }
+        return;
+      }
+
+      if (
+        status === 'CHANNEL_ERROR' ||
+        status === 'TIMED_OUT' ||
+        status === 'CLOSED'
+      ) {
+        setConnectionStatus('disconnected');
+        scheduleReconnect();
+      }
+    };
 
     // Set up broadcast event listeners (for fast updates)
     // console.log('[useRealtimeSubscription] 📡 Setting up broadcast listeners');
@@ -555,291 +568,20 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       })
       .on('broadcast', { event: 'cells:batch-update' }, (payload) => {
         handleCellsBatchUpdateEvent(payload);
-      })
-      // Add database subscription as backup (ensures updates even if broadcast fails)
-      // Listen to both UPDATE and INSERT events
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'library_asset_values',
-        },
-        async (payload) => {
-          // console.log('[useRealtimeSubscription] 💾 Database UPDATE event received:', payload);
-          // Extract field_id and new value from the database update
-          const newRecord = payload.new as any;
-          const oldRecord = payload.old as any;
-          
-          if (newRecord && newRecord.asset_id && newRecord.field_id) {
-            // Check if this is our own recent broadcast (to prevent infinite loops)
-            const cellKey = `${newRecord.asset_id}-${newRecord.field_id}`;
-            const recentBroadcastTime = recentBroadcastsRef.current.get(cellKey);
-            
-            if (recentBroadcastTime && Date.now() - recentBroadcastTime < 2000) return;
-
-            const batch = recentBatchCellKeysRef.current;
-            if (batch.keys.size > 0 && batch.keys.has(cellKey) && Date.now() - batch.at < 2500) return;
-
-            try {
-              const { data: assetData } = await supabase
-                .from('library_assets')
-                .select('library_id, updated_at')
-                .eq('id', newRecord.asset_id)
-                .single();
-              
-              if (!assetData || assetData.library_id !== libraryId) {
-                // console.log('[useRealtimeSubscription] ⏭️ Asset not in our library');
-                return;
-              }
-              
-              // Check if value actually changed
-              const oldValueStr = JSON.stringify(oldRecord?.value_json);
-              const newValueStr = JSON.stringify(newRecord.value_json);
-              
-              if (oldValueStr === newValueStr) {
-                // console.log('[useRealtimeSubscription] ⏭️ Value unchanged');
-                return;
-              }
-              
-              // console.log('[useRealtimeSubscription] ✅ Creating synthetic event from database UPDATE');
-              // Create a synthetic CellUpdateEvent from database change
-              // Note: We don't have userName/avatarColor from database, so use placeholder
-              const syntheticEvent: CellUpdateEvent = {
-                type: 'cell:update',
-                userId: '', // Unknown user (from database)
-                userName: 'Another user',
-                avatarColor: '#888888',
-                assetId: newRecord.asset_id,
-                propertyKey: newRecord.field_id,
-                newValue: newRecord.value_json,
-                oldValue: oldRecord?.value_json,
-                timestamp: Date.now(),
-                updatedAt: (assetData as any)?.updated_at ?? (payload as any)?.commit_timestamp ?? null,
-              };
-              
-              handleCellUpdateEvent({ payload: syntheticEvent });
-            } catch (error) {
-              console.error('[useRealtimeSubscription] ❌ Error processing database UPDATE:', error);
-            }
-          }
-        }
-      )
-      // Also listen to INSERT events (for null -> value transitions)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'library_asset_values',
-        },
-        async (payload) => {
-          // console.log('[useRealtimeSubscription] 💾 Database INSERT event received:', payload);
-          const newRecord = payload.new as any;
-          
-          if (newRecord && newRecord.asset_id && newRecord.field_id) {
-            const cellKey = `${newRecord.asset_id}-${newRecord.field_id}`;
-            const recentBroadcastTime = recentBroadcastsRef.current.get(cellKey);
-            if (recentBroadcastTime && Date.now() - recentBroadcastTime < 2000) return;
-
-            const batch = recentBatchCellKeysRef.current;
-            if (batch.keys.size > 0 && batch.keys.has(cellKey) && Date.now() - batch.at < 2500) return;
-
-            try {
-              const { data: assetData } = await supabase
-                .from('library_assets')
-                .select('library_id, updated_at')
-                .eq('id', newRecord.asset_id)
-                .single();
-              if (!assetData || assetData.library_id !== libraryId) return;
-              // Create a synthetic CellUpdateEvent from database INSERT
-              const syntheticEvent: CellUpdateEvent = {
-                type: 'cell:update',
-                userId: '', // Unknown user (from database)
-                userName: 'Another user',
-                avatarColor: '#888888',
-                assetId: newRecord.asset_id,
-                propertyKey: newRecord.field_id,
-                newValue: newRecord.value_json,
-                oldValue: null, // INSERT means it was null before
-                timestamp: Date.now(),
-                updatedAt: (assetData as any)?.updated_at ?? (payload as any)?.commit_timestamp ?? null,
-              };
-              
-              handleCellUpdateEvent({ payload: syntheticEvent });
-            } catch (error) {
-              console.error('[useRealtimeSubscription] ❌ Error processing database INSERT:', error);
-            }
-          }
-        }
-      )
-      // Subscribe to asset creation events
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'library_assets',
-          filter: `library_id=eq.${libraryId}`
-        },
-        async (payload) => {
-          const newRecord = payload.new as any;
-          // Accept any new row with id so collaborators see insert-above/insert-below (allow empty name)
-          if (!newRecord?.id) return;
-
-          let syntheticEvent: AssetCreateEvent;
-          try {
-            const { data: values } = await supabase
-              .from('library_asset_values')
-              .select('field_id, value_json')
-              .eq('asset_id', newRecord.id);
-            const propertyValues: Record<string, any> = {};
-            values?.forEach((v: any) => {
-              propertyValues[v.field_id] = v.value_json;
-            });
-            syntheticEvent = {
-              type: 'asset:create',
-              userId: '',
-              userName: 'Another user',
-              assetId: newRecord.id,
-              assetName: newRecord.name ?? '',
-              propertyValues,
-              timestamp: Date.now(),
-              targetCreatedAt: newRecord.created_at ?? new Date().toISOString(),
-              rowIndex: typeof newRecord.row_index === 'number' ? newRecord.row_index : undefined,
-            };
-          } catch (err) {
-            console.error('[useRealtimeSubscription] library_assets INSERT handler:', err);
-            syntheticEvent = {
-              type: 'asset:create',
-              userId: '',
-              userName: 'Another user',
-              assetId: newRecord.id,
-              assetName: newRecord.name ?? '',
-              propertyValues: {},
-              timestamp: Date.now(),
-              targetCreatedAt: newRecord.created_at ?? new Date().toISOString(),
-              rowIndex: typeof newRecord.row_index === 'number' ? newRecord.row_index : undefined,
-            };
-          }
-
-          // Buffer the event instead of processing immediately.
-          // postgres_changes INSERT events arrive BEFORE the roworder:change broadcast
-          // (because DB INSERT triggers CDC immediately, while roworder:change is sent
-          // only after the operator's loadInitialData() completes). Processing them
-          // immediately would show rows at wrong positions because the collaborator's
-          // local row_index values haven't been shifted yet.
-          //
-          // If roworder:change arrives within the window, the buffer is cleared and
-          // loadInitialData() handles everything atomically. If not (e.g. broadcast
-          // failure), the buffer is flushed as a fallback after 3s.
-          pendingPgInsertEventsRef.current.push(syntheticEvent);
-          if (pgInsertCoalesceTimerRef.current) clearTimeout(pgInsertCoalesceTimerRef.current);
-          pgInsertCoalesceTimerRef.current = setTimeout(() => {
-            // Fallback: no roworder:change arrived — process buffered events
-            const events = [...pendingPgInsertEventsRef.current];
-            pendingPgInsertEventsRef.current = [];
-            pgInsertCoalesceTimerRef.current = null;
-            for (const evt of events) {
-              handleAssetCreateEvent({ payload: evt });
-            }
-          }, 3000);
-        }
-      )
-      // Subscribe to library_assets UPDATE (e.g. name change) so yAsset.name syncs immediately
-      // postgres_changes on library_asset_values uses field_id as propertyKey; only this path
-      // emits propertyKey='name' so LibraryDataContext can update yAsset.set('name', ...).
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'library_assets',
-          filter: `library_id=eq.${libraryId}`
-        },
-        (payload) => {
-          const newRecord = payload.new as any;
-          const oldRecord = payload.old as any;
-          if (!newRecord?.id) return;
-          const newName = newRecord.name ?? '';
-          const oldName = oldRecord?.name;
-          if (oldName === newName) return;
-          const syntheticEvent: CellUpdateEvent = {
-            type: 'cell:update',
-            userId: '',
-            userName: 'Another user',
-            avatarColor: '#888888',
-            assetId: newRecord.id,
-            propertyKey: 'name',
-            newValue: newName,
-            oldValue: oldName,
-            timestamp: Date.now(),
-            updatedAt: newRecord.updated_at ?? (payload as any)?.commit_timestamp ?? null,
-          };
-          handleCellUpdateEvent({ payload: syntheticEvent });
-        }
-      )
-      // Subscribe to asset deletion events
-      .on(
-        'postgres_changes',
-        {
-          event: 'DELETE',
-          schema: 'public',
-          table: 'library_assets',
-          filter: `library_id=eq.${libraryId}`
-        },
-        (payload) => {
-          const oldRecord = payload.old as any;
-          
-          if (oldRecord && oldRecord.id) {
-            // Create a synthetic AssetDeleteEvent
-            const syntheticEvent: AssetDeleteEvent = {
-              type: 'asset:delete',
-              userId: '', // Unknown user (from database)
-              userName: 'Another user',
-              assetId: oldRecord.id,
-              assetName: oldRecord.name || 'Unknown',
-              timestamp: Date.now(),
-            };
-            
-            handleAssetDeleteEvent({ payload: syntheticEvent });
-          }
-        }
-      );
+      });
 
     // Handle system events for connection status
     channel.on('system', {}, (payload) => {
-      // console.log('[useRealtimeSubscription] 📡 System event:', payload);
-      if (payload.status === 'SUBSCRIBED') {
-        // console.log('[useRealtimeSubscription] ✅ Channel subscribed successfully');
-        setConnectionStatus('connected');
-        processQueuedUpdates(); // Process any queued updates
-      } else if (payload.status === 'CHANNEL_ERROR') {
+      if (payload.status === 'CHANNEL_ERROR') {
         console.error('[useRealtimeSubscription] ❌ Channel error');
-        setConnectionStatus('disconnected');
-        
-        // Attempt reconnection after 2 seconds
-        if (reconnectTimeoutRef.current) {
-          clearTimeout(reconnectTimeoutRef.current);
-        }
-        reconnectTimeoutRef.current = setTimeout(() => {
-          // console.log('[useRealtimeSubscription] 🔄 Attempting to reconnect...');
-          setConnectionStatus('reconnecting');
-          channel.subscribe();
-        }, 2000);
       }
+      handleChannelStatus(String(payload.status ?? ''));
     });
 
     // Subscribe to the channel
     // console.log('[useRealtimeSubscription] 🚀 Subscribing to channel...');
     channel.subscribe((status) => {
-      // console.log('[useRealtimeSubscription] 📡 Subscribe callback status:', status);
-      if (status === 'SUBSCRIBED') {
-        // console.log('[useRealtimeSubscription] ✅ Successfully subscribed to channel');
-        setConnectionStatus('connected');
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        setConnectionStatus('disconnected');
-      }
+      handleChannelStatus(status);
     });
 
     // Cleanup on unmount
@@ -851,13 +593,6 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
       // Clear all debounce timers
       broadcastDebounceRef.current.forEach(timer => clearTimeout(timer));
       broadcastDebounceRef.current.clear();
-
-      // Clear postgres_changes INSERT coalesce timer
-      if (pgInsertCoalesceTimerRef.current) {
-        clearTimeout(pgInsertCoalesceTimerRef.current);
-        pgInsertCoalesceTimerRef.current = null;
-      }
-      pendingPgInsertEventsRef.current = [];
 
       channel.unsubscribe();
       channelRef.current = null;
@@ -872,6 +607,7 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     processQueuedUpdates,
     handleRowOrderChangeEvent,
     handleCellsBatchUpdateEvent,
+    onReconnect,
   ]);
 
   return {

@@ -296,8 +296,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onConflict: handleConflictEvent,
       onRowOrderChange: handleRowOrderChangeEvent,
       onCellsBatchUpdate: handleCellsBatchUpdateEvent,
+      onReconnect: loadInitialData,
     };
-  }, [libraryId, userProfile, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent]);
+  }, [libraryId, userProfile, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData]);
 
   const realtimeSubscription = useRealtimeSubscription(
     realtimeConfig || {
@@ -312,6 +313,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onConflict: () => { },
       onRowOrderChange: () => { },
       onCellsBatchUpdate: () => { },
+      onReconnect: () => { },
     }
   );
 
