@@ -555,6 +555,8 @@ export function LibraryAssetsTable({
     isResizingRow,
   } = useTableResize(library?.id, resizeColumnKeys);
   const {
+    searchHighlightedCellKeys,
+    scrollTargetCell,
     handleTableFindHighlightCells,
     handleTableFindClearHighlight,
     handleTableFindFocusSection,
@@ -562,15 +564,11 @@ export function LibraryAssetsTable({
   } = useLibraryTableFindReplaceWiring({
     libraryId: library?.id,
     groups,
-    activeSectionId,
     sectionStateStorageKey,
     focusSectionIdFromQuery,
     focusAssetIdFromQuery,
     focusFieldIdFromQuery,
-    activeProperties,
-    resolvedRows,
     setActiveSectionId,
-    searchCellHitClassName: styles.searchCellHit,
   });
 
   const handlePredefineClick = () => {
@@ -1075,6 +1073,8 @@ export function LibraryAssetsTable({
               copySelectionBounds={copySelectionBounds}
               fillDragStartCell={fillDragStartCell}
               fillPreviewMap={fillPreviewMap}
+              searchHighlightedCellKeys={searchHighlightedCellKeys}
+              scrollTargetCell={scrollTargetCell}
               editingCell={editingCell}
               editingCellRef={editingCellRef}
               editingCellInitialValueRef={editingCellInitialValueRef}

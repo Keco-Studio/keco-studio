@@ -50,6 +50,7 @@ export interface MediaCellProps {
     connectionStatus: 'online' | 'away';
   }>;
   borderColor?: string;
+  isSearchHit?: boolean;
   // Event handlers
   onChange: (value: MediaFileMetadata | null) => void;
   onCellClick: (rowId: string, propertyKey: string, e: React.MouseEvent) => void;
@@ -89,6 +90,7 @@ const MediaCellComponent: React.FC<MediaCellProps> = ({
   copySelectionBounds,
   editingUsers,
   borderColor,
+  isSearchHit = false,
   onChange,
   onCellClick,
   onCellContextMenu,
@@ -173,7 +175,7 @@ const MediaCellComponent: React.FC<MediaCellProps> = ({
     <td
       key={property.id}
       data-property-key={property.key}
-      className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
+      className={`${styles.cell} ${isSearchHit ? styles.searchCellHit : ''} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isCellCopy ? styles.cellCopy : ''} ${cutBorderClass} ${copyBorderClass} ${selectionBorderClass}`}
       style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
       onClick={(e) => {
         // Trigger focus when clicking anywhere on the cell (single-click to edit)

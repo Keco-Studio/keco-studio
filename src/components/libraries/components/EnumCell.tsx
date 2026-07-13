@@ -42,6 +42,7 @@ export interface EnumCellProps {
     connectionStatus: 'online' | 'away';
   }>;
   borderColor?: string;
+  isSearchHit?: boolean;
   // Event handlers
   onChange: (newValue: string) => Promise<void>;
   onOpenChange: (open: boolean) => void;
@@ -79,6 +80,7 @@ const EnumCellComponent: React.FC<EnumCellProps> = ({
   cutSelectionBounds,
   editingUsers,
   borderColor,
+  isSearchHit = false,
   onChange,
   onOpenChange,
   onCellClick,
@@ -184,7 +186,7 @@ const EnumCellComponent: React.FC<EnumCellProps> = ({
     <td
       key={property.id}
       data-property-key={property.key}
-      className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+      className={`${styles.cell} ${isSearchHit ? styles.searchCellHit : ''} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
       style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
       onClick={(e) => {
         // Trigger focus when clicking on enum cell (single-click to edit)

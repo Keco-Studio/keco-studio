@@ -41,6 +41,7 @@ export interface BooleanCellProps {
     connectionStatus: 'online' | 'away';
   }>;
   borderColor?: string;
+  isSearchHit?: boolean;
   // Event handlers
   onChange: (newValue: boolean) => Promise<void>;
   onCellClick: (rowId: string, propertyKey: string, e: React.MouseEvent) => void;
@@ -77,6 +78,7 @@ const BooleanCellComponent: React.FC<BooleanCellProps> = ({
   cutSelectionBounds,
   editingUsers,
   borderColor,
+  isSearchHit = false,
   onChange,
   onCellClick,
   onCellContextMenu,
@@ -165,7 +167,7 @@ const BooleanCellComponent: React.FC<BooleanCellProps> = ({
     <td
       key={property.id}
       data-property-key={property.key}
-      className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
+      className={`${styles.cell} ${isSearchHit ? styles.searchCellHit : ''} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${cutBorderClass} ${selectionBorderClass}`}
       style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
       onClick={(e) => {
         // Trigger focus when clicking on boolean cell (single-click to edit)

@@ -19,6 +19,20 @@ describe('table scalability (issue #215)', () => {
     expect(source).not.toContain('displayRows.map((row, index)');
   });
 
+  it('keeps search focus declarative across virtual row mounts', () => {
+    const body = read(
+      'src/components/libraries/components/LibraryAssetsTableBody.tsx'
+    );
+    const wiring = read(
+      'src/components/libraries/hooks/useLibraryTableFindReplaceWiring.ts'
+    );
+
+    expect(wiring).toContain('searchHighlightedCellKeys');
+    expect(wiring).not.toContain('classList.add(searchCellHitClassName)');
+    expect(body).toContain('searchHighlightedCellKeys.has');
+    expect(body).toContain('rowVirtualizer.scrollToIndex');
+  });
+
   it('memoizes provider values and exposes a stable actions context', () => {
     const libraryData = read('src/lib/contexts/LibraryDataContext.tsx');
     const auth = read('src/lib/contexts/AuthContext.tsx');

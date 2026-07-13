@@ -1,61 +1,53 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PropertyGroup } from '../utils/tableStructure';
+
+export type TableCellScrollTarget = {
+  assetId: string;
+  fieldId: string;
+  requestId: number;
+};
 
 type UseLibraryTableFindReplaceWiringArgs = {
   libraryId?: string;
   groups: PropertyGroup[];
-  activeSectionId: string | null;
   sectionStateStorageKey: string;
   focusSectionIdFromQuery: string | null;
   focusAssetIdFromQuery: string | null;
   focusFieldIdFromQuery: string | null;
-  activeProperties: PropertyConfig[];
-  resolvedRows: AssetRow[];
   setActiveSectionId: React.Dispatch<React.SetStateAction<string | null>>;
-  searchCellHitClassName: string;
 };
 
 export function useLibraryTableFindReplaceWiring({
   libraryId,
   groups,
-  activeSectionId,
   sectionStateStorageKey,
   focusSectionIdFromQuery,
   focusAssetIdFromQuery,
   focusFieldIdFromQuery,
-  activeProperties,
-  resolvedRows,
   setActiveSectionId,
-  searchCellHitClassName,
 }: UseLibraryTableFindReplaceWiringArgs) {
   const [searchHighlightedCells, setSearchHighlightedCells] = useState<
     Array<{ assetId: string; fieldId: string }>
   >([]);
+  const [scrollTargetCell, setScrollTargetCell] = useState<TableCellScrollTarget | null>(null);
   const appliedFocusSectionRef = useRef<string | null>(null);
   const appliedFocusCellRef = useRef<string | null>(null);
+  const scrollRequestIdRef = useRef(0);
+
+  const searchHighlightedCellKeys = useMemo(
+    () => new Set(searchHighlightedCells.map(({ assetId, fieldId }) => `${assetId}:${fieldId}`)),
+    [searchHighlightedCells]
+  );
+
+  const requestCellScroll = useCallback((assetId: string, fieldId: string) => {
+    scrollRequestIdRef.current += 1;
+    setScrollTargetCell({ assetId, fieldId, requestId: scrollRequestIdRef.current });
+  }, []);
 
   const clearSearchCellHighlight = useCallback(() => {
     setSearchHighlightedCells([]);
     appliedFocusCellRef.current = null;
-    if (typeof document === 'undefined') return;
-    document
-      .querySelectorAll(`.${searchCellHitClassName}`)
-      .forEach((el) => el.classList.remove(searchCellHitClassName));
-  }, [searchCellHitClassName]);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    const current = Array.from(document.querySelectorAll(`.${searchCellHitClassName}`));
-    current.forEach((el) => el.classList.remove(searchCellHitClassName));
-    if (searchHighlightedCells.length === 0) return;
-    searchHighlightedCells.forEach(({ assetId, fieldId }) => {
-      const el = document.querySelector(
-        `tr[data-row-id="${assetId}"] td[data-property-key="${fieldId}"]`
-      ) as HTMLElement | null;
-      el?.classList.add(searchCellHitClassName);
-    });
-  }, [searchHighlightedCells, activeProperties, resolvedRows, searchCellHitClassName]);
+  }, []);
 
   useEffect(() => {
     const handleHighlightClear = () => clearSearchCellHighlight();
@@ -101,14 +93,8 @@ export function useLibraryTableFindReplaceWiring({
     const focusCellKey = `${focusAssetIdFromQuery}-${focusFieldIdFromQuery}`;
     if (appliedFocusCellRef.current === focusCellKey) return;
     appliedFocusCellRef.current = focusCellKey;
-
-    setTimeout(() => {
-      const el = document.querySelector(
-        `tr[data-row-id="${focusAssetIdFromQuery}"] td[data-property-key="${focusFieldIdFromQuery}"]`
-      ) as HTMLElement | null;
-      el?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-    }, 0);
-  }, [focusAssetIdFromQuery, focusFieldIdFromQuery, groups]);
+    requestCellScroll(focusAssetIdFromQuery, focusFieldIdFromQuery);
+  }, [focusAssetIdFromQuery, focusFieldIdFromQuery, groups, requestCellScroll]);
 
   const handleTableFindHighlightCells = useCallback(
     (cells: Array<{ assetId: string; fieldId: string }>) => {
@@ -132,16 +118,14 @@ export function useLibraryTableFindReplaceWiring({
     [groups, sectionStateStorageKey, setActiveSectionId]
   );
 
-  const handleTableFindScrollToCell = useCallback((assetId: string, fieldId: string) => {
-    setTimeout(() => {
-      const el = document.querySelector(
-        `tr[data-row-id="${assetId}"] td[data-property-key="${fieldId}"]`
-      ) as HTMLElement | null;
-      el?.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'smooth' });
-    }, 0);
-  }, []);
+  const handleTableFindScrollToCell = useCallback(
+    (assetId: string, fieldId: string) => requestCellScroll(assetId, fieldId),
+    [requestCellScroll]
+  );
 
   return {
+    searchHighlightedCellKeys,
+    scrollTargetCell,
     handleTableFindHighlightCells,
     handleTableFindClearHighlight,
     handleTableFindFocusSection,

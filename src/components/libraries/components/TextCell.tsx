@@ -50,6 +50,7 @@ export interface TextCellProps {
     connectionStatus: 'online' | 'away';
   }>;
   borderColor?: string;
+  isSearchHit?: boolean;
   // Event handlers
   onViewAssetDetail: (row: AssetRow, e: React.MouseEvent) => void;
   onCellDoubleClick: (row: AssetRow, property: PropertyConfig, e: React.MouseEvent) => void;
@@ -95,6 +96,7 @@ const TextCellComponent: React.FC<TextCellProps> = ({
   cutSelectionBounds,
   editingUsers,
   borderColor,
+  isSearchHit = false,
   onViewAssetDetail,
   onCellDoubleClick,
   onCellClick,
@@ -204,7 +206,7 @@ const TextCellComponent: React.FC<TextCellProps> = ({
     <td
       key={property.id}
       data-property-key={property.key}
-      className={`${styles.cell} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isError ? styles.cellError : ''} ${cutBorderClass} ${selectionBorderClass}`}
+      className={`${styles.cell} ${isSearchHit ? styles.searchCellHit : ''} ${isBeingEdited ? styles.cellEditing : (isSingleSelected ? styles.cellSelected : '')} ${isMultipleSelected && !isBeingEdited ? styles.cellMultipleSelected : ''} ${isCellCut ? styles.cellCut : ''} ${isError ? styles.cellError : ''} ${cutBorderClass} ${selectionBorderClass}`}
       style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
       onDoubleClick={(e) => onCellDoubleClick(row, property, e)}
       onClick={(e) => onCellClick(row.id, property.key, e)}

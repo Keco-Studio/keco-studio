@@ -42,6 +42,7 @@ type FormulaCellProps = {
   } | null;
   editingUsers: EditingUser[];
   borderColor?: string;
+  isSearchHit?: boolean;
   evaluateFormulaForRow: (
     expression: string | undefined,
     row: AssetRow,
@@ -78,6 +79,7 @@ function FormulaCellComponent({
   cutSelectionBounds,
   editingUsers,
   borderColor,
+  isSearchHit = false,
   evaluateFormulaForRow,
   getCustomFormulaExpressionFromCellValue,
   openFormulaEditor,
@@ -125,6 +127,7 @@ function FormulaCellComponent({
         cutSelectionBounds={cutSelectionBounds}
         editingUsers={editingUsers}
         borderColor={borderColor}
+        isSearchHit={isSearchHit}
         isFirstColumn={isFirstColumn}
         onViewAssetDetail={onViewAssetDetail}
         onChange={async () => {}}
@@ -146,7 +149,7 @@ function FormulaCellComponent({
     <td
       key={property.id}
       data-property-key={property.key}
-      className={`${styles.cell} ${editingUsers.length > 0 ? styles.cellEditing : (selectedCells.size === 1 && isCellSelected ? styles.cellSelected : '')} ${selectedCells.size > 1 && isCellSelected && editingUsers.length === 0 ? styles.cellMultipleSelected : ''} ${cutCells.has(cellKey) ? styles.cellCut : ''} ${selectionBorderClass} ${copyBorderClass}`}
+      className={`${styles.cell} ${isSearchHit ? styles.searchCellHit : ''} ${editingUsers.length > 0 ? styles.cellEditing : (selectedCells.size === 1 && isCellSelected ? styles.cellSelected : '')} ${selectedCells.size > 1 && isCellSelected && editingUsers.length === 0 ? styles.cellMultipleSelected : ''} ${cutCells.has(cellKey) ? styles.cellCut : ''} ${selectionBorderClass} ${copyBorderClass}`}
       style={borderColor ? { border: `2px solid ${borderColor}` } : undefined}
       onClick={(e) => {
         onCellFocus(row.id, property.key);
