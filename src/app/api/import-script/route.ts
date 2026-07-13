@@ -97,6 +97,7 @@ export async function POST(request: NextRequest) {
             sourceId: `modal:${crypto.randomUUID()}`,
             signal: conversionController.signal,
             onProgress: (progress: ImportProgressEvent) => send({ type: 'progress', progress }),
+            onLlmTelemetry: (event) => console.info('[import-script:llm]', event),
           });
           if (conversionController.signal.aborted) return;
           send({

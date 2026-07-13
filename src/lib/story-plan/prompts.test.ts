@@ -1,15 +1,56 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  AUDITOR_STORY_ADJUDICATION_PROMPT,
+  AUDITOR_STORY_ADJUDICATION_TOOL,
   AUDITOR_STORY_EXTRACTION_PROMPT,
   AUDITOR_STORY_EXTRACTION_TOOL,
   EXTRACTOR_STORY_CONTENT_PROMPT,
   EXTRACTOR_STORY_CONTENT_TOOL,
   GRAPH_STORY_PLAN_PROMPT,
   GRAPH_STORY_PLAN_TOOL,
+  buildAuditAdjudicationMessages,
+  buildAuditorExtractionMessages,
   buildContentExtractionMessages,
   buildGraphExtractionMessages,
 } from '@/lib/story-extraction/prompts';
+import type { StoryAuditView } from './auditView';
 import { segmentStorySource } from './sourceSegments';
+
+const auditView: StoryAuditView = {
+  version: 1,
+  entryRowId: 'start',
+  structuralUnitIds: [],
+  rows: [{
+    id: 'start',
+    presentation: 'dialogue_primary',
+    speaker: '七号',
+    content: '选择。',
+    sourceUnitIds: ['fixture:0'],
+    commands: [],
+    nextRowId: '',
+    choices: [{
+      text: '左边',
+      targetRowId: 'left',
+      sourceUnitIds: ['fixture:1'],
+      commands: ['$trust+=1'],
+    }],
+  }, {
+    id: 'left',
+    presentation: 'prose',
+    speaker: '',
+    content: '左边结局。',
+    sourceUnitIds: ['fixture:2'],
+    commands: [],
+    nextRowId: '',
+    choices: [],
+  }],
+  paths: [{
+    rowIds: ['start', 'left'],
+    choiceTexts: ['左边'],
+    terminalRowId: 'left',
+    commands: ['$trust+=1'],
+  }],
+};
 
 describe('two-stage full story extraction prompts', () => {
   it('lets the Extractor create content nodes and choices without graph fields', () => {
@@ -88,21 +129,24 @@ describe('two-stage full story extraction prompts', () => {
     }]);
   });
 
-  it('requires the Auditor to inspect table and paths', () => {
+  it('requires the Primary Auditor to inspect one canonical audit view', () => {
     expect(AUDITOR_STORY_EXTRACTION_TOOL.function.name).toBe('submit_story_plan_audit');
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('missing choices');
-    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('compiled table');
-    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('enumerated paths');
-    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Type 1');
-    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('always stay in OptionN_Commands');
-    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('blank Label');
-    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Jump in Commands');
-    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('tablePaths');
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('only candidate source of truth');
+    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('canonical paths');
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('exclusive outcome scope');
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('repeats an earlier decision unexpectedly');
-    expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Never infer termination or fallthrough');
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('does not create shared visible content');
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Do not invent narrative prerequisites');
+
+    const source = segmentStorySource('七号：选择。\n- 左边 $trust+=1\n左边结局。', 'fixture');
+    const input = JSON.parse(buildAuditorExtractionMessages(source, auditView)[1].content as string);
+    expect(Object.keys(input).sort()).toEqual(['auditView', 'commands', 'sourceUnits', 'task']);
+    expect(input.auditView).toEqual(auditView);
+    expect(input).not.toHaveProperty('extraction');
+    expect(input).not.toHaveProperty('document');
+    expect(input).not.toHaveProperty('projection');
+    expect(JSON.stringify(input)).not.toContain('tablePaths');
   });
 
   it('audits structural decorators and reference Type values consistently', () => {
@@ -110,13 +154,13 @@ describe('two-stage full story extraction prompts', () => {
       'does not require its own empty node or table row'
     );
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
-      'Types 1 and 2 are both dialogue boxes'
+      'dialogue_primary and dialogue_secondary'
     );
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
-      'must not collapse every speaker to Type 1'
+      'Reject collapsing distinct dialogue speakers onto one presentation'
     );
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
-      'next target is the immediately following physical table row, Commands must be blank'
+      'Choices and commands appear only under their owning canonical row'
     );
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
       'Never include an issue whose own message says the candidate is correct, acceptable, or needs no action'
@@ -133,6 +177,27 @@ describe('two-stage full story extraction prompts', () => {
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain(
       'A complete grammatical sentence can still be a pure merge control'
     );
+  });
+
+  it('gives the Targeted Adjudicator only allegations and referenced evidence', () => {
+    expect(AUDITOR_STORY_ADJUDICATION_TOOL.function.name).toBe('submit_story_audit_adjudication');
+    expect(AUDITOR_STORY_ADJUDICATION_PROMPT).toContain('confirmed or unsupported');
+    expect(AUDITOR_STORY_ADJUDICATION_PROMPT).toContain('Do not introduce new issues');
+
+    const source = segmentStorySource('七号：选择。\n- 左边 $trust+=1\n左边结局。', 'fixture');
+    const messages = buildAuditAdjudicationMessages(source, auditView, [{
+      code: 'wrong_speaker',
+      severity: 'major',
+      unitIds: ['fixture:0'],
+      nodeIds: ['start'],
+      message: 'Speaker is wrong.',
+    }]);
+    const input = JSON.parse(messages[1].content as string);
+    expect(input.allegations).toEqual([expect.objectContaining({ issueId: 'issue-1' })]);
+    expect(input.sourceUnits).toEqual([{ id: 'fixture:0', text: '七号：选择。' }]);
+    expect(input.rows).toEqual([auditView.rows[0]]);
+    expect(input.paths).toEqual([auditView.paths[0]]);
+    expect(input).not.toHaveProperty('auditView');
   });
 
   it('keeps Graph Planner focused on real choices and automatic edges', () => {

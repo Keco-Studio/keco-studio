@@ -1,4 +1,5 @@
 import { describe, expect, it, jest } from '@jest/globals';
+import { CancelledError } from '@tanstack/react-query';
 import {
   invalidateFolderData,
   invalidateLibraryAssetsData,
@@ -63,6 +64,33 @@ describe('query invalidation helpers', () => {
     expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.library('library-1') });
     expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: queryKeys.librarySummary('library-1') });
     expect(client.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['folders-libraries', 'project-1'] });
+  });
+
+  it('continues library invalidation after an in-flight refetch is cancelled', async () => {
+    const client = createClient();
+    client.invalidateQueries
+      .mockRejectedValueOnce(new CancelledError())
+      .mockResolvedValue(undefined);
+
+    await expect(invalidateLibraryData(client as never, {
+      libraryId: 'library-1',
+    })).resolves.toBeUndefined();
+
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.librarySummary('library-1'),
+    });
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: sidebarAssetsKey('library-1'),
+    });
+  });
+
+  it('does not hide non-cancellation invalidation failures', async () => {
+    const client = createClient();
+    client.invalidateQueries.mockRejectedValueOnce(new Error('network failed'));
+
+    await expect(invalidateLibraryData(client as never, {
+      libraryId: 'library-1',
+    })).rejects.toThrow('network failed');
   });
 
   it('invalidates asset, library asset, summary, schema, and sidebar asset keys', async () => {

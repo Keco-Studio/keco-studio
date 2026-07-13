@@ -20,6 +20,30 @@ export type UseSidebarRealtimeParams = {
   refetchUserRole: () => void | Promise<void>;
 };
 
+type RealtimeRow = Record<string, unknown> | null;
+
+export async function invalidateSidebarLibraryChange(
+  queryClient: QueryClient,
+  projectId: string,
+  newRow: RealtimeRow,
+  oldRow: RealtimeRow
+): Promise<void> {
+  const libraryId = stringField(newRow, 'id') ?? stringField(oldRow, 'id');
+  const folderId = stringField(newRow, 'folder_id') ?? stringField(oldRow, 'folder_id');
+
+  await invalidateLibraryData(queryClient, {
+    projectId,
+    folderId,
+    libraryId,
+    refetchActiveFoldersLibraries: true,
+  });
+}
+
+function stringField(row: RealtimeRow, key: string): string | null {
+  const value = row?.[key];
+  return typeof value === 'string' ? value : null;
+}
+
 /**
  * Subscribes to Supabase Realtime for Sidebar: projects, libraries, folders,
  * project_collaborators, predefine_properties.
@@ -100,23 +124,12 @@ export function useSidebarRealtime({
           filter: `project_id=eq.${currentProjectId}`,
         },
         async (payload) => {
-          const libraryId =
-            (payload.new && 'id' in payload.new ? payload.new.id : null) ||
-            (payload.old && 'id' in payload.old ? payload.old.id : null);
-          const folderId =
-            (payload.new && 'folder_id' in payload.new ? payload.new.folder_id : null) ||
-            (payload.old && 'folder_id' in payload.old ? payload.old.folder_id : null);
-
-          await invalidateLibraryData(queryClient, {
-            projectId: currentProjectId,
-            folderId: typeof folderId === 'string' ? folderId : null,
-            libraryId: typeof libraryId === 'string' ? libraryId : null,
-            refetchActiveFoldersLibraries: true,
-          });
-
-          if (payload.new && 'id' in payload.new) {
-            await invalidateLibraryData(queryClient, { libraryId: payload.new.id });
-          }
+          await invalidateSidebarLibraryChange(
+            queryClient,
+            currentProjectId,
+            payload.new,
+            payload.old
+          );
         }
       )
       .subscribe((status, err) => {

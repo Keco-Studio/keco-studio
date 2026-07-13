@@ -1,11 +1,9 @@
 import type { ChatMessage, OpenAITool } from '@/lib/agent/types';
-import type { StoryDocument } from '@/lib/story-ir/schema';
-import type { StoryAuditProjection } from '@/lib/story-plan/projection';
+import type { StoryAuditView } from '@/lib/story-plan/auditView';
 import type { StoryPlanAuditIssue } from '@/lib/story-plan/schema';
 import type { SegmentedStorySource } from '@/lib/story-plan/sourceSegments';
 import type { StoryExtractionIssue } from './materializer';
 import type { StoryContentExtraction } from './pipeline';
-import type { StoryExtraction } from './schema';
 
 export type StoryExtractionRetryIssue =
   | StoryExtractionIssue
@@ -69,11 +67,12 @@ Output rules:
 
 Never add spaces, prose, or fields inside a link string.`;
 
-export const AUDITOR_STORY_EXTRACTION_PROMPT = `You independently audit a complete Story IR extraction against the original source.
+export const AUDITOR_STORY_EXTRACTION_PROMPT = `You independently audit one canonical final story view against the original source.
 Call submit_story_plan_audit exactly once and return no prose.
-Check every source unit, extraction node, choice, command, compiled table row, and enumerated path.
-Reject omissions, duplicated or invented content, paraphrasing, wrong speakers, missing choices, false choices, wrong branch ownership, wrong targets, invalid merges, sibling leakage, command changes, wrong command ownership, unreachable content, and compiled table mismatches.
-When the source has an explicit character list, verify that dialogue presentationType 1 and 2 follow the listed role order and remain consistent for every speaker. Treat shortened names and role aliases as the listed character. Reject collapsing distinct dialogue speakers onto one Type or changing a speaker's Type.
+The supplied auditView is the only candidate source of truth. There are no extraction, document, numeric Type, or compiled-table representations to compare.
+Check every source unit, canonical row, choice, command, structural unit, and canonical path.
+Reject omissions, duplicated or invented content, paraphrasing, wrong speakers, missing choices, false choices, wrong branch ownership, wrong targets, invalid merges, sibling leakage, command changes, wrong command ownership, and unreachable required content.
+When the source has an explicit character list, verify that dialogue_primary and dialogue_secondary follow the listed role order and remain consistent for every speaker. Treat shortened names and role aliases as the listed character. Reject collapsing distinct dialogue speakers onto one presentation or changing a speaker's presentation.
 Treat a known character name followed by an action cue and a colon as dialogue by that character, not narration. Parenthetical acting directions attached to a speaker name may be removed from dialogue content and must not become separate visible nodes unless they are standalone prose.
 Visible source content must not be hidden in structuralUnitIds.
 Choice-control prompts such as "you can choose", "choose one", "你可以选择", and "请选择" are structural UI instructions when their real options are extracted as choices. They must stay non-visible and are not omissions.
@@ -83,7 +82,7 @@ A complete grammatical sentence can still be a pure merge control, for example "
 An option source unit is owned by its choice only. Reject a candidate that also uses an option unit as node evidence.
 An exact standalone command line immediately after a visible node may be owned by that preceding node. This is the canonical representation and does not require an empty command-only node.
 Do not invent narrative prerequisites, variable conditions, clue requirements, or plot-logic objections that are not encoded by the source. Audit whether the source was preserved, not whether the source story is plausible.
-Judge the actual graph from explicit next/choice targets and enumerated paths, not physical source order alone.
+Judge the actual graph from explicit nextRowId/targetRowId values and canonical paths, not physical source order alone.
 For every source decision and every extracted choice:
 - Trace every supplied path beginning with that choice.
 - A source line such as "if you choose X" begins the exclusive outcome scope for X until the next sibling branch or declared merge.
@@ -91,19 +90,19 @@ For every source decision and every extracted choice:
 - Reject a choice owner or target that changes which source outcome follows the player's selection.
 - Treat explicit source merge statements as semantic constraints. All named incoming branches must reach the shared successor, while branch-only content must remain exclusive before that merge.
 - A pure merge declaration that names a location but does not create shared visible content means branches converge immediately before the next shared visible node. Do not route other branches through sibling-specific content merely because that content occurs at the named location.
-- Judge nextNodeId and the supplied Story IR paths directly. Never infer termination or fallthrough from compiled table rows.
+- Judge nextRowId, targetRowId, and the supplied canonical paths directly.
 - Do not invent narrative prerequisites, variable conditions, or clue requirements that the source does not encode as graph structure. Audit faithful extraction, not story plausibility.
-Audit the compiled table by playback equivalence using these reference-table rules:
-- The table Type must equal each node's presentationType. Types 1 and 2 are both dialogue boxes and should distinguish speaking roles consistently; a story with multiple speakers must not collapse every speaker to Type 1. Type 3 is a gray narration box, Type 4 is visible scene/background/cinematic prose without a dialogue box, and Type 5 is centered screen/system text.
-- A blank Label is valid for a row reached only by physical fallthrough. Entry, option targets, and non-fallthrough jump targets retain labels.
-- Automatic non-fallthrough transitions use Jump in Commands; terminal rows before later physical rows use End.
-- When a node's next target is the immediately following physical table row, Commands must be blank. This physical fallthrough is the canonical playback-equivalent encoding even when the source used an explicit jump or merge instruction. Never demand Jump or End for that row.
-- Option commands always stay in OptionN_Commands and execute only when that option is selected. Node commands stay in Commands and execute on entry.
-- Do not require If metadata to represent graph exclusivity.
-- projection.tablePaths is produced by deterministic server playback of the compiled table and has already been matched against the Story IR paths. Do not claim a table path is unreachable when tablePaths demonstrates it.
-If source, extraction, StoryDocument, compiled table, and enumerated paths agree, return pass with an empty issues array.
+Choices and commands appear only under their owning canonical row. Choice commands execute on selection; row commands execute on entry.
+If source units, commands, canonical rows, choices, structural units, and canonical paths agree, return pass with an empty issues array.
 Never include an issue whose own message says the candidate is correct, acceptable, or needs no action. Omit that issue instead.
 Do not repair the candidate. Return only the verdict and specific evidence-backed issues.`;
+
+export const AUDITOR_STORY_ADJUDICATION_PROMPT = `You independently verify concrete allegations from a Primary Story Auditor.
+Call submit_story_audit_adjudication exactly once and return no prose.
+For every supplied issueId, decide only whether that allegation is confirmed or unsupported by the supplied source units, canonical rows, and canonical paths.
+Use confirmed only when the cited evidence directly proves the exact alleged problem. Use unsupported when evidence is missing, contradictory, assigns multiple values to one canonical field, expresses a stylistic preference, or invents a narrative prerequisite.
+Do not introduce new issues, rewrite the story, reconsider unrelated rows, or omit an issueId.
+Return exactly one decision for every supplied issueId and no extra decisions.`;
 
 const idSchema = { type: 'string', pattern: '^[A-Za-z][A-Za-z0-9_-]{0,63}$' };
 const nonEmptyString = { type: 'string', minLength: 1 };
@@ -197,6 +196,31 @@ export const AUDITOR_STORY_EXTRACTION_TOOL: OpenAITool = {
   },
 };
 
+export const AUDITOR_STORY_ADJUDICATION_TOOL: OpenAITool = {
+  type: 'function',
+  function: {
+    name: 'submit_story_audit_adjudication',
+    description: 'Confirm or dismiss each supplied Primary Auditor allegation.',
+    parameters: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        decisions: {
+          type: 'array', minItems: 1,
+          items: {
+            type: 'object', additionalProperties: false,
+            properties: {
+              issueId: nonEmptyString,
+              status: { type: 'string', enum: ['confirmed', 'unsupported'] },
+            },
+            required: ['issueId', 'status'],
+          },
+        },
+      },
+      required: ['decisions'],
+    },
+  },
+};
+
 export function buildContentExtractionMessages(
   source: SegmentedStorySource,
   attempt: number,
@@ -237,19 +261,42 @@ export function buildGraphExtractionMessages(
 
 export function buildAuditorExtractionMessages(
   source: SegmentedStorySource,
-  extraction: StoryExtraction,
-  document: StoryDocument,
-  projection: StoryAuditProjection
+  auditView: StoryAuditView
 ): ChatMessage[] {
   return [
     { role: 'system', content: AUDITOR_STORY_EXTRACTION_PROMPT },
     { role: 'user', content: JSON.stringify({
       task: 'AUDIT_COMPLETE_STORY_IR',
       sourceUnits: source.units.map(({ id, text }) => ({ id, text })),
-      commands: source.commands,
-      extraction,
-      document,
-      projection,
+      commands: source.commands.map((command) => ({
+        id: command.id,
+        source: command.source,
+        unitId: source.segments.find((segment) => segment.id === command.segmentId)?.unitId ?? '',
+      })),
+      auditView,
+    }) },
+  ];
+}
+
+export function buildAuditAdjudicationMessages(
+  source: SegmentedStorySource,
+  auditView: StoryAuditView,
+  issues: StoryPlanAuditIssue[]
+): ChatMessage[] {
+  const referencedUnitIds = new Set(issues.flatMap((issue) => issue.unitIds));
+  const referencedRowIds = new Set(issues.flatMap((issue) => issue.nodeIds));
+  return [
+    { role: 'system', content: AUDITOR_STORY_ADJUDICATION_PROMPT },
+    { role: 'user', content: JSON.stringify({
+      task: 'ADJUDICATE_STORY_AUDIT_ISSUES',
+      allegations: issues.map((issue, index) => ({ issueId: `issue-${index + 1}`, ...issue })),
+      sourceUnits: source.units
+        .filter((unit) => referencedUnitIds.has(unit.id))
+        .map(({ id, text }) => ({ id, text })),
+      rows: auditView.rows.filter((row) => referencedRowIds.has(row.id)),
+      paths: auditView.paths.filter((path) =>
+        path.rowIds.some((rowId) => referencedRowIds.has(rowId))
+      ),
     }) },
   ];
 }

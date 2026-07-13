@@ -71,12 +71,22 @@ export const StoryPlanAuditSchema = z.object({
   issues: z.array(StoryPlanAuditIssueSchema),
 }).strict();
 
+export const StoryAuditAdjudicationDecisionSchema = z.object({
+  issueId: ReferenceIdSchema,
+  status: z.enum(['confirmed', 'unsupported']),
+}).strict();
+
+export const StoryAuditAdjudicationSchema = z.object({
+  decisions: z.array(StoryAuditAdjudicationDecisionSchema).min(1),
+}).strict();
+
 export type PlannedNode = z.infer<typeof PlannedNodeSchema>;
 export type PlannedChoice = z.infer<typeof PlannedChoiceSchema>;
 export type StoryRelationshipPlan = z.infer<typeof StoryRelationshipPlanSchema>;
 export type StoryGraphPlan = z.infer<typeof StoryGraphPlanSchema>;
 export type StoryPlanAuditIssue = z.infer<typeof StoryPlanAuditIssueSchema>;
 export type StoryPlanAudit = z.infer<typeof StoryPlanAuditSchema>;
+export type StoryAuditAdjudication = z.infer<typeof StoryAuditAdjudicationSchema>;
 
 export function parseStoryRelationshipPlan(value: unknown): StoryRelationshipPlan {
   return StoryRelationshipPlanSchema.parse(value);
@@ -93,6 +103,10 @@ export function parseStoryPlanAudit(value: unknown): StoryPlanAudit {
     verdict: parsed.verdict === 'fail' && issues.length === 0 ? 'pass' : parsed.verdict,
     issues,
   };
+}
+
+export function parseStoryAuditAdjudication(value: unknown): StoryAuditAdjudication {
+  return StoryAuditAdjudicationSchema.parse(value);
 }
 
 function isSelfNegatingAuditIssue(message: string): boolean {

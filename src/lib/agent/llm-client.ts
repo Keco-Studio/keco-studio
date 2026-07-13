@@ -23,6 +23,11 @@ export class LlmError extends Error {
   }
 }
 
+export interface LlmResponseMetadata {
+  status: number;
+  requestId?: string;
+}
+
 interface StreamLlmOptions {
   temperature?: number;
   maxTokens?: number;
@@ -31,6 +36,7 @@ interface StreamLlmOptions {
   tools?: OpenAITool[];
   toolName?: string;
   signal?: AbortSignal;
+  onResponseMetadata?: (metadata: LlmResponseMetadata) => void;
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,7 +76,7 @@ async function requestStream(
     body.parallel_tool_calls = false;
   }
 
-  return fetch(`${LLM_BASE}/v1/chat/completions`, {
+  const response = await fetch(`${LLM_BASE}/v1/chat/completions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -79,6 +85,12 @@ async function requestStream(
     body: JSON.stringify(body),
     signal: options.signal,
   });
+  const requestId = response.headers.get('x-request-id')
+    ?? response.headers.get('request-id')
+    ?? response.headers.get('x-minimax-request-id')
+    ?? undefined;
+  options.onResponseMetadata?.({ status: response.status, ...(requestId ? { requestId } : {}) });
+  return response;
 }
 
 /**

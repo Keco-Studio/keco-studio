@@ -13,6 +13,7 @@ interface ProbeResult {
   attempts: number;
   nodeCount: number;
   auditVerdict: 'pass' | 'fail';
+  approval: 'primary_pass' | 'adjudicated_pass' | 'failed';
   labels: string[];
   targets: string[];
   commands: string[];
@@ -84,6 +85,7 @@ function summarizeSuccess(
     attempts: resolved.attempts,
     nodeCount: resolved.document.nodes.length,
     auditVerdict: resolved.audit.verdict,
+    approval: resolved.approval,
     labels: resolved.document.nodes.map((node) => node.label),
     targets: [...targets],
     commands,
@@ -97,6 +99,7 @@ function summarizeFailure(run: number, elapsedMs: number): ProbeResult {
     attempts: 0,
     nodeCount: 0,
     auditVerdict: 'fail',
+    approval: 'failed',
     labels: [],
     targets: [],
     commands: [],
