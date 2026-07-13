@@ -1,5 +1,4 @@
 import { useCallback, useEffect } from 'react';
-import type * as Y from 'yjs';
 import type {
   AssetRow,
   CreateLibraryAssetOptions,
@@ -10,8 +9,8 @@ import type { CellKey } from './useCellSelection';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { normalizeRowIndices, shiftRowIndices } from '@/lib/services/libraryAssetsService';
 
-// Compatible interface for yRows (supports both Y.Array and mock objects)
-interface YRowsLike {
+// Compatible interface for rowStore (supports both row store and mock objects)
+interface RowStoreLike {
   length: number;
   toArray: () => AssetRow[];
   insert: (index: number, content: AssetRow[]) => void;
@@ -36,7 +35,7 @@ export type UseRowOperationsParams = {
   supabase: SupabaseClient | null;
   orderedProperties: PropertyConfig[];
   getAllRowsForCellSelection: () => AssetRow[];
-  yRows: YRowsLike;
+  rowStore: RowStoreLike;
   selectedCells: Set<CellKey>;
   selectedRowIds: Set<string>;
   selectedCellsRef: React.MutableRefObject<Set<CellKey>>;
@@ -52,7 +51,7 @@ export type UseRowOperationsParams = {
   setDeleteConfirmVisible: React.Dispatch<React.SetStateAction<boolean>>;
   setDeletingAssetId: React.Dispatch<React.SetStateAction<string | null>>;
   setOptimisticNewAssets: React.Dispatch<React.SetStateAction<Map<string, AssetRow>>>;
-  /** When using mock yRows (no real insert), pass this so optimistic rows are shown at correct index instead of appended */
+  /** When using mock rowStore (no real insert), pass this so optimistic rows are shown at correct index instead of appended */
   setOptimisticInsertIndices?: React.Dispatch<React.SetStateAction<Map<string, number>>>;
   setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, { name: string; propertyValues: Record<string, any> }>>>;
   setDeletedAssetIds: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -109,7 +108,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     supabase,
     orderedProperties,
     getAllRowsForCellSelection,
-    yRows,
+    rowStore,
     selectedCells,
     selectedRowIds,
     selectedCellsRef,
@@ -198,9 +197,9 @@ export function useRowOperations(params: UseRowOperationsParams) {
     closeRowOpMenus(setBatchEditMenuVisible, setBatchEditMenuPosition, setContextMenuRowId, setContextMenuPosition, contextMenuRowIdRef);
 
     // --- Optimistic: insert temp rows ABOVE the FIRST selected row as a batch ---
-    // useYjsSync detects temp-insert-* rows and uses yjsRows as display source.
+    // useRowSync detects temp-insert-* rows and uses store rows as the display source.
     const firstRowId = sortedRowIds[0];
-    const firstYIndex = yRows.toArray().findIndex((r: { id: string }) => r.id === firstRowId);
+    const firstYIndex = rowStore.toArray().findIndex((r: { id: string }) => r.id === firstRowId);
     const tempIds: string[] = [];
     if (firstYIndex >= 0) {
       for (let i = 0; i < numRowsToInsert; i++) {
@@ -214,7 +213,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
           rowIndex: 0,
         };
         // Insert all temps as a batch above the first selected row
-        yRows.insert(firstYIndex + i, [tempRow]);
+        rowStore.insert(firstYIndex + i, [tempRow]);
       }
     }
 
@@ -261,17 +260,17 @@ export function useRowOperations(params: UseRowOperationsParams) {
       }
     } catch (e) {
       console.error('Failed to insert rows above:', e);
-      // Rollback: remove temp rows from yRows
-      const currentYRows = yRows.toArray();
+      // Rollback: remove temp rows from rowStore
+      const currentYRows = rowStore.toArray();
       for (let i = currentYRows.length - 1; i >= 0; i--) {
         if (tempIds.includes(currentYRows[i].id)) {
-          yRows.delete(i, 1);
+          rowStore.delete(i, 1);
         }
       }
       setToastMessage({ message: 'Failed to insert rows above', type: 'error' });
       setTimeout(() => setToastMessage(null), 2000);
     }
-    // Note: temp rows are automatically replaced by useYjsSync when real rows arrive via loadInitialData
+    // Note: temp rows are automatically replaced by useRowSync when real rows arrive via loadInitialData
   }, [
     onSaveAsset,
     library,
@@ -281,7 +280,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     selectedRowIds,
     contextMenuRowIdRef,
     rows,
-    yRows,
+    rowStore,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
     setContextMenuRowId,
@@ -336,7 +335,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
 
     // --- Optimistic: insert temp rows BELOW the LAST selected row as a batch ---
     const lastRowId = sortedRowIds[sortedRowIds.length - 1];
-    const lastYIndex = yRows.toArray().findIndex((r: { id: string }) => r.id === lastRowId);
+    const lastYIndex = rowStore.toArray().findIndex((r: { id: string }) => r.id === lastRowId);
     const tempIds: string[] = [];
     if (lastYIndex >= 0) {
       for (let i = 0; i < numRowsToInsert; i++) {
@@ -350,7 +349,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
           rowIndex: 0,
         };
         // Insert all temps as a batch below the last selected row
-        yRows.insert(lastYIndex + 1 + i, [tempRow]);
+        rowStore.insert(lastYIndex + 1 + i, [tempRow]);
       }
     }
 
@@ -397,17 +396,17 @@ export function useRowOperations(params: UseRowOperationsParams) {
       }
     } catch (e) {
       console.error('Failed to insert rows below:', e);
-      // Rollback: remove temp rows from yRows
-      const currentYRows = yRows.toArray();
+      // Rollback: remove temp rows from rowStore
+      const currentYRows = rowStore.toArray();
       for (let i = currentYRows.length - 1; i >= 0; i--) {
         if (tempIds.includes(currentYRows[i].id)) {
-          yRows.delete(i, 1);
+          rowStore.delete(i, 1);
         }
       }
       setToastMessage({ message: 'Failed to insert rows below', type: 'error' });
       setTimeout(() => setToastMessage(null), 2000);
     }
-    // Note: temp rows are automatically replaced by useYjsSync when real rows arrive via loadInitialData
+    // Note: temp rows are automatically replaced by useRowSync when real rows arrive via loadInitialData
   }, [
     onSaveAsset,
     library,
@@ -417,7 +416,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     selectedRowIds,
     contextMenuRowIdRef,
     rows,
-    yRows,
+    rowStore,
     setBatchEditMenuVisible,
     setBatchEditMenuPosition,
     setContextMenuRowId,
@@ -621,9 +620,9 @@ export function useRowOperations(params: UseRowOperationsParams) {
     const failedRowIds: string[] = [];
 
     try {
-      // Delete temp rows (e.g. from paste auto-expand): remove from Yjs + optimisticNewAssets only
+      // Delete temp rows (e.g. from paste auto-expand): remove from row store + optimisticNewAssets only
       if (tempIds.size > 0) {
-        const allRows = yRows.toArray();
+        const allRows = rowStore.toArray();
         const indicesToRemove: number[] = [];
         tempIds.forEach((tid) => {
           const idx = allRows.findIndex((r) => r.id === tid);
@@ -632,9 +631,9 @@ export function useRowOperations(params: UseRowOperationsParams) {
         indicesToRemove.sort((a, b) => b - a);
         indicesToRemove.forEach((idx) => {
           try {
-            yRows.delete(idx, 1);
+            rowStore.delete(idx, 1);
           } catch (e) {
-            console.warn('Failed to remove temp row from Yjs:', e);
+            console.warn('Failed to remove temp row from row store:', e);
           }
         });
         setOptimisticNewAssets((prev) => {
@@ -734,7 +733,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     getAllRowsForCellSelection,
     onDeleteAsset,
     onDeleteAssets,
-    yRows,
+    rowStore,
     setOptimisticNewAssets,
     setDeleteRowConfirmVisible,
     setDeletedAssetIds,
@@ -755,13 +754,13 @@ export function useRowOperations(params: UseRowOperationsParams) {
     setContextMenuPosition(null);
 
     if (isTemp) {
-      const allRows = yRows.toArray();
+      const allRows = rowStore.toArray();
       const idx = allRows.findIndex((r) => r.id === assetIdToDelete);
       if (idx >= 0) {
         try {
-          yRows.delete(idx, 1);
+          rowStore.delete(idx, 1);
         } catch (e) {
-          console.warn('Failed to remove temp row from Yjs:', e);
+          console.warn('Failed to remove temp row from row store:', e);
         }
       }
       setOptimisticNewAssets((prev) => {
@@ -794,7 +793,7 @@ export function useRowOperations(params: UseRowOperationsParams) {
     deletingAssetId,
     onDeleteAsset,
     rows,
-    yRows,
+    rowStore,
     setOptimisticNewAssets,
     setDeletedAssetIds,
     setDeleteConfirmVisible,

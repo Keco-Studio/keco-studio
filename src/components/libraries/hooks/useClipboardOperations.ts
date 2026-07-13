@@ -34,7 +34,7 @@ export function useClipboardOperations({
   onUpdateAsset,
   onUpdateAssets,
   library,
-  yRows,
+  rowStore,
   setSelectedCells,
   setSelectedRowIds,
   setCutCells,
@@ -66,7 +66,7 @@ export function useClipboardOperations({
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   onUpdateAssets?: (updates: Array<{ assetId: string; assetName: string; propertyValues: Record<string, any> }>) => Promise<void>;
   library: { id: string; name: string; description?: string | null } | null;
-  yRows: any; // Yjs array type
+  rowStore: any; // row store array type
   setSelectedCells: React.Dispatch<React.SetStateAction<Set<CellKey>>>;
   setSelectedRowIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   setCutCells: React.Dispatch<React.SetStateAction<Set<CellKey>>>;
@@ -425,31 +425,31 @@ export function useClipboardOperations({
         }
       });
       
-      // Update Yjs synchronously first, then persist in parallel without blocking Paste.
+      // Update row store synchronously first, then persist in parallel without blocking Paste.
       (async () => {
         try {
-          const allRows = yRows.toArray();
-          const yRowById = new Map<string, AssetRow>();
-          const yRowIndexById = new Map<string, number>();
+          const allRows = rowStore.toArray();
+          const rowById = new Map<string, AssetRow>();
+          const rowIndexById = new Map<string, number>();
           allRows.forEach((row: AssetRow, index: number) => {
-            yRowById.set(row.id, row);
-            yRowIndexById.set(row.id, index);
+            rowById.set(row.id, row);
+            rowIndexById.set(row.id, index);
           });
           const toUpdate: Array<{ rowId: string; rowIndex: number; assetName: string; propertyValues: Record<string, any>; updatedRow: AssetRow }> = [];
           for (const [rowId, rowData] of cutCellsByRow.entries()) {
-            const row = yRowById.get(rowId);
+            const row = rowById.get(rowId);
             if (!row) continue;
             const assetName = rowData.assetName !== null ? rowData.assetName : (row.name || 'Untitled');
-            const rowIndex = yRowIndexById.get(rowId) ?? -1;
+            const rowIndex = rowIndexById.get(rowId) ?? -1;
             if (rowIndex < 0) continue;
             const updatedRow = { ...row, name: assetName, propertyValues: rowData.propertyValues };
             toUpdate.push({ rowId, rowIndex, assetName, propertyValues: rowData.propertyValues, updatedRow });
           }
-          // Update Yjs from high index to low index so delete+insert does not shift later indexes.
+          // Update row store from high index to low index so delete+insert does not shift later indexes.
           toUpdate.sort((a, b) => b.rowIndex - a.rowIndex);
           toUpdate.forEach(({ rowIndex, updatedRow }) => {
-            yRows.delete(rowIndex, 1);
-            yRows.insert(rowIndex, [updatedRow]);
+            rowStore.delete(rowIndex, 1);
+            rowStore.insert(rowIndex, [updatedRow]);
           });
           // Match delete-row behavior: use the batch API for multiple rows.
           const cutUpdates = toUpdate.map(({ rowId, assetName, propertyValues }) => ({ assetId: rowId, assetName, propertyValues }));
@@ -489,7 +489,7 @@ export function useClipboardOperations({
     orderedProperties,
     onUpdateAsset,
     onUpdateAssets,
-    yRows,
+    rowStore,
     parseCellKey,
     getCellValue,
     convertRowsToCells,
@@ -858,19 +858,19 @@ export function useClipboardOperations({
       setIsSaving(true);
       try {
         
-        const ySnapshot = yRows.toArray();
-        const idToYIndex = new Map<string, number>();
-        ySnapshot.forEach((r: AssetRow, idx: number) => idToYIndex.set(r.id, idx));
+        const rowSnapshot = rowStore.toArray();
+        const indexById = new Map<string, number>();
+        rowSnapshot.forEach((row: AssetRow, index: number) => indexById.set(row.id, index));
 
         const rowsToUpdate: Array<{ index: number; row: AssetRow }> = [];
         result.updates.forEach(({ row }) => {
-          const yIndex = idToYIndex.get(row.id);
-          if (yIndex !== undefined) rowsToUpdate.push({ index: yIndex, row });
+          const rowIndex = indexById.get(row.id);
+          if (rowIndex !== undefined) rowsToUpdate.push({ index: rowIndex, row });
         });
         rowsToUpdate.sort((a, b) => a.index - b.index);
         rowsToUpdate.forEach(({ index, row }) => {
-          yRows.delete(index, 1);
-          yRows.insert(index, [row]);
+          rowStore.delete(index, 1);
+          rowStore.insert(index, [row]);
         });
 
         

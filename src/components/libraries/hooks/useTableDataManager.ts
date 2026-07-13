@@ -19,7 +19,7 @@ export type OptimisticEditUpdate = {
  * - Provide optimistic update management methods
  */
 export function useTableDataManager({
-  baseRows, // Base data source (from Yjs or props.rows)
+  baseRows, // Base data source (from row store or props.rows)
   optimisticEditUpdates, // Optimistic edit updates: { rowId: { name, propertyValues } }
   optimisticNewAssets, // Optimistic new assets: { tempId: AssetRow }
   deletedAssetIds, // Set of deleted asset IDs

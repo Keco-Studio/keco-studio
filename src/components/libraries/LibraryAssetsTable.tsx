@@ -18,8 +18,8 @@ import { useClipboardOperations } from './hooks/useClipboardOperations';
 import { useCellEditing } from './hooks/useCellEditing';
 import { useCellSelection, type CellKey } from './hooks/useCellSelection';
 import { useUserRole } from './hooks/useUserRole';
-import { useYjsSync } from './hooks/useYjsSync';
-import { useYjs } from '@/lib/contexts/YjsContext';
+import { useRowSync } from './hooks/useRowSync';
+import { useRowStore } from '@/lib/contexts/RowStoreContext';
 import { persistActiveSection } from '@/lib/agent/page-context';
 import { useAssetHover } from './hooks/useAssetHover';
 import { useRowOperations } from './hooks/useRowOperations';
@@ -129,9 +129,8 @@ export function LibraryAssetsTable({
   // Get message API from App context to support dynamic theme
   const { message } = App.useApp();
 
-  // Same as main-again: real Yjs + useYjsSync so insert row keeps position (temp replaced at correct index)
-  const { yRows } = useYjs();
-  const { allRowsSource } = useYjsSync(rows, yRows);
+  const rowStore = useRowStore();
+  const { allRowsSource } = useRowSync(rows, rowStore);
 
   const [isSaving, setIsSaving] = useState(false);
 
@@ -363,7 +362,7 @@ export function LibraryAssetsTable({
     library,
     onSaveAsset,
     userRole,
-    yRows,
+    rowStore,
     rows,
     setOptimisticNewAssets,
     setIsSaving,
@@ -375,7 +374,7 @@ export function LibraryAssetsTable({
   const cellEditing = useCellEditing({
     properties,
     rows,
-    yRows,
+    rowStore,
     onUpdateAsset,
     userRole,
     isAddingRow,
@@ -416,7 +415,7 @@ export function LibraryAssetsTable({
   } = useReferenceModal({
     setNewRowData,
     allRowsSource,
-    yRows,
+    rowStore,
     onUpdateAsset,
     cacheRows: resolvedRows,
     newRowData,
@@ -457,7 +456,7 @@ export function LibraryAssetsTable({
     setCurrentFocusedCell,
     onUpdateAsset,
     rows,
-    yRows,
+    rowStore,
     setOptimisticEditUpdates,
     presenceTracking,
     validateValueByType,
@@ -648,7 +647,7 @@ export function LibraryAssetsTable({
     onUpdateAsset,
     onUpdateAssets,
     library,
-    yRows,
+    rowStore,
     setSelectedCells,
     setSelectedRowIds,
     setCutCells,
@@ -688,7 +687,7 @@ export function LibraryAssetsTable({
     supabase,
     orderedProperties,
     getAllRowsForCellSelection,
-    yRows,
+    rowStore,
     selectedCells,
     selectedRowIds,
     selectedCellsRef,
@@ -827,7 +826,7 @@ export function LibraryAssetsTable({
 
   const handleUpdateRowFromDrawer = useLibraryAssetDetailDrawerUpdate({
     onUpdateAsset,
-    yRows,
+    rowStore,
     setOptimisticEditUpdates,
     setIsSaving,
   });
@@ -845,7 +844,7 @@ export function LibraryAssetsTable({
     rows,
     properties,
     onUpdateAsset,
-    yRows,
+    rowStore,
     setOptimisticEditUpdates,
     setIsSaving,
     message,

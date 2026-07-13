@@ -37,7 +37,7 @@ import type { AssetRow } from './libraryAssets';
 export interface CreateVersionRequest {
   libraryId: string;
   versionName: string;
-  /** Prefer current UI (Yjs) data so snapshots match what the user sees. */
+  /** Prefer current UI data so snapshots match what the user sees. */
   currentAssetsFromClient?: AssetRow[];
 }
 

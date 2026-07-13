@@ -1,17 +1,12 @@
 import { describe, expect, it } from '@jest/globals';
-import * as Y from 'yjs';
-import { applyRowOrderChangeToYAssets } from '@/components/libraries/hooks/useLibraryRealtimeHandlers';
+import { applyRowOrderChangeToAssetStore } from '@/components/libraries/hooks/useLibraryRealtimeHandlers';
+import { ObservableAssetStore } from '@/lib/library/assetStore';
 import type { RowOrderChangeEvent } from '@/lib/types/collaboration';
 
 describe('incremental row order sync', () => {
   it('applies inserted rows and shifted indices without a server reload', () => {
-    const yDoc = new Y.Doc();
-    const yAssets = yDoc.getMap<Y.Map<unknown>>('assets');
-    const existing = new Y.Map<unknown>();
-    existing.set('name', 'Existing');
-    existing.set('propertyValues', new Y.Map<unknown>());
-    existing.set('row_index', 2);
-    yAssets.set('asset-existing', existing);
+    const assetStore = new ObservableAssetStore();
+    assetStore.set({ id: 'asset-existing', libraryId: 'library-1', name: 'Existing', propertyValues: {}, rowIndex: 2 });
 
     const event: RowOrderChangeEvent = {
       type: 'roworder:change',
@@ -28,14 +23,12 @@ describe('incremental row order sync', () => {
       rowIndexUpdates: [{ assetId: 'asset-existing', rowIndex: 3 }],
     };
 
-    applyRowOrderChangeToYAssets(yDoc, yAssets, event);
+    applyRowOrderChangeToAssetStore(assetStore, event, 'library-1');
 
-    expect(existing.get('row_index')).toBe(3);
-    const inserted = yAssets.get('asset-inserted');
-    expect(inserted?.get('name')).toBe('Inserted');
-    expect(inserted?.get('row_index')).toBe(2);
-    expect(
-      (inserted?.get('propertyValues') as Y.Map<unknown>).get('field-1')
-    ).toBe('Value');
+    expect(assetStore.get('asset-existing')?.rowIndex).toBe(3);
+    const inserted = assetStore.get('asset-inserted');
+    expect(inserted?.name).toBe('Inserted');
+    expect(inserted?.rowIndex).toBe(2);
+    expect(inserted?.propertyValues['field-1']).toBe('Value');
   });
 });

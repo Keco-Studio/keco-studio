@@ -1,42 +1,38 @@
-import type * as Y from 'yjs';
 import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ReferenceCellUpdate } from '@/lib/services/referenceSyncService';
 import { syncReferencesForSourceChanges } from '@/lib/services/referenceSyncService';
 import { serializeError } from '@/lib/utils/errorUtils';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
+import { cloneStoreValue, type ObservableAssetStore } from './assetStore';
 
 type ApplyReferenceSyncArgs = {
   refUpdates: ReferenceCellUpdate[];
   libraryId: string;
-  yDoc: Y.Doc;
-  yAssets: Y.Map<Y.Map<unknown>>;
+  assetStore: ObservableAssetStore;
   queryClient: QueryClient;
-  loadInitialData: () => Promise<void>;
 };
 
 export function applyReferenceSyncToLocalState({
   refUpdates,
   libraryId,
-  yDoc,
-  yAssets,
+  assetStore,
   queryClient,
-  loadInitialData,
 }: ApplyReferenceSyncArgs): void {
   if (refUpdates.length === 0) return;
 
-  yDoc.transact(() => {
+  assetStore.transact(() => {
     for (const update of refUpdates) {
       if (update.referencingLibraryId !== libraryId) continue;
-      const yAsset = yAssets.get(update.referencingAssetId);
-      if (!yAsset) continue;
-      const yPropertyValues = yAsset.get('propertyValues') as Y.Map<unknown> | undefined;
-      if (!yPropertyValues) continue;
-      let valueForYjs = update.newReferenceValue;
-      if (valueForYjs !== null && typeof valueForYjs === 'object') {
-        valueForYjs = JSON.parse(JSON.stringify(valueForYjs)) as unknown;
-      }
-      yPropertyValues.set(update.referencingFieldId, valueForYjs);
+      const asset = assetStore.get(update.referencingAssetId);
+      if (!asset) continue;
+      assetStore.set({
+        ...asset,
+        propertyValues: {
+          ...asset.propertyValues,
+          [update.referencingFieldId]: cloneStoreValue(update.newReferenceValue),
+        },
+      });
     }
   });
 
@@ -63,9 +59,7 @@ type SyncReferencesAfterSourceChangeArgs = {
   supabase: SupabaseClient;
   queryClient: QueryClient;
   libraryId: string;
-  yDoc: Y.Doc;
-  yAssets: Y.Map<Y.Map<unknown>>;
-  loadInitialData: () => Promise<void>;
+  assetStore: ObservableAssetStore;
   assetId: string;
   fieldId: string;
   valueJson: unknown;
@@ -75,9 +69,7 @@ export async function syncReferencesAfterSourceChange({
   supabase,
   queryClient,
   libraryId,
-  yDoc,
-  yAssets,
-  loadInitialData,
+  assetStore,
   assetId,
   fieldId,
   valueJson,
@@ -89,10 +81,8 @@ export async function syncReferencesAfterSourceChange({
     applyReferenceSyncToLocalState({
       refUpdates,
       libraryId,
-      yDoc,
-      yAssets,
+      assetStore,
       queryClient,
-      loadInitialData,
     });
     await invalidateLibraryAssetsData(queryClient, { libraryId, assetId });
   } catch (error) {

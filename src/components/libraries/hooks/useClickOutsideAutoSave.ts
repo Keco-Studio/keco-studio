@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type React from 'react';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 
-type YRows = {
+type RowStoreShape = {
   toArray: () => AssetRow[];
   delete: (index: number, count: number) => void;
   insert: (index: number, rows: AssetRow[]) => void;
@@ -33,7 +33,7 @@ export type UseClickOutsideAutoSaveParams = {
   setCurrentFocusedCell: React.Dispatch<React.SetStateAction<{ assetId: string; propertyKey: string } | null>>;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   rows: AssetRow[];
-  yRows: YRows;
+  rowStore: RowStoreShape;
   setOptimisticEditUpdates: React.Dispatch<React.SetStateAction<Map<string, OptimisticEditUpdate>>>;
   presenceTracking?: {
     updateActiveCell: (assetId: string | null, propertyKey: string | null) => void;
@@ -87,7 +87,7 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
         setCurrentFocusedCell,
         onUpdateAsset,
         rows,
-        yRows,
+        rowStore,
         setOptimisticEditUpdates,
         presenceTracking,
         validateValueByType,
@@ -250,12 +250,12 @@ export function useClickOutsideAutoSave(params: UseClickOutsideAutoSaveParams) {
         };
         const assetName = isNameField ? currentEditingValue : (row.name || 'Untitled');
 
-        const allRows = yRows.toArray();
+        const allRows = rowStore.toArray();
         const rowIndex = allRows.findIndex((r) => r.id === rowId);
         if (rowIndex >= 0) {
           const existing = allRows[rowIndex];
-          yRows.delete(rowIndex, 1);
-          yRows.insert(rowIndex, [
+          rowStore.delete(rowIndex, 1);
+          rowStore.insert(rowIndex, [
             { ...existing, name: String(assetName), propertyValues: updatedPropertyValues },
           ]);
         }

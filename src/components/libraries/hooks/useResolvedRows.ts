@@ -48,8 +48,8 @@ export function useResolvedRows({
       }
     });
 
-    // ⚠️ Optimistic insert rows (temp-insert-*) are handled via yRows → useYjsSync → allRowsSource.
-    // When temp-insert placeholders exist in yRows, useYjsSync returns yjsRows as allRowsSource,
+    // ⚠️ Optimistic insert rows (temp-insert-*) are handled via rowStore → useRowSync → allRowsSource.
+    // When temp-insert placeholders exist, useRowSync returns store rows as allRowsSource.
     // so they naturally appear in the `out` array above without extra splicing here.
 
     return out;

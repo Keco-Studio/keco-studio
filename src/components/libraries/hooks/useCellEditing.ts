@@ -15,7 +15,7 @@ import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 export function useCellEditing({
   properties,
   rows,
-  yRows,
+  rowStore,
   onUpdateAsset,
   userRole,
   isAddingRow,
@@ -27,7 +27,7 @@ export function useCellEditing({
 }: {
   properties: PropertyConfig[];
   rows: AssetRow[];
-  yRows: any; // Yjs array type
+  rowStore: any; // row store array type
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   isAddingRow: boolean;
@@ -359,8 +359,8 @@ export function useCellEditing({
     // Get asset name (use first property value or row name)
     const assetName = isNameField ? valueToSave : (row.name || 'Untitled');
     
-    // Immediately update Yjs (optimistic update)
-    const allRows = yRows.toArray();
+    // Immediately update row store (optimistic update)
+    const allRows = rowStore.toArray();
     const rowIndex = allRows.findIndex(r => r.id === rowId);
     
     if (rowIndex >= 0) {
@@ -371,9 +371,9 @@ export function useCellEditing({
         propertyValues: updatedPropertyValues
       };
       
-      // Update Yjs
-      yRows.delete(rowIndex, 1);
-      yRows.insert(rowIndex, [updatedRow]);
+      // Update row store
+      rowStore.delete(rowIndex, 1);
+      rowStore.insert(rowIndex, [updatedRow]);
     }
 
     // Apply optimistic update
@@ -436,7 +436,7 @@ export function useCellEditing({
     onUpdateAsset,
     properties,
     rows,
-    yRows,
+    rowStore,
     setOptimisticEditUpdates,
     userRole,
     validateValueByType,

@@ -8,8 +8,8 @@ import {
   type ReferenceSelection,
 } from '@/lib/utils/referenceValue';
 
-// Compatible interface for yRows (supports both Y.Array and mock objects)
-interface YRowsLike {
+// Compatible interface for rowStore (supports both row store and mock objects)
+interface RowStoreLike {
   length: number;
   toArray: () => AssetRow[];
   insert: (index: number, content: AssetRow[]) => void;
@@ -19,7 +19,7 @@ interface YRowsLike {
 export type UseReferenceModalParams = {
   setNewRowData: React.Dispatch<React.SetStateAction<Record<string, any>>>;
   allRowsSource: AssetRow[];
-  yRows: YRowsLike;
+  rowStore: RowStoreLike;
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: Record<string, any>) => Promise<void>;
   /** Rows used to build reference display cache (should match table/filter data). */
   cacheRows: AssetRow[];
@@ -38,7 +38,7 @@ export function useReferenceModal(params: UseReferenceModalParams) {
   const {
     setNewRowData,
     allRowsSource,
-    yRows,
+    rowStore,
     onUpdateAsset,
     cacheRows,
     newRowData,
@@ -95,15 +95,15 @@ export function useReferenceModal(params: UseReferenceModalParams) {
     } else {
       const row = allRowsSource.find((r) => r.id === referenceModalRowId);
       if (row && onUpdateAsset) {
-        const arr = yRows.toArray();
+        const arr = rowStore.toArray();
         const rowIndex = arr.findIndex((r) => r.id === referenceModalRowId);
         if (rowIndex >= 0) {
           const updatedPropertyValues: Record<string, any> = {
             ...row.propertyValues,
             [referenceModalProperty.key]: nextValue,
           };
-          yRows.delete(rowIndex, 1);
-          yRows.insert(rowIndex, [{ ...row, propertyValues: updatedPropertyValues }]);
+          rowStore.delete(rowIndex, 1);
+          rowStore.insert(rowIndex, [{ ...row, propertyValues: updatedPropertyValues }]);
         }
         const toSave: Record<string, any> = {
           ...row.propertyValues,
@@ -116,7 +116,7 @@ export function useReferenceModal(params: UseReferenceModalParams) {
     setReferenceModalProperty(null);
     setReferenceModalValue(null);
     setReferenceModalRowId(null);
-  }, [referenceModalProperty, referenceModalRowId, setNewRowData, allRowsSource, yRows, onUpdateAsset]);
+  }, [referenceModalProperty, referenceModalRowId, setNewRowData, allRowsSource, rowStore, onUpdateAsset]);
 
   const handleCloseReferenceModal = useCallback(() => {
     setReferenceModalOpen(false);

@@ -5,7 +5,7 @@ type AssetPropertyValues = AssetRow['propertyValues'];
 
 type UseLibraryAssetDetailDrawerUpdateParams = {
   onUpdateAsset?: (assetId: string, assetName: string, propertyValues: AssetPropertyValues) => Promise<void>;
-  yRows: {
+  rowStore: {
     toArray: () => AssetRow[];
     delete: (index: number, length: number) => void;
     insert: (index: number, rows: AssetRow[]) => void;
@@ -16,7 +16,7 @@ type UseLibraryAssetDetailDrawerUpdateParams = {
 
 export function useLibraryAssetDetailDrawerUpdate({
   onUpdateAsset,
-  yRows,
+  rowStore,
   setOptimisticEditUpdates,
   setIsSaving,
 }: UseLibraryAssetDetailDrawerUpdateParams) {
@@ -26,13 +26,13 @@ export function useLibraryAssetDetailDrawerUpdate({
     propertyValues: AssetPropertyValues
   ) => {
     if (!onUpdateAsset) return;
-    const allRows = yRows.toArray();
+    const allRows = rowStore.toArray();
     const rowIndex = allRows.findIndex((row) => row.id === assetId);
     if (rowIndex >= 0) {
       const existingRow = allRows[rowIndex];
       const updatedRow = { ...existingRow, name, propertyValues };
-      yRows.delete(rowIndex, 1);
-      yRows.insert(rowIndex, [updatedRow]);
+      rowStore.delete(rowIndex, 1);
+      rowStore.insert(rowIndex, [updatedRow]);
     }
     setOptimisticEditUpdates((prev) => {
       const newMap = new Map(prev);
@@ -59,5 +59,5 @@ export function useLibraryAssetDetailDrawerUpdate({
     } finally {
       setIsSaving(false);
     }
-  }, [onUpdateAsset, yRows, setOptimisticEditUpdates, setIsSaving]);
+  }, [onUpdateAsset, rowStore, setOptimisticEditUpdates, setIsSaving]);
 }

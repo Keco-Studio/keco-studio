@@ -45,7 +45,7 @@ export function VersionControlSidebar({
   const { allAssets } = useLibraryData();
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  // 当前界面（Yjs）数据，用于创建版本时保证快照与「当前看到」一致
+  // Use current UI rows so the snapshot matches the visible table.
   const currentAssetsForVersion: AssetRow[] = allAssets.map((a) => ({
     id: a.id,
     libraryId: a.libraryId,

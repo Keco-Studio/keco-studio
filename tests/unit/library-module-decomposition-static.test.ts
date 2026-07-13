@@ -43,7 +43,8 @@ describe('library module decomposition guard', () => {
   it('keeps the library data provider as a composition surface', () => {
     const source = read(dataContextPath);
 
-    expect(exists('src/lib/library/yjsAssetHydration.ts')).toBe(true);
+    expect(exists('src/lib/library/assetStore.ts')).toBe(true);
+    expect(exists('src/lib/library/rowStore.ts')).toBe(true);
     expect(exists('src/lib/library/updatedAt.ts')).toBe(true);
     expect(exists('src/components/libraries/hooks/useLibraryAssetMutations.ts')).toBe(true);
     expect(exists('src/components/libraries/hooks/useLibraryRealtimeHandlers.ts')).toBe(true);
@@ -52,13 +53,12 @@ describe('library module decomposition guard', () => {
     const mutationsSource = read('src/components/libraries/hooks/useLibraryAssetMutations.ts');
     const referenceSyncSource = read('src/lib/library/referenceSync.ts');
 
-    expect(source).toContain('hydrateYAssetsFromRows');
-    expect(source).toContain('hydrateYAssetsFromSnapshot');
+    expect(source).toContain('hydrateAssetStoreFromRows');
+    expect(source).toContain('hydrateAssetStoreFromSnapshot');
     expect(source).toContain('useLibraryAssetMutations');
     expect(source).toContain('useLibraryRealtimeHandlers');
-    expect(source).toContain('applyReferenceSyncToLocalState');
-    expect(source).toContain('syncReferencesAfterSourceChange');
     expect(mutationsSource).toContain('touchLibraryUpdatedAt');
+    expect(mutationsSource).toContain('syncReferencesAfterSourceChange');
     expect(referenceSyncSource).toContain('syncReferencesForSourceChanges');
 
     for (const inlineDefinition of [
@@ -114,16 +114,13 @@ describe('library module decomposition guard', () => {
     }
   });
 
-  it('does not reintroduce Yjs offline persistence or LibraryDataContext data-sync dispatches', () => {
+  it('does not reintroduce Yjs or LibraryDataContext data-sync dispatches', () => {
     const dataContextSource = read(dataContextPath);
-    const yjsContextSource = read('src/lib/contexts/YjsContext.tsx');
+    const rowStoreContextSource = read('src/lib/contexts/RowStoreContext.tsx');
 
-    for (const source of [dataContextSource, yjsContextSource]) {
-      expect(source).not.toContain('y-indexeddb');
-      expect(source).not.toContain('IndexeddbPersistence');
-      expect(source).not.toContain('repopulateWithResetPersistence');
-      expect(source).not.toContain('library-${libraryId}');
-      expect(source).not.toContain('asset-table-${libraryId}');
+    for (const source of [dataContextSource, rowStoreContextSource]) {
+      expect(source).not.toMatch(/from ['"]yjs['"]/);
+      expect(source).not.toContain('Y.Doc');
     }
 
     expect(dataContextSource).not.toContain('window.dispatchEvent');

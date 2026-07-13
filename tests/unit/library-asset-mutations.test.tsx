@@ -1,9 +1,9 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import * as Y from 'yjs';
 import type { AssetRow } from '@/lib/types/libraryAssets';
 import { createLibraryAssetMutations } from '@/components/libraries/hooks/useLibraryAssetMutations';
+import { ObservableAssetStore } from '@/lib/library/assetStore';
 
 type MutationHookArgs = Parameters<typeof createLibraryAssetMutations>[0];
 
@@ -111,23 +111,22 @@ function createSupabaseFake() {
 describe('useLibraryAssetMutations', () => {
   it('applies and broadcasts row inserts incrementally without reloading the library', async () => {
     const { supabase } = createSupabaseFake();
-    const yDoc = new Y.Doc();
-    const yAssets = yDoc.getMap<Y.Map<unknown>>('assets');
-    const existing = new Y.Map<unknown>();
-    existing.set('name', 'Existing');
-    existing.set('propertyValues', new Y.Map<unknown>());
-    existing.set('row_index', 2);
-    yAssets.set('asset-existing', existing);
+    const assetStore = new ObservableAssetStore();
+    assetStore.set({
+      id: 'asset-existing',
+      libraryId: 'library-1',
+      name: 'Existing',
+      propertyValues: {},
+      rowIndex: 2,
+    });
 
-    const loadInitialData = jest.fn<() => Promise<void>>(() => Promise.resolve());
     const broadcastRowOrderChange = jest.fn<MutationHookArgs['realtime']['broadcastRowOrderChange']>();
     const mutations = createLibraryAssetMutations({
       supabase,
       queryClient: new QueryClient(),
       libraryId: 'library-1',
       projectId: 'project-1',
-      yDoc,
-      yAssets,
+      assetStore,
       assetsRef: {
         current: new Map<string, AssetRow>([
           ['asset-existing', {
@@ -141,7 +140,6 @@ describe('useLibraryAssetMutations', () => {
       },
       pendingBatchInsertIdsRef: { current: new Set<string>() },
       getFormulaFieldMeta: async () => [],
-      loadInitialData,
       realtimeConfig: {},
       realtime: {
         broadcastCellUpdate: async () => {},
@@ -157,9 +155,8 @@ describe('useLibraryAssetMutations', () => {
       rowIndexUpdates: [{ assetId: 'asset-existing', rowIndex: 3 }],
     });
 
-    expect(loadInitialData).not.toHaveBeenCalled();
-    expect(existing.get('row_index')).toBe(3);
-    expect(yAssets.get('created-asset')?.get('name')).toBe('Inserted');
+    expect(assetStore.get('asset-existing')?.rowIndex).toBe(3);
+    expect(assetStore.get('created-asset')?.name).toBe('Inserted');
     expect(broadcastRowOrderChange).toHaveBeenCalledWith({
       insertedRows: [{
         assetId: 'created-asset',
@@ -174,14 +171,8 @@ describe('useLibraryAssetMutations', () => {
 
   it('persists a cell value and authoritative timestamp in one RPC round trip', async () => {
     const { calls, rpcCalls, supabase } = createSupabaseFake();
-    const yDoc = new Y.Doc();
-    const yAssets = yDoc.getMap<Y.Map<unknown>>('assets');
-    const yAsset = new Y.Map<unknown>();
-    const yPropertyValues = new Y.Map<unknown>();
-    yPropertyValues.set('field-1', 'Old');
-    yAsset.set('name', 'Asset');
-    yAsset.set('propertyValues', yPropertyValues);
-    yAssets.set('asset-1', yAsset);
+    const assetStore = new ObservableAssetStore();
+    assetStore.set({ id: 'asset-1', libraryId: 'library-1', name: 'Asset', propertyValues: { 'field-1': 'Old' } });
 
     const broadcastCellUpdate = jest.fn<MutationHookArgs['realtime']['broadcastCellUpdate']>();
     const mutations = createLibraryAssetMutations({
@@ -189,8 +180,7 @@ describe('useLibraryAssetMutations', () => {
       queryClient: new QueryClient(),
       libraryId: 'library-1',
       projectId: 'project-1',
-      yDoc,
-      yAssets,
+      assetStore,
       assetsRef: {
         current: new Map<string, AssetRow>([
           ['asset-1', {
@@ -203,7 +193,6 @@ describe('useLibraryAssetMutations', () => {
       },
       pendingBatchInsertIdsRef: { current: new Set<string>() },
       getFormulaFieldMeta: async () => [],
-      loadInitialData: async () => {},
       realtimeConfig: {},
       realtime: {
         broadcastCellUpdate,
@@ -234,14 +223,10 @@ describe('useLibraryAssetMutations', () => {
     );
   });
 
-  it('updates asset names through Yjs, Supabase, library updated_at, and realtime', async () => {
+  it('updates asset names through the local store, Supabase, library updated_at, and realtime', async () => {
     const { calls, supabase } = createSupabaseFake();
-    const yDoc = new Y.Doc();
-    const yAssets = yDoc.getMap<Y.Map<unknown>>('assets');
-    const yAsset = new Y.Map<unknown>();
-    yAsset.set('name', 'Original');
-    yAsset.set('propertyValues', new Y.Map<unknown>());
-    yAssets.set('asset-1', yAsset);
+    const assetStore = new ObservableAssetStore();
+    assetStore.set({ id: 'asset-1', libraryId: 'library-1', name: 'Original', propertyValues: {} });
 
     const queryClient = new QueryClient();
     const broadcastCellUpdate = jest.fn<MutationHookArgs['realtime']['broadcastCellUpdate']>();
@@ -250,8 +235,7 @@ describe('useLibraryAssetMutations', () => {
       queryClient,
       libraryId: 'library-1',
       projectId: 'project-1',
-      yDoc,
-      yAssets,
+      assetStore,
       assetsRef: {
         current: new Map<string, AssetRow>([
           [
@@ -267,7 +251,6 @@ describe('useLibraryAssetMutations', () => {
       },
       pendingBatchInsertIdsRef: { current: new Set<string>() },
       getFormulaFieldMeta: async () => [],
-      loadInitialData: async () => {},
       realtimeConfig: {},
       realtime: {
         broadcastCellUpdate,
@@ -280,7 +263,7 @@ describe('useLibraryAssetMutations', () => {
 
     await mutations.updateAssetName('asset-1', 'Renamed');
 
-    expect(yAsset.get('name')).toBe('Renamed');
+    expect(assetStore.get('asset-1')?.name).toBe('Renamed');
     expect(calls).toEqual([
       {
         table: 'library_assets',
@@ -322,15 +305,11 @@ describe('useLibraryAssetMutations', () => {
 
   it('broadcasts batch field updates with old values and server timestamps', async () => {
     const { supabase } = createSupabaseFake();
-    const yDoc = new Y.Doc();
-    const yAssets = yDoc.getMap<Y.Map<unknown>>('assets');
-    const yAsset = new Y.Map<unknown>();
-    const yPropertyValues = new Y.Map<unknown>();
-    yPropertyValues.set('field-1', 'Old A');
-    yPropertyValues.set('field-2', 'Old B');
-    yAsset.set('name', 'Asset');
-    yAsset.set('propertyValues', yPropertyValues);
-    yAssets.set('asset-1', yAsset);
+    const assetStore = new ObservableAssetStore();
+    assetStore.set({
+      id: 'asset-1', libraryId: 'library-1', name: 'Asset',
+      propertyValues: { 'field-1': 'Old A', 'field-2': 'Old B' },
+    });
 
     const broadcastCellUpdate = jest.fn<MutationHookArgs['realtime']['broadcastCellUpdate']>();
     const mutations = createLibraryAssetMutations({
@@ -338,8 +317,7 @@ describe('useLibraryAssetMutations', () => {
       queryClient: new QueryClient(),
       libraryId: 'library-1',
       projectId: 'project-1',
-      yDoc,
-      yAssets,
+      assetStore,
       assetsRef: {
         current: new Map<string, AssetRow>([
           [
@@ -358,7 +336,6 @@ describe('useLibraryAssetMutations', () => {
       },
       pendingBatchInsertIdsRef: { current: new Set<string>() },
       getFormulaFieldMeta: async () => [],
-      loadInitialData: async () => {},
       realtimeConfig: {},
       realtime: {
         broadcastCellUpdate,
@@ -394,14 +371,11 @@ describe('useLibraryAssetMutations', () => {
 
   it('broadcasts batch asset updates with per-cell server timestamps', async () => {
     const { supabase } = createSupabaseFake();
-    const yDoc = new Y.Doc();
-    const yAssets = yDoc.getMap<Y.Map<unknown>>('assets');
-    const yAsset = new Y.Map<unknown>();
-    const yPropertyValues = new Y.Map<unknown>();
-    yPropertyValues.set('field-1', 'Old');
-    yAsset.set('name', 'Old name');
-    yAsset.set('propertyValues', yPropertyValues);
-    yAssets.set('asset-1', yAsset);
+    const assetStore = new ObservableAssetStore();
+    assetStore.set({
+      id: 'asset-1', libraryId: 'library-1', name: 'Old name',
+      propertyValues: { 'field-1': 'Old' },
+    });
 
     const broadcastCellsBatchUpdate = jest.fn<MutationHookArgs['realtime']['broadcastCellsBatchUpdate']>();
     const mutations = createLibraryAssetMutations({
@@ -409,8 +383,7 @@ describe('useLibraryAssetMutations', () => {
       queryClient: new QueryClient(),
       libraryId: 'library-1',
       projectId: 'project-1',
-      yDoc,
-      yAssets,
+      assetStore,
       assetsRef: {
         current: new Map<string, AssetRow>([
           [
@@ -426,7 +399,6 @@ describe('useLibraryAssetMutations', () => {
       },
       pendingBatchInsertIdsRef: { current: new Set<string>() },
       getFormulaFieldMeta: async () => [],
-      loadInitialData: async () => {},
       realtimeConfig: {},
       realtime: {
         broadcastCellUpdate: async () => {},

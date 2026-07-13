@@ -14,7 +14,7 @@ import dialog from '@/components/shared/FormDialog.module.css';
 interface CreateVersionModalProps {
   open: boolean;
   libraryId: string;
-  /** 当前界面（Yjs）数据，创建版本时优先用此保证快照与「当前看到」一致 */
+  /** Current UI rows used to keep the snapshot aligned with the visible table. */
   currentAssetsFromClient?: AssetRow[];
   onClose: () => void;
   onSuccess: () => void;
@@ -136,4 +136,3 @@ export function CreateVersionModal({
     document.body
   );
 }
-
