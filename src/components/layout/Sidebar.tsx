@@ -33,8 +33,14 @@ import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { Project } from "@/lib/services/projectService";
 import { Library, deleteLibrary, moveLibraryToFolder } from "@/lib/services/libraryService";
 import { Folder, deleteFolder } from "@/lib/services/folderService";
+import { updateDocumentName, moveDocument, type DocumentSummary } from "@/lib/services/documentService";
+import { broadcastDocumentUpdated } from "@/lib/documents/documentBroadcast";
+import { flushOpenDocumentEditor } from "@/lib/documents/documentFlushRegistry";
+import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
+import { MoveDocumentModal } from "@/components/documents/MoveDocumentModal";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
 import { useSidebarFoldersLibraries } from "./hooks/useSidebarFoldersLibraries";
+import { useSidebarDocuments } from "./hooks/useSidebarDocuments";
 import { useSidebarModals } from "./hooks/useSidebarModals";
 import { useSidebarContextMenu } from "./hooks/useSidebarContextMenu";
 import { SidebarTreeView } from "./components/SidebarTreeView";
@@ -82,16 +88,23 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     isPredefinePage,
     isLibraryPage,
   } = useNavigation();
+  // Derive the active document id from the URL (/[projectId]/doc/[documentId]);
+  // NavigationContext does not track documents, so parse it here for highlighting.
+  const currentDocumentId = useMemo(() => {
+    const match = pathname.match(/\/[^/]+\/doc\/([^/]+)/);
+    return match ? match[1] : null;
+  }, [pathname]);
   const currentIds = useMemo(
     () => ({
       projectId: currentProjectId,
       libraryId: currentLibraryId,
       folderId: currentFolderId,
       assetId: currentAssetId,
+      documentId: currentDocumentId,
       isPredefinePage,
       isLibraryPage,
     }),
-    [currentProjectId, currentLibraryId, currentFolderId, currentAssetId, isPredefinePage, isLibraryPage]
+    [currentProjectId, currentLibraryId, currentFolderId, currentAssetId, currentDocumentId, isPredefinePage, isLibraryPage]
   );
   const supabase = useSupabase();
   const queryClient = useQueryClient();
@@ -156,6 +169,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     importingScriptFolderId,
     openImportScript,
     closeImportScriptModal,
+    showDocumentModal,
+    openNewDocument,
+    closeDocumentModal,
   } = modals;
 
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -186,6 +202,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [isMovingLibrary, setIsMovingLibrary] = useState(false);
   const [moveFolderSearch, setMoveFolderSearch] = useState('');
   const [useIndependentLibrary, setUseIndependentLibrary] = useState(false);
+  const [movingDocumentId, setMovingDocumentId] = useState<string | null>(null);
+  const [isMovingDocument, setIsMovingDocument] = useState(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(DEFAULT_SIDEBAR_WIDTH);
   const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
@@ -258,6 +276,33 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             entityType: 'folder',
           });
           showSuccessToast('Folder name updated');
+        } else if (key.startsWith('document-')) {
+          const id = key.replace('document-', '');
+          const documentsKey = currentIds.projectId
+            ? (['documents', currentIds.projectId] as const)
+            : null;
+          if (documentsKey) {
+            queryClient.setQueryData<DocumentSummary[]>(documentsKey, (old) =>
+              old ? old.map((doc) => (doc.id === id ? { ...doc, name: trimmed } : doc)) : old
+            );
+          }
+          try {
+            await updateDocumentName(supabase, id, trimmed);
+            if (currentIds.projectId) {
+              void broadcastDocumentUpdated(supabase, {
+                documentId: id,
+                projectId: currentIds.projectId,
+                name: trimmed,
+                action: 'rename',
+              });
+            }
+            showSuccessToast('Document name updated');
+          } catch (docErr) {
+            if (currentIds.projectId) {
+              queryClient.invalidateQueries({ queryKey: ['documents', currentIds.projectId] });
+            }
+            throw docErr;
+          }
         }
       } catch (err: unknown) {
         queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -273,7 +318,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         throw err;
       }
     },
-    [updateName, setError, currentIds.projectId, queryClient]
+    [updateName, setError, currentIds.projectId, queryClient, supabase]
   );
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -315,6 +360,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     libraries,
     isLoading: loadingFoldersAndLibraries,
   } = useSidebarFoldersLibraries(currentIds.projectId);
+
+  const { documents } = useSidebarDocuments(currentIds.projectId);
 
   const loadingFolders = loadingFoldersAndLibraries;
   const loadingLibraries = loadingFoldersAndLibraries;
@@ -417,16 +464,25 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
   }, []);
 
+  /** Flush open document autosave before leaving the editor route. */
+  const navigateWithFlush = useCallback(
+    async (href: string) => {
+      await flushOpenDocumentEditor();
+      router.push(href);
+    },
+    [router]
+  );
+
   // actions
   const handleProjectClick = async (projectId: string) => {
     await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-    router.push(`/${projectId}`);
+    await navigateWithFlush(`/${projectId}`);
   };
 
   const handleLibraryClick = async (projectId: string, libraryId: string) => {
     await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     await queryClient.invalidateQueries({ queryKey: ['library', libraryId] });
-    router.push(`/${projectId}/${libraryId}`);
+    await navigateWithFlush(`/${projectId}/${libraryId}`);
     fetchAssets(libraryId);
   };
 
@@ -434,7 +490,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     await queryClient.invalidateQueries({ queryKey: ['library', libraryId] });
     await queryClient.invalidateQueries({ queryKey: ['asset', assetId] });
-    router.push(`/${projectId}/${libraryId}/${assetId}`);
+    await navigateWithFlush(`/${projectId}/${libraryId}/${assetId}`);
   };
 
   const handleAssetDelete = useCallback(async (
@@ -527,13 +583,19 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       if (currentIds.projectId) {
         await queryClient.invalidateQueries({ queryKey: ['project', currentIds.projectId] });
         await queryClient.invalidateQueries({ queryKey: ['folder', id] });
-        router.push(`/${currentIds.projectId}/folder/${id}`);
+        await navigateWithFlush(`/${currentIds.projectId}/folder/${id}`);
       }
     } else if (key.startsWith('library-')) {
       const id = key.replace('library-', '');
       setSelectedFolderId(null); // Clear folder selection when library is selected
       const projId = libraries.find((l) => l.id === id)?.project_id || currentIds.projectId || '';
       await handleLibraryClick(projId, id);
+    } else if (key.startsWith('document-')) {
+      const id = key.replace('document-', '');
+      setSelectedFolderId(null);
+      if (currentIds.projectId) {
+        await navigateWithFlush(`/${currentIds.projectId}/doc/${id}`);
+      }
     } else if (key.startsWith('asset-')) {
       const assetId = key.replace('asset-', '');
       setSelectedFolderId(null); // Clear folder selection when asset is selected
@@ -573,7 +635,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (!node || !node.key) return;
 
     const rawKey = String(node.key);
-    let type: 'project' | 'library' | 'folder' | 'asset' | null = null;
+    let type: 'project' | 'library' | 'folder' | 'asset' | 'document' | null = null;
     let id: string | null = null;
 
     if (rawKey.startsWith('folder-')) {
@@ -582,6 +644,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } else if (rawKey.startsWith('library-')) {
       type = 'library';
       id = rawKey.replace('library-', '');
+    } else if (rawKey.startsWith('document-')) {
+      type = 'document';
+      id = rawKey.replace('document-', '');
     } else if (rawKey.startsWith('asset-')) {
       type = 'asset';
       id = rawKey.replace('asset-', '');
@@ -599,7 +664,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   // Context menu handlers
-  const handleContextMenu = (e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
+  const handleContextMenu = (e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset' | 'document', id: string) => {
     e.preventDefault();
     e.stopPropagation();
     // Get the element that triggered the context menu
@@ -611,6 +676,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     currentIds,
     folders,
     libraries,
+    documents,
     {
       router,
       userRole,
@@ -702,6 +768,48 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [movingLibraryId, targetFolderId, useIndependentLibrary, libraries, supabase, currentIds.projectId, queryClient, expandFolder]);
 
+  const openMoveDocument = useCallback((documentId: string) => {
+    if (userRole !== 'admin' && userRole !== 'editor') return;
+    setMovingDocumentId(documentId);
+  }, [userRole]);
+
+  const handleConfirmMoveDocument = useCallback(async (folderId: string | null) => {
+    if (!movingDocumentId) return;
+    setIsMovingDocument(true);
+    try {
+      await moveDocument(supabase, movingDocumentId, { folderId });
+      if (currentIds.projectId) {
+        void broadcastDocumentUpdated(supabase, {
+          documentId: movingDocumentId,
+          projectId: currentIds.projectId,
+          action: 'move',
+        });
+        await queryClient.invalidateQueries({ queryKey: ['documents', currentIds.projectId] });
+      }
+      expandFolder(folderId);
+      showSuccessToast('Document moved successfully');
+      setMovingDocumentId(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to move document';
+      setError(msg);
+      showErrorToast(msg);
+    } finally {
+      setIsMovingDocument(false);
+    }
+  }, [movingDocumentId, supabase, currentIds.projectId, queryClient, expandFolder]);
+
+  const handleDocumentCreated = useCallback(async (documentId: string) => {
+    closeDocumentModal();
+    const createdFolderId = selectedFolderId;
+    setSelectedFolderId(null);
+    if (currentIds.projectId) {
+      await flushOpenDocumentEditor();
+      await queryClient.invalidateQueries({ queryKey: ['documents', currentIds.projectId] });
+      expandFolder(createdFolderId);
+      router.push(`/${currentIds.projectId}/doc/${documentId}`);
+    }
+  }, [closeDocumentModal, selectedFolderId, currentIds.projectId, queryClient, expandFolder, router]);
+
   const movingLibrary = useMemo(
     () => libraries.find((lib) => lib.id === movingLibraryId) ?? null,
     [libraries, movingLibraryId]
@@ -758,6 +866,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     fetchAssets,
     onProjectDeleteViaAPI: handleProjectDeleteViaAPI,
     openMoveLibrary,
+    openMoveDocument,
+    startInlineRename: (key: string) => setEditingKey(key),
     userRole,
     requestDeleteConfirm: ({ title, content, onConfirm }) => {
       setDeleteConfirmState({
@@ -880,6 +990,17 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // selectedFolderId is already set when button is clicked
     setSelectedFolderId(null);
     openNewLibrary();
+  };
+
+  const handleCreateDocument = () => {
+    setShowAddMenu(false);
+    if (!currentIds.projectId) {
+      setError('Please select a project first');
+      return;
+    }
+    // New documents created from the top add button land at the project root.
+    setSelectedFolderId(null);
+    openNewDocument();
   };
 
   const handleLogoClick = () => {
@@ -1116,6 +1237,27 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onCreated={handleFolderCreated}
       />
 
+      <NewDocumentModal
+        open={showDocumentModal}
+        onClose={closeDocumentModal}
+        projectId={currentIds.projectId || ''}
+        folderId={selectedFolderId}
+        onCreated={handleDocumentCreated}
+      />
+
+      <MoveDocumentModal
+        key={movingDocumentId ?? 'none'}
+        open={!!movingDocumentId}
+        folders={folders}
+        currentFolderId={documents.find((d) => d.id === movingDocumentId)?.folder_id ?? null}
+        submitting={isMovingDocument}
+        onClose={() => {
+          if (isMovingDocument) return;
+          setMovingDocumentId(null);
+        }}
+        onConfirm={handleConfirmMoveDocument}
+      />
+
       {editingFolderId && (
         <EditFolderModal
           open={showEditFolderModal}
@@ -1151,16 +1293,23 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         open={showAddMenu}
         anchorElement={addButtonRef}
         onClose={() => setShowAddMenu(false)}
-        onCreateFolder={handleCreateFolder}
-        onCreateLibrary={handleCreateLibrary}
-        onGenerateFromDocument={() => {
-          setShowAddMenu(false);
-          if (!currentIds.projectId) {
-            setError('Please select a project first');
-            return;
-          }
-          router.push(`/${currentIds.projectId}/design-upload`);
-        }}
+        onCreateFolder={userRole === 'admin' ? handleCreateFolder : undefined}
+        onCreateLibrary={userRole === 'admin' ? handleCreateLibrary : undefined}
+        onCreateDocument={
+          userRole === 'admin' || userRole === 'editor' ? handleCreateDocument : undefined
+        }
+        onGenerateFromDocument={
+          userRole === 'admin'
+            ? () => {
+                setShowAddMenu(false);
+                if (!currentIds.projectId) {
+                  setError('Please select a project first');
+                  return;
+                }
+                router.push(`/${currentIds.projectId}/design-upload`);
+              }
+            : undefined
+        }
       />
 
       {contextMenu && (

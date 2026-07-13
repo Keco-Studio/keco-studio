@@ -8,6 +8,8 @@ import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import type { SidebarContextMenuState } from './useSidebarContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
 import { deleteFolder } from '@/lib/services/folderService';
+import { deleteDocument } from '@/lib/services/documentService';
+import { broadcastDocumentUpdated } from '@/lib/documents/documentBroadcast';
 import {
   invalidateFolderData,
   invalidateLibraryAssetsData,
@@ -35,6 +37,7 @@ export type UseSidebarContextMenuActionsParams = {
     libraryId: string | null;
     folderId: string | null;
     assetId: string | null;
+    documentId: string | null;
   };
   libraries: Library[];
   setError: (msg: string | null) => void;
@@ -42,6 +45,8 @@ export type UseSidebarContextMenuActionsParams = {
   fetchAssets: (libraryId: string | null | undefined) => Promise<void>;
   onProjectDeleteViaAPI: (projectId: string) => void | Promise<void>;
   openMoveLibrary: (libraryId: string) => void;
+  openMoveDocument: (documentId: string) => void;
+  startInlineRename: (key: string) => void;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   requestDeleteConfirm: (options: {
     title: string;
@@ -75,6 +80,8 @@ export function useSidebarContextMenuActions({
   fetchAssets,
   onProjectDeleteViaAPI,
   openMoveLibrary,
+  openMoveDocument,
+  startInlineRename,
   userRole,
   requestDeleteConfirm,
 }: UseSidebarContextMenuActionsParams) {
@@ -107,6 +114,10 @@ export function useSidebarContextMenuActions({
           openEditAsset(contextMenu.id);
           closeContextMenu();
           return;
+        } else if (contextMenu.type === 'document') {
+          startInlineRename(`document-${contextMenu.id}`);
+          closeContextMenu();
+          return;
         }
       }
 
@@ -129,6 +140,15 @@ export function useSidebarContextMenuActions({
             return;
           }
           openMoveLibrary(contextMenu.id);
+          closeContextMenu();
+          return;
+        }
+        if (contextMenu.type === 'document') {
+          if (userRole !== 'admin' && userRole !== 'editor') {
+            closeContextMenu();
+            return;
+          }
+          openMoveDocument(contextMenu.id);
           closeContextMenu();
           return;
         }
@@ -236,6 +256,35 @@ export function useSidebarContextMenuActions({
           });
           closeContextMenu();
           return;
+        } else if (contextMenu.type === 'document') {
+          requestDeleteConfirm({
+            title: 'Confirm deletion',
+            content: 'Delete this document?',
+            onConfirm: () => {
+              const documentId = contextMenu.id;
+              return deleteDocument(supabase, documentId)
+                .then(async () => {
+                  if (currentIds.projectId) {
+                    void broadcastDocumentUpdated(supabase, {
+                      documentId,
+                      projectId: currentIds.projectId,
+                      action: 'delete',
+                    });
+                    await queryClient.invalidateQueries({
+                      queryKey: ['documents', currentIds.projectId],
+                    });
+                  }
+                  if (currentIds.documentId === documentId && currentIds.projectId) {
+                    router.push(`/${currentIds.projectId}`);
+                  }
+                })
+                .catch((err: unknown) => {
+                  setError(err instanceof Error ? err.message : 'Failed to delete document');
+                });
+            },
+          });
+          closeContextMenu();
+          return;
         } else if (contextMenu.type === 'asset') {
           requestDeleteConfirm({
             title: 'Confirm deletion',
@@ -295,12 +344,15 @@ export function useSidebarContextMenuActions({
       currentIds.libraryId,
       currentIds.folderId,
       currentIds.assetId,
+      currentIds.documentId,
       libraries,
       setError,
       assets,
       fetchAssets,
       onProjectDeleteViaAPI,
       openMoveLibrary,
+      openMoveDocument,
+      startInlineRename,
       userRole,
       requestDeleteConfirm,
     ]

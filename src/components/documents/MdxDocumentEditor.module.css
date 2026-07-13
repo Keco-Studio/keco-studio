@@ -1,0 +1,22 @@
+/* Theme MDXEditor to match the antd 5 dashboard tokens. */
+.editor {
+  --accentBase: var(--ant-color-primary, #1677ff);
+  --accentBorder: var(--ant-color-primary-border, #91caff);
+  font-family: inherit;
+  background: var(--ant-color-bg-container, #ffffff);
+  border: 1px solid var(--ant-color-border, #d9d9d9);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.contentEditable {
+  min-height: 60vh;
+  padding: 16px 24px;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.contentEditable:focus {
+  outline: none;
+}

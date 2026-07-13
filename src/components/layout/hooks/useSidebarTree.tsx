@@ -5,6 +5,7 @@ import { useMemo, type MouseEvent } from 'react';
 import type { DataNode } from 'antd/es/tree';
 import type { Folder } from '@/lib/services/folderService';
 import type { Library } from '@/lib/services/libraryService';
+import type { DocumentSummary } from '@/lib/services/documentService';
 import { truncateText } from '@/lib/utils/truncateText';
 import libraryBookIcon from '@/assets/images/LibraryBookIcon.svg';
 import FolderAddLibIcon from '@/assets/images/FolderAddLibIcon.svg';
@@ -16,6 +17,7 @@ export type SidebarCurrentIds = {
   libraryId: string | null;
   folderId: string | null;
   assetId: string | null;
+  documentId: string | null;
   isLibraryPage: boolean;
   isPredefinePage: boolean;
 };
@@ -23,7 +25,7 @@ export type SidebarCurrentIds = {
 export type UseSidebarTreeContext = {
   router: { push: (path: string) => void };
   userRole: 'admin' | 'editor' | 'viewer' | null;
-  onContextMenu: (e: MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => void;
+  onContextMenu: (e: MouseEvent, type: 'project' | 'library' | 'folder' | 'asset' | 'document', id: string) => void;
   openNewLibrary: () => void;
   setSelectedFolderId: (id: string | null) => void;
   setError: (msg: string | null) => void;
@@ -38,6 +40,7 @@ export function useSidebarTree(
   currentIds: SidebarCurrentIds,
   folders: Folder[],
   libraries: Library[],
+  documents: DocumentSummary[],
   context: UseSidebarTreeContext,
   sidebarWidth?: number
 ): { treeData: DataNode[]; selectedKeys: string[] } {
@@ -56,6 +59,7 @@ export function useSidebarTree(
 
     const projectFolders = folders.filter((f) => f.project_id === currentIds.projectId);
     const projectLibraries = libraries.filter((lib) => lib.project_id === currentIds.projectId);
+    const projectDocuments = documents.filter((doc) => doc.project_id === currentIds.projectId);
 
     // Estimate visible characters based on sidebar width.
     // Example: around 300px shows ~15 chars; around 400px shows ~20 chars.
@@ -78,6 +82,53 @@ export function useSidebarTree(
       }
       librariesByFolder.get(folderId)!.push(lib);
     });
+
+    const documentsByFolder = new Map<string, DocumentSummary[]>();
+    projectDocuments.forEach((doc) => {
+      const folderId = doc.folder_id ? String(doc.folder_id) : '';
+      if (!documentsByFolder.has(folderId)) {
+        documentsByFolder.set(folderId, []);
+      }
+      documentsByFolder.get(folderId)!.push(doc);
+    });
+
+    // Build a document leaf node. Documents sit next to libraries in the tree.
+    const buildDocumentNode = (doc: DocumentSummary, isUnderFolder: boolean): DataNode => {
+      const docKey = `document-${doc.id}`;
+      const canRename = userRole === 'admin' || userRole === 'editor';
+      return {
+        title: (
+          <div
+            className={`${styles.itemRow} ${styles.libraryRow} ${isUnderFolder ? '' : styles.rootLibraryRow}`}
+            data-library-under-folder={isUnderFolder ? true : undefined}
+            onContextMenu={(e) => handleContextMenu(e, 'document', doc.id)}
+          >
+            <div className={styles.itemMain}>
+              <div className={styles.libraryIconContainer}>
+                <Image src={libraryBookIcon} alt="Document" width={24} height={24} className="icon-24" />
+              </div>
+              <span
+                className={styles.itemText}
+                title={doc.name}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (canRename) setEditingKey(docKey);
+                }}
+              >
+                {truncateText(doc.name, computeMaxChars(15))}
+              </span>
+            </div>
+          </div>
+        ),
+        key: docKey,
+        isLeaf: true,
+        children: undefined,
+        _titleStr: doc.name,
+        _nodeType: 'document',
+        _isLibraryUnderFolder: isUnderFolder,
+      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' | 'document'; _isLibraryUnderFolder: boolean };
+    };
 
     const buildFolderNode = (folder: Folder): DataNode => {
       const folderLibraries = librariesByFolder.get(String(folder.id)) || [];
@@ -117,7 +168,12 @@ export function useSidebarTree(
         } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' };
       });
 
-      const hasNoLibraries = folderLibraries.length === 0;
+      const folderDocuments = documentsByFolder.get(String(folder.id)) || [];
+      folderDocuments.forEach((doc) => {
+        children.push(buildDocumentNode(doc, true));
+      });
+
+      const hasNoLibraries = folderLibraries.length === 0 && folderDocuments.length === 0;
       const folderKey = `folder-${folder.id}`;
       return {
         title: (
@@ -172,8 +228,8 @@ export function useSidebarTree(
         children: children.length > 0 ? children : undefined,
         _titleStr: folder.name,
         _nodeType: 'folder',
-        _hasNoLibraries: folderLibraries.length === 0,
-      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder'; _hasNoLibraries?: boolean };
+        _hasNoLibraries: hasNoLibraries,
+      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' | 'document'; _hasNoLibraries?: boolean };
     };
 
     const result: DataNode[] = [];
@@ -215,7 +271,12 @@ export function useSidebarTree(
         _titleStr: lib.name,
         _nodeType: 'library',
         _isLibraryUnderFolder: false,
-      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' });
+      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' | 'document' });
+    });
+
+    const rootDocuments = documentsByFolder.get('') || [];
+    rootDocuments.forEach((doc) => {
+      result.push(buildDocumentNode(doc, false));
     });
 
     return result;
@@ -227,6 +288,7 @@ export function useSidebarTree(
     currentIds.isPredefinePage,
     folders,
     libraries,
+    documents,
     handleContextMenu,
     router,
     userRole,
@@ -240,6 +302,10 @@ export function useSidebarTree(
 
   const selectedKeys = useMemo(() => {
     const keys: string[] = [];
+    if (currentIds.documentId) {
+      keys.push(`document-${currentIds.documentId}`);
+      return keys;
+    }
     if (currentIds.folderId && !currentIds.libraryId) {
       keys.push(`folder-${currentIds.folderId}`);
     }
@@ -260,6 +326,7 @@ export function useSidebarTree(
     currentIds.folderId,
     currentIds.libraryId,
     currentIds.assetId,
+    currentIds.documentId,
     currentIds.isLibraryPage,
     currentIds.isPredefinePage,
   ]);

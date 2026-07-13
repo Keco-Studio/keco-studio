@@ -1,0 +1,87 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px 32px;
+  max-width: 960px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.savedTag {
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.45));
+}
+
+.savingTag {
+  color: var(--ant-color-primary, #1677ff);
+}
+
+.errorTag {
+  color: var(--ant-color-error, #ff4d4f);
+}
+
+.viewerTag {
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--ant-color-fill-tertiary, rgba(0, 0, 0, 0.04));
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.45));
+}
+
+.staleBanner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--ant-color-warning-bg, #fffbe6);
+  border: 1px solid var(--ant-color-warning-border, #ffe58f);
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+  font-size: 13px;
+}
+
+.reloadButton {
+  margin-left: auto;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--ant-color-primary, #1677ff);
+  background: transparent;
+  color: var(--ant-color-primary, #1677ff);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.reloadButton:hover {
+  background: var(--ant-color-primary-bg, #e6f4ff);
+}
+
+.loading,
+.error {
+  padding: 48px 32px;
+  text-align: center;
+  color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.45));
+}
