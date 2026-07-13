@@ -626,7 +626,7 @@ export async function verifyLibraryUpdatePermission(
   
   // Get user's role in the project
   const { role } = await getUserProjectRole(supabase, library.project_id, currentUserId);
-  
+
   const canUpdate = role === 'admin' || (options?.allowEditor === true && role === 'editor');
   if (!canUpdate) {
     throw new AuthorizationError(
