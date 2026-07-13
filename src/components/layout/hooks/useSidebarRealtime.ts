@@ -10,6 +10,7 @@ import {
   invalidateLibraryData,
   invalidateProjectData,
 } from '@/lib/queryInvalidation';
+import { DOCUMENT_UPDATED_EVENT } from '@/lib/documents/documentBroadcast';
 
 export type UseSidebarRealtimeParams = {
   supabase: SupabaseClient;
@@ -170,6 +171,16 @@ export function useSidebarRealtime({
           if (payload.new && 'id' in payload.new) {
             await invalidateFolderData(queryClient, { folderId: payload.new.id });
           }
+        }
+      )
+      // Documents are broadcast-only (not in the realtime publication, GitHub
+      // #208). Piggyback their change notifications on this existing channel so
+      // the sidebar refreshes without adding a sixth channel (GitHub #216).
+      .on(
+        'broadcast',
+        { event: DOCUMENT_UPDATED_EVENT },
+        () => {
+          void queryClient.invalidateQueries({ queryKey: ['documents', currentProjectId] });
         }
       )
       .subscribe((status, err) => {

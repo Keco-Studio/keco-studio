@@ -26,6 +26,7 @@ export function useSidebarModals() {
   const [editingAssetId, setEditingAssetId] = useState<string | null>(null);
   const [showImportScriptModal, setShowImportScriptModal] = useState(false);
   const [importingScriptFolderId, setImportingScriptFolderId] = useState<string | null>(null);
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
 
   const openNewProject = useCallback(() => setShowProjectModal(true), []);
   const closeProjectModal = useCallback(() => setShowProjectModal(false), []);
@@ -105,6 +106,9 @@ export function useSidebarModals() {
     setImportingScriptFolderId(null);
   }, []);
 
+  const openNewDocument = useCallback(() => setShowDocumentModal(true), []);
+  const closeDocumentModal = useCallback(() => setShowDocumentModal(false), []);
+
   return {
     showProjectModal,
     showEditProjectModal,
@@ -147,5 +151,8 @@ export function useSidebarModals() {
     importingScriptFolderId,
     openImportScript,
     closeImportScriptModal,
+    showDocumentModal,
+    openNewDocument,
+    closeDocumentModal,
   };
 }

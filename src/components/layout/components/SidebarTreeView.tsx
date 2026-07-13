@@ -14,7 +14,7 @@ import styles from '../Sidebar.module.css';
 
 type SidebarTreeNodeMeta = {
   _titleStr?: string;
-  _nodeType?: 'library' | 'folder';
+  _nodeType?: 'library' | 'folder' | 'document';
   _hasNoLibraries?: boolean;
   _isLibraryUnderFolder?: boolean;
 };
@@ -52,7 +52,7 @@ function InlineEditRow({
 }: {
   nodeKey: string;
   initialValue: string;
-  nodeType: 'library' | 'folder';
+  nodeType: 'library' | 'folder' | 'document';
   hasNoLibraries?: boolean;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   onSave: (key: string, newName: string) => void | Promise<void>;
