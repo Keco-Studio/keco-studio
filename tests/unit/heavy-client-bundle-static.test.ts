@@ -16,6 +16,7 @@ describe('heavy client bundle boundaries', () => {
       { id: 'min', name: 'min', dataType: 'formula', formulaExpression: 'MIN(a,b,3)' },
       { id: 'max', name: 'max', dataType: 'formula', formulaExpression: 'MAX(a,b,3)' },
       { id: 'round', name: 'round', dataType: 'formula', formulaExpression: 'ROUND(1.23456,3)' },
+      { id: 'negativeRound', name: 'negativeRound', dataType: 'formula', formulaExpression: 'ROUND(-1.005,2)' },
     ];
 
     expect(computeFormulaValuesForRow(fields, { a: 6, b: 2 })).toMatchObject({
@@ -25,6 +26,7 @@ describe('heavy client bundle boundaries', () => {
       min: 2,
       max: 6,
       round: 1.235,
+      negativeRound: -1.01,
     });
   });
 

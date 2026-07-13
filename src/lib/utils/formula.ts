@@ -20,6 +20,26 @@ const OP_PRECEDENCE: Record<'+' | '-' | '*' | '/', number> = {
 
 const FORMULA_DECIMAL_DIGITS = 4;
 
+function roundToDigits(value: number, digits: number): number | null {
+  if (
+    !Number.isFinite(value) ||
+    !Number.isInteger(digits) ||
+    digits < 0 ||
+    digits > 15
+  ) {
+    return null;
+  }
+
+  const factor = 10 ** digits;
+  const adjusted = value + Math.sign(value) * Number.EPSILON;
+  const rounded = Math.round(adjusted * factor) / factor;
+  return Number.isFinite(rounded) ? rounded : null;
+}
+
+function sumNumbers(values: number[]): number {
+  return values.reduce((total, value) => total + value, 0);
+}
+
 type ServerFormulaHelper = {
   IF: (condition: any, whenTrue: any, whenFalse: any) => any;
   SUM: (...args: any[]) => number;
@@ -40,8 +60,7 @@ const compiledFormulaCache = new Map<string, CompiledServerFormula>();
 
 function roundFormulaNumber(n: number): number {
   if (!Number.isFinite(n)) return n;
-  const factor = 10 ** FORMULA_DECIMAL_DIGITS;
-  return Math.round(n * factor) / factor;
+  return roundToDigits(n, FORMULA_DECIMAL_DIGITS) ?? n;
 }
 
 function extractIdentifiersFromFormulaExpression(
@@ -417,14 +436,14 @@ function evaluateFormulaForRowInternal(
             .map((v) => Number(v))
             .filter((n) => Number.isFinite(n));
           if (nums.length === 0) return 0;
-          return nums.reduce((total, value) => total + value, 0);
+          return sumNumbers(nums);
         })(),
       AVERAGE: (...args: any[]) => {
         const nums = args
           .map((v) => Number(v))
           .filter((n) => Number.isFinite(n));
         if (nums.length === 0) return null;
-        return nums.reduce((total, value) => total + value, 0) / nums.length;
+        return sumNumbers(nums) / nums.length;
       },
       MIN: (...args: any[]) => {
         const nums = args
@@ -441,9 +460,7 @@ function evaluateFormulaForRowInternal(
       ROUND: (value: any, digits: any) => {
         const n = Number(value);
         const d = Number(digits);
-        if (!Number.isFinite(n) || !Number.isInteger(d)) return null;
-        const factor = 10 ** d;
-        return Math.round(n * factor) / factor;
+        return roundToDigits(n, d);
       },
       COL: (name: string) => {
         const field = propertyByName.get(name);
