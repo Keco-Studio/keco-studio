@@ -1,4 +1,4 @@
-import type { QueryClient } from '@tanstack/react-query';
+import { isCancelledError, type QueryClient } from '@tanstack/react-query';
 import { queryKeys } from '@/lib/utils/queryKeys';
 
 export const sidebarAssetsKey = (libraryId: string) =>
@@ -112,36 +112,44 @@ export async function invalidateLibraryData(
   }
 ) {
   if (options.projectId) {
-    await queryClient.invalidateQueries({
+    await runLibraryQueryRefresh(() => queryClient.invalidateQueries({
       queryKey: queryKeys.projectLibraries(options.projectId),
-    });
-    await queryClient.invalidateQueries({
+    }));
+    await runLibraryQueryRefresh(() => queryClient.invalidateQueries({
       queryKey: ['folders-libraries', options.projectId],
-    });
+    }));
     if (options.refetchActiveFoldersLibraries) {
-      await queryClient.refetchQueries({
+      await runLibraryQueryRefresh(() => queryClient.refetchQueries({
         queryKey: ['folders-libraries', options.projectId],
         type: 'active',
-      });
+      }));
     }
   }
 
   if (options.folderId) {
-    await queryClient.invalidateQueries({
+    await runLibraryQueryRefresh(() => queryClient.invalidateQueries({
       queryKey: queryKeys.folderLibraries(options.folderId),
-    });
+    }));
   }
 
   if (options.libraryId) {
-    await queryClient.invalidateQueries({
+    await runLibraryQueryRefresh(() => queryClient.invalidateQueries({
       queryKey: queryKeys.library(options.libraryId),
-    });
-    await queryClient.invalidateQueries({
+    }));
+    await runLibraryQueryRefresh(() => queryClient.invalidateQueries({
       queryKey: queryKeys.librarySummary(options.libraryId),
-    });
-    await queryClient.invalidateQueries({
+    }));
+    await runLibraryQueryRefresh(() => queryClient.invalidateQueries({
       queryKey: sidebarAssetsKey(options.libraryId),
-    });
+    }));
+  }
+}
+
+async function runLibraryQueryRefresh(refresh: () => Promise<unknown>): Promise<void> {
+  try {
+    await refresh();
+  } catch (error) {
+    if (!isCancelledError(error)) throw error;
   }
 }
 
