@@ -10,7 +10,12 @@ import {
   invalidateLibraryData,
   invalidateProjectData,
 } from '@/lib/queryInvalidation';
-import { DOCUMENT_UPDATED_EVENT } from '@/lib/documents/documentBroadcast';
+import {
+  DOCUMENT_UPDATED_EVENT,
+  projectSidebarTopic,
+  type DocumentUpdatedPayload,
+} from '@/lib/documents/documentBroadcast';
+import { queryKeys } from '@/lib/utils/queryKeys';
 
 export type UseSidebarRealtimeParams = {
   supabase: SupabaseClient;
@@ -137,7 +142,9 @@ export function useSidebarRealtime({
     if (!currentProjectId || !userProfile) return;
 
     const foldersChannel = supabase
-      .channel(`folders:project:${currentProjectId}`)
+      // Single source of truth for the topic string, shared with the broadcast
+      // sender (documentBroadcast.projectSidebarTopic).
+      .channel(projectSidebarTopic(currentProjectId))
       .on(
         'postgres_changes',
         {
@@ -168,8 +175,19 @@ export function useSidebarRealtime({
       .on(
         'broadcast',
         { event: DOCUMENT_UPDATED_EVENT },
-        () => {
-          void queryClient.invalidateQueries({ queryKey: ['documents', currentProjectId] });
+        (message) => {
+          const payload = message.payload as DocumentUpdatedPayload | undefined;
+          // Always refresh the sidebar tree (create/rename/move/delete/save).
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.documents(currentProjectId),
+          });
+          // For content saves and renames also refresh the OPEN document so a
+          // remote body / renamed title does not keep showing stale values.
+          if (payload?.documentId) {
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.document(payload.documentId),
+            });
+          }
         }
       )
       .subscribe((status, err) => {

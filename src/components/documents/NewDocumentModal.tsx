@@ -14,7 +14,7 @@ type NewDocumentModalProps = {
   projectId: string;
   folderId?: string | null;
   onClose: () => void;
-  onCreated: (documentId: string) => void;
+  onCreated: (documentId: string) => void | Promise<void>;
 };
 
 export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated }: NewDocumentModalProps) {
@@ -30,6 +30,7 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
   if (!mounted) return null;
 
   const handleSubmit = async () => {
+    if (submitting) return;
     const trimmed = name.trim();
     if (!trimmed) {
       setError('Document name is required');
@@ -50,7 +51,8 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
         name: trimmed,
         folderId: folderId || null,
       });
-      onCreated(doc.id);
+      // Await so the caller can finish navigation/invalidation before we close.
+      await onCreated(doc.id);
       setName('');
       onClose();
     } catch (e: any) {
@@ -80,8 +82,8 @@ export function NewDocumentModal({ open, projectId, folderId, onClose, onCreated
             onChange={(e) => setName(e.target.value)}
             placeholder="Enter document name"
             onKeyDown={(e) => {
-              if (e.key === 'Enter') {
-                handleSubmit();
+              if (e.key === 'Enter' && !submitting) {
+                void handleSubmit();
               }
             }}
           />

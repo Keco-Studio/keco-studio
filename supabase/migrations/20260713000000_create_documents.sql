@@ -5,10 +5,13 @@
 -- old shared_documents table allowed NULL project_id, which left legacy rows
 -- inaccessible under RLS (GitHub issue #172). We never repeat that here.
 --
--- The dead shared_documents table (jsonb/TipTap era, GitHub #178/#180) is dropped
--- rather than reshaped, and documents are deliberately NOT added to the
--- supabase_realtime publication (GitHub #208): sidebar/live updates ride a
--- broadcast event instead of postgres_changes.
+-- Retiring the dead shared_documents table is intentionally a SEPARATE, guarded
+-- migration (20260713010000_retire_shared_documents.sql) so table creation and a
+-- destructive drop can be reviewed and reverted independently.
+--
+-- documents are deliberately NOT added to the supabase_realtime publication
+-- (GitHub #208): sidebar/live updates ride a broadcast event instead of
+-- postgres_changes.
 
 create extension if not exists "pgcrypto";
 
@@ -51,6 +54,50 @@ create trigger trg_documents_updated_at
 before update on public.documents
 for each row
 execute procedure public.update_documents_updated_at();
+
+-- ============================================================================
+-- Cross-project integrity guard.
+--
+-- project_id and folder_id are independent foreign keys. Without this guard a
+-- client could attach a document to a folder that lives in a DIFFERENT project,
+-- silently breaking project isolation. Enforce at the database so it holds
+-- regardless of which code path performs the write (service, SQL, backfill).
+-- ============================================================================
+
+create or replace function public.enforce_document_folder_project()
+returns trigger as $$
+declare
+  v_folder_project uuid;
+begin
+  if new.folder_id is null then
+    return new;
+  end if;
+
+  select project_id into v_folder_project
+  from public.folders
+  where id = new.folder_id;
+
+  if v_folder_project is null then
+    raise exception 'folder % does not exist', new.folder_id
+      using errcode = 'foreign_key_violation';
+  end if;
+
+  if v_folder_project <> new.project_id then
+    raise exception
+      'folder % belongs to project %, not document project %',
+      new.folder_id, v_folder_project, new.project_id
+      using errcode = 'check_violation';
+  end if;
+
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_documents_folder_project on public.documents;
+create trigger trg_documents_folder_project
+before insert or update of folder_id, project_id on public.documents
+for each row
+execute procedure public.enforce_document_folder_project();
 
 -- ============================================================================
 -- RLS: mirror the project-membership model used across the schema.
@@ -114,25 +161,3 @@ comment on policy "documents_delete_policy" on public.documents is
 -- documents is intentionally NOT added to the supabase_realtime publication
 -- (GitHub #208). Live sidebar refresh + stale-copy detection use a broadcast
 -- event ("document-updated") on an existing project-scoped channel instead.
-
--- ============================================================================
--- Drop the dead shared_documents table (GitHub #178/#180). It is superseded by
--- documents and is unused by application code. Remove it from the realtime
--- publication first so dropping the table cannot leave a dangling publication
--- entry.
--- ============================================================================
-
-do $$
-begin
-  if exists (
-    select 1
-    from pg_publication_tables
-    where pubname = 'supabase_realtime'
-      and schemaname = 'public'
-      and tablename = 'shared_documents'
-  ) then
-    execute 'alter publication supabase_realtime drop table public.shared_documents';
-  end if;
-end $$;
-
-drop table if exists public.shared_documents cascade;

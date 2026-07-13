@@ -93,6 +93,22 @@ export const queryKeys = {
    */
   asset: (id: string) => ['asset', id] as const,
   
+  // ========== Documents ==========
+
+  /**
+   * All documents in a project (sidebar tree summaries)
+   * Returns: DocumentSummary[]
+   */
+  documents: (projectId: string) =>
+    ['documents', projectId] as const,
+
+  /**
+   * Single document by ID (with Markdown content)
+   * Returns: DocumentRecord
+   */
+  document: (id: string) =>
+    ['document', id] as const,
+
   // ========== Collaboration ==========
   
   /**

@@ -5,7 +5,7 @@ import path from 'node:path';
 const repoRoot = process.cwd();
 const migrationPath = path.join(
   repoRoot,
-  'supabase/migrations/20260713000000_create_documents_and_drop_shared_documents.sql'
+  'supabase/migrations/20260713000000_create_documents.sql'
 );
 
 describe('documents table + RLS migration (Phase 1)', () => {
@@ -37,8 +37,17 @@ describe('documents table + RLS migration (Phase 1)', () => {
     );
   });
 
-  it('drops the dead shared_documents table and never re-adds documents to realtime', () => {
-    expect(migration).toContain('drop table if exists public.shared_documents');
+  it('enforces cross-project integrity between folder_id and project_id', () => {
+    expect(migration).toContain('enforce_document_folder_project');
+    expect(migration).toContain('trg_documents_folder_project');
+    expect(migration).toMatch(/before insert or update of folder_id, project_id/i);
+  });
+
+  it('never re-adds documents to the realtime publication', () => {
     expect(migration).not.toMatch(/alter publication supabase_realtime add table public\.documents/i);
+  });
+
+  it('does NOT drop shared_documents (that is a separate, guarded migration)', () => {
+    expect(migration).not.toMatch(/drop table[^;]*shared_documents/i);
   });
 });
