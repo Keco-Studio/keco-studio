@@ -107,18 +107,18 @@ async function createLibrarySnapshot(
   libraryId: string,
   currentAssetsFromClient?: AssetRow[]
 ): Promise<any> {
-  const library = await getLibrary(supabase, libraryId);
+  const [library, schema, assets] = await Promise.all([
+    getLibrary(supabase, libraryId),
+    getLibrarySchema(supabase, libraryId),
+    currentAssetsFromClient?.length
+      ? Promise.resolve(currentAssetsFromClient)
+      : getLibraryAssetsWithProperties(supabase, libraryId),
+  ]);
   if (!library) {
     throw new Error('Library not found');
   }
 
-  const schema = await getLibrarySchema(supabase, libraryId);
-
-  const assets: AssetRow[] = currentAssetsFromClient?.length
-    ? currentAssetsFromClient
-    : await getLibraryAssetsWithProperties(supabase, libraryId);
-
-  const snapshotAssets = assets.map((asset) => ({
+  const snapshotAssets = (assets as AssetRow[]).map((asset) => ({
     ...asset,
     createdAt: asset.created_at || new Date().toISOString(),
     rowIndex: asset.rowIndex ?? null,

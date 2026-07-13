@@ -564,7 +564,8 @@ export async function verifyProjectDeletionPermission(
 export async function verifyLibraryUpdatePermission(
   supabase: SupabaseClient,
   libraryId: string,
-  userId?: string
+  userId?: string,
+  options?: { allowEditor?: boolean }
 ): Promise<void> {
   const currentUserId = userId || await getCurrentUserId(supabase);
   
@@ -582,9 +583,13 @@ export async function verifyLibraryUpdatePermission(
   // Get user's role in the project
   const role = await getUserProjectRole(supabase, library.project_id, currentUserId);
   
-  // Only admin can update library
-  if (role !== 'admin') {
-    throw new AuthorizationError('Only admin users can update libraries');
+  const canUpdate = role === 'admin' || (options?.allowEditor === true && role === 'editor');
+  if (!canUpdate) {
+    throw new AuthorizationError(
+      options?.allowEditor
+        ? 'Only admin and editor users can update library content'
+        : 'Only admin users can update libraries'
+    );
   }
 }
 

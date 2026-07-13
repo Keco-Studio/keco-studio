@@ -494,6 +494,24 @@ export function createFormulaFieldByName(
   );
 }
 
+export function computeFormulaValueForField(
+  fields: FormulaEvaluableField[],
+  targetFieldId: string,
+  propertyValues: Record<string, any>,
+  fieldByName: ReadonlyMap<string, FormulaEvaluableField> = createFormulaFieldByName(fields)
+): any | null {
+  const targetField = fields.find((field) => field.id === targetFieldId);
+  if (!targetField || targetField.dataType !== 'formula') return null;
+
+  return evaluateFormulaForRowInternal(
+    targetField.formulaExpression ?? null,
+    fields,
+    propertyValues,
+    new Set([targetField.id]),
+    fieldByName
+  );
+}
+
 export function computeFormulaValuesForRow(
   fields: FormulaEvaluableField[],
   propertyValues: Record<string, any>,

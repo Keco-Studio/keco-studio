@@ -6,7 +6,7 @@ import {
   type CellReplacePreview,
   type CellReplaceSkip,
 } from '@/lib/utils/cellValueReplace';
-import { verifyAssetUpdatePermission } from '@/lib/services/authorizationService';
+import { verifyLibraryUpdatePermission } from '@/lib/services/authorizationService';
 import { syncReferencesForSourceChanges } from '@/lib/services/referenceSyncService';
 
 type ReplaceBody = {
@@ -225,46 +225,62 @@ export async function POST(req: Request) {
   }
 
   if (upserts.length > 0) {
-    const permissionCache = new Map<string, boolean>();
-    const denyReasonByAsset = new Map<string, string>();
-    const allowedUpserts: typeof upserts = [];
+    const libraryIdByAssetId = new Map(
+      targets
+        .filter((target): target is SearchRow & { library_id: string } => Boolean(target.library_id))
+        .map((target) => [target.asset_id, target.library_id])
+    );
+    const previewByCell = new Map(
+      previews.map((preview) => [`${preview.assetId}:${preview.fieldId}`, preview])
+    );
+    const libraryIds = [...new Set(
+      upserts
+        .map((row) => libraryIdByAssetId.get(row.asset_id))
+        .filter((libraryId): libraryId is string => Boolean(libraryId))
+    )];
+    const permissionByLibrary = new Map<string, { allowed: boolean; reason?: string }>();
 
-    for (const row of upserts) {
-      if (!permissionCache.has(row.asset_id)) {
-        try {
-          await verifyAssetUpdatePermission(supabase, row.asset_id, user.id);
-          permissionCache.set(row.asset_id, true);
-        } catch (err) {
-          const denyReason =
-            err instanceof Error ? err.message : 'No permission to edit';
-          permissionCache.set(row.asset_id, false);
-          denyReasonByAsset.set(row.asset_id, denyReason);
-          if (process.env.NODE_ENV !== 'production') {
-            console.warn(
-              '[cell-values/replace] permission denied for asset',
-              row.asset_id,
-              'user',
-              user.id,
-              denyReason
-            );
-          }
+    await Promise.all(libraryIds.map(async (libraryId) => {
+      try {
+        await verifyLibraryUpdatePermission(
+          supabase,
+          libraryId,
+          user.id,
+          { allowEditor: true }
+        );
+        permissionByLibrary.set(libraryId, { allowed: true });
+      } catch (err) {
+        const reason = err instanceof Error ? err.message : 'No permission to edit';
+        permissionByLibrary.set(libraryId, { allowed: false, reason });
+        if (process.env.NODE_ENV !== 'production') {
+          console.warn(
+            '[cell-values/replace] permission denied for library',
+            libraryId,
+            'user',
+            user.id,
+            reason
+          );
         }
       }
-      if (permissionCache.get(row.asset_id)) {
+    }));
+
+    const allowedUpserts: typeof upserts = [];
+    for (const row of upserts) {
+      const libraryId = libraryIdByAssetId.get(row.asset_id);
+      const permission = libraryId ? permissionByLibrary.get(libraryId) : undefined;
+      if (permission?.allowed) {
         allowedUpserts.push(row);
-      } else {
-        const preview = previews.find(
-          (p) => p.assetId === row.asset_id && p.fieldId === row.field_id
-        );
-        if (preview) {
-          skips.push({
-            assetId: row.asset_id,
-            fieldId: row.field_id,
-            fieldLabel: preview.fieldLabel,
-            reason:
-              denyReasonByAsset.get(row.asset_id) ?? 'No permission to edit',
-          });
-        }
+        continue;
+      }
+
+      const preview = previewByCell.get(`${row.asset_id}:${row.field_id}`);
+      if (preview) {
+        skips.push({
+          assetId: row.asset_id,
+          fieldId: row.field_id,
+          fieldLabel: preview.fieldLabel,
+          reason: permission?.reason ?? 'No permission to edit',
+        });
       }
     }
 
