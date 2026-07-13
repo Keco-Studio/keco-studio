@@ -34,6 +34,24 @@ interface TouchLibraryAssetEditUpdatedAtArgs {
   libraryId: string;
 }
 
+interface UpsertLibraryAssetValuesAndTouchArgs extends TouchLibraryAssetEditUpdatedAtArgs {
+  values: Record<string, unknown>;
+}
+
+export async function upsertLibraryAssetValuesAndTouch(
+  supabase: SupabaseRpcClient,
+  { assetId, libraryId, values }: UpsertLibraryAssetValuesAndTouchArgs
+): Promise<string | null> {
+  const { data, error } = await supabase.rpc('upsert_library_asset_values_and_touch', {
+    p_asset_id: assetId,
+    p_library_id: libraryId,
+    p_values: values,
+  });
+
+  if (error) throw error;
+  return (data as string | null) ?? null;
+}
+
 export async function touchLibraryAssetEditUpdatedAt(
   supabase: SupabaseRpcClient,
   { assetId, libraryId }: TouchLibraryAssetEditUpdatedAtArgs

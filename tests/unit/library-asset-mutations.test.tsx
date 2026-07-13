@@ -20,11 +20,16 @@ type SupabaseCall = {
 
 function createSupabaseFake() {
   const calls: SupabaseCall[] = [];
+  const rpcCalls: Array<{ name: string; args: Record<string, unknown> | undefined }> = [];
   let touchCounter = 0;
 
   const supabase = {
-    rpc: async (name: string) => {
-      if (name !== 'touch_library_asset_edit_updated_at') {
+    rpc: async (name: string, args?: Record<string, unknown>) => {
+      rpcCalls.push({ name, args });
+      if (
+        name !== 'touch_library_asset_edit_updated_at' &&
+        name !== 'upsert_library_asset_values_and_touch'
+      ) {
         return { data: null, error: new Error(`Unexpected rpc ${name}`) };
       }
       touchCounter += 1;
@@ -87,11 +92,74 @@ function createSupabaseFake() {
 
   return {
     calls,
+    rpcCalls,
     supabase: supabase as unknown as SupabaseClient,
   };
 }
 
 describe('useLibraryAssetMutations', () => {
+  it('persists a cell value and authoritative timestamp in one RPC round trip', async () => {
+    const { calls, rpcCalls, supabase } = createSupabaseFake();
+    const yDoc = new Y.Doc();
+    const yAssets = yDoc.getMap<Y.Map<unknown>>('assets');
+    const yAsset = new Y.Map<unknown>();
+    const yPropertyValues = new Y.Map<unknown>();
+    yPropertyValues.set('field-1', 'Old');
+    yAsset.set('name', 'Asset');
+    yAsset.set('propertyValues', yPropertyValues);
+    yAssets.set('asset-1', yAsset);
+
+    const broadcastCellUpdate = jest.fn<MutationHookArgs['realtime']['broadcastCellUpdate']>();
+    const mutations = createLibraryAssetMutations({
+      supabase,
+      queryClient: new QueryClient(),
+      libraryId: 'library-1',
+      projectId: 'project-1',
+      yDoc,
+      yAssets,
+      assetsRef: {
+        current: new Map<string, AssetRow>([
+          ['asset-1', {
+            id: 'asset-1',
+            libraryId: 'library-1',
+            name: 'Asset',
+            propertyValues: { 'field-1': 'Old' },
+          }],
+        ]),
+      },
+      pendingBatchInsertIdsRef: { current: new Set<string>() },
+      getFormulaFieldMeta: async () => [],
+      loadInitialData: async () => {},
+      realtimeConfig: {},
+      realtime: {
+        broadcastCellUpdate,
+        broadcastAssetCreate: async () => {},
+        broadcastAssetDelete: async () => {},
+        broadcastCellsBatchUpdate: async () => {},
+        broadcastRowOrderChange: async () => {},
+      },
+    });
+
+    await mutations.updateAssetField('asset-1', 'field-1', 'New');
+
+    expect(rpcCalls).toEqual([{
+      name: 'upsert_library_asset_values_and_touch',
+      args: {
+        p_asset_id: 'asset-1',
+        p_library_id: 'library-1',
+        p_values: { 'field-1': 'New' },
+      },
+    }]);
+    expect(calls.some((call) => call.table === 'library_asset_values')).toBe(false);
+    expect(broadcastCellUpdate).toHaveBeenCalledWith(
+      'asset-1',
+      'field-1',
+      'New',
+      'Old',
+      '2026-07-08T00:00:01.000Z'
+    );
+  });
+
   it('updates asset names through Yjs, Supabase, library updated_at, and realtime', async () => {
     const { calls, supabase } = createSupabaseFake();
     const yDoc = new Y.Doc();

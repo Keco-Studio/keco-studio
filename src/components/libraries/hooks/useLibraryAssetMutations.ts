@@ -4,7 +4,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AssetRow } from '@/lib/types/libraryAssets';
 import { applyBooleanFieldDefaults, getBooleanFieldIdsByLibraryId } from '@/lib/services/libraryAssetsService';
-import { touchLibraryAssetEditUpdatedAt, touchLibraryUpdatedAt } from '@/lib/library/updatedAt';
+import { touchLibraryUpdatedAt, upsertLibraryAssetValuesAndTouch } from '@/lib/library/updatedAt';
 import { syncReferencesAfterSourceChange } from '@/lib/library/referenceSync';
 import { computeFormulaValuesForRow } from '@/lib/utils/formula';
 import { serializeError } from '@/lib/utils/errorUtils';
@@ -190,24 +190,11 @@ export function createLibraryAssetMutations({
     });
 
     try {
-      const serverUpdatedAt = await touchLibraryAssetEditUpdatedAt(supabase, {
+      const serverUpdatedAt = await upsertLibraryAssetValuesAndTouch(supabase, {
         assetId,
         libraryId,
+        values: valuesToPersist,
       });
-
-      const upsertRows = Object.entries(valuesToPersist).map(([fieldKey, fieldValue]) => ({
-        asset_id: assetId,
-        field_id: fieldKey,
-        value_json: fieldValue,
-      }));
-
-      const { error } = await supabase
-        .from('library_asset_values')
-        .upsert(upsertRows, {
-          onConflict: 'asset_id,field_id',
-        });
-
-      if (error) throw error;
 
       await syncReferencesAfterSourceChange({
         supabase,
