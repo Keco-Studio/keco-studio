@@ -46,7 +46,7 @@ describe('single-path realtime delivery', () => {
     expect(compositionSource).toContain('optimisticUpdatesRef');
     expect(compositionSource).toContain('queuedUpdatesRef');
     expect(source).toContain('runtimeRef');
-    expect(source).toMatch(/\}, \[libraryId, supabase\]\);/);
+    expect(source).toMatch(/\}, \[channelRef, libraryId, runtimeRef, supabase\]\);/);
   });
 
   it('uses a forward migration to remove both library tables from the publication', () => {

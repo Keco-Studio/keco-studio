@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 import { useSupabase } from '@/lib/SupabaseContext';
 import type { CellUpdateEvent, OptimisticUpdate } from '@/lib/types/collaboration';
@@ -22,8 +22,9 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
   const broadcastDebounceRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const optimisticUpdatesRef = useRef<Map<string, OptimisticUpdate>>(new Map());
   const queuedUpdatesRef = useRef<CellUpdateEvent[]>([]);
-  const [connectionStatus, setConnectionStatus] =
-    useState<ConnectionStatus>('connecting');
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>(
+    config.libraryId ? 'connecting' : 'disconnected'
+  );
   const [optimisticUpdates, setOptimisticUpdates] =
     useState<Map<string, OptimisticUpdate>>(new Map());
   const [queuedUpdates, setQueuedUpdates] = useState<CellUpdateEvent[]>([]);
@@ -68,15 +69,24 @@ export function useRealtimeSubscription(config: RealtimeSubscriptionConfig) {
     setQueuedUpdates([]);
   }, []);
 
-  const runtimeRef = useRef<LibraryChannelRuntime>(null as unknown as LibraryChannelRuntime);
-  runtimeRef.current = {
+  const runtimeRef = useRef<LibraryChannelRuntime>({
     config,
     optimisticUpdatesRef,
     removeOptimisticUpdate,
     processQueuedUpdates,
     setConnectionStatus,
     broadcastDebounceRef,
-  };
+  });
+  useLayoutEffect(() => {
+    runtimeRef.current = {
+      config,
+      optimisticUpdatesRef,
+      removeOptimisticUpdate,
+      processQueuedUpdates,
+      setConnectionStatus,
+      broadcastDebounceRef,
+    };
+  }, [config, processQueuedUpdates, removeOptimisticUpdate]);
 
   useLibraryChannel({
     supabase,

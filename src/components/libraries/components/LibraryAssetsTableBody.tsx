@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useCallback, useState } from 'react';
 import Image from 'next/image';
 import { Checkbox } from 'antd';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { MediaFileMetadata } from '@/lib/services/mediaFileUploadService';
 import { getFirstUserColor } from '@/components/collaboration/StackedAvatars';
@@ -133,6 +134,16 @@ type LibraryAssetsTableBodyProps = {
   handleAddRowDirect: () => void;
 };
 
+function findVerticalScrollElement(element: HTMLElement): HTMLElement | null {
+  let parent = element.parentElement;
+  while (parent) {
+    const overflowY = window.getComputedStyle(parent).overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll') return parent;
+    parent = parent.parentElement;
+  }
+  return null;
+}
+
 export function LibraryAssetsTableBody({
   displayRows,
   rows,
@@ -201,15 +212,62 @@ export function LibraryAssetsTableBody({
   handleCancelEditing,
   handleAddRowDirect,
 }: LibraryAssetsTableBodyProps) {
+  const [scrollElement, setScrollElement] = useState<HTMLElement | null>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+
+  const setBodyElement = useCallback((element: HTMLTableSectionElement | null) => {
+    if (!element) return;
+    const nextScrollElement = findVerticalScrollElement(element);
+    if (!nextScrollElement) return;
+    const nextMargin =
+      element.getBoundingClientRect().top -
+      nextScrollElement.getBoundingClientRect().top +
+      nextScrollElement.scrollTop;
+    setScrollElement(nextScrollElement);
+    setScrollMargin(nextMargin);
+  }, []);
+
+  const rowVirtualizer = useVirtualizer<HTMLElement, HTMLTableRowElement>({
+    count: displayRows.length,
+    estimateSize: () => 32,
+    getScrollElement: () => scrollElement,
+    getItemKey: (index) => displayRows[index]?.id ?? index,
+    overscan: 10,
+    scrollMargin,
+  });
+  const virtualRows = rowVirtualizer.getVirtualItems();
+  const firstVirtualRow = virtualRows[0];
+  const lastVirtualRow = virtualRows[virtualRows.length - 1];
+  const paddingTop = firstVirtualRow
+    ? Math.max(0, firstVirtualRow.start - scrollMargin)
+    : 0;
+  const paddingBottom = lastVirtualRow
+    ? Math.max(
+        0,
+        rowVirtualizer.getTotalSize() - (lastVirtualRow.end - scrollMargin)
+      )
+    : 0;
+  const spacerColSpan = activeProperties.length + 2;
+
   return (
-    <tbody className={styles.body}>
-      {displayRows.map((row, index) => {
+    <tbody ref={setBodyElement} className={styles.body}>
+      {paddingTop > 0 && (
+        <tr aria-hidden="true">
+          <td colSpan={spacerColSpan} style={{ height: paddingTop, padding: 0, border: 0 }} />
+        </tr>
+      )}
+      {virtualRows.map((virtualRow) => {
+        const index = virtualRow.index;
+        const row = displayRows[index];
+        if (!row) return null;
         const isRowHovered = hoveredRowId === row.id;
         const isRowSelected = selectedRowIds.has(row.id);
         const actualRowIndex = tableIndexes.rowIndexById.get(row.id) ?? -1;
 
         return (
           <tr
+            ref={rowVirtualizer.measureElement}
+            data-index={virtualRow.index}
             key={row.id}
             data-row-id={row.id}
             className={`${styles.row} ${isRowSelected ? styles.rowSelected : ''} ${hasCustomRowHeight(row.id) ? styles.rowCustomHeight : ''}`}
@@ -723,6 +781,11 @@ export function LibraryAssetsTableBody({
           </tr>
         );
       })}
+      {paddingBottom > 0 && (
+        <tr aria-hidden="true">
+          <td colSpan={spacerColSpan} style={{ height: paddingBottom, padding: 0, border: 0 }} />
+        </tr>
+      )}
       {isAddingRow ? (
         <tr className={styles.editRow} ref={addRowFormRef}>
           <td className={styles.numberCell}>{rows.length + 1}</td>

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, ReactNode } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -283,12 +283,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [fetchUserProfile, setStableUserProfile, supabase, queryClient]);
 
-  const value: AuthContextType = {
+  const value = useMemo<AuthContextType>(() => ({
     isAuthenticated,
     isLoading,
     userProfile,
     signOut,
-  };
+  }), [isAuthenticated, isLoading, signOut, userProfile]);
 
   return (
     <AuthContext.Provider value={value}>

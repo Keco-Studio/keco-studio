@@ -398,12 +398,11 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     };
   }, [currentProjectId, currentLibraryId, currentAssetId, currentFolderId, supabase, isAuthenticated, userId, router, queryClient]);
 
-  // Build breadcrumbs from current route params
-  const buildBreadcrumbs = (): BreadcrumbItem[] => {
-    const breadcrumbs: BreadcrumbItem[] = [];
+  const breadcrumbs = useMemo<BreadcrumbItem[]>(() => {
+    const nextBreadcrumbs: BreadcrumbItem[] = [];
     
     if (currentProjectId) {
-      breadcrumbs.push({
+      nextBreadcrumbs.push({
         label: projectName || 'Project',
         path: `/${currentProjectId}`,
       });
@@ -411,31 +410,40 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
     // Add folder to breadcrumbs if it exists
     if (currentFolderId && currentProjectId) {
-      breadcrumbs.push({
+      nextBreadcrumbs.push({
         label: folderName || 'Folder',
         path: `/${currentProjectId}/folder/${currentFolderId}`,
       });
     }
 
     if (currentLibraryId) {
-      breadcrumbs.push({
+      nextBreadcrumbs.push({
         label: libraryName || 'Library',
         path: `/${currentProjectId}/${currentLibraryId}`,
       });
     }
 
     if (currentAssetId) {
-      breadcrumbs.push({
+      nextBreadcrumbs.push({
         label: assetName || 'Asset',
         path: `/${currentProjectId}/${currentLibraryId}/${currentAssetId}`,
       });
     }
 
-    return breadcrumbs;
-  };
+    return nextBreadcrumbs;
+  }, [
+    assetName,
+    currentAssetId,
+    currentFolderId,
+    currentLibraryId,
+    currentProjectId,
+    folderName,
+    libraryName,
+    projectName,
+  ]);
 
-  const value: NavigationContextType = {
-    breadcrumbs: buildBreadcrumbs(),
+  const value = useMemo<NavigationContextType>(() => ({
+    breadcrumbs,
     currentProjectId,
     currentProjectName: projectName,
     currentLibraryId,
@@ -447,7 +455,19 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     isLibraryPage: routeParams.isLibraryPage,
     showCreateProjectBreadcrumb,
     setShowCreateProjectBreadcrumb,
-  };
+  }), [
+    breadcrumbs,
+    currentAssetId,
+    currentFolderId,
+    currentLibraryId,
+    currentProjectId,
+    folderName,
+    libraryName,
+    projectName,
+    routeParams.isLibraryPage,
+    routeParams.isPredefinePage,
+    showCreateProjectBreadcrumb,
+  ]);
 
   return (
     <NavigationContext.Provider value={value}>

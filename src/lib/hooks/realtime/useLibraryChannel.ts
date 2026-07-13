@@ -117,5 +117,5 @@ export function useLibraryChannel({
       channelRef.current = null;
       runtime().setConnectionStatus('disconnected');
     };
-  }, [libraryId, supabase]);
+  }, [channelRef, libraryId, runtimeRef, supabase]);
 }

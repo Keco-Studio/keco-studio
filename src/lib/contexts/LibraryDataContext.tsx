@@ -80,6 +80,22 @@ interface LibraryDataContextValue {
 }
 
 const LibraryDataContext = createContext<LibraryDataContextValue | null>(null);
+type LibraryActionsContextValue = Pick<
+  LibraryDataContextValue,
+  | 'getAsset'
+  | 'updateAssetField'
+  | 'updateAssetName'
+  | 'createAsset'
+  | 'deleteAsset'
+  | 'refreshAssetsFromServer'
+  | 'applySnapshot'
+  | 'invalidateFormulaFieldMeta'
+  | 'updateMultipleFields'
+  | 'updateAssetsBatch'
+  | 'getUsersEditingField'
+  | 'setActiveField'
+>;
+const LibraryActionsContext = createContext<LibraryActionsContextValue | null>(null);
 
 interface LibraryDataProviderProps {
   children: React.ReactNode;
@@ -104,7 +120,10 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     userProfile?.username || userProfile?.full_name || profileEmail || 'Anonymous';
 
   // Yjs setup - shared data structure
-  const yDoc = useMemo(() => new Y.Doc(), [libraryId]);
+  const yDoc = useMemo(() => {
+    void libraryId;
+    return new Y.Doc();
+  }, [libraryId]);
   const yAssets = useMemo(() => yDoc.getMap<Y.Map<any>>('assets'), [yDoc]);
 
   // State
@@ -262,17 +281,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   }, [libraryId, loadInitialData, queryClient]);
 
   // Initialize realtime subscription
-  const realtimeConfig = useMemo(() => {
-    if (!profileUserId || !libraryId) {
-      return null;
-    }
-
-    return {
-      libraryId,
-      currentUserId: profileUserId,
+  const realtimeConfig = useMemo(() => ({
+      libraryId: profileUserId ? libraryId : '',
+      currentUserId: profileUserId ?? '',
       currentUserName: profileDisplayName,
       currentUserEmail: profileEmail,
-      avatarColor: getUserAvatarColor(profileUserId),
+      avatarColor: profileUserId ? getUserAvatarColor(profileUserId) : '#999999',
       onCellUpdate: handleCellUpdateEvent,
       onAssetCreate: handleAssetCreateEvent,
       onAssetDelete: handleAssetDeleteEvent,
@@ -281,36 +295,12 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onCellsBatchUpdate: handleCellsBatchUpdateEvent,
       onReconnect: loadInitialData,
       onVersionChange: handleVersionChange,
-    };
-  }, [libraryId, profileUserId, profileDisplayName, profileEmail, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData, handleVersionChange]);
+  }), [libraryId, profileUserId, profileDisplayName, profileEmail, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData, handleVersionChange]);
 
-  const realtimeSubscription = useRealtimeSubscription(
-    realtimeConfig || {
-      libraryId: '',
-      currentUserId: '',
-      currentUserName: '',
-      currentUserEmail: '',
-      avatarColor: '',
-      onCellUpdate: () => { },
-      onAssetCreate: () => { },
-      onAssetDelete: () => { },
-      onConflict: () => { },
-      onRowOrderChange: () => { },
-      onCellsBatchUpdate: () => { },
-      onReconnect: () => { },
-      onVersionChange: () => { },
-    }
-  );
+  const realtimeSubscription = useRealtimeSubscription(realtimeConfig);
 
   const { connectionStatus, broadcastCellUpdate, broadcastAssetCreate, broadcastAssetDelete, broadcastCellsBatchUpdate, broadcastRowOrderChange } =
-    realtimeConfig ? realtimeSubscription : {
-      connectionStatus: 'disconnected' as const,
-      broadcastCellUpdate: async () => { },
-      broadcastAssetCreate: async () => { },
-      broadcastAssetDelete: async () => { },
-      broadcastCellsBatchUpdate: async () => { },
-      broadcastRowOrderChange: async () => { },
-    };
+    realtimeSubscription;
 
   // Presence tracking - use useMemo to avoid recreating config on every render
   const presenceConfig = useMemo(() => ({
@@ -412,18 +402,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
   }, [presenceTracking]);
 
   // Convert Map to ordered array (sort by rowIndex then created_at/id — matches table row numbers)
-  const orderedAssetsRef = useRef<AssetRow[]>([]);
   const allAssets = useMemo(() => {
-    const nextAssets = Array.from(assets.values());
-    const previousAssets = orderedAssetsRef.current;
-    const orderIsUnchanged =
-      nextAssets.length === previousAssets.length &&
-      nextAssets.every((asset, index) => asset.id === previousAssets[index]?.id);
-    const orderedAssets = orderIsUnchanged
-      ? nextAssets
-      : nextAssets.sort(compareAssetsForUiRow);
-    orderedAssetsRef.current = orderedAssets;
-    return orderedAssets;
+    return Array.from(assets.values()).sort(compareAssetsForUiRow);
   }, [assets]);
 
   // Cleanup
@@ -434,10 +414,8 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     };
   }, []);
 
-  const contextValue: LibraryDataContextValue = {
-    assets,
+  const actionsValue = useMemo<LibraryActionsContextValue>(() => ({
     getAsset,
-    allAssets,
     updateAssetField,
     updateAssetName,
     createAsset,
@@ -447,20 +425,51 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     invalidateFormulaFieldMeta,
     updateMultipleFields,
     updateAssetsBatch,
-    connectionStatus,
     getUsersEditingField,
     setActiveField,
+  }), [
+    applySnapshotToYjs,
+    createAsset,
+    deleteAsset,
+    getAsset,
+    getUsersEditingField,
+    invalidateFormulaFieldMeta,
+    refreshAssetsFromServer,
+    setActiveField,
+    updateAssetField,
+    updateAssetName,
+    updateAssetsBatch,
+    updateMultipleFields,
+  ]);
+
+  const contextValue = useMemo<LibraryDataContextValue>(() => ({
+    assets,
+    allAssets,
+    ...actionsValue,
+    connectionStatus,
     presenceUsers: presenceTracking.presenceUsers || [],
     yDoc,
     yAssets,
     isLoading,
     isSynced,
-  };
+  }), [
+    actionsValue,
+    allAssets,
+    assets,
+    connectionStatus,
+    isLoading,
+    isSynced,
+    presenceTracking.presenceUsers,
+    yAssets,
+    yDoc,
+  ]);
 
   return (
-    <LibraryDataContext.Provider value={contextValue}>
-      {children}
-    </LibraryDataContext.Provider>
+    <LibraryActionsContext.Provider value={actionsValue}>
+      <LibraryDataContext.Provider value={contextValue}>
+        {children}
+      </LibraryDataContext.Provider>
+    </LibraryActionsContext.Provider>
   );
 }
 
@@ -480,4 +489,12 @@ export function useLibraryData() {
  */
 export function useLibraryDataOptional(): LibraryDataContextValue | null {
   return useContext(LibraryDataContext);
+}
+
+export function useLibraryActions(): LibraryActionsContextValue {
+  const context = useContext(LibraryActionsContext);
+  if (!context) {
+    throw new Error('useLibraryActions must be used within LibraryDataProvider');
+  }
+  return context;
 }
