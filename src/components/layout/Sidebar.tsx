@@ -116,7 +116,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   }, []);
 
   const userId = userProfile?.id;
-  const { userRole, isProjectOwner, refetchUserRole } = useSidebarProjectRole(
+  const { userRole, isProjectOwner } = useSidebarProjectRole(
     currentIds.projectId,
     userId
   );
@@ -345,7 +345,6 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     userId,
     currentProjectId: currentIds.projectId,
     router,
-    refetchUserRole,
   });
 
   // Auto-navigate to first project on login if user has projects

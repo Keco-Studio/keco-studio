@@ -97,6 +97,9 @@ function dbVersionToAppVersion(dbVersion: LibraryVersionDb, createdByProfile?: a
   };
 }
 
+const VERSION_LIST_COLUMNS =
+  'id, library_id, version_name, version_type, parent_version_id, created_by, created_at, restore_from_version_id, restored_by, restored_at, is_current, metadata' as const;
+
 /**
  * Create a complete snapshot of a library
  * Includes all assets, field definitions, and configuration.
@@ -219,7 +222,7 @@ export async function getVersionsByLibrary(
   // Fetch versions
   const { data: versions, error } = await supabase
     .from('library_versions')
-    .select('*')
+    .select(VERSION_LIST_COLUMNS)
     .eq('library_id', libraryId)
     .order('created_at', { ascending: false });
 

@@ -28,18 +28,24 @@ describe('single-path realtime delivery', () => {
 
   it('removes database change delivery and timing-based deduplication from the hook', () => {
     const source = readFileSync(
+      join(process.cwd(), 'src/lib/hooks/realtime/useLibraryChannel.ts'),
+      'utf8'
+    );
+    const compositionSource = readFileSync(
       join(process.cwd(), 'src/lib/hooks/useRealtimeSubscription.ts'),
       'utf8'
     );
 
-    expect(source).not.toContain("'postgres_changes'");
+    expect(source).not.toContain("table: 'library_asset_values'");
+    expect(source).not.toContain("table: 'library_assets'");
+    expect(source).toContain("table: 'library_versions'");
     expect(source).not.toContain('recentBroadcastsRef');
     expect(source).not.toContain('recentBatchCellKeysRef');
     expect(source).toContain('onReconnect');
     expect(source).toContain('advanceRealtimeConnection');
-    expect(source).toContain('optimisticUpdatesRef');
-    expect(source).toContain('queuedUpdatesRef');
-    expect(source).toContain('handlersRef');
+    expect(compositionSource).toContain('optimisticUpdatesRef');
+    expect(compositionSource).toContain('queuedUpdatesRef');
+    expect(source).toContain('runtimeRef');
     expect(source).toMatch(/\}, \[libraryId, supabase\]\);/);
   });
 

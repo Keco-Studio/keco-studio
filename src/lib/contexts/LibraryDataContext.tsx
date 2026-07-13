@@ -228,39 +228,6 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     loadInitialData();
   }, [loadInitialData, isAuthLoading, isAuthenticated, profileUserId]);
 
-  // Realtime restore events cause collaborators to reload from the server.
-  useEffect(() => {
-    if (!libraryId) return;
-
-    const channel = supabase
-      .channel(`library-versions-restore:${libraryId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'library_versions',
-          filter: `library_id=eq.${libraryId}`,
-        },
-        (payload) => {
-          try {
-            const row: any = payload.new;
-            if (row?.version_type === 'restore') {
-              // A restore version means the library was rolled back to a snapshot.
-              loadInitialData();
-            }
-          } catch (err) {
-            console.error('[LibraryDataContext] Failed to handle restore realtime event', err);
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [libraryId, supabase, loadInitialData]);
-
   useEffect(() => {
     formulaFieldMetaCache.clear();
   }, [formulaFieldMetaCache, libraryId]);
@@ -282,6 +249,18 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
     pendingBatchInsertIdsRef,
   });
 
+  const handleVersionChange = useCallback((payload: any) => {
+    const newRecord = payload.new as Record<string, unknown> | undefined;
+    const oldRecord = payload.old as Record<string, unknown> | undefined;
+    const eventLibraryId = newRecord?.library_id ?? oldRecord?.library_id;
+    if (eventLibraryId && eventLibraryId !== libraryId) return;
+
+    void queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
+    if (payload.eventType === 'INSERT' && newRecord?.version_type === 'restore') {
+      void loadInitialData();
+    }
+  }, [libraryId, loadInitialData, queryClient]);
+
   // Initialize realtime subscription
   const realtimeConfig = useMemo(() => {
     if (!profileUserId || !libraryId) {
@@ -301,8 +280,9 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onRowOrderChange: handleRowOrderChangeEvent,
       onCellsBatchUpdate: handleCellsBatchUpdateEvent,
       onReconnect: loadInitialData,
+      onVersionChange: handleVersionChange,
     };
-  }, [libraryId, profileUserId, profileDisplayName, profileEmail, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData]);
+  }, [libraryId, profileUserId, profileDisplayName, profileEmail, handleCellUpdateEvent, handleAssetCreateEvent, handleAssetDeleteEvent, handleConflictEvent, handleRowOrderChangeEvent, handleCellsBatchUpdateEvent, loadInitialData, handleVersionChange]);
 
   const realtimeSubscription = useRealtimeSubscription(
     realtimeConfig || {
@@ -318,6 +298,7 @@ export function LibraryDataProvider({ children, libraryId, projectId }: LibraryD
       onRowOrderChange: () => { },
       onCellsBatchUpdate: () => { },
       onReconnect: () => { },
+      onVersionChange: () => { },
     }
   );
 

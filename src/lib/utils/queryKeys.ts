@@ -101,6 +101,10 @@ export const queryKeys = {
    */
   projectCollaborators: (projectId: string) => 
     ['project', projectId, 'collaborators'] as const,
+
+  /** Current user's role within a project. */
+  projectRole: (projectId: string, userId: string) =>
+    ['project', projectId, 'role', userId] as const,
 };
 
 /**
@@ -113,7 +117,6 @@ export type ProjectKey = ReturnType<typeof queryKeys.project>;
 export type LibraryKey = ReturnType<typeof queryKeys.library>;
 export type FolderKey = ReturnType<typeof queryKeys.folder>;
 export type AssetKey = ReturnType<typeof queryKeys.asset>;
-
 
 
 

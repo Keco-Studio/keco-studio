@@ -34,6 +34,7 @@ import {
   requestLibraryReconciliation,
   type CellReplacementUpdate,
 } from '@/lib/realtime/cell-replacement-broadcast';
+import { useProjectRoleQuery } from '@/lib/hooks/useProjectRoleQuery';
 
 type TopBarProps = {
   breadcrumb?: string[];
@@ -61,13 +62,14 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
   const { userProfile, signOut } = useAuth();
   const userId = userProfile?.id;
   const supabase = useSupabase();
+  const { data: projectRole } = useProjectRoleQuery(currentProjectId, userId);
+  const userRole = projectRole?.role ?? null;
   const [showUserMenu, setShowUserMenu] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [assetMode, setAssetMode] = useState<AssetMode>('edit');
   const [isCreatingNewAsset, setIsCreatingNewAsset] = useState(false);
   const [isPredefineCreatingNewSection, setIsPredefineCreatingNewSection] = useState(false);
   const [predefineActiveSectionId, setPredefineActiveSectionId] = useState<string | null>(null);
-  const [userRole, setUserRole] = useState<'admin' | 'editor' | 'viewer' | null>(null);
   const [libraryViewMode, setLibraryViewMode] = useState<'list' | 'grid'>('grid');
   const [libraryVersionControlOpen, setLibraryVersionControlOpen] = useState(false);
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -818,108 +820,6 @@ export function TopBar({ breadcrumb = [], showCreateProjectBreadcrumb: propShowC
     setAssetMode('edit');
     setIsCreatingNewAsset(false);
   }, [currentAssetId]);
-
-  // Fetch user role for current project
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      const projectId = currentProjectId;
-      const isValidUUID = projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
-
-      if (!isValidUUID || !userId) {
-        setUserRole(null);
-        return;
-      }
-
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          setUserRole(null);
-          return;
-        }
-
-        const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
-          headers: {
-            'Authorization': `Bearer ${session.access_token}`,
-          },
-        });
-
-        if (roleResponse.ok) {
-          const roleResult = await roleResponse.json();
-          setUserRole(roleResult.role ?? null);
-        } else {
-          setUserRole(null);
-        }
-      } catch (error) {
-        console.error('[TopBar] Error fetching user role:', error);
-        setUserRole(null);
-      }
-    };
-
-    fetchUserRole();
-  }, [currentProjectId, userId, supabase]);
-
-  // Real-time collaboration: Subscribe to collaborators table for permission updates
-  useEffect(() => {
-    const projectId = currentProjectId;
-    const isValidUUID = projectId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(projectId);
-
-    if (!isValidUUID || !userId) {
-      return;
-    }
-
-    // Subscribe to project_collaborators table for real-time permission updates
-    const collaboratorsChannel = supabase
-      .channel(`topbar-collaborators:project:${projectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'project_collaborators',
-          filter: `project_id=eq.${projectId}`,
-        },
-        async (payload) => {
-          // Handle DELETE event - user access was removed or project was deleted
-          if (payload.eventType === 'DELETE' && payload.old && 'user_id' in payload.old) {
-            if (payload.old.user_id === userId) {
-              // User access removed or project deleted - role becomes null
-              setUserRole(null);
-            }
-          }
-
-          // Handle INSERT/UPDATE events - check if the change affects current user
-          if ((payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') &&
-            payload.new && 'user_id' in payload.new && payload.new.user_id === userId) {
-            try {
-              const { data: { session } } = await supabase.auth.getSession();
-              if (!session) return;
-
-              const roleResponse = await fetch(`/api/projects/${projectId}/role`, {
-                headers: {
-                  'Authorization': `Bearer ${session.access_token}`,
-                },
-              });
-
-              if (roleResponse.ok) {
-                const roleResult = await roleResponse.json();
-                setUserRole(roleResult.role || null);
-              }
-            } catch (error) {
-              console.error('[TopBar] Error refetching user role:', error);
-            }
-          }
-        }
-      )
-      .subscribe((_status, err) => {
-        if (err) {
-          console.error('[TopBar] Collaborators channel subscription error:', err);
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(collaboratorsChannel);
-    };
-  }, [currentProjectId, userId, supabase]);
 
   // Listen to asset page mode updates (for create/view/edit detection)
   useEffect(() => {

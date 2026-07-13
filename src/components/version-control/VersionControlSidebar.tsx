@@ -7,7 +7,7 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
@@ -76,47 +76,6 @@ export function VersionControlSidebar({
     setShowCreateModal(false);
   };
 
-  // Set up realtime subscription for version changes
-  useEffect(() => {
-    if (!isOpen || !libraryId) return;
-
-    // console.log(`[VersionControlSidebar] Setting up realtime subscription for library: ${libraryId}`);
-
-    // Subscribe to changes in library_versions table.
-    // NOTE: No server-side filter on library_id because PostgreSQL's default
-    // REPLICA IDENTITY only includes the primary key in DELETE events' `old` record,
-    // so `filter: library_id=eq.xxx` silently drops DELETE events. Instead, we
-    // listen to all events and filter client-side.
-    const versionsChannel = supabase
-      .channel(`library-versions:${libraryId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*', // Listen to INSERT, UPDATE, DELETE
-          schema: 'public',
-          table: 'library_versions',
-        },
-        async (payload) => {
-          // Client-side filter: only react to events for this library
-          const newRecord = payload.new as any;
-          const oldRecord = payload.old as any;
-          const eventLibraryId = newRecord?.library_id || oldRecord?.library_id;
-          // For DELETE, old record may only have the primary key (id), so if we
-          // can't determine the library_id, refetch anyway to stay safe.
-          if (eventLibraryId && eventLibraryId !== libraryId) return;
-
-          queryClient.invalidateQueries({ queryKey: ['versions', libraryId] });
-        }
-      )
-      .subscribe();
-
-    // Cleanup on unmount or when libraryId/isOpen changes
-    return () => {
-      console.log(`[VersionControlSidebar] Cleaning up realtime subscription for library: ${libraryId}`);
-      supabase.removeChannel(versionsChannel);
-    };
-  }, [libraryId, isOpen, supabase, queryClient]);
-
   if (!isOpen) return null;
 
   return (
@@ -179,4 +138,3 @@ export function VersionControlSidebar({
     </>
   );
 }
-

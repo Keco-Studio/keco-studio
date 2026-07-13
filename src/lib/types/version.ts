@@ -19,7 +19,8 @@ export interface LibraryVersion {
     avatarColor?: string;
   };
   createdAt: Date;
-  snapshotData: any; // Complete library data snapshot.
+  /** Present for detail queries; omitted from version-list queries. */
+  snapshotData?: any;
   restoreFromVersionId?: string | null;
   restoredBy?: {
     id: string;
@@ -65,7 +66,7 @@ export interface LibraryVersionDb {
   parent_version_id: string | null;
   created_by: string | null;
   created_at: string;
-  snapshot_data: any;
+  snapshot_data?: any;
   restore_from_version_id: string | null;
   restored_by: string | null;
   restored_at: string | null;
