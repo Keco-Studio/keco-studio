@@ -10,6 +10,7 @@ import type { StoryAuditAdjudication, StoryPlanAudit } from './schema';
 import {
   STORY_PLAN_LLM_TIMEOUT_MS,
   resolveStoryPlanForImport,
+  type StoryPlanLlmTelemetryEvent,
   type StoryPlanProgressEvent,
 } from './conversion';
 import { segmentStorySource } from './sourceSegments';
@@ -163,6 +164,36 @@ describe('two-stage audited story extraction', () => {
       'submit_story_graph',
       'submit_story_plan_audit',
     ]);
+  });
+
+  it('emits sanitized telemetry for every structured LLM stage', async () => {
+    const telemetry: StoryPlanLlmTelemetryEvent[] = [];
+    mockedCompleteLlm
+      .mockImplementationOnce(async (_messages, options) => {
+        options.onResponseMetadata?.({ status: 200, requestId: 'extract-1' });
+        return JSON.stringify(contentInventory());
+      })
+      .mockImplementationOnce(async (_messages, options) => {
+        options.onResponseMetadata?.({ status: 200, requestId: 'graph-1' });
+        return JSON.stringify(graphPlan());
+      })
+      .mockImplementationOnce(async (_messages, options) => {
+        options.onResponseMetadata?.({ status: 200, requestId: 'audit-1' });
+        return JSON.stringify(passAudit);
+      });
+
+    await resolveStoryPlanForImport(naturalContent, {
+      sourceId: 'fixture',
+      onLlmTelemetry: (event) => telemetry.push(event),
+    });
+
+    expect(telemetry).toEqual([
+      expect.objectContaining({ stage: 'Extractor', attempt: 1, outcome: 'success', requestId: 'extract-1' }),
+      expect.objectContaining({ stage: 'Graph Planner', attempt: 1, outcome: 'success', requestId: 'graph-1' }),
+      expect.objectContaining({ stage: 'Auditor', attempt: 1, outcome: 'success', requestId: 'audit-1' }),
+    ]);
+    telemetry.forEach((event) => expect(event.elapsedMs).toEqual(expect.any(Number)));
+    expect(JSON.stringify(telemetry)).not.toContain(naturalContent);
   });
 
   it('uses an explicit structure candidate and calls only the Auditor LLM', async () => {

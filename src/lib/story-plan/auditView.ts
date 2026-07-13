@@ -112,6 +112,6 @@ function presentationFor(node: StoryNode): StoryAuditPresentation {
   return 'narration_box';
 }
 
-function unitIds(refs: Array<{ unitId: string }>): string[] {
-  return [...new Set(refs.map((ref) => ref.unitId))];
+function unitIds(refs: Array<{ unitId?: string }>): string[] {
+  return [...new Set(refs.flatMap((ref) => ref.unitId ? [ref.unitId] : []))];
 }

@@ -47,7 +47,16 @@ const MAX_GRAPH_ATTEMPTS = 5;
 const MAX_LLM_CALLS = 15;
 const MAX_PROVIDER_ABORT_RETRIES_PER_STAGE = 3;
 
-type LlmStage = 'Extractor' | 'Graph Planner' | 'Auditor' | 'Adjudicator';
+export type StoryPlanLlmStage = 'Extractor' | 'Graph Planner' | 'Auditor' | 'Adjudicator';
+type LlmStage = StoryPlanLlmStage;
+
+export interface StoryPlanLlmTelemetryEvent {
+  stage: StoryPlanLlmStage;
+  attempt: number;
+  elapsedMs: number;
+  outcome: 'success' | 'error' | 'timeout';
+  requestId?: string;
+}
 
 export type StoryPlanProgressPhase =
   | 'source_segmentation'
@@ -74,6 +83,7 @@ export interface ResolveStoryPlanOptions {
   llmTimeoutMs?: number;
   maxSourceChars?: number;
   onProgress?: (event: StoryPlanProgressEvent) => void;
+  onLlmTelemetry?: (event: StoryPlanLlmTelemetryEvent) => void;
 }
 
 export interface ResolvedAuditedStory {
@@ -346,6 +356,7 @@ async function requestContentExtractor(
     buildContentExtractionMessages(source, attempt, priorIssues),
     EXTRACTOR_STORY_CONTENT_TOOL,
     'Extractor',
+    attempt,
     options,
     budget
   );
@@ -368,6 +379,7 @@ async function requestGraphPlanner(
     buildGraphExtractionMessages(source, content, attempt, priorIssues),
     GRAPH_STORY_PLAN_TOOL,
     'Graph Planner',
+    attempt,
     options,
     budget
   );
@@ -390,7 +402,7 @@ async function reviewCandidate(
     attempt,
     message: `Waiting for Primary Auditor LLM response (attempt ${attempt}/${MAX_CANDIDATE_ATTEMPTS})`,
   });
-  const primaryAudit = await requestAuditor(source, auditView, options, budget);
+  const primaryAudit = await requestAuditor(source, auditView, attempt, options, budget);
   if (auditPassed(primaryAudit)) {
     return {
       approved: true,
@@ -413,6 +425,7 @@ async function reviewCandidate(
     source,
     auditView,
     primaryAudit.issues,
+    attempt,
     options,
     budget
   );
@@ -439,6 +452,7 @@ async function reviewCandidate(
 async function requestAuditor(
   source: SegmentedStorySource,
   auditView: StoryAuditView,
+  attempt: number,
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget
 ): Promise<StoryPlanAudit> {
@@ -446,6 +460,7 @@ async function requestAuditor(
     buildAuditorExtractionMessages(source, auditView),
     AUDITOR_STORY_EXTRACTION_TOOL,
     'Auditor',
+    attempt,
     options,
     budget
   );
@@ -460,6 +475,7 @@ async function requestAdjudicator(
   source: SegmentedStorySource,
   auditView: StoryAuditView,
   issues: StoryPlanAuditIssue[],
+  attempt: number,
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget
 ): Promise<StoryAuditAdjudication> {
@@ -467,6 +483,7 @@ async function requestAdjudicator(
     buildAuditAdjudicationMessages(source, auditView, issues),
     AUDITOR_STORY_ADJUDICATION_TOOL,
     'Adjudicator',
+    attempt,
     options,
     budget
   );
@@ -503,10 +520,25 @@ async function completeStoryPlanLlm(
   messages: Parameters<typeof completeLlm>[0],
   tool: OpenAITool,
   stage: LlmStage,
+  attempt: number,
   options: ResolveStoryPlanOptions,
   budget: StoryPlanLlmBudget
 ): Promise<string> {
   let providerAbortRetries = 0;
+  const startedAt = Date.now();
+  let requestId: string | undefined;
+  let reported = false;
+  const report = (outcome: StoryPlanLlmTelemetryEvent['outcome']) => {
+    if (reported) return;
+    reported = true;
+    options.onLlmTelemetry?.({
+      stage,
+      attempt,
+      elapsedMs: Math.max(0, Date.now() - startedAt),
+      outcome,
+      ...(requestId ? { requestId } : {}),
+    });
+  };
   while (budget.used < budget.max) {
     budget.used += 1;
     const timeoutController = new AbortController();
@@ -518,27 +550,42 @@ async function completeStoryPlanLlm(
     }, options.llmTimeoutMs ?? STORY_PLAN_LLM_TIMEOUT_MS);
 
     try {
-      return await completeLlm(messages, {
+      const result = await completeLlm(messages, {
         temperature: 0,
         maxCompletionTokens: stage === 'Extractor' ? 24_000 : 10_000,
         thinking: 'disabled',
         tools: [tool],
         toolName: tool.function.name,
         signal: combined.signal,
+        onResponseMetadata: (metadata) => {
+          requestId = metadata.requestId ?? requestId;
+        },
       });
+      report('success');
+      return result;
     } catch (error) {
-      if (timedOut) throw new StoryPlanLlmTimeoutError(stage);
-      if (!isProviderAbortedResponse(error)) throw error;
+      if (timedOut) {
+        report('timeout');
+        throw new StoryPlanLlmTimeoutError(stage);
+      }
+      if (!isProviderAbortedResponse(error)) {
+        report('error');
+        throw error;
+      }
       providerAbortRetries += 1;
       if (
         providerAbortRetries > MAX_PROVIDER_ABORT_RETRIES_PER_STAGE
         || budget.used >= budget.max
-      ) throw error;
+      ) {
+        report('error');
+        throw error;
+      }
     } finally {
       clearTimeout(timeout);
       combined.cleanup();
     }
   }
+  report('error');
   throw new Error('Story import LLM call budget exhausted.');
 }
 

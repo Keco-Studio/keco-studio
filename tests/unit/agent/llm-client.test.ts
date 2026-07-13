@@ -89,6 +89,30 @@ describe('streamLlm request options', () => {
     expect(JSON.parse(String(init?.body))).not.toHaveProperty('max_tokens');
   });
 
+  it('reports sanitized upstream response metadata through an optional callback', async () => {
+    jest.resetModules();
+    process.env.LLM_API_KEY = 'test-key';
+    process.env.LLM_API_URL = 'https://llm.test';
+    const onResponseMetadata = jest.fn();
+    global.fetch = jest.fn(async () => new Response(
+      'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n',
+      { status: 200, headers: { 'x-request-id': 'request-123' } }
+    )) as typeof fetch;
+
+    const { completeLlm } = await import('../../../src/lib/agent/llm-client');
+    await completeLlm(
+      [{ role: 'user', content: 'hello' }],
+      { onResponseMetadata } as never
+    );
+
+    expect(onResponseMetadata).toHaveBeenCalledWith({
+      status: 200,
+      requestId: 'request-123',
+    });
+    expect(JSON.stringify(onResponseMetadata.mock.calls)).not.toContain('test-key');
+    expect(JSON.stringify(onResponseMetadata.mock.calls)).not.toContain('hello');
+  });
+
   it('forces a named output tool and returns its streamed JSON arguments', async () => {
     jest.resetModules();
     process.env.LLM_API_KEY = 'test-key';

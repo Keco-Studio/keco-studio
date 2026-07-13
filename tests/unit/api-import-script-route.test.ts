@@ -75,6 +75,32 @@ describe('POST /api/import-script streaming protocol', () => {
     expect(mockedImport).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ document }));
   });
 
+  it('logs only sanitized story LLM telemetry', async () => {
+    const info = jest.spyOn(console, 'info').mockImplementation(() => undefined);
+    mockedResolve.mockImplementation(async (_source, options) => {
+      options?.onLlmTelemetry?.({
+        stage: 'Auditor',
+        attempt: 1,
+        elapsedMs: 25,
+        outcome: 'success',
+        requestId: 'request-123',
+      });
+      return { document } as never;
+    });
+
+    await records(await POST(request()));
+
+    expect(info).toHaveBeenCalledWith('[import-script:llm]', {
+      stage: 'Auditor',
+      attempt: 1,
+      elapsedMs: 25,
+      outcome: 'success',
+      requestId: 'request-123',
+    });
+    expect(JSON.stringify(info.mock.calls)).not.toContain('Bearer token');
+    expect(JSON.stringify(info.mock.calls)).not.toContain('Story');
+  });
+
   it('streams a terminal error and performs no import when audit fails', async () => {
     mockedResolve.mockRejectedValue(new Error('Semantic audit failed'));
 
