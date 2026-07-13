@@ -5,6 +5,24 @@ export type FormulaEvaluableField = {
   formulaExpression?: string | null;
 };
 
+type ServerFormulaHelper = {
+  IF: (condition: any, whenTrue: any, whenFalse: any) => any;
+  SUM: (...args: any[]) => number;
+  AVERAGE: (...args: any[]) => number | null;
+  MIN: (...args: any[]) => number | null;
+  MAX: (...args: any[]) => number | null;
+  ROUND: (value: any, digits: any) => number | null;
+  COL: (name: string) => any;
+};
+
+type CompiledServerFormula = {
+  tokens: FormulaToken[];
+  rpn: FormulaToken[];
+  advancedEvaluators: Map<string, (helper: ServerFormulaHelper) => unknown>;
+};
+
+const compiledFormulaCache = new Map<string, CompiledServerFormula>();
+
 type FormulaToken =
   | { type: 'number'; value: number }
   | { type: 'identifier'; value: string }
@@ -39,24 +57,6 @@ function roundToDigits(value: number, digits: number): number | null {
 function sumNumbers(values: number[]): number {
   return values.reduce((total, value) => total + value, 0);
 }
-
-type ServerFormulaHelper = {
-  IF: (condition: any, whenTrue: any, whenFalse: any) => any;
-  SUM: (...args: any[]) => number;
-  AVERAGE: (...args: any[]) => number | null;
-  MIN: (...args: any[]) => number | null;
-  MAX: (...args: any[]) => number | null;
-  ROUND: (value: any, digits: any) => number | null;
-  COL: (name: string) => any;
-};
-
-type CompiledServerFormula = {
-  tokens: FormulaToken[];
-  rpn: FormulaToken[];
-  advancedEvaluators: Map<string, (helper: ServerFormulaHelper) => unknown>;
-};
-
-const compiledFormulaCache = new Map<string, CompiledServerFormula>();
 
 function roundFormulaNumber(n: number): number {
   if (!Number.isFinite(n)) return n;
