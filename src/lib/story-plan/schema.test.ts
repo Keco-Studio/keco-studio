@@ -1,5 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 import {
+  parseStoryAuditAdjudication,
   parseStoryGraphPlan,
   parseStoryPlanAudit,
   parseStoryRelationshipPlan,
@@ -164,6 +165,29 @@ describe('Story relationship plan schema', () => {
         nodeIds: [],
         message: 'Malformed provider output',
       }],
+    })).toThrow();
+  });
+
+  it('accepts strict one-to-one audit adjudication decisions', () => {
+    expect(parseStoryAuditAdjudication({
+      decisions: [
+        { issueId: 'issue-1', status: 'unsupported' },
+        { issueId: 'issue-2', status: 'confirmed' },
+      ],
+    })).toEqual({
+      decisions: [
+        { issueId: 'issue-1', status: 'unsupported' },
+        { issueId: 'issue-2', status: 'confirmed' },
+      ],
+    });
+  });
+
+  it('rejects malformed audit adjudication decisions', () => {
+    expect(() => parseStoryAuditAdjudication({
+      decisions: [{ issueId: 'issue-1', status: 'maybe' }],
+    })).toThrow();
+    expect(() => parseStoryAuditAdjudication({
+      decisions: [{ issueId: 'issue-1', status: 'confirmed', message: 'extra' }],
     })).toThrow();
   });
 });
