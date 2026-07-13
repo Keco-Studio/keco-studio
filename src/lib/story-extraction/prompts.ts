@@ -69,23 +69,6 @@ Output rules:
 
 Never add spaces, prose, or fields inside a link string.`;
 
-export const GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT = `You independently audit only story graph meaning and enumerated playback paths against the original source.
-Call submit_story_graph_audit exactly once and return no prose.
-Do not audit table formatting, physical row fallthrough, Type values, wording fidelity, speakers, or command values; a separate Auditor handles those.
-
-For every source decision and every extracted choice:
-- Trace every supplied path beginning with that choice.
-- A source line such as "if you choose X" begins the exclusive outcome scope for X until the next sibling branch or declared merge.
-- Reject a path that enters a sibling outcome, repeats an earlier decision unexpectedly, skips its selected outcome, merges at the wrong semantic point, or terminates before required shared content.
-- Reject a choice owner or target that changes which source outcome follows the player's selection.
-- Treat explicit source merge statements as semantic constraints. All named incoming branches must reach the shared successor, while branch-only content must remain exclusive before that merge.
-- A pure merge declaration that names a location but does not create shared visible content means branches converge immediately before the next shared visible node. Do not route other branches through sibling-specific content merely because that content occurs at the named location.
-- Judge nextNodeId and the supplied Story IR paths directly. Never infer termination or fallthrough from compiled table rows.
-- Do not invent narrative prerequisites, variable conditions, or clue requirements that the source does not encode as graph structure. Audit faithful extraction, not story plausibility.
-
-If every choice path matches the source branch structure, return pass with an empty issues array.
-Never include an issue whose own message says the candidate is correct, acceptable, or needs no action.`;
-
 export const AUDITOR_STORY_EXTRACTION_PROMPT = `You independently audit a complete Story IR extraction against the original source.
 Call submit_story_plan_audit exactly once and return no prose.
 Check every source unit, extraction node, choice, command, compiled table row, and enumerated path.
@@ -101,6 +84,15 @@ An option source unit is owned by its choice only. Reject a candidate that also 
 An exact standalone command line immediately after a visible node may be owned by that preceding node. This is the canonical representation and does not require an empty command-only node.
 Do not invent narrative prerequisites, variable conditions, clue requirements, or plot-logic objections that are not encoded by the source. Audit whether the source was preserved, not whether the source story is plausible.
 Judge the actual graph from explicit next/choice targets and enumerated paths, not physical source order alone.
+For every source decision and every extracted choice:
+- Trace every supplied path beginning with that choice.
+- A source line such as "if you choose X" begins the exclusive outcome scope for X until the next sibling branch or declared merge.
+- Reject a path that enters a sibling outcome, repeats an earlier decision unexpectedly, skips its selected outcome, merges at the wrong semantic point, or terminates before required shared content.
+- Reject a choice owner or target that changes which source outcome follows the player's selection.
+- Treat explicit source merge statements as semantic constraints. All named incoming branches must reach the shared successor, while branch-only content must remain exclusive before that merge.
+- A pure merge declaration that names a location but does not create shared visible content means branches converge immediately before the next shared visible node. Do not route other branches through sibling-specific content merely because that content occurs at the named location.
+- Judge nextNodeId and the supplied Story IR paths directly. Never infer termination or fallthrough from compiled table rows.
+- Do not invent narrative prerequisites, variable conditions, or clue requirements that the source does not encode as graph structure. Audit faithful extraction, not story plausibility.
 Audit the compiled table by playback equivalence using these reference-table rules:
 - The table Type must equal each node's presentationType. Types 1 and 2 are both dialogue boxes and should distinguish speaking roles consistently; a story with multiple speakers must not collapse every speaker to Type 1. Type 3 is a gray narration box, Type 4 is visible scene/background/cinematic prose without a dialogue box, and Type 5 is centered screen/system text.
 - A blank Label is valid for a row reached only by physical fallthrough. Entry, option targets, and non-fallthrough jump targets retain labels.
@@ -189,22 +181,6 @@ export const GRAPH_STORY_PLAN_TOOL: OpenAITool = {
   },
 };
 
-export const GRAPH_AUDITOR_STORY_EXTRACTION_TOOL: OpenAITool = {
-  type: 'function',
-  function: {
-    name: 'submit_story_graph_audit',
-    description: 'Submit the independent story graph and path audit verdict.',
-    parameters: {
-      type: 'object', additionalProperties: false,
-      properties: {
-        verdict: { type: 'string', enum: ['pass', 'fail'] },
-        issues: { type: 'array', items: auditIssueSchema },
-      },
-      required: ['verdict', 'issues'],
-    },
-  },
-};
-
 export const AUDITOR_STORY_EXTRACTION_TOOL: OpenAITool = {
   type: 'function',
   function: {
@@ -274,22 +250,6 @@ export function buildAuditorExtractionMessages(
       extraction,
       document,
       projection,
-    }) },
-  ];
-}
-
-export function buildGraphAuditorExtractionMessages(
-  source: SegmentedStorySource,
-  extraction: StoryExtraction,
-  projection: StoryAuditProjection
-): ChatMessage[] {
-  return [
-    { role: 'system', content: GRAPH_AUDITOR_STORY_EXTRACTION_PROMPT },
-    { role: 'user', content: JSON.stringify({
-      task: 'AUDIT_STORY_GRAPH_AND_PATHS',
-      sourceUnits: source.units.map(({ id, text }) => ({ id, text })),
-      extraction,
-      paths: projection.paths,
     }) },
   ];
 }
