@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
+  type AccessVerificationContext,
   verifyProjectAccess,
   verifyFolderAccess,
   verifyFolderDeletionPermission,
@@ -136,10 +137,11 @@ export async function listFolders(
 
 export async function listFolderReferences(
   supabase: SupabaseClient,
-  projectId: string
+  projectId: string,
+  access?: AccessVerificationContext
 ): Promise<FolderReference[]> {
   const resolvedProjectId = await resolveProjectId(supabase, projectId);
-  await verifyProjectAccess(supabase, resolvedProjectId);
+  await verifyProjectAccess(supabase, resolvedProjectId, access?.userId, access?.cache);
 
   const { data, error } = await supabase
     .from('folders')

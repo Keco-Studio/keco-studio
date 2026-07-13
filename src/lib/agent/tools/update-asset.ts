@@ -102,7 +102,7 @@ async function executeUpdateAsset(params: unknown, ctx: ToolContext): Promise<To
   }
 
   const [properties, { resolved, unresolved, availableFields }] = await Promise.all([
-    getLibraryProperties(ctx.supabase, library.id),
+    getLibraryProperties(ctx.supabase, library.id, ctx),
     resolvePropertyValues(ctx.supabase, library.id, propertyValues),
   ]);
   if (unresolved.length > 0) {

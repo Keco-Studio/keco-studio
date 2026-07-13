@@ -58,7 +58,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
 
   const [properties, { resolved, unresolved, availableFields }] = await Promise.all([
-    getLibraryProperties(ctx.supabase, library.id),
+    getLibraryProperties(ctx.supabase, library.id, ctx),
     resolvePropertyValues(ctx.supabase, library.id, propertyValues),
   ]);
   if (unresolved.length > 0) {
@@ -99,7 +99,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
 
   try {
-    const assets = await getLibraryAssets(ctx.supabase, library.id);
+    const assets = await getLibraryAssets(ctx.supabase, library.id, ctx);
     const emptyRow = findFirstEmptyUiRowAsset(assets);
 
     if (emptyRow) {

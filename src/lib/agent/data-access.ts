@@ -24,6 +24,14 @@ import {
 } from '@/lib/services/libraryAssetsService';
 import { sortAssetsForUiRow } from '@/lib/utils/assetEmptiness';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
+import type { ToolContext } from './types';
+
+type AgentAccessContext = Pick<ToolContext, 'userId' | 'accessCache'>;
+
+function serviceAccess(context?: AgentAccessContext) {
+  if (!context?.accessCache) return undefined;
+  return { userId: context.userId, cache: context.accessCache };
+}
 
 const isUuid = (value: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -68,9 +76,10 @@ function pickLibraryFromMatches(
 
 export async function listProjectLibraries(
   supabase: SupabaseClient,
-  projectId: string
+  projectId: string,
+  access?: AgentAccessContext
 ): Promise<Array<{ id: string; name: string }>> {
-  const rows = await listLibraryReferences(supabase, projectId);
+  const rows = await listLibraryReferences(supabase, projectId, serviceAccess(access));
   return rows.map(({ id, name }) => ({ id, name }));
 }
 
@@ -78,17 +87,18 @@ export async function findLibraryByName(
   supabase: SupabaseClient,
   projectId: string,
   libraryName: string,
-  options?: LibraryResolveOptions
+  options?: LibraryResolveOptions,
+  access?: AgentAccessContext
 ): Promise<{
   library: ResolvedLibrary | null;
   available: string[];
   ambiguousMatches?: ResolvedLibrary[];
 }> {
-  const rows = await listLibraryReferences(supabase, projectId);
+  const rows = await listLibraryReferences(supabase, projectId, serviceAccess(access));
   const available = rows.map((library) => library.name);
 
   if (isUuid(libraryName)) {
-    await verifyLibraryAccess(supabase, libraryName);
+    await verifyLibraryAccess(supabase, libraryName, access?.userId, access?.accessCache);
     const match = rows.find((library) => library.id === libraryName);
     return {
       library: match ? { id: match.id, name: match.name } : null,
@@ -113,17 +123,19 @@ export async function findLibraryByName(
 
 export async function getLibraryProperties(
   supabase: SupabaseClient,
-  libraryId: string
+  libraryId: string,
+  access?: AgentAccessContext
 ): Promise<PropertyConfig[]> {
-  const { properties } = await getLibrarySchema(supabase, libraryId);
+  const { properties } = await getLibrarySchema(supabase, libraryId, serviceAccess(access));
   return properties;
 }
 
 export async function getLibraryAssets(
   supabase: SupabaseClient,
-  libraryId: string
+  libraryId: string,
+  access?: AgentAccessContext
 ): Promise<AssetRow[]> {
-  return getLibraryAssetsWithProperties(supabase, libraryId);
+  return getLibraryAssetsWithProperties(supabase, libraryId, serviceAccess(access));
 }
 
 export async function getFolderRow(
@@ -158,18 +170,20 @@ export function resolveFolderMatch(rows: FolderRef[], folderName: string): Folde
 
 export async function listProjectFolders(
   supabase: SupabaseClient,
-  projectId: string
+  projectId: string,
+  access?: AgentAccessContext
 ): Promise<FolderRef[]> {
-  const rows = await listFolderReferences(supabase, projectId);
+  const rows = await listFolderReferences(supabase, projectId, serviceAccess(access));
   return rows.map(({ id, name }) => ({ id, name }));
 }
 
 export async function findFolderByName(
   supabase: SupabaseClient,
   projectId: string,
-  folderName: string
+  folderName: string,
+  access?: AgentAccessContext
 ): Promise<{ folder: FolderRef | null; available: string[] }> {
-  const rows = await listProjectFolders(supabase, projectId);
+  const rows = await listProjectFolders(supabase, projectId, access);
   return {
     folder: resolveFolderMatch(rows, folderName),
     available: rows.map((row) => row.name),
@@ -213,9 +227,10 @@ export async function renameLibraryServer(
 export async function resolveAssetByRowIndex(
   supabase: SupabaseClient,
   libraryId: string,
-  uiRowNumber: number
+  uiRowNumber: number,
+  access?: AgentAccessContext
 ): Promise<{ id: string; name: string } | null> {
-  const assets = sortAssetsForUiRow(await getLibraryAssets(supabase, libraryId));
+  const assets = sortAssetsForUiRow(await getLibraryAssets(supabase, libraryId, access));
   if (uiRowNumber < 1 || uiRowNumber > assets.length) return null;
   const asset = assets[uiRowNumber - 1];
   return { id: asset.id, name: asset.name };

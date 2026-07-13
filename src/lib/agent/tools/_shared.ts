@@ -10,6 +10,7 @@ import {
   type ResolvedLibrary,
   type LibraryResolveOptions,
 } from '../data-access';
+import type { ToolContext } from '../types';
 
 export {
   findLibraryByName,
@@ -60,13 +61,14 @@ export async function resolveLibraryForTool(
   supabase: import('@supabase/supabase-js').SupabaseClient,
   projectId: string,
   libraryName: string,
-  ctx: { currentLibraryId?: string; currentFolderId?: string }
+  ctx: Pick<ToolContext, 'userId' | 'accessCache' | 'currentLibraryId' | 'currentFolderId'>
 ): Promise<LibraryLookupResult> {
   const { library, available, ambiguousMatches } = await findLibraryByName(
     supabase,
     projectId,
     libraryName,
-    libraryResolveOptionsFromContext(ctx)
+    libraryResolveOptionsFromContext(ctx),
+    ctx
   );
   if (ambiguousMatches && ambiguousMatches.length > 1) {
     return { ok: false, error: formatAmbiguousLibraryError(libraryName, ambiguousMatches) };

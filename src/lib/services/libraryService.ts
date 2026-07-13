@@ -1,5 +1,6 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import {
+  type AccessVerificationContext,
   verifyProjectOwnership,
   verifyProjectAccess,
   verifyLibraryAccess,
@@ -263,10 +264,11 @@ export async function listLibraries(
 
 export async function listLibraryReferences(
   supabase: SupabaseClient,
-  projectId: string
+  projectId: string,
+  access?: AccessVerificationContext
 ): Promise<LibraryReference[]> {
   const resolvedProjectId = await resolveProjectId(supabase, projectId);
-  await verifyProjectAccess(supabase, resolvedProjectId);
+  await verifyProjectAccess(supabase, resolvedProjectId, access?.userId, access?.cache);
 
   const { data, error } = await supabase
     .from('libraries')

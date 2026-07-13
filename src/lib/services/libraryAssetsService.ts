@@ -14,6 +14,7 @@ import { getLibrary } from '@/lib/services/libraryService';
 import { syncReferencesForSourceChanges } from '@/lib/services/referenceSyncService';
 import { fetchAllPaged } from '@/lib/services/pagination';
 import {
+  type AccessVerificationContext,
   verifyLibraryAccess,
   verifyLibraryUpdatePermission,
   verifyAssetAccess,
@@ -385,13 +386,14 @@ export async function getLibrarySummary(
 // T008: Load predefine schema for a library and aggregate Sections + Properties.
 export async function getLibrarySchema(
   supabase: SupabaseClient,
-  libraryId: string
+  libraryId: string,
+  access?: AccessVerificationContext
 ): Promise<{
   sections: SectionConfig[];
   properties: PropertyConfig[];
 }> {
   // verify library access
-  await verifyLibraryAccess(supabase, libraryId);
+  await verifyLibraryAccess(supabase, libraryId, access?.userId, access?.cache);
 
   const { data, error } = await supabase
     .from('library_field_definitions')
@@ -748,10 +750,11 @@ export async function updateLibraryField(
 // T009: Load assets and property values for a library and aggregate into AssetRow[].
 export async function getLibraryAssetsWithProperties(
   supabase: SupabaseClient,
-  libraryId: string
+  libraryId: string,
+  access?: AccessVerificationContext
 ): Promise<AssetRow[]> {
   // verify library access
-  await verifyLibraryAccess(supabase, libraryId);
+  await verifyLibraryAccess(supabase, libraryId, access?.userId, access?.cache);
 
   const assets = await fetchAllPaged<AssetRowDb>((from, to) =>
     supabase

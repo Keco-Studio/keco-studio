@@ -43,8 +43,8 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   const library = libraryFromLookupResult(libraryResult);
 
   const [properties, assets] = await Promise.all([
-    getLibraryProperties(ctx.supabase, library.id),
-    getLibraryAssets(ctx.supabase, library.id),
+    getLibraryProperties(ctx.supabase, library.id, ctx),
+    getLibraryAssets(ctx.supabase, library.id, ctx),
   ]);
 
   const rowCount = assets.filter(

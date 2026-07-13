@@ -75,7 +75,11 @@ export async function getToolsForLlmAsync(ctx: ToolContext): Promise<OpenAITool[
   }
 
   try {
-    const libraryProperties = await getLibraryProperties(ctx.supabase, ctx.currentLibraryId);
+    const libraryProperties = await getLibraryProperties(
+      ctx.supabase,
+      ctx.currentLibraryId,
+      ctx
+    );
     return getToolsForLlm(ctx, libraryProperties);
   } catch {
     return getToolsForLlm(ctx);

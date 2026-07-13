@@ -14,6 +14,37 @@ export class AuthorizationError extends Error {
   }
 }
 
+export type AccessVerificationCache = Map<string, Promise<void>>;
+
+export type AccessVerificationContext = {
+  userId: string;
+  cache: AccessVerificationCache;
+};
+
+export function createAccessVerificationCache(): AccessVerificationCache {
+  return new Map<string, Promise<void>>();
+}
+
+async function withAccessVerificationCache(
+  cache: AccessVerificationCache | undefined,
+  key: string,
+  verify: () => Promise<void>
+): Promise<void> {
+  if (!cache) return verify();
+
+  const cached = cache.get(key);
+  if (cached) return cached;
+
+  const pending = verify();
+  cache.set(key, pending);
+  try {
+    await pending;
+  } catch (error) {
+    cache.delete(key);
+    throw error;
+  }
+}
+
 /** Execute an authorization lookup. React Query handles caching at caller boundaries. */
 async function withAuthCache<T>(cacheKey: string, fn: () => Promise<T>): Promise<T> {
   void cacheKey;
@@ -81,13 +112,14 @@ export async function verifyProjectOwnership(
 export async function verifyProjectAccess(
   supabase: SupabaseClient,
   projectId: string,
-  userId?: string
+  userId?: string,
+  accessCache?: AccessVerificationCache
 ): Promise<void> {
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   const cacheKey = `auth:project-access:${projectId}:${currentUserId}`;
 
-  await withAuthCache(cacheKey, async () => {
+  await withAccessVerificationCache(accessCache, cacheKey, async () => {
     const { data: project, error } = await supabase
       .from('projects')
       .select('owner_id')
@@ -100,7 +132,7 @@ export async function verifyProjectAccess(
     
     // Check if user is the owner
     if (project.owner_id === currentUserId) {
-      return true;
+      return;
     }
     
     // Check if user is a collaborator with accepted invitation
@@ -120,7 +152,7 @@ export async function verifyProjectAccess(
       throw new AuthorizationError('Unauthorized access to this project');
     }
     
-    return true; // Return a value for caching
+    return;
   });
 }
 
@@ -181,13 +213,14 @@ export async function getUserProjectRole(
 export async function verifyLibraryAccess(
   supabase: SupabaseClient,
   libraryId: string,
-  userId?: string
+  userId?: string,
+  accessCache?: AccessVerificationCache
 ): Promise<void> {
   const currentUserId = userId || await getCurrentUserId(supabase);
   
   const cacheKey = `auth:library-access:${libraryId}:${currentUserId}`;
 
-  await withAuthCache(cacheKey, async () => {
+  await withAccessVerificationCache(accessCache, cacheKey, async () => {
     // Get the project that owns the library
     const { data: library, error: libraryError } = await supabase
       .from('libraries')
@@ -205,9 +238,9 @@ export async function verifyLibraryAccess(
     }
     
     // Verify project access (owner or collaborator)
-    await verifyProjectAccess(supabase, library.project_id, currentUserId);
+    await verifyProjectAccess(supabase, library.project_id, currentUserId, accessCache);
     
-    return true; // Return a value for caching
+    return;
   });
 }
 

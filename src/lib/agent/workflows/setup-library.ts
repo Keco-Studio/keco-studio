@@ -107,7 +107,12 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     let folderId: string | undefined;
     let resolvedFolderName: string | undefined;
     if (folderName) {
-      const { folder, available } = await findFolderByName(ctx.supabase, ctx.projectId, folderName);
+      const { folder, available } = await findFolderByName(
+        ctx.supabase,
+        ctx.projectId,
+        folderName,
+        ctx
+      );
       if (!folder) {
         return {
           success: false,
@@ -119,7 +124,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     }
 
     // 2. Reject duplicate library name.
-    const existing = await listProjectLibraries(ctx.supabase, ctx.projectId);
+    const existing = await listProjectLibraries(ctx.supabase, ctx.projectId, ctx);
     if (existing.some((lib) => norm(lib.name) === norm(libraryName))) {
       return {
         success: false,
@@ -144,7 +149,13 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         referenceLibraries = [];
         referenceLibraryIds = [];
         for (const refName of field.referenceLibraries) {
-          const { library, available } = await findLibraryByName(ctx.supabase, ctx.projectId, refName);
+          const { library, available } = await findLibraryByName(
+            ctx.supabase,
+            ctx.projectId,
+            refName,
+            undefined,
+            ctx
+          );
           if (!library) {
             return {
               success: false,
@@ -242,7 +253,7 @@ async function executeImport(
     };
   }
 
-  const properties = await getLibraryProperties(ctx.supabase, libraryId);
+  const properties = await getLibraryProperties(ctx.supabase, libraryId, ctx);
   const writeGuide = buildLibraryWriteGuide(properties);
 
   scheduleLibrarySchemaReindex(ctx.supabase, {
