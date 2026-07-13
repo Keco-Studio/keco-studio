@@ -28,12 +28,12 @@ export async function GET(req: Request) {
   });
 
   if (error) {
+    console.error('[GET /api/search/cell-values] Search failed:', error);
     return NextResponse.json(
-      { error: error.message ?? 'search failed' },
+      { error: 'Cell value search failed' },
       { status: 400 }
     );
   }
 
   return NextResponse.json({ results: data ?? [] });
 }
-

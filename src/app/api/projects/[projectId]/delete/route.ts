@@ -72,7 +72,7 @@ export async function DELETE(
         return NextResponse.json(
           {
             success: false,
-            error: error.message,
+            error: status === 404 ? 'Project not found' : 'Forbidden',
           },
           { status }
         );
@@ -82,7 +82,7 @@ export async function DELETE(
       return NextResponse.json(
         {
           success: false,
-          error: error instanceof Error ? error.message : 'Failed to delete project',
+          error: 'Failed to delete project',
         },
         { status: 500 }
       );
@@ -97,7 +97,7 @@ export async function DELETE(
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : 'An unexpected error occurred',
+        error: 'An unexpected error occurred',
       },
       { status: 500 }
     );

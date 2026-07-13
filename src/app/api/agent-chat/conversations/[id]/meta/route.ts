@@ -50,6 +50,7 @@ export async function PATCH(
     const meta = await updateConversationMeta(supabase, id, resolveConversationMeta({ autoExecute: body.autoExecute }));
     return NextResponse.json({ meta });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message || 'Failed to update meta' }, { status: 400 });
+    console.error('[PATCH /api/agent-chat/conversations/:id/meta] Failed:', e);
+    return NextResponse.json({ error: 'Failed to update conversation settings' }, { status: 400 });
   }
 }

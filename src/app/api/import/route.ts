@@ -76,13 +76,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result, { status: 200 });
   } catch (e: unknown) {
     const err = e as { name?: string; message?: string; code?: string };
+    console.error('[POST /api/import] Import failed:', e);
     if (err.name === 'AuthorizationError') {
-      return NextResponse.json({ error: err.message || 'Forbidden' }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const msg = err.message || 'Import failed';
     if (msg.toLowerCase().includes('already exists')) {
-      return NextResponse.json({ error: msg }, { status: 409 });
+      return NextResponse.json(
+        { error: 'A library with this name already exists' },
+        { status: 409 }
+      );
     }
-    return NextResponse.json({ error: msg }, { status: 400 });
+    return NextResponse.json({ error: 'Import failed' }, { status: 400 });
   }
 }

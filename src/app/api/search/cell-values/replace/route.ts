@@ -113,8 +113,9 @@ export async function POST(req: Request) {
     );
 
     if (searchError) {
+      console.error('[POST /api/search/cell-values/replace] Search failed:', searchError);
       return NextResponse.json(
-        { error: searchError.message ?? 'search failed' },
+        { error: 'Cell value search failed' },
         { status: 400 }
       );
     }
@@ -144,8 +145,9 @@ export async function POST(req: Request) {
     .in('field_id', fieldIds);
 
   if (valueError) {
+    console.error('[POST /api/search/cell-values/replace] Failed to load values:', valueError);
     return NextResponse.json(
-      { error: valueError.message ?? 'failed to load cell values' },
+      { error: 'Failed to load cell values' },
       { status: 400 }
     );
   }
@@ -161,8 +163,9 @@ export async function POST(req: Request) {
     .in('id', fieldIds);
 
   if (fieldError) {
+    console.error('[POST /api/search/cell-values/replace] Failed to load fields:', fieldError);
     return NextResponse.json(
-      { error: fieldError.message ?? 'failed to load field definitions' },
+      { error: 'Failed to load field definitions' },
       { status: 400 }
     );
   }
@@ -317,8 +320,9 @@ export async function POST(req: Request) {
         .upsert(allowedUpserts, { onConflict: 'asset_id,field_id' });
 
       if (upsertError) {
+        console.error('[POST /api/search/cell-values/replace] Replace failed:', upsertError);
         return NextResponse.json(
-          { error: upsertError.message ?? 'replace failed' },
+          { error: 'Cell value replacement failed' },
           { status: 400 }
         );
       }

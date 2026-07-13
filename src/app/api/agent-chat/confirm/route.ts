@@ -78,10 +78,10 @@ export async function POST(request: NextRequest) {
     response.headers.set('X-Conversation-Id', conversation.id);
     return response;
   } catch (e) {
+    console.error('[POST /api/agent-chat/confirm] Resume failed:', e);
     if (e instanceof AgentAccessError) {
-      return NextResponse.json({ error: e.message }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    const err = e as { message?: string };
-    return NextResponse.json({ error: err.message || 'Resume failed' }, { status: 400 });
+    return NextResponse.json({ error: 'Resume failed' }, { status: 400 });
   }
 }

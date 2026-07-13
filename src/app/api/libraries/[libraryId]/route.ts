@@ -47,7 +47,8 @@ export async function GET(_req: Request, { params }: Params) {
   const { data, error } = await query.single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    console.error('[GET /api/libraries/:libraryId] Failed to load library:', error);
+    return NextResponse.json({ error: 'Failed to load library' }, { status: 400 });
   }
 
   if (!data) {

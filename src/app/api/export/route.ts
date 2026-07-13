@@ -457,14 +457,15 @@ export async function GET(request: NextRequest) {
     libraryNameFromAccess = result.name || libraryNameFromAccess;
   } catch (e: unknown) {
     const err = e as { name?: string; message?: string };
+    console.error('[GET /api/export] Library access check failed:', e);
     if (err.name === 'AuthorizationError') {
-      return NextResponse.json({ error: err.message }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
     const msg = (err.message || '').toLowerCase();
     if (msg.includes('not logged in') || msg.includes('jwt') || msg.includes('session')) {
       return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
     }
-    return NextResponse.json({ error: (err as Error)?.message || 'Library not found' }, { status: 404 });
+    return NextResponse.json({ error: 'Library not found' }, { status: 404 });
   }
 
   const [schema, assets] = await Promise.all([

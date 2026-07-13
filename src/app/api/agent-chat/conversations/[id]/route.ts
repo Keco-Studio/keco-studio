@@ -21,6 +21,7 @@ export async function DELETE(
     await deleteConversation(supabase, id);
     return NextResponse.json({ success: true });
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message || 'Failed to delete conversation' }, { status: 400 });
+    console.error('[DELETE /api/agent-chat/conversations/:id] Failed:', e);
+    return NextResponse.json({ error: 'Failed to delete conversation' }, { status: 400 });
   }
 }

@@ -17,8 +17,9 @@ export async function GET(request: NextRequest) {
       const conversations = await listAllConversations(supabase, user.id);
       return NextResponse.json({ conversations });
     } catch (e) {
+      console.error('[GET /api/agent-chat/conversations] Failed to list conversations:', e);
       return NextResponse.json(
-        { error: (e as Error).message || 'Failed to list conversations' },
+        { error: 'Failed to list conversations' },
         { status: 400 }
       );
     }
@@ -34,9 +35,10 @@ export async function GET(request: NextRequest) {
     const conversations = await listConversations(supabase, projectId, user.id);
     return NextResponse.json({ conversations });
   } catch (e) {
+    console.error('[GET /api/agent-chat/conversations] Failed to list conversations:', e);
     if (e instanceof AgentAccessError) {
-      return NextResponse.json({ error: e.message }, { status: 403 });
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
-    return NextResponse.json({ error: (e as Error).message || 'Failed to list conversations' }, { status: 400 });
+    return NextResponse.json({ error: 'Failed to list conversations' }, { status: 400 });
   }
 }

@@ -25,6 +25,7 @@ export async function GET(
     const page = await getMessages(supabase, id, { cursor, limit });
     return NextResponse.json(page);
   } catch (e) {
-    return NextResponse.json({ error: (e as Error).message || 'Failed to load messages' }, { status: 400 });
+    console.error('[GET /api/agent-chat/conversations/:id/messages] Failed:', e);
+    return NextResponse.json({ error: 'Failed to load messages' }, { status: 400 });
   }
 }

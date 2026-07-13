@@ -29,7 +29,8 @@ export async function GET(request: NextRequest) {
     .order('created_at', { ascending: true });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    console.error('[GET /api/projects] Failed to load projects:', error);
+    return NextResponse.json({ error: 'Failed to load projects' }, { status: 500 });
   }
 
   return NextResponse.json(data ?? []);
@@ -58,8 +59,8 @@ export async function POST(request: NextRequest) {
   });
 
   if (error) {
-    console.error('RPC error:', error);
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    console.error('[POST /api/projects] RPC error:', error);
+    return NextResponse.json({ error: 'Failed to create project' }, { status: 400 });
   }
 
   if (!data) {

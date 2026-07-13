@@ -58,7 +58,8 @@ export async function GET(_req: Request, { params }: Params) {
     .order('created_at', { ascending: true });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    console.error('[GET /api/projects/:projectId/folders] Failed to load folders:', error);
+    return NextResponse.json({ error: 'Failed to load folders' }, { status: 400 });
   }
 
   return NextResponse.json(data ?? []);
@@ -110,7 +111,8 @@ export async function POST(request: Request, { params }: Params) {
     if (error.code === '23505') {
       return NextResponse.json({ error: 'A folder with this name already exists in the project' }, { status: 400 });
     }
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    console.error('[POST /api/projects/:projectId/folders] Failed to create folder:', error);
+    return NextResponse.json({ error: 'Failed to create folder' }, { status: 400 });
   }
 
   return NextResponse.json(

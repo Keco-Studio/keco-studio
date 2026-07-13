@@ -96,7 +96,8 @@ export async function GET(req: Request) {
     .limit(limit);
 
   if (assetsError) {
-    return NextResponse.json({ error: assetsError.message }, { status: 400 });
+    console.error('[GET /api/search/assets] Failed to search assets:', assetsError);
+    return NextResponse.json({ error: 'Asset search failed' }, { status: 400 });
   }
 
   const safeAssets = (assets ?? []).filter(isAssetSearchRow);
@@ -110,7 +111,8 @@ export async function GET(req: Request) {
     .in('id', libraryIds);
 
   if (librariesError) {
-    return NextResponse.json({ error: librariesError.message }, { status: 400 });
+    console.error('[GET /api/search/assets] Failed to load libraries:', librariesError);
+    return NextResponse.json({ error: 'Asset search failed' }, { status: 400 });
   }
 
   const libById = new Map<string, LibrarySearchRow>();

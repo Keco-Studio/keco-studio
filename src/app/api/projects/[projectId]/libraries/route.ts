@@ -108,7 +108,8 @@ export async function POST(request: Request, { params }: Params) {
     if (error.code === '23505') {
       return NextResponse.json({ error: 'A library with this name already exists in the project or folder' }, { status: 400 });
     }
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    console.error('[POST /api/projects/:projectId/libraries] Failed to create library:', error);
+    return NextResponse.json({ error: 'Failed to create library' }, { status: 400 });
   }
 
   return NextResponse.json(
@@ -170,7 +171,7 @@ export async function GET(_req: Request, { params }: Params) {
   if (error) {
     console.error('Error listing libraries:', error);
     console.error('Query params:', { projectId, folderId });
-    return NextResponse.json({ error: error.message }, { status: 400 });
+    return NextResponse.json({ error: 'Failed to load libraries' }, { status: 400 });
   }
 
   const libraries = (data ?? []) as LibraryListRow[];
