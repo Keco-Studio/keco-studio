@@ -73,6 +73,7 @@ export function CreateDocumentVersionModal({
       <Input
         autoFocus
         maxLength={120}
+        data-testid="version-name-input"
         value={name}
         placeholder="Version name"
         onChange={(event) => setName(event.target.value)}
