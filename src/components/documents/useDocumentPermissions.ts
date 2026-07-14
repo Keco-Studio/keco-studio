@@ -12,6 +12,7 @@ export type DocumentPermissionState = {
   readOnly: boolean;
   userId: string | null;
   accessToken: string | null;
+  userName: string | null;
 };
 
 export type LoadDocumentPermissionsOptions = {
@@ -28,6 +29,7 @@ const denied = (error: string): DocumentPermissionState => ({
   readOnly: true,
   userId: null,
   accessToken: null,
+  userName: null,
 });
 
 export async function loadDocumentPermissions({
@@ -66,6 +68,17 @@ export async function loadDocumentPermissions({
       readOnly: role === 'viewer',
       userId: session.user.id,
       accessToken: session.access_token,
+      userName:
+        (typeof session.user.user_metadata?.full_name === 'string' &&
+        session.user.user_metadata.full_name.trim()
+          ? session.user.user_metadata.full_name.trim()
+          : null) ??
+        (typeof session.user.user_metadata?.name === 'string' &&
+        session.user.user_metadata.name.trim()
+          ? session.user.user_metadata.name.trim()
+          : null) ??
+        session.user.email?.split('@')[0] ??
+        'Collaborator',
     };
   } catch {
     return denied('Project permissions could not be loaded.');
@@ -79,6 +92,7 @@ const loadingState: DocumentPermissionState = {
   readOnly: true,
   userId: null,
   accessToken: null,
+  userName: null,
 };
 
 export function useDocumentPermissions({

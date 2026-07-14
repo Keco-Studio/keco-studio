@@ -13,7 +13,7 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe('MDXEditor route-level lazy loading', () => {
-  it('keeps the package import inside the dynamically loaded editor module', () => {
+  it('keeps browser and headless package imports behind lazy collaboration boundaries', () => {
     const packageImports = sourceFiles(sourceRoot)
       .filter((file) => fs.readFileSync(file, 'utf8').includes("'@mdxeditor/editor'"))
       .map((file) => path.relative(repoRoot, file))
@@ -22,7 +22,25 @@ describe('MDXEditor route-level lazy loading', () => {
     expect(packageImports).toEqual([
       'src/components/documents/MdxDocumentEditor.tsx',
       'src/components/documents/documentCollaborationPlugin.ts',
+      'src/lib/documents/headlessDocumentNodes.ts',
     ]);
+
+    const editorShell = fs.readFileSync(
+      path.join(sourceRoot, 'components/documents/DocumentEditor.tsx'),
+      'utf8'
+    );
+    const collaborationHook = fs.readFileSync(
+      path.join(sourceRoot, 'components/documents/useDocumentCollaboration.ts'),
+      'utf8'
+    );
+    expect(editorShell).not.toContain("from '@/lib/documents/documentStateGateway'");
+    expect(editorShell).not.toContain("from '@/lib/documents/documentCollaborationSession'");
+    expect(collaborationHook).toContain(
+      "import('@/lib/documents/documentCollaborationSession')"
+    );
+    expect(collaborationHook).toContain(
+      "import('@/lib/documents/documentStateGateway')"
+    );
   });
 
   it('loads the editor with next/dynamic and disables SSR', () => {

@@ -109,6 +109,12 @@ export const queryKeys = {
   document: (id: string) =>
     ['document', id] as const,
 
+  documentState: (id: string) =>
+    ['document', id, 'state'] as const,
+
+  documentVersions: (id: string) =>
+    ['document', id, 'versions'] as const,
+
   // ========== Collaboration ==========
   
   /**
