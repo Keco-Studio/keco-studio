@@ -1,69 +1,54 @@
-/**
- * MDXEditor realm plugin that wires @lexical/yjs collaboration onto the
- * editor's root Lexical instance (MDXEditor does not use Lexical's
- * CollaborationPlugin React tree).
- *
- * Connect order (matches Lexical CollaborationPlugin):
- * 1. createBinding + observeDeep
- * 2. (deferred) apply Postgres yjs_state so observeDeep → Lexical once
- * 3. provider.connect() for Realtime peers
- * 4. bootstrap from editor markdown only if Yjs root is still empty
- *
- * IME: never Lexical→Yjs while editor.isComposing() — Chinese pinyin
- * intermediates (e.g. h'b'v') must not be committed into the CRDT.
- */
-
 import {
-  realmPlugin,
   createRootEditorSubscription$,
+  realmPlugin,
 } from '@mdxeditor/editor';
 import {
   createBinding,
+  createUndoManager,
   initLocalState,
   setLocalStateFocus,
   syncCursorPositions,
   syncLexicalUpdateToYjs,
   syncYjsChangesToLexical,
-  type Provider,
   type Binding,
+  type Provider,
 } from '@lexical/yjs';
-import type { LexicalEditor } from 'lexical';
 import {
   BLUR_COMMAND,
-  FOCUS_COMMAND,
+  CAN_REDO_COMMAND,
+  CAN_UNDO_COMMAND,
   COMMAND_PRIORITY_EDITOR,
+  FOCUS_COMMAND,
+  REDO_COMMAND,
   SKIP_COLLAB_TAG,
-  $getRoot,
+  UNDO_COMMAND,
+  type LexicalEditor,
 } from 'lexical';
-import type { Doc } from 'yjs';
-import { UndoManager } from 'yjs';
-import type { DocumentYjsProvider } from '@/lib/documents/documentYjsProvider';
+import { UndoManager, type Doc } from 'yjs';
+import type {
+  DocumentBindingFailureDirection,
+  DocumentCollaborationSession,
+} from '@/lib/documents/documentCollaborationSession';
 
 export type DocumentCollaborationParams = {
-  id: string;
-  provider: Provider;
-  doc: Doc;
+  session: DocumentCollaborationSession;
   username: string;
   cursorColor: string;
-  /** When true and Yjs root is empty after sync, push MDXEditor markdown into Yjs. */
-  shouldBootstrapFromEditor: boolean;
 };
 
-function ensureCursorsContainer(binding: Binding, editor: LexicalEditor): HTMLElement {
-  if (binding.cursorsContainer && binding.cursorsContainer.isConnected) {
+function ensureCursorsContainer(
+  binding: Binding,
+  editor: LexicalEditor
+): HTMLElement {
+  if (binding.cursorsContainer?.isConnected) {
     return binding.cursorsContainer;
   }
+
   const rootElement = editor.getRootElement();
   const parent = rootElement?.parentElement ?? document.body;
   const container = document.createElement('div');
   container.className = 'document-collab-cursors';
-  container.style.position = 'absolute';
-  container.style.inset = '0';
-  container.style.pointerEvents = 'none';
-  container.style.zIndex = '5';
-  if (getComputedStyle(parent).position === 'static') {
-    parent.style.position = 'relative';
-  }
+  container.setAttribute('aria-hidden', 'true');
   parent.appendChild(container);
   binding.cursorsContainer = container;
   return container;
@@ -83,254 +68,237 @@ function forceLexicalToYjs(binding: Binding, provider: Provider): void {
   );
 }
 
-function asDocumentProvider(
-  provider: Provider
-): DocumentYjsProvider | null {
-  if (
-    provider &&
-    typeof (provider as DocumentYjsProvider).applyInitialState === 'function'
-  ) {
-    return provider as DocumentYjsProvider;
-  }
-  return null;
-}
+export const documentCollaborationPlugin =
+  realmPlugin<DocumentCollaborationParams>({
+    init(realm, params) {
+      if (!params) return;
 
-function safeSyncYjsToLexical(
-  binding: Binding,
-  provider: Provider,
-  events: Array<{ delta: unknown }>,
-  isFromUndoManager: boolean
-): void {
-  try {
-    // Deltas must be read during the Yjs event turn (or immediately after
-    // we captured them while composing).
-    events.forEach((event) => {
-      void event.delta;
-    });
-    syncYjsChangesToLexical(
-      binding,
-      provider,
-      events as never,
-      isFromUndoManager
-    );
-  } catch (err) {
-    // Dev builds of @lexical/yjs throw (e.g. syncChildrenFromYjs / missing
-    // DOM node) when MDXEditor replaces nodes underfoot. Swallow so the
-    // editor stays usable; next local edit re-syncs from Lexical.
-    if (process.env.NODE_ENV !== 'production') {
-      console.warn('[doc-collab] Yjs→Lexical sync skipped:', err);
-    }
-  }
-}
+      const { session, username, cursorColor } = params;
+      realm.pub(createRootEditorSubscription$, (editor: LexicalEditor) => {
+        const provider: Provider = session;
+        const doc: Doc = session.doc;
+        const id = session.documentId;
+        const docMap = new Map<string, Doc>([[id, doc]]);
+        const binding = createBinding(editor, provider, id, doc, docMap);
+        const sharedRoot = binding.root.getSharedType();
+        const undoManager = createUndoManager(binding, sharedRoot);
+        const awareness = provider.awareness;
+        const queuedRemote: Array<{
+          events: Array<{ delta: unknown }>;
+          isFromUndoManager: boolean;
+        }> = [];
+        let disposed = false;
 
-export const documentCollaborationPlugin = realmPlugin<DocumentCollaborationParams>({
-  init(realm, params) {
-    if (!params) return;
+        const failBinding = (
+          error: unknown,
+          direction: DocumentBindingFailureDirection
+        ): never => {
+          cleanupBinding();
+          session.reportBindingFailure(error, direction);
+          throw error;
+        };
 
-    const { id, provider, doc, username, cursorColor, shouldBootstrapFromEditor } =
-      params;
-
-    realm.pub(createRootEditorSubscription$, (editor: LexicalEditor) => {
-      const docMap = new Map<string, Doc>([[id, doc]]);
-      const binding = createBinding(editor, provider, id, doc, docMap);
-      ensureCursorsContainer(binding, editor);
-
-      const awareness = provider.awareness;
-      let didBootstrap = false;
-      let disposed = false;
-
-      /** Remote Yjs events deferred while the local IME is composing. */
-      const queuedRemote: Array<{
-        events: Array<{ delta: unknown }>;
-        isFromUndoManager: boolean;
-      }> = [];
-
-      const onYjsTreeChanges = (
-        events: Array<{ delta: unknown }>,
-        transaction: { origin: unknown }
-      ) => {
-        // Skip local Lexical→Yjs writes (origin === binding).
-        if (transaction.origin === binding) return;
-        const isFromUndoManager = transaction.origin instanceof UndoManager;
-
-        // Capture deltas now — Yjs invalidates them after the observer returns.
-        events.forEach((event) => {
-          void event.delta;
-        });
-
-        if (editor.isComposing()) {
-          queuedRemote.push({ events, isFromUndoManager });
-          return;
-        }
-
-        safeSyncYjsToLexical(binding, provider, events, isFromUndoManager);
-      };
-
-      initLocalState(
-        provider,
-        username,
-        cursorColor,
-        document.activeElement === editor.getRootElement(),
-        {}
-      );
-
-      binding.root.getSharedType().observeDeep(onYjsTreeChanges);
-
-      const flushAfterComposition = () => {
-        if (disposed || editor.isComposing()) return;
-        try {
-          forceLexicalToYjs(binding, provider);
-        } catch (err) {
-          if (process.env.NODE_ENV !== 'production') {
-            console.warn('[doc-collab] compositionend Lexical→Yjs skipped:', err);
-          }
-        }
-        while (queuedRemote.length > 0) {
-          const item = queuedRemote.shift()!;
-          safeSyncYjsToLexical(
-            binding,
-            provider,
-            item.events,
-            item.isFromUndoManager
-          );
-        }
-      };
-
-      const onCompositionEnd = () => {
-        // IME commits asynchronously relative to Lexical state; wait a tick.
-        queueMicrotask(flushAfterComposition);
-      };
-
-      const rootEl = editor.getRootElement();
-      rootEl?.addEventListener('compositionend', onCompositionEnd);
-
-      const onSync = (isSynced: boolean) => {
-        if (!isSynced || didBootstrap || disposed) return;
-        const yRoot = binding.root.getSharedType();
-        if (yRoot.length > 0) {
-          didBootstrap = true;
-          return;
-        }
-        if (!shouldBootstrapFromEditor) {
-          didBootstrap = true;
-          return;
-        }
-        didBootstrap = true;
-        queueMicrotask(() => {
-          if (disposed) return;
-          binding.editor.update(() => {
-            $getRoot().markDirty();
-          });
-          forceLexicalToYjs(binding, provider);
-        });
-      };
-
-      const onAwarenessUpdate = () => {
-        if (disposed) return;
-        try {
-          ensureCursorsContainer(binding, editor);
-          syncCursorPositions(binding, provider);
-        } catch {
-          // Cursor overlay is best-effort.
-        }
-      };
-
-      provider.on('sync', onSync);
-      awareness.on('update', onAwarenessUpdate);
-
-      const removeUpdateListener = editor.registerUpdateListener(
-        ({
-          prevEditorState,
-          editorState,
-          dirtyLeaves,
-          dirtyElements,
-          normalizedNodes,
-          tags,
-        }) => {
-          if (tags.has(SKIP_COLLAB_TAG)) {
-            return;
-          }
-          // Do not push IME intermediates (pinyin / h'b'v'…) into Yjs.
-          if (editor.isComposing()) {
-            return;
-          }
+        const syncRemoteChanges = (
+          events: Array<{ delta: unknown }>,
+          isFromUndoManager: boolean
+        ) => {
           try {
-            syncLexicalUpdateToYjs(
+            events.forEach((event) => {
+              void event.delta;
+            });
+            syncYjsChangesToLexical(
               binding,
               provider,
-              prevEditorState,
-              editorState,
-              dirtyElements,
-              dirtyLeaves,
-              normalizedNodes,
-              tags
+              events as never,
+              isFromUndoManager
             );
-          } catch (err) {
-            if (process.env.NODE_ENV !== 'production') {
-              console.warn('[doc-collab] Lexical→Yjs sync skipped:', err);
+          } catch (error) {
+            cleanupBinding();
+            session.reportBindingFailure(error, 'yjs-to-lexical');
+            throw error;
+          }
+        };
+
+        const onYjsTreeChanges = (
+          events: Array<{ delta: unknown }>,
+          transaction: { origin: unknown }
+        ) => {
+          if (transaction.origin === binding || disposed) return;
+          const isFromUndoManager = transaction.origin instanceof UndoManager;
+          events.forEach((event) => {
+            void event.delta;
+          });
+          if (editor.isComposing()) {
+            queuedRemote.push({ events, isFromUndoManager });
+            return;
+          }
+          syncRemoteChanges(events, isFromUndoManager);
+        };
+
+        const flushAfterComposition = () => {
+          if (disposed || editor.isComposing()) return;
+          try {
+            forceLexicalToYjs(binding, provider);
+          } catch (error) {
+            failBinding(error, 'composition');
+          }
+          while (queuedRemote.length > 0) {
+            const item = queuedRemote.shift()!;
+            syncRemoteChanges(item.events, item.isFromUndoManager);
+          }
+        };
+
+        const onCompositionEnd = () => {
+          queueMicrotask(flushAfterComposition);
+        };
+
+        const onAwarenessUpdate = () => {
+          if (disposed) return;
+          try {
+            ensureCursorsContainer(binding, editor);
+            syncCursorPositions(binding, provider);
+          } catch (error) {
+            failBinding(error, 'presence');
+          }
+        };
+
+        const updateUndoRedoState = () => {
+          editor.dispatchCommand(
+            CAN_UNDO_COMMAND,
+            undoManager.undoStack.length > 0
+          );
+          editor.dispatchCommand(
+            CAN_REDO_COMMAND,
+            undoManager.redoStack.length > 0
+          );
+        };
+
+        const rootElement = editor.getRootElement();
+        ensureCursorsContainer(binding, editor);
+        rootElement?.addEventListener('compositionend', onCompositionEnd);
+        initLocalState(
+          provider,
+          username,
+          cursorColor,
+          document.activeElement === rootElement,
+          { userId: session.userId }
+        );
+
+        sharedRoot.observeDeep(onYjsTreeChanges);
+        awareness.on('update', onAwarenessUpdate);
+        undoManager.on('stack-item-added', updateUndoRedoState);
+        undoManager.on('stack-item-popped', updateUndoRedoState);
+        undoManager.on('stack-cleared', updateUndoRedoState);
+
+        const removeUpdateListener = editor.registerUpdateListener(
+          ({
+            prevEditorState,
+            editorState,
+            dirtyLeaves,
+            dirtyElements,
+            normalizedNodes,
+            tags,
+          }) => {
+            if (tags.has(SKIP_COLLAB_TAG) || editor.isComposing() || disposed) {
+              return;
+            }
+            try {
+              syncLexicalUpdateToYjs(
+                binding,
+                provider,
+                prevEditorState,
+                editorState,
+                dirtyElements,
+                dirtyLeaves,
+                normalizedNodes,
+                tags
+              );
+            } catch (error) {
+              failBinding(error, 'lexical-to-yjs');
             }
           }
-        }
-      );
+        );
 
-      const removeFocus = editor.registerCommand(
-        FOCUS_COMMAND,
-        () => {
-          setLocalStateFocus(provider, username, cursorColor, true, {});
-          return false;
-        },
-        COMMAND_PRIORITY_EDITOR
-      );
+        const removeFocus = editor.registerCommand(
+          FOCUS_COMMAND,
+          () => {
+            setLocalStateFocus(
+              provider,
+              username,
+              cursorColor,
+              true,
+              { userId: session.userId }
+            );
+            return false;
+          },
+          COMMAND_PRIORITY_EDITOR
+        );
+        const removeBlur = editor.registerCommand(
+          BLUR_COMMAND,
+          () => {
+            setLocalStateFocus(
+              provider,
+              username,
+              cursorColor,
+              false,
+              { userId: session.userId }
+            );
+            return false;
+          },
+          COMMAND_PRIORITY_EDITOR
+        );
+        const removeUndo = editor.registerCommand(
+          UNDO_COMMAND,
+          () => {
+            try {
+              undoManager.undo();
+              return true;
+            } catch (error) {
+              return failBinding(error, 'undo-redo');
+            }
+          },
+          COMMAND_PRIORITY_EDITOR
+        );
+        const removeRedo = editor.registerCommand(
+          REDO_COMMAND,
+          () => {
+            try {
+              undoManager.redo();
+              return true;
+            } catch (error) {
+              return failBinding(error, 'undo-redo');
+            }
+          },
+          COMMAND_PRIORITY_EDITOR
+        );
 
-      const removeBlur = editor.registerCommand(
-        BLUR_COMMAND,
-        () => {
-          setLocalStateFocus(provider, username, cursorColor, false, {});
-          return false;
-        },
-        COMMAND_PRIORITY_EDITOR
-      );
-
-      // Defer past MDXEditor's nested editor.update(import markdown) so we
-      // never call syncYjsChangesToLexical inside another update closure
-      // (causes "node does not exist in active editor state").
-      const startTimer = window.setTimeout(() => {
-        if (disposed) return;
-        asDocumentProvider(provider)?.applyInitialState();
-        void Promise.resolve(provider.connect?.()).then(() => {
+        function cleanupBinding() {
           if (disposed) return;
-          const providerWithSync = provider as Provider & { isSynced?: boolean };
-          if (providerWithSync.isSynced) {
-            onSync(true);
-          }
-        });
-      }, 0);
+          disposed = true;
+          queuedRemote.length = 0;
+          rootElement?.removeEventListener('compositionend', onCompositionEnd);
+          removeUpdateListener();
+          removeFocus();
+          removeBlur();
+          removeUndo();
+          removeRedo();
+          awareness.off('update', onAwarenessUpdate);
+          sharedRoot.unobserveDeep(onYjsTreeChanges);
+          undoManager.off('stack-item-added', updateUndoRedoState);
+          undoManager.off('stack-item-popped', updateUndoRedoState);
+          undoManager.off('stack-cleared', updateUndoRedoState);
+          undoManager.destroy();
+          binding.cursorsContainer?.remove();
+          binding.cursorsContainer = null;
+          binding.root.destroy(binding);
+        }
 
-      return () => {
-        disposed = true;
-        window.clearTimeout(startTimer);
-        queuedRemote.length = 0;
-        rootEl?.removeEventListener('compositionend', onCompositionEnd);
-        removeUpdateListener();
-        removeFocus();
-        removeBlur();
-        provider.off('sync', onSync);
-        awareness.off('update', onAwarenessUpdate);
-        binding.root.getSharedType().unobserveDeep(onYjsTreeChanges);
-        try {
-          provider.disconnect?.();
-        } catch {
-          // Provider may already be destroyed by DocumentEditor unmount.
-        }
-        if (binding.cursorsContainer?.parentElement) {
-          binding.cursorsContainer.parentElement.removeChild(
-            binding.cursorsContainer
-          );
-        }
-        binding.cursorsContainer = null;
-      };
-    });
-  },
-});
+        updateUndoRedoState();
+        session.attachBinding();
+
+        return cleanupBinding;
+      });
+    },
+  });
 
 export { colorForUserId } from '@/lib/documents/cursorColor';

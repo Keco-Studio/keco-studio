@@ -1,4 +1,9 @@
 /* Theme MDXEditor to match the antd 5 dashboard tokens. */
+.editorFrame {
+  position: relative;
+  min-width: 0;
+}
+
 .editor {
   --accentBase: var(--ant-color-primary, #1677ff);
   --accentBorder: var(--ant-color-primary-border, #91caff);
@@ -23,4 +28,19 @@
 
 .hiddenFileInput {
   display: none;
+}
+
+:global(.document-collab-cursors) {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+}
+
+:global(.document-collab-cursors > span > span > span) {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

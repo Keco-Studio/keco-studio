@@ -131,7 +131,7 @@ function makeHarness(overrides: {
 async function connectReady(session: DocumentCollaborationSession) {
   const connecting = session.connect();
   await Promise.resolve();
-  session.applyInitialState();
+  session.attachBinding();
   await connecting;
 }
 
@@ -164,6 +164,36 @@ describe('DocumentCollaborationSession', () => {
     );
     expect(session.status).toBe('ready');
     expect(session.token).toEqual({ epoch: 2, revision: 4 });
+  });
+
+  it('attaches one binding after connection and keeps the legacy alias idempotent', async () => {
+    const { session } = makeHarness();
+    const connecting = session.connect();
+    await Promise.resolve();
+
+    session.attachBinding();
+    session.applyInitialState();
+    await connecting;
+
+    expect(session.status).toBe('ready');
+    expect(session.doc.get('root', Y.XmlText).toString()).toBe('seed');
+  });
+
+  it('fails closed and notifies the provider when the editor binding fails', () => {
+    const { session } = makeHarness();
+    const syncListener = jest.fn();
+    const states: Array<{ status: string; error: string | null }> = [];
+    session.on('sync', syncListener);
+    session.subscribe(({ status, error }) => states.push({ status, error }));
+
+    session.reportBindingFailure(new Error('missing Lexical node'), 'yjs-to-lexical');
+
+    expect(session.status).toBe('error');
+    expect(syncListener).toHaveBeenCalledWith(false);
+    expect(states.at(-1)).toEqual({
+      status: 'error',
+      error: 'Document binding failed (yjs-to-lexical): missing Lexical node',
+    });
   });
 
   it('refreshes Realtime auth without recreating the channel or Y.Doc', async () => {
@@ -411,8 +441,8 @@ describe('DocumentCollaborationSession', () => {
     expect(harness.session.status).toBe('syncing');
     expect(harness.session.doc).not.toBe(oldDoc);
     expect(reload).toHaveBeenCalledTimes(1);
-    harness.session.applyInitialState();
-    harness.session.applyInitialState();
+    harness.session.attachBinding();
+    harness.session.attachBinding();
     expect(harness.session.status).toBe('ready');
     expect(harness.session.token).toEqual({ epoch: 3, revision: 1 });
     expect(harness.session.doc.getMap('peer').get('restored')).toBe('version');
