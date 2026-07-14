@@ -14,8 +14,13 @@ import type {
   CollaborationStatus,
   DocumentStateToken,
   DurableYjsUpdate,
+  ReplaceDocumentStateInput,
 } from './documentStateTypes';
-import { DocumentStateConflictError } from './documentStateTypes';
+import {
+  DocumentCollaborationUnavailableError,
+  DocumentReadOnlyError,
+  DocumentStateConflictError,
+} from './documentStateTypes';
 
 export type DocumentCollaborationRole = 'admin' | 'editor' | 'viewer';
 
@@ -37,6 +42,10 @@ export type DocumentCollaborationGateway = {
   compact(
     client: SupabaseClient,
     input: { documentId: string; expected: DocumentStateToken }
+  ): Promise<AuthoritativeDocumentState>;
+  replace(
+    client: SupabaseClient,
+    input: ReplaceDocumentStateInput
   ): Promise<AuthoritativeDocumentState>;
 };
 
@@ -66,6 +75,7 @@ export type DocumentCollaborationSessionOptions = {
   compactionBackoffMs?: number;
   compactionJitterRatio?: number;
   onCompacted?: (state: AuthoritativeDocumentState) => void | Promise<void>;
+  onStateReplaced?: (state: AuthoritativeDocumentState) => void | Promise<void>;
 };
 
 type ProviderStatusPayload = { status: string };
@@ -79,6 +89,12 @@ type ProviderListenerMap = {
 type BufferedEvent = {
   event: DocumentCollaborationEventName;
   payload: unknown;
+};
+
+type DocumentStateResetEvent = {
+  documentId: string;
+  epoch: number;
+  revision: number;
 };
 
 type PendingDurableUpdate = DurableYjsUpdate & {
@@ -111,6 +127,9 @@ export class DocumentCollaborationSession implements Provider {
   private readonly compactionBackoffMs: number;
   private readonly compactionJitterRatio: number;
   private readonly onCompacted?: (
+    state: AuthoritativeDocumentState
+  ) => void | Promise<void>;
+  private readonly onStateReplaced?: (
     state: AuthoritativeDocumentState
   ) => void | Promise<void>;
   private readonly viewListeners = new Set<(state: CollaborationViewState) => void>();
@@ -148,6 +167,7 @@ export class DocumentCollaborationSession implements Provider {
   private currentStatus: CollaborationStatus = 'idle';
   private currentToken: DocumentStateToken = { epoch: 0, revision: 0 };
   private currentError: string | null = null;
+  private stateReplacementInProgress = false;
   private activeDoc: Y.Doc;
   private activeAwareness: Provider['awareness'];
 
@@ -156,6 +176,7 @@ export class DocumentCollaborationSession implements Provider {
       origin === 'remote' ||
       origin === 'hydrate' ||
       this.role === 'viewer' ||
+      this.stateReplacementInProgress ||
       this.destroyed
     ) {
       return;
@@ -208,6 +229,7 @@ export class DocumentCollaborationSession implements Provider {
     this.compactionBackoffMs = options.compactionBackoffMs ?? 250;
     this.compactionJitterRatio = options.compactionJitterRatio ?? 0.2;
     this.onCompacted = options.onCompacted;
+    this.onStateReplaced = options.onStateReplaced;
     this.activeDoc = new Y.Doc();
     this.activeDoc.get('root', Y.XmlText);
     this.activeAwareness = new awarenessProtocol.Awareness(
@@ -363,10 +385,15 @@ export class DocumentCollaborationSession implements Provider {
   ): Promise<void> {
     if (event === 'document-state-reset') {
       try {
-        const reset = parseDocumentCollaborationEvent(event, payload);
+        const reset = parseDocumentCollaborationEvent(
+          'document-state-reset',
+          payload
+        ) as DocumentStateResetEvent;
         if (
           reset.documentId !== this.documentId ||
-          reset.epoch < this.currentToken.epoch
+          reset.epoch < this.currentToken.epoch ||
+          (reset.epoch === this.currentToken.epoch &&
+            reset.revision <= this.currentToken.revision)
         ) {
           return;
         }
@@ -565,6 +592,61 @@ export class DocumentCollaborationSession implements Provider {
     await this.flushPendingDurability();
     if (this.durableTailCount > 0 && this.currentStatus !== 'closed') {
       await this.compactNow();
+    }
+  }
+
+  async restoreVersion(
+    versionId: string
+  ): Promise<AuthoritativeDocumentState> {
+    if (this.role === 'viewer') throw new DocumentReadOnlyError();
+    if (this.destroyed || this.currentStatus !== 'ready') {
+      throw new DocumentCollaborationUnavailableError(
+        'Document must be live before restoring a version'
+      );
+    }
+
+    this.stateReplacementInProgress = true;
+    this.setStatus('syncing');
+    try {
+      await this.flushPendingDurability();
+      const state = await this.gateway.replace(this.supabase, {
+        documentId: this.documentId,
+        expected: this.currentToken,
+        replacement: { kind: 'version', versionId },
+        reason: 'restore',
+      });
+      this.replaceActiveDocument(state);
+      try {
+        await this.onStateReplaced?.(state);
+      } catch {
+        // Cache and sidebar refresh are best-effort after the durable commit.
+      }
+      try {
+        await this.send('document-state-reset', {
+          v: 1,
+          documentId: this.documentId,
+          epoch: state.token.epoch,
+          revision: state.token.revision,
+          reason: 'restore',
+          updatedAt: state.updatedAt,
+        });
+      } catch {
+        this.failClosed('Document restore committed but reset delivery failed', 'degraded');
+      }
+      return state;
+    } catch (error) {
+      if (error instanceof DocumentStateConflictError) {
+        await this.reloadDurableState();
+        if (this.hydrated) this.setStatus('ready');
+      } else {
+        this.failClosed(
+          error instanceof Error ? error.message : 'Document restore failed',
+          'degraded'
+        );
+      }
+      throw error;
+    } finally {
+      this.stateReplacementInProgress = false;
     }
   }
 
