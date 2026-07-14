@@ -139,4 +139,46 @@ describe('document autosave controller', () => {
       lastSavedAt: '2026-07-14T00:00:03.000Z',
     });
   });
+
+  it('pauses a dirty debounce until the remote conflict is resolved', async () => {
+    const { controller, save } = makeController();
+    const conflictController = controller as unknown as {
+      pauseForRemote: () => void;
+      keepLocalAfterRemote: (updatedAt: string) => void;
+      getRevision: () => number;
+      getState: () => { isPaused: boolean; isDirty: boolean };
+    };
+
+    controller.handleChange('local draft');
+    expect(conflictController.getRevision()).toBe(1);
+    conflictController.pauseForRemote();
+    await jest.advanceTimersByTimeAsync(1500);
+
+    expect(save).not.toHaveBeenCalled();
+    expect(conflictController.getState()).toMatchObject({
+      isPaused: true,
+      isDirty: true,
+    });
+    await expect(controller.flush('navigate')).rejects.toThrow(/conflict/i);
+
+    conflictController.keepLocalAfterRemote('2026-07-14T00:00:03.000Z');
+    await jest.advanceTimersByTimeAsync(1500);
+
+    expect(save).toHaveBeenCalledWith('local draft');
+    expect(conflictController.getState().isPaused).toBe(false);
+  });
+
+  it('accepting the remote body clears a conflict pause', () => {
+    const { controller } = makeController();
+    const conflictController = controller as unknown as {
+      pauseForRemote: () => void;
+      getState: () => { isPaused: boolean };
+    };
+
+    controller.handleChange('local draft');
+    conflictController.pauseForRemote();
+    controller.acceptRemote('remote body', '2026-07-14T00:00:03.000Z');
+
+    expect(conflictController.getState().isPaused).toBe(false);
+  });
 });

@@ -33,7 +33,12 @@ import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { Project } from "@/lib/services/projectService";
 import { Library, deleteLibrary, moveLibraryToFolder } from "@/lib/services/libraryService";
 import { Folder, deleteFolder } from "@/lib/services/folderService";
-import { updateDocumentName, moveDocument, type DocumentSummary } from "@/lib/services/documentService";
+import {
+  updateDocumentName,
+  moveDocument,
+  type DocumentRecord,
+  type DocumentSummary,
+} from "@/lib/services/documentService";
 import { broadcastProjectDocumentUpdate } from "@/lib/documents/projectDocumentChannel";
 import { flushOpenDocumentEditor } from "@/lib/documents/documentFlushRegistry";
 import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
@@ -292,6 +297,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           }
           try {
             await updateDocumentName(supabase, id, trimmed);
+            queryClient.setQueryData<DocumentRecord>(
+              queryKeys.document(id),
+              (old) => (old ? { ...old, name: trimmed } : old)
+            );
             if (currentIds.projectId) {
               void broadcastProjectDocumentUpdate({
                 documentId: id,
@@ -305,6 +314,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             if (currentIds.projectId) {
               queryClient.invalidateQueries({ queryKey: queryKeys.documents(currentIds.projectId) });
             }
+            queryClient.invalidateQueries({ queryKey: queryKeys.document(id) });
             throw docErr;
           }
         }

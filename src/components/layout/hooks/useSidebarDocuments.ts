@@ -22,8 +22,8 @@ export function useSidebarDocuments(currentProjectId: string | null) {
     },
     enabled: isUuid(currentProjectId),
     staleTime: 0,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 
   return {

@@ -139,27 +139,37 @@ function DocumentEditorSession({
   const {
     acceptRemote,
     flush,
+    getIsDirty,
+    getIsPaused,
+    getRevision,
     handleChange: markChanged,
     isDirty,
     keepLocalAfterRemote,
     lastSavedAt,
     lastSavedContent,
+    pauseForRemote,
     state: persistState,
     error: persistError,
   } = autosave;
 
   const loadRemote = useCallback(async () => {
+    const revision = getRevision();
     const remote = await getDocument(supabase, document.id);
+    if (getRevision() !== revision) {
+      throw new Error('Local document changed during remote refresh');
+    }
     queryClient.setQueryData(queryKeys.document(document.id), remote);
     markdownRef.current = remote.content ?? '';
     editorRef.current?.setMarkdown(remote.content ?? '');
     acceptRemote(remote.content ?? '', remote.updated_at);
-  }, [acceptRemote, document.id, queryClient, supabase]);
+  }, [acceptRemote, document.id, getRevision, queryClient, supabase]);
 
   const stale = useDocumentStaleCopy({
     documentId: document.id,
     localUpdatedAt: lastSavedAt,
     isDirty,
+    getIsDirty,
+    onRemoteSaveStart: pauseForRemote,
     onCleanRemoteSave: loadRemote,
   });
   const {
@@ -180,7 +190,7 @@ function DocumentEditorSession({
   );
 
   const beaconFlush = useCallback(() => {
-    if (permissions.readOnly || !isDirty) return;
+    if (permissions.readOnly || !isDirty || getIsPaused()) return;
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !anonKey) return;
@@ -203,6 +213,7 @@ function DocumentEditorSession({
     }
   }, [
     document.id,
+    getIsPaused,
     getSnapshot,
     isDirty,
     lastSavedContent,

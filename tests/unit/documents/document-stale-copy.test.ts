@@ -59,20 +59,59 @@ describe('document stale-copy controller', () => {
 
   it('shows a banner instead of replacing dirty local content', async () => {
     const onCleanRemoteSave = jest.fn();
-    const controller = createDocumentStaleCopyController({
+    const onRemoteSaveStart = jest.fn();
+    const options = {
       documentId: DOCUMENT_ID,
       localUpdatedAt: BASELINE,
       isDirty: true,
       onCleanRemoteSave,
-    });
+      onRemoteSaveStart,
+    };
+    const controller = createDocumentStaleCopyController(options);
 
     await controller.receive(saveUpdate());
 
+    expect(onRemoteSaveStart).toHaveBeenCalledTimes(1);
     expect(onCleanRemoteSave).not.toHaveBeenCalled();
     expect(controller.getState()).toEqual({
       isStale: true,
       remoteUpdatedAt: '2026-07-14T00:00:01.000Z',
     });
+  });
+
+  it('uses the live dirty state when the React snapshot has not caught up', async () => {
+    const onCleanRemoteSave = jest.fn();
+    const options = {
+      documentId: DOCUMENT_ID,
+      localUpdatedAt: BASELINE,
+      isDirty: false,
+      getIsDirty: () => true,
+      onCleanRemoteSave,
+    };
+    const controller = createDocumentStaleCopyController(options);
+
+    await controller.receive(saveUpdate());
+
+    expect(onCleanRemoteSave).not.toHaveBeenCalled();
+    expect(controller.getState().isStale).toBe(true);
+  });
+
+  it('pauses local persistence before refreshing a clean remote save', async () => {
+    const calls: string[] = [];
+    const options = {
+      documentId: DOCUMENT_ID,
+      localUpdatedAt: BASELINE,
+      isDirty: false,
+      onRemoteSaveStart: () => calls.push('pause'),
+      onCleanRemoteSave: async () => {
+        calls.push('refresh');
+      },
+    };
+    const controller = createDocumentStaleCopyController(options);
+
+    await controller.receive(saveUpdate());
+
+    expect(calls).toEqual(['pause', 'refresh']);
   });
 
   it('clears a stale banner only after reload succeeds', async () => {
