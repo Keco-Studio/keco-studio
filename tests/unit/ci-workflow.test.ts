@@ -8,6 +8,10 @@ const deployWorkflow = readFileSync(
   path.join(repoRoot, '.github/workflows/deploy-vercel.yml'),
   'utf8'
 );
+const playwrightWorkflow = readFileSync(
+  path.join(repoRoot, '.github/workflows/playwright.yml'),
+  'utf8'
+);
 const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as {
   scripts: Record<string, string>;
 };
@@ -46,5 +50,17 @@ describe('CI workflow gates', () => {
     expect(deployWorkflow).toContain('version: 2.90.0');
     expect(workflow).not.toContain('version: latest');
     expect(deployWorkflow).not.toContain('version: latest');
+  });
+
+  it('isolates Supabase ports for every Playwright shard', () => {
+    expect(playwrightWorkflow).toContain('supabaseApiPort:');
+    expect(playwrightWorkflow).toContain('supabaseDbPort:');
+    expect(playwrightWorkflow).toContain('Configure isolated Supabase ports');
+    expect(playwrightWorkflow).toContain(
+      'NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:${{ matrix.supabaseApiPort }}'
+    );
+    expect(playwrightWorkflow).not.toContain(
+      'curl -f -s http://127.0.0.1:54321/rest/v1/'
+    );
   });
 });

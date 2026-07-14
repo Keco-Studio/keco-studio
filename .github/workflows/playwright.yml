@@ -13,12 +13,43 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shardIndex: [1, 2, 3, 4]
-        shardTotal: [4]
+        include:
+          - shardIndex: 1
+            shardTotal: 4
+            supabaseApiPort: 55321
+            supabaseDbPort: 55322
+            supabaseShadowPort: 55320
+            supabaseStudioPort: 55323
+            supabaseInbucketPort: 55324
+            supabasePoolerPort: 55329
+          - shardIndex: 2
+            shardTotal: 4
+            supabaseApiPort: 55421
+            supabaseDbPort: 55422
+            supabaseShadowPort: 55420
+            supabaseStudioPort: 55423
+            supabaseInbucketPort: 55424
+            supabasePoolerPort: 55429
+          - shardIndex: 3
+            shardTotal: 4
+            supabaseApiPort: 55521
+            supabaseDbPort: 55522
+            supabaseShadowPort: 55520
+            supabaseStudioPort: 55523
+            supabaseInbucketPort: 55524
+            supabasePoolerPort: 55529
+          - shardIndex: 4
+            shardTotal: 4
+            supabaseApiPort: 55621
+            supabaseDbPort: 55622
+            supabaseShadowPort: 55620
+            supabaseStudioPort: 55623
+            supabaseInbucketPort: 55624
+            supabasePoolerPort: 55629
     env:
       # Local Supabase configuration
       # URL is known, but ANON_KEY will be set from local Supabase instance after it starts
-      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:${{ matrix.supabaseApiPort }}
       # Note: NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY 
       # will be set in the "Set Supabase environment variables" step
     
@@ -40,6 +71,23 @@ jobs:
       uses: supabase/setup-cli@v1
       with:
         version: 2.90.0
+
+    # Keep parallel jobs away from runner services that may use the default ports.
+    - name: Configure isolated Supabase ports
+      env:
+        SUPABASE_API_PORT: ${{ matrix.supabaseApiPort }}
+        SUPABASE_DB_PORT: ${{ matrix.supabaseDbPort }}
+        SUPABASE_SHADOW_PORT: ${{ matrix.supabaseShadowPort }}
+        SUPABASE_STUDIO_PORT: ${{ matrix.supabaseStudioPort }}
+        SUPABASE_INBUCKET_PORT: ${{ matrix.supabaseInbucketPort }}
+        SUPABASE_POOLER_PORT: ${{ matrix.supabasePoolerPort }}
+      run: |
+        sed -i "s/^port = 54321$/port = ${SUPABASE_API_PORT}/" supabase/config.toml
+        sed -i "s/^port = 54322$/port = ${SUPABASE_DB_PORT}/" supabase/config.toml
+        sed -i "s/^shadow_port = 54320$/shadow_port = ${SUPABASE_SHADOW_PORT}/" supabase/config.toml
+        sed -i "s/^port = 54323$/port = ${SUPABASE_STUDIO_PORT}/" supabase/config.toml
+        sed -i "s/^port = 54324$/port = ${SUPABASE_INBUCKET_PORT}/" supabase/config.toml
+        sed -i "s/^port = 54329$/port = ${SUPABASE_POOLER_PORT}/" supabase/config.toml
     
     # Start local Supabase instance
     - name: Start Supabase
@@ -50,7 +98,7 @@ jobs:
         sleep 3
         # Verify Supabase API is responding
         for i in {1..10}; do
-          if curl -f -s http://127.0.0.1:54321/rest/v1/ > /dev/null 2>&1; then
+          if curl -f -s "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/" > /dev/null 2>&1; then
             echo "✅ Supabase API is responding"
             break
           fi
@@ -104,7 +152,7 @@ jobs:
         # Verify Supabase is healthy after reset
         echo "🔍 Verifying Supabase health after reset..."
         for i in {1..15}; do
-          if curl -f -s http://127.0.0.1:54321/rest/v1/ > /dev/null 2>&1; then
+          if curl -f -s "$NEXT_PUBLIC_SUPABASE_URL/rest/v1/" > /dev/null 2>&1; then
             echo "✅ Supabase API is healthy after reset"
             break
           fi
@@ -182,7 +230,7 @@ jobs:
         export SUPABASE_SERVICE_ROLE_KEY=$SERVICE_KEY
         
         echo "✅ Environment variables set successfully"
-        echo "NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321"
+        echo "NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL"
         echo "NEXT_PUBLIC_SUPABASE_ANON_KEY length: ${#ANON_KEY}"
         echo "SUPABASE_SERVICE_ROLE_KEY length: ${#SERVICE_KEY}"
     

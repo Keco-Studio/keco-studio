@@ -151,7 +151,7 @@ export const POST = withAuth(async function POST(
         accepted_at: new Date().toISOString(),
       });
 
-    if (collaboratorError) {
+    if (collaboratorError && collaboratorError.code !== '23505') {
       console.error('Error adding collaborator:', collaboratorError);
       return NextResponse.json(
         {
@@ -161,6 +161,9 @@ export const POST = withAuth(async function POST(
         { status: 500 }
       );
     }
+
+    // A concurrent acceptance request may create the same membership after the
+    // pre-insert check. The unique constraint confirms the membership exists.
 
     // 14. Mark invitation as accepted
     const { error: updateError } = await supabase
