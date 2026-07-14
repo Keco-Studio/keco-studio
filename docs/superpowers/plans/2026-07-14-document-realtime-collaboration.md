@@ -108,14 +108,14 @@
 - Produces `DocumentCollaborationSession` with `doc`, `awareness`, `status`, `token`, `connect`, `attachBinding`, `flush`, `retry`, `subscribe`, `destroy`.
 - Implements the `@lexical/yjs` provider event surface consumed by the adapter.
 
-- [ ] **Step 1: Write failing state-machine tests** for `idle -> authorizing -> connecting -> hydrating -> syncing -> ready`, viewer `legacy-view`, initialization races, private channel options, and access-token forwarding/refresh.
-- [ ] **Step 2: Write failing durability tests** using two fake authenticated clients: merge local updates for 50-100 ms, append once, broadcast only after append resolves, retain pending data on failure, reject stale epoch events, and flush before sync response.
-- [ ] **Step 3: Write failing reconnect/reset tests** for durable-tail hydration, database-head comparison on reconnect/focus/heartbeat, exactly-once rehydrate on reset, no response containing non-durable data, and cleanup of timers/channel/awareness.
-- [ ] **Step 4: Verify RED** with `npm run test:unit -- --runInBand tests/unit/documents/document-yjs-provider.test.ts tests/unit/documents/document-collaboration-session.test.ts`.
-- [ ] **Step 5: Implement the session**. Subscribe to `doc-collab:<uuid>` with `{ private: true, broadcast: { self: false }, presence: { key: userId } }`; buffer incoming messages until durable hydration; only editors install local update/awareness senders; use gateway append before channel send.
-- [ ] **Step 6: Implement compaction thresholds** at 100 tail rows or 1 MiB and an idle/background trigger. A losing compactor reloads and retries with bounded backoff; metadata `document-updated` is emitted only after successful compaction.
-- [ ] **Step 7: Verify GREEN** with the command from Step 4.
-- [ ] **Step 8: Commit** with `git add src/lib/documents/documentYjsProvider.ts src/lib/documents/documentCollaborationSession.ts tests/unit/documents/document-yjs-provider.test.ts tests/unit/documents/document-collaboration-session.test.ts && git commit -m "feat: add durable document collaboration session"`.
+- [x] **Step 1: Write failing state-machine tests** for `idle -> authorizing -> connecting -> hydrating -> syncing -> ready`, viewer `legacy-view`, initialization races, private channel options, and access-token forwarding/refresh.
+- [x] **Step 2: Write failing durability tests** using two fake authenticated clients: merge local updates for 50-100 ms, append once, broadcast only after append resolves, retain pending data on failure, reject stale epoch events, and flush before sync response.
+- [x] **Step 3: Write failing reconnect/reset tests** for durable-tail hydration, database-head comparison on reconnect/focus/heartbeat, exactly-once rehydrate on reset, no response containing non-durable data, and cleanup of timers/channel/awareness.
+- [x] **Step 4: Verify RED** with `npm run test:unit -- --runInBand tests/unit/documents/document-yjs-provider.test.ts tests/unit/documents/document-collaboration-session.test.ts`.
+- [x] **Step 5: Implement the session**. Subscribe to `doc-collab:<uuid>` with `{ private: true, broadcast: { self: false }, presence: { key: userId } }`; buffer incoming messages until durable hydration; only editors install local update/awareness senders; use gateway append before channel send.
+- [x] **Step 6: Implement compaction thresholds** at 100 tail rows or 1 MiB and an idle/background trigger. A losing compactor reloads and retries with bounded backoff; metadata `document-updated` is emitted only after successful compaction.
+- [x] **Step 7: Verify GREEN** with the command from Step 4.
+- [x] **Step 8: Commit** with `git add src/lib/documents/documentYjsProvider.ts src/lib/documents/documentCollaborationSession.ts tests/unit/documents/document-yjs-provider.test.ts tests/unit/documents/document-collaboration-session.test.ts && git commit -m "feat: add durable document collaboration session"`.
 
 ### Task 6: Fail-closed MDXEditor Lexical adapter and presence cursors
 
