@@ -125,6 +125,7 @@ function DocumentEditorSession({
             type="button"
             className={styles.historyButton}
             aria-label="Version history"
+            data-testid="version-history-toggle"
             title="Version history"
             onClick={() => setHistoryOpen((open) => !open)}
           >

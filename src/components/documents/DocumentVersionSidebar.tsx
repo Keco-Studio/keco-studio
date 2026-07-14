@@ -84,9 +84,9 @@ export function DocumentVersionSidebar({
         </button>
       </div>
       {canMutate && (
-        <Button type="primary" block onClick={() => setCreateOpen(true)} disabled={!session}>
-          Create version
-        </Button>
+          <Button type="primary" block onClick={() => setCreateOpen(true)} disabled={!session}>
+            Create version
+          </Button>
       )}
       {versionsQuery.isLoading && <Spin aria-label="Loading versions" />}
       {versionsQuery.error && <div role="alert">Unable to load version history.</div>}
@@ -95,7 +95,7 @@ export function DocumentVersionSidebar({
       )}
       <div className={styles.list}>
         {versionsQuery.data?.map((version) => (
-          <div className={styles.row} key={version.id}>
+          <div className={styles.row} key={version.id} data-testid={`document-version-row-${version.id}`}>
             <div className={styles.rowDetails}>
               <strong>{version.name}</strong>
               <span>{versionTypeLabel(version.type)}</span>
@@ -106,7 +106,7 @@ export function DocumentVersionSidebar({
                 Preview
               </Button>
               {canMutate && (
-                <Button type="link" danger size="small" onClick={() => setRestoreVersion(version)}>
+                <Button type="link" danger size="small" data-testid={`restore-version-${version.id}`} onClick={() => setRestoreVersion(version)}>
                   Restore
                 </Button>
               )}
