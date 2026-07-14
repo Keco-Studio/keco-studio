@@ -71,12 +71,12 @@
 - Produces `DocumentContentCodec.validate`, `markdownToYjsState`, `yjsStateToMarkdown`, and `mergeYjsState`.
 - Uses the same Yjs root name and Lexical node types/properties as the browser adapter.
 
-- [ ] **Step 1: Write failing round-trip tests** for paragraphs, empty documents, headings, bold/italic/underline/inline-code, ordered/unordered/check lists, block quotes, links, images, thematic breaks, fenced code blocks, and GFM tables.
-- [ ] **Step 2: Add structural merge tests** proving two concurrent node-level updates merge without converting the whole document to `Y.Text`, and that snapshot plus an arbitrarily ordered deduplicated tail serializes deterministically.
-- [ ] **Step 3: Verify RED** with `npm run test:unit -- --runInBand tests/unit/documents/document-content-codec.test.ts`.
-- [ ] **Step 4: Implement the minimal headless codec** with a non-DOM Lexical editor and mirror node registrations for MDXEditor's custom image/table/code-block representation. Parse/serialize through a shared Phase 1 Markdown AST configuration; do not import `@mdxeditor/editor/style.css` or browser components.
-- [ ] **Step 5: Verify GREEN** with the command from Step 3 and add a Node entry-point smoke test so server consumers cannot accidentally depend on DOM globals.
-- [ ] **Step 6: Commit** with `git add src/lib/documents/documentContentCodec.ts src/lib/documents/headlessDocumentNodes.ts tests/unit/documents/document-content-codec.test.ts && git commit -m "feat: add isomorphic document content codec"`.
+- [x] **Step 1: Write failing round-trip tests** for paragraphs, empty documents, headings, bold/italic/underline/inline-code, ordered/unordered/check lists, block quotes, links, images, thematic breaks, fenced code blocks, and GFM tables.
+- [x] **Step 2: Add structural merge tests** proving two concurrent node-level updates merge without converting the whole document to `Y.Text`, and that snapshot plus an arbitrarily ordered deduplicated tail serializes deterministically.
+- [x] **Step 3: Verify RED** with `npm run test:unit -- --runInBand tests/unit/documents/document-content-codec.test.ts`.
+- [x] **Step 4: Implement the minimal headless codec** with a non-DOM Lexical editor and mirror node registrations for MDXEditor's custom image/table/code-block representation. Parse/serialize through a shared Phase 1 Markdown AST configuration; do not import `@mdxeditor/editor/style.css` or browser components.
+- [x] **Step 5: Verify GREEN** with the command from Step 3 and add a Node entry-point smoke test so server consumers cannot accidentally depend on DOM globals.
+- [x] **Step 6: Commit** with `git add src/lib/documents/documentContentCodec.ts src/lib/documents/headlessDocumentNodes.ts tests/unit/documents/document-content-codec.test.ts && git commit -m "feat: add isomorphic document content codec"`.
 
 ### Task 4: Authoritative document state gateway
 
