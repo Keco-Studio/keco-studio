@@ -43,6 +43,8 @@ import {
 } from './documentCollaborationPlugin';
 import styles from './MdxDocumentEditor.module.css';
 
+export type { MDXEditorMethods } from '@mdxeditor/editor';
+
 export type MdxDocumentEditorProps = {
   markdown: string;
   readOnly: boolean;
