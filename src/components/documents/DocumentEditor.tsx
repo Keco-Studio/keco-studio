@@ -23,8 +23,10 @@ import { uploadImageFiles } from '@/lib/services/documentImageUpload';
 import { broadcastDocumentUpdated } from '@/lib/documents/documentBroadcast';
 import { registerDocumentFlushHandler } from '@/lib/documents/documentFlushRegistry';
 import { queryKeys } from '@/lib/utils/queryKeys';
-import type { MdxDocumentEditorProps } from './MdxDocumentEditor';
-import type { MDXEditorMethods } from '@mdxeditor/editor';
+import type {
+  MdxDocumentEditorProps,
+  MDXEditorMethods,
+} from './MdxDocumentEditor';
 import type { DocumentRecord } from '@/lib/services/documentService';
 import styles from './DocumentEditor.module.css';
 

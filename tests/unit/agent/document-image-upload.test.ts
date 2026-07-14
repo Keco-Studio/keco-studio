@@ -13,13 +13,17 @@ function image(contentType = 'image/png', byteLength = 1024): ExtractedImage {
 
 /**
  * Minimal fake Supabase client covering the surface uploadMediaFile uses:
- * auth.getUser and storage.from(bucket).upload/getPublicUrl. `failOnIndex`
+ * auth.getSession/getUser and storage.from(bucket).upload/getPublicUrl. `failOnIndex`
  * makes a specific upload (by call order) fail to exercise the skip path.
  */
 function makeSupabase(opts: { failOnIndex?: number } = {}): SupabaseClient {
   let uploadCall = 0;
   return {
     auth: {
+      getSession: async () => ({
+        data: { session: { user: { id: USER_ID } } },
+        error: null,
+      }),
       getUser: async () => ({ data: { user: { id: USER_ID } }, error: null }),
     },
     storage: {
