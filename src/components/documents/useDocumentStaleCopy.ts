@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { DocumentUpdatedPayload } from '@/lib/documents/documentBroadcast';
 
 export type UseDocumentStaleCopyOptions = {
@@ -105,12 +105,8 @@ export function createDocumentStaleCopyController(
 export function useDocumentStaleCopy(
   options: UseDocumentStaleCopyOptions
 ): DocumentStaleCopy {
-  const controllerRef = useRef<DocumentStaleCopyController | null>(null);
-  if (!controllerRef.current) {
-    controllerRef.current = createDocumentStaleCopyController(options);
-  }
-  const controller = controllerRef.current;
-  controller.updateOptions(options);
+  const [controller] = useState(() => createDocumentStaleCopyController(options));
+  useEffect(() => controller.updateOptions(options), [controller, options]);
 
   const [state, setState] = useState<DocumentStaleCopyState>(() => controller.getState());
   useEffect(() => controller.subscribe(() => setState(controller.getState())), [controller]);

@@ -839,7 +839,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       }
       router.push(`/${currentIds.projectId}/doc/${documentId}`);
     }
-  }, [closeDocumentModal, selectedFolderId, currentIds.projectId, supabase, queryClient, expandFolder, router]);
+  }, [closeDocumentModal, selectedFolderId, currentIds.projectId, queryClient, expandFolder, router]);
 
   const movingLibrary = useMemo(
     () => libraries.find((lib) => lib.id === movingLibraryId) ?? null,

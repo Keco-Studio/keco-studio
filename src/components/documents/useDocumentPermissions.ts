@@ -93,12 +93,8 @@ export function useDocumentPermissions({
   const [state, setState] = useState<DocumentPermissionState>(loadingState);
 
   useEffect(() => {
-    if (!documentProjectId) {
-      setState(loadingState);
-      return;
-    }
+    if (!documentProjectId) return;
     let active = true;
-    setState(loadingState);
     void loadDocumentPermissions({ projectId, documentProjectId, supabase }).then((next) => {
       if (active) setState(next);
     });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 export type PersistReason = 'debounce' | 'navigate' | 'unmount' | 'visibility';
 export type PersistState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -207,12 +207,8 @@ export function createDocumentAutosaveController(
 export function useDocumentAutosave(
   options: UseDocumentAutosaveOptions
 ): DocumentAutosave {
-  const controllerRef = useRef<DocumentAutosaveController | null>(null);
-  if (!controllerRef.current) {
-    controllerRef.current = createDocumentAutosaveController(options);
-  }
-  const controller = controllerRef.current;
-  controller.updateOptions(options);
+  const [controller] = useState(() => createDocumentAutosaveController(options));
+  useEffect(() => controller.updateOptions(options), [controller, options]);
 
   const [state, setState] = useState<DocumentAutosaveState>(() => controller.getState());
   useEffect(() => controller.subscribe(() => setState(controller.getState())), [controller]);

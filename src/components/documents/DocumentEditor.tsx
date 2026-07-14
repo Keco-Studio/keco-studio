@@ -136,43 +136,56 @@ function DocumentEditorSession({
     save,
     onSaved,
   });
-  const autosaveRef = useRef(autosave);
-  autosaveRef.current = autosave;
+  const {
+    acceptRemote,
+    flush,
+    handleChange: markChanged,
+    isDirty,
+    keepLocalAfterRemote,
+    lastSavedAt,
+    lastSavedContent,
+    state: persistState,
+    error: persistError,
+  } = autosave;
 
   const loadRemote = useCallback(async () => {
     const remote = await getDocument(supabase, document.id);
     queryClient.setQueryData(queryKeys.document(document.id), remote);
     markdownRef.current = remote.content ?? '';
     editorRef.current?.setMarkdown(remote.content ?? '');
-    autosaveRef.current.acceptRemote(remote.content ?? '', remote.updated_at);
-  }, [document.id, queryClient, supabase]);
+    acceptRemote(remote.content ?? '', remote.updated_at);
+  }, [acceptRemote, document.id, queryClient, supabase]);
 
   const stale = useDocumentStaleCopy({
     documentId: document.id,
-    localUpdatedAt: autosave.lastSavedAt,
-    isDirty: autosave.isDirty,
+    localUpdatedAt: lastSavedAt,
+    isDirty,
     onCleanRemoteSave: loadRemote,
   });
+  const {
+    isStale,
+    keepLocal: dismissStale,
+    receive: receiveRemoteUpdate,
+    reloadRemote,
+  } = stale;
 
   useEffect(
-    () => subscribeToProjectDocumentUpdates(stale.receive),
-    [stale.receive]
+    () => subscribeToProjectDocumentUpdates(receiveRemoteUpdate),
+    [receiveRemoteUpdate]
   );
 
-  const flushRef = useRef(autosave.flush);
-  flushRef.current = autosave.flush;
   useEffect(
-    () => registerDocumentFlushHandler(() => flushRef.current('navigate')),
-    []
+    () => registerDocumentFlushHandler(() => flush('navigate')),
+    [flush]
   );
 
   const beaconFlush = useCallback(() => {
-    if (permissions.readOnly || !autosaveRef.current.isDirty) return;
+    if (permissions.readOnly || !isDirty) return;
     const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
     if (!url || !anonKey) return;
     const content = getSnapshot();
-    if (content === autosaveRef.current.lastSavedContent) return;
+    if (content === lastSavedContent) return;
     try {
       void fetch(`${url}/rest/v1/documents?id=eq.${document.id}`, {
         method: 'PATCH',
@@ -188,38 +201,43 @@ function DocumentEditorSession({
     } catch {
       // Unload persistence is best-effort; normal autosave remains authoritative.
     }
-  }, [document.id, getSnapshot, permissions.accessToken, permissions.readOnly]);
+  }, [
+    document.id,
+    getSnapshot,
+    isDirty,
+    lastSavedContent,
+    permissions.accessToken,
+    permissions.readOnly,
+  ]);
 
-  const beaconFlushRef = useRef(beaconFlush);
-  beaconFlushRef.current = beaconFlush;
   useEffect(() => {
     const onVisibilityChange = () => {
       if (window.document.visibilityState === 'hidden') {
-        void autosaveRef.current.flush('visibility').catch(() => undefined);
+        void flush('visibility').catch(() => undefined);
       }
     };
-    const onBeforeUnload = () => beaconFlushRef.current();
+    const onBeforeUnload = () => beaconFlush();
     window.document.addEventListener('visibilitychange', onVisibilityChange);
     window.addEventListener('beforeunload', onBeforeUnload);
     return () => {
       window.document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('beforeunload', onBeforeUnload);
     };
-  }, []);
+  }, [beaconFlush, flush]);
 
   useEffect(
     () => () => {
-      void autosaveRef.current.flush('unmount').catch(() => undefined);
+      void flush('unmount').catch(() => undefined);
     },
-    []
+    [flush]
   );
 
   const handleChange = useCallback(
     (markdown: string) => {
       markdownRef.current = markdown;
-      autosave.handleChange(markdown);
+      markChanged(markdown);
     },
-    [autosave]
+    [markChanged]
   );
 
   const imageUploadHandler = useCallback(
@@ -232,9 +250,9 @@ function DocumentEditorSession({
   );
 
   const keepLocal = useCallback(() => {
-    const remoteUpdatedAt = stale.keepLocal();
-    if (remoteUpdatedAt) autosave.keepLocalAfterRemote(remoteUpdatedAt);
-  }, [autosave, stale]);
+    const remoteUpdatedAt = dismissStale();
+    if (remoteUpdatedAt) keepLocalAfterRemote(remoteUpdatedAt);
+  }, [dismissStale, keepLocalAfterRemote]);
 
   return (
     <div className={styles.container}>
@@ -245,22 +263,22 @@ function DocumentEditorSession({
             <span className={styles.viewerTag}>View only</span>
           ) : (
             <PersistIndicator
-              state={autosave.state}
-              lastSavedAt={autosave.lastSavedAt}
-              errorDetail={autosave.error}
+              state={persistState}
+              lastSavedAt={lastSavedAt}
+              errorDetail={persistError}
             />
           )}
         </div>
       </div>
 
-      {stale.isStale && (
+      {isStale && (
         <div className={styles.staleBanner} role="alert">
           <span>This document was updated elsewhere.</span>
           <div className={styles.staleActions}>
             <button
               type="button"
               className={styles.reloadButton}
-              onClick={() => void stale.reloadRemote()}
+              onClick={() => void reloadRemote()}
             >
               Reload remote
             </button>
