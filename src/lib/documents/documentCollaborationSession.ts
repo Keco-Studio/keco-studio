@@ -231,6 +231,18 @@ export class DocumentCollaborationSession implements Provider {
     return { ...this.currentToken };
   }
 
+  get hasPendingChanges(): boolean {
+    return (
+      this.localUpdates.length > 0 ||
+      this.pendingDurable !== null ||
+      this.persistPromise !== null
+    );
+  }
+
+  get canAttachBinding(): boolean {
+    return this.hydrated || this.pendingState?.mode === 'collaborative';
+  }
+
   subscribe(listener: (state: CollaborationViewState) => void): () => void {
     this.viewListeners.add(listener);
     return () => this.viewListeners.delete(listener);
@@ -258,8 +270,13 @@ export class DocumentCollaborationSession implements Provider {
 
   async updateAccessToken(accessToken: string): Promise<void> {
     if (!accessToken || accessToken === this.accessToken) return;
-    this.accessToken = accessToken;
-    await this.supabase.realtime.setAuth(accessToken);
+    try {
+      await this.supabase.realtime.setAuth(accessToken);
+      this.accessToken = accessToken;
+    } catch (error) {
+      this.failClosed('Realtime authorization refresh failed');
+      throw error;
+    }
   }
 
   private async startConnection(): Promise<void> {
@@ -287,6 +304,7 @@ export class DocumentCollaborationSession implements Provider {
           this.pendingState = state;
           this.currentToken = state.token;
           this.setStatus('legacy-view');
+          this.startHeartbeat();
           this.resolveConnect?.();
           return;
         }
@@ -442,13 +460,15 @@ export class DocumentCollaborationSession implements Provider {
     const buffered = this.bufferedEvents;
     this.bufferedEvents = [];
     for (const item of buffered) void this.receive(item.event, item.payload);
-    void this.send('yjs-sync-request', {
-      v: 1,
-      documentId: this.documentId,
-      epoch: this.currentToken.epoch,
-      requesterId: this.userId,
-      stateVectorBase64: encodeBase64(Y.encodeStateVector(this.doc)),
-    });
+    if (this.role !== 'viewer') {
+      void this.send('yjs-sync-request', {
+        v: 1,
+        documentId: this.documentId,
+        epoch: this.currentToken.epoch,
+        requesterId: this.userId,
+        stateVectorBase64: encodeBase64(Y.encodeStateVector(this.doc)),
+      });
+    }
     this.setStatus('ready');
     for (const listener of this.providerListeners.sync) listener(true);
     this.startHeartbeat();
@@ -629,6 +649,26 @@ export class DocumentCollaborationSession implements Provider {
     this.setStatus('syncing');
     await this.flushPendingDurability();
     this.setStatus('ready');
+  }
+
+  async refresh(): Promise<void> {
+    if (
+      this.destroyed ||
+      (this.currentStatus !== 'ready' &&
+        this.currentStatus !== 'legacy-view' &&
+        this.currentStatus !== 'degraded')
+    ) {
+      return;
+    }
+    try {
+      await this.reloadDurableState();
+    } catch (error) {
+      this.failClosed(
+        error instanceof Error ? error.message : 'Document catch-up failed',
+        'degraded'
+      );
+      throw error;
+    }
   }
 
   private async reloadDurableState(): Promise<void> {

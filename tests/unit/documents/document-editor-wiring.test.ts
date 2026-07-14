@@ -6,14 +6,16 @@ const editorPath = path.resolve(
   '../../../src/components/documents/DocumentEditor.tsx'
 );
 
-describe('DocumentEditor Phase 1 wiring', () => {
+describe('DocumentEditor collaboration wiring', () => {
   const source = fs.readFileSync(editorPath, 'utf8');
 
-  it('composes the dedicated session boundaries', () => {
-    expect(source).toContain('useDocumentAutosave');
-    expect(source).toContain('useDocumentStaleCopy');
+  it('uses collaboration and permission boundaries without mounting Phase 1 writers', () => {
+    expect(source).toContain('useDocumentCollaboration');
     expect(source).toContain('useDocumentPermissions');
-    expect(source).toContain('subscribeToProjectDocumentUpdates');
+    expect(source).not.toContain('useDocumentAutosave');
+    expect(source).not.toContain('useDocumentStaleCopy');
+    expect(source).not.toContain('updateDocumentContent');
+    expect(source).not.toContain('keepalive: true');
   });
 
   it('uses the project role API boundary instead of direct role queries', () => {
@@ -21,24 +23,25 @@ describe('DocumentEditor Phase 1 wiring', () => {
     expect(source).not.toContain('getCurrentUserId');
   });
 
-  it('offers explicit stale-copy decisions and updates MDXEditor imperatively', () => {
-    expect(source).toContain('Reload remote');
-    expect(source).toContain('Keep mine');
-    expect(source).toContain('.setMarkdown(');
-    expect(source).toContain('styles.staleBanner');
+  it('passes one session to the dynamically loaded editor and remounts by epoch', () => {
+    expect(source).toContain('collaboration.session');
+    expect(source).toContain('cursorColor: collaboration.cursorColor');
+    expect(source).toContain('collaboration.token.epoch');
+    expect(source).toContain('key={editorKey}');
+    expect(source).not.toContain('provider:');
+    expect(source).not.toContain('doc:');
   });
 
-  it('guards remote refreshes with a live edit revision and pauses persistence', () => {
-    expect(source).toContain('getRevision');
-    expect(source).toContain('pauseForRemote');
-    expect(source).toMatch(/const revision = getRevision\(\)/);
-    expect(source).toMatch(/getRevision\(\) !== revision/);
-    expect(source).toMatch(/permissions\.readOnly \|\| !isDirty \|\| getIsPaused\(\)/);
+  it('keeps the editor read-only unless the collaborative session is ready for an editor', () => {
+    expect(source).toContain('collaboration.readOnly');
+    expect(source).toContain('collaboration.canBind');
+    expect(source).toContain('collaboration.isLegacyView');
   });
 
-  it('does not retain the inline save-loop implementation', () => {
-    expect(source).not.toContain('pendingRef');
-    expect(source).not.toContain('savingRef');
-    expect(source).not.toContain('PERSIST_DELAY_MS');
+  it('renders fail-closed recovery without stale-copy decisions', () => {
+    expect(source).toContain('collaboration.canRetry');
+    expect(source).toContain('collaboration.retry');
+    expect(source).not.toContain('Reload remote');
+    expect(source).not.toContain('Keep mine');
   });
 });

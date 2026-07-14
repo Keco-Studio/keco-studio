@@ -208,6 +208,27 @@ describe('DocumentCollaborationSession', () => {
     expect(session.doc).toBe(doc);
   });
 
+  it('fails closed when a refreshed Realtime token cannot be installed', async () => {
+    const { session, setAuth } = makeHarness();
+    await connectReady(session);
+    setAuth.mockRejectedValueOnce(new Error('token rejected'));
+
+    await expect(session.updateAccessToken('rejected-token')).rejects.toThrow(
+      'token rejected'
+    );
+
+    expect(session.status).toBe('error');
+  });
+
+  it('ignores focus catch-up until the initial collaboration connection is ready', async () => {
+    const { session, gateway } = makeHarness();
+
+    await session.refresh();
+
+    expect(gateway.read).not.toHaveBeenCalled();
+    expect(session.status).toBe('idle');
+  });
+
   it('initializes a legacy editor through the gateway but leaves a viewer in legacy-view', async () => {
     const legacy = { ...collaborativeState(), mode: 'legacy' as const, yjsStateBase64: null };
     const editorHarness = makeHarness({ state: legacy });
@@ -313,6 +334,42 @@ describe('DocumentCollaborationSession', () => {
     expect(
       harness.channel.send.mock.calls.some(([message]) => message.event === 'yjs-awareness')
     ).toBe(false);
+    expect(harness.channel.send).not.toHaveBeenCalled();
+  });
+
+  it('exposes pending local durability for the browser unload guard', async () => {
+    const harness = makeHarness();
+    await connectReady(harness.session);
+
+    expect(harness.session.hasPendingChanges).toBe(false);
+    harness.session.doc.getMap('local').set('pending', true);
+    expect(harness.session.hasPendingChanges).toBe(true);
+
+    await jest.advanceTimersByTimeAsync(75);
+    expect(harness.session.hasPendingChanges).toBe(false);
+  });
+
+  it('moves a legacy viewer to syncing when durable collaboration appears', async () => {
+    const legacy = {
+      ...collaborativeState(),
+      mode: 'legacy' as const,
+      yjsStateBase64: null,
+      token: { epoch: 0, revision: 0 },
+    };
+    const collaborative = {
+      ...collaborativeState(),
+      token: { epoch: 0, revision: 1 },
+    };
+    const harness = makeHarness({ state: legacy, role: 'viewer' });
+    harness.gateway.read.mockResolvedValueOnce(legacy).mockResolvedValue(collaborative);
+
+    await harness.session.connect();
+    expect(harness.session.status).toBe('legacy-view');
+    await jest.advanceTimersByTimeAsync(15_000);
+
+    expect(harness.session.status).toBe('syncing');
+    harness.session.attachBinding();
+    expect(harness.session.status).toBe('ready');
   });
 
   it('applies valid durable peer updates and rejects wrong-scope payloads', async () => {

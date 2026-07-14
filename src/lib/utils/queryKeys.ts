@@ -109,6 +109,12 @@ export const queryKeys = {
   document: (id: string) =>
     ['document', id] as const,
 
+  documentState: (id: string) =>
+    ['document', id, 'state'] as const,
+
+  documentVersions: (id: string) =>
+    ['document', id, 'versions'] as const,
+
   // ========== Collaboration ==========
   
   /**
@@ -129,7 +135,6 @@ export type ProjectKey = ReturnType<typeof queryKeys.project>;
 export type LibraryKey = ReturnType<typeof queryKeys.library>;
 export type FolderKey = ReturnType<typeof queryKeys.folder>;
 export type AssetKey = ReturnType<typeof queryKeys.asset>;
-
 
 
 

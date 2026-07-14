@@ -1,35 +1,25 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback } from 'react';
 import dynamic from 'next/dynamic';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { getDocument, updateDocumentContent } from '@/lib/services/documentService';
+import { getDocument, type DocumentRecord } from '@/lib/services/documentService';
 import { uploadImageFiles } from '@/lib/services/documentImageUpload';
-import {
-  broadcastProjectDocumentUpdate,
-  subscribeToProjectDocumentUpdates,
-} from '@/lib/documents/projectDocumentChannel';
-import { registerDocumentFlushHandler } from '@/lib/documents/documentFlushRegistry';
 import { queryKeys } from '@/lib/utils/queryKeys';
-import { useDocumentAutosave, type PersistState } from './useDocumentAutosave';
-import { useDocumentStaleCopy } from './useDocumentStaleCopy';
 import {
   useDocumentPermissions,
   type DocumentPermissionState,
 } from './useDocumentPermissions';
-import type {
-  MdxDocumentEditorProps,
-  MDXEditorMethods,
-} from './MdxDocumentEditor';
-import type { DocumentRecord } from '@/lib/services/documentService';
+import { useDocumentCollaboration } from './useDocumentCollaboration';
+import type { MdxDocumentEditorProps } from './MdxDocumentEditor';
 import styles from './DocumentEditor.module.css';
 
 const MdxDocumentEditor = dynamic<MdxDocumentEditorProps>(
   () => import('./MdxDocumentEditor'),
   {
     ssr: false,
-    loading: () => <div className={styles.loading}>Loading editor...</div>,
+    loading: () => <div className={styles.editorPlaceholder}>Loading editor...</div>,
   }
 );
 
@@ -59,7 +49,13 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
   if (isLoading || !document || permissions.isLoading) {
     return <div className={styles.loading}>Loading document...</div>;
   }
-  if (permissions.error || !permissions.userId || !permissions.accessToken) {
+  if (
+    permissions.error ||
+    !permissions.role ||
+    !permissions.userId ||
+    !permissions.accessToken ||
+    !permissions.userName
+  ) {
     return (
       <div className={styles.error}>
         {permissions.error ?? 'This document could not be opened.'}
@@ -71,10 +67,17 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
     <DocumentEditorSession
       document={document}
       projectId={projectId}
-      permissions={permissions}
+      permissions={permissions as ReadyDocumentPermissions}
     />
   );
 }
+
+type ReadyDocumentPermissions = DocumentPermissionState & {
+  role: 'admin' | 'editor' | 'viewer';
+  userId: string;
+  accessToken: string;
+  userName: string;
+};
 
 function DocumentEditorSession({
   document,
@@ -83,173 +86,18 @@ function DocumentEditorSession({
 }: {
   document: DocumentRecord;
   projectId: string;
-  permissions: DocumentPermissionState & {
-    userId: string;
-    accessToken: string;
-  };
+  permissions: ReadyDocumentPermissions;
 }) {
   const supabase = useSupabase();
-  const queryClient = useQueryClient();
-  const editorRef = useRef<MDXEditorMethods | null>(null);
-  const markdownRef = useRef(document.content ?? '');
-
-  const getSnapshot = useCallback((): string => {
-    try {
-      const editorMarkdown = editorRef.current?.getMarkdown?.() ?? '';
-      if (editorMarkdown.length > 0) return editorMarkdown;
-    } catch {
-      // The last onChange value remains authoritative during editor teardown.
-    }
-    return markdownRef.current;
-  }, []);
-
-  const save = useCallback(
-    (content: string) =>
-      updateDocumentContent(supabase, document.id, content, permissions.userId),
-    [document.id, permissions.userId, supabase]
-  );
-
-  const onSaved = useCallback(
-    (content: string, updatedAt: string) => {
-      queryClient.setQueryData<DocumentRecord>(
-        queryKeys.document(document.id),
-        (previous) =>
-          previous
-            ? { ...previous, content, updated_at: updatedAt }
-            : previous
-      );
-      void broadcastProjectDocumentUpdate({
-        documentId: document.id,
-        projectId,
-        updatedAt,
-        action: 'save',
-      });
-    },
-    [document.id, projectId, queryClient]
-  );
-
-  const autosave = useDocumentAutosave({
-    initialContent: document.content ?? '',
-    initialUpdatedAt: document.updated_at,
-    readOnly: permissions.readOnly,
-    getSnapshot,
-    save,
-    onSaved,
-  });
-  const {
-    acceptRemote,
-    flush,
-    getIsDirty,
-    getIsPaused,
-    getRevision,
-    handleChange: markChanged,
-    isDirty,
-    keepLocalAfterRemote,
-    lastSavedAt,
-    lastSavedContent,
-    pauseForRemote,
-    state: persistState,
-    error: persistError,
-  } = autosave;
-
-  const loadRemote = useCallback(async () => {
-    const revision = getRevision();
-    const remote = await getDocument(supabase, document.id);
-    if (getRevision() !== revision) {
-      throw new Error('Local document changed during remote refresh');
-    }
-    queryClient.setQueryData(queryKeys.document(document.id), remote);
-    markdownRef.current = remote.content ?? '';
-    editorRef.current?.setMarkdown(remote.content ?? '');
-    acceptRemote(remote.content ?? '', remote.updated_at);
-  }, [acceptRemote, document.id, getRevision, queryClient, supabase]);
-
-  const stale = useDocumentStaleCopy({
+  const collaboration = useDocumentCollaboration({
+    supabase,
     documentId: document.id,
-    localUpdatedAt: lastSavedAt,
-    isDirty,
-    getIsDirty,
-    onRemoteSaveStart: pauseForRemote,
-    onCleanRemoteSave: loadRemote,
+    projectId,
+    userId: permissions.userId,
+    accessToken: permissions.accessToken,
+    role: permissions.role,
+    userName: permissions.userName,
   });
-  const {
-    isStale,
-    keepLocal: dismissStale,
-    receive: receiveRemoteUpdate,
-    reloadRemote,
-  } = stale;
-
-  useEffect(
-    () => subscribeToProjectDocumentUpdates(receiveRemoteUpdate),
-    [receiveRemoteUpdate]
-  );
-
-  useEffect(
-    () => registerDocumentFlushHandler(() => flush('navigate')),
-    [flush]
-  );
-
-  const beaconFlush = useCallback(() => {
-    if (permissions.readOnly || !isDirty || getIsPaused()) return;
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (!url || !anonKey) return;
-    const content = getSnapshot();
-    if (content === lastSavedContent) return;
-    try {
-      void fetch(`${url}/rest/v1/documents?id=eq.${document.id}`, {
-        method: 'PATCH',
-        keepalive: true,
-        headers: {
-          apikey: anonKey,
-          Authorization: `Bearer ${permissions.accessToken}`,
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify({ content }),
-      });
-    } catch {
-      // Unload persistence is best-effort; normal autosave remains authoritative.
-    }
-  }, [
-    document.id,
-    getIsPaused,
-    getSnapshot,
-    isDirty,
-    lastSavedContent,
-    permissions.accessToken,
-    permissions.readOnly,
-  ]);
-
-  useEffect(() => {
-    const onVisibilityChange = () => {
-      if (window.document.visibilityState === 'hidden') {
-        void flush('visibility').catch(() => undefined);
-      }
-    };
-    const onBeforeUnload = () => beaconFlush();
-    window.document.addEventListener('visibilitychange', onVisibilityChange);
-    window.addEventListener('beforeunload', onBeforeUnload);
-    return () => {
-      window.document.removeEventListener('visibilitychange', onVisibilityChange);
-      window.removeEventListener('beforeunload', onBeforeUnload);
-    };
-  }, [beaconFlush, flush]);
-
-  useEffect(
-    () => () => {
-      void flush('unmount').catch(() => undefined);
-    },
-    [flush]
-  );
-
-  const handleChange = useCallback(
-    (markdown: string) => {
-      markdownRef.current = markdown;
-      markChanged(markdown);
-    },
-    [markChanged]
-  );
 
   const imageUploadHandler = useCallback(
     async (image: File): Promise<string> => {
@@ -259,90 +107,61 @@ function DocumentEditorSession({
     },
     [permissions.userId, supabase]
   );
-
-  const keepLocal = useCallback(() => {
-    const remoteUpdatedAt = dismissStale();
-    if (remoteUpdatedAt) keepLocalAfterRemote(remoteUpdatedAt);
-  }, [dismissStale, keepLocalAfterRemote]);
+  const ignoreMarkdownChange = useCallback(() => undefined, []);
+  const editorKey = `${document.id}:${collaboration.token.epoch}:${
+    collaboration.isLegacyView ? 'legacy' : 'collaborative'
+  }`;
 
   return (
     <div className={styles.container}>
       <div className={styles.header}>
         <h1 className={styles.title}>{document.name}</h1>
         <div className={styles.status} aria-live="polite">
-          {permissions.readOnly ? (
-            <span className={styles.viewerTag}>View only</span>
-          ) : (
-            <PersistIndicator
-              state={persistState}
-              lastSavedAt={lastSavedAt}
-              errorDetail={persistError}
-            />
-          )}
+          <span className={styles[`${collaboration.tone}Tag`]}>
+            {collaboration.label}
+          </span>
         </div>
       </div>
 
-      {isStale && (
-        <div className={styles.staleBanner} role="alert">
-          <span>This document was updated elsewhere.</span>
-          <div className={styles.staleActions}>
-            <button
-              type="button"
-              className={styles.reloadButton}
-              onClick={() => void reloadRemote()}
-            >
-              Reload remote
-            </button>
-            <button
-              type="button"
-              className={styles.keepLocalButton}
-              onClick={keepLocal}
-            >
-              Keep mine
-            </button>
-          </div>
+      {collaboration.canRetry && (
+        <div className={styles.connectionBanner} role="alert">
+          <span title={collaboration.error ?? undefined}>
+            {collaboration.label}
+          </span>
+          <button
+            type="button"
+            className={styles.retryButton}
+            onClick={() => void collaboration.retry()}
+          >
+            Retry
+          </button>
         </div>
       )}
 
-      <MdxDocumentEditor
-        editorRef={editorRef}
-        markdown={document.content ?? ''}
-        readOnly={permissions.readOnly}
-        onChange={handleChange}
-        imageUploadHandler={imageUploadHandler}
-      />
+      {collaboration.isLegacyView ? (
+        <MdxDocumentEditor
+          key={editorKey}
+          markdown={document.content ?? ''}
+          readOnly
+          onChange={ignoreMarkdownChange}
+          imageUploadHandler={imageUploadHandler}
+        />
+      ) : collaboration.canBind && collaboration.session ? (
+        <MdxDocumentEditor
+          key={`${document.id}:${collaboration.token.epoch}:collaborative`}
+          markdown=""
+          readOnly={collaboration.readOnly}
+          onChange={ignoreMarkdownChange}
+          imageUploadHandler={imageUploadHandler}
+          collaboration={{
+            session: collaboration.session,
+            username: permissions.userName,
+            cursorColor: collaboration.cursorColor,
+          }}
+        />
+      ) : (
+        <div className={styles.editorPlaceholder}>{collaboration.label}</div>
+      )}
     </div>
   );
-}
-
-function PersistIndicator({
-  state,
-  lastSavedAt,
-  errorDetail,
-}: {
-  state: PersistState;
-  lastSavedAt: string;
-  errorDetail: string | null;
-}) {
-  if (state === 'dirty') {
-    return <span className={styles.savingTag}>Unsaved changes...</span>;
-  }
-  if (state === 'saving') {
-    return <span className={styles.savingTag}>Saving...</span>;
-  }
-  if (state === 'error') {
-    return (
-      <span className={styles.errorTag} title={errorDetail ?? undefined}>
-        {errorDetail ?? 'Save failed - retrying on next edit'}
-      </span>
-    );
-  }
-  if (state === 'saved' || lastSavedAt) {
-    const time = new Date(lastSavedAt).toLocaleTimeString([], {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-    return <span className={styles.savedTag}>Saved {time}</span>;
-  }
-  return null;
 }

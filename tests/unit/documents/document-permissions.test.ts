@@ -14,7 +14,14 @@ function supabaseWithSession(hasSession = true): SupabaseClient {
       getSession: jest.fn(async () => ({
         data: {
           session: hasSession
-            ? { access_token: 'token', user: { id: USER_ID } }
+            ? {
+                access_token: 'token',
+                user: {
+                  id: USER_ID,
+                  email: 'editor@example.com',
+                  user_metadata: { full_name: 'Editor Name' },
+                },
+              }
             : null,
         },
         error: null,
@@ -43,7 +50,13 @@ describe('document permission loader', () => {
       fetcher: jest.fn(async () => roleResponse(role)),
     });
 
-    expect(result).toMatchObject({ role, readOnly, userId: USER_ID, error: null });
+    expect(result).toMatchObject({
+      role,
+      readOnly,
+      userId: USER_ID,
+      userName: 'Editor Name',
+      error: null,
+    });
   });
 
   it('rejects a document from a different URL project before fetching role', async () => {

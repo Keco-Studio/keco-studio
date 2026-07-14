@@ -149,7 +149,9 @@ export function useSidebarRealtime({
     const foldersChannel = supabase
       // Single source of truth for the topic string, shared with the broadcast
       // sender (documentBroadcast.projectSidebarTopic).
-      .channel(projectSidebarTopic(currentProjectId))
+      .channel(projectSidebarTopic(currentProjectId), {
+        config: { private: true },
+      })
       .on(
         'postgres_changes',
         {
