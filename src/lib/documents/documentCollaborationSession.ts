@@ -46,6 +46,13 @@ export type CollaborationViewState = {
   error: string | null;
 };
 
+export type DocumentBindingFailureDirection =
+  | 'lexical-to-yjs'
+  | 'yjs-to-lexical'
+  | 'composition'
+  | 'presence'
+  | 'undo-redo';
+
 export type DocumentCollaborationSessionOptions = {
   supabase: SupabaseClient;
   gateway: DocumentCollaborationGateway;
@@ -404,9 +411,22 @@ export class DocumentCollaborationSession implements Provider {
     }
   }
 
-  applyInitialState(): void {
+  attachBinding(): void {
     this.bindingRequested = true;
     if (this.pendingState?.mode === 'collaborative') this.hydrateInitialState();
+  }
+
+  /** @deprecated Use attachBinding after the Lexical Yjs observer is installed. */
+  applyInitialState(): void {
+    this.attachBinding();
+  }
+
+  reportBindingFailure(
+    error: unknown,
+    direction: DocumentBindingFailureDirection
+  ): void {
+    const detail = error instanceof Error ? error.message : 'Unknown binding error';
+    this.failClosed(`Document binding failed (${direction}): ${detail}`);
   }
 
   private hydrateInitialState(): void {

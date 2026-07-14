@@ -43,8 +43,7 @@ import {
 } from '@mdxeditor/editor';
 import '@mdxeditor/editor/style.css';
 import { $getSelection, $isRangeSelection } from 'lexical';
-import type { Doc } from 'yjs';
-import type { Provider } from '@lexical/yjs';
+import type { DocumentCollaborationSession } from '@/lib/documents/documentCollaborationSession';
 import {
   documentCollaborationPlugin,
 } from './documentCollaborationPlugin';
@@ -60,12 +59,9 @@ export type MdxDocumentEditorProps = {
   imageUploadHandler: (image: File) => Promise<string>;
   /** When set, enables Yjs co-editing + awareness cursors. */
   collaboration?: {
-    documentId: string;
-    provider: Provider;
-    doc: Doc;
+    session: DocumentCollaborationSession;
     username: string;
     cursorColor: string;
-    shouldBootstrapFromEditor: boolean;
   };
   editorRef?: Ref<MDXEditorMethods | null>;
 };
@@ -184,12 +180,9 @@ export default function MdxDocumentEditor({
   if (collaboration) {
     plugins.push(
       documentCollaborationPlugin({
-        id: collaboration.documentId,
-        provider: collaboration.provider,
-        doc: collaboration.doc,
+        session: collaboration.session,
         username: collaboration.username,
         cursorColor: collaboration.cursorColor,
-        shouldBootstrapFromEditor: collaboration.shouldBootstrapFromEditor,
       })
     );
   }
@@ -221,7 +214,7 @@ export default function MdxDocumentEditor({
   }
 
   return (
-    <div onDoubleClick={handleLinkDoubleClick}>
+    <div className={styles.editorFrame} onDoubleClick={handleLinkDoubleClick}>
       <MDXEditor
         ref={editorRef}
         markdown={markdown}
