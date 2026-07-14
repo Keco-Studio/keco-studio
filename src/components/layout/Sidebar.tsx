@@ -789,6 +789,12 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setMovingDocumentId(documentId);
   }, [userRole]);
 
+  const openNewDocumentInFolder = useCallback((folderId: string) => {
+    if (userRole !== 'admin' && userRole !== 'editor') return;
+    setSelectedFolderId(folderId);
+    openNewDocument();
+  }, [openNewDocument, userRole]);
+
   const handleConfirmMoveDocument = useCallback(async (folderId: string | null) => {
     if (!movingDocumentId) return;
     setIsMovingDocument(true);
@@ -900,6 +906,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     onProjectDeleteViaAPI: handleProjectDeleteViaAPI,
     openMoveLibrary,
     openMoveDocument,
+    openNewDocumentInFolder,
     startInlineRename: (key: string) => setEditingKey(key),
     userRole,
     requestDeleteConfirm: ({ title, content, onConfirm }) => {

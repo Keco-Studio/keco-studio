@@ -47,6 +47,7 @@ export type UseSidebarContextMenuActionsParams = {
   onProjectDeleteViaAPI: (projectId: string) => void | Promise<void>;
   openMoveLibrary: (libraryId: string) => void;
   openMoveDocument: (documentId: string) => void;
+  openNewDocumentInFolder: (folderId: string) => void;
   startInlineRename: (key: string) => void;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   requestDeleteConfirm: (options: {
@@ -82,6 +83,7 @@ export function useSidebarContextMenuActions({
   onProjectDeleteViaAPI,
   openMoveLibrary,
   openMoveDocument,
+  openNewDocumentInFolder,
   startInlineRename,
   userRole,
   requestDeleteConfirm,
@@ -94,6 +96,14 @@ export function useSidebarContextMenuActions({
       if (action === 'collaborators' && contextMenu.type === 'project') {
         closeContextMenu();
         router.push(`/${contextMenu.id}/collaborators`);
+        return;
+      }
+
+      if (action === 'new-document' && contextMenu.type === 'folder') {
+        if (userRole === 'admin' || userRole === 'editor') {
+          openNewDocumentInFolder(contextMenu.id);
+        }
+        closeContextMenu();
         return;
       }
 
@@ -353,6 +363,7 @@ export function useSidebarContextMenuActions({
       onProjectDeleteViaAPI,
       openMoveLibrary,
       openMoveDocument,
+      openNewDocumentInFolder,
       startInlineRename,
       userRole,
       requestDeleteConfirm,

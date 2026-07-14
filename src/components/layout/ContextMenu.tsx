@@ -8,6 +8,7 @@ export type ContextMenuAction =
   | 'export'
   | 'import'
   | 'import-script'
+  | 'new-document'
   | 'version-history'
   | 'star'
   | 'rename'
@@ -240,6 +241,9 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
   // Import (creates library): admin only, same as create library
   const canImport = () => userRole === 'admin';
 
+  const canCreateDocument = () =>
+    userRole === 'admin' || userRole === 'editor';
+
   // Move library between folders: admin only (editor/viewer cannot)
   const canMoveLibrary = () => userRole === 'admin';
 
@@ -360,6 +364,14 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
       // Folder: Import (admin), Rename (admin), Duplicate, separator, Delete (admin)
       return (
         <>
+          {canCreateDocument() && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('new-document')}
+            >
+              New document
+            </button>
+          )}
           {canImport() && (
             <>
               <button
@@ -547,4 +559,3 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
   // Use portal to render menu at the body level, avoiding z-index and overflow issues
   return createPortal(menuContent, document.body);
 }
-
