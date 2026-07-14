@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export type PersistReason = 'debounce' | 'navigate' | 'unmount' | 'visibility';
 export type PersistState = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
@@ -218,16 +218,31 @@ export function useDocumentAutosave(
   useEffect(() => controller.subscribe(() => setState(controller.getState())), [controller]);
   useEffect(() => () => controller.destroy(), [controller]);
 
+  const handleChange = useCallback(
+    (markdown: string) => controller.handleChange(markdown),
+    [controller]
+  );
+  const flush = useCallback(
+    (reason?: PersistReason) => controller.flush(reason),
+    [controller]
+  );
+  const acceptRemote = useCallback(
+    (content: string, updatedAt: string) => controller.acceptRemote(content, updatedAt),
+    [controller]
+  );
+  const keepLocalAfterRemote = useCallback(
+    (remoteUpdatedAt: string) => controller.keepLocalAfterRemote(remoteUpdatedAt),
+    [controller]
+  );
+
   return useMemo(
     () => ({
       ...state,
-      handleChange: (markdown: string) => controller.handleChange(markdown),
-      flush: (reason?: PersistReason) => controller.flush(reason),
-      acceptRemote: (content: string, updatedAt: string) =>
-        controller.acceptRemote(content, updatedAt),
-      keepLocalAfterRemote: (remoteUpdatedAt: string) =>
-        controller.keepLocalAfterRemote(remoteUpdatedAt),
+      handleChange,
+      flush,
+      acceptRemote,
+      keepLocalAfterRemote,
     }),
-    [controller, state]
+    [acceptRemote, flush, handleChange, keepLocalAfterRemote, state]
   );
 }
