@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { DocumentUpdatedPayload } from '@/lib/documents/documentBroadcast';
 
 export type UseDocumentStaleCopyOptions = {
@@ -116,15 +116,22 @@ export function useDocumentStaleCopy(
   useEffect(() => controller.subscribe(() => setState(controller.getState())), [controller]);
   useEffect(() => () => controller.destroy(), [controller]);
 
+  const receive = useCallback(
+    (update: DocumentUpdatedPayload) => {
+      void controller.receive(update).catch(() => undefined);
+    },
+    [controller]
+  );
+  const reloadRemote = useCallback(() => controller.reloadRemote(), [controller]);
+  const keepLocal = useCallback(() => controller.keepLocal(), [controller]);
+
   return useMemo(
     () => ({
       ...state,
-      receive: (update: DocumentUpdatedPayload) => {
-        void controller.receive(update).catch(() => undefined);
-      },
-      reloadRemote: () => controller.reloadRemote(),
-      keepLocal: () => controller.keepLocal(),
+      receive,
+      reloadRemote,
+      keepLocal,
     }),
-    [controller, state]
+    [keepLocal, receive, reloadRemote, state]
   );
 }
