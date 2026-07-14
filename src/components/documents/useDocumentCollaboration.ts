@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
 import type {
   CollaborationViewState,
   DocumentCollaborationRole,
@@ -11,6 +12,7 @@ import type { CollaborationStatus } from '@/lib/documents/documentStateTypes';
 import { colorForUserId } from '@/lib/documents/cursorColor';
 import { broadcastProjectDocumentUpdate } from '@/lib/documents/projectDocumentChannel';
 import { registerDocumentFlushHandler } from '@/lib/documents/documentFlushRegistry';
+import { queryKeys } from '@/lib/utils/queryKeys';
 
 type CollaborationPresentation = {
   label: string;
@@ -106,6 +108,7 @@ export function useDocumentCollaboration({
   userName,
 }: UseDocumentCollaborationOptions) {
   const [generation, setGeneration] = useState(0);
+  const queryClient = useQueryClient();
   const requestKey = `${projectId}:${documentId}:${userId}:${role}:${generation}`;
   const cursorColor = useMemo(() => colorForUserId(userId), [userId]);
   const [active, setActive] = useState<ActiveSession | null>(null);
@@ -131,6 +134,19 @@ export function useDocumentCollaboration({
     ])
       .then(([{ DocumentCollaborationSession }, { documentStateGateway }]) => {
         if (!mounted) return;
+        const onDurableStateChanged = async (
+          state: { updatedAt: string }
+        ) => {
+          await queryClient.invalidateQueries({
+            queryKey: queryKeys.documentVersions(documentId),
+          });
+          await broadcastProjectDocumentUpdate({
+            documentId,
+            projectId,
+            updatedAt: state.updatedAt,
+            action: 'save',
+          });
+        };
         nextSession = new DocumentCollaborationSession({
           supabase,
           gateway: documentStateGateway,
@@ -140,13 +156,8 @@ export function useDocumentCollaboration({
           accessToken,
           role,
           user: { name: userName, color: cursorColor },
-          onCompacted: (compacted) =>
-            broadcastProjectDocumentUpdate({
-              documentId,
-              projectId,
-              updatedAt: compacted.updatedAt,
-              action: 'save',
-            }).then(() => undefined),
+          onCompacted: onDurableStateChanged,
+          onStateReplaced: onDurableStateChanged,
         });
         const session = nextSession;
         setActive({
@@ -197,6 +208,7 @@ export function useDocumentCollaboration({
     cursorColor,
     documentId,
     projectId,
+    queryClient,
     requestKey,
     role,
     supabase,

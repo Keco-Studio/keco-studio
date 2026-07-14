@@ -7,11 +7,15 @@ import type {
   AuthoritativeDocumentState,
   DurableYjsUpdate,
 } from '@/lib/documents/documentStateTypes';
-import { DocumentStateConflictError } from '@/lib/documents/documentStateTypes';
+import {
+  DocumentReadOnlyError,
+  DocumentStateConflictError,
+} from '@/lib/documents/documentStateTypes';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const USER_ID = '33333333-3333-4333-8333-333333333333';
+const VERSION_ID = '88888888-8888-4888-8888-888888888888';
 
 function encodedRoot(text = 'seed'): string {
   const doc = new Y.Doc();
@@ -74,6 +78,7 @@ function makeHarness(overrides: {
     input: { updates: DurableYjsUpdate[] }
   ) => Promise<{ acceptedIds: string[] }>;
   compact?: () => Promise<AuthoritativeDocumentState>;
+  replace?: () => Promise<AuthoritativeDocumentState>;
 } = {}) {
   const channel = new FakeChannel();
   const channelFactory = jest.fn(() => channel);
@@ -101,8 +106,18 @@ function makeHarness(overrides: {
           token: { epoch: 2, revision: 5 },
         }))
     ),
+    replace: jest.fn(
+      overrides.replace ??
+        (async () => ({
+          ...collaborativeState(),
+          yjsStateBase64: mapUpdate('restored', 'version'),
+          token: { epoch: 3, revision: 5 },
+          updatedAt: '2026-07-14T12:10:00.000Z',
+        }))
+    ),
   };
   const onCompacted = jest.fn(async () => undefined);
+  const onStateReplaced = jest.fn(async () => undefined);
   const session = new DocumentCollaborationSession({
     supabase,
     gateway,
@@ -116,6 +131,7 @@ function makeHarness(overrides: {
     compactionBackoffMs: 250,
     compactionJitterRatio: 0,
     onCompacted,
+    onStateReplaced,
   });
   return {
     channel,
@@ -123,6 +139,7 @@ function makeHarness(overrides: {
     gateway,
     removeChannel,
     onCompacted,
+    onStateReplaced,
     session,
     setAuth,
   };
@@ -529,6 +546,72 @@ describe('DocumentCollaborationSession', () => {
     expect(harness.session.token).toEqual({ epoch: 3, revision: 1 });
     expect(harness.session.doc.getMap('peer').get('restored')).toBe('version');
     expect(reload).toHaveBeenCalledTimes(1);
+
+    await harness.channel.emit('document-state-reset', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 3,
+      revision: 1,
+      reason: 'restore',
+      updatedAt: replacement.updatedAt,
+    });
+    expect(harness.gateway.read).toHaveBeenCalledTimes(2);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('flushes, commits, reloads, and only then broadcasts a version restore', async () => {
+    const harness = makeHarness();
+    await connectReady(harness.session);
+    const reload = jest.fn();
+    harness.session.on('reload', reload);
+    harness.session.doc.getMap('local').set('pending-before-restore', true);
+
+    const state = await harness.session.restoreVersion(VERSION_ID);
+
+    expect(harness.gateway.appendUpdates).toHaveBeenCalledTimes(1);
+    expect(harness.gateway.replace).toHaveBeenCalledWith(expect.anything(), {
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+      replacement: { kind: 'version', versionId: VERSION_ID },
+      reason: 'restore',
+    });
+    expect(
+      harness.gateway.appendUpdates.mock.invocationCallOrder[0]
+    ).toBeLessThan(harness.gateway.replace.mock.invocationCallOrder[0]!);
+    const resetCall = harness.channel.send.mock.calls.find(
+      ([message]) => message.event === 'document-state-reset'
+    );
+    expect(resetCall).toEqual([
+      expect.objectContaining({
+        type: 'broadcast',
+        event: 'document-state-reset',
+        payload: expect.objectContaining({
+          documentId: DOCUMENT_ID,
+          epoch: 3,
+          revision: 5,
+          reason: 'restore',
+        }),
+      }),
+    ]);
+    expect(harness.gateway.replace.mock.invocationCallOrder[0]).toBeLessThan(
+      harness.channel.send.mock.invocationCallOrder[
+        harness.channel.send.mock.calls.indexOf(resetCall!)
+      ]!
+    );
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(harness.onStateReplaced).toHaveBeenCalledWith(state);
+    expect(state.token).toEqual({ epoch: 3, revision: 5 });
+  });
+
+  it('rejects viewer restore before flushing or calling the gateway', async () => {
+    const harness = makeHarness({ role: 'viewer' });
+    await connectReady(harness.session);
+
+    await expect(harness.session.restoreVersion(VERSION_ID)).rejects.toBeInstanceOf(
+      DocumentReadOnlyError
+    );
+    expect(harness.gateway.appendUpdates).not.toHaveBeenCalled();
+    expect(harness.gateway.replace).not.toHaveBeenCalled();
   });
 
   it('flushes once and removes channel, awareness, timers, and listeners on destroy', async () => {

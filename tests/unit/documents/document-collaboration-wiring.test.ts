@@ -74,7 +74,9 @@ describe('document collaboration React boundary', () => {
     const source = readFileSync(hookPath, 'utf8');
     const queryKeys = readFileSync(queryKeysPath, 'utf8');
     expect(source).toContain('onCompacted');
+    expect(source).toContain('onStateReplaced');
     expect(source).toContain('broadcastProjectDocumentUpdate');
+    expect(source).toContain('queryKeys.documentVersions(documentId)');
     expect(queryKeys).toContain('documentState: (id: string)');
     expect(queryKeys).toContain('documentVersions: (id: string)');
   });
