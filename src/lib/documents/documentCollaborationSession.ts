@@ -490,12 +490,18 @@ export class DocumentCollaborationSession implements Provider {
         this.onAwarenessUpdate
       );
       this.awarenessListenerInstalled = true;
-      (this.awareness as unknown as awarenessProtocol.Awareness).setLocalState({
-        user: { id: this.userId, name: this.user.name, color: this.user.color },
-        focus: false,
-        anchor: null,
-        focusPosition: null,
-      });
+      const awareness =
+        this.awareness as unknown as awarenessProtocol.Awareness;
+      if (awareness.getLocalState() === null) {
+        awareness.setLocalState({
+          name: this.user.name,
+          color: this.user.color,
+          focusing: false,
+          anchorPos: null,
+          focusPos: null,
+          awarenessData: { userId: this.userId },
+        });
+      }
     }
   }
 

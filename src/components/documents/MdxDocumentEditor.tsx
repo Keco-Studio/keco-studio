@@ -7,7 +7,13 @@
  * out of the main dashboard chunk (GitHub #213 principle).
  */
 
-import { useRef, type ChangeEvent, type MouseEvent, type Ref } from 'react';
+import {
+  useMemo,
+  useRef,
+  type ChangeEvent,
+  type MouseEvent,
+  type Ref,
+} from 'react';
 import {
   MDXEditor,
   headingsPlugin,
@@ -54,6 +60,7 @@ export type { MDXEditorMethods } from '@mdxeditor/editor';
 export type MdxDocumentEditorProps = {
   markdown: string;
   readOnly: boolean;
+  showToolbar: boolean;
   onChange: (markdown: string) => void;
   /** Uploads an image file and resolves to its public URL for the editor. */
   imageUploadHandler: (image: File) => Promise<string>;
@@ -158,60 +165,78 @@ function handleLinkDoubleClick(event: MouseEvent<HTMLDivElement>) {
 export default function MdxDocumentEditor({
   markdown,
   readOnly,
+  showToolbar,
   onChange,
   imageUploadHandler,
   collaboration,
   editorRef,
 }: MdxDocumentEditorProps) {
-  const plugins = [
-    headingsPlugin(),
-    listsPlugin(),
-    quotePlugin(),
-    thematicBreakPlugin(),
-    linkPlugin(),
-    linkDialogPlugin({ showLinkTitleField: false }),
-    imagePlugin({ imageUploadHandler, disableImageSettingsButton: true }),
-    tablePlugin(),
-    codeBlockPlugin({ defaultCodeBlockLanguage: '' }),
-    codeMirrorPlugin({ codeBlockLanguages: CODE_BLOCK_LANGUAGES }),
-    markdownShortcutPlugin(),
-  ];
+  const collaborationSession = collaboration?.session;
+  const collaborationUsername = collaboration?.username;
+  const collaborationCursorColor = collaboration?.cursorColor;
+  const plugins = useMemo(() => {
+    const stablePlugins = [
+      headingsPlugin(),
+      listsPlugin(),
+      quotePlugin(),
+      thematicBreakPlugin(),
+      linkPlugin(),
+      linkDialogPlugin({ showLinkTitleField: false }),
+      imagePlugin({ imageUploadHandler, disableImageSettingsButton: true }),
+      tablePlugin(),
+      codeBlockPlugin({ defaultCodeBlockLanguage: '' }),
+      codeMirrorPlugin({ codeBlockLanguages: CODE_BLOCK_LANGUAGES }),
+      markdownShortcutPlugin(),
+    ];
 
-  if (collaboration) {
-    plugins.push(
-      documentCollaborationPlugin({
-        session: collaboration.session,
-        username: collaboration.username,
-        cursorColor: collaboration.cursorColor,
-      })
-    );
-  }
+    if (
+      collaborationSession &&
+      collaborationUsername &&
+      collaborationCursorColor
+    ) {
+      stablePlugins.push(
+        documentCollaborationPlugin({
+          session: collaborationSession,
+          username: collaborationUsername,
+          cursorColor: collaborationCursorColor,
+        })
+      );
+    }
 
-  if (!readOnly) {
-    plugins.push(
-      toolbarPlugin({
-        toolbarContents: () => (
-          <>
-            <UndoRedo />
-            <Separator />
-            <BoldItalicUnderlineToggles />
-            <CodeToggle />
-            <Separator />
-            <BlockTypeSelect />
-            <Separator />
-            <ListsToggle />
-            <Separator />
-            <SelectedTextLinkButton />
-            <SingleFileImageButton />
-            <Separator />
-            <InsertTable />
-            <InsertThematicBreak />
-            <InsertCodeBlock />
-          </>
-        ),
-      })
-    );
-  }
+    if (showToolbar) {
+      stablePlugins.push(
+        toolbarPlugin({
+          toolbarContents: () => (
+            <>
+              <UndoRedo />
+              <Separator />
+              <BoldItalicUnderlineToggles />
+              <CodeToggle />
+              <Separator />
+              <BlockTypeSelect />
+              <Separator />
+              <ListsToggle />
+              <Separator />
+              <SelectedTextLinkButton />
+              <SingleFileImageButton />
+              <Separator />
+              <InsertTable />
+              <InsertThematicBreak />
+              <InsertCodeBlock />
+            </>
+          ),
+        })
+      );
+    }
+
+    return stablePlugins;
+  }, [
+    collaborationCursorColor,
+    collaborationSession,
+    collaborationUsername,
+    imageUploadHandler,
+    showToolbar,
+  ]);
 
   return (
     <div className={styles.editorFrame} onDoubleClick={handleLinkDoubleClick}>
