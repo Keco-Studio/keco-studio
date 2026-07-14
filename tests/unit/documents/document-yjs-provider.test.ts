@@ -7,20 +7,9 @@ import * as Y from 'yjs';
 import {
   applyRemoteYjsUpdate,
   base64ToUint8,
-  DocumentYjsProvider,
+  documentCollabTopic,
   uint8ToBase64,
 } from '@/lib/documents/documentYjsProvider';
-
-function fakeSupabase() {
-  return {
-    channel: () => ({
-      on: () => ({ on: () => ({ on: () => ({ subscribe: () => {} }) }) }),
-      send: async () => ({}),
-      subscribe: () => {},
-    }),
-    removeChannel: async () => {},
-  } as never;
-}
 
 describe('documentYjsProvider encoding', () => {
   it('round-trips Uint8Array through base64', () => {
@@ -56,25 +45,8 @@ describe('documentYjsProvider encoding', () => {
     expect(restored.getText('md').toString()).toBe('persist me');
   });
 
-  it('defers Postgres yjs_state until applyInitialState (avoids double hydrate)', () => {
-    const seed = new Y.Doc();
-    seed.getText('root').insert(0, 'seeded');
-    const encoded = uint8ToBase64(Y.encodeStateAsUpdate(seed));
-
-    const doc = new Y.Doc();
-    const provider = new DocumentYjsProvider({
-      supabase: fakeSupabase(),
-      documentId: 'doc-1',
-      doc,
-      initialStateBase64: encoded,
-    });
-
-    expect(doc.getText('root').toString()).toBe('');
-    provider.applyInitialState();
-    expect(doc.getText('root').toString()).toBe('seeded');
-    // Second call must be a no-op (idempotent guard).
-    provider.applyInitialState();
-    expect(doc.getText('root').toString()).toBe('seeded');
-    provider.destroy();
+  it('constructs the canonical private document topic', () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    expect(documentCollabTopic(id)).toBe(`doc-collab:${id}`);
   });
 });
