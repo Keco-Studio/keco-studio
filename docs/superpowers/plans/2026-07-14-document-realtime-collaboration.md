@@ -54,11 +54,11 @@
 - Produces `DocumentStateToken`, `AuthoritativeDocumentState`, `DurableYjsUpdate`, `DocumentStateConflictError`, `DocumentCollaborationUnavailableError`.
 - Produces `encodeBase64`, `decodeBase64`, `parseDocumentCollaborationEvent`, and typed v1 event payloads.
 
-- [ ] **Step 1: Write failing tests** for byte round-trips in Node and browser-compatible environments, malformed base64, wrong UUID/document/epoch/version, oversized update/state-vector/awareness payloads, and accepted event variants (`yjs-update`, `yjs-sync-request`, `yjs-sync-response`, `yjs-awareness`, `document-state-reset`).
-- [ ] **Step 2: Verify RED** with `npm run test:unit -- --runInBand tests/unit/documents/document-collaboration-protocol.test.ts`; expect missing-module failure.
-- [ ] **Step 3: Implement minimal shared types and Zod discriminated-union validators**. Base64 helpers use `Buffer` only when available and otherwise `btoa`/`atob`; validators reject unknown keys and cap encoded collaboration payloads at the design limits.
-- [ ] **Step 4: Verify GREEN** with the command from Step 2.
-- [ ] **Step 5: Commit** with `git add src/lib/documents/documentStateTypes.ts src/lib/documents/documentCollaborationProtocol.ts tests/unit/documents/document-collaboration-protocol.test.ts && git commit -m "feat: define document collaboration protocol"`.
+- [x] **Step 1: Write failing tests** for byte round-trips in Node and browser-compatible environments, malformed base64, wrong UUID/document/epoch/version, oversized update/state-vector/awareness payloads, and accepted event variants (`yjs-update`, `yjs-sync-request`, `yjs-sync-response`, `yjs-awareness`, `document-state-reset`).
+- [x] **Step 2: Verify RED** with `npm run test:unit -- --runInBand tests/unit/documents/document-collaboration-protocol.test.ts`; expect missing-module failure.
+- [x] **Step 3: Implement minimal shared types and Zod discriminated-union validators**. Base64 helpers use `Buffer` only when available and otherwise `btoa`/`atob`; validators reject unknown keys and cap encoded collaboration payloads at the design limits.
+- [x] **Step 4: Verify GREEN** with the command from Step 2.
+- [x] **Step 5: Commit** with `git add src/lib/documents/documentStateTypes.ts src/lib/documents/documentCollaborationProtocol.ts tests/unit/documents/document-collaboration-protocol.test.ts && git commit -m "feat: define document collaboration protocol"`.
 
 ### Task 3: Isomorphic Phase 1 Markdown to Lexical-Yjs codec
 
