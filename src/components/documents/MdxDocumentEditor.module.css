@@ -20,3 +20,7 @@
 .contentEditable:focus {
   outline: none;
 }
+
+.hiddenFileInput {
+  display: none;
+}

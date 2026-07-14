@@ -7,7 +7,7 @@
  * out of the main dashboard chunk (GitHub #213 principle).
  */
 
-import type { Ref } from 'react';
+import { useRef, type ChangeEvent, type MouseEvent, type Ref } from 'react';
 import {
   MDXEditor,
   headingsPlugin,
@@ -22,20 +22,27 @@ import {
   codeBlockPlugin,
   codeMirrorPlugin,
   toolbarPlugin,
+  ButtonWithTooltip,
   UndoRedo,
   BoldItalicUnderlineToggles,
   BlockTypeSelect,
-  CreateLink,
-  InsertImage,
   InsertTable,
   ListsToggle,
   InsertThematicBreak,
   InsertCodeBlock,
   CodeToggle,
   Separator,
+  activeEditor$,
+  currentSelection$,
+  iconComponentFor$,
+  insertImage$,
+  openLinkEditDialog$,
+  useCellValue,
+  usePublisher,
   type MDXEditorMethods,
 } from '@mdxeditor/editor';
 import '@mdxeditor/editor/style.css';
+import { $getSelection, $isRangeSelection } from 'lexical';
 import type { Doc } from 'yjs';
 import type { Provider } from '@lexical/yjs';
 import {
@@ -76,6 +83,82 @@ const CODE_BLOCK_LANGUAGES = {
   sql: 'SQL',
 };
 
+function SelectedTextLinkButton() {
+  const selection = useCellValue(currentSelection$);
+  const iconComponentFor = useCellValue(iconComponentFor$);
+  const openLinkDialog = usePublisher(openLinkEditDialog$);
+
+  return (
+    <ButtonWithTooltip
+      type="button"
+      title="Create link from selected text"
+      disabled={!selection || selection.isCollapsed()}
+      onMouseDown={(event) => event.preventDefault()}
+      onClick={() => openLinkDialog()}
+    >
+      {iconComponentFor('link')}
+    </ButtonWithTooltip>
+  );
+}
+
+function SingleFileImageButton() {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const activeEditor = useCellValue(activeEditor$);
+  const iconComponentFor = useCellValue(iconComponentFor$);
+  const insertImage = usePublisher(insertImage$);
+
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.item(0);
+    event.target.value = '';
+    if (!file) return;
+    activeEditor?.update(
+      () => {
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection) || selection.isCollapsed()) return;
+        const end = selection.isBackward() ? selection.anchor : selection.focus;
+        const { key, offset, type } = end;
+        selection.anchor.set(key, offset, type);
+        selection.focus.set(key, offset, type);
+      },
+      { discrete: true }
+    );
+    insertImage({ file, altText: '' });
+  };
+
+  return (
+    <>
+      <ButtonWithTooltip
+        type="button"
+        title="Insert image"
+        onClick={() => inputRef.current?.click()}
+      >
+        {iconComponentFor('add_photo')}
+      </ButtonWithTooltip>
+      <input
+        ref={inputRef}
+        className={styles.hiddenFileInput}
+        type="file"
+        accept="image/*"
+        aria-label="Choose image to insert"
+        onChange={handleFileChange}
+      />
+    </>
+  );
+}
+
+function handleLinkDoubleClick(event: MouseEvent<HTMLDivElement>) {
+  const target = event.target instanceof Element ? event.target : null;
+  const link = target?.closest<HTMLAnchorElement>('a[href]');
+  if (!link) return;
+
+  const href = link.href;
+  const protocol = new URL(href, window.location.href).protocol;
+  if (protocol !== 'http:' && protocol !== 'https:') return;
+
+  event.preventDefault();
+  window.open(href, '_blank', 'noopener,noreferrer');
+}
+
 export default function MdxDocumentEditor({
   markdown,
   readOnly,
@@ -90,8 +173,8 @@ export default function MdxDocumentEditor({
     quotePlugin(),
     thematicBreakPlugin(),
     linkPlugin(),
-    linkDialogPlugin(),
-    imagePlugin({ imageUploadHandler }),
+    linkDialogPlugin({ showLinkTitleField: false }),
+    imagePlugin({ imageUploadHandler, disableImageSettingsButton: true }),
     tablePlugin(),
     codeBlockPlugin({ defaultCodeBlockLanguage: '' }),
     codeMirrorPlugin({ codeBlockLanguages: CODE_BLOCK_LANGUAGES }),
@@ -125,8 +208,8 @@ export default function MdxDocumentEditor({
             <Separator />
             <ListsToggle />
             <Separator />
-            <CreateLink />
-            <InsertImage />
+            <SelectedTextLinkButton />
+            <SingleFileImageButton />
             <Separator />
             <InsertTable />
             <InsertThematicBreak />
@@ -138,15 +221,17 @@ export default function MdxDocumentEditor({
   }
 
   return (
-    <MDXEditor
-      ref={editorRef}
-      markdown={markdown}
-      readOnly={readOnly}
-      onChange={onChange}
-      plugins={plugins}
-      suppressSharedHistory={Boolean(collaboration)}
-      contentEditableClassName={styles.contentEditable}
-      className={styles.editor}
-    />
+    <div onDoubleClick={handleLinkDoubleClick}>
+      <MDXEditor
+        ref={editorRef}
+        markdown={markdown}
+        readOnly={readOnly}
+        onChange={onChange}
+        plugins={plugins}
+        suppressSharedHistory={Boolean(collaboration)}
+        contentEditableClassName={styles.contentEditable}
+        className={styles.editor}
+      />
+    </div>
   );
 }
