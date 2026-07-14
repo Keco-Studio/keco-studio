@@ -3,7 +3,10 @@
 **Date:** 2026-07-13 (rev 2)
 **Supersedes:** the original "Document Yjs Collaboration Design" (Phase 2A only).
 **Scope:** MDXEditor documents end to end — Phase 1 authoring (harden + close lifecycle), Phase 2A realtime collaboration (gate correctly), delivery hygiene.
-**Status:** Re-planning. `ae5e588` is **Request Changes** — do not merge as-is.
+**Status:** Superseded by
+`2026-07-14-document-phase2-design.md` and
+`2026-07-14-document-realtime-collaboration-design.md`. Do not implement this
+document; it remains only as review history for `ae5e588`.
 
 ---
 
