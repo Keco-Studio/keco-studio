@@ -17,7 +17,7 @@ create table public.document_yjs_updates (
   document_id uuid not null references public.documents(id) on delete cascade,
   epoch bigint not null,
   update_data text not null,
-  created_by uuid references auth.users(id) on delete set null,
+  created_by uuid default auth.uid() references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   check (length(update_data) > 0)
 );
@@ -126,6 +126,103 @@ begin
 end;
 $$;
 
+create or replace function public.append_document_yjs_updates(
+  p_document_id uuid,
+  p_epoch bigint,
+  p_updates jsonb
+)
+returns uuid[]
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_document public.documents%rowtype;
+  v_user_id uuid := (select auth.uid());
+  v_update_count integer;
+  v_ids uuid[];
+begin
+  if jsonb_typeof(p_updates) <> 'array' then
+    raise exception 'Document updates must be an array'
+      using errcode = '22023';
+  end if;
+  v_update_count := jsonb_array_length(p_updates);
+  if v_update_count < 1 or v_update_count > 100 then
+    raise exception 'Document update batch must contain between 1 and 100 updates'
+      using errcode = '22023';
+  end if;
+
+  select d.*
+    into v_document
+    from public.documents d
+    where d.id = p_document_id
+    for update;
+
+  if not found or v_user_id is null or not (
+    public.is_project_owner(v_document.project_id, v_user_id)
+    or public.is_editor_or_admin_collaborator(v_document.project_id, v_user_id)
+  ) then
+    raise exception 'Document not found or not writable'
+      using errcode = '42501';
+  end if;
+
+  if v_document.collab_epoch <> p_epoch then
+    raise exception 'Document collaboration epoch changed'
+      using errcode = 'PT409';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_updates) item
+    where jsonb_typeof(item->'id') <> 'string'
+      or jsonb_typeof(item->'updateBase64') <> 'string'
+      or length(item->>'updateBase64') = 0
+  ) then
+    raise exception 'Document update payload is invalid'
+      using errcode = '22023';
+  end if;
+
+  select array_agg((item.value->>'id')::uuid order by item.ordinality)
+    into v_ids
+    from jsonb_array_elements(p_updates) with ordinality as item(value, ordinality);
+
+  if exists (
+    select 1
+    from public.document_yjs_updates existing
+    where existing.id = any(v_ids)
+      and (
+        existing.document_id <> p_document_id
+        or existing.epoch <> p_epoch
+      )
+  ) then
+    raise exception 'Document update id belongs to another state'
+      using errcode = '22023';
+  end if;
+
+  insert into public.document_yjs_updates (
+    id,
+    document_id,
+    epoch,
+    update_data,
+    created_by
+  )
+  select
+    (item->>'id')::uuid,
+    p_document_id,
+    p_epoch,
+    item->>'updateBase64',
+    v_user_id
+  from jsonb_array_elements(p_updates) item
+  on conflict (id) do nothing;
+
+  return v_ids;
+exception
+  when invalid_text_representation then
+    raise exception 'Document update id is invalid'
+      using errcode = '22023';
+end;
+$$;
+
 create or replace function public.compact_document_collab_state(
   p_document_id uuid,
   p_expected_epoch bigint,
@@ -210,9 +307,13 @@ $$;
 
 revoke all on function public.initialize_document_collab_state(uuid, bigint, text, text)
   from public;
+revoke all on function public.append_document_yjs_updates(uuid, bigint, jsonb)
+  from public;
 revoke all on function public.compact_document_collab_state(uuid, bigint, bigint, uuid[], text, text)
   from public;
 grant execute on function public.initialize_document_collab_state(uuid, bigint, text, text)
+  to authenticated;
+grant execute on function public.append_document_yjs_updates(uuid, bigint, jsonb)
   to authenticated;
 grant execute on function public.compact_document_collab_state(uuid, bigint, bigint, uuid[], text, text)
   to authenticated;

@@ -43,12 +43,13 @@ describe('document realtime collaboration migration', () => {
 
   it('initializes and compacts through guarded fixed-search-path functions', () => {
     expect(migration).toMatch(/create or replace function public\.initialize_document_collab_state/i);
+    expect(migration).toMatch(/create or replace function public\.append_document_yjs_updates/i);
     expect(migration).toMatch(/create or replace function public\.compact_document_collab_state/i);
-    expect(migration.match(/security definer\s+set search_path = ''/gi)).toHaveLength(3);
+    expect(migration.match(/security definer\s+set search_path = ''/gi)).toHaveLength(4);
     expect(migration.match(/for update/gi)?.length ?? 0).toBeGreaterThanOrEqual(2);
     expect(migration).toMatch(/collab_epoch\s*<>\s*p_expected_epoch/i);
     expect(migration).toMatch(/collab_revision\s*<>\s*p_expected_revision/i);
-    expect(migration.match(/errcode = 'PT409'/g)?.length ?? 0).toBe(3);
+    expect(migration.match(/errcode = 'PT409'/g)?.length ?? 0).toBe(4);
     expect(migration).not.toContain("errcode = '40001'");
     expect(migration).toMatch(/delete from public\.document_yjs_updates[\s\S]+id = any\(p_included_update_ids\)/i);
     expect(migration).toMatch(/epoch = p_expected_epoch/i);

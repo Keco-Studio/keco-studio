@@ -236,9 +236,10 @@ export async function updateDocumentName(
 }
 
 /**
- * Persist Markdown content for a document. This is the single authoritative
- * content writer for Phase 1 (no Yjs). Pass `userId` when the caller already
+ * Persist Markdown content for a document. This is the legacy Phase 1 writer
+ * and must not be mounted after a collaborative session starts. Pass `userId` when the caller already
  * resolved auth (e.g. editor shell) so we do not re-hit Auth during autosave.
+ * @deprecated Use documentStateGateway for collaborative document bodies.
  */
 export async function updateDocumentContent(
   supabase: SupabaseClient,

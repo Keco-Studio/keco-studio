@@ -89,12 +89,12 @@
 - Produces `readDocumentState`, `initializeDocumentState`, `appendDocumentYjsUpdates`, `compactDocumentState` and `documentStateGateway`.
 - `readDocumentState(client, id)` returns snapshot, ordered tail, derived current Markdown, and `{epoch, revision}`.
 
-- [ ] **Step 1: Write failing service tests** for payload-aware open reads, tail ordering, initialization winner/conflict, idempotent append batches, stale epoch errors, compaction CAS, delete-only-included ids, and typed access/conflict errors.
-- [ ] **Step 2: Verify RED** with `npm run test:unit -- --runInBand tests/unit/documents/document-state-gateway.test.ts`.
-- [ ] **Step 3: Implement the gateway** using caller-provided Supabase clients. Keep encoded compaction RPC arguments private, map Postgres conflict codes to `DocumentStateConflictError`, and serialize Markdown from exactly the merged snapshot that is submitted to the RPC.
-- [ ] **Step 4: Narrow Phase 1 content mutation** by marking `updateDocumentContent` as legacy-only and ensuring collaborative UI code cannot call it after session construction.
-- [ ] **Step 5: Verify GREEN** with the targeted gateway and existing document-service tests.
-- [ ] **Step 6: Commit** with `git add src/lib/documents/documentStateGateway.ts src/lib/services/documentService.ts tests/unit/documents/document-state-gateway.test.ts && git commit -m "feat: add authoritative document state gateway"`.
+- [x] **Step 1: Write failing service tests** for payload-aware open reads, tail ordering, initialization winner/conflict, idempotent append batches, stale epoch errors, compaction CAS, delete-only-included ids, and typed access/conflict errors.
+- [x] **Step 2: Verify RED** with `npm run test:unit -- --runInBand tests/unit/documents/document-state-gateway.test.ts`.
+- [x] **Step 3: Implement the gateway** using caller-provided Supabase clients. Keep encoded compaction RPC arguments private, map Postgres conflict codes to `DocumentStateConflictError`, and serialize Markdown from exactly the merged snapshot that is submitted to the RPC.
+- [x] **Step 4: Narrow Phase 1 content mutation** by marking `updateDocumentContent` as legacy-only and ensuring collaborative UI code cannot call it after session construction.
+- [x] **Step 5: Verify GREEN** with the targeted gateway and existing document-service tests.
+- [x] **Step 6: Commit** with `git add src/lib/documents/documentStateGateway.ts src/lib/services/documentService.ts tests/unit/documents/document-state-gateway.test.ts && git commit -m "feat: add authoritative document state gateway"`.
 
 ### Task 5: Durable private Supabase collaboration session
 

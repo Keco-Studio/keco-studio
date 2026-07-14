@@ -48,20 +48,26 @@ describeDb('document collaboration durability RLS (live database)', () => {
     });
   }
 
+  async function append(
+    actor: RlsUser,
+    documentId: string,
+    epoch: number,
+    updates: Array<{ id: string; updateBase64: string }>
+  ) {
+    return actor.client.rpc('append_document_yjs_updates', {
+      p_document_id: documentId,
+      p_epoch: epoch,
+      p_updates: updates,
+    });
+  }
+
   it('allows project members to read state and the durable update tail', async () => {
     const documentId = await seedDocument();
     expect((await initialize(fx.owner, documentId)).error).toBeNull();
     const updateId = randomUUID();
     expect(
-      (
-        await fx.editor.client.from('document_yjs_updates').insert({
-          id: updateId,
-          document_id: documentId,
-          epoch: 0,
-          update_data: 'BAUG',
-          created_by: fx.editor.id,
-        })
-      ).error
+      (await append(fx.editor, documentId, 0, [{ id: updateId, updateBase64: 'BAUG' }]))
+        .error
     ).toBeNull();
 
     for (const actor of [fx.owner, fx.admin, fx.editor, fx.viewer]) {
@@ -87,41 +93,23 @@ describeDb('document collaboration durability RLS (live database)', () => {
       const documentId = await seedDocument();
       expect((await initialize(actor, documentId)).error).toBeNull();
       const id = randomUUID();
-      expect(
-        (
-          await actor.client.from('document_yjs_updates').insert({
-            id,
-            document_id: documentId,
-            epoch: 0,
-            update_data: 'AQI=',
-            created_by: actor.id,
-          })
-        ).error
-      ).toBeNull();
-      expect(
-        (
-          await actor.client.from('document_yjs_updates').insert({
-            id,
-            document_id: documentId,
-            epoch: 0,
-            update_data: 'AQI=',
-            created_by: actor.id,
-          })
-        ).error
-      ).not.toBeNull();
+      const update = { id, updateBase64: 'AQI=' };
+      expect((await append(actor, documentId, 0, [update])).error).toBeNull();
+      expect((await append(actor, documentId, 0, [update])).error).toBeNull();
+      const { data: stored } = await fx.svc
+        .from('document_yjs_updates')
+        .select('created_by')
+        .eq('id', id);
+      expect(stored).toEqual([{ created_by: actor.id }]);
     }
 
     const viewerDocumentId = await seedDocument();
     expect((await initialize(fx.viewer, viewerDocumentId)).error).not.toBeNull();
     expect(
       (
-        await fx.viewer.client.from('document_yjs_updates').insert({
-          id: randomUUID(),
-          document_id: viewerDocumentId,
-          epoch: 0,
-          update_data: 'AQI=',
-          created_by: fx.viewer.id,
-        })
+        await append(fx.viewer, viewerDocumentId, 0, [
+          { id: randomUUID(), updateBase64: 'AQI=' },
+        ])
       ).error
     ).not.toBeNull();
   });
@@ -130,16 +118,10 @@ describeDb('document collaboration durability RLS (live database)', () => {
     const documentId = await seedDocument();
     expect((await initialize(fx.editor, documentId)).error).toBeNull();
 
-    const { error: staleError } = await fx.editor.client
-      .from('document_yjs_updates')
-      .insert({
-        id: randomUUID(),
-        document_id: documentId,
-        epoch: 1,
-        update_data: 'AQI=',
-        created_by: fx.editor.id,
-      });
-    expect(staleError).not.toBeNull();
+    const { error: staleError } = await append(fx.editor, documentId, 1, [
+      { id: randomUUID(), updateBase64: 'AQI=' },
+    ]);
+    expect(staleError?.code).toBe('PT409');
 
     const { error: bodyError } = await fx.editor.client
       .from('documents')
@@ -161,14 +143,11 @@ describeDb('document collaboration durability RLS (live database)', () => {
     const revision = Number((initialized as Array<{ collab_revision: number }>)[0]?.collab_revision);
     const includedId = randomUUID();
     const remainingId = randomUUID();
-    const rows = [includedId, remainingId].map((id) => ({
+    const updates = [includedId, remainingId].map((id) => ({
       id,
-      document_id: documentId,
-      epoch: 0,
-      update_data: 'AQI=',
-      created_by: fx.owner.id,
+      updateBase64: 'AQI=',
     }));
-    expect((await fx.owner.client.from('document_yjs_updates').insert(rows)).error).toBeNull();
+    expect((await append(fx.owner, documentId, 0, updates)).error).toBeNull();
 
     const { error: compactError } = await fx.owner.client.rpc('compact_document_collab_state', {
       p_document_id: documentId,
