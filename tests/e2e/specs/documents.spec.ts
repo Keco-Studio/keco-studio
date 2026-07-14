@@ -24,13 +24,14 @@ test.describe('Document authoring - Phase 1', () => {
     await loginPage.expectLoginSuccess();
   });
 
-  test('create -> edit -> image -> autosave -> reload -> viewer', async ({ page }) => {
+  test('create -> edit -> link -> image -> autosave -> reload -> viewer', async ({ page }) => {
     test.setTimeout(180000);
 
     const project = generateProjectData();
     const documentName = `Design Notes ${Date.now()}`;
     const bodyText = 'Autosaved world-building notes.';
-    const imageAlt = `Document image ${Date.now()}`;
+    const linkText = 'world-building';
+    const linkUrl = 'https://example.com/';
 
     await test.step('Create a project', async () => {
       await projectPage.createProject(project);
@@ -64,16 +65,56 @@ test.describe('Document authoring - Phase 1', () => {
       await expect(page.getByText(/^saved /i)).toBeVisible({ timeout: 20000 });
     });
 
+    await test.step('Turn selected text into a link and open it on double click', async () => {
+      const editor = page.locator('[contenteditable="true"]').first();
+      await editor.evaluate((element, selectedText) => {
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+        let node = walker.nextNode();
+        while (node) {
+          const start = node.textContent?.indexOf(selectedText) ?? -1;
+          if (start >= 0) {
+            const range = document.createRange();
+            range.setStart(node, start);
+            range.setEnd(node, start + selectedText.length);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+            document.dispatchEvent(new Event('selectionchange'));
+            return;
+          }
+          node = walker.nextNode();
+        }
+        throw new Error(`Could not select text: ${selectedText}`);
+      }, linkText);
+
+      const createLinkButton = page.getByRole('button', {
+        name: 'Create link from selected text',
+      });
+      await expect(createLinkButton).toBeEnabled();
+      await createLinkButton.click();
+      await page.locator('input[name="url"]').fill(linkUrl);
+      await expect(page.locator('input[name="title"]')).toHaveCount(0);
+      await expect(page.locator('input[name="text"]')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Set URL' }).click();
+
+      const link = editor.locator(`a[href="${linkUrl}"]`, { hasText: linkText });
+      await expect(link).toBeVisible();
+      const popupPromise = page.waitForEvent('popup');
+      await link.dblclick();
+      const popup = await popupPromise;
+      expect(popup.url()).toBe(linkUrl);
+      await popup.close();
+    });
+
     await test.step('Upload and render an image', async () => {
-      await page.getByRole('button', { name: /insert image/i }).click();
-      const dialog = page.getByRole('dialog', { name: /upload an image/i });
-      await expect(dialog).toBeVisible();
-      await dialog.locator('input[type="file"]').setInputFiles(
+      const fileChooserPromise = page.waitForEvent('filechooser');
+      await page.getByRole('button', { name: /^insert image$/i }).click();
+      const fileChooser = await fileChooserPromise;
+      await fileChooser.setFiles(
         path.resolve(process.cwd(), 'src/assets/images/projectEmptyIcon_2.png')
       );
-      await dialog.locator('input[name="altText"]').fill(imageAlt);
-      await dialog.getByRole('button', { name: /^save$/i }).click();
-      await expect(page.getByRole('img', { name: imageAlt })).toBeVisible({ timeout: 20000 });
+      const editor = page.locator('[contenteditable="true"]').first();
+      await expect(editor.locator('img')).toBeVisible({ timeout: 20000 });
       await expect(page.getByText(/^saved /i)).toBeVisible({ timeout: 20000 });
     });
 
@@ -82,7 +123,8 @@ test.describe('Document authoring - Phase 1', () => {
       const editor = page.locator('[contenteditable="true"]').first();
       await expect(editor).toBeVisible({ timeout: 30000 });
       await expect(editor).toContainText(bodyText, { timeout: 20000 });
-      await expect(page.getByRole('img', { name: imageAlt })).toBeVisible({ timeout: 20000 });
+      await expect(editor.locator(`a[href="${linkUrl}"]`, { hasText: linkText })).toBeVisible();
+      await expect(editor.locator('img')).toBeVisible({ timeout: 20000 });
     });
 
     await test.step('Render the same document read-only for a viewer role', async () => {
