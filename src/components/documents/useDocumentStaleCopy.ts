@@ -7,6 +7,8 @@ export type UseDocumentStaleCopyOptions = {
   documentId: string;
   localUpdatedAt: string;
   isDirty: boolean;
+  getIsDirty?: () => boolean;
+  onRemoteSaveStart?: () => void;
   onCleanRemoteSave: () => Promise<void>;
 };
 
@@ -51,7 +53,8 @@ export class DocumentStaleCopyController {
   async receive(update: DocumentUpdatedPayload): Promise<void> {
     if (!this.isNewerSave(update)) return;
     const remoteUpdatedAt = update.updatedAt!;
-    if (this.options.isDirty) {
+    this.options.onRemoteSaveStart?.();
+    if (this.options.getIsDirty?.() ?? this.options.isDirty) {
       this.setState({ isStale: true, remoteUpdatedAt });
       return;
     }

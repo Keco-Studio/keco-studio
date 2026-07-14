@@ -28,6 +28,14 @@ describe('DocumentEditor Phase 1 wiring', () => {
     expect(source).toContain('styles.staleBanner');
   });
 
+  it('guards remote refreshes with a live edit revision and pauses persistence', () => {
+    expect(source).toContain('getRevision');
+    expect(source).toContain('pauseForRemote');
+    expect(source).toMatch(/const revision = getRevision\(\)/);
+    expect(source).toMatch(/getRevision\(\) !== revision/);
+    expect(source).toMatch(/permissions\.readOnly \|\| !isDirty \|\| getIsPaused\(\)/);
+  });
+
   it('does not retain the inline save-loop implementation', () => {
     expect(source).not.toContain('pendingRef');
     expect(source).not.toContain('savingRef');

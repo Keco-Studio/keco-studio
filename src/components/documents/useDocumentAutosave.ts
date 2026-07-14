@@ -20,6 +20,7 @@ export type DocumentAutosaveState = {
   lastSavedAt: string;
   error: string | null;
   isDirty: boolean;
+  isPaused: boolean;
   lastSavedContent: string;
 };
 
@@ -28,6 +29,10 @@ export type DocumentAutosave = DocumentAutosaveState & {
   flush: (reason?: PersistReason) => Promise<void>;
   acceptRemote: (content: string, updatedAt: string) => void;
   keepLocalAfterRemote: (remoteUpdatedAt: string) => void;
+  pauseForRemote: () => void;
+  getRevision: () => number;
+  getIsDirty: () => boolean;
+  getIsPaused: () => boolean;
 };
 
 type Listener = () => void;
@@ -40,6 +45,8 @@ export class DocumentAutosaveController {
   private persistState: PersistState = 'saved';
   private error: string | null = null;
   private dirty = false;
+  private paused = false;
+  private revision = 0;
   private explicitEmpty = false;
   private pending = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -63,6 +70,7 @@ export class DocumentAutosaveController {
       lastSavedAt: this.lastSavedAt,
       error: this.error,
       isDirty: this.dirty,
+      isPaused: this.paused,
       lastSavedContent: this.lastSavedContent,
     };
   }
@@ -74,6 +82,7 @@ export class DocumentAutosaveController {
 
   handleChange(markdown: string): void {
     if (this.options.readOnly) return;
+    this.revision += 1;
     this.currentContent = markdown;
     this.explicitEmpty = markdown === '';
     this.dirty = markdown !== this.lastSavedContent;
@@ -84,19 +93,19 @@ export class DocumentAutosaveController {
         ? 'dirty'
         : 'saved';
     if (this.activeSave) this.pending = true;
-    this.clearTimer();
-    if (this.dirty) {
-      this.timer = setTimeout(() => {
-        this.timer = null;
-        void this.flush('debounce').catch(() => undefined);
-      }, this.options.delayMs ?? 1500);
-    }
+    this.scheduleDebounce();
     this.emit();
   }
 
   async flush(reason: PersistReason = 'navigate'): Promise<void> {
     if (this.options.readOnly) return;
     this.clearTimer();
+    if (this.paused) {
+      if (this.dirty) {
+        throw new Error('Document conflict requires resolution before saving');
+      }
+      return;
+    }
 
     if (this.activeSave) {
       await this.activeSave;
@@ -121,6 +130,7 @@ export class DocumentAutosaveController {
     this.explicitEmpty = false;
     this.pending = false;
     this.dirty = false;
+    this.paused = false;
     this.error = null;
     this.persistState = 'saved';
     this.emit();
@@ -130,7 +140,27 @@ export class DocumentAutosaveController {
     if (Date.parse(remoteUpdatedAt) > Date.parse(this.lastSavedAt)) {
       this.lastSavedAt = remoteUpdatedAt;
     }
+    this.paused = false;
+    this.scheduleDebounce();
     this.emit();
+  }
+
+  pauseForRemote(): void {
+    this.clearTimer();
+    this.paused = true;
+    this.emit();
+  }
+
+  getRevision(): number {
+    return this.revision;
+  }
+
+  getIsDirty(): boolean {
+    return this.dirty;
+  }
+
+  getIsPaused(): boolean {
+    return this.paused;
   }
 
   destroy(): void {
@@ -156,7 +186,7 @@ export class DocumentAutosaveController {
         this.lastSavedAt = updatedAt;
         this.options.onSaved?.(content, updatedAt);
         this.dirty = this.currentContent !== this.lastSavedContent;
-      } while (this.pending || this.dirty);
+      } while (!this.paused && (this.pending || this.dirty));
 
       this.persistState = this.dirty ? 'dirty' : 'saved';
       this.emit();
@@ -191,6 +221,15 @@ export class DocumentAutosaveController {
     if (!this.timer) return;
     clearTimeout(this.timer);
     this.timer = null;
+  }
+
+  private scheduleDebounce(): void {
+    this.clearTimer();
+    if (!this.dirty || this.paused) return;
+    this.timer = setTimeout(() => {
+      this.timer = null;
+      void this.flush('debounce').catch(() => undefined);
+    }, this.options.delayMs ?? 1500);
   }
 
   private emit(): void {
@@ -230,6 +269,10 @@ export function useDocumentAutosave(
     (remoteUpdatedAt: string) => controller.keepLocalAfterRemote(remoteUpdatedAt),
     [controller]
   );
+  const pauseForRemote = useCallback(() => controller.pauseForRemote(), [controller]);
+  const getRevision = useCallback(() => controller.getRevision(), [controller]);
+  const getIsDirty = useCallback(() => controller.getIsDirty(), [controller]);
+  const getIsPaused = useCallback(() => controller.getIsPaused(), [controller]);
 
   return useMemo(
     () => ({
@@ -238,7 +281,21 @@ export function useDocumentAutosave(
       flush,
       acceptRemote,
       keepLocalAfterRemote,
+      pauseForRemote,
+      getRevision,
+      getIsDirty,
+      getIsPaused,
     }),
-    [acceptRemote, flush, handleChange, keepLocalAfterRemote, state]
+    [
+      acceptRemote,
+      flush,
+      getIsDirty,
+      getIsPaused,
+      getRevision,
+      handleChange,
+      keepLocalAfterRemote,
+      pauseForRemote,
+      state,
+    ]
   );
 }

@@ -90,18 +90,23 @@ export function useDocumentPermissions({
   documentProjectId: string | null;
   supabase: SupabaseClient;
 }): DocumentPermissionState {
-  const [state, setState] = useState<DocumentPermissionState>(loadingState);
+  const requestKey = `${projectId}:${documentProjectId ?? ''}`;
+  const [loaded, setLoaded] = useState<{
+    requestKey: string;
+    permission: DocumentPermissionState;
+  }>({ requestKey: '', permission: loadingState });
 
   useEffect(() => {
     if (!documentProjectId) return;
     let active = true;
     void loadDocumentPermissions({ projectId, documentProjectId, supabase }).then((next) => {
-      if (active) setState(next);
+      if (active) setLoaded({ requestKey, permission: next });
     });
     return () => {
       active = false;
     };
-  }, [documentProjectId, projectId, supabase]);
+  }, [documentProjectId, projectId, requestKey, supabase]);
 
-  return state;
+  if (loaded.requestKey !== requestKey) return loadingState;
+  return loaded.permission;
 }

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   loadDocumentPermissions,
@@ -73,5 +75,19 @@ describe('document permission loader', () => {
     expect(result.role).toBeNull();
     expect(result.readOnly).toBe(true);
     expect(result.error).toBeTruthy();
+  });
+
+  it('gates stale permission results by the current request tuple', () => {
+    const source = readFileSync(
+      path.join(
+        process.cwd(),
+        'src/components/documents/useDocumentPermissions.ts'
+      ),
+      'utf8'
+    );
+
+    expect(source).toContain('requestKey');
+    expect(source).toMatch(/loaded\.requestKey !== requestKey/);
+    expect(source).toMatch(/return loadingState/);
   });
 });

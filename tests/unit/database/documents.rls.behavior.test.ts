@@ -65,12 +65,17 @@ describeDb('documents project membership RLS (live RLS)', () => {
   it('allows owner/admin/editor to write but keeps viewers read-only', async () => {
     const id = await seedDocument(fx, 'write');
 
-    // Editor can update content.
-    const { error: editorUpdateError } = await fx.editor.client
-      .from('documents')
-      .update({ content: '# Edited by editor' })
-      .eq('id', id);
-    expect(editorUpdateError).toBeNull();
+    for (const [role, actor] of [
+      ['owner', fx.owner],
+      ['admin', fx.admin],
+      ['editor', fx.editor],
+    ] as const) {
+      const { error: updateError } = await actor.client
+        .from('documents')
+        .update({ content: `# Edited by ${role}` })
+        .eq('id', id);
+      expect(updateError).toBeNull();
+    }
 
     // Viewer cannot update (RLS denies; row count unaffected).
     const { error: viewerUpdateError, count } = await fx.viewer.client
@@ -88,6 +93,13 @@ describeDb('documents project membership RLS (live RLS)', () => {
         content: 'nope',
       });
     expect(viewerInsertError).not.toBeNull();
+
+    const { error: viewerDeleteError, count: viewerDeleteCount } =
+      await fx.viewer.client
+        .from('documents')
+        .delete({ count: 'exact' })
+        .eq('id', id);
+    if (!viewerDeleteError) expect(viewerDeleteCount ?? 0).toBe(0);
 
     const { data: stored } = await fx.svc
       .from('documents')
