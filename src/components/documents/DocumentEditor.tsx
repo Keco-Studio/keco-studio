@@ -143,6 +143,7 @@ function DocumentEditorSession({
           key={editorKey}
           markdown={document.content ?? ''}
           readOnly
+          showToolbar={false}
           onChange={ignoreMarkdownChange}
           imageUploadHandler={imageUploadHandler}
         />
@@ -151,6 +152,7 @@ function DocumentEditorSession({
           key={`${document.id}:${collaboration.token.epoch}:collaborative`}
           markdown=""
           readOnly={collaboration.readOnly}
+          showToolbar={permissions.role !== 'viewer'}
           onChange={ignoreMarkdownChange}
           imageUploadHandler={imageUploadHandler}
           collaboration={{

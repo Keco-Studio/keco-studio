@@ -278,6 +278,31 @@ describe('DocumentCollaborationSession', () => {
     );
   });
 
+  it('keeps the Lexical awareness shape required for relative cursors', async () => {
+    const harness = makeHarness();
+    const awareness =
+      harness.session.awareness as unknown as awarenessProtocol.Awareness;
+    awareness.setLocalState({
+      name: 'Editor',
+      color: '#1677ff',
+      focusing: false,
+      anchorPos: null,
+      focusPos: null,
+      awarenessData: { userId: USER_ID },
+    });
+
+    await connectReady(harness.session);
+
+    expect(awareness.getLocalState()).toMatchObject({
+      name: 'Editor',
+      color: '#1677ff',
+      focusing: false,
+      anchorPos: null,
+      focusPos: null,
+      awarenessData: { userId: USER_ID },
+    });
+  });
+
   it('flushes pending durability before answering a sync request', async () => {
     const harness = makeHarness();
     await connectReady(harness.session);

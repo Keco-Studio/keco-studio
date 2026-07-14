@@ -6,14 +6,14 @@ import { generateProjectData } from '../fixures/projects';
 import { users } from '../fixures/users';
 
 /**
- * Document authoring E2E (Phase 1).
+ * Document authoring E2E.
  *
  * Covers the Phase 1 authoring and sidebar CRUD paths. The viewer UI test
  * intercepts only the role response; real viewer write rejection is covered by
  * tests/unit/database/documents.rls.behavior.test.ts against local Postgres.
  */
 
-test.describe('Document authoring - Phase 1', () => {
+test.describe('Document authoring', () => {
   let projectPage: ProjectPage;
 
   test.beforeEach(async ({ page }) => {
@@ -58,11 +58,16 @@ test.describe('Document authoring - Phase 1', () => {
     await test.step('Edit the document and wait for autosave', async () => {
       const editor = page.locator('[contenteditable="true"]').first();
       await expect(editor).toBeVisible({ timeout: 30000 });
+      const durableAppend = page.waitForResponse(
+        (response) =>
+          response.url().includes('/rpc/append_document_yjs_updates') &&
+          response.ok()
+      );
       await editor.click();
       await editor.pressSequentially(bodyText, { delay: 10 });
 
-      // Phase 1 persists after 1.5 seconds of idle time.
-      await expect(page.getByText(/^saved /i)).toBeVisible({ timeout: 20000 });
+      await durableAppend;
+      await expect(page.getByText('Live', { exact: true })).toBeVisible();
     });
 
     await test.step('Turn selected text into a link and open it on double click', async () => {
@@ -107,6 +112,11 @@ test.describe('Document authoring - Phase 1', () => {
     });
 
     await test.step('Upload and render an image', async () => {
+      const durableAppend = page.waitForResponse(
+        (response) =>
+          response.url().includes('/rpc/append_document_yjs_updates') &&
+          response.ok()
+      );
       const fileChooserPromise = page.waitForEvent('filechooser');
       await page.getByRole('button', { name: /^insert image$/i }).click();
       const fileChooser = await fileChooserPromise;
@@ -115,7 +125,8 @@ test.describe('Document authoring - Phase 1', () => {
       );
       const editor = page.locator('[contenteditable="true"]').first();
       await expect(editor.locator('img')).toBeVisible({ timeout: 20000 });
-      await expect(page.getByText(/^saved /i)).toBeVisible({ timeout: 20000 });
+      await durableAppend;
+      await expect(page.getByText('Live', { exact: true })).toBeVisible();
     });
 
     await test.step('Reload and confirm content persisted', async () => {
@@ -137,7 +148,7 @@ test.describe('Document authoring - Phase 1', () => {
       });
       await page.reload({ waitUntil: 'domcontentloaded' });
 
-      await expect(page.getByText('View only')).toBeVisible({ timeout: 30000 });
+      await expect(page.getByText('View only - Live')).toBeVisible({ timeout: 30000 });
       const viewerEditor = page.locator('[contenteditable="false"]').first();
       await expect(viewerEditor).toContainText(bodyText);
       await expect(page.getByRole('button', { name: /insert image/i })).toHaveCount(0);

@@ -19,6 +19,28 @@ describe('document Lexical Yjs adapter contract', () => {
     expect(editor).not.toMatch(/provider: Provider;[\s\S]+doc: Doc;/);
   });
 
+  it('keeps one stable plugin set while read-only status changes', () => {
+    expect(editor).toContain('useMemo(');
+    expect(editor).toContain('showToolbar');
+    expect(editor).not.toContain('if (!readOnly)');
+  });
+
+  it('creates the binding only from a committed Lexical composer effect', () => {
+    expect(plugin).toContain('addComposerChild$');
+    expect(plugin).toContain('useLexicalComposerContext');
+    expect(plugin).toContain('useEffect(');
+    expect(plugin).not.toContain('createRootEditorSubscription$');
+  });
+
+  it('shares one binding across the Strict Effect cleanup and setup cycle', () => {
+    expect(plugin).toContain('activeEditorBindings');
+    expect(plugin).toContain('WeakMap<LexicalEditor');
+    expect(plugin).toContain('existing.refs += 1');
+    expect(plugin).toContain('entry.refs -= 1');
+    expect(plugin).toContain('entry.releasePending = true');
+    expect(plugin).toContain('existing.releasePending = false');
+  });
+
   it('attaches the durable state only after the Yjs observer is registered', () => {
     const observeIndex = plugin.indexOf('.observeDeep(onYjsTreeChanges)');
     const attachIndex = plugin.indexOf('session.attachBinding()');
@@ -30,6 +52,10 @@ describe('document Lexical Yjs adapter contract', () => {
     expect(plugin).toContain('editor.isComposing()');
     expect(plugin).toContain("addEventListener('compositionend'");
     expect(plugin).toContain('queuedRemote');
+    expect(plugin).toContain('compositionState');
+    expect(plugin).toContain('compositionState.prevEditorState');
+    expect(plugin).toContain('mergeCompositionChanges');
+    expect(plugin).not.toContain('editorState,\n    editorState,');
     expect(plugin).toContain('queueMicrotask(flushAfterComposition)');
   });
 
