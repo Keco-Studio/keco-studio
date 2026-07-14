@@ -9,7 +9,7 @@ import type { SidebarContextMenuState } from './useSidebarContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
 import { deleteFolder } from '@/lib/services/folderService';
 import { deleteDocument } from '@/lib/services/documentService';
-import { broadcastDocumentUpdated } from '@/lib/documents/documentBroadcast';
+import { broadcastProjectDocumentUpdate } from '@/lib/documents/projectDocumentChannel';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import {
   invalidateFolderData,
@@ -266,7 +266,7 @@ export function useSidebarContextMenuActions({
               return deleteDocument(supabase, documentId)
                 .then(async () => {
                   if (currentIds.projectId) {
-                    void broadcastDocumentUpdated(supabase, {
+                    void broadcastProjectDocumentUpdate({
                       documentId,
                       projectId: currentIds.projectId,
                       action: 'delete',

@@ -15,6 +15,10 @@ import {
   projectSidebarTopic,
   type DocumentUpdatedPayload,
 } from '@/lib/documents/documentBroadcast';
+import {
+  notifyProjectDocumentUpdate,
+  registerProjectDocumentChannel,
+} from '@/lib/documents/projectDocumentChannel';
 import { queryKeys } from '@/lib/utils/queryKeys';
 
 export type UseSidebarRealtimeParams = {
@@ -152,6 +156,7 @@ export function useSidebarRealtime({
   useEffect(() => {
     if (!currentProjectId || !userId) return;
 
+    let unregisterProjectChannel = () => {};
     const foldersChannel = supabase
       // Single source of truth for the topic string, shared with the broadcast
       // sender (documentBroadcast.projectSidebarTopic).
@@ -198,11 +203,18 @@ export function useSidebarRealtime({
             void queryClient.invalidateQueries({
               queryKey: queryKeys.document(payload.documentId),
             });
+            notifyProjectDocumentUpdate(payload);
           }
         }
       )
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) {
+        if (status === 'SUBSCRIBED') {
+          unregisterProjectChannel();
+          unregisterProjectChannel = registerProjectDocumentChannel(
+            currentProjectId,
+            foldersChannel
+          );
+        } else if (status === 'CHANNEL_ERROR' && err) {
           console.error('[Sidebar] Folders channel ERROR:', err);
         } else if (status === 'TIMED_OUT') {
           console.warn('[Sidebar] Folders channel TIMED OUT');
@@ -210,6 +222,7 @@ export function useSidebarRealtime({
       });
 
     return () => {
+      unregisterProjectChannel();
       supabase.removeChannel(foldersChannel);
     };
   }, [currentProjectId, userId, supabase, queryClient]);

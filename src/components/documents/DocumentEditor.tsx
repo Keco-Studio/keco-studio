@@ -20,7 +20,7 @@ import {
   AuthorizationError,
 } from '@/lib/services/authorizationService';
 import { uploadImageFiles } from '@/lib/services/documentImageUpload';
-import { broadcastDocumentUpdated } from '@/lib/documents/documentBroadcast';
+import { broadcastProjectDocumentUpdate } from '@/lib/documents/projectDocumentChannel';
 import { registerDocumentFlushHandler } from '@/lib/documents/documentFlushRegistry';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import type {
@@ -216,7 +216,7 @@ export function DocumentEditor({ projectId, documentId }: DocumentEditorProps) {
           );
           lastSavedMarkdownRef.current = toSave;
           writeCache(targetId, toSave, updatedAt);
-          void broadcastDocumentUpdated(supabase, {
+          void broadcastProjectDocumentUpdate({
             documentId: targetId,
             projectId: projectIdRef.current,
             updatedAt,
