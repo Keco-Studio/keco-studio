@@ -9,6 +9,13 @@ export type DurableYjsUpdate = {
   createdAt?: string;
 };
 
+export type ReplaceDocumentStateInput = {
+  documentId: string;
+  expected: DocumentStateToken;
+  replacement: { kind: 'version'; versionId: string };
+  reason: 'restore';
+};
+
 export type AuthoritativeDocumentState = {
   documentId: string;
   projectId: string;
