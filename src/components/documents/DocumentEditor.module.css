@@ -3,7 +3,7 @@
   flex-direction: column;
   gap: 16px;
   padding: 24px 32px;
-  max-width: 960px;
+  max-width: 1280px;
   margin: 0 auto;
   width: 100%;
 }
@@ -13,6 +13,44 @@
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.historyButton {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--ant-color-border, #d9d9d9);
+  border-radius: 6px;
+  background: var(--ant-color-bg-container, #fff);
+  color: var(--ant-color-text-secondary, #666);
+  cursor: pointer;
+}
+
+.historyButton:hover {
+  color: var(--ant-color-primary, #1677ff);
+  border-color: var(--ant-color-primary, #1677ff);
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 960px);
+  justify-content: center;
+  gap: 24px;
+  min-width: 0;
+}
+
+.workspaceWithHistory {
+  grid-template-columns: minmax(0, 960px) minmax(280px, 320px);
+}
+
+.editorPane {
+  min-width: 0;
 }
 
 .title {

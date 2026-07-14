@@ -1,7 +1,9 @@
 'use client';
 
 import { useCallback } from 'react';
+import { useState } from 'react';
 import dynamic from 'next/dynamic';
+import { HistoryOutlined } from '@ant-design/icons';
 import { useQuery } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getDocument, type DocumentRecord } from '@/lib/services/documentService';
@@ -12,6 +14,7 @@ import {
   type DocumentPermissionState,
 } from './useDocumentPermissions';
 import { useDocumentCollaboration } from './useDocumentCollaboration';
+import { DocumentVersionSidebar } from './DocumentVersionSidebar';
 import type { MdxDocumentEditorProps } from './MdxDocumentEditor';
 import styles from './DocumentEditor.module.css';
 
@@ -89,6 +92,7 @@ function DocumentEditorSession({
   permissions: ReadyDocumentPermissions;
 }) {
   const supabase = useSupabase();
+  const [historyOpen, setHistoryOpen] = useState(false);
   const collaboration = useDocumentCollaboration({
     supabase,
     documentId: document.id,
@@ -116,10 +120,21 @@ function DocumentEditorSession({
     <div className={styles.container}>
       <div className={styles.header}>
         <h1 className={styles.title}>{document.name}</h1>
-        <div className={styles.status} aria-live="polite">
-          <span className={styles[`${collaboration.tone}Tag`]}>
-            {collaboration.label}
-          </span>
+        <div className={styles.headerActions}>
+          <button
+            type="button"
+            className={styles.historyButton}
+            aria-label="Version history"
+            title="Version history"
+            onClick={() => setHistoryOpen((open) => !open)}
+          >
+            <HistoryOutlined aria-hidden="true" />
+          </button>
+          <div className={styles.status} aria-live="polite">
+            <span className={styles[`${collaboration.tone}Tag`]}>
+              {collaboration.label}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -138,32 +153,44 @@ function DocumentEditorSession({
         </div>
       )}
 
-      {collaboration.isLegacyView ? (
-        <MdxDocumentEditor
-          key={editorKey}
-          markdown={document.content ?? ''}
-          readOnly
-          showToolbar={false}
-          onChange={ignoreMarkdownChange}
-          imageUploadHandler={imageUploadHandler}
+      <div className={`${styles.workspace} ${historyOpen ? styles.workspaceWithHistory : ''}`}>
+        <div className={styles.editorPane}>
+          {collaboration.isLegacyView ? (
+            <MdxDocumentEditor
+              key={editorKey}
+              markdown={document.content ?? ''}
+              readOnly
+              showToolbar={false}
+              onChange={ignoreMarkdownChange}
+              imageUploadHandler={imageUploadHandler}
+            />
+          ) : collaboration.canBind && collaboration.session ? (
+            <MdxDocumentEditor
+              key={`${document.id}:${collaboration.token.epoch}:collaborative`}
+              markdown=""
+              readOnly={collaboration.readOnly}
+              showToolbar={permissions.role !== 'viewer'}
+              onChange={ignoreMarkdownChange}
+              imageUploadHandler={imageUploadHandler}
+              collaboration={{
+                session: collaboration.session,
+                username: permissions.userName,
+                cursorColor: collaboration.cursorColor,
+              }}
+            />
+          ) : (
+            <div className={styles.editorPlaceholder}>{collaboration.label}</div>
+          )}
+        </div>
+        <DocumentVersionSidebar
+          open={historyOpen}
+          projectId={projectId}
+          documentId={document.id}
+          canMutate={permissions.role !== 'viewer'}
+          session={collaboration.session}
+          onClose={() => setHistoryOpen(false)}
         />
-      ) : collaboration.canBind && collaboration.session ? (
-        <MdxDocumentEditor
-          key={`${document.id}:${collaboration.token.epoch}:collaborative`}
-          markdown=""
-          readOnly={collaboration.readOnly}
-          showToolbar={permissions.role !== 'viewer'}
-          onChange={ignoreMarkdownChange}
-          imageUploadHandler={imageUploadHandler}
-          collaboration={{
-            session: collaboration.session,
-            username: permissions.userName,
-            cursorColor: collaboration.cursorColor,
-          }}
-        />
-      ) : (
-        <div className={styles.editorPlaceholder}>{collaboration.label}</div>
-      )}
+      </div>
     </div>
   );
 }
