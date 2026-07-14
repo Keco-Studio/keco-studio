@@ -9,6 +9,7 @@ import {
   DocumentReadOnlyError,
   DocumentStateConflictError,
   type AuthoritativeDocumentState,
+  type ReplaceDocumentStateInput,
   type DocumentStateToken,
   type DurableYjsUpdate,
 } from './documentStateTypes';
@@ -264,9 +265,65 @@ export async function compactDocumentState(
   );
 }
 
+export async function replaceDocumentState(
+  client: SupabaseClient,
+  input: ReplaceDocumentStateInput
+): Promise<AuthoritativeDocumentState> {
+  assertDocumentId(input.documentId);
+  if (
+    input.reason !== 'restore' ||
+    input.replacement.kind !== 'version'
+  ) {
+    throw new Error('Only version restore is supported');
+  }
+  if (!isUuid(input.replacement.versionId)) {
+    throw new Error('Invalid document version ID format');
+  }
+
+  const { head, tail } = await readRawDocumentState(client, input.documentId);
+  const current = {
+    epoch: Number(head.collab_epoch),
+    revision: Number(head.collab_revision),
+  };
+  if (
+    current.epoch !== input.expected.epoch ||
+    current.revision !== input.expected.revision
+  ) {
+    throw new DocumentStateConflictError('Document state changed', current);
+  }
+  if (!head.yjs_state) {
+    throw new DocumentStateConflictError(
+      'Document collaboration state is not initialized',
+      current
+    );
+  }
+
+  const updateTail = tail.map((row) => row.update_data);
+  const merged = mergeYjsState(head.yjs_state, updateTail);
+  const markdown = await documentContentCodec.yjsStateToMarkdown(merged, []);
+  const { data, error } = await client.rpc('restore_document_version', {
+    p_document_id: input.documentId,
+    p_target_version_id: input.replacement.versionId,
+    p_backup_version_id: globalThis.crypto.randomUUID(),
+    p_audit_version_id: globalThis.crypto.randomUUID(),
+    p_expected_epoch: input.expected.epoch,
+    p_expected_revision: input.expected.revision,
+    p_included_update_ids: tail.map((row) => row.id),
+    p_current_yjs_state: merged,
+    p_current_markdown: markdown,
+  });
+  if (error) throwMutationError(error, current);
+  return stateFromRpc(
+    input.documentId,
+    head.project_id,
+    firstRpcRow(data)
+  );
+}
+
 export const documentStateGateway = {
   read: readDocumentState,
   initialize: initializeDocumentState,
   appendUpdates: appendDocumentYjsUpdates,
   compact: compactDocumentState,
+  replace: replaceDocumentState,
 };

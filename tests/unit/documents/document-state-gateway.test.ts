@@ -19,16 +19,20 @@ import {
   compactDocumentState,
   initializeDocumentState,
   readDocumentState,
+  replaceDocumentState,
 } from '@/lib/documents/documentStateGateway';
 import {
   DocumentAccessError,
+  DocumentReadOnlyError,
   DocumentStateConflictError,
+  type ReplaceDocumentStateInput,
 } from '@/lib/documents/documentStateTypes';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const UPDATE_A = '33333333-3333-4333-8333-333333333333';
 const UPDATE_B = '44444444-4444-4444-8444-444444444444';
+const VERSION_ID = '55555555-5555-4555-8555-555555555555';
 
 type ResponseValue = { data: unknown; error: null | { code?: string; message?: string } };
 
@@ -292,5 +296,111 @@ describe('documentStateGateway mutations', () => {
       })
     ).rejects.toBeInstanceOf(DocumentStateConflictError);
     expect(calls.some((call) => call.kind.startsWith('rpc:compact'))).toBe(false);
+  });
+
+  it('restores a version with an exact pre-restore snapshot and distinct audit ids', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: {
+        data: [
+          {
+            collab_epoch: 3,
+            collab_revision: 5,
+            yjs_state: 'restored-state',
+            content: '# Restored',
+            updated_at: '2026-07-14T12:00:04.000Z',
+            backup_version_id: '66666666-6666-4666-8666-666666666666',
+            audit_version_id: '77777777-7777-4777-8777-777777777777',
+          },
+        ],
+        error: null,
+      },
+    });
+
+    const state = await replaceDocumentState(client, {
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+      replacement: { kind: 'version', versionId: VERSION_ID },
+      reason: 'restore',
+    });
+
+    const restoreCall = calls.find(
+      (call) => call.kind === 'rpc:restore_document_version'
+    );
+    expect(restoreCall).toBeDefined();
+    const args = restoreCall!.value as Record<string, unknown>;
+    expect(args).toMatchObject({
+      p_document_id: DOCUMENT_ID,
+      p_target_version_id: VERSION_ID,
+      p_expected_epoch: 2,
+      p_expected_revision: 4,
+      p_included_update_ids: [UPDATE_A, UPDATE_B],
+      p_current_yjs_state: 'merged-state',
+      p_current_markdown: '# Derived',
+    });
+    expect(args.p_backup_version_id).toEqual(expect.any(String));
+    expect(args.p_audit_version_id).toEqual(expect.any(String));
+    expect(args.p_backup_version_id).not.toBe(args.p_audit_version_id);
+    expect(mergeYjsState).toHaveBeenCalledWith('snapshot', ['tail-a', 'tail-b']);
+    expect(yjsStateToMarkdown).toHaveBeenCalledWith('merged-state', []);
+    expect(state).toMatchObject({
+      markdown: '# Restored',
+      yjsStateBase64: 'restored-state',
+      updateTail: [],
+      token: { epoch: 3, revision: 5 },
+    });
+  });
+
+  it('rejects stale or unsupported replacement requests before the RPC', async () => {
+    const stale = makeSupabase();
+    await expect(
+      replaceDocumentState(stale.client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 3 },
+        replacement: { kind: 'version', versionId: VERSION_ID },
+        reason: 'restore',
+      })
+    ).rejects.toBeInstanceOf(DocumentStateConflictError);
+    expect(stale.calls.some((call) => call.kind.startsWith('rpc:restore'))).toBe(
+      false
+    );
+
+    const unsupported = makeSupabase();
+    await expect(
+      replaceDocumentState(unsupported.client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 4 },
+        replacement: { kind: 'markdown', markdown: '# Unsafe' },
+        reason: 'agent',
+      } as unknown as ReplaceDocumentStateInput)
+    ).rejects.toThrow('Only version restore is supported');
+    expect(
+      unsupported.calls.some((call) => call.kind.startsWith('document-select'))
+    ).toBe(false);
+  });
+
+  it('maps restore CAS and permission failures to typed document errors', async () => {
+    const conflict = makeSupabase({
+      rpc: { data: null, error: { code: 'PT409', message: 'changed' } },
+    });
+    await expect(
+      replaceDocumentState(conflict.client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 4 },
+        replacement: { kind: 'version', versionId: VERSION_ID },
+        reason: 'restore',
+      })
+    ).rejects.toBeInstanceOf(DocumentStateConflictError);
+
+    const denied = makeSupabase({
+      rpc: { data: null, error: { code: '42501', message: 'denied' } },
+    });
+    await expect(
+      replaceDocumentState(denied.client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 4 },
+        replacement: { kind: 'version', versionId: VERSION_ID },
+        reason: 'restore',
+      })
+    ).rejects.toBeInstanceOf(DocumentReadOnlyError);
   });
 });
