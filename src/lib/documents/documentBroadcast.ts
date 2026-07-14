@@ -12,7 +12,7 @@
  * (useSidebarRealtime) reference this shared topic constant.
  */
 
-import type { SupabaseClient } from '@supabase/supabase-js';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 export const DOCUMENT_UPDATED_EVENT = 'document-updated';
 
@@ -32,28 +32,14 @@ export type DocumentUpdatedPayload = {
   action: 'save' | 'rename' | 'move' | 'create' | 'delete';
 };
 
-/**
- * Best-effort broadcast of a document change on the shared project topic.
- * Failures are swallowed: realtime notification is an enhancement, not a
- * correctness requirement (the durable write already succeeded).
- */
-export async function broadcastDocumentUpdated(
-  supabase: SupabaseClient,
+/** Send through an already-subscribed project channel. */
+export async function sendDocumentUpdated(
+  channel: RealtimeChannel,
   payload: DocumentUpdatedPayload
 ): Promise<void> {
-  try {
-    const channel = supabase.channel(projectSidebarTopic(payload.projectId));
-    await channel.subscribe();
-    await channel.send({
-      type: 'broadcast',
-      event: DOCUMENT_UPDATED_EVENT,
-      payload,
-    });
-    // Give the message a tick to flush before tearing the channel down.
-    setTimeout(() => {
-      void supabase.removeChannel(channel);
-    }, 1000);
-  } catch {
-    // Ignore: broadcast is best-effort.
-  }
+  await channel.send({
+    type: 'broadcast',
+    event: DOCUMENT_UPDATED_EVENT,
+    payload,
+  });
 }

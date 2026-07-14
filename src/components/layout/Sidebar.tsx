@@ -34,7 +34,7 @@ import { Project } from "@/lib/services/projectService";
 import { Library, deleteLibrary, moveLibraryToFolder } from "@/lib/services/libraryService";
 import { Folder, deleteFolder } from "@/lib/services/folderService";
 import { updateDocumentName, moveDocument, type DocumentSummary } from "@/lib/services/documentService";
-import { broadcastDocumentUpdated } from "@/lib/documents/documentBroadcast";
+import { broadcastProjectDocumentUpdate } from "@/lib/documents/projectDocumentChannel";
 import { flushOpenDocumentEditor } from "@/lib/documents/documentFlushRegistry";
 import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
 import { MoveDocumentModal } from "@/components/documents/MoveDocumentModal";
@@ -284,7 +284,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           try {
             await updateDocumentName(supabase, id, trimmed);
             if (currentIds.projectId) {
-              void broadcastDocumentUpdated(supabase, {
+              void broadcastProjectDocumentUpdate({
                 documentId: id,
                 projectId: currentIds.projectId,
                 name: trimmed,
@@ -787,7 +787,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     try {
       await moveDocument(supabase, movingDocumentId, { folderId });
       if (currentIds.projectId) {
-        void broadcastDocumentUpdated(supabase, {
+        void broadcastProjectDocumentUpdate({
           documentId: movingDocumentId,
           projectId: currentIds.projectId,
           action: 'move',
@@ -812,7 +812,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setSelectedFolderId(null);
     if (currentIds.projectId) {
       // Tell other clients a document appeared so their sidebar refreshes.
-      void broadcastDocumentUpdated(supabase, {
+      void broadcastProjectDocumentUpdate({
         documentId,
         projectId: currentIds.projectId,
         action: 'create',
