@@ -10,7 +10,7 @@ on:
       - main  # Only pushes to the main branch trigger this (including merges)
 
 jobs:
-  no-chinese:
+  only-english-characters:
     runs-on: ubuntu-latest
     if: github.repository == 'Keco-Studio/keco-studio'
     steps:
