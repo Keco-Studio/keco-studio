@@ -138,10 +138,10 @@ $$;
 
 -- Update the existing project creation function to include default Resources Folder
 
--- 先删除旧版本（如果存在），以便安全地修改返回类型
+-- Drop the old version first (if it exists) so the return type can be changed safely
 drop function if exists public.create_project_with_default_resource(text, text);
 
--- 创建新函数，使用 JSON 返回类型
+-- Create the new function with a JSON return type
 create or replace function public.create_project_with_default_resource(
   p_name text,
   p_description text default null

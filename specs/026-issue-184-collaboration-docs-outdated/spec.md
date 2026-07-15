@@ -13,11 +13,11 @@ Two docs under `docs/architecture/` describe a persistence model the code has ab
 
 1. `y-indexeddb` is **absent** from `package.json` and grep finds **zero** `IndexeddbPersistence`/`y-indexeddb` usages in `src/`. The "dual-track" (Yjs + IndexedDB) model these docs describe is gone; the current model is online Yjs sync backed by Supabase.
 2. `docs/architecture/collaboration-table-unified-design.md`:
-   - Line 12: section titled "架构现状（双轨制）" — describes the dual-track model as *current*.
+   - Line 12: section titled "Current Architecture (Dual-Track Model)" — describes the dual-track model as *current*.
    - Lines 18-19: table stating `LibraryDataContext` persists to `IndexedDB library-${libraryId}` and `YjsContext` persists rows to `IndexedDB asset-table-${libraryId}` (local-only, not cross-synced).
    - Lines 31, 92, 111: logic that hinges on an IndexedDB `synced` event and IndexedDB-restore-overwrite handling.
 3. `docs/architecture/COLLABORATION_OVERVIEW.md`:
-   - Line 114: "持久化 | `IndexeddbPersistence('library-${libraryId}', yDoc)` ...".
+   - Line 114: "Persistence | `IndexeddbPersistence('library-${libraryId}', yDoc)` ...".
    - Lines 182, 215: describe IndexedDB persistence (`asset-table-${libraryId}`) and rendering logic that reads from IndexedDB-backed yRows.
 4. These descriptions no longer match code and, worse, describe behavior (local IndexedDB restore overwriting DB) that could mislead debugging of the current online-sync flow.
 

@@ -14,14 +14,14 @@ describe('isExplicitEmptyPropertyValues', () => {
 
   it('returns false when propertyValues has at least one field', () => {
     expect(
-      isExplicitEmptyPropertyValues({ propertyValues: { 货币类型: '免费货币' } })
+      isExplicitEmptyPropertyValues({ propertyValues: { 'Currency Type': 'free currency' } })
     ).toBe(false);
   });
 
   it('returns false after normalizing a top-level item wrapper into real fields', () => {
     expect(
       isExplicitEmptyPropertyValues({
-        propertyValues: { item: { 货币类型: '免费货币' } },
+        propertyValues: { item: { 'Currency Type': 'free currency' } },
       })
     ).toBe(false);
   });
@@ -34,9 +34,9 @@ describe('isExplicitEmptyPropertyValues', () => {
 
 describe('buildEmptyPropertyValuesError', () => {
   it('lists available fields and includes an example key', () => {
-    const msg = buildEmptyPropertyValuesError(['名称', '货币类型']);
+    const msg = buildEmptyPropertyValuesError(['Name', 'Currency Type']);
     expect(msg).toContain('propertyValues is empty');
-    expect(msg).toContain('名称');
-    expect(msg).toContain('货币类型');
+    expect(msg).toContain('Name');
+    expect(msg).toContain('Currency Type');
   });
 });

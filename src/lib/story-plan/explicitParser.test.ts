@@ -44,12 +44,12 @@ describe('explicit story parser', () => {
 
     expect(plan.choices.map((choice) => choice.textSegmentIds.map((id) => segmentsById.get(id)?.text)))
       .toEqual([
-        ['走左边。'],
-        ['走右边。'],
-        ['回答“我不知道”。'],
-        ['不回答直接走。'],
-        ['报真名。'],
-        ['报假名。'],
+        ['Take the left path.'],
+        ['Take the right path.'],
+        ['Answer "I do not know".'],
+        ['Walk on without answering.'],
+        ['Give your real name.'],
+        ['Give a false name.'],
       ]);
     expect(plan.choices.map((choice) => choice.commandIds.map((id) => commandsById.get(id)?.source)))
       .toEqual([
@@ -70,28 +70,28 @@ describe('explicit story parser', () => {
       node.contentSegmentIds.map((segmentId) => segmentsById.get(segmentId)?.text)
     );
 
-    expect(content).not.toContain('左边小路');
-    expect(content).not.toContain('老人点头');
+    expect(content).not.toContain('Left trail');
+    expect(content).not.toContain('The old man nods');
     expect(content).toEqual(expect.arrayContaining([
-      '你醒了。选一条路。',
-      '年轻人，你从哪来？',
-      '你到了。信任值: [trust]。',
+      'You are awake. Pick a path.',
+      'Young one, where do you come from?',
+      'You have arrived. Trust: [trust].',
     ]));
   });
 
   it('returns null for prose without explicit branch structure', () => {
-    const source = segmentStorySource('雨夜里，旅人走进一座古宅。', 'fixture');
+    const source = segmentStorySource('On a rainy night, a traveler enters an old manor.', 'fixture');
     expect(tryParseExplicitStory(source)).toBeNull();
   });
 
   it('returns null for duplicate explicit labels', () => {
     const source = segmentStorySource([
-      '引导：选择。',
-      'O1: 左边。 (jump O1)',
-      'O1 branch [O1 | 第一处]',
-      '旁白：结束。',
-      'O1 branch [O1 | 第二处]',
-      '旁白：再次结束。',
+      'Guide: Choose.',
+      'O1: Left. (jump O1)',
+      'O1 branch [O1 | First stop]',
+      'Narrator: The end.',
+      'O1 branch [O1 | Second stop]',
+      'Narrator: The end again.',
     ].join('\n'), 'fixture');
 
     expect(tryParseExplicitStory(source)).toBeNull();
@@ -118,10 +118,10 @@ describe('explicit story parser', () => {
 
   it('leaves duplicate natural branch ordinals for the Converter', () => {
     const source = segmentStorySource([
-      '引导：选择。',
-      '分支一：选择【Left】（first group）',
+      'Guide: Choose.',
+      'Branch 1: Choose [Left] (first group)',
       'Left ending.',
-      '分支一：选择【Again】（nested or second group）',
+      'Branch 1: Choose [Again] (nested or second group)',
       'Again ending.',
     ].join('\n'), 'fixture');
 

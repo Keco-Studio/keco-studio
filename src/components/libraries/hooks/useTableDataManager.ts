@@ -106,8 +106,9 @@ export function useTableDataManager({
         const assetRow = row as AssetRow;
         const optimisticUpdate = optimisticEditUpdates.get(assetRow.id);
         
-        // Always overlay optimistic when present. Requiring name match caused
-        // "清空某列导致其他列恢复" when clearing name column (base refetched as '' but optimistic.name stayed old).
+        // Always overlay optimistic when present. Requiring a name match caused a bug where
+        // clearing one column made other columns revert: after clearing the name column, the
+        // base refetched as '' while optimistic.name stayed old, so the overlay was skipped.
         if (optimisticUpdate) {
           allRowsMap.set(assetRow.id, {
             ...assetRow,

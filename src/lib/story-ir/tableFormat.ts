@@ -19,17 +19,17 @@ export const STORY_BASE_COLUMNS = [
 ] as const;
 
 export const STORY_COLUMN_DESCRIPTIONS: Record<string, string> = {
-  Label: '这里是跳转的节点',
-  Type: '1蓝对话框2粉3灰4无对话框5屏幕中央',
-  Name: '说话人',
-  Content: '对话内容',
-  If: '触发条件',
-  Commands: '指令',
-  Fg: '左侧显示立绘',
-  Fg1: '右侧显示立绘',
-  Cg: '显示CG',
-  Voice: '配音路径',
-  Bg: '背景图',
+  Label: 'Story jump node',
+  Type: '1 blue dialogue box, 2 pink, 3 gray, 4 no dialogue box, 5 screen center',
+  Name: 'Speaker',
+  Content: 'Dialogue and options',
+  If: 'Trigger condition',
+  Commands: 'Command list',
+  Fg: 'Left-side portrait',
+  Fg1: 'Right-side portrait',
+  Cg: 'CG image',
+  Voice: 'Voice-over path',
+  Bg: 'Background image',
 };
 
 export const STORY_COLUMN_WIDTHS: Record<string, number | undefined> = {

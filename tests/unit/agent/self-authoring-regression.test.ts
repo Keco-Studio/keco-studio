@@ -15,7 +15,7 @@ const currencyTableFields: PropertyConfig[] = [
     id: 'name-id',
     sectionId: 's1',
     key: 'name',
-    name: '名称',
+    name: 'Name',
     valueType: 'string',
     dataType: 'string',
     required: true,
@@ -25,11 +25,11 @@ const currencyTableFields: PropertyConfig[] = [
     id: 'enum-id',
     sectionId: 's1',
     key: 'type',
-    name: '货币类型',
+    name: 'Currency Type',
     valueType: 'enum',
     dataType: 'enum',
     required: true,
-    enumOptions: ['免费货币', '半免费货币', '付费货币', '玩法积分'],
+    enumOptions: ['free currency', 'semi-free currency', 'paid currency', 'gameplay points'],
     orderIndex: 1,
   },
 ];
@@ -39,7 +39,7 @@ const discountRuleFields: PropertyConfig[] = [
     id: 'rule-name-id',
     sectionId: 's1',
     key: 'rule',
-    name: '规则名称',
+    name: 'Rule Name',
     valueType: 'string',
     dataType: 'string',
     required: true,
@@ -49,7 +49,7 @@ const discountRuleFields: PropertyConfig[] = [
     id: 'discount-id',
     sectionId: 's1',
     key: 'discount',
-    name: '折扣力度',
+    name: 'Discount',
     valueType: 'number',
     dataType: 'float',
     required: true,
@@ -58,26 +58,26 @@ const discountRuleFields: PropertyConfig[] = [
 ];
 
 describe('self-authoring regression (spec §7.2)', () => {
-  it('rejects invented enum value 充值货币 for 货币类型', () => {
+  it('rejects invented enum value recharge currency for Currency Type', () => {
     const result = prepareAgentPropertyValues(
-      { 'enum-id': '充值货币', 'name-id': '游戏金币' },
+      { 'enum-id': 'recharge currency', 'name-id': 'Game Gold' },
       currencyTableFields,
       { requireAllRequired: true }
     );
     expect('error' in result).toBe(true);
     if (!('error' in result)) return;
     expect(result.error).toContain('WRITE_VALIDATION_FAILED');
-    expect(result.error).toContain('充值货币');
-    expect(result.error).toContain('付费货币');
+    expect(result.error).toContain('recharge currency');
+    expect(result.error).toContain('paid currency');
   });
 
-  it('auto-fills 规则名称 from create_asset name when primary label omitted', () => {
+  it('auto-fills Rule Name from create_asset name when primary label omitted', () => {
     const merged = mergeAssetNameIntoPropertyValues(
       { 'discount-id': 0.5 },
       discountRuleFields,
-      '新手 5 折'
+      'Newbie 50% Off'
     );
-    expect(merged['rule-name-id']).toBe('新手 5 折');
+    expect(merged['rule-name-id']).toBe('Newbie 50% Off');
   });
 
   it('rejects create when primary label empty and no asset name', () => {
@@ -89,7 +89,7 @@ describe('self-authoring regression (spec §7.2)', () => {
     expect('error' in result).toBe(true);
     if (!('error' in result)) return;
     expect(result.error.startsWith(WRITE_VALIDATION_FAILED_PREFIX)).toBe(true);
-    expect(result.error).toContain('规则名称');
+    expect(result.error).toContain('Rule Name');
   });
 
   it('treats explicit empty propertyValues object as empty write', () => {

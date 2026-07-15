@@ -6,7 +6,7 @@ const properties: PropertyConfig[] = [
     id: 'name-id',
     sectionId: 's1',
     key: 'name',
-    name: '规则名称',
+    name: 'Rule Name',
     valueType: 'string',
     dataType: 'string',
     required: true,
@@ -16,18 +16,18 @@ const properties: PropertyConfig[] = [
     id: 'enum-id',
     sectionId: 's1',
     key: 'type',
-    name: '货币类型',
+    name: 'Currency Type',
     valueType: 'enum',
     dataType: 'enum',
     required: true,
-    enumOptions: ['免费货币', '半免费货币', '付费货币', '玩法积分'],
+    enumOptions: ['free currency', 'semi-free currency', 'paid currency', 'gameplay points'],
     orderIndex: 1,
   },
   {
     id: 'float-id',
     sectionId: 's1',
     key: 'discount',
-    name: '折扣力度',
+    name: 'Discount',
     valueType: 'number',
     dataType: 'float',
     required: false,
@@ -37,7 +37,7 @@ const properties: PropertyConfig[] = [
     id: 'image-id',
     sectionId: 's1',
     key: 'icon',
-    name: '图标',
+    name: 'Icon',
     valueType: 'other',
     dataType: 'image',
     required: false,
@@ -48,20 +48,20 @@ const properties: PropertyConfig[] = [
 describe('buildLibraryWriteGuide', () => {
   it('includes enumOptions and required flags', () => {
     const guide = buildLibraryWriteGuide(properties);
-    const enumField = guide.fields.find((f) => f.label === '货币类型');
+    const enumField = guide.fields.find((f) => f.label === 'Currency Type');
     expect(enumField?.required).toBe(true);
-    expect(enumField?.enumOptions).toEqual(['免费货币', '半免费货币', '付费货币', '玩法积分']);
+    expect(enumField?.enumOptions).toEqual(['free currency', 'semi-free currency', 'paid currency', 'gameplay points']);
   });
 
   it('builds writeExample keyed by field labels with catalog examples', () => {
     const guide = buildLibraryWriteGuide(properties);
-    expect(Object.keys(guide.writeExample)).toEqual(['规则名称', '货币类型', '折扣力度', '图标']);
-    expect(guide.writeExample['规则名称']).toBe('Alice');
-    expect(guide.writeExample['折扣力度']).toBe(0.75);
-    expect(guide.writeExample['图标']).toBe('');
+    expect(Object.keys(guide.writeExample)).toEqual(['Rule Name', 'Currency Type', 'Discount', 'Icon']);
+    expect(guide.writeExample['Rule Name']).toBe('Alice');
+    expect(guide.writeExample['Discount']).toBe(0.75);
+    expect(guide.writeExample['Icon']).toBe('');
   });
 
   it('sets primaryLabelField from findPrimaryLabelField', () => {
-    expect(buildLibraryWriteGuide(properties).primaryLabelField).toBe('规则名称');
+    expect(buildLibraryWriteGuide(properties).primaryLabelField).toBe('Rule Name');
   });
 });

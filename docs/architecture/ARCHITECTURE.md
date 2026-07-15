@@ -1,61 +1,61 @@
-# Keco Studio - 项目架构文档
+# Keco Studio - Project Architecture Document
 
-**文档版本**: 1.0  
-**创建日期**: 2026-01-30  
-**项目**: Keco Studio - 协作式资产管理平台  
-**技术栈**: Next.js 16 + Supabase + Yjs + React 19
-
----
-
-## 📋 目录
-
-1. [项目概述](#项目概述)
-2. [系统架构](#系统架构)
-3. [技术栈详解](#技术栈详解)
-4. [目录结构](#目录结构)
-5. [核心模块](#核心模块)
-6. [数据库架构](#数据库架构)
-7. [关键数据流](#关键数据流)
-8. [实时协作架构](#实时协作架构)
-9. [认证与授权](#认证与授权)
-10. [API 路由](#api-路由)
-11. [状态管理](#状态管理)
-12. [文件上传与存储](#文件上传与存储)
-13. [版本控制](#版本控制)
-14. [测试架构](#测试架构)
-15. [部署架构](#部署架构)
-16. [已知痛点](#已知痛点)
+**Document Version**: 1.0  
+**Created**: 2026-01-30  
+**Project**: Keco Studio - Collaborative Asset Management Platform  
+**Tech Stack**: Next.js 16 + Supabase + Yjs + React 19
 
 ---
 
-## 项目概述
+## 📋 Table of Contents
 
-### 项目简介
-
-Keco Studio 是一个**多人实时协作的资产管理平台**，允许团队创建项目、定义资产库（Libraries）、管理资产（Assets）及其自定义字段，并支持实时多人编辑、版本控制、权限管理等功能。
-
-### 核心功能
-
-1. **项目管理**: 创建、编辑、删除项目
-2. **资产库管理**: 在项目下创建多个资产库，每个库可自定义字段结构
-3. **资产管理**: 在库中创建资产，填写自定义字段值，支持多种数据类型
-4. **实时协作**: 多用户同时编辑，支持 presence tracking（显示谁在编辑什么）
-5. **版本控制**: 为资产库创建版本快照，支持恢复到历史版本
-6. **权限管理**: 基于角色的访问控制（Admin/Editor/Viewer）
-7. **文件上传**: 支持图片和媒体文件上传
-8. **文件夹组织**: 支持文件夹层级结构组织资产库
-
-### 目标用户
-
-- 游戏开发团队（管理游戏资产）
-- 内容创作团队（管理媒体资源）
-- 产品团队（管理产品需求和规格）
+1. [Project Overview](#project-overview)
+2. [System Architecture](#system-architecture)
+3. [Tech Stack Details](#tech-stack-details)
+4. [Directory Structure](#directory-structure)
+5. [Core Modules](#core-modules)
+6. [Database Architecture](#database-architecture)
+7. [Key Data Flows](#key-data-flows)
+8. [Real-Time Collaboration Architecture](#real-time-collaboration-architecture)
+9. [Authentication & Authorization](#authentication--authorization)
+10. [API Routes](#api-routes)
+11. [State Management](#state-management)
+12. [File Upload & Storage](#file-upload--storage)
+13. [Version Control](#version-control)
+14. [Testing Architecture](#testing-architecture)
+15. [Deployment Architecture](#deployment-architecture)
+16. [Known Pain Points](#known-pain-points)
 
 ---
 
-## 系统架构
+## Project Overview
 
-### 高层架构图
+### Introduction
+
+Keco Studio is a **multi-user, real-time collaborative asset management platform** that allows teams to create projects, define asset libraries (Libraries), manage assets (Assets) and their custom fields, with support for real-time multi-user editing, version control, permission management, and more.
+
+### Core Features
+
+1. **Project Management**: Create, edit, and delete projects
+2. **Library Management**: Create multiple asset libraries under a project, each with a customizable field structure
+3. **Asset Management**: Create assets in a library and fill in custom field values, supporting multiple data types
+4. **Real-Time Collaboration**: Multiple users editing simultaneously, with presence tracking (showing who is editing what)
+5. **Version Control**: Create version snapshots for libraries, with support for restoring to historical versions
+6. **Permission Management**: Role-based access control (Admin/Editor/Viewer)
+7. **File Upload**: Support for image and media file uploads
+8. **Folder Organization**: Support for organizing libraries in a folder hierarchy
+
+### Target Users
+
+- Game development teams (managing game assets)
+- Content creation teams (managing media resources)
+- Product teams (managing product requirements and specifications)
+
+---
+
+## System Architecture
+
+### High-Level Architecture Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -106,246 +106,246 @@ Keco Studio 是一个**多人实时协作的资产管理平台**，允许团队�
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### 架构分层说明
+### Architecture Layers Explained
 
-#### 1. Client Layer (客户端层)
-- **Next.js App Router**: 使用 Next.js 16 的 App Router 架构
-- **Server Components**: 用于初始数据加载和SEO优化
-- **Client Components**: 用于交互式UI和实时更新
-- **API Routes**: 处理服务器端业务逻辑
+#### 1. Client Layer
+- **Next.js App Router**: Uses the Next.js 16 App Router architecture
+- **Server Components**: Used for initial data loading and SEO optimization
+- **Client Components**: Used for interactive UI and real-time updates
+- **API Routes**: Handle server-side business logic
 
-#### 2. State & Collaboration Layer (状态与协作层)
-- **React Query (@tanstack/react-query)**: 数据获取和缓存管理
-- **Yjs**: CRDT (Conflict-free Replicated Data Type) 用于本地文档状态
-- **Supabase Realtime**: 实时数据库订阅和presence tracking
-- **Context Providers**: React Context 用于全局状态管理
+#### 2. State & Collaboration Layer
+- **React Query (@tanstack/react-query)**: Data fetching and cache management
+- **Yjs**: CRDT (Conflict-free Replicated Data Type) for local document state
+- **Supabase Realtime**: Real-time database subscriptions and presence tracking
+- **Context Providers**: React Context for global state management
 
-#### 3. Backend & Data Layer (后端与数据层)
+#### 3. Backend & Data Layer
 - **Supabase**: BaaS (Backend as a Service)
-  - PostgreSQL 数据库（带Row Level Security）
+  - PostgreSQL database (with Row Level Security)
   - Authentication (JWT-based)
-  - Storage (文件存储)
-  - Realtime (WebSocket连接)
-  - Database Functions (存储过程)
+  - Storage (file storage)
+  - Realtime (WebSocket connections)
+  - Database Functions (stored procedures)
 
-#### 4. Persistence Layer (持久化层)
-- **Supabase PostgreSQL**: 资产库、资产、字段值、权限和版本快照的持久数据源
-- **Supabase Storage**: 图片和媒体文件的持久存储
-- **Browser Session Storage**: Supabase SSR/browser client 的会话运行状态；Yjs 文档不使用本地持久化层
-
----
-
-## 技术栈详解
-
-### 前端技术
-
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| **Next.js** | 16.2.10 | React 框架，App Router，SSR/SSG |
-| **React** | 19.2.7 | UI 库 |
-| **React DOM** | 19.2.7 | React 渲染 |
-| **TypeScript** | 5.9.3 | 类型安全 |
-| **Ant Design** | 5.22.2 | UI 组件库 |
-| **@tanstack/react-query** | 5.90.16 | 数据获取和缓存 |
-| **Yjs** | 13.6.29 | CRDT 实时协作 |
-| **@dnd-kit** | 6.3.1 | 拖拽功能 |
-| **Zod** | 3.22.4 | Schema 验证 |
-
-### 后端技术
-
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| **Supabase** | 2.87.1 | BaaS 平台 |
-| **@supabase/ssr** | 0.8.0 | Next.js SSR 集成 |
-| **PostgreSQL** | (Supabase管理) | 关系型数据库 |
-| **Resend** | 6.17.1 | 邮件发送服务 |
-| **Jose** | 6.1.3 | JWT 处理 |
-
-### 开发与测试工具
-
-| 技术 | 版本 | 用途 |
-|------|------|------|
-| **Playwright** | 1.57.0 | E2E 测试 |
-| **ESLint** | 9.0.0 | 代码检查 |
-| **Autoprefixer** | 10.4.22 | CSS 自动前缀 |
-| **PostCSS** | 8.5.6 | CSS 处理 |
+#### 4. Persistence Layer
+- **Supabase PostgreSQL**: Persistent data source for libraries, assets, field values, permissions, and version snapshots
+- **Supabase Storage**: Persistent storage for images and media files
+- **Browser Session Storage**: Session runtime state for the Supabase SSR/browser client; Yjs documents do not use a local persistence layer
 
 ---
 
-## 目录结构
+## Tech Stack Details
 
-### 项目根目录
+### Frontend Technologies
+
+| Technology | Version | Purpose |
+|------|------|------|
+| **Next.js** | 16.2.10 | React framework, App Router, SSR/SSG |
+| **React** | 19.2.7 | UI library |
+| **React DOM** | 19.2.7 | React rendering |
+| **TypeScript** | 5.9.3 | Type safety |
+| **Ant Design** | 5.22.2 | UI component library |
+| **@tanstack/react-query** | 5.90.16 | Data fetching and caching |
+| **Yjs** | 13.6.29 | CRDT real-time collaboration |
+| **@dnd-kit** | 6.3.1 | Drag-and-drop functionality |
+| **Zod** | 3.22.4 | Schema validation |
+
+### Backend Technologies
+
+| Technology | Version | Purpose |
+|------|------|------|
+| **Supabase** | 2.87.1 | BaaS platform |
+| **@supabase/ssr** | 0.8.0 | Next.js SSR integration |
+| **PostgreSQL** | (managed by Supabase) | Relational database |
+| **Resend** | 6.17.1 | Email delivery service |
+| **Jose** | 6.1.3 | JWT handling |
+
+### Development & Testing Tools
+
+| Technology | Version | Purpose |
+|------|------|------|
+| **Playwright** | 1.57.0 | E2E testing |
+| **ESLint** | 9.0.0 | Code linting |
+| **Autoprefixer** | 10.4.22 | Automatic CSS prefixing |
+| **PostCSS** | 8.5.6 | CSS processing |
+
+---
+
+## Directory Structure
+
+### Project Root Directory
 
 ```
 keco-studio/
-├── src/                    # 源代码目录
-│   ├── app/                # Next.js App Router 页面和路由
-│   ├── components/         # React 组件
-│   ├── lib/                # 核心库和工具
-│   ├── assets/             # 静态导入资源
-│   ├── emails/             # 邮件模板
-│   └── middleware.ts       # Next.js 中间件（认证检查）
-├── supabase/               # Supabase 配置和迁移
-│   ├── migrations/         # 数据库迁移文件（40+ 个迁移）
-│   ├── config.toml         # Supabase 配置
-│   ├── seed.sql            # 本地开发种子数据
-│   └── seed-remote.sql     # 远程数据库种子数据
-├── tests/                  # Playwright E2E 测试
+├── src/                    # Source code directory
+│   ├── app/                # Next.js App Router pages and routes
+│   ├── components/         # React components
+│   ├── lib/                # Core libraries and utilities
+│   ├── assets/             # Statically imported resources
+│   ├── emails/             # Email templates
+│   └── middleware.ts       # Next.js middleware (auth checks)
+├── supabase/               # Supabase configuration and migrations
+│   ├── migrations/         # Database migration files (40+ migrations)
+│   ├── config.toml         # Supabase configuration
+│   ├── seed.sql            # Local development seed data
+│   └── seed-remote.sql     # Remote database seed data
+├── tests/                  # Playwright E2E tests
 │   └── e2e/
 │       ├── pages/          # Page Object Model
-│       ├── specs/          # 测试规格
-│       └── fixtures/       # 测试固定装置
-├── docs/                   # 文档目录
-│   ├── architecture/       # 架构文档（本文档）
-│   ├── CI_SETUP.md         # CI/CD 设置指南
-│   └── ENVIRONMENT_SETUP.md # 环境配置指南
-├── specs/                  # 功能规格（使用 speckit）
-├── scripts/                # 构建和工具脚本
-├── public/                 # 静态资源
-├── types/                  # 全局 TypeScript 类型定义
-├── package.json            # 依赖配置
-├── tsconfig.json           # TypeScript 配置
-├── playwright.config.ts    # Playwright 配置
-└── next.config.mjs         # Next.js 配置
+│       ├── specs/          # Test specs
+│       └── fixtures/       # Test fixtures
+├── docs/                   # Documentation directory
+│   ├── architecture/       # Architecture docs (this document)
+│   ├── CI_SETUP.md         # CI/CD setup guide
+│   └── ENVIRONMENT_SETUP.md # Environment configuration guide
+├── specs/                  # Feature specifications (using speckit)
+├── scripts/                # Build and utility scripts
+├── public/                 # Static assets
+├── types/                  # Global TypeScript type definitions
+├── package.json            # Dependency configuration
+├── tsconfig.json           # TypeScript configuration
+├── playwright.config.ts    # Playwright configuration
+└── next.config.mjs         # Next.js configuration
 ```
 
-### src/ 目录详细结构
+### Detailed src/ Directory Structure
 
 ```
 src/
 ├── app/                              # Next.js 16 App Router
-│   ├── (dashboard)/                  # 路由组（共享布局）
-│   │   ├── layout.tsx                # Dashboard 布局
-│   │   ├── page.tsx                  # Dashboard 首页（重定向到 /projects）
+│   ├── (dashboard)/                  # Route group (shared layout)
+│   │   ├── layout.tsx                # Dashboard layout
+│   │   ├── page.tsx                  # Dashboard home (redirects to /projects)
 │   │   ├── projects/
-│   │   │   └── page.tsx              # 项目列表页
-│   │   └── [projectId]/              # 动态路由：项目详情
-│   │       ├── page.tsx              # 项目详情页
+│   │   │   └── page.tsx              # Project list page
+│   │   └── [projectId]/              # Dynamic route: project details
+│   │       ├── page.tsx              # Project detail page
 │   │       ├── collaborators/
-│   │       │   └── page.tsx          # 协作者管理页
+│   │       │   └── page.tsx          # Collaborator management page
 │   │       ├── folder/
 │   │       │   └── [folderId]/
-│   │       │       └── page.tsx      # 文件夹详情页
-│   │       └── [libraryId]/          # 动态路由：资产库
-│   │           ├── layout.tsx        # 库布局（带侧边栏）
-│   │           ├── page.tsx          # 库主页（资产表格）
-│   │           ├── predefine/        # 字段定义页面
+│   │       │       └── page.tsx      # Folder detail page
+│   │       └── [libraryId]/          # Dynamic route: library
+│   │           ├── layout.tsx        # Library layout (with sidebar)
+│   │           ├── page.tsx          # Library main page (assets table)
+│   │           ├── predefine/        # Field definition pages
 │   │           │   ├── page.tsx
-│   │           │   ├── components/   # 字段定义组件
-│   │           │   ├── hooks/        # 字段定义 hooks
+│   │           │   ├── components/   # Field definition components
+│   │           │   ├── hooks/        # Field definition hooks
 │   │           │   ├── types.ts
 │   │           │   ├── utils.ts
 │   │           │   └── validation.ts
-│   │           └── [assetId]/        # 动态路由：资产详情
+│   │           └── [assetId]/        # Dynamic route: asset details
 │   │               └── page.tsx
-│   ├── api/                          # API 路由
+│   ├── api/                          # API routes
 │   │   ├── projects/
-│   │   │   ├── route.ts              # POST /api/projects (创建项目)
+│   │   │   ├── route.ts              # POST /api/projects (create project)
 │   │   │   └── [projectId]/
 │   │   │       ├── libraries/
-│   │   │       │   └── route.ts      # POST 创建库
+│   │   │       │   └── route.ts      # POST create library
 │   │   │       ├── folders/
-│   │   │       │   └── route.ts      # POST 创建文件夹
+│   │   │       │   └── route.ts      # POST create folder
 │   │   │       ├── role/
-│   │   │       │   └── route.ts      # GET 获取用户角色
+│   │   │       │   └── route.ts      # GET fetch user role
 │   │   │       └── delete/
-│   │   │           └── route.ts      # DELETE 删除项目
+│   │   │           └── route.ts      # DELETE delete project
 │   │   ├── libraries/
 │   │   │   └── [libraryId]/
-│   │   │       └── route.ts          # PUT/DELETE 库操作
+│   │   │       └── route.ts          # PUT/DELETE library operations
 │   │   ├── collaborators/
-│   │   │   ├── route.ts              # GET 获取协作者
+│   │   │   ├── route.ts              # GET fetch collaborators
 │   │   │   └── [collaboratorId]/
-│   │   │       └── route.ts          # DELETE 删除协作者
+│   │   │       └── route.ts          # DELETE remove collaborator
 │   │   └── invitations/
-│   │       ├── route.ts              # POST 发送邀请
+│   │       ├── route.ts              # POST send invitation
 │   │       ├── accept/
-│   │       │   └── route.ts          # POST 接受邀请
+│   │       │   └── route.ts          # POST accept invitation
 │   │       └── decline/
-│   │           └── route.ts          # POST 拒绝邀请
+│   │           └── route.ts          # POST decline invitation
 │   ├── auth/
-│   │   ├── callback/                 # Supabase 认证回调
+│   │   ├── callback/                 # Supabase auth callback
 │   │   │   └── page.tsx
-│   │   └── reset-password/           # 重置密码页
+│   │   └── reset-password/           # Reset password page
 │   │       └── page.tsx
-│   ├── accept-invitation/            # 接受邀请页
+│   ├── accept-invitation/            # Accept invitation page
 │   │   ├── page.tsx
 │   │   └── AcceptInvitationContent.tsx
-│   ├── decline-invitation/           # 拒绝邀请页
+│   ├── decline-invitation/           # Decline invitation page
 │   │   └── page.tsx
-│   ├── forgot-password/              # 忘记密码页
+│   ├── forgot-password/              # Forgot password page
 │   │   └── page.tsx
-│   ├── assets/                       # 资产详情（可能已废弃）
-│   ├── realtime-test/                # Realtime 测试页（开发用）
-│   ├── layout.tsx                    # 全局布局
-│   ├── page.tsx                      # 首页（登录页）
-│   └── globals.css                   # 全局样式
-├── components/                       # 可复用组件
-│   ├── layout/                       # 布局组件
-│   │   ├── Sidebar.tsx               # 侧边栏（2330行，复杂组件）
-│   │   ├── TopBar.tsx                # 顶部导航栏
-│   │   ├── DashboardLayout.tsx       # Dashboard 布局容器
-│   │   └── ContextMenu.tsx           # 右键菜单
-│   ├── projects/                     # 项目相关组件
+│   ├── assets/                       # Asset details (possibly deprecated)
+│   ├── realtime-test/                # Realtime test page (for development)
+│   ├── layout.tsx                    # Global layout
+│   ├── page.tsx                      # Home page (login page)
+│   └── globals.css                   # Global styles
+├── components/                       # Reusable components
+│   ├── layout/                       # Layout components
+│   │   ├── Sidebar.tsx               # Sidebar (2330 lines, complex component)
+│   │   ├── TopBar.tsx                # Top navigation bar
+│   │   ├── DashboardLayout.tsx       # Dashboard layout container
+│   │   └── ContextMenu.tsx           # Context menu
+│   ├── projects/                     # Project-related components
 │   │   ├── NewProjectModal.tsx
 │   │   └── EditProjectModal.tsx
-│   ├── libraries/                    # 资产库组件（核心模块）
-│   │   ├── LibraryAssetsTable.tsx    # 主表格组件（2335行）
-│   │   ├── LibraryAssetsTableAdapter.tsx  # 表格适配器
-│   │   ├── LibraryAssetsTableModals.tsx   # 表格相关弹窗
-│   │   ├── LibraryHeader.tsx         # 库头部
+│   ├── libraries/                    # Library components (core module)
+│   │   ├── LibraryAssetsTable.tsx    # Main table component (2335 lines)
+│   │   ├── LibraryAssetsTableAdapter.tsx  # Table adapter
+│   │   ├── LibraryAssetsTableModals.tsx   # Table-related modals
+│   │   ├── LibraryHeader.tsx         # Library header
 │   │   ├── NewLibraryModal.tsx
 │   │   ├── EditLibraryModal.tsx
 │   │   ├── AddLibraryMenu.tsx
-│   │   ├── components/               # 库子组件
-│   │   │   ├── CellEditor.tsx        # 单元格编辑器
-│   │   │   ├── ReferenceField.tsx    # 引用字段
-│   │   │   ├── TableHeader.tsx       # 表头
-│   │   │   ├── RowContextMenu.tsx    # 行右键菜单
-│   │   │   ├── CellPresenceAvatars.tsx  # 协作头像
-│   │   │   ├── AssetCardPanel.tsx    # 资产卡片面板
-│   │   │   ├── TableToast.tsx        # 表格提示
-│   │   │   ├── BatchEditMenu.tsx     # 批量编辑菜单
-│   │   │   └── EmptyState.tsx        # 空状态
-│   │   ├── hooks/                    # 表格专用 hooks（关键模块）
-│   │   │   ├── useTableDataManager.ts  # 表格数据管理
-│   │   │   ├── useRowOperations.ts   # 行操作
-│   │   │   ├── useCellEditing.ts     # 单元格编辑
-│   │   │   ├── useCellSelection.ts   # 单元格选择
-│   │   │   ├── useClipboardOperations.ts  # 剪贴板操作
-│   │   │   ├── useClipboardShortcuts.ts   # 剪贴板快捷键
-│   │   │   ├── useBatchFill.ts       # 批量填充
-│   │   │   ├── useAddRow.ts          # 添加行
-│   │   │   ├── useReferenceModal.ts  # 引用弹窗
-│   │   │   ├── useYjsSync.ts         # Yjs 同步
-│   │   │   ├── useResolvedRows.ts    # 解析行数据
-│   │   │   ├── useClickOutsideAutoSave.ts  # 点击外部自动保存
-│   │   │   ├── useOptimisticCleanup.ts     # 乐观更新清理
-│   │   │   ├── useUserRole.ts        # 用户角色
-│   │   │   ├── useTableMenuPosition.ts     # 表格菜单位置
-│   │   │   ├── useCloseOnDocumentClick.ts  # 点击关闭
-│   │   │   └── useAssetHover.ts      # 资产悬停
+│   │   ├── components/               # Library subcomponents
+│   │   │   ├── CellEditor.tsx        # Cell editor
+│   │   │   ├── ReferenceField.tsx    # Reference field
+│   │   │   ├── TableHeader.tsx       # Table header
+│   │   │   ├── RowContextMenu.tsx    # Row context menu
+│   │   │   ├── CellPresenceAvatars.tsx  # Collaboration avatars
+│   │   │   ├── AssetCardPanel.tsx    # Asset card panel
+│   │   │   ├── TableToast.tsx        # Table toast
+│   │   │   ├── BatchEditMenu.tsx     # Batch edit menu
+│   │   │   └── EmptyState.tsx        # Empty state
+│   │   ├── hooks/                    # Table-specific hooks (key module)
+│   │   │   ├── useTableDataManager.ts  # Table data management
+│   │   │   ├── useRowOperations.ts   # Row operations
+│   │   │   ├── useCellEditing.ts     # Cell editing
+│   │   │   ├── useCellSelection.ts   # Cell selection
+│   │   │   ├── useClipboardOperations.ts  # Clipboard operations
+│   │   │   ├── useClipboardShortcuts.ts   # Clipboard shortcuts
+│   │   │   ├── useBatchFill.ts       # Batch fill
+│   │   │   ├── useAddRow.ts          # Add row
+│   │   │   ├── useReferenceModal.ts  # Reference modal
+│   │   │   ├── useYjsSync.ts         # Yjs sync
+│   │   │   ├── useResolvedRows.ts    # Resolved row data
+│   │   │   ├── useClickOutsideAutoSave.ts  # Click-outside auto-save
+│   │   │   ├── useOptimisticCleanup.ts     # Optimistic update cleanup
+│   │   │   ├── useUserRole.ts        # User role
+│   │   │   ├── useTableMenuPosition.ts     # Table menu positioning
+│   │   │   ├── useCloseOnDocumentClick.ts  # Close on click
+│   │   │   └── useAssetHover.ts      # Asset hover
 │   │   └── utils/
-│   │       └── libraryAssetUtils.ts  # 资产工具函数
-│   ├── asset/                        # 资产详情组件
+│   │       └── libraryAssetUtils.ts  # Asset utility functions
+│   ├── asset/                        # Asset detail components
 │   │   ├── AssetHeader.tsx
 │   │   ├── EditAssetModal.tsx
 │   │   ├── AssetReferenceSelector.tsx
 │   │   └── AssetReferenceModal.tsx
-│   ├── folders/                      # 文件夹组件
+│   ├── folders/                      # Folder components
 │   │   ├── LibraryCard.tsx
 │   │   ├── FolderCard.tsx
 │   │   ├── LibraryListView.tsx
 │   │   ├── LibraryToolbar.tsx
 │   │   ├── NewFolderModal.tsx
 │   │   └── EditFolderModal.tsx
-│   ├── collaboration/                # 协作组件
+│   ├── collaboration/                # Collaboration components
 │   │   ├── CollaboratorsList.tsx
 │   │   ├── InviteCollaboratorModal.tsx
 │   │   ├── StackedAvatars.tsx
 │   │   ├── ConnectionStatusIndicator.tsx
 │   │   └── FieldPresenceAvatars.tsx
-│   ├── version-control/              # 版本控制组件
+│   ├── version-control/              # Version control components
 │   │   ├── VersionControlSidebar.tsx
 │   │   ├── VersionList.tsx
 │   │   ├── VersionItem.tsx
@@ -355,304 +355,304 @@ src/
 │   │   ├── RestoreButton.tsx
 │   │   ├── RestoreConfirmModal.tsx
 │   │   └── DeleteConfirmModal.tsx
-│   ├── media/                        # 媒体上传组件
+│   ├── media/                        # Media upload components
 │   │   └── MediaFileUpload.tsx
-│   └── authform/                     # 认证表单
+│   └── authform/                     # Auth form
 │       └── AuthForm.tsx
-├── lib/                              # 核心库（重要模块）
-│   ├── contexts/                     # React Context（全局状态）
-│   │   ├── AuthContext.tsx           # 认证上下文
-│   │   ├── LibraryDataContext.tsx    # 库数据上下文（668行，核心）
-│   │   ├── PresenceContext.tsx       # Presence 上下文
-│   │   └── NavigationContext.tsx     # 导航上下文
-│   ├── services/                     # 业务逻辑服务层
-│   │   ├── projectService.ts         # 项目服务
-│   │   ├── libraryService.ts         # 库服务
-│   │   ├── libraryAssetsService.ts   # 资产服务
-│   │   ├── folderService.ts          # 文件夹服务
-│   │   ├── collaborationService.ts   # 协作服务
-│   │   ├── versionService.ts         # 版本控制服务
-│   │   ├── authorizationService.ts   # 授权服务
-│   │   ├── emailService.ts           # 邮件服务
-│   │   ├── documentImageUpload.ts    # 文档图片上传服务
-│   │   ├── importService.ts          # 导入服务
-│   │   ├── mediaFileUploadService.ts # 媒体文件上传服务
-│   │   ├── referenceSyncService.ts   # 引用同步服务
-│   │   ├── realtimeService.ts        # Realtime 服务
-│   │   ├── scriptConversionService.ts # 剧本转换服务
-│   │   └── scriptImportService.ts    # 剧本导入服务
-│   ├── hooks/                        # 全局自定义 Hooks
-│   │   ├── useRealtimeSubscription.ts  # Realtime 订阅
-│   │   ├── usePresenceTracking.ts    # Presence 追踪
-│   │   ├── useYjsRows.ts             # Yjs 行读取
-│   │   └── useCacheMutations.ts      # 缓存变更
+├── lib/                              # Core library (important module)
+│   ├── contexts/                     # React Context (global state)
+│   │   ├── AuthContext.tsx           # Auth context
+│   │   ├── LibraryDataContext.tsx    # Library data context (668 lines, core)
+│   │   ├── PresenceContext.tsx       # Presence context
+│   │   └── NavigationContext.tsx     # Navigation context
+│   ├── services/                     # Business logic service layer
+│   │   ├── projectService.ts         # Project service
+│   │   ├── libraryService.ts         # Library service
+│   │   ├── libraryAssetsService.ts   # Asset service
+│   │   ├── folderService.ts          # Folder service
+│   │   ├── collaborationService.ts   # Collaboration service
+│   │   ├── versionService.ts         # Version control service
+│   │   ├── authorizationService.ts   # Authorization service
+│   │   ├── emailService.ts           # Email service
+│   │   ├── documentImageUpload.ts    # Document image upload service
+│   │   ├── importService.ts          # Import service
+│   │   ├── mediaFileUploadService.ts # Media file upload service
+│   │   ├── referenceSyncService.ts   # Reference sync service
+│   │   ├── realtimeService.ts        # Realtime service
+│   │   ├── scriptConversionService.ts # Script conversion service
+│   │   └── scriptImportService.ts    # Script import service
+│   ├── hooks/                        # Global custom hooks
+│   │   ├── useRealtimeSubscription.ts  # Realtime subscription
+│   │   ├── usePresenceTracking.ts    # Presence tracking
+│   │   ├── useYjsRows.ts             # Yjs row reads
+│   │   └── useCacheMutations.ts      # Cache mutations
 │   ├── actions/                      # Server Actions
 │   │   └── collaboration.ts
-│   ├── types/                        # TypeScript 类型定义
+│   ├── types/                        # TypeScript type definitions
 │   │   ├── libraryAssets.ts
 │   │   ├── collaboration.ts
 │   │   ├── user.ts
 │   │   └── version.ts
-│   ├── utils/                        # 工具函数
+│   ├── utils/                        # Utility functions
 │   │   ├── queryKeys.ts              # React Query keys
-│   │   ├── avatarColors.ts           # 头像颜色生成
-│   │   ├── dateTime.ts               # 日期时间工具
-│   │   ├── nameValidation.ts         # 名称验证
-│   │   ├── invitationToken.ts        # 邀请令牌生成
-│   │   ├── routeParams.ts            # 路由参数工具
-│   │   ├── workbook.ts               # Excel workbook 工具
-│   │   └── cacheDebugger.ts          # 缓存调试工具
-│   ├── providers/                    # Provider 组件
+│   │   ├── avatarColors.ts           # Avatar color generation
+│   │   ├── dateTime.ts               # Date/time utilities
+│   │   ├── nameValidation.ts         # Name validation
+│   │   ├── invitationToken.ts        # Invitation token generation
+│   │   ├── routeParams.ts            # Route parameter utilities
+│   │   ├── workbook.ts               # Excel workbook utilities
+│   │   └── cacheDebugger.ts          # Cache debugging utilities
+│   ├── providers/                    # Provider components
 │   │   └── QueryProvider.tsx         # React Query Provider
-│   ├── supabase.ts                   # Supabase 客户端（客户端）
-│   ├── createSupabaseServerClient.ts # Supabase 服务端客户端
+│   ├── supabase.ts                   # Supabase client (client-side)
+│   ├── createSupabaseServerClient.ts # Supabase server-side client
 │   ├── SupabaseContext.tsx           # Supabase Context
-│   └── queryInvalidation.ts          # Query invalidation 工具
-├── emails/                           # 邮件模板
+│   └── queryInvalidation.ts          # Query invalidation utilities
+├── emails/                           # Email templates
 │   └── invitation-email.tsx
-└── middleware.ts                     # Next.js 中间件（路由保护）
+└── middleware.ts                     # Next.js middleware (route protection)
 ```
 
 ---
 
-## 核心模块
+## Core Modules
 
-### 1. 认证与授权模块
+### 1. Authentication & Authorization Module
 
-**位置**: `src/lib/contexts/AuthContext.tsx`, `src/middleware.ts`, `src/lib/services/authorizationService.ts`
+**Location**: `src/lib/contexts/AuthContext.tsx`, `src/middleware.ts`, `src/lib/services/authorizationService.ts`
 
-**职责**:
-- 用户登录、注册、登出
-- JWT Token 管理
-- 路由保护（中间件）
-- 基于角色的权限检查
+**Responsibilities**:
+- User login, sign-up, logout
+- JWT token management
+- Route protection (middleware)
+- Role-based permission checks
 
-**关键组件**:
-- `AuthContext`: 提供用户认证状态
-- `middleware.ts`: Next.js 中间件，拦截未认证请求
-- `authorizationService.ts`: 权限验证逻辑
+**Key Components**:
+- `AuthContext`: Provides user authentication state
+- `middleware.ts`: Next.js middleware, intercepts unauthenticated requests
+- `authorizationService.ts`: Permission validation logic
 
-**数据流**:
+**Data Flow**:
 ```
-用户登录 → Supabase Auth → JWT Token → Cookie/Session Storage
+User login → Supabase Auth → JWT Token → Cookie/Session Storage
          ↓
-    AuthContext 存储用户信息
+    AuthContext stores user info
          ↓
-    中间件检查认证状态 → 未认证重定向到登录页
+    Middleware checks auth state → unauthenticated users redirected to login page
          ↓
-    业务逻辑使用 authorizationService 检查权限
+    Business logic uses authorizationService to check permissions
 ```
 
 ---
 
-### 2. 项目与资产库管理模块
+### 2. Project & Library Management Module
 
-**位置**: `src/lib/services/projectService.ts`, `src/lib/services/libraryService.ts`, `src/components/projects/*`, `src/components/libraries/*`
+**Location**: `src/lib/services/projectService.ts`, `src/lib/services/libraryService.ts`, `src/components/projects/*`, `src/components/libraries/*`
 
-**职责**:
-- 创建、编辑、删除项目
-- 创建、编辑、删除资产库
-- 文件夹层级管理
+**Responsibilities**:
+- Create, edit, and delete projects
+- Create, edit, and delete libraries
+- Folder hierarchy management
 
-**关键组件**:
-- `projectService.ts`: 项目CRUD操作
-- `libraryService.ts`: 资产库CRUD操作
-- `folderService.ts`: 文件夹CRUD操作
-- `NewProjectModal`, `EditProjectModal`: 项目弹窗
-- `NewLibraryModal`, `EditLibraryModal`: 库弹窗
+**Key Components**:
+- `projectService.ts`: Project CRUD operations
+- `libraryService.ts`: Library CRUD operations
+- `folderService.ts`: Folder CRUD operations
+- `NewProjectModal`, `EditProjectModal`: Project modals
+- `NewLibraryModal`, `EditLibraryModal`: Library modals
 
-**数据库表**:
-- `projects`: 项目表
-- `libraries`: 资产库表
-- `folders`: 文件夹表
+**Database Tables**:
+- `projects`: Projects table
+- `libraries`: Libraries table
+- `folders`: Folders table
 
 ---
 
-### 3. 资产管理与实时协作模块（核心）
+### 3. Asset Management & Real-Time Collaboration Module (Core)
 
-**位置**: `src/components/libraries/LibraryAssetsTable.tsx`, `src/lib/contexts/LibraryDataContext.tsx`, `src/components/libraries/hooks/*`
+**Location**: `src/components/libraries/LibraryAssetsTable.tsx`, `src/lib/contexts/LibraryDataContext.tsx`, `src/components/libraries/hooks/*`
 
-**职责**:
-- 资产（Assets）的CRUD操作
-- 资产字段值的编辑
-- 多人实时协作编辑
-- Presence Tracking（显示谁在编辑什么）
-- 乐观更新和冲突解决
+**Responsibilities**:
+- CRUD operations for assets
+- Editing asset field values
+- Real-time multi-user collaborative editing
+- Presence tracking (showing who is editing what)
+- Optimistic updates and conflict resolution
 
-**关键组件**:
-- `LibraryDataContext`: **核心上下文**，管理库数据和实时协作
-- `LibraryAssetsTable`: **主表格组件**（2335行），展示和编辑资产
-- `useTableDataManager`: 表格数据管理 Hook
-- `useCellEditing`: 单元格编辑逻辑
-- `useYjsSync`: Yjs CRDT 同步逻辑
+**Key Components**:
+- `LibraryDataContext`: **Core context** managing library data and real-time collaboration
+- `LibraryAssetsTable`: **Main table component** (2335 lines) for displaying and editing assets
+- `useTableDataManager`: Table data management hook
+- `useCellEditing`: Cell editing logic
+- `useYjsSync`: Yjs CRDT sync logic
 
-**技术栈**:
-- **Yjs**: CRDT数据结构，本地状态管理
-- **Supabase Realtime**: 实时数据库订阅
-- **React Query**: 数据缓存和服务端状态
+**Tech Stack**:
+- **Yjs**: CRDT data structures, local state management
+- **Supabase Realtime**: Real-time database subscriptions
+- **React Query**: Data caching and server state
 
-**数据流**:
+**Data Flow**:
 ```
-1. 初始加载:
+1. Initial load:
    Supabase DB → React Query → LibraryDataContext → Yjs Doc
                                       ↓
-                              LibraryAssetsTable 渲染
+                              LibraryAssetsTable renders
 
-2. 用户编辑（本地用户）:
-   用户输入 → useCellEditing → LibraryDataContext.updateAssetField()
+2. User edit (local user):
+   User input → useCellEditing → LibraryDataContext.updateAssetField()
                                       ↓
-                  Yjs Doc 更新（触发 observe 事件）
+                  Yjs Doc update (fires observe events)
                                       ↓
-              组件重新渲染 → Supabase DB 更新（异步）
+              Component re-renders → Supabase DB update (async)
                                       ↓
-                    Realtime 广播给其他用户
+                    Realtime broadcasts to other users
 
-3. 远程更新（其他用户编辑）:
-   Supabase Realtime → LibraryDataContext 收到事件
+3. Remote update (edits from other users):
+   Supabase Realtime → LibraryDataContext receives event
                                       ↓
-                    Yjs Doc 更新（如果不冲突）
+                    Yjs Doc update (if no conflict)
                                       ↓
-                组件重新渲染（乐观更新）
+                Component re-renders (optimistic update)
 ```
 
 ---
 
-### 4. 字段定义模块
+### 4. Field Definition Module
 
-**位置**: `src/app/(dashboard)/[projectId]/[libraryId]/predefine/*`
+**Location**: `src/app/(dashboard)/[projectId]/[libraryId]/predefine/*`
 
-**职责**:
-- 定义资产库的字段结构（Schema）
-- 支持多种数据类型：Text, Number, Boolean, Date, Image, MediaFile, Reference等
-- 字段的拖拽排序
-- 字段分组（Sections）
+**Responsibilities**:
+- Define a library's field structure (schema)
+- Support multiple data types: Text, Number, Boolean, Date, Image, MediaFile, Reference, etc.
+- Drag-and-drop field ordering
+- Field grouping (sections)
 
-**关键组件**:
-- `predefine/page.tsx`: 字段定义页面
-- `predefine/components/FieldsList.tsx`: 字段列表
-- `predefine/components/FieldForm.tsx`: 字段表单（530行）
-- `predefine/components/FieldItem.tsx`: 字段项（509行）
-- `predefine/components/NewSectionForm.tsx`: 新建分组表单
-- `predefine/hooks/useSchemaData.ts`: Schema 数据管理
-- `predefine/hooks/useSchemaSave.ts`: Schema 保存逻辑
+**Key Components**:
+- `predefine/page.tsx`: Field definition page
+- `predefine/components/FieldsList.tsx`: Field list
+- `predefine/components/FieldForm.tsx`: Field form (530 lines)
+- `predefine/components/FieldItem.tsx`: Field item (509 lines)
+- `predefine/components/NewSectionForm.tsx`: New section form
+- `predefine/hooks/useSchemaData.ts`: Schema data management
+- `predefine/hooks/useSchemaSave.ts`: Schema save logic
 
-**数据库表**:
-- `library_field_definitions`: 字段定义表
+**Database Tables**:
+- `library_field_definitions`: Field definitions table
 
 ---
 
-### 5. 协作与权限模块
+### 5. Collaboration & Permissions Module
 
-**位置**: `src/lib/services/collaborationService.ts`, `src/lib/services/authorizationService.ts`, `src/components/collaboration/*`
+**Location**: `src/lib/services/collaborationService.ts`, `src/lib/services/authorizationService.ts`, `src/components/collaboration/*`
 
-**职责**:
-- 邀请协作者（发送邀请邮件）
-- 管理协作者角色（Admin/Editor/Viewer）
-- 实时显示协作者状态
-- Presence Tracking（谁在线，谁在编辑什么）
+**Responsibilities**:
+- Invite collaborators (send invitation emails)
+- Manage collaborator roles (Admin/Editor/Viewer)
+- Display collaborator status in real time
+- Presence tracking (who is online, who is editing what)
 
-**关键组件**:
-- `collaborationService.ts`: 协作相关业务逻辑
-- `authorizationService.ts`: 角色和权限检查
-- `CollaboratorsList.tsx`: 协作者列表
-- `InviteCollaboratorModal.tsx`: 邀请弹窗
-- `ConnectionStatusIndicator.tsx`: 连接状态指示器
-- `FieldPresenceAvatars.tsx`: 字段编辑 presence 头像
+**Key Components**:
+- `collaborationService.ts`: Collaboration business logic
+- `authorizationService.ts`: Role and permission checks
+- `CollaboratorsList.tsx`: Collaborator list
+- `InviteCollaboratorModal.tsx`: Invitation modal
+- `ConnectionStatusIndicator.tsx`: Connection status indicator
+- `FieldPresenceAvatars.tsx`: Field editing presence avatars
 
-**数据库表**:
-- `project_collaborators`: 协作者表
-- `collaboration_invitations`: 邀请表
+**Database Tables**:
+- `project_collaborators`: Collaborators table
+- `collaboration_invitations`: Invitations table
 
-**权限模型**:
+**Permission Model**:
 ```
 Admin:
-  - 完全访问权限
-  - 可以管理协作者
-  - 可以删除项目
+  - Full access
+  - Can manage collaborators
+  - Can delete projects
 
 Editor:
-  - 读写权限
-  - 可以编辑资产和字段
-  - 不能管理协作者
+  - Read/write access
+  - Can edit assets and fields
+  - Cannot manage collaborators
 
 Viewer:
-  - 只读权限
-  - 不能修改任何内容
+  - Read-only access
+  - Cannot modify anything
 ```
 
 ---
 
-### 6. 版本控制模块
+### 6. Version Control Module
 
-**位置**: `src/lib/services/versionService.ts`, `src/components/version-control/*`
+**Location**: `src/lib/services/versionService.ts`, `src/components/version-control/*`
 
-**职责**:
-- 创建库的版本快照
-- 恢复到历史版本
-- 版本对比（未实现）
+**Responsibilities**:
+- Create version snapshots of a library
+- Restore to historical versions
+- Version comparison (not implemented)
 
-**关键组件**:
-- `versionService.ts`: 版本CRUD操作
-- `VersionControlSidebar.tsx`: 版本侧边栏
-- `VersionList.tsx`: 版本列表
-- `CreateVersionModal.tsx`: 创建版本弹窗
-- `RestoreConfirmModal.tsx`: 恢复确认弹窗
+**Key Components**:
+- `versionService.ts`: Version CRUD operations
+- `VersionControlSidebar.tsx`: Version sidebar
+- `VersionList.tsx`: Version list
+- `CreateVersionModal.tsx`: Create version modal
+- `RestoreConfirmModal.tsx`: Restore confirmation modal
 
-**数据库表**:
-- `library_versions`: 版本表
+**Database Tables**:
+- `library_versions`: Versions table
 
-**版本类型**:
-- `manual`: 用户手动创建
-- `backup`: 恢复前的备份
-- `restore`: 从其他版本恢复
+**Version Types**:
+- `manual`: Manually created by the user
+- `backup`: Backup taken before a restore
+- `restore`: Restored from another version
 
 ---
 
-### 7. 文件上传与存储模块
+### 7. File Upload & Storage Module
 
-**位置**: `src/lib/services/documentImageUpload.ts`, `src/lib/services/mediaFileUploadService.ts`, `src/components/media/*`
+**Location**: `src/lib/services/documentImageUpload.ts`, `src/lib/services/mediaFileUploadService.ts`, `src/components/media/*`
 
-**职责**:
-- 上传图片文件（Image字段类型）
-- 上传媒体文件（MediaFile字段类型）
-- 文件类型验证
-- 文件大小限制
+**Responsibilities**:
+- Upload image files (Image field type)
+- Upload media files (MediaFile field type)
+- File type validation
+- File size limits
 
-**关键组件**:
-- `documentImageUpload.ts`: 文档图片上传逻辑
-- `mediaFileUploadService.ts`: 媒体文件上传逻辑
-- `MediaFileUpload.tsx`: 上传组件
+**Key Components**:
+- `documentImageUpload.ts`: Document image upload logic
+- `mediaFileUploadService.ts`: Media file upload logic
+- `MediaFileUpload.tsx`: Upload component
 
 **Supabase Storage Buckets**:
-- `tiptap-images`: 存储Tiptap编辑器中的图片
-- `library-media-files`: 存储库中的媒体文件
+- `tiptap-images`: Stores images from the Tiptap editor
+- `library-media-files`: Stores media files for libraries
 
 ---
 
-### 8. 状态管理与缓存模块
+### 8. State Management & Caching Module
 
-**位置**: `src/lib/providers/QueryProvider.tsx`, `src/lib/hooks/useCacheMutations.ts`, `src/lib/utils/queryKeys.ts`
+**Location**: `src/lib/providers/QueryProvider.tsx`, `src/lib/hooks/useCacheMutations.ts`, `src/lib/utils/queryKeys.ts`
 
-**职责**:
-- React Query 配置和管理
-- 缓存失效策略
-- 乐观更新
-- 请求去重
+**Responsibilities**:
+- React Query configuration and management
+- Cache invalidation strategy
+- Optimistic updates
+- Request deduplication
 
-**关键组件**:
+**Key Components**:
 - `QueryProvider.tsx`: React Query Provider
-- `useCacheMutations.ts`: 缓存变更 Hook
-- `lib/utils/queryKeys.ts`: 查询键定义
+- `useCacheMutations.ts`: Cache mutation hook
+- `lib/utils/queryKeys.ts`: Query key definitions
 
 ---
 
-## 数据库架构
+## Database Architecture
 
-### 数据库ER图
+### Database ER Diagram
 
 ```
 ┌──────────────┐
-│   profiles   │ (用户表)
+│   profiles   │ (users table)
 │──────────────│
 │ id (PK)      │◄─┐
 │ email        │  │
@@ -662,7 +662,7 @@ Viewer:
                   │
                   │ owner_id
 ┌──────────────────┐
-│     projects     │ (项目表)
+│     projects     │ (projects table)
 │──────────────────│
 │ id (PK)          │◄─┐
 │ owner_id (FK)    │  │
@@ -675,7 +675,7 @@ Viewer:
             ┌─────────┴────────┐
             │                  │ project_id
 ┌──────────────────────┐   ┌──────────────────────┐
-│ project_collaborators│   │      libraries       │ (资产库表)
+│ project_collaborators│   │      libraries       │ (libraries table)
 │──────────────────────│   │──────────────────────│
 │ id (PK)              │   │ id (PK)              │◄─┐
 │ user_id (FK)         │   │ project_id (FK)      │  │
@@ -687,8 +687,8 @@ Viewer:
 └──────────────────────┘   │ updated_by (FK)      │  │
                            └──────────────────────┘  │
 ┌──────────────────────┐                            │
-│collaboration_invitations│                          │
-│──────────────────────│                            │ library_id
+│collaboration_invitations│                          │ library_id
+│──────────────────────│                            │
 │ id (PK)              │                            │
 │ project_id (FK)      │   ┌────────────────────────┴───────┐
 │ email                │   │                                │
@@ -729,7 +729,7 @@ Viewer:
 │──────────────────────│                                   │
 │ id (PK)              │                                   │
 │ project_id (FK)      │                                   │
-│ parent_folder_id (FK)│ (自引用)                          │
+│ parent_folder_id (FK)│ (self-referencing)                │
 │ name                 │                                   │
 │ created_at           │                                   │
 │ updated_at           │                                   │
@@ -743,92 +743,92 @@ Viewer:
 │ library_id (FK) ─────┴───────────────────────────────────┘
 │ version_name         │
 │ version_type         │ (manual/backup/restore)
-│ snapshot_data        │ (JSONB，存储完整快照)
+│ snapshot_data        │ (JSONB, stores the full snapshot)
 │ created_by (FK)      │
 │ created_at           │
 │ is_current           │
-│ parent_version_id (FK)│ (自引用)
+│ parent_version_id (FK)│ (self-referencing)
 │ restore_from_version_id (FK)│
 └──────────────────────┘
 ```
 
-### 核心表详解
+### Core Tables Explained
 
-#### 1. profiles（用户表）
-- Supabase Auth的扩展表
-- 存储用户显示名称和头像颜色
+#### 1. profiles (users table)
+- Extension table for Supabase Auth
+- Stores the user's display name and avatar color
 
-#### 2. projects（项目表）
-- 项目的基本信息
-- 每个项目有一个owner（创建者）
-- 支持协作者通过`project_collaborators`表
+#### 2. projects (projects table)
+- Basic project information
+- Each project has an owner (creator)
+- Supports collaborators via the `project_collaborators` table
 
-#### 3. libraries（资产库表）
-- 属于某个项目
-- 可以在文件夹中组织
-- 每个库有自己的字段定义
+#### 3. libraries (libraries table)
+- Belongs to a project
+- Can be organized into folders
+- Each library has its own field definitions
 
-#### 4. library_field_definitions（字段定义表）
-- 定义库的Schema
-- 支持多种数据类型
-- 支持字段分组（sections）
-- `reference_libraries`: 引用类型字段可以关联其他库
+#### 4. library_field_definitions (field definitions table)
+- Defines the library's schema
+- Supports multiple data types
+- Supports field grouping (sections)
+- `reference_libraries`: Reference-type fields can link to other libraries
 
-#### 5. library_assets（资产表）
-- 资产的基本信息（ID和名称）
-- 属于某个库
+#### 5. library_assets (assets table)
+- Basic asset information (ID and name)
+- Belongs to a library
 
-#### 6. library_asset_values（资产字段值表）
-- 存储资产的字段值
-- 使用JSONB类型存储灵活的数据结构
-- 通过`asset_id`和`field_id`联合主键
+#### 6. library_asset_values (asset field values table)
+- Stores asset field values
+- Uses the JSONB type for flexible data structures
+- Composite primary key of `asset_id` and `field_id`
 
-#### 7. project_collaborators（协作者表）
-- 项目的协作者关系
-- 支持三种角色：admin, editor, viewer
-- `accepted_at`为NULL表示待接受的邀请
+#### 7. project_collaborators (collaborators table)
+- Collaborator relationships for a project
+- Supports three roles: admin, editor, viewer
+- A NULL `accepted_at` indicates a pending invitation
 
-#### 8. library_versions（版本表）
-- 存储库的完整快照
-- 支持恢复到历史版本
-- `is_current`标记当前版本
+#### 8. library_versions (versions table)
+- Stores complete snapshots of a library
+- Supports restoring to historical versions
+- `is_current` marks the current version
 
 ---
 
-## 关键数据流
+## Key Data Flows
 
-### 1. 用户认证流程
+### 1. User Authentication Flow
 
 ```
-┌─────────────┐
-│ 用户访问页面 │
-└──────┬──────┘
+┌─────────────────┐
+│ User visits page │
+└──────┬──────────┘
        │
        ▼
 ┌──────────────────┐
-│ middleware.ts    │ (检查认证状态)
-│ 检查 Cookie 中的 │
-│ Auth Token       │
+│ middleware.ts    │ (checks auth state)
+│ Checks the Auth  │
+│ Token in cookies │
 └──────┬───────────┘
        │
-       ├─────► 未认证 ─────► 重定向到 /（登录页）
+       ├─────► Not authenticated ─────► Redirect to / (login page)
        │
-       ▼ 已认证
+       ▼ Authenticated
 ┌──────────────────┐
-│ 加载 Dashboard    │
-│ AuthContext 提供 │
-│ 用户信息         │
+│ Load Dashboard   │
+│ AuthContext      │
+│ provides user info │
 └──────────────────┘
 ```
 
-### 2. 创建项目流程
+### 2. Project Creation Flow
 
 ```
-用户点击"New Project"
+User clicks "New Project"
        │
        ▼
 ┌────────────────────┐
-│ NewProjectModal    │ (用户输入项目名称和描述)
+│ NewProjectModal    │ (user enters project name and description)
 └────────┬───────────┘
          │
          ▼
@@ -840,48 +840,51 @@ Viewer:
 ┌────────────────────────┐
 │ projectService.ts      │
 │ createProject()        │
-│ 调用 Supabase 函数:    │
+│ Calls Supabase function: │
 │ create_project_with_   │
 │ default_resource()     │
 └────────┬───────────────┘
          │
          ▼
 ┌────────────────────────┐
-│ PostgreSQL 事务:       │
-│ 1. 插入 projects 表    │
-│ 2. 插入 libraries 表   │
-│    (默认"Resource"库)  │
-│ 3. 插入 project_       │
-│    collaborators 表    │
-│    (owner as admin)    │
+│ PostgreSQL transaction: │
+│ 1. Insert into projects │
+│ 2. Insert into libraries│
+│    (default "Resource"  │
+│    library)             │
+│ 3. Insert into project_ │
+│    collaborators        │
+│    (owner as admin)     │
 └────────┬───────────────┘
          │
          ▼
 ┌────────────────────────┐
-│ React Query 缓存失效   │
-│ 重新获取项目列表       │
+│ React Query cache      │
+│ invalidation; refetch  │
+│ project list           │
 └────────┬───────────────┘
          │
          ▼
 ┌────────────────────────┐
-│ UI 更新，显示新项目    │
+│ UI updates, showing    │
+│ the new project        │
 └────────────────────────┘
 ```
 
-### 3. 实时协作编辑流程（最复杂）
+### 3. Real-Time Collaborative Editing Flow (Most Complex)
 
 ```
-用户 A 编辑单元格
+User A edits a cell
        │
        ▼
 ┌────────────────────────────┐
-│ CellEditor 组件            │
-│ onChange 触发              │
+│ CellEditor component       │
+│ onChange fires             │
 └────────┬───────────────────┘
          │
          ▼
 ┌────────────────────────────┐
-│ useCellEditing Hook        │
+│ useCellEditing hook        │
 │ handleCellChange()         │
 └────────┬───────────────────┘
          │
@@ -891,46 +894,46 @@ Viewer:
 │ updateAssetField()         │
 └────────┬───────────────────┘
          │
-         ├──────► 1. 更新 Yjs Doc (本地 CRDT)
+         ├──────► 1. Update Yjs Doc (local CRDT)
          │        Y.Map.set(assetId, fieldId, value)
          │
-         ├──────► 2. 触发 Yjs observe 事件
-         │        → 组件重新渲染（乐观更新）
+         ├──────► 2. Fire Yjs observe events
+         │        → component re-renders (optimistic update)
          │
-         └──────► 3. 异步更新 Supabase
+         └──────► 3. Update Supabase asynchronously
                   libraryAssetsService.updateAssetValue()
                   │
                   ▼
          ┌────────────────────────────┐
-         │ Supabase Realtime 广播     │
-         │ UPDATE 事件到其他客户端    │
+         │ Supabase Realtime broadcasts│
+         │ UPDATE event to other clients│
          └────────┬───────────────────┘
                   │
                   ▼
          ┌────────────────────────────┐
-         │ 用户 B 的客户端            │
+         │ User B's client            │
          │ useRealtimeSubscription    │
-         │ 收到 UPDATE 事件           │
+         │ receives the UPDATE event  │
          └────────┬───────────────────┘
                   │
                   ▼
          ┌────────────────────────────┐
          │ LibraryDataContext         │
-         │ 处理远程更新               │
-         │ → 更新 Yjs Doc             │
-         │ → 触发组件重新渲染         │
+         │ handles the remote update  │
+         │ → updates the Yjs Doc      │
+         │ → triggers component re-render │
          └────────────────────────────┘
                   │
                   ▼
          ┌────────────────────────────┐
-         │ 用户 B 看到用户 A 的修改   │
+         │ User B sees User A's change │
          └────────────────────────────┘
 ```
 
-### 4. Presence Tracking 流程
+### 4. Presence Tracking Flow
 
 ```
-用户 A 点击编辑某个单元格
+User A clicks to edit a cell
        │
        ▼
 ┌────────────────────────────┐
@@ -948,39 +951,39 @@ Viewer:
          ▼
 ┌────────────────────────────┐
 │ usePresenceTracking        │
-│ 更新 Presence State        │
+│ Updates presence state     │
 └────────┬───────────────────┘
          │
          ▼
 ┌────────────────────────────┐
 │ Supabase Realtime          │
-│ .track() 发送 Presence     │
-│ 数据到 Channel             │
+│ .track() sends presence    │
+│ data to the channel        │
 └────────┬───────────────────┘
          │
          ▼
 ┌────────────────────────────┐
-│ 其他用户收到 Presence      │
-│ presence-track 事件        │
+│ Other users receive the    │
+│ presence-track event       │
 └────────┬───────────────────┘
          │
          ▼
 ┌────────────────────────────┐
-│ CellPresenceAvatars 组件   │
-│ 显示用户 A 的头像在该单元格│
+│ CellPresenceAvatars component │
+│ shows User A's avatar on that cell │
 └────────────────────────────┘
 ```
 
 ---
 
-## 实时协作架构
+## Real-Time Collaboration Architecture
 
-### Yjs + Supabase Realtime 双层架构
+### Yjs + Supabase Realtime Dual-Layer Architecture
 
-Keco Studio 使用了一个**在线双层实时协作架构**：
+Keco Studio uses an **online dual-layer real-time collaboration architecture**:
 
-1. **本地层（Yjs）**: CRDT数据结构，保证当前会话内的即时响应和冲突合并
-2. **远程层（Supabase Realtime）**: 数据库实时订阅，保证跨客户端的最终一致性
+1. **Local layer (Yjs)**: CRDT data structures ensuring instant responsiveness and conflict merging within the current session
+2. **Remote layer (Supabase Realtime)**: Real-time database subscriptions ensuring eventual consistency across clients
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -1016,37 +1019,37 @@ Keco Studio 使用了一个**在线双层实时协作架构**：
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 优点
+### Advantages
 
-1. **即时响应**: Yjs CRDT保证本地修改立即生效，无需等待网络
-2. **冲突解决**: CRDT自动解决并发编辑冲突
-3. **在线广播**: Supabase Realtime 将数据库变更推送到其他在线客户端
-4. **最终一致性**: Supabase PostgreSQL 是持久数据源，Realtime 保证跨客户端的数据一致性
+1. **Instant responsiveness**: Yjs CRDT ensures local changes take effect immediately without waiting on the network
+2. **Conflict resolution**: The CRDT automatically resolves concurrent editing conflicts
+3. **Online broadcasting**: Supabase Realtime pushes database changes to other online clients
+4. **Eventual consistency**: Supabase PostgreSQL is the persistent data source, and Realtime ensures data consistency across clients
 
-### 缺点（已知痛点）
+### Disadvantages (Known Pain Points)
 
-1. **双重真相源**: Yjs和Supabase DB可能不同步
-2. **复杂性高**: 需要同时管理Yjs和数据库状态
-3. **调试困难**: 状态同步问题难以定位
+1. **Dual sources of truth**: Yjs and the Supabase DB may get out of sync
+2. **High complexity**: Both Yjs and database state must be managed simultaneously
+3. **Hard to debug**: State synchronization issues are difficult to pinpoint
 
 ---
 
-## 认证与授权
+## Authentication & Authorization
 
-### 认证流程
+### Authentication Flow
 
-1. **Supabase Auth**: 基于JWT的认证系统
-2. **Cookie存储**: Token存储在HTTPOnly Cookie中
-3. **中间件保护**: `middleware.ts`拦截未认证请求
+1. **Supabase Auth**: JWT-based authentication system
+2. **Cookie storage**: Tokens are stored in HTTPOnly cookies
+3. **Middleware protection**: `middleware.ts` intercepts unauthenticated requests
 
-### 授权模型
+### Authorization Model
 
-#### 数据库级别（Row Level Security）
+#### Database Level (Row Level Security)
 
-所有表都启用了RLS策略：
+RLS policies are enabled on all tables:
 
 ```sql
--- 项目表：只能看到自己创建的或被邀请的项目
+-- Projects table: users can only see projects they created or were invited to
 CREATE POLICY projects_select_policy ON projects
   FOR SELECT USING (
     owner_id = auth.uid()
@@ -1057,137 +1060,137 @@ CREATE POLICY projects_select_policy ON projects
   );
 ```
 
-#### 应用级别（authorizationService）
+#### Application Level (authorizationService)
 
 ```typescript
-// 检查用户是否是项目的Admin
+// Check whether the user is an Admin of the project
 export async function isProjectAdmin(
   supabase: SupabaseClient,
   projectId: string,
   userId: string
 ): Promise<boolean> {
-  // 检查是否是owner或admin协作者
+  // Check whether the user is the owner or an admin collaborator
 }
 
-// 检查用户是否可以编辑
+// Check whether the user can edit
 export async function canEditProject(
   supabase: SupabaseClient,
   projectId: string,
   userId: string
 ): Promise<boolean> {
-  // 检查是否是owner, admin或editor
+  // Check whether the user is the owner, an admin, or an editor
 }
 ```
 
 ---
 
-## API 路由
+## API Routes
 
-### API 路由列表
+### API Route List
 
-| 路由 | 方法 | 功能 |
+| Route | Method | Function |
 |------|------|------|
-| `/api/projects` | POST | 创建项目 |
-| `/api/projects/[projectId]/libraries` | POST | 创建库 |
-| `/api/projects/[projectId]/folders` | POST | 创建文件夹 |
-| `/api/projects/[projectId]/role` | GET | 获取用户在项目中的角色 |
-| `/api/projects/[projectId]/delete` | DELETE | 删除项目 |
-| `/api/libraries/[libraryId]` | PUT | 更新库信息 |
-| `/api/libraries/[libraryId]` | DELETE | 删除库 |
-| `/api/collaborators` | GET | 获取项目协作者列表 |
-| `/api/collaborators/[collaboratorId]` | DELETE | 删除协作者 |
-| `/api/invitations` | POST | 发送协作邀请 |
-| `/api/invitations/accept` | POST | 接受邀请 |
-| `/api/invitations/decline` | POST | 拒绝邀请 |
+| `/api/projects` | POST | Create project |
+| `/api/projects/[projectId]/libraries` | POST | Create library |
+| `/api/projects/[projectId]/folders` | POST | Create folder |
+| `/api/projects/[projectId]/role` | GET | Get the user's role in the project |
+| `/api/projects/[projectId]/delete` | DELETE | Delete project |
+| `/api/libraries/[libraryId]` | PUT | Update library info |
+| `/api/libraries/[libraryId]` | DELETE | Delete library |
+| `/api/collaborators` | GET | Get project collaborator list |
+| `/api/collaborators/[collaboratorId]` | DELETE | Remove collaborator |
+| `/api/invitations` | POST | Send collaboration invitation |
+| `/api/invitations/accept` | POST | Accept invitation |
+| `/api/invitations/decline` | POST | Decline invitation |
 
-### API 设计模式
+### API Design Pattern
 
-所有API路由遵循以下模式：
+All API routes follow this pattern:
 
-1. **认证检查**: 从Cookie中获取Supabase session
-2. **权限验证**: 调用`authorizationService`检查权限
-3. **业务逻辑**: 调用相应的Service层函数
-4. **错误处理**: 统一的错误响应格式
+1. **Authentication check**: Retrieve the Supabase session from cookies
+2. **Permission validation**: Call `authorizationService` to check permissions
+3. **Business logic**: Call the corresponding service-layer function
+4. **Error handling**: Unified error response format
 
-示例：
+Example:
 
 ```typescript
 // app/api/projects/route.ts
 export async function POST(request: Request) {
-  // 1. 创建Supabase客户端（自动读取Cookie）
+  // 1. Create the Supabase client (automatically reads cookies)
   const supabase = createSupabaseServerClient();
   
-  // 2. 检查认证
+  // 2. Check authentication
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
   
-  // 3. 解析请求体
+  // 3. Parse the request body
   const { name, description } = await request.json();
   
-  // 4. 调用Service层
+  // 4. Call the service layer
   const project = await projectService.createProject(supabase, {
     name,
     description,
     owner_id: user.id
   });
   
-  // 5. 返回结果
+  // 5. Return the result
   return NextResponse.json(project);
 }
 ```
 
 ---
 
-## 状态管理
+## State Management
 
-### 状态管理架构
+### State Management Architecture
 
-Keco Studio 使用多层状态管理架构：
+Keco Studio uses a multi-layer state management architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                     组件本地状态                         │
+│                 Component-Local State                    │
 │                   (useState, useReducer)                 │
 └────────────────────┬────────────────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────────────────┐
 │                  React Context                           │
-│  • AuthContext (用户认证状态)                           │
-│  • LibraryDataContext (库数据和实时协作)                │
-│  • PresenceContext (在线状态)                           │
-│  • NavigationContext (导航状态)                         │
+│  • AuthContext (user authentication state)              │
+│  • LibraryDataContext (library data and real-time collaboration) │
+│  • PresenceContext (online status)                      │
+│  • NavigationContext (navigation state)                 │
 └────────────────────┬────────────────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────────────────┐
 │               React Query (Server State)                 │
-│  • 项目列表                                             │
-│  • 库列表                                               │
-│  • 协作者列表                                           │
-│  • 版本列表                                             │
+│  • Project list                                         │
+│  • Library list                                         │
+│  • Collaborator list                                    │
+│  • Version list                                         │
 └────────────────────┬────────────────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────────────────┐
 │                 Yjs Doc (CRDT State)                     │
-│  • 资产数据 (assets)                                    │
-│  • 字段值 (asset values)                                │
+│  • Asset data (assets)                                  │
+│  • Field values (asset values)                          │
 └────────────────────┬────────────────────────────────────┘
                      │
 ┌────────────────────▼────────────────────────────────────┐
 │              Supabase (Database State)                   │
-│  • PostgreSQL (持久化数据)                              │
-│  • Realtime (实时订阅)                                  │
+│  • PostgreSQL (persisted data)                          │
+│  • Realtime (real-time subscriptions)                   │
 └─────────────────────────────────────────────────────────┘
 ```
 
-### Context Providers 层级
+### Context Provider Hierarchy
 
 ```typescript
 // app/layout.tsx
 <QueryProvider>  {/* React Query */}
-  <AuthContext>  {/* 认证 */}
-    <NavigationContext>  {/* 导航 */}
+  <AuthContext>  {/* Authentication */}
+    <NavigationContext>  {/* Navigation */}
       {children}
     </NavigationContext>
   </AuthContext>
@@ -1203,25 +1206,25 @@ Keco Studio 使用多层状态管理架构：
 
 ---
 
-## 文件上传与存储
+## File Upload & Storage
 
 ### Storage Buckets
 
-| Bucket Name | 用途 | 安全策略 |
+| Bucket Name | Purpose | Security Policy |
 |-------------|------|----------|
-| `tiptap-images` | Tiptap编辑器图片 | 认证用户可上传，公开读取 |
-| `library-media-files` | 库媒体文件 | 认证用户可上传，公开读取 |
+| `tiptap-images` | Tiptap editor images | Authenticated users can upload; public read |
+| `library-media-files` | Library media files | Authenticated users can upload; public read |
 
-### 上传流程
+### Upload Flow
 
 ```
-用户选择文件
+User selects a file
        │
        ▼
 ┌────────────────────────────┐
-│ 前端验证                   │
-│ • 文件类型                 │
-│ • 文件大小（<10MB）        │
+│ Frontend validation        │
+│ • File type                │
+│ • File size (<10MB)        │
 └────────┬───────────────────┘
          │
          ▼
@@ -1235,30 +1238,30 @@ Keco Studio 使用多层状态管理架构：
 ┌────────────────────────────┐
 │ Supabase Storage           │
 │ .upload()                  │
-│ 返回公开URL                │
+│ Returns a public URL       │
 └────────┬───────────────────┘
          │
          ▼
 ┌────────────────────────────┐
-│ 保存URL到                  │
+│ Save the URL to            │
 │ library_asset_values       │
-│ (value_json字段)           │
+│ (value_json column)        │
 └────────────────────────────┘
 ```
 
 ---
 
-## 版本控制
+## Version Control
 
-### 版本创建流程
+### Version Creation Flow
 
 ```
-用户点击"Create Version"
+User clicks "Create Version"
        │
        ▼
 ┌────────────────────────────┐
 │ CreateVersionModal         │
-│ 输入版本名称               │
+│ Enter the version name     │
 └────────┬───────────────────┘
          │
          ▼
@@ -1267,18 +1270,18 @@ Keco Studio 使用多层状态管理架构：
 │ createVersion()            │
 └────────┬───────────────────┘
          │
-         ├──────► 1. 获取库的所有数据
+         ├──────► 1. Fetch all library data
          │        • library_field_definitions
          │        • library_assets
          │        • library_asset_values
          │
-         ├──────► 2. 序列化为JSON快照
+         ├──────► 2. Serialize into a JSON snapshot
          │        snapshot_data = {
          │          fields: [...],
          │          assets: [...]
          │        }
          │
-         └──────► 3. 插入 library_versions 表
+         └──────► 3. Insert into the library_versions table
                   {
                     library_id,
                     version_name,
@@ -1289,16 +1292,16 @@ Keco Studio 使用多层状态管理架构：
                   }
 ```
 
-### 版本恢复流程
+### Version Restore Flow
 
 ```
-用户点击"Restore Version"
+User clicks "Restore Version"
        │
        ▼
 ┌────────────────────────────┐
 │ RestoreConfirmModal        │
-│ 确认恢复                   │
-│ 可选：备份当前版本         │
+│ Confirm the restore        │
+│ Optional: back up current version │
 └────────┬───────────────────┘
          │
          ▼
@@ -1307,39 +1310,39 @@ Keco Studio 使用多层状态管理架构：
 │ restoreVersion()           │
 └────────┬───────────────────┘
          │
-         ├──────► 1. (可选)创建备份版本
+         ├──────► 1. (Optional) Create a backup version
          │        version_type: 'backup'
          │
-         ├──────► 2. 读取目标版本的snapshot_data
+         ├──────► 2. Read the target version's snapshot_data
          │
-         ├──────► 3. 清空当前库数据
+         ├──────► 3. Clear the current library data
          │        • DELETE library_asset_values
          │        • DELETE library_assets
          │        • DELETE library_field_definitions
          │
-         ├──────► 4. 恢复快照数据
+         ├──────► 4. Restore the snapshot data
          │        • INSERT field definitions
          │        • INSERT assets
          │        • INSERT asset values
          │
-         ├──────► 5. 创建恢复记录
+         ├──────► 5. Create a restore record
          │        version_type: 'restore',
-         │        restore_from_version_id: 目标版本ID
+         │        restore_from_version_id: target version ID
          │
-         └──────► 6. 标记为当前版本
+         └──────► 6. Mark as the current version
                   is_current: true
 ```
 
 ---
 
-## 测试架构
+## Testing Architecture
 
-### 测试工具
+### Testing Tools
 
-- **Playwright**: E2E测试框架
-- **测试模式**: Page Object Model (POM)
+- **Playwright**: E2E testing framework
+- **Testing pattern**: Page Object Model (POM)
 
-### 测试目录结构
+### Test Directory Structure
 
 ```
 tests/
@@ -1349,64 +1352,64 @@ tests/
     │   ├── library.page.ts
     │   ├── asset.page.ts
     │   └── predefined.page.ts
-    ├── specs/              # 测试规格
-    │   ├── auth.spec.ts              # 认证测试
-    │   ├── happy-path.spec.ts        # 主流程测试
-    │   ├── security.spec.ts          # 安全测试
-    │   ├── file-upload-security.spec.ts  # 文件上传安全测试
-    │   ├── destructive.spec.ts       # 破坏性测试（删除操作）
-    │   ├── version-control.spec.ts   # 版本控制测试
-    │   ├── name-validation.spec.ts   # 名称验证测试
+    ├── specs/              # Test specs
+    │   ├── auth.spec.ts              # Authentication tests
+    │   ├── happy-path.spec.ts        # Happy-path tests
+    │   ├── security.spec.ts          # Security tests
+    │   ├── file-upload-security.spec.ts  # File upload security tests
+    │   ├── destructive.spec.ts       # Destructive tests (delete operations)
+    │   ├── version-control.spec.ts   # Version control tests
+    │   ├── name-validation.spec.ts   # Name validation tests
     │   └── library-description-tooltip.spec.ts
-    └── fixtures/           # 测试固定装置
+    └── fixtures/           # Test fixtures
         └── users.ts
 ```
 
-### 测试脚本
+### Test Scripts
 
 ```json
 {
   "test:e2e": "playwright test",
   "test:e2e:parallel": "playwright test --workers=50%",
   "test:e2e:clean": "tsx scripts/clean-remote-test-data.ts && playwright test",
-  "test:e2e:sequential": "playwright test ... (按顺序)",
+  "test:e2e:sequential": "playwright test ... (in sequence)",
   "test:auth": "playwright test tests/e2e/specs/auth.spec.ts",
   "test:happy": "playwright test tests/e2e/specs/happy-path.spec.ts"
 }
 ```
 
-### 测试覆盖范围
+### Test Coverage
 
-1. **认证测试** (`auth.spec.ts`)
-   - 登录/注册
-   - 登出
-   - 密码重置
+1. **Authentication tests** (`auth.spec.ts`)
+   - Login/sign-up
+   - Logout
+   - Password reset
 
-2. **主流程测试** (`happy-path.spec.ts`)
-   - 创建项目
-   - 创建库
-   - 创建资产
-   - 编辑字段
+2. **Happy-path tests** (`happy-path.spec.ts`)
+   - Create a project
+   - Create a library
+   - Create an asset
+   - Edit fields
 
-3. **安全测试** (`security.spec.ts`)
-   - XSS防护
-   - SQL注入防护
-   - 权限验证
+3. **Security tests** (`security.spec.ts`)
+   - XSS protection
+   - SQL injection protection
+   - Permission validation
 
-4. **版本控制测试** (`version-control.spec.ts`)
-   - 创建版本
-   - 恢复版本
-   - 版本列表
+4. **Version control tests** (`version-control.spec.ts`)
+   - Create a version
+   - Restore a version
+   - Version list
 
 ---
 
-## 部署架构
+## Deployment Architecture
 
-### 本地开发环境
+### Local Development Environment
 
 ```
 ┌──────────────────────────────────────────┐
-│          开发者机器                       │
+│          Developer Machine               │
 │                                          │
 │  ┌────────────────┐  ┌────────────────┐ │
 │  │  Next.js Dev   │  │ Docker Desktop │ │
@@ -1421,24 +1424,24 @@ tests/
 └──────────────────────────────────────────┘
 ```
 
-启动流程：
+Startup steps:
 
 ```bash
-# 1. 启动本地Supabase
+# 1. Start local Supabase
 supabase start
 
-# 2. 配置环境变量 (.env.local)
+# 2. Configure environment variables (.env.local)
 NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54321
 NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon_key>
 
-# 3. 安装依赖
+# 3. Install dependencies
 npm install
 
-# 4. 启动Next.js开发服务器
+# 4. Start the Next.js dev server
 npm run dev
 ```
 
-### 生产环境（推测）
+### Production Environment (Assumed)
 
 ```
 ┌──────────────────────────────────────────┐
@@ -1466,162 +1469,162 @@ npm run dev
 
 ---
 
-## 已知痛点
+## Known Pain Points
 
-根据项目现状和代码分析，以下是已识别的架构和代码痛点：
+Based on the project's current state and code analysis, the following architecture and code pain points have been identified:
 
-### 1. 复杂度过高
+### 1. Excessive Complexity
 
-**问题**:
-- **Sidebar.tsx (2330行)**: 侧边栏组件过于庞大，包含了版本控制、协作者管理、文件夹树等多个功能
-- **LibraryAssetsTable.tsx (2335行)**: 表格组件过于复杂，难以维护和测试
-- **LibraryDataContext.tsx (668行)**: Context组件职责过多，集成了数据管理、实时协作、Presence tracking等
+**Problem**:
+- **Sidebar.tsx (2330 lines)**: The sidebar component is far too large, containing version control, collaborator management, folder tree, and other features
+- **LibraryAssetsTable.tsx (2335 lines)**: The table component is overly complex and hard to maintain and test
+- **LibraryDataContext.tsx (668 lines)**: The context component has too many responsibilities, integrating data management, real-time collaboration, presence tracking, and more
 
-**影响**:
-- 修改bug时容易引入新问题
-- 难以定位问题
-- 新开发者理解困难
+**Impact**:
+- Fixing bugs easily introduces new problems
+- Hard to pinpoint issues
+- Difficult for new developers to understand
 
-**建议**: 参见"优化建议文档"
+**Recommendation**: See the "Optimization Recommendations Document"
 
-### 2. 目录结构混乱
+### 2. Messy Directory Structure
 
-**问题**:
-- `src/contexts/` 和 `src/lib/contexts/` 并存
-- `src/hooks/` 和 `src/lib/hooks/` 并存
-- 组件内部的hooks分散在不同位置
+**Problem**:
+- `src/contexts/` and `src/lib/contexts/` coexist
+- `src/hooks/` and `src/lib/hooks/` coexist
+- Component-internal hooks are scattered across different locations
 
-**影响**:
-- 代码难以查找
-- 导入路径混乱
-- 容易产生重复代码
+**Impact**:
+- Code is hard to find
+- Import paths are confusing
+- Duplicate code is easily introduced
 
-### 3. 相对导入路径过多
+### 3. Too Many Relative Import Paths
 
-**问题**:
-- 86个文件使用`../`相对导入
-- 导入路径难以理解和维护
+**Problem**:
+- 86 files use `../` relative imports
+- Import paths are hard to understand and maintain
 
-**示例**:
+**Example**:
 ```typescript
 import { something } from '../../../../lib/services/...'
 ```
 
-**建议**:
-- 统一使用`@/`别名导入
+**Recommendation**:
+- Consistently use `@/` alias imports
 
-### 4. 双重真相源（Yjs + Supabase）
+### 4. Dual Sources of Truth (Yjs + Supabase)
 
-**问题**:
-- Yjs本地状态和Supabase DB状态可能不一致
-- 网络中断时可能产生数据不同步
-- 调试困难，难以确定是Yjs问题还是Realtime问题
+**Problem**:
+- Yjs local state and Supabase DB state can become inconsistent
+- Network interruptions can cause data desynchronization
+- Hard to debug — difficult to tell whether an issue is in Yjs or Realtime
 
-**影响**:
-- 数据一致性问题
-- 用户体验问题（偶尔看到旧数据）
+**Impact**:
+- Data consistency issues
+- User experience issues (occasionally seeing stale data)
 
-### 5. 缺乏统一的错误处理
+### 5. Lack of Unified Error Handling
 
-**问题**:
-- API路由的错误处理不统一
-- 客户端错误处理分散在各个组件
+**Problem**:
+- Error handling in API routes is inconsistent
+- Client-side error handling is scattered across components
 
-**影响**:
-- 用户体验不一致
-- 难以追踪错误
+**Impact**:
+- Inconsistent user experience
+- Hard to trace errors
 
-### 6. 类型安全不足
+### 6. Insufficient Type Safety
 
-**问题**:
-- `tsconfig.json`中`strict: false`
-- 很多`any`类型
+**Problem**:
+- `strict: false` in `tsconfig.json`
+- Many `any` types
 
-**影响**:
-- 运行时错误
-- IDE提示不准确
+**Impact**:
+- Runtime errors
+- Inaccurate IDE hints
 
-### 7. 测试覆盖不足
+### 7. Insufficient Test Coverage
 
-**问题**:
-- 只有E2E测试，缺少单元测试
-- 核心业务逻辑（如Services）没有测试覆盖
+**Problem**:
+- Only E2E tests exist; unit tests are missing
+- Core business logic (e.g., services) has no test coverage
 
-**影响**:
-- 重构风险高
-- 难以保证代码质量
+**Impact**:
+- High refactoring risk
+- Hard to guarantee code quality
 
-### 8. 性能问题
+### 8. Performance Issues
 
-**问题**:
-- 大型表格（>1000行）渲染缓慢
-- 频繁的Realtime订阅可能导致性能问题
-- 缺少虚拟化渲染
+**Problem**:
+- Large tables (>1000 rows) render slowly
+- Frequent Realtime subscriptions can cause performance issues
+- No virtualized rendering
 
-**影响**:
-- 用户体验差
-- 浏览器可能卡顿
+**Impact**:
+- Poor user experience
+- Possible browser jank
 
-### 9. 缺乏文档
+### 9. Lack of Documentation
 
-**问题**:
-- 代码注释不足
-- 缺少架构文档（本文档填补了这个空白）
-- 缺少API文档
+**Problem**:
+- Insufficient code comments
+- Missing architecture documentation (this document fills that gap)
+- Missing API documentation
 
-**影响**:
-- 新开发者难以上手
-- 维护困难
-
----
-
-## 总结
-
-### 项目优点
-
-1. ✅ **功能完整**: 实现了完整的协作式资产管理平台
-2. ✅ **技术先进**: 使用Next.js 16, Supabase, Yjs等现代技术
-3. ✅ **实时协作**: 完整的多人实时编辑和Presence tracking
-4. ✅ **权限管理**: 基于角色的访问控制
-5. ✅ **版本控制**: 支持库的版本快照和恢复
-6. ✅ **测试覆盖**: 有完整的E2E测试套件
-
-### 改进空间
-
-1. 📌 **代码组织**: 重构超大组件，统一目录结构
-2. 📌 **类型安全**: 启用TypeScript严格模式
-3. 📌 **性能优化**: 虚拟化渲染，优化Realtime订阅
-4. 📌 **测试完善**: 增加单元测试和集成测试
-5. 📌 **文档完善**: 增加代码注释和API文档
-6. 📌 **错误处理**: 统一错误处理策略
+**Impact**:
+- Hard for new developers to get up to speed
+- Difficult to maintain
 
 ---
 
-## 附录
+## Summary
 
-### 关键指标
+### Project Strengths
 
-- **代码行数**: ~30,000+ 行（估算）
-- **组件数量**: 82 个 .tsx 文件
-- **Service数量**: 13 个服务层文件
-- **数据库表**: 15+ 个核心表
-- **数据库迁移**: 40+ 个迁移文件
-- **E2E测试**: 10+ 个测试规格
-- **依赖包**: 30+ 个生产依赖
+1. ✅ **Feature-complete**: Implements a full collaborative asset management platform
+2. ✅ **Modern technology**: Uses modern technologies such as Next.js 16, Supabase, and Yjs
+3. ✅ **Real-time collaboration**: Complete multi-user real-time editing and presence tracking
+4. ✅ **Permission management**: Role-based access control
+5. ✅ **Version control**: Supports library version snapshots and restores
+6. ✅ **Test coverage**: Comprehensive E2E test suite
 
-### 技术债务估算
+### Room for Improvement
 
-| 类别 | 严重程度 | 估算工作量 |
+1. 📌 **Code organization**: Refactor oversized components and unify the directory structure
+2. 📌 **Type safety**: Enable TypeScript strict mode
+3. 📌 **Performance optimization**: Virtualized rendering, optimized Realtime subscriptions
+4. 📌 **Better testing**: Add unit tests and integration tests
+5. 📌 **Better documentation**: Add code comments and API documentation
+6. 📌 **Error handling**: Unify the error handling strategy
+
+---
+
+## Appendix
+
+### Key Metrics
+
+- **Lines of code**: ~30,000+ lines (estimated)
+- **Component count**: 82 .tsx files
+- **Service count**: 13 service-layer files
+- **Database tables**: 15+ core tables
+- **Database migrations**: 40+ migration files
+- **E2E tests**: 10+ test specs
+- **Dependencies**: 30+ production dependencies
+
+### Technical Debt Estimate
+
+| Category | Severity | Estimated Effort |
 |------|---------|-----------|
-| 超大组件重构 | 高 | 2-3周 |
-| 目录结构整理 | 中 | 1周 |
-| TypeScript严格模式 | 高 | 2周 |
-| 单元测试补充 | 中 | 3-4周 |
-| 性能优化 | 高 | 2周 |
-| 文档完善 | 低 | 1周 |
+| Oversized component refactoring | High | 2-3 weeks |
+| Directory structure cleanup | Medium | 1 week |
+| TypeScript strict mode | High | 2 weeks |
+| Adding unit tests | Medium | 3-4 weeks |
+| Performance optimization | High | 2 weeks |
+| Documentation improvements | Low | 1 week |
 
-**总计**: 约11-13周的重构和优化工作
+**Total**: Approximately 11-13 weeks of refactoring and optimization work
 
 ---
 
-**文档结束**
+**End of Document**

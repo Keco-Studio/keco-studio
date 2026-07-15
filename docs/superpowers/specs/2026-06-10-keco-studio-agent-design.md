@@ -2,28 +2,28 @@
 
 **Date**: 2026-06-10  
 **Status**: Draft (revised after architecture review)  
-**Scope**: keco-studio 专属 agent —— 应用内聊天窗 + 固定 tool 列表 + API 层操作 Supabase
+**Scope**: keco-studio dedicated agent — in-app chat window + fixed tool list + Supabase operations at the API layer
 
 ---
 
 ## 1. Overview
 
-keco-studio agent 是一个内嵌于应用的 AI 操作员，用户通过聊天面板下指令，agent 通过固定的 tool 列表直接调用 service 层和 Supabase 读写数据。
+The keco-studio agent is an AI operator embedded in the app: users issue instructions via a chat panel, and the agent reads/writes data by directly calling the service layer and Supabase through a fixed tool list.
 
-**核心原则：**
+**Core principles:**
 
-- **API 层操作**：agent 不碰 DOM，直接调 service / 写 Supabase
-- **固定 tool 列表**：开发者硬编码 tool schema + handler，加新 tool 不改循环逻辑
-- **危险操作需确认**：write 类 tool 按 `confirmationMode` 走不同确认流（可按对话跳过 CRUD 确认，import preview 不可跳过）
-- **对话历史持久化**：DB 为唯一状态源，支持断点恢复，上下文不丢失
-- **权限对齐**：复用现有 `authorizationService`，Viewer 只读，Editor/Admin 可写
-- **UI 同步**：write tool 成功后触发 cache invalidation，当前页面自动刷新
+- **API-layer operations**: the agent never touches the DOM; it calls services / writes to Supabase directly
+- **Fixed tool list**: developers hard-code tool schemas + handlers; adding a new tool doesn't change the loop logic
+- **Dangerous operations require confirmation**: write-type tools follow different confirmation flows per `confirmationMode` (CRUD confirmations can be skipped per conversation; import preview cannot be skipped)
+- **Persistent conversation history**: the DB is the single source of state, supporting resumption from breakpoints without losing context
+- **Permission alignment**: reuse the existing `authorizationService`; Viewer is read-only, Editor/Admin can write
+- **UI sync**: successful write tools trigger cache invalidation, and the current page refreshes automatically
 
-**v1 能力范围：**
+**v1 capability scope:**
 
-- 只读查询（assets、script lines）
-- CRUD 操作（create / update / delete assets，含 field name → fieldId 解析）
-- Import script 转换（[test.md](../../../../test.md) 中的 LLM 流水线封装为 tool）
+- Read-only queries (assets, script lines)
+- CRUD operations (create / update / delete assets, including field name → fieldId resolution)
+- Import script conversion (the LLM pipeline in [test.md](../../../../test.md) wrapped as a tool)
 
 ---
 
@@ -33,14 +33,14 @@ keco-studio agent 是一个内嵌于应用的 AI 操作员，用户通过聊天�
 ┌─────────────────────────────────────────────────┐
 │  keco-studio UI                                 │
 │  ┌──────────────────────┐  ┌─────────────────┐  │
-│  │  现有页面             │  │  ChatPanel      │  │
-│  │  (libraries, etc.)   │  │  (新增组件)      │  │
+│  │  Existing pages      │  │  ChatPanel      │  │
+│  │  (libraries, etc.)   │  │  (new component)│  │
 │  └──────────────────────┘  └───────┬─────────┘  │
 └────────────────────────────────────┼────────────┘
                                      │ SSE / REST
                           ┌──────────▼──────────┐
                           │ /api/agent-chat     │
-                          │ (新增 API route)     │
+                          │ (new API route)     │
                           └──────────┬──────────┘
                                      │
                     ┌────────────────▼────────────────┐
@@ -61,7 +61,7 @@ keco-studio agent 是一个内嵌于应用的 AI 操作员，用户通过聊天�
                     └─────┼────────┼────────┼────────┘
                           │        │        │
                     ┌─────▼────────▼────────▼────────┐
-                    │  现有 Service 层 / Supabase     │
+                    │  Existing service layer/Supabase│
                     │  scriptImportService, etc.      │
                     └────────────────────────────────┘
 ```
@@ -173,10 +173,10 @@ interface ToolResult {
 
 ### Field Name → fieldId Resolution
 
-`create_asset` and `update_asset` accept semantic field names (e.g. `{"类型": "character", "标签": "NPC"}`). Tool handler internally:
+`create_asset` and `update_asset` accept semantic field names (e.g. `{"Type": "character", "Tag": "NPC"}`). Tool handler internally:
 
 1. Query `library_field_definitions` table for the target library (same data source as the schema/predefine page)
-2. Build name→fieldId map: `{ "类型": "uuid-abc", "标签": "uuid-def" }`
+2. Build name→fieldId map: `{ "Type": "uuid-abc", "Tag": "uuid-def" }`
 3. Translate LLM's params to `{ "uuid-abc": "character", "uuid-def": "NPC" }`
 4. If field name not found → return error with available field names → LLM adapts
 
@@ -621,7 +621,7 @@ RULES:
 5. Be concise. Show data in structured format when appropriate.
 6. Branch labels use letter O + digit (O1, O2, Oend), never 01, 02.
 7. When the user says "skip confirmation" or equivalent, call set_conversation_option to enable skip mode.
-8. For create/update_asset, use semantic field names (e.g. "类型", "标签") — the system resolves them to internal IDs.
+8. For create/update_asset, use semantic field names (e.g. "Type", "Tag") — the system resolves them to internal IDs.
 9. For import_script, use the currentFolderId from context. If it is empty, ask the user which folder to import into — do NOT guess.
 
 CURRENT CONTEXT:
@@ -709,7 +709,7 @@ Both paths end at `parseText()` + `scriptImportService`. Agent path adds LLM pre
 │ Chapter 1                       │
 │ 45 lines · 38 dialogues · 3 options
 │ ┌─────────────────────────────┐ │
-│ │ 【Start｜Afternoon...】     │ │
+│ │ [Start | Afternoon...]      │ │
 │ │ (Type3·Narrator) At three.. │ │
 │ │ ...                         │ │
 │ └─────────────────────────────┘ │

@@ -42,12 +42,12 @@ export interface SegmentedStorySource {
   commands: SourceCommand[];
 }
 
-const BACKGROUND_PATTERN = /^(?:剧情背景|背景|人物|角色)[：:]\s*(.+)$/;
-const NATURAL_BRANCH_PATTERN = /^分支[一二三四五六七八九十\d]+[：:]\s*选择[【[]([^】\]]+)[】\]](?:[（(]([^）)]+)[）)])?$/;
-const EXPLICIT_BRANCH_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s+(?:branch|merge|分支|统一收尾)\s*[【[]\s*([A-Za-z][A-Za-z0-9_-]{0,63})\s*[|｜]\s*([^】\]]*)[】\]]$/i;
+const BACKGROUND_PATTERN = /^(?:Background|Setting|Characters?|Cast)[：:]\s*(.+)$/i;
+const NATURAL_BRANCH_PATTERN = /^Branch\s*\d+\s*[：:]\s*Choose\s*[【[]([^】\]]+)[】\]](?:\s*[（(]([^）)]+)[）)])?$/i;
+const EXPLICIT_BRANCH_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s+(?:branch|merge)\s*[【[]\s*([A-Za-z][A-Za-z0-9_-]{0,63})\s*[|｜]\s*([^】\]]*)[】\]]$/i;
 const EXPLICIT_OPTION_PREFIX = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s*[：:]/;
-const JUMP_ONLY_PATTERN = /^[（(]\s*(?:Jump|跳转)\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge|分支|统一收尾))?\s*[）)]$/i;
-const JUMP_TOKEN_PATTERN = /(?:Jump|跳转)\s+([A-Za-z][A-Za-z0-9_-]{0,63})/i;
+const JUMP_ONLY_PATTERN = /^[（(]\s*Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge))?\s*[）)]$/i;
+const JUMP_TOKEN_PATTERN = /Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})/i;
 const HEADING_PATTERN = /^【([^】]+)】$/;
 const DIALOGUE_PATTERN = /^([^：:]{1,64})[：:]\s*(.+)$/;
 const SPEAKER_CUE_PATTERN = /^(.+?)[（(]([^）)]*)[）)]$/;
@@ -246,7 +246,6 @@ function stripMatchedQuoteSpan(value: string, start: number, end: number): [numb
     "'": "'",
     '“': '”',
     '‘': '’',
-    '「': '」',
   };
   const closing = pairs[value[start]];
   return closing && value[end - 1] === closing ? [start + 1, end - 1] : [start, end];

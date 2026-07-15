@@ -13,10 +13,10 @@ import { sourceRefForUnit, unitizeSource } from './sourceUnits';
 import { validateStoryDocument } from './validator';
 
 const SCENE_PATTERN = /^【([^｜】]+)｜([^】]*)】$/;
-const BRANCH_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s+(?:branch|merge|分支|统一收尾)【([^｜】]+)｜([^】]*)】$/i;
-const TYPED_DIALOGUE_PATTERN = /^（(?:Type|类型)(\d+)・(.+?)）(.*)$/;
+const BRANCH_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s+(?:branch|merge)【([^｜】]+)｜([^】]*)】$/i;
+const TYPED_DIALOGUE_PATTERN = /^（Type(\d+)・(.+?)）(.*)$/;
 const OPTION_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})[：:]\s*(.+?)（(.+)）$/;
-const JUMP_PATTERN = /^（(?:Jump|跳转)\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge|分支|统一收尾))?\s*）$/i;
+const JUMP_PATTERN = /^（Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge))?\s*）$/i;
 const DIALOGUE_PATTERN = /^([^：:]{1,64})[：:]\s*(.+)$/;
 const OPTION_LIKE_SPEAKER = /^O[A-Za-z0-9_-]*$/i;
 
@@ -168,10 +168,10 @@ function parseOption(text: string, metadata: string, ref: SourceRef): StoryOptio
   const commands: StoryCommand[] = [];
   let target: string | undefined;
 
-  for (const rawPart of metadata.split(/[，,;；]/)) {
+  for (const rawPart of metadata.split(/[,;]/)) {
     const part = rawPart.trim();
     if (!part) continue;
-    const jump = /^(?:jump|跳转)\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge|分支|统一收尾))?$/i.exec(part);
+    const jump = /^jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge))?$/i.exec(part);
     if (jump) {
       if (target) return null;
       target = jump[1];
@@ -204,7 +204,6 @@ function stripMatchedQuotes(value: string): string {
     "'": "'",
     '“': '”',
     '‘': '’',
-    '「': '」',
   };
   const closing = pairs[trimmed[0]];
   return closing && trimmed.endsWith(closing)

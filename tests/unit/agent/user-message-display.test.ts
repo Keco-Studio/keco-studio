@@ -54,11 +54,11 @@ describe('deriveUserDisplay', () => {
   });
 
   it('shows selected table context as a compact attachment', () => {
-    const display = deriveUserDisplay('请分析', undefined, {
+    const display = deriveUserDisplay('Please analyze this', undefined, {
       source: 'library_table',
       libraryId: 'lib-1',
-      libraryName: '角色表',
-      selectionLabel: '角色表 · 第 2-3 行 · 2 列',
+      libraryName: 'Characters',
+      selectionLabel: 'Characters · Rows 2-3 · 2 columns',
       mode: 'cells',
       selectedCellCount: 4,
       selectedRowCount: 2,
@@ -66,11 +66,11 @@ describe('deriveUserDisplay', () => {
     });
 
     expect(display).toEqual({
-      text: '请分析',
+      text: 'Please analyze this',
       attachments: [
         {
           kind: 'selection',
-          fileName: '角色表 · 第 2-3 行 · 2 列',
+          fileName: 'Characters · Rows 2-3 · 2 columns',
         },
       ],
     });

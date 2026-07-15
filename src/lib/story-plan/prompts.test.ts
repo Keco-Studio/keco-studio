@@ -23,13 +23,13 @@ const auditView: StoryAuditView = {
   rows: [{
     id: 'start',
     presentation: 'dialogue_primary',
-    speaker: '七号',
-    content: '选择。',
+    speaker: 'Seven',
+    content: 'Choose.',
     sourceUnitIds: ['fixture:0'],
     commands: [],
     nextRowId: '',
     choices: [{
-      text: '左边',
+      text: 'Left',
       targetRowId: 'left',
       sourceUnitIds: ['fixture:1'],
       commands: ['$trust+=1'],
@@ -38,7 +38,7 @@ const auditView: StoryAuditView = {
     id: 'left',
     presentation: 'prose',
     speaker: '',
-    content: '左边结局。',
+    content: 'Left ending.',
     sourceUnitIds: ['fixture:2'],
     commands: [],
     nextRowId: '',
@@ -46,7 +46,7 @@ const auditView: StoryAuditView = {
   }],
   paths: [{
     rowIds: ['start', 'left'],
-    choiceTexts: ['左边'],
+    choiceTexts: ['Left'],
     terminalRowId: 'left',
     commands: ['$trust+=1'],
   }],
@@ -105,7 +105,7 @@ describe('two-stage full story extraction prompts', () => {
   });
 
   it('sends raw units to Extractor and LLM-created inventories to Graph Planner', () => {
-    const source = segmentStorySource('七号：选择。\n- 左边 $trust+=1\n左边结局。', 'fixture');
+    const source = segmentStorySource('Seven: Choose.\n- Left $trust+=1\nLeft ending.', 'fixture');
     const contentMessages = buildContentExtractionMessages(source, 1, []);
     const contentInput = JSON.parse(contentMessages[1].content as string);
     expect(contentInput.sourceUnits).toEqual(source.units.map(({ id, text }) => ({ id, text })));
@@ -115,8 +115,8 @@ describe('two-stage full story extraction prompts', () => {
     const inventory = {
       version: 3 as const,
       structuralUnitIds: [],
-      nodes: [{ id: 'start', type: 'dialogue' as const, speaker: '七号', content: '选择。', sourceUnitIds: ['fixture:0'] }],
-      choices: [{ id: 'left', text: '左边', sourceUnitIds: ['fixture:1'] }],
+      nodes: [{ id: 'start', type: 'dialogue' as const, speaker: 'Seven', content: 'Choose.', sourceUnitIds: ['fixture:0'] }],
+      choices: [{ id: 'left', text: 'Left', sourceUnitIds: ['fixture:1'] }],
     };
     const graphMessages = buildGraphExtractionMessages(source, inventory, 1, []);
     const graphInput = JSON.parse(graphMessages[1].content as string);
@@ -139,7 +139,7 @@ describe('two-stage full story extraction prompts', () => {
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('does not create shared visible content');
     expect(AUDITOR_STORY_EXTRACTION_PROMPT).toContain('Do not invent narrative prerequisites');
 
-    const source = segmentStorySource('七号：选择。\n- 左边 $trust+=1\n左边结局。', 'fixture');
+    const source = segmentStorySource('Seven: Choose.\n- Left $trust+=1\nLeft ending.', 'fixture');
     const input = JSON.parse(buildAuditorExtractionMessages(source, auditView)[1].content as string);
     expect(Object.keys(input).sort()).toEqual(['auditView', 'commands', 'sourceUnits', 'task']);
     expect(input.auditView).toEqual(auditView);
@@ -184,7 +184,7 @@ describe('two-stage full story extraction prompts', () => {
     expect(AUDITOR_STORY_ADJUDICATION_PROMPT).toContain('confirmed or unsupported');
     expect(AUDITOR_STORY_ADJUDICATION_PROMPT).toContain('Do not introduce new issues');
 
-    const source = segmentStorySource('七号：选择。\n- 左边 $trust+=1\n左边结局。', 'fixture');
+    const source = segmentStorySource('Seven: Choose.\n- Left $trust+=1\nLeft ending.', 'fixture');
     const messages = buildAuditAdjudicationMessages(source, auditView, [{
       code: 'wrong_speaker',
       severity: 'major',
@@ -194,7 +194,7 @@ describe('two-stage full story extraction prompts', () => {
     }]);
     const input = JSON.parse(messages[1].content as string);
     expect(input.allegations).toEqual([expect.objectContaining({ issueId: 'issue-1' })]);
-    expect(input.sourceUnits).toEqual([{ id: 'fixture:0', text: '七号：选择。' }]);
+    expect(input.sourceUnits).toEqual([{ id: 'fixture:0', text: 'Seven: Choose.' }]);
     expect(input.rows).toEqual([auditView.rows[0]]);
     expect(input.paths).toEqual([auditView.paths[0]]);
     expect(input).not.toHaveProperty('auditView');

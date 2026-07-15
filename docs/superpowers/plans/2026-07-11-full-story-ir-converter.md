@@ -45,13 +45,13 @@ const extraction = {
   nodes: [{
     id: 'start',
     type: 'dialogue',
-    speaker: '七号',
-    content: '我们必须选择一条路线。',
+    speaker: 'Seven',
+    content: 'We must choose a route.',
     sourceUnitIds: ['fixture:0'],
     commandSources: [],
     nextNodeId: '',
     choices: [{
-      text: '前往能源舱',
+      text: 'Go to the energy bay',
       targetNodeId: 'energy',
       sourceUnitIds: ['fixture:1'],
       commandSources: ['$resolve+=1'],

@@ -1,26 +1,26 @@
-雨夜古宅分支剧情对话
-剧情背景：暴雨深夜，你为躲避山洪，误入一座荒废二十年的山间古宅。宅内灯火微弱，木门虚掩，空气中弥漫着潮湿的旧木味。玄关处站着一位身着素色长衫、面色苍白的女子，安静地望着你，不说话。
-人物：你（旅人）、神秘女子
-【开场对话】
-神秘女子（声音轻柔，不带一丝情绪）：深夜进山，风雨大作，公子倒是胆大。只是这座宅子，生人误入，难有归途。
-你：突遇山洪，无处躲避，冒昧叨扰，雨停便走，绝不惊扰。
-神秘女子（微微垂眸，指尖轻拂过斑驳的木桌）：山洪今夜不退，山路过塌，你走不了的。宅内有两处落脚处，不知公子想选哪一处？
-【触发分支选择】
-分支一：选择【东侧客房】（安稳谨慎线）
-你：我选东侧客房，简单歇息一晚即可。
-神秘女子（眉眼微松，淡淡浅笑）：公子心思沉稳，懂得避险。东侧客房干净整洁，无杂物牵绊，是宅内最安全的地方。
-女子转身引路，走廊烛火摇曳，光影温柔，没有丝毫诡异之感。
-神秘女子：这座古宅困住我二十年，从不害人，只留迷途之人避雨安眠。明日雨停，山路开通，你便可安然离去，从此山水不相逢。
-你：你为何常年守在此处？
-神秘女子（望向窗外滂沱大雨，语气怅然）：我在等一个失约之人，只是岁岁年年，风雨皆至，故人未归。也罢，今夜有客相伴，也算解了半分孤寂。
-【分支一结局：安稳结局】
-一夜安然无梦。次日天明，雨过天晴，山路畅通。你辞别女子离开古宅，回望山间，云雾缭绕，古宅隐匿其中。此后余生，你岁岁平安，再无诡异奇遇，只留一段雨夜奇遇，藏于心底。
-分支二：选择【西侧阁楼】（好奇探险线）
-你：我选西侧阁楼，听闻古宅阁楼藏有旧事，我想一观。
-神秘女子（身形微顿，眼神骤然深沉，语气变冷）：公子贪心好奇，可是要付出代价的。西侧阁楼，藏的不是旧事，是执念与枷锁。
-你：既入古宅，便无惧因果，我想看看你的故事。
-女子不再多言，转身走向幽暗的走廊，阁楼方向漆黑一片，无半点烛火。踏入阁楼的瞬间，满屋尘封的古籍、破碎的玉佩散落一地，风声穿过窗棂，如同低语。
-神秘女子（声音凄婉）：二十年前，我与心上人约定雨夜归宅成婚，他却半途遇山洪离世。我守宅等候，困住自己，也困住了这座宅子的生机。凡是执意窥探我过往之人，便要留下一缕记忆，替我守一段岁月。
-你心中一震，想要后退，却发现脚步无法挪动。
-【分支二结局：羁绊结局】
-天亮雨停，你顺利走出古宅，却彻底遗忘了自己进山的初衷与过往的一段记忆。此后每一个雨夜，你都会莫名望向山间古宅的方向，心生牵挂。你与神秘女子结下无形羁绊，岁岁雨夜，皆会梦回古宅，续写未完成的相遇。
+A Rainy Night at the Old Manor
+Background: On a stormy midnight, fleeing a flash flood, you stumble into a mountain manor abandoned for twenty years. Faint lamplight glows inside, the wooden door stands ajar, and the air smells of damp old timber. In the entry hall waits a pale woman in a plain robe, watching you in silence.
+Characters: You (Traveler), Mysterious Woman
+【Opening Dialogue】
+Mysterious Woman (voice soft, without a trace of emotion): Entering the mountains on a stormy night takes some nerve. But strangers who wander into this manor rarely find their way home.
+You: The flood caught me off guard and I had nowhere to hide. Forgive the intrusion; I will leave as soon as the rain stops.
+Mysterious Woman (lowering her eyes, fingertips brushing the worn table): The flood will not recede tonight, and the mountain road has collapsed. You cannot leave. There are two places to stay in the manor. Which will you choose?
+【Trigger Branch Choice】
+Branch 1: Choose [East Guest Room] (cautious and steady route)
+You: I will take the east guest room and simply rest for the night.
+Mysterious Woman (features softening, a faint smile): A prudent choice. The east guest room is clean and untouched, the safest place in the manor.
+The woman turns to lead the way. Candlelight sways along the corridor, the shadows gentle, nothing eerie about them.
+Mysterious Woman: This manor has held me for twenty years, yet it harms no one. It only shelters lost travelers from the rain. When the road clears tomorrow, you may leave in peace, and our paths need never cross again.
+You: Why do you keep watch here year after year?
+Mysterious Woman (gazing at the pouring rain outside, voice wistful): I am waiting for someone who broke a promise. Year after year the storms arrive, but the one I wait for never returns. Still, having a guest tonight eases half my loneliness.
+【Branch 1 Ending: Safe Ending】
+The night passes without dreams. At dawn the rain has cleared and the mountain road is open. You bid the woman farewell and leave the manor. Looking back, the manor hides among the drifting mist. For the rest of your life you remain safe and untroubled, keeping the memory of that rainy night to yourself.
+Branch 2: Choose [West Attic] (curious adventure route)
+You: I will take the west attic. I hear the attic hides old stories, and I want to see them.
+Mysterious Woman (stiffening, her gaze turning deep and cold): Curiosity has its price. What the west attic hides is not old stories but obsession and chains.
+You: Having entered the manor, I fear no consequence. I want to see your story.
+The woman says nothing more and walks into the dark corridor. The attic lies in pitch blackness without a single candle. The moment you step inside, dusty old books and shattered jade scatter across the floor, and the wind through the lattice sounds like whispering.
+Mysterious Woman (voice mournful): Twenty years ago my beloved and I promised to marry at this manor on a rainy night, but a flood took him on the way. I stayed to wait, trapping myself and the life of this manor. Whoever insists on prying into my past must leave behind a strand of memory to keep watch over these years with me.
+Your heart lurches. You try to step back, but your feet will not move.
+【Branch 2 Ending: Bond Ending】
+When dawn breaks and the rain stops, you walk out of the manor, but you have wholly forgotten why you entered the mountains and a stretch of your past. From then on, every rainy night you find yourself gazing toward the manor in the hills. An invisible bond ties you to the mysterious woman, and every rainy night you dream of the manor, continuing an unfinished meeting.

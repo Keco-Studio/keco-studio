@@ -26,14 +26,14 @@ Evidence rules:
 
 Choice rules:
 - Create choices only for real decisions presented to the player.
-- Never create Continue, 继续, next, or navigation choices for ordinary sequential playback.
+- Never create Continue, Next, or navigation choices for ordinary sequential playback.
 - Do not duplicate a decision. One source decision produces one choice item per selectable option.
 - A sentence that describes multiple alternatives may supply multiple choices, but each choice text must be traceable to that source.
 - An option source unit belongs only to its choice item, including its option text and selection command. Never also create a node from that option unit. The target node must use the branch declaration and visible content reached after selection, not the option row itself.
 
 Node types:
 - dialogue requires a speaker.
-- A known character name followed by an action cue and a colon still introduces dialogue by that character. For example, "少年身影渐渐透明：我该走了。" is dialogue spoken by 少年; the action cue may be omitted from the dialogue content.
+- A known character name followed by an action cue and a colon still introduces dialogue by that character. For example, "The boy slowly fades away: I have to go." is dialogue spoken by the boy; the action cue may be omitted from the dialogue content.
 - narration is visible prose, action, background, outcome, or stage direction.
 - scene is a visible scene or section heading.
 - system is visible system text, not a navigation placeholder.
@@ -75,10 +75,10 @@ Reject omissions, duplicated or invented content, paraphrasing, wrong speakers, 
 When the source has an explicit character list, verify that dialogue_primary and dialogue_secondary follow the listed role order and remain consistent for every speaker. Treat shortened names and role aliases as the listed character. Reject collapsing distinct dialogue speakers onto one presentation or changing a speaker's presentation.
 Treat a known character name followed by an action cue and a colon as dialogue by that character, not narration. Parenthetical acting directions attached to a speaker name may be removed from dialogue content and must not become separate visible nodes unless they are standalone prose.
 Visible source content must not be hidden in structuralUnitIds.
-Choice-control prompts such as "you can choose", "choose one", "你可以选择", and "请选择" are structural UI instructions when their real options are extracted as choices. They must stay non-visible and are not omissions.
+Choice-control prompts such as "you can choose", "choose one", and "make your choice" are structural UI instructions when their real options are extracted as choices. They must stay non-visible and are not omissions.
 A pure branch or merge declaration may name and decorate the immediately following visible node. The declaration stays in structuralUnitIds and does not require its own empty node or table row; the following visible node may use the declared label as its ID while citing only its own visible source unit.
 A pure merge declaration that names a location but does not create shared visible content means branches converge immediately before the next shared visible node. Never force other paths through sibling-specific content at that location.
-A complete grammatical sentence can still be a pure merge control, for example "all investigation paths merge before lights out" or "所有调查路径在熄灯前合流". It stays structural and must not be shown as narration.
+A complete grammatical sentence can still be a pure merge control, for example "all investigation paths merge before lights out". It stays structural and must not be shown as narration.
 An option source unit is owned by its choice only. Reject a candidate that also uses an option unit as node evidence.
 An exact standalone command line immediately after a visible node may be owned by that preceding node. This is the canonical representation and does not require an empty command-only node.
 Do not invent narrative prerequisites, variable conditions, clue requirements, or plot-logic objections that are not encoded by the source. Audit whether the source was preserved, not whether the source story is plausible.

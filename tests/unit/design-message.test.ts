@@ -37,8 +37,8 @@ describe('buildDesignMessage', () => {
   it('instructs the agent to extract explicit tables before generating from prose', () => {
     const msg = buildDesignMessage({
       fileName: 'mixed.docx',
-      documentText: '剧情段落\n\n| 名称 | 数值 |\n| --- | --- |\n| A | 1 |',
-      additionalInstructions: '提取文档里的表格',
+      documentText: 'Story paragraph\n\n| Name | Value |\n| --- | --- |\n| A | 1 |',
+      additionalInstructions: 'Extract the tables from the document',
     });
 
     expect(msg).toContain('EXTRACTION mode');
@@ -49,8 +49,8 @@ describe('buildDesignMessage', () => {
   it('adds a quality gate for unrelated prose with no reliable table evidence', () => {
     const msg = buildDesignMessage({
       fileName: 'random.txt',
-      documentText: '今天晚饭很好吃，窗外下雨了。',
-      additionalInstructions: '生成一个表格',
+      documentText: 'Dinner was delicious tonight, and it rained outside.',
+      additionalInstructions: 'Generate a table',
     });
 
     expect(msg).toContain('QUALITY GATE');

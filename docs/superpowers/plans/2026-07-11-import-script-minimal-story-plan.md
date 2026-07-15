@@ -118,19 +118,19 @@ git commit -m "feat: add flat story plan contracts"
 
 ```typescript
 const source = [
-  '神秘女子（声音轻柔）：深夜进山，风雨大作。',
-  'O1: 走左边。 ($trust+=1; jump O1)',
-  'O1 branch [O1 | 左边小路]',
+  'MYSTERIOUS WOMAN（in a soft voice）：Deep in the mountains at night, a storm rages.',
+  'O1: Take the left path. ($trust+=1; jump O1)',
+  'O1 branch [O1 | Left path]',
   '(Jump Merge)',
 ].join('\n');
 const result = segmentStorySource(source, 'fixture');
 
 expect(result.segments).toEqual(expect.arrayContaining([
-  expect.objectContaining({ kind: 'speaker', text: '神秘女子' }),
-  expect.objectContaining({ kind: 'stage_direction', text: '声音轻柔' }),
-  expect.objectContaining({ kind: 'dialogue', text: '深夜进山，风雨大作。' }),
-  expect.objectContaining({ kind: 'choice_text', text: '走左边。' }),
-  expect.objectContaining({ kind: 'branch_marker', text: '左边小路' }),
+  expect.objectContaining({ kind: 'speaker', text: 'MYSTERIOUS WOMAN' }),
+  expect.objectContaining({ kind: 'stage_direction', text: 'in a soft voice' }),
+  expect.objectContaining({ kind: 'dialogue', text: 'Deep in the mountains at night, a storm rages.' }),
+  expect.objectContaining({ kind: 'choice_text', text: 'Take the left path.' }),
+  expect.objectContaining({ kind: 'branch_marker', text: 'Left path' }),
   expect.objectContaining({ kind: 'jump_hint', text: 'Merge' }),
 ]));
 expect(result.commands[0]).toMatchObject({ source: '$trust+=1', variable: 'trust', operator: '+=', value: 1 });

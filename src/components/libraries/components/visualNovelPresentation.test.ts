@@ -13,8 +13,8 @@ describe('visual novel Type presentation', () => {
   });
 
   it('does not move Type 1 dialogue when the speaker changes', () => {
-    expect(resolveVisualNovelPresentation('1', '光球').alignment).toBe('left');
-    expect(resolveVisualNovelPresentation('1', '老人').alignment).toBe('left');
+    expect(resolveVisualNovelPresentation('1', 'Orb of Light').alignment).toBe('left');
+    expect(resolveVisualNovelPresentation('1', 'Old Man').alignment).toBe('left');
   });
 
   it('keeps legacy rows without Type readable', () => {

@@ -166,10 +166,10 @@ function validateExplicitMerges(
   issues: StoryPlanIssue[]
 ): void {
   const explicitBranchLabels = new Set<string>();
-  const declarationPattern = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s+(branch|merge|分支|统一收尾)\b/i;
+  const declarationPattern = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s+(branch|merge)\b/i;
   for (const unit of source.units) {
     const declaration = declarationPattern.exec(unit.text);
-    if (declaration && /^(?:branch|分支)$/i.test(declaration[2])) {
+    if (declaration && /^branch$/i.test(declaration[2])) {
       explicitBranchLabels.add(declaration[1]);
     }
   }

@@ -65,11 +65,11 @@ export const STORY_BASE_COLUMNS = [
 ] as const;
 
 export const STORY_COLUMN_DESCRIPTIONS = {
-  Label: '这里是跳转的节点',
-  Type: '1蓝对话框2粉3灰4无对话框5屏幕中央',
-  Name: '说话人', Content: '对话内容', If: '触发条件', Commands: '指令',
-  Fg: '左侧显示立绘', Fg1: '右侧显示立绘', Cg: '显示CG',
-  Voice: '配音路径', Bg: '背景图',
+  Label: 'This is the jump target node',
+  Type: '1 blue dialog box 2 pink 3 gray 4 no dialog box 5 screen center',
+  Name: 'Speaker', Content: 'Dialogue content', If: 'Trigger condition', Commands: 'Commands',
+  Fg: 'Show portrait on the left', Fg1: 'Show portrait on the right', Cg: 'Show CG',
+  Voice: 'Voice-over path', Bg: 'Background image',
 } as const;
 
 export const STORY_COLUMN_WIDTHS = { Content: 51, Commands: 17, Bg: 14 } as const;
@@ -204,7 +204,7 @@ export type StoryWorkbookSheet = {
 };
 ```
 
-Add row 1 from columns and row 2 from the description map. Option text/next descriptions are empty; `/^Option\d+_Commands$/` uses `选项指令` and width 17. Add every playable row, then add `*` in column A plus one blank row after any row containing a non-empty `/^Option\d+$/` cell.
+Add row 1 from columns and row 2 from the description map. Option text/next descriptions are empty; `/^Option\d+_Commands$/` uses `Option commands` and width 17. Add every playable row, then add `*` in column A plus one blank row after any row containing a non-empty `/^Option\d+$/` cell.
 
 Style rows 1 and 2 exactly:
 

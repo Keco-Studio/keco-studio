@@ -78,7 +78,7 @@ execute(params, ctx):
   5. Return preview:
      {
        libraryName, rowIndex, assetId,
-       changes: [{ field: "类型", value: "int" }, ...],
+       changes: [{ field: "Type", value: "int" }, ...],
        existingValues: { ... current values before update ... }
      }
 
@@ -206,7 +206,7 @@ Add to RULES section in `prompts.ts`:
 ```
 19. When the user asks to write references from one library to another, use `set_reference`.
     Do NOT manually query the source library and write IDs via update_asset.
-20. When the user refers to a row by number ("第1行", "row 3"), use `update_row`
+20. When the user refers to a row by number ("row 1", "row 3"), use `update_row`
     with the rowIndex parameter. Do NOT use update_asset with a guessed assetId.
 ```
 

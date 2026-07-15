@@ -4,20 +4,20 @@ import { segmentStorySource, sourceRefsForSegmentIds } from './sourceSegments';
 describe('story source segmentation', () => {
   it('extracts exact dialogue, option, branch, jump, and command segments', () => {
     const content = [
-      '神秘女子（声音轻柔）：深夜进山，风雨大作。',
-      'O1: 走左边。 ($trust+=1; jump O1)',
-      'O1 branch [O1 | 左边小路]',
+      'Mysterious Woman (voice soft): Deep in the mountains at night, the storm rages.',
+      'O1: Take the left path. ($trust+=1; jump O1)',
+      'O1 branch [O1 | Left trail]',
       '(Jump Merge)',
     ].join('\n');
 
     const result = segmentStorySource(content, 'fixture');
 
     expect(result.segments).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'speaker', text: '神秘女子' }),
-      expect.objectContaining({ kind: 'stage_direction', text: '声音轻柔' }),
-      expect.objectContaining({ kind: 'dialogue', text: '深夜进山，风雨大作。' }),
-      expect.objectContaining({ kind: 'choice_text', text: '走左边。' }),
-      expect.objectContaining({ kind: 'branch_marker', text: '左边小路' }),
+      expect.objectContaining({ kind: 'speaker', text: 'Mysterious Woman' }),
+      expect.objectContaining({ kind: 'stage_direction', text: 'voice soft' }),
+      expect.objectContaining({ kind: 'dialogue', text: 'Deep in the mountains at night, the storm rages.' }),
+      expect.objectContaining({ kind: 'choice_text', text: 'Take the left path.' }),
+      expect.objectContaining({ kind: 'branch_marker', text: 'Left trail' }),
       expect.objectContaining({ kind: 'jump_hint', text: 'Merge' }),
     ]));
     expect(result.commands).toEqual([
@@ -34,7 +34,7 @@ describe('story source segmentation', () => {
   });
 
   it('keeps an unrecognized line as one exact narration segment', () => {
-    const content = '女子转身引路，走廊烛火摇曳，光影温柔。';
+    const content = 'The woman turns to lead the way while candlelight sways along the corridor.';
     const result = segmentStorySource(content, 'fixture');
 
     expect(result.segments).toEqual([
@@ -48,25 +48,25 @@ describe('story source segmentation', () => {
   });
 
   it('classifies story background as narration instead of dialogue', () => {
-    const content = '剧情背景：暴雨深夜，你误入一座荒废古宅。';
+    const content = 'Background: On a stormy midnight you stumble into an abandoned manor.';
     const result = segmentStorySource(content, 'fixture');
 
     expect(result.segments.some((segment) => segment.kind === 'speaker')).toBe(false);
     expect(result.segments).toEqual(expect.arrayContaining([
       expect.objectContaining({
         kind: 'narration',
-        text: '暴雨深夜，你误入一座荒废古宅。',
+        text: 'On a stormy midnight you stumble into an abandoned manor.',
       }),
     ]));
   });
 
   it('uses the first speaker delimiter when dialogue contains another colon', () => {
-    const content = '光球： “你到了。信任值: [trust]。”';
+    const content = 'Orb of Light: “You have arrived. Trust: [trust].”';
     const result = segmentStorySource(content, 'fixture');
 
     expect(result.segments).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'speaker', text: '光球' }),
-      expect.objectContaining({ kind: 'dialogue', text: '你到了。信任值: [trust]。' }),
+      expect.objectContaining({ kind: 'speaker', text: 'Orb of Light' }),
+      expect.objectContaining({ kind: 'dialogue', text: 'You have arrived. Trust: [trust].' }),
     ]));
   });
 
@@ -81,17 +81,27 @@ describe('story source segmentation', () => {
   });
 
   it('extracts natural-language branch choice text', () => {
-    const content = '分支一：选择【东侧客房】（安稳谨慎线）';
+    const content = 'Branch 1: Choose [East Guest Room] (cautious and steady route)';
     const result = segmentStorySource(content, 'fixture');
 
     expect(result.segments).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'choice_text', text: '东侧客房' }),
-      expect.objectContaining({ kind: 'branch_marker', text: '安稳谨慎线' }),
+      expect.objectContaining({ kind: 'choice_text', text: 'East Guest Room' }),
+      expect.objectContaining({ kind: 'branch_marker', text: 'cautious and steady route' }),
+    ]));
+  });
+
+  it('accepts full-width brackets around natural-language branch choice text', () => {
+    const content = 'Branch 2: Choose 【West Attic】（curious adventure route）';
+    const result = segmentStorySource(content, 'fixture');
+
+    expect(result.segments).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'choice_text', text: 'West Attic' }),
+      expect.objectContaining({ kind: 'branch_marker', text: 'curious adventure route' }),
     ]));
   });
 
   it('hydrates source refs from server-owned segment unit ids', () => {
-    const result = segmentStorySource('你：向左走。', 'fixture');
+    const result = segmentStorySource('You: Walk left.', 'fixture');
     const dialogue = result.segments.find((segment) => segment.kind === 'dialogue');
     expect(dialogue).toBeDefined();
 
@@ -99,12 +109,12 @@ describe('story source segmentation', () => {
       sourceId: 'fixture',
       unitId: 'fixture:0',
       start: 0,
-      end: '你：向左走。'.length,
+      end: 'You: Walk left.'.length,
     }]);
   });
 
   it('rejects an unknown segment id during source-ref hydration', () => {
-    const result = segmentStorySource('旁白。', 'fixture');
+    const result = segmentStorySource('Plain narration.', 'fixture');
     expect(() => sourceRefsForSegmentIds(result, ['missing'])).toThrow(/unknown source segment/i);
   });
 });

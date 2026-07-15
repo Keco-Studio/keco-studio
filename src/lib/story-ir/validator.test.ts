@@ -92,12 +92,13 @@ describe('Story IR deterministic validation', () => {
   });
 
   it('accepts option evidence separated only by structural brackets', () => {
+    const branchText = 'Branch 1: Choose 【East Guest Room】 (cautious steady route)';
     const branchUnit: SourceUnit = {
       id: 'branch:0',
       sourceId: 'branch',
-      text: '分支一：选择【东侧客房】（安稳谨慎线）',
+      text: branchText,
       start: 0,
-      end: 22,
+      end: branchText.length,
       authoritative: true,
     };
     const branchRef = {
@@ -115,7 +116,7 @@ describe('Story IR deterministic validation', () => {
         content: '',
         commands: [],
         options: [{
-          text: '选择东侧客房',
+          text: 'Choose East Guest Room',
           target: 'EastRoom',
           commands: [],
           sourceRefs: [branchRef],

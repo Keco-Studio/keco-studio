@@ -9,11 +9,11 @@ import {
 } from './inventory';
 import type { SegmentedStorySource, SourceSegment } from './sourceSegments';
 
-const DECLARATION_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s+(branch|merge|分支|统一收尾)\s*[【[]\s*([A-Za-z][A-Za-z0-9_-]{0,63})\s*[|｜]/i;
+const DECLARATION_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s+(branch|merge)\s*[【[]\s*([A-Za-z][A-Za-z0-9_-]{0,63})\s*[|｜]/i;
 const OPTION_PATTERN = /^([A-Za-z][A-Za-z0-9_-]{0,63})\s*[：:].*[（(]([\s\S]*)[）)]$/;
-const JUMP_ONLY_PATTERN = /^[（(]\s*(?:Jump|跳转)\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge|分支|统一收尾))?\s*[）)]$/i;
-const JUMP_TOKEN_PATTERN = /(?:Jump|跳转)\s+([A-Za-z][A-Za-z0-9_-]{0,63})/i;
-const NATURAL_BRANCH_PATTERN = /^分支([一二三四五六七八九十\d]+)[：:]\s*选择[【[]/;
+const JUMP_ONLY_PATTERN = /^[（(]\s*Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})(?:\s+(?:branch|merge))?\s*[）)]$/i;
+const JUMP_TOKEN_PATTERN = /Jump\s+([A-Za-z][A-Za-z0-9_-]{0,63})/i;
+const NATURAL_BRANCH_PATTERN = /^Branch\s*(\d+)\s*[：:]\s*Choose\s*[【[]/i;
 
 export function tryParseExplicitStory(
   source: SegmentedStorySource
@@ -182,7 +182,7 @@ function collectDeclarations(
     if (!declaration) continue;
     if (declaration[1] !== declaration[3] || labels.has(declaration[1])) return null;
     labels.add(declaration[1]);
-    if (/^(?:merge|统一收尾)$/i.test(declaration[2])) mergeLabels.push(declaration[1]);
+    if (/^merge$/i.test(declaration[2])) mergeLabels.push(declaration[1]);
   }
   return { labels, mergeLabels };
 }
@@ -208,21 +208,7 @@ function isNodeContentSegment(segment: SourceSegment): boolean {
 }
 
 function parseNaturalOrdinal(value: string): number | null {
-  if (/^\d+$/.test(value)) {
-    const parsed = Number(value);
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-  }
-  const ordinals: Record<string, number> = {
-    一: 1,
-    二: 2,
-    三: 3,
-    四: 4,
-    五: 5,
-    六: 6,
-    七: 7,
-    八: 8,
-    九: 9,
-    十: 10,
-  };
-  return ordinals[value] ?? null;
+  if (!/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }

@@ -118,9 +118,6 @@ function isSelfNegatingAuditIssue(message: string): boolean {
     /\bno [^.!?]{1,80} detected\b/gi,
     /\bacceptable decoration omission\b/gi,
     /\bno action (?:is )?required\b/gi,
-    /(?:没有|不存在|无)(?:任何)?问题/g,
-    /(?:这是|该行为|该结果)(?:完全)?正确/g,
-    /(?:可以接受|无需处理|不需要处理)/g,
   ];
   let conclusionEnd = -1;
   for (const pattern of conclusions) {
@@ -131,6 +128,5 @@ function isSelfNegatingAuditIssue(message: string): boolean {
   if (conclusionEnd < 0) return false;
 
   const suffix = message.slice(conclusionEnd);
-  return !/\b(?:but|however|except|yet|missing|omitted|wrong|invalid|mismatch|fail(?:s|ed)?|error)\b/i.test(suffix)
-    && !/(?:但是|然而|不过|除外|缺失|遗漏|错误|无效|不一致|失败)/.test(suffix);
+  return !/\b(?:but|however|except|yet|missing|omitted|wrong|invalid|mismatch|fail(?:s|ed)?|error)\b/i.test(suffix);
 }

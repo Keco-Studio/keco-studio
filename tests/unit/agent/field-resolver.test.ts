@@ -20,21 +20,21 @@ function fakeSupabase(defs: FieldDef[]) {
 
 describe('resolvePropertyValues', () => {
   const defs: FieldDef[] = [
-    { id: 'uuid-type', label: '类型' },
-    { id: 'uuid-tag', label: '标签' },
+    { id: 'uuid-type', label: 'type' },
+    { id: 'uuid-tag', label: 'tags' },
   ];
 
   it('translates semantic field names to field ids', async () => {
-    const res = await resolvePropertyValues(fakeSupabase(defs), 'lib', { 类型: 'character', 标签: 'NPC' });
+    const res = await resolvePropertyValues(fakeSupabase(defs), 'lib', { type: 'character', tags: 'NPC' });
     expect(res.resolved).toEqual({ 'uuid-type': 'character', 'uuid-tag': 'NPC' });
     expect(res.unresolved).toEqual([]);
   });
 
   it('reports unknown field names with the available list', async () => {
-    const res = await resolvePropertyValues(fakeSupabase(defs), 'lib', { 类型: 'character', 颜色: 'red' });
+    const res = await resolvePropertyValues(fakeSupabase(defs), 'lib', { type: 'character', color: 'red' });
     expect(res.resolved).toEqual({ 'uuid-type': 'character' });
-    expect(res.unresolved).toEqual(['颜色']);
-    expect(res.availableFields).toEqual(['类型', '标签']);
+    expect(res.unresolved).toEqual(['color']);
+    expect(res.availableFields).toEqual(['type', 'tags']);
   });
 
   it('passes through field ids supplied directly', async () => {
@@ -55,6 +55,6 @@ describe('resolvePropertyValues', () => {
   it('returns empty resolution for empty input', async () => {
     const res = await resolvePropertyValues(fakeSupabase(defs), 'lib', undefined);
     expect(res.resolved).toEqual({});
-    expect(res.availableFields).toEqual(['类型', '标签']);
+    expect(res.availableFields).toEqual(['type', 'tags']);
   });
 });

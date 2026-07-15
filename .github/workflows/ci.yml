@@ -4,49 +4,49 @@ on:
   pull_request:
     branches:
       - main
-    types: [opened, synchronize, reopened]  # PR 创建、更新、重新打开时触发
+    types: [opened, synchronize, reopened]  # Trigger when a PR is opened, updated, or reopened
   push:
     branches:
-      - main  # 只有 push 到 main 分支才触发（包括 merge）
+      - main  # Only pushes to the main branch trigger this (including merges)
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    # 只有指定仓库才触发
+    # Only run for the specified repository
     if: github.repository == 'Keco-Studio/keco-studio'
     steps:
-      - name: 检出代码
+      - name: Checkout code
         uses: actions/checkout@v4
-        # GitHub 会自动使用 merge commit 来测试 PR，模拟 merge 后的状态
+        # GitHub automatically tests PRs using the merge commit, simulating the post-merge state
         with:
           fetch-depth: 0
 
-      - name: 设置 Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
 
-      - name: 安装依赖
+      - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: 安装 Supabase CLI
+      - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
           version: 2.90.0
 
-      - name: 启动 Supabase 本地服务
+      - name: Start local Supabase services
         run: |
-          # 启动 Supabase 服务（后台运行）
+          # Start Supabase services (runs in the background)
           supabase start --ignore-health-check
-          # 等待服务就绪（最多等待 90 秒）
-          echo "等待 Supabase 服务启动..."
+          # Wait for services to be ready (up to 90 seconds)
+          echo "Waiting for Supabase services to start..."
           for i in {1..90}; do
             if curl -s http://127.0.0.1:54321/rest/v1/ > /dev/null 2>&1; then
-              echo "Supabase 服务已就绪"
+              echo "Supabase services are ready"
               break
             fi
-            echo "等待中... ($i/90)"
+            echo "Waiting... ($i/90)"
             sleep 1
           done
         env:
@@ -54,25 +54,25 @@ jobs:
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
 
-      - name: 重置数据库
+      - name: Reset database
         run: |
-          # 重试机制：数据库 reset 可能因容器重启问题失败
+          # Retry mechanism: database reset may fail due to container restart issues
           for attempt in 1 2 3; do
-            echo "尝试重置数据库 (第 $attempt 次)..."
+            echo "Attempting database reset (attempt $attempt)..."
             if supabase db reset; then
-              echo "数据库重置成功"
+              echo "Database reset succeeded"
               exit 0
             fi
-            echo "数据库重置失败，等待后重试..."
+            echo "Database reset failed, waiting before retry..."
             sleep 5
           done
-          echo "数据库重置最终失败"
+          echo "Database reset failed after all retries"
           exit 1
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-        # 增加超时时间（默认 1 小时）
+        # Increase the timeout (default is 1 hour)
         timeout-minutes: 90
 
       - name: Lint project
@@ -112,20 +112,20 @@ jobs:
           RLS_DB_TESTS: '1'
         run: npm run test:unit
 
-      - name: 构建项目
+      - name: Build project
         env:
-          # 从 GitHub Secrets 读取 Supabase 环境变量
-          # 这些变量在构建时是必需的，因为代码在模块加载时就会检查
+          # Read Supabase environment variables from GitHub Secrets
+          # These are required at build time because the code checks them at module load
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-          # SUPABASE_SERVICE_ROLE_KEY 在某些 API 路由中可能需要
+          # SUPABASE_SERVICE_ROLE_KEY may be needed by some API routes
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: npm run build
 
-      - name: 停止 Supabase 服务
+      - name: Stop Supabase services
         if: always()
         run: supabase stop
         continue-on-error: true
 
-      - name: 构建成功 ✅
-        run: echo "构建检查通过！可以安全合并到 main"
+      - name: Build succeeded ✅
+        run: echo "Build checks passed! Safe to merge into main"

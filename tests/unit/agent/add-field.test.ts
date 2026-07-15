@@ -13,19 +13,13 @@ describe('normalizeFieldDataType', () => {
   it('maps common aliases', () => {
     expect(normalizeFieldDataType('integer')).toBe('int');
     expect(normalizeFieldDataType('Integer')).toBe('int');
-    expect(normalizeFieldDataType('文本')).toBe('string');
-    expect(normalizeFieldDataType('整数')).toBe('int');
+    expect(normalizeFieldDataType('text')).toBe('string');
+    expect(normalizeFieldDataType('number')).toBe('int');
   });
 
   it('accepts image and file canonical types', () => {
     expect(normalizeFieldDataType('image')).toBe('image');
     expect(normalizeFieldDataType('file')).toBe('file');
-  });
-
-  it('maps Chinese media aliases', () => {
-    expect(normalizeFieldDataType('图片')).toBe('image');
-    expect(normalizeFieldDataType('图像')).toBe('image');
-    expect(normalizeFieldDataType('文件')).toBe('file');
   });
 
   it('returns null for unsupported types', () => {

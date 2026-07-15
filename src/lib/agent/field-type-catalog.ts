@@ -40,7 +40,7 @@ export interface FieldTypeSpec {
   whenToUse: string;
   /** A short concrete example. */
   example: string;
-  /** Accepted aliases (incl. Chinese) that normalize to this type. */
+  /** Accepted aliases that normalize to this type. */
   aliases?: string[];
 }
 
@@ -52,7 +52,7 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     valueFormat: 'A string.',
     whenToUse: 'Names, descriptions, or any free-form text.',
     example: '"Alice"',
-    aliases: ['text', 'str', '文本', '字符串'],
+    aliases: ['text', 'str'],
   },
   {
     dataType: 'string_array',
@@ -61,7 +61,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     valueFormat: 'An array of strings.',
     whenToUse: 'Tags, aliases, or other multi-valued text.',
     example: '["fire", "ice"]',
-    aliases: ['文本数组', '字符串数组'],
   },
   {
     dataType: 'int',
@@ -70,7 +69,7 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     valueFormat: 'An integer.',
     whenToUse: 'Counts, levels, or id-like numbers.',
     example: '42',
-    aliases: ['integer', 'number', 'num', '整数', '整型'],
+    aliases: ['integer', 'number', 'num'],
   },
   {
     dataType: 'int_array',
@@ -79,7 +78,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     valueFormat: 'An array of integers.',
     whenToUse: 'Multiple integer values (e.g. a sequence of levels).',
     example: '[1, 2, 3]',
-    aliases: ['整数数组'],
   },
   {
     dataType: 'float',
@@ -88,7 +86,7 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     valueFormat: 'A number (may have decimals).',
     whenToUse: 'Prices, probabilities, or coefficients.',
     example: '0.75',
-    aliases: ['double', '浮点', '小数'],
+    aliases: ['double'],
   },
   {
     dataType: 'float_array',
@@ -97,7 +95,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     valueFormat: 'An array of numbers.',
     whenToUse: 'Multiple decimal values.',
     example: '[0.1, 0.5, 0.9]',
-    aliases: ['浮点数组', '小数数组'],
   },
   {
     dataType: 'boolean',
@@ -106,7 +103,7 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     valueFormat: 'true or false.',
     whenToUse: 'On/off flags such as "enabled".',
     example: 'true',
-    aliases: ['bool', '布尔'],
+    aliases: ['bool'],
   },
   {
     dataType: 'enum',
@@ -116,7 +113,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     requiredConfig: ['enumOptions'],
     whenToUse: 'Fixed option sets such as type or rarity.',
     example: '"rare" (enumOptions: ["common", "rare", "legendary"])',
-    aliases: ['枚举'],
   },
   {
     dataType: 'date',
@@ -125,7 +121,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     valueFormat: 'A date string (e.g. "2026-06-15").',
     whenToUse: 'Timestamps or version dates.',
     example: '"2026-06-15"',
-    aliases: ['日期'],
   },
   {
     dataType: 'reference',
@@ -135,7 +130,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     requiredConfig: ['referenceLibraries'],
     whenToUse: 'Relate one table to another (e.g. character -> faction) instead of flattening the relation into a string.',
     example: '[{ "assetId": "...", "fieldId": "..." }]',
-    aliases: ['引用'],
   },
   {
     dataType: 'formula',
@@ -145,7 +139,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     requiredConfig: ['formulaExpression'],
     whenToUse: 'Derived values such as total = price * quantity.',
     example: 'formulaExpression: "price * quantity"',
-    aliases: ['公式'],
   },
   {
     dataType: 'image',
@@ -155,7 +148,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     isMedia: true,
     whenToUse: 'Portraits, avatars, or icons.',
     example: '(empty — user uploads later)',
-    aliases: ['图片', '图像'],
   },
   {
     dataType: 'file',
@@ -165,7 +157,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     isMedia: true,
     whenToUse: 'Attachments or resource files.',
     example: '(empty — user uploads later)',
-    aliases: ['文件', '附件'],
   },
   {
     dataType: 'multimedia',
@@ -175,7 +166,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     isMedia: true,
     whenToUse: 'Mixed image/video media.',
     example: '(empty — user uploads later)',
-    aliases: ['多媒体'],
   },
   {
     dataType: 'audio',
@@ -185,7 +175,6 @@ export const FIELD_TYPE_CATALOG: FieldTypeSpec[] = [
     isMedia: true,
     whenToUse: 'Voice-overs or sound effects.',
     example: '(empty — user uploads later)',
-    aliases: ['音频', '配音'],
   },
 ];
 

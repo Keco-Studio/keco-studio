@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-18
 **Status:** Draft
-**Scope:** 让 Agent 在写入表格数据时"自己想得对、填得全"——把目标表的结构契约（列 / 必填 / enum 合法值 / 引用目标 / 值格式）提升为模型的一等输入，并用强校验把错误变成可读、可自我纠正的反馈。
+**Scope:** Enable the Agent to "think correctly and fill completely on its own" when writing table data — elevate the target table's structural contract (columns / required / legal enum values / reference targets / value format) into a first-class input for the model, and use strict validation to turn errors into readable, self-correctable feedback.
 **Related:** [2026-06-15-design-document-to-tables-design.md](./2026-06-15-design-document-to-tables-design.md), [2026-06-17-agent-auto-execute-design.md](./2026-06-17-agent-auto-execute-design.md), [2026-06-10-keco-studio-agent-design.md](./2026-06-10-keco-studio-agent-design.md)
 
 ---
@@ -11,18 +11,18 @@
 
 ### 1.1 Problem
 
-用户上传策划文档让 Agent 自动建表 + 填数据时，反复出现"看起来在填、实际漏 / 错"的问题：
+When users upload design documents for the Agent to automatically create tables and fill in data, a recurring problem is "it looks like it's filling, but actually misses / gets it wrong":
 
-- 写入工具返回 `success`，但单元格为空（模型发了 `propertyValues: {}`）。
-- enum 列写入自造值（如 `充值货币`，而合法值只有 `付费货币`），UI 显示空白。
-- 主标签列（`规则名称` / `道具名称` 等）没填，行有数据但第一列空白，看起来像"没建成"。
-- `string_array` 被包成 `[["a","b"]]`、值被包成 `{"item": ...}`。
+- The write tool returns `success`, but cells are empty (the model sent `propertyValues: {}`).
+- Enum columns get fabricated values written (e.g. `Recharge Currency`, while the legal values only include `Paid Currency`), and the UI shows blanks.
+- The primary label column (`Rule Name` / `Item Name`, etc.) is not filled; the row has data but the first column is blank, making it look like "creation failed".
+- `string_array` gets wrapped as `[["a","b"]]`, values get wrapped as `{"item": ...}`.
 
-这些已通过事后护栏（`isExplicitEmptyPropertyValues`、`validateEnumPropertyValues`、`flattenArrayCellValue`、`findPrimaryLabelField`）逐个兜住，但属于"写错了再纠正"，治标不治本。
+These have been patched one by one via after-the-fact guardrails (`isExplicitEmptyPropertyValues`, `validateEnumPropertyValues`, `flattenArrayCellValue`, `findPrimaryLabelField`), but this is "correct after the mistake" — treating symptoms, not the cause.
 
 ### 1.2 Root Cause
 
-**写入工具对模型是"盲写"。** 现状下 `create_asset` / `update_asset` / `update_row` 的 `propertyValues` 是完全自由的 `Record<string, unknown>`，其 tool schema 只说"按字段名写值"，**不包含目标表的任何契约**：
+**The write tools are a "blind write" for the model.** Currently the `propertyValues` of `create_asset` / `update_asset` / `update_row` is a completely free-form `Record<string, unknown>`, and its tool schema only says "write values by field name" — **it contains none of the target table's contract**:
 
 ```12:18:src/lib/agent/field-resolver.ts
 export interface FieldResolution {
@@ -35,116 +35,116 @@ export interface FieldResolution {
 }
 ```
 
-模型只能依赖"记忆"——它在 `setup_library` 时定义过字段，或调过 `list_field_types`（那只是**全局类型目录**，不是**这张具体表的契约**）。长对话冲刷上下文后，它就忘列、漏必填、猜 enum。
+The model can only rely on "memory" — it defined the fields during `setup_library`, or called `list_field_types` (which is only a **global type catalog**, not **the contract of this specific table**). After long conversations flush the context, it forgets columns, misses required fields, and guesses enums.
 
-**缺口归纳：**
+**Gap summary:**
 
-| 缺口 | 现状 | 影响 |
+| Gap | Current state | Impact |
 |------|------|------|
-| 没有 per-library schema 工具 | 只有全局 `list_field_types` | 模型不知道"这张表"有哪些列、哪个必填、enum 选什么 |
-| 写入工具 schema 无契约 | `propertyValues` 是自由 object | 模型靠记忆，长上下文后失准 |
-| 校验是事后兜底 | empty/enum/array/name 都在写时拦截 | 错误反馈不结构化，模型难一次纠正到位 |
-| 自由 JSON 结构脆弱 | MiniMax-M3 易产出 `{}` / 嵌套数组 / `{item}` | 需要逐个 normalize |
+| No per-library schema tool | Only the global `list_field_types` | The model doesn't know which columns "this table" has, which are required, or which enum to pick |
+| Write tool schema carries no contract | `propertyValues` is a free-form object | The model relies on memory, drifting after long contexts |
+| Validation is after-the-fact backstop | empty/enum/array/name are all intercepted at write time | Error feedback is unstructured; hard for the model to correct in one shot |
+| Free-form JSON structure is fragile | MiniMax-M3 easily produces `{}` / nested arrays / `{item}` | Each case needs individual normalization |
 
 ### 1.3 Decision
 
-**把"表结构契约"做成 Agent 写数据前的标准输入，并把校验从"事后兜底"升级为"事前引导 + 结构化纠错闭环"。**
+**Make the "table structure contract" a standard input before the Agent writes data, and upgrade validation from "after-the-fact backstop" to "up-front guidance + structured self-correction loop".**
 
-采用**分阶段**推进：
+Proceed in **phases**:
 
-- **Phase 1（渐进增强 / 短期止血）**：在不动现有工具签名的前提下，新增 `get_library_schema` 读工具、把零散护栏收敛成统一的"schema 校验层"并返回结构化纠错信息、`setup_library` 成功后回传"填表备忘"、收敛 prompt。
-- **Phase 2（工具重构 / 长期方向）**：从结构上减少模型出错空间——按当前活动库**动态生成写入工具的 JSON Schema**（`propertyValues` 精确列出字段 + enum 约束），可选引入分步原子写入工具。
+- **Phase 1 (incremental enhancement / short-term stopgap)**: Without touching existing tool signatures, add a `get_library_schema` read tool, consolidate the scattered guardrails into a unified "schema validation layer" that returns structured correction info, return a "fill-in memo" after `setup_library` succeeds, and tighten the prompt.
+- **Phase 2 (tool refactor / long-term direction)**: Structurally reduce the model's error space — **dynamically generate the write tools' JSON Schema** based on the currently active library (`propertyValues` precisely lists fields + enum constraints), optionally introducing step-by-step atomic write tools.
 
-校验严格度：**Strict（强校验）**——缺必填、enum 非法、引用非法一律报错并告诉模型"缺/错在哪、该怎么填"，逼模型补全，而不是静默成功。
+Validation strictness: **Strict** — missing required, illegal enum, and illegal reference all raise errors telling the model "what's missing/wrong and how to fill it", forcing the model to complete the data rather than silently succeeding.
 
 ### 1.4 Goals
 
-| 目标 | 说明 |
+| Goal | Description |
 |------|------|
-| **G1** | 模型写一张表前，能用一次工具调用拿到该表完整契约（列 / dataType / required / enumOptions / referenceLibraries / valueFormat / 主标签列 / 当前行数） |
-| **G2** | 写入校验为 Strict：缺必填 / enum 非法 / 引用非法 → 结构化错误，包含"缺哪些 + 每个字段合法格式" |
-| **G3** | 校验失败的错误信息可被模型直接消费并在下一轮自我纠正（self-correction loop），无需用户介入 |
-| **G4** | `setup_library` 成功后，结果里附带该表"填一行的范例 propertyValues"，减少"建完就忘" |
-| **G5** | 现有事后护栏（empty/enum/array/name）整合进统一校验层，行为不回退 |
-| **G6** | Phase 2 提供从结构上防错的路径（动态 schema / 原子工具），但与 Phase 1 解耦、可独立评估 |
+| **G1** | Before writing to a table, the model can obtain the table's complete contract with one tool call (columns / dataType / required / enumOptions / referenceLibraries / valueFormat / primary label column / current row count) |
+| **G2** | Write validation is Strict: missing required / illegal enum / illegal reference → structured error containing "what's missing + legal format for each field" |
+| **G3** | Validation failure messages can be directly consumed by the model to self-correct in the next turn (self-correction loop), with no user intervention |
+| **G4** | After `setup_library` succeeds, the result includes an "example propertyValues for filling one row" of that table, reducing "forget right after creating" |
+| **G5** | Existing after-the-fact guardrails (empty/enum/array/name) are consolidated into the unified validation layer with no behavioral regression |
+| **G6** | Phase 2 provides a structurally error-proof path (dynamic schema / atomic tools), but is decoupled from Phase 1 and can be evaluated independently |
 
 ### 1.5 Non-Goals
 
-- 不替模型决定"该建哪些表、填什么业务内容"——业务推理仍由 LLM 完成（这正是"自己想"的部分，不写死）。
-- Phase 1 不改 `create_asset` / `update_asset` / `update_row` 的对外参数签名。
-- 不引入新的 LLM provider 或微调（属于另一条优化线）。
-- 不做数据回滚 / 版本化（见 auto-execute spec 的 F5 心智）。
+- Do not decide for the model "which tables to create or what business content to fill" — business reasoning remains with the LLM (this is precisely the "think for itself" part; not hard-coded).
+- Phase 1 does not change the external parameter signatures of `create_asset` / `update_asset` / `update_row`.
+- No new LLM provider or fine-tuning (that belongs to a separate optimization track).
+- No data rollback / versioning (see the F5 mindset in the auto-execute spec).
 
 ---
 
 ## 2. Core Idea — Contract Before Write
 
 ```
-现状（盲写）:
-  LLM ──记忆里的字段?── create_asset({任意字段: 任意值}) ──→ 静默成功/事后兜底
+Current state (blind write):
+  LLM ──fields from memory?── create_asset({any field: any value}) ──→ silent success / after-the-fact backstop
 
-目标（契约驱动 + 自纠错）:
-  LLM ──get_library_schema──→ 拿到该表完整契约
-      ──create_asset(按契约填)──→ schema 校验
-          ├─ 通过 → 写入
-          └─ 不通过 → 结构化错误(缺X必填/enum非法/格式错 + 各字段合法格式)
-                     ──→ LLM 下一轮自我纠正 ──→ 再写
+Target (contract-driven + self-correction):
+  LLM ──get_library_schema──→ obtain the table's complete contract
+      ──create_asset(fill per contract)──→ schema validation
+          ├─ pass → write
+          └─ fail → structured error (missing required X / illegal enum / bad format + legal format per field)
+                     ──→ LLM self-corrects next turn ──→ write again
 ```
 
-关键转变：**让"表结构"在对话里随时可查、写入时强制对齐**，模型的"想"聚焦在业务内容，而"格式 / 契约"由系统保证可见、可纠正。
+Key shift: **make the "table structure" queryable at any time in the conversation and enforce alignment at write time**; the model's "thinking" focuses on business content, while "format / contract" is guaranteed visible and correctable by the system.
 
 ---
 
 ## 3. Phase 1 — Incremental (Short-Term)
 
-### 3.1 T1：新增 `get_library_schema` 读工具
+### 3.1 T1: Add the `get_library_schema` read tool
 
-**目的**：给模型一个"这张具体表的契约"入口，弥补 `list_field_types`（全局）与 `query_assets`（数据，仅返回 `columns` 名称）之间的空白。
+**Purpose**: Give the model an entry point to "the contract of this specific table", filling the gap between `list_field_types` (global) and `query_assets` (data; only returns `columns` names).
 
-**位置**：`src/lib/agent/workflows/get-library-schema.ts`（read 工具，免确认，参照 `list-field-types.ts` 结构）。
+**Location**: `src/lib/agent/workflows/get-library-schema.ts` (read tool, no confirmation required, modeled on the structure of `list-field-types.ts`).
 
-**参数**：
+**Parameters**:
 
 ```typescript
 {
-  libraryName?: string; // 省略则用 ctx.currentLibraryName
+  libraryName?: string; // omit to use ctx.currentLibraryName
 }
 ```
 
-**返回**（基于现有 `getLibraryProperties` + `FIELD_TYPE_CATALOG`）：
+**Returns** (based on existing `getLibraryProperties` + `FIELD_TYPE_CATALOG`):
 
 ```typescript
 {
   libraryId: string;
   libraryName: string;
-  rowCount: number;            // 当前非空行数（提示 create_asset 会复用空行）
-  primaryLabelField: string;   // findPrimaryLabelField 结果（名称/规则名称/...）
+  rowCount: number;            // current non-empty row count (hints that create_asset will reuse empty rows)
+  primaryLabelField: string;   // result of findPrimaryLabelField (Name/Rule Name/...)
   fields: Array<{
-    label: string;             // 语义字段名（写 propertyValues 用这个 key）
+    label: string;             // semantic field name (use this key when writing propertyValues)
     dataType: FieldDataType;
     required: boolean;
-    valueFormat: string;       // 来自 FIELD_TYPE_CATALOG[dataType].valueFormat
-    enumOptions?: string[];    // enum 列：合法值（模型必须从中选）
-    referenceLibraries?: string[]; // reference 列：可引用的目标表
-    isMedia?: boolean;         // 媒体列：建议留空待用户上传
+    valueFormat: string;       // from FIELD_TYPE_CATALOG[dataType].valueFormat
+    enumOptions?: string[];    // enum columns: legal values (the model must choose from these)
+    referenceLibraries?: string[]; // reference columns: referenceable target tables
+    isMedia?: boolean;         // media columns: recommended to leave empty for user upload
   }>;
-  writeExample: Record<string, unknown>; // 用真实字段拼的"填一行范例 propertyValues"
+  writeExample: Record<string, unknown>; // an "example propertyValues for one row" assembled from real fields
 }
 ```
 
-**说明**：
-- `required` 需从 `library_field_definitions.required` 读出——`getLibraryProperties` 现未透出该字段，需在 `FieldDefinitionRow` / `PropertyConfig` 上补 `required`（见 §6）。
-- `writeExample` 由各字段 `dataType` 的 `example` 推导，给模型一个"长这样"的锚点，降低 `{}` / 嵌套数组概率。
-- 注册进 `src/lib/agent/tools/index.ts` 的工具表。
+**Notes**:
+- `required` must be read from `library_field_definitions.required` — `getLibraryProperties` does not currently expose that field; `required` needs to be added on `FieldDefinitionRow` / `PropertyConfig` (see §6).
+- `writeExample` is derived from each field's `dataType` `example`, giving the model a "this is what it looks like" anchor, lowering the probability of `{}` / nested arrays.
+- Register it in the tool table of `src/lib/agent/tools/index.ts`.
 
-### 3.2 T2：统一 Schema 校验层（Strict）
+### 3.2 T2: Unified schema validation layer (Strict)
 
-把现有分散在 `field-resolver.ts` / `property-value-validation.ts` 的检查收敛为一个入口，并**新增 required 校验**与**结构化错误**。
+Consolidate the checks currently scattered across `field-resolver.ts` / `property-value-validation.ts` into a single entry point, and **add required validation** plus **structured errors**.
 
-**位置**：扩展 `src/lib/agent/property-value-validation.ts` 的 `prepareAgentPropertyValues`：
+**Location**: extend `prepareAgentPropertyValues` in `src/lib/agent/property-value-validation.ts`:
 
 ```typescript
-// 现有
+// Existing
 export function prepareAgentPropertyValues(
   resolved: Record<string, unknown>,
   properties: PropertyConfig[],
@@ -152,134 +152,134 @@ export function prepareAgentPropertyValues(
 ): { values: Record<string, unknown> } | { error: string }
 ```
 
-**升级为**（管线顺序固定）：
+**Upgraded to** (pipeline order is fixed):
 
-1. `mergeAssetNameIntoPropertyValues`（已有）— name → 主标签列
-2. `flattenArrayValuesInMap`（已有）— 拆 `[[...]]`
-3. `normalizeLlmPropertyValues`（已在 resolver 入口）— 拆 `{item}`
-4. **`validateRequiredPropertyValues`（新增）** — 缺必填 → 结构化错误
-5. `validateEnumPropertyValues`（已有）— enum 非法 → 结构化错误
-6. （reference 由现有 `validateReferencePropertyValues` 负责，保持）
+1. `mergeAssetNameIntoPropertyValues` (existing) — name → primary label column
+2. `flattenArrayValuesInMap` (existing) — unwrap `[[...]]`
+3. `normalizeLlmPropertyValues` (already at the resolver entry) — unwrap `{item}`
+4. **`validateRequiredPropertyValues` (new)** — missing required → structured error
+5. `validateEnumPropertyValues` (existing) — illegal enum → structured error
+6. (references remain handled by the existing `validateReferencePropertyValues`)
 
-**Strict 规则**：
-- **create_asset**：必填列缺失即报错（创建必须满足 required）。
-- **update_asset / update_row**：只校验"本次提交的字段"里的 enum/格式；**不**强制补齐未提交的必填（局部更新允许只改一列）。required 校验仅在 create 路径开启。
-- enum 非法、reference 非法：create / update 均报错。
+**Strict rules**:
+- **create_asset**: missing required columns is an error (creation must satisfy required).
+- **update_asset / update_row**: only validate enum/format among "fields submitted this time"; do **not** force completion of unsubmitted required fields (partial updates may change a single column). Required validation is enabled only on the create path.
+- Illegal enum, illegal reference: error on both create and update.
 
-> 取舍：update 路径不强制 required，避免"改一个字段却被要求填满整行"的反直觉行为；create 路径强制 required，保证新行不残缺。
+> Trade-off: the update path does not enforce required, avoiding the counterintuitive behavior of "changing one field but being asked to fill the whole row"; the create path enforces required to guarantee new rows are not incomplete.
 
-### 3.3 T3：结构化纠错信息（Self-Correction Loop）
+### 3.3 T3: Structured correction messages (Self-Correction Loop)
 
-校验失败时返回的 `error` 必须**可机读、信息自足**，让模型一轮就能纠正。统一格式：
+The `error` returned on validation failure must be **machine-readable and self-contained**, so the model can correct in one turn. Unified format:
 
 ```
-WRITE_VALIDATION_FAILED: <一句话原因>.
-Missing required: 规则名称, 折扣力度.
-Invalid enum: 货币类型="充值货币" (allowed: 免费货币, 半免费货币, 付费货币, 玩法积分).
-Field formats: 规则名称=string; 折扣力度=number; 适用专区=reference([{assetId,fieldId}] from query_assets).
+WRITE_VALIDATION_FAILED: <one-sentence reason>.
+Missing required: Rule Name, Discount Strength.
+Invalid enum: Currency Type="Recharge Currency" (allowed: Free Currency, Semi-Free Currency, Paid Currency, Gameplay Points).
+Field formats: Rule Name=string; Discount Strength=number; Applicable Zone=reference([{assetId,fieldId}] from query_assets).
 Re-issue the call with corrected propertyValues.
 ```
 
-要点：
-- 一次列全所有问题（不要只报第一个），减少往返轮数。
-- 附"该表字段格式速查"，等价于把 §3.1 的契约摘要内联进错误，模型不必再调 `get_library_schema`。
-- 这条信息进入 tool result，按现有 ReAct loop 回喂给 LLM（`core.ts` 已有把 `{ success:false, error }` 作为 tool 消息回喂的机制）。
+Key points:
+- List all problems at once (don't report only the first), reducing round trips.
+- Include a "field format quick reference for this table", equivalent to inlining the §3.1 contract summary into the error, so the model need not call `get_library_schema` again.
+- This message goes into the tool result and is fed back to the LLM via the existing ReAct loop (`core.ts` already has a mechanism to feed `{ success:false, error }` back as a tool message).
 
-### 3.4 T4：`setup_library` 回传"填表备忘"
+### 3.4 T4: `setup_library` returns a "fill-in memo"
 
-`setup_library` 成功后，在其 tool result 的 `data` 里追加 `writeGuide`：该表字段契约 + `writeExample`（同 §3.1）。这样模型**建完表的同一上下文里**立刻拿到"怎么填"，无需额外 `get_library_schema`，直接缓解"建完就忘 → 发空 `{}`"。
+After `setup_library` succeeds, append `writeGuide` to the `data` of its tool result: the table's field contract + `writeExample` (same as §3.1). This way the model gets "how to fill" **within the same context right after creating the table**, without an extra `get_library_schema`, directly mitigating "forget after creating → send empty `{}`".
 
-**位置**：`src/lib/agent/workflows/setup-library.ts` 的 `executeImport` 返回值。
+**Location**: the return value of `executeImport` in `src/lib/agent/workflows/setup-library.ts`.
 
-### 3.5 T5：Prompt 收敛
+### 3.5 T5: Prompt tightening
 
-`src/lib/agent/prompts.ts`：
+`src/lib/agent/prompts.ts`:
 
-- 新增规则：**"填某张表数据前，若该表不是刚由 setup_library 创建，先调 get_library_schema 获取列 / 必填 / enum 合法值，再写。"**
-- 强化：enum 值必须精确取自 enumOptions；create 必须满足必填列；`name` 会自动同步主标签列。
-- 继续清理任何会诱导空 `{}` 的冗长 `propertyValues = {...}` JSON 范例（延续本周已做的收敛）。
+- Add rule: **"Before filling data into a table, if the table was not just created by setup_library, first call get_library_schema to obtain the columns / required fields / legal enum values, then write."**
+- Reinforce: enum values must be taken exactly from enumOptions; create must satisfy required columns; `name` is automatically synced to the primary label column.
+- Continue removing any verbose `propertyValues = {...}` JSON examples that could induce empty `{}` (continuing this week's cleanup).
 
-### 3.6 Phase 1 受影响文件
+### 3.6 Phase 1 affected files
 
-| 文件 | 改动 |
+| File | Change |
 |------|------|
-| `src/lib/agent/workflows/get-library-schema.ts` | **新增** read 工具 |
-| `src/lib/agent/tools/index.ts` | 注册新工具 |
-| `src/lib/agent/data-access.ts` | `PropertyConfig` / `FieldDefinitionRow` 透出 `required` |
-| `src/lib/types/libraryAssets.ts` | `PropertyConfig` 增 `required?: boolean` |
-| `src/lib/agent/property-value-validation.ts` | 新增 `validateRequiredPropertyValues` + 结构化错误；扩展 `prepareAgentPropertyValues` |
-| `src/lib/agent/tools/create-asset.ts` | 走统一校验（create：required 开启） |
-| `src/lib/agent/tools/update-asset.ts` | 走统一校验（update：required 关闭） |
-| `src/lib/agent/workflows/update-row.ts` | 同上 |
-| `src/lib/agent/workflows/setup-library.ts` | 结果附 `writeGuide` |
-| `src/lib/agent/prompts.ts` | 新增/收敛规则 |
+| `src/lib/agent/workflows/get-library-schema.ts` | **New** read tool |
+| `src/lib/agent/tools/index.ts` | Register the new tool |
+| `src/lib/agent/data-access.ts` | `PropertyConfig` / `FieldDefinitionRow` expose `required` |
+| `src/lib/types/libraryAssets.ts` | `PropertyConfig` gains `required?: boolean` |
+| `src/lib/agent/property-value-validation.ts` | New `validateRequiredPropertyValues` + structured errors; extend `prepareAgentPropertyValues` |
+| `src/lib/agent/tools/create-asset.ts` | Use unified validation (create: required enabled) |
+| `src/lib/agent/tools/update-asset.ts` | Use unified validation (update: required disabled) |
+| `src/lib/agent/workflows/update-row.ts` | Same as above |
+| `src/lib/agent/workflows/setup-library.ts` | Result includes `writeGuide` |
+| `src/lib/agent/prompts.ts` | Add / tighten rules |
 
 ---
 
 ## 4. Phase 2 — Structural (Long-Term)
 
-目标：**从工具结构上消除"模型能填错"的空间**，而非靠校验回弹。两条可选路径（可二选一或组合）：
+Goal: **structurally eliminate the space where "the model can fill things in wrong"**, rather than relying on validation bounce-back. Two optional paths (choose one or combine):
 
-### 4.1 Option A：动态 Schema 注入（推荐长期）
+### 4.1 Option A: Dynamic schema injection (recommended long-term)
 
-按当前活动库，在每次请求时**动态生成写入工具的 JSON Schema**——把 `propertyValues` 从自由 object 变为精确列出该表字段的 object，enum 列用 JSON Schema `enum` 约束，必填列进 `required`。
+For the currently active library, **dynamically generate the write tools' JSON Schema on each request** — turn `propertyValues` from a free-form object into an object that precisely lists the table's fields, with enum columns constrained via JSON Schema `enum` and required columns placed in `required`.
 
 ```
-getToolsForLlm() 现状：静态全局工具表
-        ↓ 改造
-getToolsForLlm(ctx): 当 ctx.currentLibraryId 存在时，
+getToolsForLlm() today: static global tool table
+        ↓ refactor
+getToolsForLlm(ctx): when ctx.currentLibraryId exists,
   create_asset.parameters.properties.propertyValues =
     { type:'object',
-      properties: { "货币类型": {enum:[...]}, "名称": {type:'string'}, ... },
-      required: [必填列] }
+      properties: { "Currency Type": {enum:[...]}, "Name": {type:'string'}, ... },
+      required: [required columns] }
 ```
 
-**收益**：兼容 OpenAI/MiniMax 的 function-call 约束机制，理论上让模型在生成阶段就难产出非法 enum / 漏必填。
-**成本**：`getToolsForLlm` 需要 ctx 与一次 schema 查询；多库操作时只能注入"当前活动库"，跨库写仍需回退到 Phase 1 校验。
-**关联**：`src/lib/agent/tools/index.ts`、`core.ts`（`streamLlm(..., { tools: getToolsForLlm(ctx) })`）。
+**Benefit**: compatible with OpenAI/MiniMax function-call constraint mechanisms; in theory makes it hard for the model to produce illegal enums / miss required fields at generation time.
+**Cost**: `getToolsForLlm` needs ctx and a schema query; for multi-library operations only the "currently active library" can be injected, and cross-library writes still fall back to Phase 1 validation.
+**Related**: `src/lib/agent/tools/index.ts`, `core.ts` (`streamLlm(..., { tools: getToolsForLlm(ctx) })`).
 
-### 4.2 Option B：分步原子写入工具
+### 4.2 Option B: Step-by-step atomic write tools
 
-新增更原子的工具，降低单次 tool call 的 JSON 复杂度：
+Add more atomic tools to reduce the JSON complexity of a single tool call:
 
-- `create_row({ libraryName, name })` — 只建行 + 主标签列。
-- `set_cell({ libraryName, rowIndex, field, value })` — 一次写一格，参数极简，模型几乎无法发"空对象"。
-- 保留 `create_asset` / `update_row` 的批量 `propertyValues` 作为"快捷路径"。
+- `create_row({ libraryName, name })` — only creates the row + primary label column.
+- `set_cell({ libraryName, rowIndex, field, value })` — writes one cell at a time; parameters are minimal, so the model can hardly send an "empty object".
+- Keep the bulk `propertyValues` of `create_asset` / `update_row` as a "fast path".
 
-**收益**：结构最简单、最难出错，调试友好。
-**成本**：批量填充时 tool call 次数显著增加（N 行 × M 列），与 auto-execute spec 的"单 SSE 多 tool"配合尚可，但 token / 延迟上升。
+**Benefit**: simplest structure, hardest to get wrong, debugging-friendly.
+**Cost**: bulk filling significantly increases tool call count (N rows × M columns); works acceptably with the "single SSE, multiple tools" of the auto-execute spec, but tokens / latency rise.
 
-### 4.3 Phase 2 取舍建议
+### 4.3 Phase 2 trade-off recommendations
 
-| 维度 | Option A 动态 schema | Option B 原子工具 |
+| Dimension | Option A dynamic schema | Option B atomic tools |
 |------|---------------------|-------------------|
-| 防错力度 | 高（生成阶段约束） | 高（结构极简） |
-| 改造面 | 中（工具生成 + core 传 ctx） | 中（新工具 + prompt 引导） |
-| 批量效率 | 高（仍一次写整行） | 低（格数 = call 数） |
-| 跨库场景 | 退化为 Phase 1 校验 | 天然支持 |
-| 推荐 | **主选**（批量友好） | 备选 / 复杂表补充 |
+| Error prevention strength | High (constraints at generation time) | High (minimal structure) |
+| Refactoring surface | Medium (tool generation + core passing ctx) | Medium (new tools + prompt guidance) |
+| Bulk efficiency | High (still writes a whole row at once) | Low (cell count = call count) |
+| Cross-library scenarios | Degrades to Phase 1 validation | Naturally supported |
+| Recommendation | **Primary choice** (bulk-friendly) | Fallback / supplement for complex tables |
 
-> 建议：Phase 2 先做 Option A；若动态 schema 在 MiniMax 上约束力不足，再用 Option B 兜复杂表。
+> Recommendation: do Option A first in Phase 2; if dynamic schema constraints prove insufficient on MiniMax, use Option B to cover complex tables.
 
 ---
 
 ## 5. Data Structures
 
-### 5.1 `PropertyConfig` 增字段（`src/lib/types/libraryAssets.ts`）
+### 5.1 `PropertyConfig` new field (`src/lib/types/libraryAssets.ts`)
 
 ```typescript
 export type PropertyConfig = {
-  // ...现有字段
-  required?: boolean; // 新增：来自 library_field_definitions.required
+  // ...existing fields
+  required?: boolean; // new: from library_field_definitions.required
 };
 ```
 
-### 5.2 校验结果（`property-value-validation.ts`）
+### 5.2 Validation result (`property-value-validation.ts`)
 
 ```typescript
 type PrepareResult =
   | { values: Record<string, unknown> }
-  | { error: string }; // 结构化 WRITE_VALIDATION_FAILED 文本（§3.3）
+  | { error: string }; // structured WRITE_VALIDATION_FAILED text (§3.3)
 
 interface ValidationContext {
   requireAllRequired: boolean; // create=true, update=false
@@ -290,13 +290,13 @@ interface ValidationContext {
 
 ## 6. Error Feedback Contract (§3.3 normative)
 
-校验错误文本是模型自纠错的唯一依据，约束如下：
+The validation error text is the model's sole basis for self-correction, constrained as follows:
 
-- 必须以 `WRITE_VALIDATION_FAILED:` 前缀开头（便于模型/日志识别）。
-- 必须聚合**所有**问题，分段：`Missing required`、`Invalid enum`、`Invalid format`。
-- enum 错误必须带 `allowed: ...` 完整合法值。
-- 末尾必须给行动指令 `Re-issue the call with corrected propertyValues.`
-- 文本为英文（与现有 tool error 一致；面向 LLM，非终端用户）。
+- Must start with the `WRITE_VALIDATION_FAILED:` prefix (for model/log recognition).
+- Must aggregate **all** problems, in sections: `Missing required`, `Invalid enum`, `Invalid format`.
+- Enum errors must include the complete legal values as `allowed: ...`.
+- Must end with the action instruction `Re-issue the call with corrected propertyValues.`
+- Text is in English (consistent with existing tool errors; aimed at the LLM, not end users).
 
 ---
 
@@ -304,64 +304,64 @@ interface ValidationContext {
 
 ### 7.1 Unit (`tests/unit/agent/`)
 
-| 用例 | 期望 |
+| Case | Expectation |
 |------|------|
-| `get_library_schema` 返回字段含 enumOptions / required / referenceLibraries | 契约完整 |
-| `get_library_schema` `writeExample` 用真实字段拼出 | 非空、键为字段 label |
-| `validateRequiredPropertyValues` create 缺必填 | 返回结构化错误，列出缺失字段 |
-| update 缺必填（未提交该列） | **不**报 required 错（局部更新允许） |
-| enum 非法 | 报错且含 allowed 列表 |
-| 错误文本格式符合 §6 契约 | 前缀 + 分段 + 行动指令 |
-| `setup_library` 结果含 `writeGuide` | 字段契约 + writeExample |
-| 既有护栏（empty/array/name）整合后行为不回退 | 现有测试全绿 |
+| `get_library_schema` returned fields include enumOptions / required / referenceLibraries | Contract is complete |
+| `get_library_schema` `writeExample` assembled from real fields | Non-empty, keys are field labels |
+| `validateRequiredPropertyValues` create missing required | Returns structured error listing missing fields |
+| update missing required (column not submitted) | Does **not** raise a required error (partial updates allowed) |
+| Illegal enum | Errors and includes the allowed list |
+| Error text format conforms to the §6 contract | Prefix + sections + action instruction |
+| `setup_library` result contains `writeGuide` | Field contract + writeExample |
+| Existing guardrails (empty/array/name) after consolidation do not regress | Existing tests all green |
 
-### 7.2 复现回归
+### 7.2 Regression reproduction
 
-用 §1.1 的真实失败场景（货币表 enum 自造值、折扣规则主标签空）构造离线 fixture，断言新校验链能拦截并给出可纠正错误。
+Build offline fixtures from the real failure scenarios in §1.1 (fabricated enum value in the currency table, empty primary label in discount rules), asserting the new validation chain intercepts them and produces correctable errors.
 
 ### 7.3 Manual / E2E
 
-- 上传策划文档 → Agent 建表 → 填数据：抽查 enum 列、主标签列、引用列是否完整、合法。
-- 故意让模型写非法 enum：确认它在下一轮根据错误自纠并写对（self-correction loop 生效）。
+- Upload a design document → Agent creates tables → fills data: spot-check that enum columns, primary label columns, and reference columns are complete and legal.
+- Deliberately make the model write an illegal enum: confirm it self-corrects based on the error in the next turn and writes correctly (self-correction loop works).
 
 ---
 
 ## 8. Implementation Plan
 
-### Phase 1（短期止血，按依赖排序）
+### Phase 1 (short-term stopgap, ordered by dependency)
 
-1. `PropertyConfig.required` 透出（types + data-access）。
-2. `get_library_schema` 工具 + 注册 + 单测。
-3. `validateRequiredPropertyValues` + 结构化错误 + 扩展 `prepareAgentPropertyValues`（create/update 区分）。
-4. 三个写工具接入统一校验层。
-5. `setup_library` 回传 `writeGuide`。
-6. `prompts.ts` 收敛 + 新规则。
-7. 单测 + 真实场景回归。
+1. Expose `PropertyConfig.required` (types + data-access).
+2. `get_library_schema` tool + registration + unit tests.
+3. `validateRequiredPropertyValues` + structured errors + extend `prepareAgentPropertyValues` (create/update distinction).
+4. Wire the three write tools into the unified validation layer.
+5. `setup_library` returns `writeGuide`.
+6. `prompts.ts` tightening + new rules.
+7. Unit tests + real-scenario regression.
 
-### Phase 2（长期，独立评估）
+### Phase 2 (long-term, independently evaluated)
 
-1. `getToolsForLlm(ctx)` 动态 schema（Option A）原型 + MiniMax 约束力验证。
-2. 视效果决定是否引入 `create_row` / `set_cell`（Option B）。
+1. `getToolsForLlm(ctx)` dynamic schema (Option A) prototype + MiniMax constraint strength validation.
+2. Decide based on results whether to introduce `create_row` / `set_cell` (Option B).
 
 ---
 
 ## 9. Open Questions
 
-| # | 问题 | 暂定 |
+| # | Question | Tentative |
 |---|------|------|
-| Q1 | update 路径是否也强制 required？ | **No**：仅 create 强制；update 允许局部 |
-| Q2 | `get_library_schema` 是否合并进 `query_assets`（加 `schemaOnly` 参数）而非独立工具？ | 倾向独立工具（语义清晰、read 免确认）；可在评审定 |
-| Q3 | Phase 2 动态 schema 在 MiniMax-M3 上的 `enum` 约束是否真生效？ | 需原型验证；不达标则退 Option B |
-| Q4 | 跨库批量写时 schema 注入只能覆盖活动库，是否够用？ | Phase 1 校验兜底，可接受 |
-| Q5 | 错误文本英文 vs 中文？ | 英文（面向 LLM，与现有 tool error 一致） |
+| Q1 | Should the update path also enforce required? | **No**: only create enforces it; update allows partial |
+| Q2 | Should `get_library_schema` be merged into `query_assets` (adding a `schemaOnly` parameter) rather than a standalone tool? | Leaning standalone tool (clear semantics, read requires no confirmation); can be decided in review |
+| Q3 | Does the Phase 2 dynamic schema's `enum` constraint actually take effect on MiniMax-M3? | Needs prototype validation; fall back to Option B if inadequate |
+| Q4 | For cross-library bulk writes, schema injection only covers the active library — is that enough? | Phase 1 validation as backstop; acceptable |
+| Q5 | Error text in English vs Chinese? | English (aimed at the LLM, consistent with existing tool errors) |
 
 ---
 
 ## 10. Success Criteria
 
-- [ ] 模型可用 `get_library_schema` 一次拿到任意表的完整契约（列/必填/enum/引用/格式）。
-- [ ] create 缺必填 / enum 非法 → 结构化错误（非静默成功），且模型能据此在下一轮自纠正。
-- [ ] §1.1 的三类历史失败（空 `{}`、enum 自造、主标签空）在新链路下被拦截或自动补全。
-- [ ] `setup_library` 后模型无需"猜"即可正确填首行数据。
-- [ ] 现有单测与护栏行为不回退；新增校验有单测覆盖。
-- [ ] Phase 2 路径有原型结论（动态 schema 是否足够），形成是否落地的决策记录。
+- [ ] The model can use `get_library_schema` to obtain any table's complete contract in one call (columns/required/enum/references/format).
+- [ ] create missing required / illegal enum → structured error (not silent success), and the model can self-correct in the next turn based on it.
+- [ ] The three classes of historical failures in §1.1 (empty `{}`, fabricated enum, empty primary label) are intercepted or auto-completed under the new pipeline.
+- [ ] After `setup_library`, the model can correctly fill the first row of data without "guessing".
+- [ ] Existing unit tests and guardrail behavior do not regress; new validation has unit test coverage.
+- [ ] The Phase 2 path has a prototype conclusion (whether dynamic schema suffices), forming a decision record on whether to ship it.

@@ -83,15 +83,12 @@ export function detectScriptColumns(
 
   const legacyOptions = [0, 1, 2].map((index) => ({
     index,
-    textKey: find([`选项${index}`, `Option${index}`, `option${index}`]),
+    textKey: find([`Option${index}`, `option${index}`]),
     nextKey: find([
-      `选项${index}跳转`,
-      `选项${index}下一步`,
       `Option${index}_Next`,
       `option${index}_next`,
     ]),
     commandsKey: find([
-      `选项${index}命令`,
       `Option${index}_Commands`,
       `option${index}_commands`,
     ]),
@@ -121,11 +118,11 @@ export function detectScriptColumns(
     }));
 
   const scriptColumns: ScriptColumns = {
-    labelKey: find(['这里是跳转的节点', 'Story jump node', 'Label', 'label']),
-    typeKey: find(['类型', 'Type', 'type']),
-    nameKey: find(['说话人', 'Speaker', 'Name', 'name']),
-    contentKey: find(['对话内容', 'Dialogue and options', 'Content', 'content']),
-    commandsKey: find(['命令', 'Commands', 'commands']),
+    labelKey: find(['Story jump node', 'Label', 'label']),
+    typeKey: find(['Type', 'type']),
+    nameKey: find(['Speaker', 'Name', 'name']),
+    contentKey: find(['Dialogue and options', 'Content', 'content']),
+    commandsKey: find(['Commands', 'commands']),
     option0Key: legacyOptions[0].textKey,
     option0NextKey: legacyOptions[0].nextKey,
     option0CommandsKey: legacyOptions[0].commandsKey,

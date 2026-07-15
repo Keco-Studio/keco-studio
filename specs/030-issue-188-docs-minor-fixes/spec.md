@@ -12,8 +12,8 @@ Three small, independent documentation corrections. All verified below.
 ### Investigation findings (verified 2026-07-09)
 
 1. **Wrong command reference:** `.cursor/rules/specify-rules.mdc:30` — Commands section reads `npm test && npm run lint`. `package.json` has **no** `test` script; the unit-test script is `test:unit` (`"test:unit": "jest"`). So `npm test` would fail. Correct reference is `npm run test:unit && npm run lint` (or `npm run validate`, which chains lint+typecheck+test:unit+build).
-2. **Expired review date:** `docs/architecture/README.md:195` — "📅 **下次审查**: 2026-04-30（建议）". Today is 2026-07-09, so the suggested next-review date is past. It should be updated to a future date.
-3. **Incomplete doc index:** `docs/architecture/README.md` "核心文档" index (lines 13-32) lists only three docs: `ARCHITECTURE.md`, `OPTIMIZATION_RECOMMENDATIONS.md`, `FILE_CLEANUP_LIST.md`. It omits the two collaboration docs that exist in the same directory: `COLLABORATION_OVERVIEW.md` and `collaboration-table-unified-design.md` (both confirmed present).
+2. **Expired review date:** `docs/architecture/README.md:195` — "📅 **Next review**: 2026-04-30 (suggested)". Today is 2026-07-09, so the suggested next-review date is past. It should be updated to a future date.
+3. **Incomplete doc index:** `docs/architecture/README.md` "Core Documents" index (lines 13-32) lists only three docs: `ARCHITECTURE.md`, `OPTIMIZATION_RECOMMENDATIONS.md`, `FILE_CLEANUP_LIST.md`. It omits the two collaboration docs that exist in the same directory: `COLLABORATION_OVERVIEW.md` and `collaboration-table-unified-design.md` (both confirmed present).
 
 ## User Scenarios & Testing *(mandatory)*
 

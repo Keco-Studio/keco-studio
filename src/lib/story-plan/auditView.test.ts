@@ -36,20 +36,20 @@ describe('canonical story audit view', () => {
     expect(view.rows[0]).toEqual({
       id: 'Start',
       presentation: 'dialogue_primary',
-      speaker: '光球',
-      content: '你醒了。选一条路。',
+      speaker: 'Orb of Light',
+      content: 'You are awake. Pick a path.',
       sourceUnitIds: ['fixture:0'],
       commands: [],
       nextRowId: '',
       choices: [
         {
-          text: '走左边。',
+          text: 'Take the left path.',
           targetRowId: 'O1',
           sourceUnitIds: ['fixture:1'],
           commands: ['$trust+=1'],
         },
         {
-          text: '走右边。',
+          text: 'Take the right path.',
           targetRowId: 'O2',
           sourceUnitIds: ['fixture:2'],
           commands: ['$trust+=2'],
@@ -71,30 +71,30 @@ describe('canonical story audit view', () => {
     expect(view.paths).toEqual([
       {
         rowIds: ['Start', 'O1', 'O1A_END', 'Oend'],
-        choiceTexts: ['走左边。', '回答“我不知道”。'],
+        choiceTexts: ['Take the left path.', 'Answer "I do not know".'],
         terminalRowId: 'Oend',
         commands: ['$trust+=1', '$trust+=1'],
       },
       {
         rowIds: ['Start', 'O1', 'O1B_END', 'Oend'],
-        choiceTexts: ['走左边。', '不回答直接走。'],
+        choiceTexts: ['Take the left path.', 'Walk on without answering.'],
         terminalRowId: 'Oend',
         commands: ['$trust+=1', '$trust-=1'],
       },
       {
         rowIds: ['Start', 'O2', 'O2A_END', 'Oend'],
-        choiceTexts: ['走右边。', '报真名。'],
+        choiceTexts: ['Take the right path.', 'Give your real name.'],
         terminalRowId: 'Oend',
         commands: ['$trust+=2', '$trust+=2'],
       },
       {
         rowIds: ['Start', 'O2', 'O2B_END', 'Oend'],
-        choiceTexts: ['走右边。', '报假名。'],
+        choiceTexts: ['Take the right path.', 'Give a false name.'],
         terminalRowId: 'Oend',
         commands: ['$trust+=2', '$trust-=2'],
       },
     ]);
-    expect(JSON.stringify(view.paths)).not.toContain('你醒了。选一条路。');
+    expect(JSON.stringify(view.paths)).not.toContain('You are awake. Pick a path.');
     expect(view).not.toHaveProperty('table');
     expect(view).not.toHaveProperty('tablePaths');
   });

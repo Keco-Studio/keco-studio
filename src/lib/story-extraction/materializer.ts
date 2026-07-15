@@ -8,6 +8,8 @@ import type {
   StoryExtractionNode,
 } from './schema';
 
+const CHOICE_TRIGGER_PHRASE = /when\s+(?:this\s+)?(?:choice|option|selection)\s+is\s+(?:selected|made|chosen)/i;
+
 export type StoryExtractionIssueCode =
   | 'unknown_unit'
   | 'duplicate_unit'
@@ -372,9 +374,9 @@ export function normalizeStoryExtraction(
     };
   });
   const explicitRoleOrder = source?.units
-    .map((unit) => unit.text.match(/^(?:人物|角色|characters?)\s*[：:]\s*(.+)$/i)?.[1] ?? '')
+    .map((unit) => unit.text.match(/^(?:characters?|cast)\s*[：:]\s*(.+)$/i)?.[1] ?? '')
     .find(Boolean)
-    ?.split(/[、,，;；/]/)
+    ?.split(/[,;/]/)
     .map((role) => role.replace(/[（(][^）)]*[）)]/g, '').trim())
     .filter(Boolean) ?? [];
   const speakingRoles = explicitRoleOrder.filter((role, index) => (
@@ -501,7 +503,7 @@ export function normalizeStoryExtraction(
         const unitText = source.units.find((unit) => unit.id === unitId)?.text ?? '';
         const duplicatedChoiceTrigger = Boolean(
           unitId
-          && /选择(?:发生)?时(?:让|执行)/.test(unitText)
+          && CHOICE_TRIGGER_PHRASE.test(unitText)
           && choiceTargetsByCommandUnit.get(unitId)?.has(node.id)
         );
         if (duplicatedChoiceTrigger) removedUnits.add(unitId);
@@ -535,7 +537,7 @@ export function normalizeStoryExtraction(
       !node.nextNodeId
       && ownerChoices.length === 1
       && ownerChoices[0].commandSources.length === 0
-      && /^(?:continue|next|继续)$/i.test(ownerChoices[0].text.trim())
+      && /^(?:continue|next)$/i.test(ownerChoices[0].text.trim())
     ) {
       convertedChoiceIds.add(ownerChoices[0].id);
       return { ...node, nextNodeId: ownerChoices[0].targetNodeId };
@@ -652,8 +654,8 @@ function cleanChoiceText(value: string): string {
     .trim()
     .replace(/\$[A-Za-z_]\w*\s*(?:\+=|-=|\*=|\/=|=)\s*-?(?:\d+\.?\d*|\.\d+)/g, '')
     .replace(/^\s*[-*+]\s+/, '')
-    .replace(/^\s*如果(?:你)?选择\s*/, '')
-    .replace(/[\s，,。.!！;；:：]*(?:选择发生时让|选择发生时执行|选择时执行|选择时让)[\s，,。.!！;；:：]*$/i, '')
+    .replace(/^\s*if\s+you\s+choose\s+(?:to\s+)?/i, '')
+    .replace(/[\s,.!;:]*when\s+(?:this\s+)?(?:choice|option|selection)\s+is\s+(?:selected|made|chosen)[\s,.!;:]*(?:run|set|execute)?[\s,.!;:]*$/i, '')
     .trim();
   return cleaned || value;
 }
@@ -674,8 +676,8 @@ function normalizeEvidence(value: string): string {
   return value
     .normalize('NFKC')
     .replace(/\$[A-Za-z_]\w*\s*(?:\+=|-=|\*=|\/=|=)\s*-?(?:\d+\.?\d*|\.\d+)/g, '')
-    .replace(/^\s*(?:[-*+]\s+|\d+[.)、]\s*)/, '')
-    .replace(/[\s“”‘’"'「」『』【】()[\]（）:：,，。.!！?？;；]/g, '')
+    .replace(/^\s*(?:[-*+]\s+|\d+[.)]\s*)/, '')
+    .replace(/[\s“”‘’"'【】()[\]（）:：,.!?;]/g, '')
     .toLowerCase();
 }
 
@@ -692,13 +694,13 @@ function sameValues(
 
 function isClearlyStructuralUnit(value: string): boolean {
   const text = value.trim();
-  return /^(?:最终合流|合流|统一收尾|触发分支选择|这里有(?:两个|三个|四个|\d+个)?选择)\s*[：:]?$/i.test(text)
-    || /^(?:所有|全部|两条|三条|各条|上述|以上|这些)?[^。！？!?]{0,20}(?:路径|分支)[^。！？!?]{0,40}合流[。.!！]?$/.test(text)
-    || /^如果(?:你)?[^。！？!?；;]{1,80}[：:]$/.test(text)
-    || /^[（(]\s*(?:Jump|跳转)\s+[^）)]+[）)]$/i.test(text);
+  return /^(?:final merge|merge|the paths merge|branch choice(?: point)?|choose one(?: of the following)?|there (?:are|is) (?:\d+ )?choices? here)\s*[:：]?$/i.test(text)
+    || /^(?:all|both|every|these|those|the)?[^.!?]{0,30}(?:paths?|branches?)[^.!?]{0,60}(?:merge|converge)[^.!?]{0,30}[.!]?$/i.test(text)
+    || /^if\b[^.!?;]{1,80}[:：]$/i.test(text)
+    || /^[（(]\s*Jump\s+[^）)]+[）)]$/i.test(text);
 }
 
 function isStructuralControlNode(value: string): boolean {
   return isClearlyStructuralUnit(value)
-    || /^如果(?:你)?选择[\s\S]*选择(?:发生)?时(?:让|执行)/.test(value.trim());
+    || /^if\s+you\s+choose[\s\S]*when\s+(?:this\s+)?(?:choice|option|selection)\s+is\s+(?:selected|made|chosen)/i.test(value.trim());
 }

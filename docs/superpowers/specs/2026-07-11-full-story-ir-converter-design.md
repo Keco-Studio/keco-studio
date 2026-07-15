@@ -44,14 +44,14 @@ The Converter returns one strict JSON object:
     {
       "id": "start",
       "type": "dialogue",
-      "speaker": "七号",
-      "content": "我们必须选择一条路线。",
+      "speaker": "Number Seven",
+      "content": "We have to choose a route.",
       "sourceUnitIds": ["source:3"],
       "commandSources": [],
       "nextNodeId": "",
       "choices": [
         {
-          "text": "前往能源舱",
+          "text": "Head to the power bay",
           "targetNodeId": "energy",
           "sourceUnitIds": ["source:5"],
           "commandSources": ["$resolve+=1"]

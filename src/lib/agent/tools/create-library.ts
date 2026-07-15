@@ -91,7 +91,7 @@ export const createLibrary: AgentTool = {
       folderName: {
         type: 'string',
         description:
-          'Folder name to place the library in. Omit to leave it at project root. Chinese: "世界观文件夹" means folder name "世界观", not "世界观文件夹".',
+          'Folder name to place the library in. Omit to leave it at project root.',
       },
       description: { type: 'string', description: 'Optional library description' },
     },

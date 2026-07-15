@@ -142,17 +142,17 @@ executeImport()  MUTATING:
 ```json
 {
   "type": "setup_library",
-  "libraryName": "角色表",
-  "folder": "世界观",
+  "libraryName": "Characters",
+  "folder": "Worldview",
   "sections": {
     "section1": [
       { "label": "ID", "dataType": "string" },
-      { "label": "名字", "dataType": "string" },
-      { "label": "类型", "dataType": "enum", "enumOptions": ["主角", "配角", "NPC"] }
+      { "label": "Name", "dataType": "string" },
+      { "label": "Type", "dataType": "enum", "enumOptions": ["Protagonist", "Supporting", "NPC"] }
     ],
     "stats": [
       { "label": "HP", "dataType": "int" },
-      { "label": "阵营", "dataType": "reference", "referenceLibraries": ["阵营表"] }
+      { "label": "Faction", "dataType": "reference", "referenceLibraries": ["Factions"] }
     ]
   },
   "totalFields": 5

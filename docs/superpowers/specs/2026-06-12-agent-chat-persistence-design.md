@@ -2,27 +2,27 @@
 
 **Date:** 2026-06-12  
 **Status:** Draft  
-**Scope:** ChatPanel 输入草稿持久化、按项目恢复活跃会话、跨项目 History 列表（含项目名）、历史消息完整展示  
+**Scope:** ChatPanel input draft persistence, per-project active conversation restoration, cross-project History list (with project names), full display of historical messages  
 **Related:** [2026-06-10-keco-studio-agent-design.md](./2026-06-10-keco-studio-agent-design.md)
 
 ---
 
 ## 1. Overview
 
-用户在 Dashboard 任意项目内打开右下角 **Keco Assistant**（`ChatPanel`）时，当前实现存在三类体验缺口：
+When a user opens the bottom-right **Keco Assistant** (`ChatPanel`) inside any Dashboard project, the current implementation has three classes of experience gaps:
 
-| 缺口 | 现状 | 目标 |
+| Gap | Current state | Target |
 |------|------|------|
-| 输入草稿 | `ChatInput` 使用组件内 `useState`，切换项目/刷新后丢失 | **全局共享**草稿，跨项目可见，刷新后保留 |
-| 活跃会话 | `useAgentChat` 仅内存态；切换 `projectId` 不切换对话 | **按项目**记住并恢复上次活跃会话及消息列表 |
-| History | `ConversationList` 仅查当前 `projectId` | 列出**用户全部**历史会话，并显示**所属项目名** |
+| Input draft | `ChatInput` uses component-local `useState`; lost on project switch/refresh | **Globally shared** draft, visible across projects, preserved after refresh |
+| Active conversation | `useAgentChat` is in-memory only; switching `projectId` doesn't switch the conversation | Remember and restore the last active conversation and message list **per project** |
+| History | `ConversationList` only queries the current `projectId` | List **all** of the user's historical conversations and show the **owning project name** |
 
-**设计原则：**
+**Design principles:**
 
-- **已发送消息**：DB 为唯一真相源（`agent_conversations` + `agent_messages`），与现有 Agent Core 一致。
-- **未发送草稿**：仅存浏览器 `localStorage`，不进 DB。
-- **会话归属**：每条 conversation 仍绑定创建时的 `project_id`（LLM 上下文与权限不变）；History 只是**展示**时不按当前项目过滤。
-- **最小后端改动**：扩展 list API；消息加载 API 不变。
+- **Sent messages**: the DB is the single source of truth (`agent_conversations` + `agent_messages`), consistent with the existing Agent Core.
+- **Unsent drafts**: stored only in browser `localStorage`, never in the DB.
+- **Conversation ownership**: each conversation stays bound to its creation-time `project_id` (LLM context and permissions unchanged); History merely stops filtering by the current project **for display**.
+- **Minimal backend changes**: extend the list API; the message-loading API is unchanged.
 
 ---
 
@@ -30,7 +30,7 @@
 
 ### 2.1 Database tables
 
-#### `agent_conversations` — 会话元数据
+#### `agent_conversations` — conversation metadata
 
 | Column | Type | Purpose |
 |--------|------|---------|
@@ -42,9 +42,9 @@
 | `created_at` | timestamptz | Created |
 | `updated_at` | timestamptz | Last activity (touched on each message save) |
 
-**History 列表数据源：** 查此表，按 `user_id` 过滤，**不按当前页面的 `project_id` 过滤**。
+**History list data source:** query this table, filtered by `user_id`, **not filtered by the current page's `project_id`**.
 
-#### `agent_messages` — 消息记录
+#### `agent_messages` — message records
 
 | Column | Type | Purpose |
 |--------|------|---------|
@@ -54,9 +54,9 @@
 | `content` | jsonb | Full body: `{ content, tool_calls?, tool_call_id?, name? }` |
 | `created_at` | timestamptz | Sent at |
 
-**History 详情数据源：** 点选会话后，查此表 `WHERE conversation_id = ? ORDER BY created_at ASC`。
+**History detail data source:** after a conversation is selected, query this table `WHERE conversation_id = ? ORDER BY created_at ASC`.
 
-#### `projects` — 项目名（History 展示用）
+#### `projects` — project names (for History display)
 
 | Column | Used for |
 |--------|----------|

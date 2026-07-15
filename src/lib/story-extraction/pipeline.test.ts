@@ -9,13 +9,13 @@ const content = {
   version: 3,
   structuralUnitIds: ['fixture:2'],
   nodes: [
-    { id: 'start', type: 'dialogue', presentationType: 2, speaker: '七号', content: '选择路线。', sourceUnitIds: ['fixture:0'] },
-    { id: 'left', type: 'narration', presentationType: 4, speaker: '', content: '左边。', sourceUnitIds: ['fixture:3'] },
-    { id: 'right', type: 'narration', presentationType: 3, speaker: '', content: '右边。', sourceUnitIds: ['fixture:4'] },
+    { id: 'start', type: 'dialogue', presentationType: 2, speaker: 'Seven', content: 'Pick a route.', sourceUnitIds: ['fixture:0'] },
+    { id: 'left', type: 'narration', presentationType: 4, speaker: '', content: 'The left side.', sourceUnitIds: ['fixture:3'] },
+    { id: 'right', type: 'narration', presentationType: 3, speaker: '', content: 'The right side.', sourceUnitIds: ['fixture:4'] },
   ],
   choices: [
-    { id: 'left_choice', text: '走左边', sourceUnitIds: ['fixture:1'] },
-    { id: 'right_choice', text: '走右边', sourceUnitIds: ['fixture:1'] },
+    { id: 'left_choice', text: 'Go left', sourceUnitIds: ['fixture:1'] },
+    { id: 'right_choice', text: 'Go right', sourceUnitIds: ['fixture:1'] },
   ],
 };
 
@@ -41,7 +41,7 @@ describe('two-stage story extraction pipeline', () => {
       id: 'left_choice',
       fromNodeId: 'start',
       targetNodeId: 'left',
-      text: '走左边',
+      text: 'Go left',
       commandSources: ['cmd_left'],
       sourceUnitIds: ['fixture:1'],
     });

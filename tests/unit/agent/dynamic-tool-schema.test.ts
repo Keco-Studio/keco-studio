@@ -7,7 +7,7 @@ const properties: PropertyConfig[] = [
     id: 'name-id',
     sectionId: 's1',
     key: 'name',
-    name: '规则名称',
+    name: 'Rule Name',
     valueType: 'string',
     dataType: 'string',
     required: true,
@@ -17,18 +17,18 @@ const properties: PropertyConfig[] = [
     id: 'enum-id',
     sectionId: 's1',
     key: 'type',
-    name: '货币类型',
+    name: 'Currency Type',
     valueType: 'enum',
     dataType: 'enum',
     required: true,
-    enumOptions: ['免费货币', '半免费货币', '付费货币', '玩法积分'],
+    enumOptions: ['free currency', 'semi-free currency', 'paid currency', 'gameplay points'],
     orderIndex: 1,
   },
   {
     id: 'float-id',
     sectionId: 's1',
     key: 'discount',
-    name: '折扣力度',
+    name: 'Discount',
     valueType: 'number',
     dataType: 'float',
     required: false,
@@ -41,9 +41,9 @@ describe('buildPropertyValuesJsonSchema', () => {
     const schema = buildPropertyValuesJsonSchema(properties, { requireRequiredFields: true });
     expect(schema.type).toBe('object');
     const props = schema.properties as Record<string, { type?: string; enum?: string[] }>;
-    expect(Object.keys(props)).toEqual(['规则名称', '货币类型', '折扣力度']);
-    expect(props['货币类型'].enum).toEqual(['免费货币', '半免费货币', '付费货币', '玩法积分']);
-    expect(schema.required).toEqual(['规则名称', '货币类型']);
+    expect(Object.keys(props)).toEqual(['Rule Name', 'Currency Type', 'Discount']);
+    expect(props['Currency Type'].enum).toEqual(['free currency', 'semi-free currency', 'paid currency', 'gameplay points']);
+    expect(schema.required).toEqual(['Rule Name', 'Currency Type']);
   });
 
   it('omits required array on update path', () => {
@@ -67,19 +67,19 @@ describe('getToolsForLlm dynamic schema injection', () => {
       'create_asset',
       baseCreateParams,
       properties,
-      '货币表'
+      'Currency Table'
     );
     const pv = (injected.properties as Record<string, unknown>).propertyValues as {
       properties: Record<string, unknown>;
       required?: string[];
     };
-    expect((pv.properties['货币类型'] as { enum: string[] }).enum).toContain('付费货币');
-    expect(pv.required).toEqual(['规则名称', '货币类型']);
+    expect((pv.properties['Currency Type'] as { enum: string[] }).enum).toContain('paid currency');
+    expect(pv.required).toEqual(['Rule Name', 'Currency Type']);
   });
 
   it('returns static tools when no library properties provided', () => {
     const staticTools = getToolsForLlm();
-    const dynamicTools = getToolsForLlm({ currentLibraryId: 'lib-1', currentLibraryName: '货币表' }, properties);
+    const dynamicTools = getToolsForLlm({ currentLibraryId: 'lib-1', currentLibraryName: 'Currency Table' }, properties);
     const staticCreate = staticTools.find((t) => t.function.name === 'create_asset')!;
     const dynamicCreate = dynamicTools.find((t) => t.function.name === 'create_asset')!;
     expect(staticCreate.function.parameters).not.toEqual(dynamicCreate.function.parameters);

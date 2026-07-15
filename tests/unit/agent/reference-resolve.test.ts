@@ -125,8 +125,8 @@ describe('resolveAgentReferencePropertyValues', () => {
         {
           assetId: 'target-1',
           fieldId: 'wrong-uuid',
-          displayValue: '商铺',
-          fieldLabel: '商店名称',
+          displayValue: 'Shop',
+          fieldLabel: 'Shop Name',
         },
       ],
     });

@@ -7,9 +7,9 @@ import {
 
 const source = segmentStorySource([
   'Guide: Choose a path.',
-  '分支一：选择【Left】（safe）',
+  'Branch 1: Choose [Left] (safe)',
   'Left ending.',
-  '分支二：选择【Right】（risk）',
+  'Branch 2: Choose [Right] (risk)',
   'Right ending.',
 ].join('\n'), 'fixture');
 

@@ -41,7 +41,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const createFolder: AgentTool = {
   name: 'create_folder',
   description:
-    'Create a new folder in the project. Folders group libraries. Params: name (required), description (optional). When the user says "X文件夹" in Chinese, the folder name is usually "X" — do not append "文件夹" to the name unless they explicitly request that exact string.',
+    'Create a new folder in the project. Folders group libraries. Params: name (required), description (optional).',
   category: 'write',
   confirmationMode: 'pre_execute',
   requiredPermission: 'editor',

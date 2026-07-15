@@ -1,121 +1,121 @@
 # Design Document → Tables with Multimodal Image Understanding (MiniMax-M3)
 
 **Date**: 2026-06-16
-**Status**: Approved (待开发)
+**Status**: Approved (pending development)
 **Integrates / Supersedes**:
-- `2026-06-15-design-document-to-tables-design.md`（docx 上传配表链路 —— 本 spec 第 9 节决策「图片忽略」被本 spec 推翻）
-- 复用 `2026-06-15-design-document-to-tables-skill.md`（字段类型 catalog / `list_field_types`，本 spec 不改动该体系）
+- `2026-06-15-design-document-to-tables-design.md` (docx upload table-setup pipeline — that spec's Section 9 decision "ignore images" is overturned by this spec)
+- Reuses `2026-06-15-design-document-to-tables-skill.md` (field type catalog / `list_field_types`; this spec does not modify that system)
 
-**Scope**: 让"上传设计文档自动配表"的 Agent 能**看见 docx 内嵌图片**，借助 MiniMax-M3 的多模态能力理解图表/示意图/立绘等视觉信息，从而更准确地推理表结构与数据。
-
----
-
-## 1. 背景与问题
-
-上一版（`2026-06-15-design-document-to-tables-design.md`）已落地完整链路：
-
-> 上传页（或 ChatInput 附件）→ 浏览器端 `parseDocument`（mammoth）→ `buildDesignMessage` 拼成纯文本 → sessionStorage handoff → ChatPanel 自动 `send` → `POST /api/agent-chat` → Agent ReAct loop 调 `setup_library` / `update_row` 配表。
-
-**当时的硬约束**：所用模型 **MiniMax-M2.7 不支持原生图片输入**，因此：
-
-- `document-parser.ts` 用 `mammoth.extractRawText`，docx 内嵌图片在解析阶段即被**丢弃**；
-- 上传页明示 "Images inside the document are ignored"；
-- 整条链路 `ChatMessage.content` 为 `string | null`，无多模态 content parts。
-
-**实测问题**：很多设计文档把关键信息放在**图片**里——系统结构图、数值表截图、角色立绘、UI 草图、关系图。纯文本解析丢掉这些后，Agent 看不到用户真正想表达的设计，配表质量受限，也无法"根据图片信息分析用户指令"。
-
-**根因**：模型与链路都不支持图片。现已确认 **MiniMax-M3（即用户口中的 minimax3.0）原生支持多模态**，可经 OpenAI 兼容 `/v1/chat/completions` 接收 `image_url` content parts，故可打通图片理解链路。
+**Scope**: Enable the "upload design document to auto-create tables" Agent to **see images embedded in docx files**, leveraging MiniMax-M3's multimodal capability to understand charts/diagrams/character art and other visual information, thereby inferring table structures and data more accurately.
 
 ---
 
-## 2. 目标
+## 1. Background and Problem
 
-1. **解析层提图**：docx 解析时在保留纯文本的同时，提取内嵌图片（buffer + contentType）。
-2. **图片可被外部模型访问**：复用现有 `uploadMediaFile` 把图片上传到 `library-media-files`（public bucket），得到永久 URL。
-3. **多模态消息链路**：`ChatMessage.content` 支持 `string | ContentPart[]`，把图片 URL 以 `image_url` part 形式随 user 消息发给 MiniMax-M3。
-4. **模型切换**：默认 `LLM_MODEL` 由 `MiniMax-M2.7` 改为 `MiniMax-M3`。
-5. **不破坏纯文本场景**：无图片时行为与今天完全一致；图片处理失败时**降级为纯文本**继续配表。
+The previous version (`2026-06-15-design-document-to-tables-design.md`) shipped the full pipeline:
 
-### 非目标
+> Upload page (or ChatInput attachment) → browser-side `parseDocument` (mammoth) → `buildDesignMessage` assembles plain text → sessionStorage handoff → ChatPanel auto-`send` → `POST /api/agent-chat` → Agent ReAct loop calls `setup_library` / `update_row` to set up tables.
 
-- 不让 Agent 自动**填充媒体列**：Agent 无法上传文件，文档配表阶段媒体列仍**只建空列**（沿用 `list_field_types` skill 的媒体列原则）。图片仅用于**理解**。
-- 不支持视频（`video_url`）—— MiniMax-M3 支持，但本期 YAGNI。
-- 不在聊天框支持直接粘贴/上传单张图片（仅 docx 内嵌图片场景）。未来增强。
-- 不改字段类型 catalog / `list_field_types` 体系。
-- 不新增数据库迁移（`library-media-files` bucket 已存在且为 public）。
+**Hard constraint at the time**: the model in use, **MiniMax-M2.7, does not support native image input**, therefore:
+
+- `document-parser.ts` used `mammoth.extractRawText`, so docx-embedded images were **discarded** at the parsing stage;
+- The upload page explicitly stated "Images inside the document are ignored";
+- Throughout the pipeline, `ChatMessage.content` was `string | null`, with no multimodal content parts.
+
+**Observed problem in practice**: many design documents put key information in **images** — system architecture diagrams, screenshots of stat tables, character art, UI sketches, relationship diagrams. After plain-text parsing drops these, the Agent cannot see the design the user actually intends, limiting table-setup quality and making it impossible to "analyze user instructions based on image information".
+
+**Root cause**: neither the model nor the pipeline supported images. It is now confirmed that **MiniMax-M3 (what users call minimax3.0) natively supports multimodality**, accepting `image_url` content parts via the OpenAI-compatible `/v1/chat/completions`, so the image-understanding pipeline can be built.
 
 ---
 
-## 3. 关键设计决策
+## 2. Goals
 
-| 决策 | 选择 | 理由 |
+1. **Extract images at the parsing layer**: when parsing docx, extract embedded images (buffer + contentType) while keeping the plain text.
+2. **Images accessible to the external model**: reuse the existing `uploadMediaFile` to upload images to `library-media-files` (public bucket), yielding permanent URLs.
+3. **Multimodal message pipeline**: `ChatMessage.content` supports `string | ContentPart[]`, sending image URLs as `image_url` parts with the user message to MiniMax-M3.
+4. **Model switch**: change the default `LLM_MODEL` from `MiniMax-M2.7` to `MiniMax-M3`.
+5. **Do not break the plain-text scenario**: with no images, behavior is exactly as it is today; if image processing fails, **degrade to plain text** and continue table setup.
+
+### Non-goals
+
+- Do not let the Agent auto-**fill media columns**: the Agent cannot upload files; during document-based table setup, media columns are still **created empty only** (following the media-column principle of the `list_field_types` skill). Images are for **understanding** only.
+- No video support (`video_url`) — MiniMax-M3 supports it, but YAGNI for this iteration.
+- No direct paste/upload of individual images in the chat box (docx-embedded images only). Future enhancement.
+- No changes to the field type catalog / `list_field_types` system.
+- No new database migrations (the `library-media-files` bucket already exists and is public).
+
+---
+
+## 3. Key Design Decisions
+
+| Decision | Choice | Rationale |
 |------|------|------|
-| 图片用途 | **仅辅助理解**（不写库、不填媒体列） | Agent 无法上传文件；图片用于"看懂"设计来配表 |
-| 图片传输 | **上传 Supabase Storage 传 URL**（非 base64 内联） | sessionStorage 装不下 base64；DB 会话历史每轮重发，URL 比 base64 省 token、可持久化 |
-| 上传基建 | 复用 `uploadMediaFile` + `library-media-files`（public，永久 URL） | 与 MediaCell 一致；public URL 外部 MiniMax 可直接 GET |
-| 图片在上下文留存 | **每轮都重发图片**（不做"首轮后剔除"优化） | 用户选定：Agent 始终能看图，简化实现，接受较高 token 成本 |
-| 数量/成本控制 | 过滤装饰小图 + 限额 + 限单图大小 | 控制请求体大小与 vision token 成本 |
-| 覆盖入口 | 设计文档上传页 **+** ChatInput 附件（两者共用 `parseDocument`/`buildDesignMessage`） | 两入口同链路，一并改造 |
-| 模型 | `MiniMax-M3`（env `LLM_MODEL`） | M2.x 标准 chat 端点不支持图片；M3 原生多模态 |
+| Image purpose | **Understanding aid only** (no DB writes, no media column filling) | The Agent cannot upload files; images are for "comprehending" the design to set up tables |
+| Image transport | **Upload to Supabase Storage, send URL** (not inline base64) | sessionStorage cannot hold base64; DB conversation history is resent each turn, URLs save tokens vs base64 and are persistable |
+| Upload infrastructure | Reuse `uploadMediaFile` + `library-media-files` (public, permanent URLs) | Consistent with MediaCell; the external MiniMax can GET public URLs directly |
+| Image retention in context | **Resend images every turn** (no "drop after first turn" optimization) | User's choice: the Agent can always see the images; simpler implementation; higher token cost accepted |
+| Count/cost control | Filter small decorative images + cap count + cap per-image size | Controls request body size and vision token cost |
+| Covered entry points | Design document upload page **+** ChatInput attachment (both share `parseDocument`/`buildDesignMessage`) | Both entry points share the pipeline; upgrade both |
+| Model | `MiniMax-M3` (env `LLM_MODEL`) | M2.x standard chat endpoint does not support images; M3 is natively multimodal |
 
-### 已确认的 MiniMax-M3 多模态事实（来自 MiniMax 官方 API 文档）
+### Confirmed MiniMax-M3 multimodal facts (from official MiniMax API docs)
 
-- OpenAI 兼容 `/v1/chat/completions`，`content` 为 parts 数组，图片用 `{"type":"image_url","image_url":{"url": <公网URL或base64 DataURL>, "detail":"low|default|high"}}`。
-- 图片支持 JPEG / PNG / GIF / WEBP，单图 ≤ 10MB，请求体 ≤ 64MB。
-- 本期采用 **public URL** 形式（非 base64），`detail` 用默认值 `default`。
+- OpenAI-compatible `/v1/chat/completions`, `content` is a parts array, images use `{"type":"image_url","image_url":{"url": <public URL or base64 DataURL>, "detail":"low|default|high"}}`.
+- Images support JPEG / PNG / GIF / WEBP, single image ≤ 10MB, request body ≤ 64MB.
+- This iteration uses the **public URL** form (not base64), with `detail` at the default value `default`.
 
 ---
 
-## 4. 架构与数据流
+## 4. Architecture and Data Flow
 
 ```
-docx (上传页 / ChatInput 附件)
+docx (upload page / ChatInput attachment)
  │
- ▼ ① 解析层  src/lib/document-parser.ts ★
- ├─ mammoth.extractRawText           → text（同今天）
+ ▼ ① Parsing layer  src/lib/document-parser.ts ★
+ ├─ mammoth.extractRawText           → text (same as today)
  └─ mammoth.convertToHtml + images.imgElement
-       → 收集内嵌图片 { data, contentType }（丢弃 HTML，仅取副作用图片）
-       → 过滤：仅 png/jpeg/gif/webp；跳过 < MIN_IMAGE_BYTES（装饰小图）；
-                单图 ≤ 5MB；最多 MAX_DOC_IMAGES 张
- │  返回 ParsedDocument { text, images }
+       → collect embedded images { data, contentType } (discard HTML, keep images as a side effect only)
+       → filter: png/jpeg/gif/webp only; skip < MIN_IMAGE_BYTES (small decorative images);
+                single image ≤ 5MB; at most MAX_DOC_IMAGES images
+ │  returns ParsedDocument { text, images }
  │
- ▼ ② 上传层（浏览器端，已登录）  src/lib/services/documentImageUpload.ts ★
+ ▼ ② Upload layer (browser-side, logged in)  src/lib/services/documentImageUpload.ts ★
  └─ uploadDocumentImages(supabase, images, userId)
-       → 每张包成 File → uploadMediaFile → public URL
-       → 返回 string[]（失败的单张跳过，不阻断）
+       → wrap each into a File → uploadMediaFile → public URL
+       → returns string[] (failed images are skipped without blocking)
  │
- ▼ ③ 消息/handoff ★
- ├─ buildDesignMessage(...) 仍产出纯文本（指令 + [Document content] 正文）
- └─ 额外携带 imageUrls: string[]
-       ├─ 上传页：saveDesignHandoff({ message, fileName, imageUrls })
-       └─ ChatInput：onSend(message, { imageUrls })
+ ▼ ③ Message/handoff ★
+ ├─ buildDesignMessage(...) still produces plain text (instructions + [Document content] body)
+ └─ additionally carries imageUrls: string[]
+       ├─ Upload page: saveDesignHandoff({ message, fileName, imageUrls })
+       └─ ChatInput: onSend(message, { imageUrls })
  │
- ▼ ④ 发送  ChatPanel / useAgentChat ★
+ ▼ ④ Send  ChatPanel / useAgentChat ★
  └─ POST /api/agent-chat { message, imageUrls, ...context }
  │
  ▼ ⑤ API  src/app/api/agent-chat/route.ts ★
- └─ 校验 imageUrls（数组 / 数量上限 / 必须是 http(s) 且来自我们的 storage 源）
+ └─ validate imageUrls (array / count cap / must be http(s) and from our storage origin)
        → runAgentTurn({ userMessage, imageUrls, ... })
  │
  ▼ ⑥ Agent core  src/lib/agent/core.ts ★
- └─ 构造 user ChatMessage：
+ └─ build the user ChatMessage:
        content = imageUrls?.length
          ? [ {type:'text', text: llmUserMessage},
              ...imageUrls.map(url => ({type:'image_url', image_url:{url}})) ]
-         : llmUserMessage（纯文本，回退）
-       → 持久化进 DB（parts → JSON），每轮重发
+         : llmUserMessage (plain text, fallback)
+       → persisted into the DB (parts → JSON), resent every turn
  │
  ▼ ⑦ LLM  src/lib/agent/llm-client.ts ★
- └─ messages 透传；LLM_MODEL 默认 MiniMax-M3
+ └─ messages passed through; LLM_MODEL defaults to MiniMax-M3
  │
- ▼ MiniMax-M3 /v1/chat/completions（多模态）
+ ▼ MiniMax-M3 /v1/chat/completions (multimodal)
 ```
 
-★ = 本 spec 的改造点。其余（sessionStorage handoff 时序、ReAct loop、确认机制、`list_field_types`/catalog、媒体列留空原则）均沿用现状。
+★ = changes made by this spec. Everything else (sessionStorage handoff timing, ReAct loop, confirmation mechanism, `list_field_types`/catalog, empty-media-column principle) stays as is.
 
 ---
 
-## 5. 类型层：`src/lib/agent/types.ts`
+## 5. Type Layer: `src/lib/agent/types.ts`
 
 ```typescript
 export interface ChatTextPart {
@@ -139,7 +139,7 @@ export interface ChatMessage {
 }
 ```
 
-新增 helper（同文件或 `content-parts.ts`）：
+New helpers (same file or `content-parts.ts`):
 
 ```typescript
 /** Read the concatenated text of a message regardless of string/parts shape. */
@@ -151,13 +151,13 @@ export function mapMessageText(
 ): ChatMessage['content'];
 ```
 
-这两个 helper 用于 `context-message.ts` / `core.ts` 在不破坏图片 part 的前提下读/改 user 文本。
+These two helpers let `context-message.ts` / `core.ts` read/modify user text without breaking image parts.
 
 ---
 
-## 6. 解析层：`src/lib/document-parser.ts`
+## 6. Parsing Layer: `src/lib/document-parser.ts`
 
-### 6.1 返回值变更（破坏性，更新两处调用方）
+### 6.1 Return value change (breaking; update both call sites)
 
 ```typescript
 export interface ExtractedImage {
@@ -173,26 +173,26 @@ export interface ParsedDocument {
 export async function parseDocument(file: File): Promise<ParsedDocument>;
 ```
 
-- `txt` / `md`：`{ text: await file.text(), images: [] }`。
-- `docx`：
-  - `text` 仍由 `mammoth.extractRawText({ arrayBuffer })` 得到（干净文本，优于 HTML）。
-  - `images` 通过一次 `mammoth.convertToHtml({ arrayBuffer }, { convertImage })` 收集——`convertImage` handler 把 `image.readAsArrayBuffer()` + `image.contentType` 推入数组（HTML 结果丢弃）。
-- `doc` / 其他：维持现有报错。
+- `txt` / `md`: `{ text: await file.text(), images: [] }`.
+- `docx`:
+  - `text` is still obtained via `mammoth.extractRawText({ arrayBuffer })` (clean text, better than HTML).
+  - `images` are collected via one `mammoth.convertToHtml({ arrayBuffer }, { convertImage })` pass — the `convertImage` handler pushes `image.readAsArrayBuffer()` + `image.contentType` into an array (the HTML result is discarded).
+- `doc` / others: keep the existing errors.
 
-### 6.2 过滤与限额（常量集中在文件顶部）
+### 6.2 Filtering and limits (constants centralized at the top of the file)
 
 ```typescript
 const SUPPORTED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
-const MIN_IMAGE_BYTES = 5 * 1024;        // 跳过装饰性小图（图标/项目符号/分隔线）
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 单图上限（与 uploadMediaFile 一致）
-const MAX_DOC_IMAGES = 20;               // 数量上限（控制 token 成本与请求体）
+const MIN_IMAGE_BYTES = 5 * 1024;        // skip small decorative images (icons/bullets/dividers)
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // per-image cap (consistent with uploadMediaFile)
+const MAX_DOC_IMAGES = 20;               // count cap (controls token cost and request body)
 ```
 
-过滤顺序：contentType 在白名单 → `MIN_IMAGE_BYTES ≤ size ≤ MAX_IMAGE_BYTES` → 按出现顺序取前 `MAX_DOC_IMAGES` 张。Word 常见的 `image/x-emf`/`image/x-wmf` 矢量图不在白名单，直接跳过。
+Filter order: contentType in allowlist → `MIN_IMAGE_BYTES ≤ size ≤ MAX_IMAGE_BYTES` → take the first `MAX_DOC_IMAGES` in order of appearance. Word's common `image/x-emf`/`image/x-wmf` vector images are not in the allowlist and are skipped directly.
 
 ---
 
-## 7. 上传层：`src/lib/services/documentImageUpload.ts`（新）
+## 7. Upload Layer: `src/lib/services/documentImageUpload.ts` (new)
 
 ```typescript
 export async function uploadDocumentImages(
@@ -218,26 +218,26 @@ export async function uploadDocumentImages(
 }
 ```
 
-- 复用 `uploadMediaFile`（bucket `library-media-files`，返回永久 public URL）。
-- 浏览器端、已登录上下文调用（`useSupabase()` + `getCurrentUserId()`，与 `MediaFileUpload` 同模式）。
-- 单张失败不抛出，整体降级。
+- Reuses `uploadMediaFile` (bucket `library-media-files`, returns a permanent public URL).
+- Called browser-side in a logged-in context (`useSupabase()` + `getCurrentUserId()`, same pattern as `MediaFileUpload`).
+- A single failure does not throw; the whole flow degrades gracefully.
 
 ---
 
-## 8. 消息 / handoff / 发送层
+## 8. Message / Handoff / Send Layer
 
-### 8.1 handoff：`src/lib/design-upload-handoff.ts`
+### 8.1 Handoff: `src/lib/design-upload-handoff.ts`
 
-`DesignUploadHandoff` 增加可选 `imageUrls?: string[]`；`saveDesignHandoff` / `takeDesignHandoff` 透传。
+`DesignUploadHandoff` gains an optional `imageUrls?: string[]`; `saveDesignHandoff` / `takeDesignHandoff` pass it through.
 
-### 8.2 上传页：`src/app/(dashboard)/[projectId]/design-upload/page.tsx`
+### 8.2 Upload page: `src/app/(dashboard)/[projectId]/design-upload/page.tsx`
 
-`handleSubmit` 调整：
+`handleSubmit` adjustments:
 
 ```typescript
 const { text, images } = await parseDocument(file);
 const documentText = text.trim();
-// ...空文本校验同今天...
+// ...empty-text validation same as today...
 let imageUrls: string[] = [];
 if (images.length > 0) {
   const userId = await getCurrentUserId(supabase);
@@ -250,38 +250,38 @@ const message = buildDesignMessage({ fileName: file.name, documentText, addition
 saveDesignHandoff(projectId, { message, fileName: file.name, imageUrls });
 ```
 
-提示文案：将 "Images inside the document are ignored and will not be processed." 改为说明图片**会被分析**（如 "Images in the document will be analyzed by the agent to better understand your design."）。
+Notice copy: change "Images inside the document are ignored and will not be processed." to state that images **will be analyzed** (e.g. "Images in the document will be analyzed by the agent to better understand your design.").
 
-### 8.3 ChatInput：`src/components/agent/ChatInput.tsx`
+### 8.3 ChatInput: `src/components/agent/ChatInput.tsx`
 
-同样 `parseDocument` → `uploadDocumentImages` → `onSend(message, { imageUrls })`。
+Likewise `parseDocument` → `uploadDocumentImages` → `onSend(message, { imageUrls })`.
 
 ### 8.4 ChatPanel / useAgentChat
 
-- `ChatPanel.consumeDesignHandoff`：`void send(handoff.message, { imageUrls: handoff.imageUrls })`。
-- `useAgentChat.send(message, opts?: { imageUrls?: string[] })`：POST body 增加 `imageUrls`。
+- `ChatPanel.consumeDesignHandoff`: `void send(handoff.message, { imageUrls: handoff.imageUrls })`.
+- `useAgentChat.send(message, opts?: { imageUrls?: string[] })`: POST body gains `imageUrls`.
 
 ```typescript
 body: JSON.stringify({
   conversationId, projectId: ctx.projectId, message,
   imageUrls: opts?.imageUrls,
-  currentFolderId, /* ...其余 context 同今天... */
+  currentFolderId, /* ...rest of the context same as today... */
 }),
 ```
 
 ---
 
-## 9. API 层：`src/app/api/agent-chat/route.ts`
+## 9. API Layer: `src/app/api/agent-chat/route.ts`
 
-- 请求体增加 `imageUrls?: string[]`。
-- 校验：必须是数组；元素是 `http(s)` 字符串；数量 ≤ `MAX_DOC_IMAGES`；URL 源应匹配本项目 Supabase storage 域（`NEXT_PUBLIC_SUPABASE_URL` 前缀），过滤掉不匹配项以防被注入任意外链。
-- 透传给 `runAgentTurn({ ..., imageUrls })`。
+- Request body gains `imageUrls?: string[]`.
+- Validation: must be an array; elements are `http(s)` strings; count ≤ `MAX_DOC_IMAGES`; URL origin must match this project's Supabase storage domain (`NEXT_PUBLIC_SUPABASE_URL` prefix), filtering out non-matching entries to prevent arbitrary external link injection.
+- Passed through to `runAgentTurn({ ..., imageUrls })`.
 
 ---
 
-## 10. Agent core：`src/lib/agent/core.ts`
+## 10. Agent Core: `src/lib/agent/core.ts`
 
-### 10.1 构造 user 消息为多模态 parts
+### 10.1 Build the user message as multimodal parts
 
 ```typescript
 const llmUserMessage = augmentUserMessageForLlm(input.userMessage, toolContext);
@@ -297,47 +297,47 @@ const messages: ChatMessage[] = [systemMessage, ...history, { role: 'user', cont
 await saveMessage(toolContext.supabase, conversationId, { role: 'user', content: userContent });
 ```
 
-> 注意：持久化的 user 消息现在带图（按决策"每轮重发图片"），DB 存结构化 content；UI 展示仍走 `deriveUserDisplay`（解析 `[Design document]` 文本，不受图片 part 影响）。
+> Note: the persisted user message now carries images (per the "resend images every turn" decision), and the DB stores structured content; UI display still goes through `deriveUserDisplay` (which parses the `[Design document]` text, unaffected by image parts).
 
-### 10.2 `augmentUserMessageForLlm` / `refreshLastUserContext` / `stripContextAugmentation` 适配 parts
+### 10.2 Adapt `augmentUserMessageForLlm` / `refreshLastUserContext` / `stripContextAugmentation` for parts
 
-- `context-message.ts`：用 `mapMessageText` 只对 text 段加/去上下文前缀，保留 image part 顺序。
-- `refreshLastUserContext`：放宽 `typeof msg.content !== 'string'` 限制，改为"含可读 text 的 user 消息"判定（parts 中取首个 text part 处理）。
-
----
-
-## 11. 持久化：`src/lib/agent/conversation-store.ts`
-
-- `saveMessage`：content 为 parts 时 `JSON.stringify` 存入文本列（现已有非 string 兜底，明确为 parts 形态）。
-- `loadConversationHistory`：读取时若文本列是 `ChatContentPart[]` 的 JSON（以 `[` 开头且解析后每项含 `type`），还原为 parts；否则按纯字符串处理（向后兼容历史会话）。
+- `context-message.ts`: use `mapMessageText` to add/remove the context prefix on the text segment only, preserving image part order.
+- `refreshLastUserContext`: relax the `typeof msg.content !== 'string'` restriction to a "user message containing readable text" check (process the first text part among the parts).
 
 ---
 
-## 12. 预处理：`src/lib/agent/tool-result-for-llm.ts`
+## 11. Persistence: `src/lib/agent/conversation-store.ts`
 
-`prepareMessagesForLlm`（window 截断 / `sanitizeMessagesForLlm` / 压缩 tool 结果）需兼容数组 content：
-
-- 窗口/配对逻辑里凡判断 content 是否"为空/有内容"处，用 `getMessageText(content)` 或 `Array.isArray(content)` 判定，避免把带图 user 消息误判为空。
-- 压缩逻辑只针对 tool 消息 JSON，user 的 image parts 原样保留。
+- `saveMessage`: when content is parts, `JSON.stringify` into the text column (a non-string fallback already exists; make the parts shape explicit).
+- `loadConversationHistory`: on read, if the text column is JSON of `ChatContentPart[]` (starts with `[` and each parsed item has `type`), restore as parts; otherwise treat as a plain string (backward compatible with historical conversations).
 
 ---
 
-## 13. LLM 客户端 / 模型：`src/lib/agent/llm-client.ts`
+## 12. Preprocessing: `src/lib/agent/tool-result-for-llm.ts`
+
+`prepareMessagesForLlm` (window truncation / `sanitizeMessagesForLlm` / tool-result compaction) must handle array content:
+
+- Wherever the window/pairing logic checks whether content is "empty/has content", use `getMessageText(content)` or `Array.isArray(content)` so image-bearing user messages are not misjudged as empty.
+- Compaction logic only targets tool message JSON; user image parts are kept as-is.
+
+---
+
+## 13. LLM Client / Model: `src/lib/agent/llm-client.ts`
 
 ```typescript
 const LLM_MODEL = process.env.LLM_MODEL || 'MiniMax-M3'; // was 'MiniMax-M2.7'
 ```
 
-- 请求体已 `JSON.stringify(messages)` 透传，类型放开后 parts 自动随发。
-- 保持 `stream: true`、`tool_choice: 'auto'`、`parallel_tool_calls: false` 不变。
-- `.env` / 部署配置：`LLM_MODEL=MiniMax-M3`（文档说明；密钥不提交）。
-- 注：`max_tokens` 维持现状；若 M3 报参数名问题再评估切 `max_completion_tokens`（本期不预改）。
+- The request body already passes `JSON.stringify(messages)` through; once types are widened, parts are sent automatically.
+- Keep `stream: true`, `tool_choice: 'auto'`, `parallel_tool_calls: false` unchanged.
+- `.env` / deployment config: `LLM_MODEL=MiniMax-M3` (documented; secrets not committed).
+- Note: `max_tokens` stays as-is; if M3 reports a parameter-name issue, evaluate switching to `max_completion_tokens` then (no preemptive change this iteration).
 
 ---
 
-## 14. 提示词：`src/lib/agent/prompts.ts` 第 28 条增补
+## 14. Prompt: `src/lib/agent/prompts.ts`, Additions to Rule 28
 
-在现有第 28 条（DESIGN DOCUMENT → TABLES）中加入对"可见图片"的说明：
+Add a note about "visible images" to the existing rule 28 (DESIGN DOCUMENT → TABLES):
 
 ```
 - The design document may include ATTACHED IMAGES (diagrams, structure charts,
@@ -350,88 +350,88 @@ const LLM_MODEL = process.env.LLM_MODEL || 'MiniMax-M3'; // was 'MiniMax-M2.7'
   put the attached image URLs into cells or invent media values.
 ```
 
-媒体列留空原则与 `list_field_types` skill 保持一致。
+The empty-media-column principle stays consistent with the `list_field_types` skill.
 
 ---
 
-## 15. 涉及文件清单
+## 15. Affected Files
 
-| 文件 | 操作 |
+| File | Action |
 |------|------|
-| `src/lib/agent/types.ts` | `ChatMessage.content` 改联合类型；新增 `ChatContentPart` 及 `getMessageText`/`mapMessageText` helper |
-| `src/lib/document-parser.ts` | 返回 `ParsedDocument{text,images}`；docx 提图 + 过滤/限额 |
-| `src/lib/services/documentImageUpload.ts` | 新增 `uploadDocumentImages`（复用 `uploadMediaFile`） |
-| `src/lib/design-upload-handoff.ts` | handoff payload 加 `imageUrls?` |
-| `src/app/(dashboard)/[projectId]/design-upload/page.tsx` | 解析→上传图→传 imageUrls；提示文案改 |
-| `src/components/agent/ChatInput.tsx` | 同链路加图片上传 |
-| `src/components/agent/ChatPanel.tsx` | `send` 带 imageUrls |
-| `src/components/agent/useAgentChat.ts` | `send` 签名 + POST body 加 imageUrls |
-| `src/app/api/agent-chat/route.ts` | 解析+校验 imageUrls，透传 runAgentTurn |
-| `src/lib/agent/core.ts` | `input.imageUrls`→构造 parts；augment/refresh/strip 适配 |
-| `src/lib/agent/context-message.ts` | 对 parts 的 text 段做上下文注入 |
-| `src/lib/agent/conversation-store.ts` | content parts 存/取（JSON 往返，向后兼容） |
-| `src/lib/agent/tool-result-for-llm.ts` | window/sanitize/compact 兼容数组 content |
-| `src/lib/agent/llm-client.ts` | 默认模型 `MiniMax-M3` |
-| `src/lib/agent/prompts.ts` | 第 28 条增补"可见图片"规则 |
-| `src/lib/design-message.ts` | （可选）正文末尾提示"已附带 N 张图片" |
+| `src/lib/agent/types.ts` | `ChatMessage.content` becomes a union type; add `ChatContentPart` and the `getMessageText`/`mapMessageText` helpers |
+| `src/lib/document-parser.ts` | Return `ParsedDocument{text,images}`; docx image extraction + filtering/limits |
+| `src/lib/services/documentImageUpload.ts` | New `uploadDocumentImages` (reuses `uploadMediaFile`) |
+| `src/lib/design-upload-handoff.ts` | Handoff payload gains `imageUrls?` |
+| `src/app/(dashboard)/[projectId]/design-upload/page.tsx` | Parse → upload images → pass imageUrls; update notice copy |
+| `src/components/agent/ChatInput.tsx` | Add image upload to the same pipeline |
+| `src/components/agent/ChatPanel.tsx` | `send` carries imageUrls |
+| `src/components/agent/useAgentChat.ts` | `send` signature + POST body gain imageUrls |
+| `src/app/api/agent-chat/route.ts` | Parse + validate imageUrls, pass through to runAgentTurn |
+| `src/lib/agent/core.ts` | `input.imageUrls` → build parts; adapt augment/refresh/strip |
+| `src/lib/agent/context-message.ts` | Context injection on the text segment of parts |
+| `src/lib/agent/conversation-store.ts` | Store/load content parts (JSON round-trip, backward compatible) |
+| `src/lib/agent/tool-result-for-llm.ts` | window/sanitize/compact handle array content |
+| `src/lib/agent/llm-client.ts` | Default model `MiniMax-M3` |
+| `src/lib/agent/prompts.ts` | Rule 28 gains the "visible images" additions |
+| `src/lib/design-message.ts` | (Optional) hint at the end of the body: "N image(s) attached" |
 
 ---
 
-## 16. 边界情况与容错
+## 16. Edge Cases and Fault Tolerance
 
-| 场景 | 处理 |
+| Scenario | Handling |
 |------|------|
-| docx 无内嵌图片 | `images: []`，链路与今天完全一致（纯文本） |
-| 图片为不支持类型（emf/wmf 等） | 解析层跳过，不计入 imageUrls |
-| 图片过小（装饰图标） | `< MIN_IMAGE_BYTES` 跳过 |
-| 图片过大（> 5MB） | 解析层跳过，提示用户 |
-| 图片数 > 上限 | 取前 `MAX_DOC_IMAGES` 张 |
-| 单张上传失败 | 跳过该张，其余继续；toast 告知跳过数 |
-| 全部上传失败 / 未登录 | 降级为纯文本配表，不阻断 |
-| 历史会话（无 parts） | `loadConversationHistory` 按纯字符串还原，向后兼容 |
-| 模型未切到 M3 / 非多模态 | 纯文本仍正常；图片被模型忽略（不报错） |
-| route 收到非法/外部 imageUrls | 过滤非本 storage 源的 URL |
+| docx with no embedded images | `images: []`, pipeline identical to today (plain text) |
+| Unsupported image type (emf/wmf etc.) | Skipped at the parsing layer, not counted in imageUrls |
+| Image too small (decorative icon) | Skipped if `< MIN_IMAGE_BYTES` |
+| Image too large (> 5MB) | Skipped at the parsing layer, user notified |
+| Image count > cap | Take the first `MAX_DOC_IMAGES` |
+| Single upload failure | Skip that image, continue with the rest; toast reports the skipped count |
+| All uploads fail / not logged in | Degrade to plain-text table setup, no blocking |
+| Historical conversations (no parts) | `loadConversationHistory` restores as plain strings, backward compatible |
+| Model not switched to M3 / not multimodal | Plain text still works; images are ignored by the model (no error) |
+| route receives invalid/external imageUrls | Filter out URLs not from our storage origin |
 
 ---
 
-## 17. 安全考虑
+## 17. Security Considerations
 
-- 图片落 `library-media-files`（public bucket，路径 `{userId}/...`，RLS 写入需匹配登录用户），与现有 MediaCell 同模型。
-- API 侧校验 imageUrls 必须来自本项目 Supabase storage 源，避免 Agent 被诱导拉取任意外链（SSRF / 注入面）。
-- public URL 永久可读：与现有媒体一致，可接受（设计素材本就要展示）。
-- 文档正文与图片均不在服务端长期落盘解析（解析在浏览器端，图片入 storage 与普通媒体同等对待）。
+- Images land in `library-media-files` (public bucket, path `{userId}/...`, RLS requires writes to match the logged-in user), same model as the existing MediaCell.
+- The API side validates that imageUrls come from this project's Supabase storage origin, preventing the Agent from being lured into fetching arbitrary external links (SSRF / injection surface).
+- Public URLs are permanently readable: consistent with existing media, acceptable (design assets are meant to be displayed anyway).
+- Neither the document body nor the images are parsed or persisted long-term on the server (parsing happens in the browser; images go into storage treated the same as regular media).
 
 ---
 
-## 18. 测试策略（TDD）
+## 18. Testing Strategy (TDD)
 
-| 测试 | 覆盖 | 工具 |
+| Test | Coverage | Tool |
 |------|------|------|
-| 单元 | `parseDocument(docx)` 返回 `{text, images}`：提取内嵌图；过滤小图/超大图/不支持类型；限额 `MAX_DOC_IMAGES` | Jest |
-| 单元 | `parseDocument(txt/md)` 返回 `images: []` 且 text 正确 | Jest |
-| 单元 | `uploadDocumentImages` 把 buffer 包成 File 调 `uploadMediaFile`，返回 URL；单张失败被跳过（mock supabase） | Jest |
-| 单元 | core：有 imageUrls 时 user content 为 `[text, image_url...]`；无图时为纯字符串 | Jest |
-| 单元 | `conversation-store` content parts 存→取往返；旧纯字符串向后兼容 | Jest |
-| 单元 | `augmentUserMessageForLlm`/`refreshLastUserContext` 对 parts 仅改 text、保留 image part | Jest |
-| 单元 | route 校验：过滤非本 storage 源 URL、超量截断、非数组拒绝 | Jest |
-| 单元 | `getMessageText`/`mapMessageText` 行为 | Jest |
-| 手动 | 带图表/截图的真实 docx → M3 → Agent 能引用图片内容做配表，媒体列留空 | — |
+| Unit | `parseDocument(docx)` returns `{text, images}`: extracts embedded images; filters small/oversized/unsupported types; caps at `MAX_DOC_IMAGES` | Jest |
+| Unit | `parseDocument(txt/md)` returns `images: []` with correct text | Jest |
+| Unit | `uploadDocumentImages` wraps buffers into Files, calls `uploadMediaFile`, returns URLs; single failures are skipped (mock supabase) | Jest |
+| Unit | core: with imageUrls, user content is `[text, image_url...]`; without images, it is a plain string | Jest |
+| Unit | `conversation-store` content parts store → load round-trip; legacy plain strings backward compatible | Jest |
+| Unit | `augmentUserMessageForLlm`/`refreshLastUserContext` modify only text in parts, preserve image parts | Jest |
+| Unit | route validation: filters URLs not from our storage origin, truncates over-limit, rejects non-arrays | Jest |
+| Unit | `getMessageText`/`mapMessageText` behavior | Jest |
+| Manual | Real docx with diagrams/screenshots → M3 → Agent can reference image content for table setup, media columns left empty | — |
 
 ---
 
-## 19. 风险与回归
+## 19. Risks and Regressions
 
-- **中**：`ChatMessage.content` 由 string 变联合类型，触及 core / 持久化 / 预处理多处，需保证纯文本路径行为不变（用现有调用方单测兜底 + 新增 parts 单测）。
-- **低**：解析层返回值变更是破坏性，但调用方仅 2 处（上传页、ChatInput），编译器可定位。
-- **成本**：多模态 + 每轮重发图片会增加 vision token 消耗；通过过滤/限额（≤20 张、≥5KB、≤5MB）控制；后续可增"首轮后剔除图片"优化（见未来增强）。
-- **模型切换**：M2.7→M3 影响所有 Agent 对话（非仅配表）。M3 为 OpenAI 兼容、能力更强，风险低；保留 `LLM_MODEL` env 可快速回滚。
+- **Medium**: `ChatMessage.content` changes from string to a union type, touching core / persistence / preprocessing in multiple places; the plain-text path must behave identically (backed by existing caller unit tests + new parts unit tests).
+- **Low**: the parsing layer return-value change is breaking, but there are only 2 call sites (upload page, ChatInput), locatable by the compiler.
+- **Cost**: multimodality + resending images every turn increases vision token consumption; controlled via filtering/limits (≤20 images, ≥5KB, ≤5MB); a "drop images after the first turn" optimization can be added later (see future enhancements).
+- **Model switch**: M2.7 → M3 affects all Agent conversations (not just table setup). M3 is OpenAI-compatible and more capable, so risk is low; the `LLM_MODEL` env allows quick rollback.
 
 ---
 
-## 20. 未来增强
+## 20. Future Enhancements
 
-- 成本优化：首轮模型"看图"后，后续 ReAct 轮次从历史中剔除 image parts，仅留 URL 文本引用。
-- 聊天框直接粘贴/上传单张图片给 Agent（脱离 docx 场景）。
-- 视频理解（`video_url`，M3 已支持）。
-- 大文档分块 + 图片去重（同图多次出现只传一次）。
-- 让 Agent 在媒体列填入"建议配图"的引用（需先解决 Agent 侧上传能力）。
+- Cost optimization: after the model "sees" the images in the first turn, strip image parts from history in subsequent ReAct turns, keeping only URL text references.
+- Paste/upload individual images directly to the Agent in the chat box (beyond the docx scenario).
+- Video understanding (`video_url`, already supported by M3).
+- Large-document chunking + image deduplication (the same image appearing multiple times is sent only once).
+- Let the Agent fill media columns with "suggested artwork" references (requires solving Agent-side upload capability first).

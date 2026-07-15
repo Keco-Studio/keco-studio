@@ -166,7 +166,7 @@ function AuthFormContent() {
         },
       });
       if (error) throw error;
-      // OAuth 登录会重定向到 Google，所以这里不需要设置成功消息
+      // OAuth login redirects to Google, so no success message is needed here
     } catch (err: any) {
       setErrorMsg(err?.message || "Google login failed");
       setGoogleLoading(false);

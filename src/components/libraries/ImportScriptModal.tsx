@@ -33,7 +33,7 @@ function previewScript(text: string): PreviewInfo {
   const lines = text.split('\n').filter(l => l.trim());
   const dialogueCount = lines.filter(l => /[:：]/.test(l) && !l.trim().startsWith('【')).length;
   const optionCount = lines.filter(
-    l => /^\s*-\s/.test(l) || /^【选项/.test(l) || /^O\d+[：:]/.test(l)
+    l => /^\s*-\s/.test(l) || /^O\d+[：:]/.test(l)
   ).length;
   return { lineCount: lines.length, dialogueCount, optionCount };
 }

@@ -140,7 +140,7 @@ Expected: all commands pass; ESLint may report only pre-existing warnings and ze
 
 - [ ] **Step 7: Repeat the authenticated real-environment profile**
 
-Start a fresh development server and run the existing `/tmp/profile-script-visual-ui.mjs` against `深海灯塔 Type E2E 1783847766703`.
+Start a fresh development server and run the existing `/tmp/profile-script-visual-ui.mjs` against `Deep Sea Lighthouse Type E2E 1783847766703`.
 
 Expected: the Script view remains functional, no `mathjs` resource is loaded, console errors remain empty, and the decoded development JavaScript total is lower than the 17.4 MB baseline.
 

@@ -1,7 +1,7 @@
 /**
  * Field name -> fieldId resolution for create_asset / update_asset.
  *
- * The LLM works with semantic field names (e.g. "类型", "标签"). This module maps
+ * The LLM works with semantic field names (e.g. "type", "tags"). This module maps
  * them to the internal library_field_definitions ids, the same data source as
  * the schema/predefine page.
  */
@@ -52,8 +52,8 @@ function unwrapItem(value: unknown): unknown {
  * Normalize the LLM-provided propertyValues before field resolution.
  *
  * MiniMax-M3 occasionally wraps values (and even whole field maps) in a spurious
- * `{ "item": ... }` envelope, e.g. {"获取方式": {"item": ["a"]}} or
- * {"item": {"货币类型": "x"}}. Reference values ([{ assetId, fieldId }]) are
+ * `{ "item": ... }` envelope, e.g. {"acquisition": {"item": ["a"]}} or
+ * {"item": {"currencyType": "x"}}. Reference values ([{ assetId, fieldId }]) are
  * arrays and are left untouched.
  */
 export function normalizeLlmPropertyValues(
@@ -92,11 +92,11 @@ export function isExplicitEmptyPropertyValues(params: unknown): boolean {
 /** Error text fed back to the LLM when propertyValues is empty. */
 export function buildEmptyPropertyValuesError(availableFields: string[]): string {
   const fields = availableFields.join(', ') || '(none)';
-  const exampleKey = availableFields[0] ?? '字段名';
+  const exampleKey = availableFields[0] ?? 'fieldName';
   return (
     `propertyValues is empty — no cell data will be written. ` +
     `Re-issue the tool call with at least one field value keyed by field name. ` +
-    `Available fields: ${fields}. Example: {"${exampleKey}": "值"}.`
+    `Available fields: ${fields}. Example: {"${exampleKey}": "value"}.`
   );
 }
 

@@ -1,51 +1,51 @@
-# Keco Studio - 优化建议文档
+# Keco Studio - Optimization Recommendations
 
-**文档版本**: 1.0  
-**创建日期**: 2026-01-30  
-**关联文档**: [架构文档](./ARCHITECTURE.md)
-
----
-
-## 📋 目录
-
-1. [概述](#概述)
-2. [优化建议分类](#优化建议分类)
-3. [关键优化建议](#关键优化建议)
-4. [实施优先级](#实施优先级)
-5. [优化路线图](#优化路线图)
+**Document Version**: 1.0  
+**Created**: 2026-01-30  
+**Related Documents**: [Architecture Document](./ARCHITECTURE.md)
 
 ---
 
-## 概述
+## 📋 Table of Contents
 
-本文档根据对Keco Studio项目的全面代码审查，提供了具体的优化建议。所有建议按照**严重程度**（Critical, High, Medium, Low）和**类型**（Performance, Maintainability, Security, Architecture）进行分类。
+1. [Overview](#overview)
+2. [Recommendation Categories](#recommendation-categories)
+3. [Key Optimization Recommendations](#key-optimization-recommendations)
+4. [Implementation Priorities](#implementation-priorities)
+5. [Optimization Roadmap](#optimization-roadmap)
 
-### 严重程度定义
+---
 
-| 级别 | 定义 | 影响 |
+## Overview
+
+This document provides concrete optimization recommendations based on a comprehensive code review of the Keco Studio project. All recommendations are classified by **severity** (Critical, High, Medium, Low) and **type** (Performance, Maintainability, Security, Architecture).
+
+### Severity Definitions
+
+| Level | Definition | Impact |
 |------|------|------|
-| **Critical** | 必须立即解决的问题，影响系统稳定性或安全性 | 可能导致系统崩溃、数据丢失或安全漏洞 |
-| **High** | 重要问题，严重影响开发效率或用户体验 | 导致开发困难、维护成本高、用户体验差 |
-| **Medium** | 中等优先级问题，有改进空间 | 影响代码质量、可维护性 |
-| **Low** | 小优化，可以逐步改进 | 轻微影响，但改进有价值 |
+| **Critical** | Issues that must be resolved immediately, affecting system stability or security | May cause system crashes, data loss, or security vulnerabilities |
+| **High** | Important issues that severely impact development efficiency or user experience | Lead to development difficulties, high maintenance costs, poor user experience |
+| **Medium** | Medium-priority issues with room for improvement | Affect code quality and maintainability |
+| **Low** | Minor optimizations that can be improved gradually | Minor impact, but improvements are worthwhile |
 
 ---
 
-## 优化建议分类
+## Recommendation Categories
 
-### 按严重程度统计
+### By Severity
 
-| 严重程度 | 数量 |
+| Severity | Count |
 |---------|------|
 | Critical | 3 |
 | High | 8 |
 | Medium | 6 |
 | Low | 5 |
-| **总计** | **22** |
+| **Total** | **22** |
 
-### 按类型统计
+### By Type
 
-| 类型 | 数量 |
+| Type | Count |
 |------|------|
 | Architecture | 5 |
 | Maintainability | 8 |
@@ -55,47 +55,47 @@
 
 ---
 
-## 关键优化建议
+## Key Optimization Recommendations
 
-### Critical 级别
+### Critical Level
 
 ---
 
-#### OPT-001: 超大组件重构 - Sidebar.tsx (2330行)
+#### OPT-001: Oversized Component Refactoring - Sidebar.tsx (2330 lines)
 
-**严重程度**: Critical  
-**类型**: Maintainability, Architecture  
-**影响文件**: `src/components/layout/Sidebar.tsx`
+**Severity**: Critical  
+**Type**: Maintainability, Architecture  
+**Affected Files**: `src/components/layout/Sidebar.tsx`
 
-**问题描述**:
-Sidebar组件包含2330行代码，集成了过多功能：
-- 项目/库/文件夹导航树
-- 版本控制侧边栏
-- 协作者管理
-- 文件夹管理
-- 右键菜单
-- 拖拽排序
+**Problem Description**:
+The Sidebar component contains 2330 lines of code and integrates too many features:
+- Project/library/folder navigation tree
+- Version control sidebar
+- Collaborator management
+- Folder management
+- Context menu
+- Drag-and-drop sorting
 
-**当前问题**:
-1. 修改任何功能都有引入bug的风险
-2. 难以定位和修复bug
-3. 测试困难（单元测试几乎不可能）
-4. 新开发者理解成本极高
-5. 代码复用困难
+**Current Problems**:
+1. Modifying any feature risks introducing bugs
+2. Hard to locate and fix bugs
+3. Difficult to test (unit testing is nearly impossible)
+4. Extremely high onboarding cost for new developers
+5. Hard to reuse code
 
-**建议方案**:
+**Recommended Solution**:
 
-**拆分结构**:
+**Split Structure**:
 ```
 src/components/layout/
-├── Sidebar.tsx (主容器，200行以内)
+├── Sidebar.tsx (main container, under 200 lines)
 ├── sidebar/
 │   ├── SidebarHeader.tsx
-│   ├── ProjectNavigationTree.tsx (项目树)
-│   ├── LibraryNavigationTree.tsx (库树)
-│   ├── FolderNavigationTree.tsx (文件夹树)
-│   ├── NavigationContextMenu.tsx (右键菜单)
-│   ├── SidebarDragAndDrop.tsx (拖拽逻辑)
+│   ├── ProjectNavigationTree.tsx (project tree)
+│   ├── LibraryNavigationTree.tsx (library tree)
+│   ├── FolderNavigationTree.tsx (folder tree)
+│   ├── NavigationContextMenu.tsx (context menu)
+│   ├── SidebarDragAndDrop.tsx (drag-and-drop logic)
 │   ├── hooks/
 │   │   ├── useSidebarNavigation.ts
 │   │   ├── useSidebarDragDrop.ts
@@ -104,61 +104,61 @@ src/components/layout/
 │       └── navigationUtils.ts
 ```
 
-**重构步骤**:
-1. 创建新的目录结构
-2. 提取独立功能模块（先不改逻辑）
-3. 编写单元测试覆盖各模块
-4. 逐步优化各模块逻辑
-5. 删除旧的Sidebar.tsx
+**Refactoring Steps**:
+1. Create the new directory structure
+2. Extract independent feature modules (without changing logic first)
+3. Write unit tests covering each module
+4. Gradually optimize each module's logic
+5. Delete the old Sidebar.tsx
 
-**预期收益**:
-- 单个组件<300行
-- 可测试性提升90%
-- Bug定位时间减少70%
-- 新功能开发效率提升50%
+**Expected Benefits**:
+- Each component <300 lines
+- Testability improved by 90%
+- Bug localization time reduced by 70%
+- New feature development efficiency improved by 50%
 
-**估算工作量**: 2周
+**Estimated Effort**: 2 weeks
 
 ---
 
-#### OPT-002: 超大组件重构 - LibraryAssetsTable.tsx (2335行)
+#### OPT-002: Oversized Component Refactoring - LibraryAssetsTable.tsx (2335 lines)
 
-**严重程度**: Critical  
-**类型**: Maintainability, Architecture, Performance  
-**影响文件**: `src/components/libraries/LibraryAssetsTable.tsx`
+**Severity**: Critical  
+**Type**: Maintainability, Architecture, Performance  
+**Affected Files**: `src/components/libraries/LibraryAssetsTable.tsx`
 
-**问题描述**:
-LibraryAssetsTable是项目中最复杂的组件，包含2335行代码：
-- 表格渲染和布局
-- 单元格编辑逻辑
-- 拖拽排序
-- 剪贴板操作
-- 批量编辑
-- 右键菜单
+**Problem Description**:
+LibraryAssetsTable is the most complex component in the project, containing 2335 lines of code:
+- Table rendering and layout
+- Cell editing logic
+- Drag-and-drop sorting
+- Clipboard operations
+- Batch editing
+- Context menu
 - Presence Avatars
-- 引用字段弹窗
-- 无数的useEffect和useState
+- Reference field popup
+- Countless useEffect and useState hooks
 
-**当前问题**:
-1. 性能问题：大型表格（>500行）渲染缓慢
-2. 状态管理混乱：过多useState和useEffect
-3. 难以追踪数据流
-4. 修改一个功能可能破坏其他功能
-5. 几乎不可能写单元测试
+**Current Problems**:
+1. Performance issues: large tables (>500 rows) render slowly
+2. Chaotic state management: too many useState and useEffect hooks
+3. Hard to trace data flow
+4. Modifying one feature may break others
+5. Nearly impossible to write unit tests
 
-**建议方案**:
+**Recommended Solution**:
 
-**拆分策略**:
+**Split Strategy**:
 ```
 src/components/libraries/
-├── LibraryAssetsTable.tsx (主容器，<200行)
+├── LibraryAssetsTable.tsx (main container, <200 lines)
 ├── table/
-│   ├── TableCore.tsx (核心表格渲染)
-│   ├── TableVirtualized.tsx (虚拟化表格，性能优化)
-│   ├── TableHeader.tsx (表头)
-│   ├── TableRow.tsx (行组件)
-│   ├── TableCell.tsx (单元格)
-│   ├── CellEditor/ (单元格编辑器)
+│   ├── TableCore.tsx (core table rendering)
+│   ├── TableVirtualized.tsx (virtualized table, performance optimization)
+│   ├── TableHeader.tsx (table header)
+│   ├── TableRow.tsx (row component)
+│   ├── TableCell.tsx (cell)
+│   ├── CellEditor/ (cell editors)
 │   │   ├── TextCellEditor.tsx
 │   │   ├── NumberCellEditor.tsx
 │   │   ├── BooleanCellEditor.tsx
@@ -171,12 +171,12 @@ src/components/libraries/
 │   └── EmptyState.tsx
 ```
 
-**性能优化**:
+**Performance Optimization**:
 ```typescript
-// 1. 使用虚拟化渲染（推荐 react-window 或 @tanstack/react-virtual）
+// 1. Use virtualized rendering (react-window or @tanstack/react-virtual recommended)
 import { useVirtualizer } from '@tanstack/react-virtual';
 
-// 2. 使用 React.memo 优化行组件
+// 2. Use React.memo to optimize row components
 const TableRow = React.memo(({ row }) => {
   // ...
 }, (prevProps, nextProps) => {
@@ -184,15 +184,15 @@ const TableRow = React.memo(({ row }) => {
     && prevProps.row.updatedAt === nextProps.row.updatedAt;
 });
 
-// 3. 使用 useMemo 优化计算
+// 3. Use useMemo to optimize computations
 const sortedRows = useMemo(() => {
   return rows.sort((a, b) => a.order - b.order);
 }, [rows]);
 ```
 
-**状态管理优化**:
+**State Management Optimization**:
 ```typescript
-// 使用 useReducer 替代多个 useState
+// Use useReducer instead of multiple useState hooks
 type TableState = {
   selectedCells: Set<string>;
   editingCell: { rowId: string; fieldId: string } | null;
@@ -203,290 +203,290 @@ type TableState = {
 const [state, dispatch] = useReducer(tableReducer, initialState);
 ```
 
-**预期收益**:
-- 渲染性能提升80%（虚拟化）
-- 代码可读性提升90%
-- Bug定位时间减少80%
-- 支持大型表格（>10,000行）
+**Expected Benefits**:
+- Rendering performance improved by 80% (virtualization)
+- Code readability improved by 90%
+- Bug localization time reduced by 80%
+- Support for large tables (>10,000 rows)
 
-**估算工作量**: 3周
+**Estimated Effort**: 3 weeks
 
 ---
 
-#### OPT-003: TypeScript严格模式启用
+#### OPT-003: Enable TypeScript Strict Mode
 
-**严重程度**: Critical  
-**类型**: Code Quality, Maintainability  
-**影响文件**: `tsconfig.json`, 所有TypeScript文件
+**Severity**: Critical  
+**Type**: Code Quality, Maintainability  
+**Affected Files**: `tsconfig.json`, all TypeScript files
 
-**问题描述**:
+**Problem Description**:
 ```json
 {
   "compilerOptions": {
-    "strict": false  // ❌ 问题所在
+    "strict": false  // ❌ The problem
   }
 }
 ```
 
-当前项目禁用了TypeScript严格模式，导致：
-1. 大量`any`类型，失去类型安全
-2. 可能的运行时错误（null/undefined）
-3. IDE提示不准确
-4. 重构风险高
+The project currently has TypeScript strict mode disabled, resulting in:
+1. Large numbers of `any` types, losing type safety
+2. Potential runtime errors (null/undefined)
+3. Inaccurate IDE hints
+4. High refactoring risk
 
-**问题示例**:
+**Problem Example**:
 ```typescript
-// 当前代码（有风险）
-function updateAsset(asset: any) {  // ❌ any类型
-  return asset.name.toUpperCase();  // 可能运行时错误
+// Current code (risky)
+function updateAsset(asset: any) {  // ❌ any type
+  return asset.name.toUpperCase();  // possible runtime error
 }
 
-// 应该是
-function updateAsset(asset: Asset | null) {  // ✅ 明确类型
-  return asset?.name.toUpperCase() ?? '';   // ✅ 安全访问
+// Should be
+function updateAsset(asset: Asset | null) {  // ✅ explicit type
+  return asset?.name.toUpperCase() ?? '';   // ✅ safe access
 }
 ```
 
-**建议方案**:
+**Recommended Solution**:
 
-**分步启用严格模式**:
+**Enable Strict Mode in Steps**:
 ```json
 // tsconfig.json
 {
   "compilerOptions": {
-    // 第一步：启用基础严格检查
-    "noImplicitAny": true,           // 禁止隐式any
-    "strictNullChecks": true,        // 严格空检查
+    // Step 1: enable basic strict checks
+    "noImplicitAny": true,           // disallow implicit any
+    "strictNullChecks": true,        // strict null checks
     
-    // 第二步：启用更严格的检查
-    "strictFunctionTypes": true,     // 严格函数类型
-    "strictBindCallApply": true,     // 严格bind/call/apply
+    // Step 2: enable stricter checks
+    "strictFunctionTypes": true,     // strict function types
+    "strictBindCallApply": true,     // strict bind/call/apply
     
-    // 第三步：完全启用
+    // Step 3: fully enable
     "strict": true
   }
 }
 ```
 
-**修复步骤**:
-1. 启用`noImplicitAny`，修复所有错误（预计200+个）
-2. 启用`strictNullChecks`，添加null/undefined检查
-3. 启用`strictFunctionTypes`和其他选项
-4. 最终启用`strict: true`
+**Fix Steps**:
+1. Enable `noImplicitAny` and fix all errors (estimated 200+)
+2. Enable `strictNullChecks` and add null/undefined checks
+3. Enable `strictFunctionTypes` and other options
+4. Finally enable `strict: true`
 
-**常见修复模式**:
+**Common Fix Patterns**:
 ```typescript
-// 1. any类型修复
+// 1. Fixing any types
 - function handleData(data: any)
 + function handleData(data: AssetRow | null)
 
-// 2. null检查修复
+// 2. Fixing null checks
 - const name = user.profile.name;
 + const name = user?.profile?.name ?? 'Unknown';
 
-// 3. 类型断言修复
+// 3. Fixing type assertions
 - const element = document.querySelector('.btn') as HTMLElement;
 + const element = document.querySelector('.btn');
 + if (element instanceof HTMLElement) { ... }
 ```
 
-**预期收益**:
-- 运行时错误减少60%
-- IDE提示准确度提升100%
-- 重构信心提升
-- 代码质量提升
+**Expected Benefits**:
+- Runtime errors reduced by 60%
+- IDE hint accuracy improved by 100%
+- Increased refactoring confidence
+- Improved code quality
 
-**估算工作量**: 2周
-
----
-
-### High 级别
+**Estimated Effort**: 2 weeks
 
 ---
 
-#### OPT-004: 目录结构统一和清理
+### High Level
 
-**严重程度**: High  
-**类型**: Maintainability, Architecture  
-**影响文件**: 全项目
+---
 
-**问题描述**:
-目录结构混乱，存在重复目录：
-1. `src/contexts/` 和 `src/lib/contexts/` 并存
-2. `src/hooks/` 和 `src/lib/hooks/` 并存
-3. 组件内部的hooks分散
+#### OPT-004: Unify and Clean Up Directory Structure
 
-**当前结构**:
+**Severity**: High  
+**Type**: Maintainability, Architecture  
+**Affected Files**: Entire project
+
+**Problem Description**:
+The directory structure is disorganized, with duplicate directories:
+1. `src/contexts/` and `src/lib/contexts/` coexist
+2. `src/hooks/` and `src/lib/hooks/` coexist
+3. Hooks inside components are scattered
+
+**Current Structure**:
 ```
 src/
-├── contexts/          # ❌ 旧目录，只有1个文件
+├── contexts/          # ❌ old directory, only 1 file
 │   └── YjsContext.tsx
-├── hooks/             # ❌ 旧目录，只有1个文件
+├── hooks/             # ❌ old directory, only 1 file
 │   └── useYjsRows.ts
 └── lib/
-    ├── contexts/      # ✅ 新目录
+    ├── contexts/      # ✅ new directory
     │   ├── AuthContext.tsx
     │   ├── LibraryDataContext.tsx
     │   └── ...
-    └── hooks/         # ✅ 新目录
+    └── hooks/         # ✅ new directory
         ├── useRealtimeSubscription.ts
         └── ...
 ```
 
-**建议方案**:
+**Recommended Solution**:
 
-**统一目录结构**:
+**Unified Directory Structure**:
 ```
 src/
 ├── lib/
-│   ├── contexts/           # 所有Context统一在这里
+│   ├── contexts/           # all Contexts unified here
 │   │   ├── AuthContext.tsx
 │   │   ├── LibraryDataContext.tsx
 │   │   ├── PresenceContext.tsx
 │   │   ├── NavigationContext.tsx
-│   │   └── YjsContext.tsx      # 从 src/contexts/ 移过来
-│   └── hooks/              # 所有全局Hooks统一在这里
+│   │   └── YjsContext.tsx      # moved from src/contexts/
+│   └── hooks/              # all global hooks unified here
 │       ├── useRealtimeSubscription.ts
 │       ├── usePresenceTracking.ts
-│       ├── useYjsRows.ts       # 从 src/hooks/ 移过来
+│       ├── useYjsRows.ts       # moved from src/hooks/
 │       └── ...
 ```
 
-**删除目录**:
-- `src/contexts/` (迁移完成后删除)
-- `src/hooks/` (迁移完成后删除)
+**Directories to Delete**:
+- `src/contexts/` (delete after migration)
+- `src/hooks/` (delete after migration)
 
-**更新所有导入路径**:
+**Update All Import Paths**:
 ```typescript
-// 旧路径
+// Old path
 - import { YjsContext } from '@/contexts/YjsContext';
-// 新路径
+// New path
 + import { YjsContext } from '@/lib/contexts/YjsContext';
 ```
 
-**预期收益**:
-- 代码结构更清晰
-- 减少查找文件的时间
-- 避免重复代码
-- 新开发者更容易理解
+**Expected Benefits**:
+- Clearer code structure
+- Less time spent finding files
+- Avoid duplicate code
+- Easier for new developers to understand
 
-**估算工作量**: 1周
+**Estimated Effort**: 1 week
 
 ---
 
-#### OPT-005: 减少相对导入路径，统一使用别名导入
+#### OPT-005: Reduce Relative Import Paths, Standardize on Alias Imports
 
-**严重程度**: High  
-**类型**: Maintainability  
-**影响文件**: 86个文件使用相对导入
+**Severity**: High  
+**Type**: Maintainability  
+**Affected Files**: 86 files use relative imports
 
-**问题描述**:
-大量文件使用`../`相对导入，导致：
-1. 导入路径难以理解
-2. 移动文件时需要更新大量导入
-3. 代码可读性差
+**Problem Description**:
+Many files use `../` relative imports, resulting in:
+1. Import paths that are hard to understand
+2. Many imports needing updates when files are moved
+3. Poor code readability
 
-**问题示例**:
+**Problem Example**:
 ```typescript
-// ❌ 难以理解的相对路径
+// ❌ Hard-to-understand relative paths
 import { something } from '../../../../lib/services/projectService';
 import { another } from '../../../hooks/useData';
 import { Component } from '../../components/Modal';
 
-// ✅ 清晰的别名路径
+// ✅ Clear alias paths
 import { something } from '@/lib/services/projectService';
 import { another } from '@/lib/hooks/useData';
 import { Component } from '@/components/Modal';
 ```
 
-**当前配置**:
+**Current Configuration**:
 ```json
 // tsconfig.json
 {
   "compilerOptions": {
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]  // ✅ 已配置，但未充分使用
+      "@/*": ["./src/*"]  // ✅ configured, but underused
     }
   }
 }
 ```
 
-**建议方案**:
+**Recommended Solution**:
 
-**批量替换相对导入**:
+**Batch-Replace Relative Imports**:
 ```bash
-# 使用脚本批量替换（需要编写）
+# Batch-replace via script (needs to be written)
 npm run fix:imports
 ```
 
-**建议的导入规范**:
+**Recommended Import Conventions**:
 ```typescript
-// 1. 外部库
+// 1. External libraries
 import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-// 2. 内部模块（使用别名）
+// 2. Internal modules (use alias)
 import { projectService } from '@/lib/services/projectService';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 
-// 3. 相对导入（仅用于同目录或子目录）
+// 3. Relative imports (only for same directory or subdirectories)
 import { TableRow } from './TableRow';
 import { useTableData } from './hooks/useTableData';
 ```
 
-**预期收益**:
-- 导入路径更清晰
-- 移动文件更容易
-- 代码可读性提升
-- IDE自动补全更准确
+**Expected Benefits**:
+- Clearer import paths
+- Easier to move files
+- Improved code readability
+- More accurate IDE autocompletion
 
-**估算工作量**: 3天
+**Estimated Effort**: 3 days
 
 ---
 
-#### OPT-006: LibraryDataContext职责过多，需要拆分
+#### OPT-006: LibraryDataContext Has Too Many Responsibilities and Needs Splitting
 
-**严重程度**: High  
-**类型**: Architecture, Maintainability  
-**影响文件**: `src/lib/contexts/LibraryDataContext.tsx` (668行)
+**Severity**: High  
+**Type**: Architecture, Maintainability  
+**Affected Files**: `src/lib/contexts/LibraryDataContext.tsx` (668 lines)
 
-**问题描述**:
-LibraryDataContext集成了过多职责：
-1. Yjs文档管理
-2. IndexedDB持久化
-3. Supabase Realtime订阅
+**Problem Description**:
+LibraryDataContext integrates too many responsibilities:
+1. Yjs document management
+2. IndexedDB persistence
+3. Supabase Realtime subscription
 4. Presence tracking
-5. 资产CRUD操作
-6. 批量操作
-7. 缓存管理
+5. Asset CRUD operations
+6. Batch operations
+7. Cache management
 
-**当前问题**:
-1. 单个文件过大（668行）
-2. 难以测试
-3. 状态管理复杂
-4. 难以理解数据流
+**Current Problems**:
+1. Single file is too large (668 lines)
+2. Hard to test
+3. Complex state management
+4. Hard to understand data flow
 
-**建议方案**:
+**Recommended Solution**:
 
-**拆分成多个Context**:
+**Split Into Multiple Contexts**:
 ```
 src/lib/contexts/
 ├── library-data/
-│   ├── LibraryDataContext.tsx      # 主Context（<100行）
-│   ├── YjsDocumentContext.tsx      # Yjs文档管理
-│   ├── RealtimeSyncContext.tsx     # Realtime同步
-│   ├── AssetOperationsContext.tsx  # 资产操作
+│   ├── LibraryDataContext.tsx      # main Context (<100 lines)
+│   ├── YjsDocumentContext.tsx      # Yjs document management
+│   ├── RealtimeSyncContext.tsx     # Realtime sync
+│   ├── AssetOperationsContext.tsx  # asset operations
 │   └── hooks/
 │       ├── useYjsDocument.ts
 │       ├── useRealtimeSync.ts
 │       └── useAssetOperations.ts
 ```
 
-**重构后的使用方式**:
+**Usage After Refactoring**:
 ```typescript
-// 组合多个Provider
+// Compose multiple Providers
 <LibraryDataProvider libraryId={id}>
   <YjsDocumentProvider>
     <RealtimeSyncProvider>
@@ -497,51 +497,51 @@ src/lib/contexts/
   </YjsDocumentProvider>
 </LibraryDataProvider>
 
-// 或使用组合Provider
+// Or use a combined Provider
 <CombinedLibraryProvider libraryId={id}>
   {children}
 </CombinedLibraryProvider>
 ```
 
-**预期收益**:
-- 单个Context<150行
-- 职责清晰
-- 可测试性提升
-- 可复用性提升
+**Expected Benefits**:
+- Each Context <150 lines
+- Clear responsibilities
+- Improved testability
+- Improved reusability
 
-**估算工作量**: 1.5周
+**Estimated Effort**: 1.5 weeks
 
 ---
 
-#### OPT-007: 实现虚拟化表格渲染
+#### OPT-007: Implement Virtualized Table Rendering
 
-**严重程度**: High  
-**类型**: Performance  
-**影响文件**: `src/components/libraries/LibraryAssetsTable.tsx`
+**Severity**: High  
+**Type**: Performance  
+**Affected Files**: `src/components/libraries/LibraryAssetsTable.tsx`
 
-**问题描述**:
-当前表格渲染所有行，导致：
-1. 大型表格（>500行）渲染缓慢
-2. 滚动不流畅
-3. 内存占用高
-4. 浏览器可能卡顿
+**Problem Description**:
+The table currently renders all rows, resulting in:
+1. Large tables (>500 rows) rendering slowly
+2. Janky scrolling
+3. High memory usage
+4. Possible browser freezes
 
-**性能测试结果**（估算）:
-| 行数 | 当前渲染时间 | 虚拟化后 |
+**Performance Test Results** (estimated):
+| Rows | Current Render Time | After Virtualization |
 |------|------------|----------|
 | 100  | 200ms      | 50ms     |
 | 500  | 1000ms     | 80ms     |
 | 1000 | 2000ms+    | 100ms    |
-| 5000 | 卡死       | 150ms    |
+| 5000 | Freezes    | 150ms    |
 
-**建议方案**:
+**Recommended Solution**:
 
-**使用虚拟化库**:
+**Use a Virtualization Library**:
 ```bash
 npm install @tanstack/react-virtual
 ```
 
-**实现虚拟化表格**:
+**Implement a Virtualized Table**:
 ```typescript
 import { useVirtualizer } from '@tanstack/react-virtual';
 
@@ -551,8 +551,8 @@ function VirtualizedTable({ rows }: { rows: AssetRow[] }) {
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 48, // 行高48px
-    overscan: 10, // 预渲染10行
+    estimateSize: () => 48, // row height 48px
+    overscan: 10, // pre-render 10 rows
   });
   
   return (
@@ -582,50 +582,50 @@ function VirtualizedTable({ rows }: { rows: AssetRow[] }) {
 }
 ```
 
-**预期收益**:
-- 渲染性能提升80%
-- 支持10,000+行表格
-- 内存占用减少70%
-- 滚动流畅
+**Expected Benefits**:
+- Rendering performance improved by 80%
+- Support for tables with 10,000+ rows
+- Memory usage reduced by 70%
+- Smooth scrolling
 
-**估算工作量**: 1周
+**Estimated Effort**: 1 week
 
 ---
 
-#### OPT-008: Yjs与Supabase双重状态同步优化
+#### OPT-008: Optimize Yjs and Supabase Dual-State Synchronization
 
-**严重程度**: High  
-**类型**: Architecture, Performance  
-**影响文件**: `src/lib/contexts/LibraryDataContext.tsx`, `src/lib/hooks/useRealtimeSubscription.ts`
+**Severity**: High  
+**Type**: Architecture, Performance  
+**Affected Files**: `src/lib/contexts/LibraryDataContext.tsx`, `src/lib/hooks/useRealtimeSubscription.ts`
 
-**问题描述**:
-当前架构使用Yjs（本地CRDT）+ Supabase Realtime（远程订阅）双层架构，存在问题：
-1. 双重真相源，可能不一致
-2. 网络中断时数据不同步
-3. 冲突解决逻辑复杂
-4. 调试困难
+**Problem Description**:
+The current architecture uses a two-layer setup of Yjs (local CRDT) + Supabase Realtime (remote subscription), which has issues:
+1. Dual sources of truth that may become inconsistent
+2. Data out of sync during network interruptions
+3. Complex conflict-resolution logic
+4. Hard to debug
 
-**当前数据流**:
+**Current Data Flow**:
 ```
-用户编辑 → Yjs Doc → 组件重渲染
+User edit → Yjs Doc → component re-render
          ↓
-    Supabase DB ← Realtime订阅 → 其他客户端
+    Supabase DB ← Realtime subscription → other clients
 ```
 
-**问题场景**:
-1. **场景1**: 用户离线编辑，Yjs有数据，但DB未更新
-2. **场景2**: Realtime订阅失败，其他用户看不到更新
-3. **场景3**: Yjs和DB数据冲突，不知道以哪个为准
+**Problem Scenarios**:
+1. **Scenario 1**: User edits offline; Yjs has the data but the DB is not updated
+2. **Scenario 2**: Realtime subscription fails; other users don't see updates
+3. **Scenario 3**: Yjs and DB data conflict, and it's unclear which one wins
 
-**建议方案**:
+**Recommended Solution**:
 
-**方案A: 统一使用Supabase Realtime（推荐）**
+**Option A: Standardize on Supabase Realtime (recommended)**
 ```typescript
-// 移除Yjs，完全依赖Supabase
-// 优点：单一真相源，简单
-// 缺点：离线支持较弱
+// Remove Yjs and rely entirely on Supabase
+// Pros: single source of truth, simple
+// Cons: weaker offline support
 
-// 使用React Query + Realtime
+// Use React Query + Realtime
 const { data: assets } = useQuery({
   queryKey: ['library', libraryId, 'assets'],
   queryFn: () => libraryAssetsService.getAssets(libraryId),
@@ -650,11 +650,11 @@ useRealtimeSubscription({
 });
 ```
 
-**方案B: Yjs + Supabase Provider（更复杂但更强大）**
+**Option B: Yjs + Supabase Provider (more complex but more powerful)**
 ```typescript
-// 使用 y-supabase provider（如果存在）
-// 或自己实现Yjs到Supabase的同步
-import { SupabaseProvider } from 'y-supabase'; // 假设有这个库
+// Use a y-supabase provider (if one exists)
+// or implement Yjs-to-Supabase sync yourself
+import { SupabaseProvider } from 'y-supabase'; // assuming this library exists
 
 const provider = new SupabaseProvider(
   yDoc,
@@ -666,9 +666,9 @@ const provider = new SupabaseProvider(
 );
 ```
 
-**方案C: 保持现状，但改进同步逻辑**
+**Option C: Keep the status quo but improve the sync logic**
 ```typescript
-// 添加同步状态跟踪
+// Add sync status tracking
 type SyncStatus = {
   yjsVersion: number;
   dbVersion: number;
@@ -676,56 +676,56 @@ type SyncStatus = {
   pendingChanges: number;
 };
 
-// 添加冲突解决策略
+// Add a conflict-resolution strategy
 function resolveConflict(yjsData, dbData) {
-  // 使用时间戳或版本号解决冲突
+  // Resolve conflicts using timestamps or version numbers
   return yjsData.updatedAt > dbData.updatedAt ? yjsData : dbData;
 }
 ```
 
-**预期收益**:
-- 数据一致性提升
-- 减少同步bug
-- 简化架构
-- 易于调试
+**Expected Benefits**:
+- Improved data consistency
+- Fewer sync bugs
+- Simplified architecture
+- Easier to debug
 
-**估算工作量**: 
-- 方案A: 2周
-- 方案B: 3-4周
-- 方案C: 1周
+**Estimated Effort**: 
+- Option A: 2 weeks
+- Option B: 3-4 weeks
+- Option C: 1 week
 
-**推荐**: 方案A（简化架构）
+**Recommendation**: Option A (simplify the architecture)
 
 ---
 
-#### OPT-009: 增加单元测试覆盖
+#### OPT-009: Increase Unit Test Coverage
 
-**严重程度**: High  
-**类型**: Code Quality, Maintainability  
-**影响文件**: 核心业务逻辑文件（Services, Hooks, Utils）
+**Severity**: High  
+**Type**: Code Quality, Maintainability  
+**Affected Files**: Core business logic files (Services, Hooks, Utils)
 
-**问题描述**:
-当前项目只有E2E测试，缺少单元测试：
-1. 重构风险高
-2. Bug修复困难
-3. 核心逻辑未被测试覆盖
-4. 测试反馈慢（E2E测试慢）
+**Problem Description**:
+The project currently only has E2E tests and lacks unit tests:
+1. High refactoring risk
+2. Bug fixing is difficult
+3. Core logic is not covered by tests
+4. Slow test feedback (E2E tests are slow)
 
-**当前测试覆盖**:
+**Current Test Coverage**:
 ```
-✅ E2E测试（Playwright）: 10+ 个测试规格
-❌ 单元测试: 0%
-❌ 集成测试: 0%
+✅ E2E tests (Playwright): 10+ test specs
+❌ Unit tests: 0%
+❌ Integration tests: 0%
 ```
 
-**建议方案**:
+**Recommended Solution**:
 
-**安装测试框架**:
+**Install a Test Framework**:
 ```bash
 npm install --save-dev vitest @testing-library/react @testing-library/jest-dom
 ```
 
-**配置vitest**:
+**Configure vitest**:
 ```typescript
 // vitest.config.ts
 import { defineConfig } from 'vitest/config';
@@ -747,9 +747,9 @@ export default defineConfig({
 });
 ```
 
-**优先测试的模块**:
+**Modules to Test First**:
 
-**1. Services层（业务逻辑）**:
+**1. Services layer (business logic)**:
 ```typescript
 // src/lib/services/__tests__/projectService.test.ts
 import { describe, it, expect, vi } from 'vitest';
@@ -767,7 +767,7 @@ describe('projectService', () => {
 });
 ```
 
-**2. Utils层（工具函数）**:
+**2. Utils layer (utility functions)**:
 ```typescript
 // src/lib/utils/__tests__/nameValidation.test.ts
 import { describe, it, expect } from 'vitest';
@@ -788,7 +788,7 @@ describe('validateProjectName', () => {
 });
 ```
 
-**3. Hooks层（自定义Hooks）**:
+**3. Hooks layer (custom hooks)**:
 ```typescript
 // src/lib/hooks/__tests__/useCollaboratorPermissions.test.ts
 import { renderHook } from '@testing-library/react';
@@ -805,52 +805,52 @@ describe('useCollaboratorPermissions', () => {
 });
 ```
 
-**测试覆盖目标**:
-| 模块 | 目标覆盖率 |
+**Test Coverage Targets**:
+| Module | Target Coverage |
 |------|-----------|
 | Services | 80% |
 | Utils | 90% |
 | Hooks | 70% |
 | Components | 50% |
 
-**预期收益**:
-- 重构信心提升
-- Bug发现提前
-- 文档作用（测试即文档）
-- 开发效率提升
+**Expected Benefits**:
+- Increased refactoring confidence
+- Bugs discovered earlier
+- Documentation value (tests as documentation)
+- Improved development efficiency
 
-**估算工作量**: 3-4周
+**Estimated Effort**: 3-4 weeks
 
 ---
 
-#### OPT-010: 统一错误处理策略
+#### OPT-010: Unify the Error-Handling Strategy
 
-**严重程度**: High  
-**类型**: Maintainability, User Experience  
-**影响文件**: 所有API路由，Service层，组件层
+**Severity**: High  
+**Type**: Maintainability, User Experience  
+**Affected Files**: All API routes, service layer, component layer
 
-**问题描述**:
-当前错误处理不统一：
-1. API路由错误格式不一致
-2. 客户端错误处理分散
-3. 用户看到的错误信息不友好
-4. 缺少错误日志和监控
+**Problem Description**:
+Error handling is currently inconsistent:
+1. Inconsistent error formats across API routes
+2. Scattered client-side error handling
+3. Error messages shown to users are unfriendly
+4. Missing error logging and monitoring
 
-**当前问题示例**:
+**Current Problem Example**:
 ```typescript
-// API路由A
+// API route A
 return NextResponse.json({ error: 'Not found' }, { status: 404 });
 
-// API路由B  
+// API route B  
 return NextResponse.json({ message: 'Error occurred' }, { status: 500 });
 
-// API路由C
+// API route C
 throw new Error('Something went wrong');
 ```
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 统一错误类型**:
+**1. Unified Error Types**:
 ```typescript
 // src/lib/errors/AppError.ts
 export class AppError extends Error {
@@ -865,7 +865,7 @@ export class AppError extends Error {
   }
 }
 
-// 预定义错误
+// Predefined errors
 export class NotFoundError extends AppError {
   constructor(resource: string) {
     super('NOT_FOUND', `${resource} not found`, 404);
@@ -885,7 +885,7 @@ export class ValidationError extends AppError {
 }
 ```
 
-**2. API路由错误处理中间件**:
+**2. API Route Error-Handling Middleware**:
 ```typescript
 // src/lib/api/errorHandler.ts
 export function withErrorHandler(
@@ -908,7 +908,7 @@ export function withErrorHandler(
         );
       }
       
-      // 未知错误
+      // Unknown error
       console.error('Unexpected error:', error);
       return NextResponse.json(
         {
@@ -923,16 +923,16 @@ export function withErrorHandler(
   };
 }
 
-// 使用
+// Usage
 export const POST = withErrorHandler(async (req: Request) => {
   const user = await getUser();
   if (!user) throw new UnauthorizedError();
   
-  // 业务逻辑...
+  // Business logic...
 });
 ```
 
-**3. 客户端错误处理**:
+**3. Client-Side Error Handling**:
 ```typescript
 // src/lib/hooks/useErrorHandler.ts
 export function useErrorHandler() {
@@ -947,7 +947,7 @@ export function useErrorHandler() {
   return { showError };
 }
 
-// 使用
+// Usage
 const { showError } = useErrorHandler();
 
 try {
@@ -957,7 +957,7 @@ try {
 }
 ```
 
-**4. 错误监控（推荐Sentry）**:
+**4. Error Monitoring (Sentry recommended)**:
 ```typescript
 // src/lib/monitoring/sentry.ts
 import * as Sentry from '@sentry/nextjs';
@@ -967,7 +967,7 @@ Sentry.init({
   environment: process.env.NODE_ENV,
 });
 
-// 在错误处理中发送到Sentry
+// Send to Sentry in the error handler
 if (error instanceof AppError) {
   Sentry.captureException(error, {
     tags: {
@@ -978,55 +978,55 @@ if (error instanceof AppError) {
 }
 ```
 
-**预期收益**:
-- 错误处理统一
-- 用户体验提升
-- 易于调试
-- 错误监控和追踪
+**Expected Benefits**:
+- Unified error handling
+- Improved user experience
+- Easier debugging
+- Error monitoring and tracing
 
-**估算工作量**: 1周
+**Estimated Effort**: 1 week
 
 ---
 
-#### OPT-011: React Query缓存策略优化
+#### OPT-011: Optimize React Query Caching Strategy
 
-**严重程度**: High  
-**类型**: Performance  
-**影响文件**: 所有使用React Query的组件
+**Severity**: High  
+**Type**: Performance  
+**Affected Files**: All components using React Query
 
-**问题描述**:
-当前React Query配置可能不够优化：
-1. 缓存时间配置不合理
-2. 缓存失效策略不明确
-3. 乐观更新未充分利用
-4. 可能有重复请求
+**Problem Description**:
+The current React Query configuration may not be optimal:
+1. Unreasonable cache time settings
+2. Unclear cache-invalidation strategy
+3. Optimistic updates underused
+4. Possible duplicate requests
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 优化Query配置**:
+**1. Optimize Query Configuration**:
 ```typescript
 // src/lib/providers/QueryProvider.tsx
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000, // 5分钟内数据被认为是新鲜的
-      cacheTime: 10 * 60 * 1000, // 缓存保留10分钟
-      refetchOnWindowFocus: true, // 窗口聚焦时重新获取
+      staleTime: 5 * 60 * 1000, // data considered fresh for 5 minutes
+      cacheTime: 10 * 60 * 1000, // cache retained for 10 minutes
+      refetchOnWindowFocus: true, // refetch on window focus
       refetchOnMount: true,
-      retry: 1, // 失败重试1次
+      retry: 1, // retry once on failure
     },
     mutations: {
-      retry: 0, // 变更不重试
+      retry: 0, // do not retry mutations
     },
   },
 });
 ```
 
-**2. 优化Query Keys策略**:
+**2. Optimize the Query Keys Strategy**:
 ```typescript
 // src/lib/utils/queryKeys.ts
 export const queryKeys = {
-  // 分层的query key结构
+  // Hierarchical query key structure
   projects: {
     all: ['projects'] as const,
     lists: () => [...queryKeys.projects.all, 'list'] as const,
@@ -1045,26 +1045,26 @@ export const queryKeys = {
 } as const;
 ```
 
-**3. 使用乐观更新**:
+**3. Use Optimistic Updates**:
 ```typescript
-// 示例：乐观更新资产名称
+// Example: optimistically updating an asset name
 const updateAssetMutation = useMutation({
   mutationFn: (data: { assetId: string; name: string }) =>
     libraryAssetsService.updateAsset(data.assetId, { name: data.name }),
   
-  // 乐观更新
+  // Optimistic update
   onMutate: async (newData) => {
-    // 取消正在进行的查询
+    // Cancel in-flight queries
     await queryClient.cancelQueries({
       queryKey: queryKeys.libraries.assets(libraryId),
     });
     
-    // 保存之前的数据（用于回滚）
+    // Save previous data (for rollback)
     const previousAssets = queryClient.getQueryData(
       queryKeys.libraries.assets(libraryId)
     );
     
-    // 乐观更新缓存
+    // Optimistically update the cache
     queryClient.setQueryData(
       queryKeys.libraries.assets(libraryId),
       (old: Asset[]) =>
@@ -1078,7 +1078,7 @@ const updateAssetMutation = useMutation({
     return { previousAssets };
   },
   
-  // 错误回滚
+  // Roll back on error
   onError: (err, newData, context) => {
     queryClient.setQueryData(
       queryKeys.libraries.assets(libraryId),
@@ -1086,7 +1086,7 @@ const updateAssetMutation = useMutation({
     );
   },
   
-  // 成功后重新获取
+  // Refetch after settling
   onSettled: () => {
     queryClient.invalidateQueries({
       queryKey: queryKeys.libraries.assets(libraryId),
@@ -1095,16 +1095,16 @@ const updateAssetMutation = useMutation({
 });
 ```
 
-**4. 预加载数据**:
+**4. Prefetch Data**:
 ```typescript
-// 预加载下一页数据
+// Prefetch next page of data
 function ProjectList() {
   const { data: projects } = useQuery({
     queryKey: queryKeys.projects.lists(),
     queryFn: projectService.getProjects,
   });
   
-  // 鼠标悬停时预加载项目详情
+  // Prefetch project details on mouse hover
   const prefetchProject = (projectId: string) => {
     queryClient.prefetchQuery({
       queryKey: queryKeys.projects.detail(projectId),
@@ -1127,42 +1127,42 @@ function ProjectList() {
 }
 ```
 
-**预期收益**:
-- 减少重复请求
-- 用户体验提升（乐观更新）
-- 性能提升
-- 缓存管理更清晰
+**Expected Benefits**:
+- Fewer duplicate requests
+- Improved user experience (optimistic updates)
+- Performance improvements
+- Clearer cache management
 
-**估算工作量**: 1周
-
----
-
-### Medium 级别
+**Estimated Effort**: 1 week
 
 ---
 
-#### OPT-012: 优化Realtime订阅管理
+### Medium Level
 
-**严重程度**: Medium  
-**类型**: Performance, Maintainability  
-**影响文件**: `src/lib/hooks/useRealtimeSubscription.ts`
+---
 
-**问题描述**:
-当前Realtime订阅可能存在：
-1. 订阅未正确清理（内存泄漏）
-2. 重复订阅同一个channel
-3. 订阅过多导致性能问题
+#### OPT-012: Optimize Realtime Subscription Management
 
-**建议方案**:
+**Severity**: Medium  
+**Type**: Performance, Maintainability  
+**Affected Files**: `src/lib/hooks/useRealtimeSubscription.ts`
 
-**1. 统一订阅管理器**:
+**Problem Description**:
+Current Realtime subscriptions may have:
+1. Subscriptions not cleaned up properly (memory leaks)
+2. Duplicate subscriptions to the same channel
+3. Too many subscriptions causing performance issues
+
+**Recommended Solution**:
+
+**1. Unified Subscription Manager**:
 ```typescript
 // src/lib/realtime/SubscriptionManager.ts
 class SubscriptionManager {
   private channels = new Map<string, RealtimeChannel>();
   
   subscribe(channelName: string, config: ChannelConfig) {
-    // 如果已订阅，返回现有channel
+    // If already subscribed, return the existing channel
     if (this.channels.has(channelName)) {
       return this.channels.get(channelName)!;
     }
@@ -1189,7 +1189,7 @@ class SubscriptionManager {
 export const subscriptionManager = new SubscriptionManager();
 ```
 
-**2. 优化Hook**:
+**2. Optimized Hook**:
 ```typescript
 export function useRealtimeSubscription(config: SubscriptionConfig) {
   const channelRef = useRef<RealtimeChannel | null>(null);
@@ -1209,30 +1209,30 @@ export function useRealtimeSubscription(config: SubscriptionConfig) {
 }
 ```
 
-**预期收益**:
-- 避免内存泄漏
-- 避免重复订阅
-- 订阅管理更清晰
+**Expected Benefits**:
+- Avoid memory leaks
+- Avoid duplicate subscriptions
+- Clearer subscription management
 
-**估算工作量**: 3天
+**Estimated Effort**: 3 days
 
 ---
 
-#### OPT-013: 添加Loading和Error边界
+#### OPT-013: Add Loading States and Error Boundaries
 
-**严重程度**: Medium  
-**类型**: User Experience, Maintainability  
-**影响文件**: 所有组件
+**Severity**: Medium  
+**Type**: User Experience, Maintainability  
+**Affected Files**: All components
 
-**问题描述**:
-缺少统一的Loading和Error UI：
-1. Loading状态不一致
-2. 错误边界缺失
-3. 用户体验不佳
+**Problem Description**:
+Missing unified Loading and Error UI:
+1. Inconsistent loading states
+2. Missing error boundaries
+3. Poor user experience
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 全局Error Boundary**:
+**1. Global Error Boundary**:
 ```typescript
 // src/components/ErrorBoundary.tsx
 'use client';
@@ -1281,7 +1281,7 @@ export class ErrorBoundary extends React.Component<
 }
 ```
 
-**2. Loading组件**:
+**2. Loading Component**:
 ```typescript
 // src/components/Loading.tsx
 export function Loading({ fullScreen = false }: { fullScreen?: boolean }) {
@@ -1293,9 +1293,9 @@ export function Loading({ fullScreen = false }: { fullScreen?: boolean }) {
 }
 ```
 
-**3. 使用Suspense**:
+**3. Use Suspense**:
 ```typescript
-// 在layout中使用
+// Use in layout
 <Suspense fallback={<Loading fullScreen />}>
   <ErrorBoundary>
     {children}
@@ -1303,31 +1303,31 @@ export function Loading({ fullScreen = false }: { fullScreen?: boolean }) {
 </Suspense>
 ```
 
-**预期收益**:
-- 用户体验提升
-- 错误处理统一
-- 代码更简洁
+**Expected Benefits**:
+- Improved user experience
+- Unified error handling
+- Cleaner code
 
-**估算工作量**: 2天
+**Estimated Effort**: 2 days
 
 ---
 
-#### OPT-014: 优化文件上传逻辑
+#### OPT-014: Optimize File Upload Logic
 
-**严重程度**: Medium  
-**类型**: User Experience, Performance  
-**影响文件**: `src/lib/services/imageUploadService.ts`, `src/lib/services/mediaFileUploadService.ts`
+**Severity**: Medium  
+**Type**: User Experience, Performance  
+**Affected Files**: `src/lib/services/imageUploadService.ts`, `src/lib/services/mediaFileUploadService.ts`
 
-**问题描述**:
-当前文件上传缺少：
-1. 上传进度显示
-2. 文件压缩
-3. 断点续传
-4. 批量上传优化
+**Problem Description**:
+Current file uploads lack:
+1. Upload progress display
+2. File compression
+3. Resumable uploads
+4. Batch upload optimization
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 添加上传进度**:
+**1. Add Upload Progress**:
 ```typescript
 export async function uploadImageWithProgress(
   file: File,
@@ -1351,7 +1351,7 @@ export async function uploadImageWithProgress(
 }
 ```
 
-**2. 图片压缩**:
+**2. Image Compression**:
 ```typescript
 import imageCompression from 'browser-image-compression';
 
@@ -1366,13 +1366,13 @@ export async function compressImage(file: File): Promise<File> {
 }
 ```
 
-**3. 批量上传优化**:
+**3. Batch Upload Optimization**:
 ```typescript
 export async function uploadMultipleFiles(
   files: File[],
   onProgress: (fileIndex: number, progress: number) => void
 ): Promise<string[]> {
-  // 限制并发数为3
+  // Limit concurrency to 3
   const concurrency = 3;
   const results: string[] = [];
   
@@ -1392,41 +1392,41 @@ export async function uploadMultipleFiles(
 }
 ```
 
-**预期收益**:
-- 用户体验提升
-- 上传成功率提升
-- 性能优化
+**Expected Benefits**:
+- Improved user experience
+- Higher upload success rate
+- Performance optimization
 
-**估算工作量**: 1周
+**Estimated Effort**: 1 week
 
 ---
 
-#### OPT-015: 添加代码注释和文档
+#### OPT-015: Add Code Comments and Documentation
 
-**严重程度**: Medium  
-**类型**: Maintainability  
-**影响文件**: 所有核心模块
+**Severity**: Medium  
+**Type**: Maintainability  
+**Affected Files**: All core modules
 
-**问题描述**:
-代码注释不足：
-1. 复杂函数缺少注释
-2. 业务逻辑不清晰
-3. 新开发者理解困难
+**Problem Description**:
+Insufficient code comments:
+1. Complex functions lack comments
+2. Business logic is unclear
+3. New developers struggle to understand the code
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 添加JSDoc注释**:
+**1. Add JSDoc Comments**:
 ```typescript
 /**
- * 创建新项目并返回项目ID和默认库ID
+ * Creates a new project and returns the project ID and default library ID
  * 
- * @param supabase - Supabase客户端实例
- * @param data - 项目数据
- * @param data.name - 项目名称（必填）
- * @param data.description - 项目描述（可选）
- * @returns 包含projectId和defaultLibraryId的对象
- * @throws {ValidationError} 当项目名称为空时
- * @throws {UnauthorizedError} 当用户未登录时
+ * @param supabase - Supabase client instance
+ * @param data - Project data
+ * @param data.name - Project name (required)
+ * @param data.description - Project description (optional)
+ * @returns An object containing projectId and defaultLibraryId
+ * @throws {ValidationError} When the project name is empty
+ * @throws {UnauthorizedError} When the user is not logged in
  * 
  * @example
  * ```typescript
@@ -1441,23 +1441,23 @@ export async function createProject(
   supabase: SupabaseClient,
   data: { name: string; description?: string }
 ): Promise<{ projectId: string; defaultLibraryId: string }> {
-  // 实现...
+  // Implementation...
 }
 ```
 
-**2. 添加README文件**:
+**2. Add README Files**:
 ```markdown
-# 项目服务（Project Service）
+# Project Service
 
-## 概述
-项目服务负责管理项目的创建、更新、删除等操作。
+## Overview
+The project service is responsible for managing project creation, updates, deletion, and other operations.
 
 ## API
 
 ### createProject
-创建新项目...
+Creates a new project...
 
-## 使用示例
+## Usage Example
 \`\`\`typescript
 import { projectService } from '@/lib/services/projectService';
 
@@ -1466,44 +1466,44 @@ const project = await projectService.createProject(supabase, {
 });
 \`\`\`
 
-## 相关模块
-- `libraryService`: 管理项目中的资产库
-- `collaborationService`: 管理项目协作者
+## Related Modules
+- `libraryService`: manages asset libraries within projects
+- `collaborationService`: manages project collaborators
 ```
 
-**3. 生成API文档**:
+**3. Generate API Documentation**:
 ```bash
-# 使用TypeDoc生成文档
+# Generate docs with TypeDoc
 npm install --save-dev typedoc
 npx typedoc --out docs/api src/lib/services
 ```
 
-**预期收益**:
-- 代码可读性提升
-- 新开发者上手更快
-- 维护更容易
+**Expected Benefits**:
+- Improved code readability
+- Faster onboarding for new developers
+- Easier maintenance
 
-**估算工作量**: 2周
+**Estimated Effort**: 2 weeks
 
 ---
 
-#### OPT-016: 优化数据库查询性能
+#### OPT-016: Optimize Database Query Performance
 
-**严重程度**: Medium  
-**类型**: Performance  
-**影响文件**: 所有Service文件
+**Severity**: Medium  
+**Type**: Performance  
+**Affected Files**: All service files
 
-**问题描述**:
-可能存在的数据库性能问题：
-1. N+1查询问题
-2. 缺少必要的索引
-3. 未使用数据库函数优化
+**Problem Description**:
+Possible database performance issues:
+1. N+1 query problems
+2. Missing necessary indexes
+3. Database functions not used for optimization
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 使用JOIN避免N+1查询**:
+**1. Use JOINs to Avoid N+1 Queries**:
 ```typescript
-// ❌ N+1查询
+// ❌ N+1 queries
 const projects = await supabase.from('projects').select('*');
 for (const project of projects) {
   const libraries = await supabase
@@ -1513,7 +1513,7 @@ for (const project of projects) {
   project.libraries = libraries;
 }
 
-// ✅ 使用JOIN一次查询
+// ✅ Single query with JOIN
 const projects = await supabase
   .from('projects')
   .select(`
@@ -1527,26 +1527,26 @@ const projects = await supabase
   `);
 ```
 
-**2. 添加数据库索引**:
+**2. Add Database Indexes**:
 ```sql
--- 检查缺少的索引
--- library_assets 表经常按 library_id 查询
+-- Check for missing indexes
+-- library_assets is frequently queried by library_id
 CREATE INDEX IF NOT EXISTS idx_library_assets_library_id 
   ON library_assets(library_id);
 
--- library_asset_values 经常按 asset_id 查询
+-- library_asset_values is frequently queried by asset_id
 CREATE INDEX IF NOT EXISTS idx_library_asset_values_asset_id 
   ON library_asset_values(asset_id);
 
--- 添加复合索引
+-- Add a composite index
 CREATE INDEX IF NOT EXISTS idx_collaborators_project_user 
   ON project_collaborators(project_id, user_id)
   WHERE accepted_at IS NOT NULL;
 ```
 
-**3. 使用数据库函数**:
+**3. Use Database Functions**:
 ```sql
--- 创建函数获取库的完整数据（包括字段定义和资产）
+-- Create a function to fetch a library's full data (including field definitions and assets)
 CREATE OR REPLACE FUNCTION get_library_full_data(p_library_id UUID)
 RETURNS JSON
 LANGUAGE plpgsql
@@ -1571,30 +1571,30 @@ END;
 $$;
 ```
 
-**预期收益**:
-- 查询性能提升50-80%
-- 数据库负载减少
-- 用户体验提升
+**Expected Benefits**:
+- Query performance improved by 50-80%
+- Reduced database load
+- Improved user experience
 
-**估算工作量**: 1周
+**Estimated Effort**: 1 week
 
 ---
 
-#### OPT-017: 实现数据导出功能
+#### OPT-017: Implement Data Export
 
-**严重程度**: Medium  
-**类型**: Feature, User Experience  
-**影响文件**: 新功能
+**Severity**: Medium  
+**Type**: Feature, User Experience  
+**Affected Files**: New feature
 
-**问题描述**:
-当前缺少数据导出功能，用户无法：
-1. 导出资产数据到Excel/CSV
-2. 备份数据
-3. 在其他工具中使用数据
+**Problem Description**:
+Data export is currently missing, so users cannot:
+1. Export asset data to Excel/CSV
+2. Back up data
+3. Use their data in other tools
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 实现CSV导出**:
+**1. Implement CSV Export**:
 ```typescript
 // src/lib/utils/exportUtils.ts
 export function exportToCSV(
@@ -1642,7 +1642,7 @@ function escapeCsvValue(value: any): string {
   return str;
 }
 
-// 触发下载
+// Trigger download
 export function downloadCSV(csv: string, filename: string) {
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
@@ -1652,7 +1652,7 @@ export function downloadCSV(csv: string, filename: string) {
 }
 ```
 
-**2. 实现Excel导出（使用exceljs）**:
+**2. Implement Excel Export (using exceljs)**:
 ```typescript
 import ExcelJS from 'exceljs';
 
@@ -1664,7 +1664,7 @@ export async function exportToExcel(
   const workbook = new ExcelJS.Workbook();
   const worksheet = workbook.addWorksheet(libraryName);
   
-  // 设置列
+  // Set up columns
   worksheet.columns = [
     { header: 'ID', key: 'id', width: 36 },
     { header: 'Name', key: 'name', width: 30 },
@@ -1675,7 +1675,7 @@ export async function exportToExcel(
     })),
   ];
   
-  // 添加数据
+  // Add data
   assets.forEach((asset) => {
     const row: any = {
       id: asset.id,
@@ -1690,7 +1690,7 @@ export async function exportToExcel(
     worksheet.addRow(row);
   });
   
-  // 下载
+  // Download
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -1702,9 +1702,9 @@ export async function exportToExcel(
 }
 ```
 
-**3. 添加导出按钮**:
+**3. Add an Export Button**:
 ```typescript
-// 在LibraryHeader中添加导出按钮
+// Add an export button in LibraryHeader
 <Button
   icon={<DownloadOutlined />}
   onClick={() => {
@@ -1716,33 +1716,33 @@ export async function exportToExcel(
 </Button>
 ```
 
-**预期收益**:
-- 用户可以备份数据
-- 支持数据分析
-- 提升用户满意度
+**Expected Benefits**:
+- Users can back up their data
+- Supports data analysis
+- Improved user satisfaction
 
-**估算工作量**: 3-4天
-
----
-
-### Low 级别
+**Estimated Effort**: 3-4 days
 
 ---
 
-#### OPT-018: 启用ESLint规则优化
+### Low Level
 
-**严重程度**: Low  
-**类型**: Code Quality  
-**影响文件**: `eslint.config.js`, 所有TypeScript文件
+---
 
-**问题描述**:
-当前ESLint配置可能不够严格，建议启用更多规则：
-1. 未使用的变量
-2. console.log语句
-3. debugger语句
-4. 魔法数字
+#### OPT-018: Enable ESLint Rule Optimizations
 
-**建议方案**:
+**Severity**: Low  
+**Type**: Code Quality  
+**Affected Files**: `eslint.config.js`, all TypeScript files
+
+**Problem Description**:
+The current ESLint configuration may not be strict enough; enabling more rules is recommended:
+1. Unused variables
+2. console.log statements
+3. debugger statements
+4. Magic numbers
+
+**Recommended Solution**:
 ```javascript
 // eslint.config.js
 export default {
@@ -1760,25 +1760,25 @@ export default {
 };
 ```
 
-**估算工作量**: 2天
+**Estimated Effort**: 2 days
 
 ---
 
-#### OPT-019: 添加性能监控
+#### OPT-019: Add Performance Monitoring
 
-**严重程度**: Low  
-**类型**: Performance, Monitoring  
-**影响文件**: 新功能
+**Severity**: Low  
+**Type**: Performance, Monitoring  
+**Affected Files**: New feature
 
-**问题描述**:
-缺少性能监控，无法：
-1. 跟踪页面加载时间
-2. 监控API响应时间
-3. 识别性能瓶颈
+**Problem Description**:
+Missing performance monitoring, so it is impossible to:
+1. Track page load times
+2. Monitor API response times
+3. Identify performance bottlenecks
 
-**建议方案**:
+**Recommended Solution**:
 
-**使用Vercel Analytics（如果部署在Vercel）**:
+**Use Vercel Analytics (if deployed on Vercel)**:
 ```bash
 npm install @vercel/analytics
 ```
@@ -1799,7 +1799,7 @@ export default function RootLayout({ children }) {
 }
 ```
 
-**或使用Google Analytics**:
+**Or use Google Analytics**:
 ```typescript
 // lib/analytics.ts
 export function trackPageView(url: string) {
@@ -1817,22 +1817,22 @@ export function trackEvent(action: string, params?: any) {
 }
 ```
 
-**估算工作量**: 1天
+**Estimated Effort**: 1 day
 
 ---
 
-#### OPT-020: 优化Bundle大小
+#### OPT-020: Optimize Bundle Size
 
-**严重程度**: Low  
-**类型**: Performance  
-**影响文件**: `next.config.mjs`
+**Severity**: Low  
+**Type**: Performance  
+**Affected Files**: `next.config.mjs`
 
-**问题描述**:
-Bundle可能过大，影响首屏加载时间
+**Problem Description**:
+The bundle may be too large, affecting first-screen load time
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 分析Bundle**:
+**1. Analyze the Bundle**:
 ```bash
 npm install --save-dev @next/bundle-analyzer
 ```
@@ -1854,41 +1854,41 @@ export default bundleAnalyzer({
 ANALYZE=true npm run build
 ```
 
-**2. 优化导入**:
+**2. Optimize Imports**:
 ```typescript
-// ❌ 导入整个库
+// ❌ Import the entire library
 import { Button, Modal, Table } from 'antd';
 
-// ✅ 只导入需要的组件（如果支持）
+// ✅ Import only the components needed (if supported)
 import Button from 'antd/lib/button';
 import Modal from 'antd/lib/modal';
 ```
 
-**3. 代码分割**:
+**3. Code Splitting**:
 ```typescript
-// 动态导入大型组件
+// Dynamically import large components
 const HeavyComponent = dynamic(
   () => import('@/components/HeavyComponent'),
   { loading: () => <Loading /> }
 );
 ```
 
-**估算工作量**: 2天
+**Estimated Effort**: 2 days
 
 ---
 
-#### OPT-021: 添加键盘快捷键
+#### OPT-021: Add Keyboard Shortcuts
 
-**严重程度**: Low  
-**类型**: User Experience  
-**影响文件**: 新功能
+**Severity**: Low  
+**Type**: User Experience  
+**Affected Files**: New feature
 
-**问题描述**:
-缺少键盘快捷键，影响高级用户效率
+**Problem Description**:
+Missing keyboard shortcuts, reducing power-user efficiency
 
-**建议方案**:
+**Recommended Solution**:
 
-**实现快捷键系统**:
+**Implement a Shortcut System**:
 ```typescript
 // src/lib/hooks/useKeyboardShortcuts.ts
 import { useEffect } from 'react';
@@ -1923,7 +1923,7 @@ export function useKeyboardShortcuts(shortcuts: ShortcutConfig[]) {
   }, [shortcuts]);
 }
 
-// 使用
+// Usage
 useKeyboardShortcuts([
   {
     key: 'n',
@@ -1938,31 +1938,31 @@ useKeyboardShortcuts([
 ]);
 ```
 
-**常用快捷键建议**:
-- `Ctrl+N`: 新建项目/库
-- `Ctrl+S`: 保存
-- `Ctrl+F`: 搜索
-- `Ctrl+Z`: 撤销
-- `Ctrl+Shift+Z`: 重做
-- `Delete`: 删除选中项
-- `Esc`: 关闭弹窗
+**Suggested Common Shortcuts**:
+- `Ctrl+N`: New project/library
+- `Ctrl+S`: Save
+- `Ctrl+F`: Search
+- `Ctrl+Z`: Undo
+- `Ctrl+Shift+Z`: Redo
+- `Delete`: Delete selected item
+- `Esc`: Close popup
 
-**估算工作量**: 3天
+**Estimated Effort**: 3 days
 
 ---
 
-#### OPT-022: 改进移动端响应式设计
+#### OPT-022: Improve Mobile Responsive Design
 
-**严重程度**: Low  
-**类型**: User Experience  
-**影响文件**: 所有组件CSS
+**Severity**: Low  
+**Type**: User Experience  
+**Affected Files**: All component CSS
 
-**问题描述**:
-当前设计可能主要针对桌面端，移动端体验不佳
+**Problem Description**:
+The current design may primarily target desktop, with a poor mobile experience
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 添加响应式断点**:
+**1. Add Responsive Breakpoints**:
 ```css
 /* globals.css */
 @media (max-width: 768px) {
@@ -1982,7 +1982,7 @@ useKeyboardShortcuts([
 }
 ```
 
-**2. 移动端优化的组件**:
+**2. Mobile-Optimized Components**:
 ```typescript
 function MobileMenu() {
   const [isOpen, setIsOpen] = useState(false);
@@ -2008,56 +2008,56 @@ function MobileMenu() {
 }
 ```
 
-**估算工作量**: 1周
+**Estimated Effort**: 1 week
 
 ---
 
-### Security 级别
+### Security Level
 
 ---
 
-#### OPT-023: 增强文件上传安全性
+#### OPT-023: Strengthen File Upload Security
 
-**严重程度**: High (Security相关)  
-**类型**: Security  
-**影响文件**: `src/lib/services/imageUploadService.ts`, `src/lib/services/mediaFileUploadService.ts`
+**Severity**: High (Security-related)  
+**Type**: Security  
+**Affected Files**: `src/lib/services/imageUploadService.ts`, `src/lib/services/mediaFileUploadService.ts`
 
-**问题描述**:
-文件上传可能存在安全风险：
-1. 文件类型验证不够严格
-2. 文件名未清理（可能XSS）
-3. 文件大小未严格限制
-4. 缺少病毒扫描
+**Problem Description**:
+File uploads may carry security risks:
+1. File type validation is not strict enough
+2. File names are not sanitized (possible XSS)
+3. File size is not strictly limited
+4. No virus scanning
 
-**当前问题示例**:
+**Current Problem Example**:
 ```typescript
-// ❌ 只检查MIME type，可以被伪造
+// ❌ Only checks the MIME type, which can be spoofed
 if (file.type !== 'image/jpeg') {
   throw new Error('Invalid file type');
 }
 ```
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 严格的文件验证**:
+**1. Strict File Validation**:
 ```typescript
 // src/lib/utils/fileValidation.ts
 import fileType from 'file-type';
 
 export async function validateImageFile(file: File): Promise<boolean> {
-  // 1. 检查文件大小
+  // 1. Check file size
   const MAX_SIZE = 10 * 1024 * 1024; // 10MB
   if (file.size > MAX_SIZE) {
     throw new ValidationError('File size exceeds 10MB');
   }
   
-  // 2. 检查MIME type
+  // 2. Check MIME type
   const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
   if (!allowedTypes.includes(file.type)) {
     throw new ValidationError('Invalid file type');
   }
   
-  // 3. 检查文件签名（真实文件类型）
+  // 3. Check file signature (actual file type)
   const buffer = await file.arrayBuffer();
   const type = await fileType.fromBuffer(buffer);
   
@@ -2065,7 +2065,7 @@ export async function validateImageFile(file: File): Promise<boolean> {
     throw new ValidationError('File content does not match type');
   }
   
-  // 4. 检查文件扩展名
+  // 4. Check file extension
   const ext = file.name.split('.').pop()?.toLowerCase();
   const allowedExts = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
   if (!ext || !allowedExts.includes(ext)) {
@@ -2076,26 +2076,26 @@ export async function validateImageFile(file: File): Promise<boolean> {
 }
 ```
 
-**2. 清理文件名**:
+**2. Sanitize File Names**:
 ```typescript
 export function sanitizeFileName(fileName: string): string {
-  // 移除危险字符
+  // Remove dangerous characters
   return fileName
-    .replace(/[^a-zA-Z0-9.-]/g, '_')  // 替换特殊字符
-    .replace(/\.{2,}/g, '.')          // 移除多个点
-    .slice(0, 100);                   // 限制长度
+    .replace(/[^a-zA-Z0-9.-]/g, '_')  // replace special characters
+    .replace(/\.{2,}/g, '.')          // remove multiple dots
+    .slice(0, 100);                   // limit length
 }
 
-// 使用UUID作为文件名
+// Use a UUID as the file name
 export function generateSafeFileName(originalName: string): string {
   const ext = originalName.split('.').pop();
   return `${crypto.randomUUID()}.${ext}`;
 }
 ```
 
-**3. Supabase Storage RLS策略**:
+**3. Supabase Storage RLS Policies**:
 ```sql
--- 限制上传文件大小
+-- Limit upload file size
 CREATE POLICY "Limit upload size"
   ON storage.objects
   FOR INSERT
@@ -2105,7 +2105,7 @@ CREATE POLICY "Limit upload size"
     AND octet_length(decode(encode(content, 'hex'), 'hex')) < 10485760  -- 10MB
   );
 
--- 限制文件类型
+-- Restrict file types
 CREATE POLICY "Restrict file types"
   ON storage.objects
   FOR INSERT
@@ -2119,7 +2119,7 @@ CREATE POLICY "Restrict file types"
   );
 ```
 
-**4. 添加内容安全策略（CSP）**:
+**4. Add a Content Security Policy (CSP)**:
 ```typescript
 // next.config.mjs
 const securityHeaders = [
@@ -2162,31 +2162,31 @@ export default {
 };
 ```
 
-**预期收益**:
-- 防止恶意文件上传
-- 防止XSS攻击
-- 防止文件名注入
-- 提升系统安全性
+**Expected Benefits**:
+- Prevent malicious file uploads
+- Prevent XSS attacks
+- Prevent file name injection
+- Improved system security
 
-**估算工作量**: 1周
+**Estimated Effort**: 1 week
 
 ---
 
-#### OPT-024: 实现审计日志
+#### OPT-024: Implement Audit Logging
 
-**严重程度**: Medium (Security相关)  
-**类型**: Security, Compliance  
-**影响文件**: 新功能
+**Severity**: Medium (Security-related)  
+**Type**: Security, Compliance  
+**Affected Files**: New feature
 
-**问题描述**:
-缺少审计日志，无法：
-1. 追踪谁做了什么操作
-2. 安全事件调查
-3. 合规要求
+**Problem Description**:
+Missing audit logs, so it is impossible to:
+1. Track who performed which operations
+2. Investigate security incidents
+3. Meet compliance requirements
 
-**建议方案**:
+**Recommended Solution**:
 
-**1. 创建审计日志表**:
+**1. Create an Audit Log Table**:
 ```sql
 -- supabase/migrations/new_audit_logs.sql
 CREATE TABLE IF NOT EXISTS public.audit_logs (
@@ -2209,7 +2209,7 @@ CREATE INDEX idx_audit_logs_resource ON public.audit_logs(resource_type, resourc
 -- RLS
 ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
 
--- 只有管理员可以查看审计日志
+-- Only admins can view audit logs
 CREATE POLICY "Admins can view audit logs"
   ON public.audit_logs
   FOR SELECT
@@ -2223,7 +2223,7 @@ CREATE POLICY "Admins can view audit logs"
   );
 ```
 
-**2. 审计日志服务**:
+**2. Audit Log Service**:
 ```typescript
 // src/lib/services/auditLogService.ts
 export async function logAuditEvent(
@@ -2245,11 +2245,11 @@ export async function logAuditEvent(
     resource_id: event.resourceId,
     old_values: event.oldValues,
     new_values: event.newValues,
-    // IP和User-Agent需要从请求中获取
+    // IP and User-Agent need to be obtained from the request
   });
 }
 
-// 在API路由中使用
+// Use in API routes
 export async function POST(req: Request) {
   const project = await projectService.createProject(...);
   
@@ -2264,7 +2264,7 @@ export async function POST(req: Request) {
 }
 ```
 
-**3. 审计日志查看界面**:
+**3. Audit Log Viewing Interface**:
 ```typescript
 // src/app/(dashboard)/[projectId]/audit-logs/page.tsx
 export default function AuditLogsPage() {
@@ -2288,157 +2288,156 @@ export default function AuditLogsPage() {
 }
 ```
 
-**预期收益**:
-- 安全事件可追踪
-- 满足合规要求
-- 用户行为分析
+**Expected Benefits**:
+- Security incidents are traceable
+- Compliance requirements met
+- User behavior analysis
 
-**估算工作量**: 1周
-
----
-
-## 实施优先级
-
-### P0（立即处理，1-2个月）
-
-1. **OPT-001**: 超大组件重构 - Sidebar.tsx （2周）
-2. **OPT-002**: 超大组件重构 - LibraryAssetsTable.tsx （3周）
-3. **OPT-003**: TypeScript严格模式启用 （2周）
-
-**预期收益**: 代码可维护性提升90%，bug定位效率提升70%
+**Estimated Effort**: 1 week
 
 ---
 
-### P1（高优先级，3-4个月）
+## Implementation Priorities
 
-4. **OPT-004**: 目录结构统一和清理 （1周）
-5. **OPT-005**: 减少相对导入路径 （3天）
-6. **OPT-006**: LibraryDataContext职责拆分 （1.5周）
-7. **OPT-007**: 实现虚拟化表格渲染 （1周）
-8. **OPT-008**: Yjs与Supabase双重状态同步优化 （2周）
-9. **OPT-009**: 增加单元测试覆盖 （3-4周）
-10. **OPT-010**: 统一错误处理策略 （1周）
-11. **OPT-011**: React Query缓存策略优化 （1周）
-12. **OPT-023**: 增强文件上传安全性 （1周）
+### P0 (Immediate, 1-2 months)
 
-**预期收益**: 性能提升60%，安全性提升，测试覆盖率>70%
+1. **OPT-001**: Oversized component refactoring - Sidebar.tsx (2 weeks)
+2. **OPT-002**: Oversized component refactoring - LibraryAssetsTable.tsx (3 weeks)
+3. **OPT-003**: Enable TypeScript strict mode (2 weeks)
+
+**Expected Benefits**: Code maintainability improved by 90%, bug localization efficiency improved by 70%
 
 ---
 
-### P2（中等优先级，5-6个月）
+### P1 (High priority, 3-4 months)
 
-13. **OPT-012**: 优化Realtime订阅管理 （3天）
-14. **OPT-013**: 添加Loading和Error边界 （2天）
-15. **OPT-014**: 优化文件上传逻辑 （1周）
-16. **OPT-015**: 添加代码注释和文档 （2周）
-17. **OPT-016**: 优化数据库查询性能 （1周）
-18. **OPT-017**: 实现数据导出功能 （3-4天）
-19. **OPT-024**: 实现审计日志 （1周）
+4. **OPT-004**: Unify and clean up directory structure (1 week)
+5. **OPT-005**: Reduce relative import paths (3 days)
+6. **OPT-006**: Split LibraryDataContext responsibilities (1.5 weeks)
+7. **OPT-007**: Implement virtualized table rendering (1 week)
+8. **OPT-008**: Optimize Yjs and Supabase dual-state synchronization (2 weeks)
+9. **OPT-009**: Increase unit test coverage (3-4 weeks)
+10. **OPT-010**: Unify the error-handling strategy (1 week)
+11. **OPT-011**: Optimize React Query caching strategy (1 week)
+12. **OPT-023**: Strengthen file upload security (1 week)
 
-**预期收益**: 用户体验提升，性能优化，可维护性提升
-
----
-
-### P3（低优先级，长期改进）
-
-20. **OPT-018**: 启用ESLint规则优化 （2天）
-21. **OPT-019**: 添加性能监控 （1天）
-22. **OPT-020**: 优化Bundle大小 （2天）
-23. **OPT-021**: 添加键盘快捷键 （3天）
-24. **OPT-022**: 改进移动端响应式设计 （1周）
-
-**预期收益**: 代码质量提升，用户体验优化
+**Expected Benefits**: Performance improved by 60%, security improved, test coverage >70%
 
 ---
 
-## 优化路线图
+### P2 (Medium priority, 5-6 months)
 
-### 第一阶段（月1-2）: 基础重构
-- ✅ 完成超大组件拆分（Sidebar, LibraryAssetsTable）
-- ✅ 启用TypeScript严格模式
-- ✅ 统一目录结构
+13. **OPT-012**: Optimize Realtime subscription management (3 days)
+14. **OPT-013**: Add Loading states and Error boundaries (2 days)
+15. **OPT-014**: Optimize file upload logic (1 week)
+16. **OPT-015**: Add code comments and documentation (2 weeks)
+17. **OPT-016**: Optimize database query performance (1 week)
+18. **OPT-017**: Implement data export (3-4 days)
+19. **OPT-024**: Implement audit logging (1 week)
 
-**里程碑**: 代码可维护性提升90%
-
----
-
-### 第二阶段（月3-4）: 性能与测试
-- ✅ 虚拟化表格渲染
-- ✅ 优化状态同步机制
-- ✅ 增加单元测试覆盖（>70%）
-- ✅ React Query缓存优化
-
-**里程碑**: 性能提升60%，测试覆盖率>70%
+**Expected Benefits**: Improved user experience, performance optimization, improved maintainability
 
 ---
 
-### 第三阶段（月5-6）: 安全与体验
-- ✅ 增强文件上传安全性
-- ✅ 实现审计日志
-- ✅ 统一错误处理
-- ✅ 优化文件上传体验
-- ✅ 数据库查询优化
+### P3 (Low priority, long-term improvements)
 
-**里程碑**: 安全性提升，用户体验优化
+20. **OPT-018**: Enable ESLint rule optimizations (2 days)
+21. **OPT-019**: Add performance monitoring (1 day)
+22. **OPT-020**: Optimize bundle size (2 days)
+23. **OPT-021**: Add keyboard shortcuts (3 days)
+24. **OPT-022**: Improve mobile responsive design (1 week)
 
----
-
-### 第四阶段（月7+）: 持续改进
-- ✅ 性能监控
-- ✅ 代码质量工具
-- ✅ 移动端优化
-- ✅ 新功能开发（导出、快捷键等）
-
-**里程碑**: 生产就绪，持续迭代
+**Expected Benefits**: Improved code quality, optimized user experience
 
 ---
 
-## 总结
+## Optimization Roadmap
 
-### 关键指标
+### Phase 1 (Months 1-2): Foundational Refactoring
+- ✅ Complete oversized component splitting (Sidebar, LibraryAssetsTable)
+- ✅ Enable TypeScript strict mode
+- ✅ Unify directory structure
 
-| 指标 | 当前状态 | 优化后目标 |
+**Milestone**: Code maintainability improved by 90%
+
+---
+
+### Phase 2 (Months 3-4): Performance and Testing
+- ✅ Virtualized table rendering
+- ✅ Optimize the state-synchronization mechanism
+- ✅ Increase unit test coverage (>70%)
+- ✅ React Query cache optimization
+
+**Milestone**: Performance improved by 60%, test coverage >70%
+
+---
+
+### Phase 3 (Months 5-6): Security and Experience
+- ✅ Strengthen file upload security
+- ✅ Implement audit logging
+- ✅ Unify error handling
+- ✅ Optimize the file upload experience
+- ✅ Database query optimization
+
+**Milestone**: Improved security, optimized user experience
+
+---
+
+### Phase 4 (Month 7+): Continuous Improvement
+- ✅ Performance monitoring
+- ✅ Code quality tooling
+- ✅ Mobile optimization
+- ✅ New feature development (export, shortcuts, etc.)
+
+**Milestone**: Production-ready, continuous iteration
+
+---
+
+## Summary
+
+### Key Metrics
+
+| Metric | Current State | Post-Optimization Target |
 |------|---------|----------|
-| **代码可维护性** | 中等（超大组件，混乱结构） | 高（模块化，清晰结构） |
-| **类型安全** | 低（strict: false） | 高（strict: true） |
-| **测试覆盖率** | <10%（仅E2E） | >70%（单元+E2E） |
-| **性能** | 中等（大表格慢） | 高（虚拟化，优化） |
-| **安全性** | 中等 | 高（文件验证，审计日志） |
-| **开发效率** | 低（bug定位难） | 高（清晰架构，测试覆盖） |
+| **Code maintainability** | Medium (oversized components, messy structure) | High (modular, clear structure) |
+| **Type safety** | Low (strict: false) | High (strict: true) |
+| **Test coverage** | <10% (E2E only) | >70% (unit + E2E) |
+| **Performance** | Medium (large tables slow) | High (virtualized, optimized) |
+| **Security** | Medium | High (file validation, audit logging) |
+| **Development efficiency** | Low (hard to localize bugs) | High (clear architecture, test coverage) |
 
-### 投入与回报
+### Investment and Return
 
-**总估算工作量**: 约25-30周（6-7个月）
+**Total Estimated Effort**: about 25-30 weeks (6-7 months)
 
-**预期回报**:
-1. 代码可维护性提升90%
-2. Bug定位效率提升70%
-3. 渲染性能提升80%
-4. 开发效率提升50%
-5. 系统安全性大幅提升
-6. 测试覆盖率从<10%提升到>70%
+**Expected Return**:
+1. Code maintainability improved by 90%
+2. Bug localization efficiency improved by 70%
+3. Rendering performance improved by 80%
+4. Development efficiency improved by 50%
+5. Significantly improved system security
+6. Test coverage improved from <10% to >70%
 
-### 建议
+### Recommendations
 
-根据团队规模和项目紧急程度，建议：
+Depending on team size and project urgency, we recommend:
 
-**小团队（2-3人）**: 
-- 优先处理P0和P1级别的优化
-- 分4-6个月完成核心重构
-- 新功能开发同时逐步改进
+**Small team (2-3 people)**: 
+- Prioritize P0 and P1 optimizations
+- Complete the core refactoring over 4-6 months
+- Improve gradually alongside new feature development
 
-**中大团队（4+人）**:
-- 可以并行处理多个优化任务
-- 3-4个月完成主要优化
-- 专人负责测试和文档
+**Medium/large team (4+ people)**:
+- Can work on multiple optimization tasks in parallel
+- Complete the major optimizations in 3-4 months
+- Dedicated staff for testing and documentation
 
-**推荐策略**:
-1. 先修复架构问题（P0），再优化性能（P1）
-2. 逐步迁移，避免大规模重写
-3. 每次优化都要有测试保护
-4. 定期Review进度，调整优先级
+**Recommended Strategy**:
+1. Fix architecture issues first (P0), then optimize performance (P1)
+2. Migrate incrementally; avoid large-scale rewrites
+3. Protect every optimization with tests
+4. Review progress regularly and adjust priorities
 
 ---
 
-**文档结束**
-
+**End of Document**

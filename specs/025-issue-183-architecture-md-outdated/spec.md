@@ -16,7 +16,7 @@
 | "React 18" | line 6, 64 | `react`/`react-dom` are `^19.2.7` |
 | Persistence "IndexedDB" for Yjs docs | lines 101-103, 131-132, 501, 508, 1000-1034 | `y-indexeddb` is **absent** from `package.json`; grep finds **zero** `IndexeddbPersistence`/`y-indexeddb` usages in `src/`. Persistence is online Yjs sync + Supabase, not IndexedDB. |
 | Dependency table lists `y-indexeddb` `9.0.12` | line 150 | Not a dependency at all. |
-| "离线支持: IndexedDB持久化，离线也可编辑" (offline via IndexedDB) | line 1034 | No IndexedDB layer; offline-edit claim is false. |
+| "Offline support: IndexedDB persistence, editable even while offline" (offline via IndexedDB) | line 1034 | No IndexedDB layer; offline-edit claim is false. |
 | Storage adapter files: `cookieStorageAdapter.ts`, `hybridStorageAdapter.ts`, `sessionStorageAdapter.ts`, `tabIsolatedStorageAdapter.ts` | lines 406-416 | Verify each still exists; auth moved to `@supabase/ssr` `createBrowserClient` (see memory), so these adapter references are likely stale. |
 | Data-flow diagram `... → Yjs Doc → IndexedDB` | line 508, 1000-1025 | Terminal IndexedDB stage does not exist. |
 

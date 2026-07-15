@@ -9,17 +9,17 @@ const toolContext = {
   userId: 'user-1',
   projectId: 'project-1',
   conversationId: 'conv-1',
-  currentLibraryName: '角色表',
-  currentSectionName: '基础信息',
+  currentLibraryName: 'Characters',
+  currentSectionName: 'Basic Info',
   userRole: 'editor',
 } as ToolContext;
 
 const selection: AgentSelectionContext = {
   source: 'library_table',
   libraryId: 'lib-1',
-  libraryName: '角色表',
-  sectionName: '基础信息',
-  selectionLabel: '角色表 · 第 2 行 · 1 列',
+  libraryName: 'Characters',
+  sectionName: 'Basic Info',
+  selectionLabel: 'Characters · Row 2 · 1 column',
   mode: 'cells',
   selectedCellCount: 1,
   selectedRowCount: 1,
@@ -44,13 +44,13 @@ const selection: AgentSelectionContext = {
 
 describe('augmentUserMessageForLlm with selected table data', () => {
   it('injects selection context before the raw message for this turn', () => {
-    const augmented = augmentUserMessageForLlm('帮我改一下', toolContext, selection);
-    expect(augmented).toContain('[User is viewing: active library "角色表"');
+    const augmented = augmentUserMessageForLlm('Help me edit this', toolContext, selection);
+    expect(augmented).toContain('[User is viewing: active library "Characters"');
     expect(augmented).toContain(
-      '[User attached selected table data for this message: 角色表 · 第 2 行 · 1 列.'
+      '[User attached selected table data for this message: Characters · Row 2 · 1 column.'
     );
     expect(augmented).toContain('"assetId": "asset-1"');
-    expect(augmented.endsWith('帮我改一下')).toBe(true);
+    expect(augmented.endsWith('Help me edit this')).toBe(true);
   });
 
   it('stripContextAugmentation removes page and selection prefixes', () => {
