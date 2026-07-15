@@ -2,18 +2,18 @@
 
 **Date**: 2026-06-15
 **Status**: Approved
-**Scope**: keco-studio 用户上传设计方案文档，Agent 自主推理并创建表格+填充数据
+**Scope**: In keco-studio, the user uploads a design document, and the Agent autonomously reasons about and creates tables + fills in data
 
 ---
 
 ## 1. Overview
 
-用户在 keco-studio 中上传一份设计方案文档（世界观、角色设定、战斗系统等），Agent 分析文档内容后自主推理出需要哪些表格（library）、规划字段（field）、提取实体数据并填充到表格中。
+The user uploads a design document (worldbuilding, character settings, combat system, etc.) in keco-studio. After analyzing the document content, the Agent autonomously infers which tables (libraries) are needed, plans the fields, extracts entity data, and fills it into the tables.
 
-**核心效果**：用户上传一段世界观描述（如"在一个架空的幻想大陆上，有三大势力..."），Agent 分析后自动创建"角色""势力""地点"等表格，规划字段，并从文档中提取提到的实体填入数据行。
+**Core effect**: The user uploads a worldbuilding description (e.g. "On a fictional fantasy continent, there are three great factions..."). After analysis, the Agent automatically creates tables such as "Characters", "Factions", and "Locations", plans the fields, and extracts the entities mentioned in the document into data rows.
 
-**支持格式**：`.txt` `.md` `.docx`（旧版 `.doc` 不支持）
-**文档大小**：先支持中小文档（<50 页，建议 <10MB）
+**Supported formats**: `.txt` `.md` `.docx` (legacy `.doc` is not supported)
+**Document size**: Initially support small-to-medium documents (<50 pages, recommended <10MB)
 
 ---
 
@@ -24,74 +24,74 @@
 │  keco-studio UI                                                  │
 │                                                                  │
 │  ┌─────────────────────┐     ┌──────────────────────────────┐   │
-│  │  上传页面（新增）     │     │  聊天页（已有）               │   │
+│  │  Upload page (new)  │     │  Chat page (existing)         │   │
 │  │  /project/[id]/     │     │  /project/[id]/               │   │
 │  │  design-upload      │     │  chat                         │   │
 │  │                     │     │                               │   │
-│  │  1. 选择文件         │     │  3. 接收解析后的文本消息       │   │
-│  │  2. 可选填指令说明   │     │  4. Agent 自主推理配表        │   │
-│  │  3. 点击"开始配表"  │────→│  5. setup_library 建表        │   │
-│  │  4. 前端解析文档     │     │  6. create_asset 填数据       │   │
-│  │  5. 跳转聊天页       │     │  7. 确认 → 执行               │   │
+│  │  1. Select file     │     │  3. Receive parsed text msg   │   │
+│  │  2. Optional notes  │     │  4. Agent infers table setup  │   │
+│  │  3. Click "Start"   │────→│  5. setup_library creates     │   │
+│  │  4. Parse in FE     │     │  6. create_asset fills data   │   │
+│  │  5. Go to chat page │     │  7. Confirm → execute         │   │
 │  └─────────────────────┘     └──────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
                                      │
                           ┌──────────▼──────────┐
-                          │ /api/agent-chat     │  (已有)
+                          │ /api/agent-chat     │  (existing)
                           └──────────┬──────────┘
                                      │
                           ┌──────────▼──────────┐
-                          │  Agent Core         │  (已有)
+                          │  Agent Core         │  (existing)
                           │  LLM + ReAct loop   │
                           │  tools: setup_library│
                           │  create_asset, etc. │
                           └─────────────────────┘
 ```
 
-### 关键设计决策
+### Key design decisions
 
-| 决策 | 选择 | 理由 |
+| Decision | Choice | Rationale |
 |------|------|------|
-| 文档解析位置 | 前端（JS） | 减少服务端复杂度，JS 库已成熟 |
-| Agent tool/skill | 复用现有 | setup_library 等已能完成建表+填充 |
-| 消息传递 | sessionStorage | 文档文本可能很长，URL 有长度限制 |
-| 图片处理 | 忽略 | MiniMax M2.7 不支持原生图片输入 |
+| Document parsing location | Frontend (JS) | Reduces server-side complexity; JS libraries are mature |
+| Agent tool/skill | Reuse existing | setup_library etc. can already handle table creation + filling |
+| Message passing | sessionStorage | Document text can be very long; URLs have length limits |
+| Image handling | Ignore | MiniMax M2.7 does not support native image input |
 
-### 数据流
+### Data flow
 
-1. 用户在上传页选择文件 + 可选填指令
-2. 前端 JS 解析文档为纯文本（mammoth.js 处理 docx，直接读取 text/md）
-3. 拼接消息：系统指令 + 附加指令 + 文档全文
-4. 写入 sessionStorage，跳转到聊天页
-5. 聊天页检测 pending message，自动发送给 Agent
-6. Agent 根据系统提示词理解这是"设计方案配表"请求
-7. Agent 调用 `setup_library` 创建表格，`create_asset`/`update_row` 填充数据
-8. 复用现有 confirmation 机制让用户确认
+1. User selects a file on the upload page + optionally fills in instructions
+2. Frontend JS parses the document into plain text (mammoth.js handles docx; text/md read directly)
+3. Assemble the message: system instruction + additional instructions + full document text
+4. Write to sessionStorage, navigate to the chat page
+5. Chat page detects the pending message and automatically sends it to the Agent
+6. The Agent recognizes this as a "design document to tables" request based on the system prompt
+7. The Agent calls `setup_library` to create tables, and `create_asset`/`update_row` to fill in data
+8. Reuse the existing confirmation mechanism for user confirmation
 
 ---
 
-## 3. Frontend — 上传页面
+## 3. Frontend — Upload Page
 
-### 页面路径
+### Page path
 
 `/project/[projectId]/design-upload`
 
-### 页面布局
+### Page layout
 
-- 标题和说明文字
-- 文件上传区域（拖拽/点击）
-- 附加指令 textarea（可选）
-- 图片处理提示信息
-- "开始配表" 按钮
+- Title and description text
+- File upload area (drag-and-drop / click)
+- Additional instructions textarea (optional)
+- Image handling notice
+- "Start table setup" button
 
-### 组件
+### Components
 
-| 组件 | 职责 |
+| Component | Responsibility |
 |------|------|
-| `DesignUploadPage` | 页面组件 |
-| `DocumentDropZone` | 拖拽/点击上传区域（基于 antd Upload） |
+| `DesignUploadPage` | Page component |
+| `DocumentDropZone` | Drag-and-drop / click upload area (based on antd Upload) |
 
-### 文档解析逻辑
+### Document parsing logic
 
 ```typescript
 // lib/document-parser.ts
@@ -112,15 +112,15 @@ export async function parseDocument(file: File): Promise<string> {
     }
 
     case 'doc':
-      throw new Error('不支持旧版 .doc 格式，请转换为 .docx 或 .txt');
+      throw new Error('Legacy .doc format is not supported; please convert to .docx or .txt');
 
     default:
-      throw new Error(`不支持的文件格式: .${ext}`);
+      throw new Error(`Unsupported file format: .${ext}`);
   }
 }
 ```
 
-### 消息拼接模板
+### Message assembly template
 
 ```typescript
 function buildDesignMessage(params: {
@@ -130,60 +130,60 @@ function buildDesignMessage(params: {
 }): string {
   const parts: string[] = [];
 
-  parts.push(`[系统指令]`);
-  parts.push(`用户上传了一份设计文档「${params.fileName}」，请分析文档内容，自主推理出需要创建哪些表格（library），规划每个表格的字段（field），并从文档中提取相关实体数据填充到表格中。`);
+  parts.push(`[System Instruction]`);
+  parts.push(`The user uploaded a design document "${params.fileName}". Please analyze the document content, autonomously infer which tables (libraries) need to be created, plan the fields for each table, and extract the relevant entity data from the document to fill into the tables.`);
 
   if (params.additionalInstructions?.trim()) {
-    parts.push(`用户的额外要求：${params.additionalInstructions.trim()}`);
+    parts.push(`Additional user requirements: ${params.additionalInstructions.trim()}`);
   }
 
   parts.push(``);
-  parts.push(`[文档内容]`);
+  parts.push(`[Document Content]`);
   parts.push(params.documentText);
 
   return parts.join('\n');
 }
 ```
 
-### sessionStorage 传递
+### sessionStorage handoff
 
 ```typescript
-// 写入（上传页）
+// Write (upload page)
 const key = `design-upload:${projectId}:pending-message`;
 sessionStorage.setItem(key, JSON.stringify({
-  message: string;        // 拼接好的完整消息
-  fileName: string;       // 原始文件名
-  timestamp: number;      // 时间戳
+  message: string;        // Fully assembled message
+  fileName: string;       // Original file name
+  timestamp: number;      // Timestamp
 }));
 
-// 读取（聊天页 ChatPanel 挂载时）
+// Read (when chat page ChatPanel mounts)
 const pending = sessionStorage.getItem(key);
 if (pending) {
-  // 自动发送消息，清除 sessionStorage
+  // Auto-send the message, clear sessionStorage
   sessionStorage.removeItem(key);
 }
 ```
 
-### 文件校验
+### File validation
 
-| 校验项 | 规则 | 处理 |
+| Check | Rule | Handling |
 |--------|------|------|
-| 文件格式 | `.txt` `.md` `.docx` | 拒绝其他格式 |
-| 文件大小 | ≤ 10MB | 拒绝过大文件 |
-| .doc 格式 | 不支持 | 提示转换 |
-| 空文件 | 内容为空 | 拒绝 |
-| 超长文本 | > 100KB | 警告但仍允许 |
+| File format | `.txt` `.md` `.docx` | Reject other formats |
+| File size | ≤ 10MB | Reject oversized files |
+| .doc format | Not supported | Prompt to convert |
+| Empty file | Content is empty | Reject |
+| Very long text | > 100KB | Warn but still allow |
 
 ---
 
-## 4. Agent Prompt 增强
+## 4. Agent Prompt Enhancement
 
-### 系统提示词新增规则
+### New rule in system prompt
 
-在 `prompts.ts` 的 `buildSystemPrompt` 中追加：
+Append in `buildSystemPrompt` in `prompts.ts`:
 
 ```
-27. When the user uploads a design document and asks to "配表" or "create tables from design":
+27. When the user uploads a design document and asks to "set up tables" or "create tables from design":
     - Analyze the document content thoroughly
     - Infer what tables (libraries) are needed based on the content (e.g., characters, locations, items, factions, skills)
     - For each table, design appropriate fields (columns) with correct data types
@@ -191,68 +191,68 @@ if (pending) {
     - Use setup_library to create each table with all fields
     - Use update_row / create_asset to fill initial data
     - Present a summary of all planned tables before executing
-    - If the document is in Chinese, all table names, field names, and data should be in Chinese
+    - Table names, field names, and data should be in English
 ```
 
-### Agent 处理流程
+### Agent processing flow
 
-1. 收到消息，理解"设计方案配表"请求
-2. 分析文档，推理出需要的表格列表
-3. 先输出表格规划摘要（让用户了解即将创建什么）
-4. 对每个表格：调用 `setup_library`（`post_preview` 确认 → 用户确认 → `executeImport` 创建）
-5. 对每个表格的数据：调用 `update_row` 或 `create_asset` 填充（`pre_execute` 确认）
-6. 所有操作完成后，输出总结
+1. Receive the message and recognize it as a "design document to tables" request
+2. Analyze the document and infer the list of required tables
+3. First output a table planning summary (so the user knows what will be created)
+4. For each table: call `setup_library` (`post_preview` confirmation → user confirms → `executeImport` creates)
+5. For each table's data: call `update_row` or `create_asset` to fill it in (`pre_execute` confirmation)
+6. After all operations complete, output a summary
 
 ---
 
-## 5. 依赖
+## 5. Dependencies
 
-| 依赖 | 用途 | 安装 |
+| Dependency | Purpose | Installation |
 |------|------|------|
-| `mammoth` | docx 文本提取 | `npm install mammoth` |
+| `mammoth` | docx text extraction | `npm install mammoth` |
 
 ---
 
-## 6. 边界情况与错误处理
+## 6. Edge Cases and Error Handling
 
-| 场景 | 处理方式 |
+| Scenario | Handling |
 |------|---------|
-| 文件 >10MB | 上传页拒绝，提示"文件过大" |
-| 非支持格式 | 上传页拒绝，提示"仅支持 .txt .md .docx" |
-| .doc 格式 | 上传页提示"不支持旧版 .doc，请转换为 .docx 或 .txt" |
-| 空文件 | 上传页提示"文件内容为空" |
-| docx 解析失败 | 上传页提示"文件解析失败，请检查文件格式" |
-| 超长文本（>100KB） | 上传页显示警告"文档较长，Agent 处理可能需要较长时间"，允许继续 |
-| 网络断开 | 聊天页 SSE 连接失败，显示重试按钮 |
-| Agent tool call 失败 | 聊天中展示错误，Agent 给出建议 |
-| 用户在 Agent 处理中刷新页面 | 聊天页恢复上次对话（已有机制） |
-| 图片 | 忽略，UI 上提示用户"文档中的图片不会被处理" |
+| File >10MB | Upload page rejects, shows "File too large" |
+| Unsupported format | Upload page rejects, shows "Only .txt .md .docx are supported" |
+| .doc format | Upload page shows "Legacy .doc is not supported; please convert to .docx or .txt" |
+| Empty file | Upload page shows "File content is empty" |
+| docx parsing failure | Upload page shows "Failed to parse file; please check the file format" |
+| Very long text (>100KB) | Upload page shows warning "The document is long; Agent processing may take a while", allows continuing |
+| Network disconnect | Chat page SSE connection fails, shows retry button |
+| Agent tool call failure | Error shown in chat, Agent gives suggestions |
+| User refreshes page while Agent is processing | Chat page restores the previous conversation (existing mechanism) |
+| Images | Ignored; UI notifies the user "Images in the document will not be processed" |
 
 ---
 
-## 7. 安全考虑
+## 7. Security Considerations
 
-- 前端解析，文档不上传到服务器 → 无服务端存储安全问题
-- sessionStorage 中的文本在同源策略保护下
-- 文件大小限制在前端校验
-- Agent tool call 受权限控制（`requiredPermission: 'editor'`）
+- Frontend parsing; the document is not uploaded to the server → no server-side storage security concerns
+- Text in sessionStorage is protected by the same-origin policy
+- File size limit is validated on the frontend
+- Agent tool calls are permission-controlled (`requiredPermission: 'editor'`)
 
 ---
 
-## 8. 测试策略
+## 8. Testing Strategy
 
-| 测试类型 | 覆盖范围 | 工具 |
+| Test type | Coverage | Tool |
 |---------|---------|------|
-| 单元测试 | `parseDocument` 函数（text/md/docx → 纯文本） | Jest |
-| 单元测试 | `buildDesignMessage` 消息拼接函数 | Jest |
-| E2E 测试 | 上传页 → 解析 → 跳转聊天 → Agent 处理全流程 | Playwright |
-| 手动测试 | 不同类型的真实设计文档 | — |
+| Unit test | `parseDocument` function (text/md/docx → plain text) | Jest |
+| Unit test | `buildDesignMessage` message assembly function | Jest |
+| E2E test | Full flow: upload page → parse → navigate to chat → Agent processing | Playwright |
+| Manual test | Real design documents of various types | — |
 
 ---
 
-## 9. 未来增强
+## 9. Future Enhancements
 
-- 支持更多文档格式（PDF, Notion 导出等）
-- 大文档分块处理（>50 页）
-- 多模态 LLM 支持（图片理解）
-- 配表模板预设（常见游戏类型快速配表）
+- Support more document formats (PDF, Notion exports, etc.)
+- Chunked processing for large documents (>50 pages)
+- Multimodal LLM support (image understanding)
+- Table setup template presets (quick setup for common game genres)

@@ -1,11 +1,11 @@
 import { validateHeaderName } from '../../src/lib/utils/headerNameValidation';
 
 describe('header name validation', () => {
-  it('accepts letters, numbers, underscores, spaces, CJK, and hyphens', () => {
+  it('accepts letters, numbers, underscores, spaces, accented letters, and hyphens', () => {
     expect(validateHeaderName('Column Name')).toBeNull();
     expect(validateHeaderName('Auto_Header 123')).toBeNull();
-    expect(validateHeaderName('攻击力')).toBeNull();
-    expect(validateHeaderName('攻击力 Base')).toBeNull();
+    expect(validateHeaderName('Café')).toBeNull();
+    expect(validateHeaderName('Café Base')).toBeNull();
     expect(validateHeaderName('Column-Name')).toBeNull();
   });
 

@@ -17,7 +17,7 @@ Natural-language imports use this pipeline:
 Extractor -> Graph Planner -> Combined Auditor -> deterministic acceptance
 ```
 
-Explicit legacy-format imports and unambiguous consecutively numbered natural branches continue to use deterministic parsing followed by the same Combined Auditor. The numbered parser only accepts `分支一/二/...：选择【...】` sections with consecutive ordinals and non-empty branch content; ambiguous prose falls back to the three-stage LLM pipeline.
+Explicit legacy-format imports and unambiguous consecutively numbered natural branches continue to use deterministic parsing followed by the same Combined Auditor. The numbered parser only accepts `Branch 1/2/...: Choose [...]` sections with consecutive ordinals and non-empty branch content; ambiguous prose falls back to the three-stage LLM pipeline.
 
 The Combined Auditor remains an independent MiniMax request. It checks all semantic and presentation concerns previously split across the Graph Auditor and Content/Table Auditor:
 

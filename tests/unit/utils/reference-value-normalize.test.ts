@@ -55,16 +55,16 @@ describe('resolveReferenceSelectionLabel', () => {
   it('skips placeholder Untitled displayValue and uses cache', () => {
     const label = resolveReferenceSelectionLabel(
       { assetId: 'a-1', fieldId: 'f-1', displayValue: 'Untitled' },
-      { 'a-1:f-1': '商铺' }
+      { 'a-1:f-1': 'Café Shop' }
     );
-    expect(label).toBe('商铺');
+    expect(label).toBe('Café Shop');
   });
 
   it('skips Untitled cache entries and falls back to asset-level cache', () => {
     const label = resolveReferenceSelectionLabel(
       { assetId: 'a-1', fieldId: 'wrong-f', displayValue: null },
-      { 'a-1:wrong-f': 'Untitled', 'a-1': '商铺' }
+      { 'a-1:wrong-f': 'Untitled', 'a-1': 'Café Shop' }
     );
-    expect(label).toBe('商铺');
+    expect(label).toBe('Café Shop');
   });
 });

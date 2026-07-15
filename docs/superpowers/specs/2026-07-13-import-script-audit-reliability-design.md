@@ -75,8 +75,8 @@ The full Auditor no longer receives `StoryExtraction`, `StoryDocument`, compiled
     {
       "id": "Node1",
       "presentation": "dialogue",
-      "speaker": "神秘女子",
-      "content": "深夜进山，风雨大作……",
+      "speaker": "Mysterious Woman",
+      "content": "Entering the mountains late at night, wind and rain raging...",
       "sourceUnitIds": ["source:3"],
       "commands": [],
       "nextRowId": "Node2",
@@ -86,7 +86,7 @@ The full Auditor no longer receives `StoryExtraction`, `StoryDocument`, compiled
   "paths": [
     {
       "rowIds": ["Node1", "Node2", "Node9"],
-      "choiceTexts": ["东侧客房"],
+      "choiceTexts": ["East guest room"],
       "terminalRowId": "Node9",
       "commands": []
     }

@@ -1,18 +1,18 @@
 ---
-description: 禁止使用 emoji；需要图片时使用项目图片库（src/assets/images），勿用图像生成工具充当素材
+description: No emoji; when images are needed, use the project image library (src/assets/images) — do not use image-generation tools as asset sources
 alwaysApply: true
 ---
 
-# 沟通与图片资源
+# Communication and image assets
 
 ## Emoji
 
-- 在回复、代码注释、提交说明、文档与 UI 文案示例中**不要使用 emoji**（含 Unicode 表情与装饰性符号）。
-- 需要强调或分步说明时，用文字、标题层级或编号列表表达。
+- **Do not use emoji** (including Unicode emoji and decorative symbols) in replies, code comments, commit messages, docs, or UI copy examples.
+- When emphasis or step-by-step explanation is needed, use plain text, heading levels, or numbered lists.
 
-## 图片
+## Images
 
-- **不要**使用图像生成类工具产出“产品/界面用图”来替代正式素材。
-- 需要配图、图标或插图时，**必须从项目已有图片库选用**，本仓库默认路径为 `src/assets/images/`（与现有 `*.svg` 等资产一致）。
-- 引用方式与现有代码保持一致（例如 `import` 资源或项目约定的 public 路径）；**不要编造**仓库中不存在的文件名或 URL。
-- 若库内无合适资源：用文字描述需求，并说明需设计/产品补充资产后再接入；不要临时捏造路径或外链占位。
+- **Do not** use image-generation tools to produce "product/UI images" as a substitute for proper assets.
+- When images, icons, or illustrations are needed, **always pick from the project's existing image library**; this repo's default path is `src/assets/images/` (consistent with the existing `*.svg` and other assets).
+- Reference assets the same way existing code does (e.g. `import` the resource or use the project's public-path convention); **do not invent** file names or URLs that do not exist in the repo.
+- If no suitable asset exists in the library: describe the need in text and note that design/product should supply the asset before integration; do not fabricate placeholder paths or external links.

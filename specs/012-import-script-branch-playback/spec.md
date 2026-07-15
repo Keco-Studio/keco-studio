@@ -11,7 +11,7 @@
 
 The Import Script feature (UI modal `ImportScriptModal.tsx` → `/api/import-script` → `scriptConversionService` + `scriptImportService`, plus the agent `import_script` tool) parses a script file into structured library rows. The parse/import layer is sound: options and jump targets ARE persisted (columns `Option0/Option0_Next … Option2/Option2_Next`, `Commands`, `Label`). The defect is in **presentation**: the "script view" (`VisualNovelScriptView.tsx`) reads only `label/type/name/content` and renders every row top-to-bottom (`:215`), so all branches (`O1`/`O2`/`O3`) are shown stacked at once and option/jump columns are ignored. There is no line-by-line advance and no "stop at a choice → pick → jump to the matching branch label" interaction.
 
-Separately, `scriptConversionService.looksLikeStructuredScript` (`:100`) contains an over-broad regex `^[一-鿿A-Za-z0-9_\s]+[：:].+$` that matches any line containing a colon (e.g. `备注: xxx`). This makes ordinary prose be treated as already-standard, so the LLM conversion is skipped and the raw prose is parsed directly, producing garbage rows.
+Separately, `scriptConversionService.looksLikeStructuredScript` (`:100`) contains an over-broad regex `^[\u4e00-\u9fffA-Za-z0-9_\s]+[：:].+$` that matches any line containing a colon (e.g. `Note: xxx`). This makes ordinary prose be treated as already-standard, so the LLM conversion is skipped and the raw prose is parsed directly, producing garbage rows.
 
 This spec covers both: an interactive VN player for the post-import script view (the primary ask), and a fix to the conversion detection. Following the project TDD rule, each behavioral fix gets a failing reproduction test first.
 
@@ -45,7 +45,7 @@ Verified by reading `postProcess.ts` and `types.ts`:
 
 ### Scenario 5 — Prose is not misdetected as standard format (Priority: P1)
 
-**Given** an ordinary prose paragraph containing an incidental colon (e.g. `备注: 今天很热`), **When** it is imported, **Then** it is NOT treated as already-standard; the LLM conversion runs (or the text is rejected with guidance), rather than being parsed raw into garbage rows.
+**Given** an ordinary prose paragraph containing an incidental colon (e.g. `Note: it is hot today`), **When** it is imported, **Then** it is NOT treated as already-standard; the LLM conversion runs (or the text is rejected with guidance), rather than being parsed raw into garbage rows.
 
 ### Scenario 6 — Replay / reset (Priority: P2)
 

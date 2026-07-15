@@ -9,17 +9,16 @@ import { findDialogueColon } from './colon';
 
 // Basic regexes
 const SEPARATOR_RE = /^[-*+]{3,}$/;
-const LABEL_RE = /^\[(?:Label|标签):\s*(.+?)\]$/;
-const OPTION_RE = /^【选项\s*(\d+)\s*[：:]\s*(.+?)】$/;
+const LABEL_RE = /^\[Label:\s*(.+?)\]$/;
 const SYSTEM_RE = /^【(.+?)】(.*)$/; // Supports bracketed text followed by trailing content.
 
 // Structured-format regexes
-const STRUCT_TYPED_RE = /^（(?:Type|类型)(\d+)・(.+?)）(.*)$/;
+const STRUCT_TYPED_RE = /^（Type(\d+)・(.+?)）(.*)$/;
 const STRUCT_LABEL_RE = /^【(.+?)】$/;
 const STRUCT_INNER_LABEL_RE = /【(.+?)】/;
-const STRUCT_OPTION_RE = /^(?:O(\d+)|选项(\d+))[：:]\s*(.+?)（([^）]+)）$/;
-const STRUCT_JUMP_RE = /^（(?:跳转|Jump)\s*(.+?)\s*）/i;
-const STRUCT_BRANCH_RE = /^(O\d+|选项\d+|Oend|结尾)\s+(分支|统一收尾|branch|merge)【.+?】$/i;
+const STRUCT_OPTION_RE = /^O(\d+)[：:]\s*(.+?)（([^）]+)）$/;
+const STRUCT_JUMP_RE = /^（Jump\s*(.+?)\s*）/i;
+const STRUCT_BRANCH_RE = /^(O\d+|Oend)\s+(branch|merge)【.+?】$/i;
 
 // Variable-format regexes
 const VAR_ASSIGN_RE = /^\$([a-zA-Z_]\w*)\s*([+\-\*/]?=)\s*(.+)$/;
@@ -29,25 +28,17 @@ const SIMPLE_OPTION_RE = /^-\s*(.+)$/;
 const NESTED_OPTION_RE = /^-\s*-\s*(.+)$/;
 
 // Chapter headings
-const CHAPTER_RE = /^\d+[\.\、．]\s*(\S+.*)$/;
+const CHAPTER_RE = /^\d+\.\s*(\S+.*)$/;
 
 // Stage directions
 const STAGE_DIR_RE = /^（([^）]+)）$/;
-const STAGE_KEYWORDS = [
-  '切屏', '黑屏', '淡入', '淡出', '转场', '渐隐', '渐显',
-  '清晨', '黄昏', '夜晚', '傍晚', '午后', '深夜',
-  '场景', '镜头', '画面', '背景', '特效',
-];
 
 // Scene labels: "Location Name [XXX]" or "[XXX] Location Name" or just "[XXX]"
 const SCENE_LABEL_RE = /^(.+?)\s*\[(\w+)\]\s*$/;
 const SCENE_LABEL_START_RE = /^\[(\w+)\]\s*(.+?)\s*$/; // [XXX] Location Name
 const SCENE_ID_RE = /^\[(\w+)\]\s*$/;
 
-// Variable annotations
-const VAR_CN_RE = /^（([^）]*[线值分好感][^）]*[+\-\d][^）]*)）$/;
-
-const QUOTES = '"\'“”‘’「」';
+const QUOTES = '"\'“”‘’';
 
 /**
  * Strip wrapping quote characters.
@@ -64,29 +55,6 @@ function stripQuotes(s: string): string {
 }
 
 /**
- * Extract a leading condition annotation from text.
- */
-function extractCondition(text: string): { text: string; condition: string } {
-  const m = text.match(/^（([^）]*(?:周目|解锁|结局|条件|路线)[^）]*)）\s*(.*)$/);
-  if (m) {
-    return { text: m[2].trim(), condition: m[1].trim() };
-  }
-  return { text: text.trim(), condition: '' };
-}
-
-/**
- * Extract a variable or affinity annotation from text.
- */
-function extractVariable(text: string): { text: string; variable: string } {
-  const m = text.match(/（([^）]*[线值分好感][^）]*[+\-\d][^）]*)）/);
-  if (m) {
-    const varText = text.replace(m[0], '').trim();
-    return { text: varText, variable: m[1].trim() };
-  }
-  return { text: text.trim(), variable: '' };
-}
-
-/**
  * Classify the content inside parentheses.
  */
 function classifyBracketContent(inner: string): Node {
@@ -95,25 +63,8 @@ function classifyBracketContent(inner: string): Node {
     return { _type: 'variable', command: inner };
   }
 
-  // Affinity annotation
-  if (/[线值分好感].*[+\-\d]/.test(inner)) {
-    return { _type: 'variable', command: inner };
-  }
-
-  // Condition annotation
-  if (/[周目解锁结局条件路线]/.test(inner)) {
-    return { _type: 'condition', condition: inner };
-  }
-
-  // Stage direction
-  for (const kw of STAGE_KEYWORDS) {
-    if (inner.includes(kw)) {
-      return { _type: 'system', type: 2, content: inner };
-    }
-  }
-
   // Short text that looks like an instruction.
-  if (inner.length < 20 && !inner.includes('，') && !inner.includes(',')) {
+  if (inner.length < 20 && !inner.includes(',')) {
     return { _type: 'system', type: 2, content: inner };
   }
 
@@ -166,10 +117,10 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
   // Structured option with condition and jump metadata.
   const structOptMatch = STRUCT_OPTION_RE.exec(stripped);
   if (structOptMatch) {
-    const optionNum = structOptMatch[1] || structOptMatch[2];
+    const optionNum = structOptMatch[1];
     const optionIndex = parseInt(optionNum, 10) - 1;
-    const optionText = structOptMatch[3];
-    let optCond = structOptMatch[4];
+    const optionText = structOptMatch[2];
+    let optCond = structOptMatch[3];
 
     // Clean up escape characters: \( → (, \) → )
     optCond = optCond.replace(/\\\(/g, '(').replace(/\\\)/g, ')');
@@ -177,11 +128,11 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     // Parse condition and jump metadata.
     let jumpTarget = '';
     let varChange = '';
-    const optParts = optCond.replace(/，/g, ',').split(',');
+    const optParts = optCond.split(',');
     for (const part of optParts) {
       const trimmed = part.trim();
-      if (/跳转|jump/i.test(trimmed)) {
-        jumpTarget = trimmed.replace(/跳转|jump|分支|branch/gi, '').trim();
+      if (/jump/i.test(trimmed)) {
+        jumpTarget = trimmed.replace(/jump|branch/gi, '').trim();
       } else if (trimmed) {
         varChange = trimmed;
         // Clean up stray parentheses in variable
@@ -211,65 +162,24 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
     return { _type: 'label', label: labelMatch2[1] };
   }
 
-  // 3. Option in bracketed form
-  const optMatch = OPTION_RE.exec(stripped);
-  if (optMatch) {
-    const { text, condition } = extractCondition(optMatch[2]);
-    const result: Node = {
-      _type: 'option',
-      option_index: parseInt(optMatch[1], 10),
-      option_text: text,
-    };
-    if (condition) {
-      (result as { condition?: string }).condition = condition;
-    }
-    return result;
-  }
-
   // Simple option
   const simpleOptMatch = SIMPLE_OPTION_RE.exec(stripped);
   if (simpleOptMatch) {
-    let text = simpleOptMatch[1];
-    let condition = '';
-    let variable = '';
-
-    // Extract condition.
-    const condResult = extractCondition(text);
-    text = condResult.text;
-    condition = condResult.condition;
-
-    // Extract variable.
-    const varResult = extractVariable(text);
-    text = varResult.text;
-    variable = varResult.variable;
-
-    const result: Node = {
+    return {
       _type: 'option',
       option_index: -1,
-      option_text: text,
+      option_text: simpleOptMatch[1].trim(),
     };
-    if (condition) {
-      (result as { condition?: string }).condition = condition;
-    }
-    if (variable) {
-      (result as { variable?: string }).variable = variable;
-    }
-    return result;
   }
 
   // Nested option, flattened.
   const nestedOptMatch = NESTED_OPTION_RE.exec(stripped);
   if (nestedOptMatch) {
-    const { text, condition } = extractCondition(nestedOptMatch[1]);
-    const result: Node = {
+    return {
       _type: 'option',
       option_index: -1,
-      option_text: text,
+      option_text: nestedOptMatch[1].trim(),
     };
-    if (condition) {
-      (result as { condition?: string }).condition = condition;
-    }
-    return result;
   }
 
   // 4. System prompt with optional trailing content.
@@ -314,23 +224,6 @@ export function classifyLine(line: string, roleMap: RoleMap = {}): Node {
   const stageDirMatch = STAGE_DIR_RE.exec(stripped);
   if (stageDirMatch) {
     return classifyBracketContent(stageDirMatch[1].trim());
-  }
-
-  // 8. Standalone variable annotation
-  const varCnMatch = VAR_CN_RE.exec(stripped);
-  if (varCnMatch) {
-    return { _type: 'variable', command: varCnMatch[1] };
-  }
-
-  // 8.5 Line that starts with a condition annotation
-  const condMatch = stripped.match(/^（([^）]*(?:周目|解锁|结局|条件|路线)[^）]*)）\s*(.*)$/);
-  if (condMatch && condMatch[2]) {
-    // Condition annotation plus trailing content becomes conditional narration.
-    return {
-      _type: 'narration',
-      content: condMatch[2],
-      condition: condMatch[1],
-    } as Node;
   }
 
   // 9. Plain dialogue

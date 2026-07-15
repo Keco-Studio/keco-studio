@@ -191,7 +191,7 @@ export default function AssetPage() {
         setActiveFieldRef.current(null, null);
       }
     };
-  }, [assetId, isNewAsset]); // 移除 setActiveField 依赖
+  }, [assetId, isNewAsset]); // setActiveField dependency intentionally omitted
 
   const sections = useMemo(() => {
     // Group fields by section and track minimum order_index for each section

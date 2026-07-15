@@ -5,7 +5,7 @@
 import { lookupFieldTypeSpec } from './field-type-catalog';
 import type { PropertyConfig } from '@/lib/types/libraryAssets';
 
-const LEGACY_NAME_LABELS = new Set(['名称', 'name', 'Name']);
+const LEGACY_NAME_LABELS = new Set(['name', 'Name']);
 export const WRITE_VALIDATION_FAILED_PREFIX = 'WRITE_VALIDATION_FAILED:';
 
 export interface ValidationContext {
@@ -18,7 +18,7 @@ export interface EnumValidationIssue {
   allowed: string[];
 }
 
-/** Primary human-readable label column for a library row (名称 / 规则名称 / 道具名称 / …). */
+/** Primary human-readable label column for a library row (name / Name / first string column). */
 export function findPrimaryLabelField(
   properties: PropertyConfig[]
 ): PropertyConfig | undefined {
@@ -27,11 +27,6 @@ export function findPrimaryLabelField(
 
   const legacy = stringFields.find((p) => LEGACY_NAME_LABELS.has(p.name));
   if (legacy) return legacy;
-
-  const nameSuffix = stringFields.find(
-    (p) => p.name === '名称' || p.name.endsWith('名称')
-  );
-  if (nameSuffix) return nameSuffix;
 
   return stringFields[0];
 }

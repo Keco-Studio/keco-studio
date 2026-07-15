@@ -7,9 +7,9 @@ import {
 const selection: AgentSelectionContext = {
   source: 'library_table',
   libraryId: 'lib-1',
-  libraryName: '角色表',
-  sectionName: '基础信息',
-  selectionLabel: '角色表 · 第 2-3 行 · 2 列',
+  libraryName: 'Characters',
+  sectionName: 'Basic Info',
+  selectionLabel: 'Characters · Rows 2-3 · 2 columns',
   mode: 'cells',
   selectedCellCount: 4,
   selectedRowCount: 2,
@@ -41,7 +41,7 @@ describe('selection context helpers', () => {
 
   it('formats complete selected data for the LLM with exact identifiers', () => {
     const text = formatSelectionContextForLlm(selection);
-    expect(text).toContain('角色表 · 第 2-3 行 · 2 列');
+    expect(text).toContain('Characters · Rows 2-3 · 2 columns');
     expect(text).toContain('"assetId": "asset-1"');
     expect(text).toContain('"fieldId": "field-name"');
     expect(text).toContain('"displayValue": "Alice"');

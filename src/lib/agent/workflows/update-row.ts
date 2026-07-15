@@ -205,7 +205,7 @@ async function executeImport(
 export const updateRow: AgentTool = {
   name: 'update_row',
   description:
-    'Update a row identified by its 1-based UI row number (rowIndex). Use this when the user refers to a row by position ("第1行", "row 3") — it targets the exact table row even when its cells are blank. Params: libraryName (optional, defaults to active library), rowIndex (required), propertyValues (semantic field names).',
+    'Update a row identified by its 1-based UI row number (rowIndex). Use this when the user refers to a row by position ("row 1", "row 3") — it targets the exact table row even when its cells are blank. Params: libraryName (optional, defaults to active library), rowIndex (required), propertyValues (semantic field names).',
   category: 'write',
   confirmationMode: 'post_preview',
   requiredPermission: 'editor',

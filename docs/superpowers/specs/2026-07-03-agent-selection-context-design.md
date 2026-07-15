@@ -38,9 +38,9 @@ When the user has selected one or more table cells or rows and presses `Ctrl+L`:
 
 Example labels:
 
-- `角色表 · 第 12-18 行 · 4 列`
-- `角色表 · 选中 8 个单元格`
-- `道具表 · 第 3-15 行`
+- `Characters · rows 12-18 · 4 columns`
+- `Characters · 8 cells selected`
+- `Items · rows 3-15`
 
 The label represents where the data came from, not the full data. The full structured selection is carried in the request payload. The user can remove the attachment before sending.
 
@@ -111,7 +111,7 @@ The LLM message augmentation should include both the compact label and structure
 Example augmentation:
 
 ```text
-[User attached selected table data for this message: 角色表 · 第 12-18 行 · 4 列.
+[User attached selected table data for this message: Characters · rows 12-18 · 4 columns.
 Use the assetId and fieldId values below for exact tool calls. Do not guess target rows from display text.]
 ...
 ```

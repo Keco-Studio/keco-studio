@@ -6,55 +6,47 @@ import { describe, it, expect } from '@jest/globals';
 import { parseText } from './parser';
 
 describe('Parser Superset Verification', () => {
-  describe('Natural Format (剧情向)', () => {
+  describe('Natural Format (narrative)', () => {
     it('should parse character dialogues', () => {
-      const input = '阿塔那：你好\nAI：你好';
+      const input = 'Atana：Hello\nAI：Hello';
       const script = parseText(input);
-      expect(script.lines.find(l => l.name === '阿塔那')).toBeDefined();
+      expect(script.lines.find(l => l.name === 'Atana')).toBeDefined();
       expect(script.lines.find(l => l.name === 'AI')).toBeDefined();
     });
 
     it('should parse quoted dialogues', () => {
-      const input = '阿塔那："我选择了A"';
+      const input = 'Atana："I chose A"';
       const script = parseText(input);
-      const line = script.lines.find(l => l.name === '阿塔那');
-      expect(line?.content).toBe('我选择了A');
+      const line = script.lines.find(l => l.name === 'Atana');
+      expect(line?.content).toBe('I chose A');
     });
 
     it('should parse simple options with - prefix', () => {
-      const input = '旁白：场景描述\n- 选择A\n- 选择B';
+      const input = 'Narrator：Scene description\n- Choice A\n- Choice B';
       const script = parseText(input);
       const line = script.lines.find(l => l.option0);
-      expect(line?.option0).toBe('选择A');
-      expect(line?.option1).toBe('选择B');
+      expect(line?.option0).toBe('Choice A');
+      expect(line?.option1).toBe('Choice B');
     });
 
-    it('should parse options with 【选项N：文本】 format', () => {
-      const input = '对话内容\n【选项1：选择A】\n【选项2：选择B】';
+    it('should parse system messages 【text】', () => {
+      const input = '【Fullscreen text】Important notice';
       const script = parseText(input);
-      const line = script.lines.find(l => l.option0);
-      expect(line?.option0).toBe('选择A');
-      expect(line?.option1).toBe('选择B');
-    });
-
-    it('should parse system messages 【文字】', () => {
-      const input = '【全屏文字】重要提示';
-      const script = parseText(input);
-      const line = script.lines.find(l => l.content?.includes('重要提示'));
+      const line = script.lines.find(l => l.content?.includes('Important notice'));
       expect(line?.type).toBe(2);
     });
 
-    it('should parse stage directions （切屏）', () => {
-      const input = '（切屏）';
+    it('should parse stage directions （cut scene）', () => {
+      const input = '（cut scene）';
       const script = parseText(input);
-      const line = script.lines.find(l => l.content === '切屏');
+      const line = script.lines.find(l => l.content === 'cut scene');
       expect(line?.type).toBe(2);
     });
 
-    it('should parse scene descriptions （黄昏，场景）', () => {
-      const input = '（黄昏，场景）';
+    it('should parse scene descriptions （Dusk, an empty plaza）', () => {
+      const input = '（Dusk, an empty plaza）';
       const script = parseText(input);
-      const line = script.lines.find(l => l.content?.includes('黄昏'));
+      const line = script.lines.find(l => l.content?.includes('Dusk'));
       expect(line?.type).toBe(2);
     });
 
@@ -65,41 +57,34 @@ describe('Parser Superset Verification', () => {
       expect(line).toBeDefined();
     });
 
-    it('should parse conditions （多周目，未解锁）', () => {
-      const input = '（多周目，未解锁）对话内容';
+    it('should parse chapter titles 1.Chapter One', () => {
+      const input = '1.Chapter One';
       const script = parseText(input);
-      const line = script.lines.find(l => l.content === '对话内容');
-      expect(line?.if).toContain('多周目');
-    });
-
-    it('should parse chapter titles 1.第一章', () => {
-      const input = '1.第一章';
-      const script = parseText(input);
-      const line = script.lines.find(l => l.label === '第一章');
+      const line = script.lines.find(l => l.label === 'Chapter One');
       expect(line).toBeDefined();
     });
   });
 
-  describe('Structured Format (规范化)', () => {
-    it('should parse label with scene 【Start｜场景】', () => {
-      const input = '【Start｜午后，公寓】';
+  describe('Structured Format (normalized)', () => {
+    it('should parse label with scene 【Start｜scene】', () => {
+      const input = '【Start｜Mid-afternoon, apartment】';
       const script = parseText(input);
       const line = script.lines.find(l => l.label === 'Start');
-      expect(line?.content).toContain('午后');
+      expect(line?.content).toContain('Mid-afternoon');
     });
 
     it('should parse typed dialogues （TypeX・name）content', () => {
-      const input = '（Type1・阿塔那）你好\n（Type2・AI）你好';
+      const input = '（Type1・Atana）Hello\n（Type2・AI）Hello';
       const script = parseText(input);
-      // Type 1/2 均为人物对话
-      expect(script.lines.find(l => l.name === '阿塔那' && l.type === 1)).toBeDefined();
+      // Type 1/2 are both character dialogue
+      expect(script.lines.find(l => l.name === 'Atana' && l.type === 1)).toBeDefined();
       const aiLine = script.lines.find(l => l.name === 'AI' && l.type === 1);
       expect(aiLine).toBeDefined();
-      expect(aiLine?.content).toBe('你好');
+      expect(aiLine?.content).toBe('Hello');
     });
 
     it('should split multiple typed dialogues on one line', () => {
-      const input = '（Type3・旁白）场景（Type1・阿塔那）对话（Type2・AI）回复';
+      const input = '（Type3・Narrator）Scene（Type1・Atana）Dialogue（Type2・AI）Reply';
       const script = parseText(input);
       const type1Lines = script.lines.filter(l => l.type === 1 && l.name);
       const type2Lines = script.lines.filter(l => l.type === 2);
@@ -107,35 +92,35 @@ describe('Parser Superset Verification', () => {
       expect(type2Lines.length).toBeGreaterThanOrEqual(1);
       // All content should be present across lines
       const allContent = script.lines.map(l => l.content).join(' ');
-      expect(allContent).toContain('场景');
-      expect(allContent).toContain('对话');
-      expect(allContent).toContain('回复');
+      expect(allContent).toContain('Scene');
+      expect(allContent).toContain('Dialogue');
+      expect(allContent).toContain('Reply');
     });
 
-    it('should parse structured options O1：文本（$var，跳转）', () => {
-      const input = '对话\nO1：选择A（$trust+=2，跳转O1分支）\nO2：选择B（$pally+=1，跳转O2分支）';
+    it('should parse structured options O1：text（$var, jump）', () => {
+      const input = 'Some dialogue\nO1：Choice A（$trust+=2, jump O1）\nO2：Choice B（$pally+=1, jump O2）';
       const script = parseText(input);
       const line = script.lines.find(l => l.option0);
-      expect(line?.option0).toBe('选择A');
-      expect(line?.option1).toBe('选择B');
+      expect(line?.option0).toBe('Choice A');
+      expect(line?.option1).toBe('Choice B');
     });
 
-    it('should parse branch declarations O1 分支【O1｜场景】', () => {
-      const input = 'O1 分支【O1｜分支场景】';
+    it('should parse branch declarations O1 branch【O1｜scene】', () => {
+      const input = 'O1 branch【O1｜Branch scene】';
       const script = parseText(input);
       const line = script.lines.find(l => l.label === 'O1');
-      expect(line?.content).toContain('分支场景');
+      expect(line?.content).toContain('Branch scene');
     });
 
-    it('should parse jump instructions （跳转 Oend）', () => {
-      const input = '对话\n（跳转 Oend）';
+    it('should parse jump instructions （Jump Oend）', () => {
+      const input = 'Some dialogue\n（Jump Oend）';
       const script = parseText(input);
       const line = script.lines.find(l => l.commands?.includes('Jump'));
       expect(line?.commands).toContain('Oend');
     });
 
     it('should handle mixed jump + branch on same line', () => {
-      const input = '（Type1・阿塔那）对话\n（跳转 Oend）O2 分支【O2｜场景】';
+      const input = '（Type1・Atana）Some dialogue\n（Jump Oend）O2 branch【O2｜scene】';
       const script = parseText(input);
       // Jump should be added to previous dialogue's commands
       const jumpLine = script.lines.find(l => l.commands?.includes('Jump Oend'));
@@ -146,21 +131,21 @@ describe('Parser Superset Verification', () => {
     });
 
     it('should handle multi-line options', () => {
-      const input = '对话内容\nO1：选择A（\n$trust+=2，跳转O1分支）';
+      const input = 'Some dialogue\nO1：Choice A（\n$trust+=2, jump O1）';
       const script = parseText(input);
-      const line = script.lines.find(l => l.option0 === '选择A');
+      const line = script.lines.find(l => l.option0 === 'Choice A');
       expect(line).toBeDefined();
     });
 
     it('should clean up escape characters \\( \\)', () => {
-      const input = '对话内容\nO1：选择（\\(trust+=2，跳转O1分支）';
+      const input = 'Some dialogue\nO1：Choice（\\(trust+=2, jump O1）';
       const script = parseText(input);
       const line = script.lines.find(l => l.option0);
       expect(line?.commands || '').not.toContain('\\');
     });
 
     it('should auto-add $ prefix to variables', () => {
-      const input = '对话内容\nO1：选择（trust+=2，跳转O1分支）\nO1 分支【O1｜场景】';
+      const input = 'Some dialogue\nO1：Choice（trust+=2, jump O1）\nO1 branch【O1｜scene】';
       const script = parseText(input);
       const branchLine = script.lines.find(l => l.label === 'O1');
       expect(branchLine?.commands).toContain('$trust+=2');
@@ -169,34 +154,34 @@ describe('Parser Superset Verification', () => {
 
   describe('Integration Tests', () => {
     it('should handle complete natural format script', () => {
-      const input = `阿塔那：你好
-AI：你好
-- 选择A
-- 选择B
-阿塔那：我选择A
-（切屏）
+      const input = `Atana：Hello
+AI：Hello
+- Choice A
+- Choice B
+Atana：I choose A
+（cut scene）
 $trust += 2
-1.第一章`;
+1.Chapter One`;
 
       const script = parseText(input);
       expect(script.lines.length).toBeGreaterThan(5);
-      expect(script.lines.find(l => l.name === '阿塔那')).toBeDefined();
+      expect(script.lines.find(l => l.name === 'Atana')).toBeDefined();
       expect(script.lines.find(l => l.option0)).toBeDefined();
     });
 
     it('should handle complete structured format script', () => {
-      const input = `【Start｜场景描述】
-（Type3・旁白）场景
-（Type1・阿塔那）对话
-O1：选择A（$trust+=2，跳转O1分支）
-O2：选择B（$pally+=1，跳转O2分支）
-O1 分支【O1｜分支A】
-（Type1・阿塔那）分支A对话
-（跳转 Oend）
-O2 分支【O2｜分支B】
-（Type1・阿塔那）分支B对话
-（跳转 Oend）
-Oend 统一收尾【Oend｜结束】`;
+      const input = `【Start｜Scene description】
+（Type3・Narrator）Scene
+（Type1・Atana）Dialogue
+O1：Choice A（$trust+=2, jump O1）
+O2：Choice B（$pally+=1, jump O2）
+O1 branch【O1｜Branch A】
+（Type1・Atana）Branch A dialogue
+（Jump Oend）
+O2 branch【O2｜Branch B】
+（Type1・Atana）Branch B dialogue
+（Jump Oend）
+Oend merge【Oend｜The end】`;
 
       const script = parseText(input);
       expect(script.lines.length).toBeGreaterThan(8);
@@ -207,31 +192,31 @@ Oend 统一收尾【Oend｜结束】`;
     });
 
     it('should handle messy real-world test.txt', () => {
-      const input = `【Start｜午后，公寓】
-（Type3・旁白）场景（Type2・AI）AI对话（Type1・阿塔那）主角对话（Type3・旁白）选项出现
-O1：选择A（
-\\(trust+=2，跳转O1分支）
-O2：选择B（\\)pally+=1，跳转O2分支）
-O1 分支【O1｜分支场景】
-（Type1・阿塔那）分支对话
-（跳转 Oend）O2 分支【O2｜另一分支】
-（跳转 Oend）Oend 统一收尾【Oend｜结束】`;
+      const input = `【Start｜Mid-afternoon, apartment】
+（Type3・Narrator）Scene（Type2・AI）AI dialogue（Type1・Atana）Protagonist dialogue（Type3・Narrator）Options appear
+O1：Choice A（
+\\(trust+=2, jump O1）
+O2：Choice B（\\)pally+=1, jump O2）
+O1 branch【O1｜Branch scene】
+（Type1・Atana）Branch dialogue
+（Jump Oend）O2 branch【O2｜Another branch】
+（Jump Oend）Oend merge【Oend｜The end】`;
 
       const script = parseText(input);
 
       // Verify key features
       expect(script.lines.find(l => l.label === 'Start')).toBeDefined();
 
-      // Type 1 = 人物（含 Type2・AI）；Type 3 = 场景/旁白
-      const ataLines = script.lines.filter(l => l.name === '阿塔那');
+      // Type 1 = characters (including Type2・AI); Type 3 = scene/narration
+      const ataLines = script.lines.filter(l => l.name === 'Atana');
       const aiLines = script.lines.filter(l => l.name === 'AI' && l.type === 1);
       expect(ataLines.length).toBeGreaterThan(0);
       expect(aiLines.length).toBeGreaterThan(0);
 
       // Options should be parsed
       const optLine = script.lines.find(l => l.option0);
-      expect(optLine?.option0).toBe('选择A');
-      expect(optLine?.option1).toBe('选择B');
+      expect(optLine?.option0).toBe('Choice A');
+      expect(optLine?.option1).toBe('Choice B');
 
       // Branch labels should exist
       expect(script.lines.find(l => l.label === 'O1')).toBeDefined();
@@ -262,7 +247,7 @@ O1 分支【O1｜分支场景】
       expect(narrationLine).toBeDefined();
     });
 
-    it('should map structured Type3 to Type 2 (旁白)', () => {
+    it('should map structured Type3 to Type 2 (narration)', () => {
       const input = '（Type3・Narrator）scene description';
       const script = parseText(input);
       const line = script.lines.find(l => l.type === 2);
@@ -270,7 +255,7 @@ O1 分支【O1｜分支场景】
       expect(line?.content).toBe('scene description');
     });
 
-    it('should keep structured Type2 as Type 1 (人物对话)', () => {
+    it('should keep structured Type2 as Type 1 (character dialogue)', () => {
       const input = '（Type2・AI）Hello';
       const script = parseText(input);
       const line = script.lines.find(l => l.type === 1 && l.name === 'AI');
@@ -278,7 +263,7 @@ O1 分支【O1｜分支场景】
       expect(line?.content).toBe('Hello');
     });
 
-    it('should keep structured Type1 as Type 1 (对话)', () => {
+    it('should keep structured Type1 as Type 1 (dialogue)', () => {
       const input = '（Type1・Hero）I am the hero';
       const script = parseText(input);
       const line = script.lines.find(l => l.type === 1 && l.name === 'Hero');
@@ -287,7 +272,7 @@ O1 分支【O1｜分支场景】
   });
 
   describe('Scene Label Detection', () => {
-    it('should recognize "Location\\n[XXX]" as scene label (Label=编号, Content=场景)', () => {
+    it('should recognize "Location\\n[XXX]" as scene label (label=id, content=scene name)', () => {
       const input = 'South Figaro Cave\n[003]';
       const script = parseText(input);
       const sceneLine = script.lines.find(l => l.label === '003');
@@ -354,13 +339,13 @@ the Returner headquarters.`;
 
     it('should not merge across stage directions', () => {
       const input = `Edgar: Hello
-（切屏）
+（cut scene）
 More text`;
       const script = parseText(input);
       const edgarLine = script.lines.find(l => l.name === 'Edgar');
       expect(edgarLine?.content).toBe('Hello');
       // Stage direction should be separate
-      const stageLine = script.lines.find(l => l.content === '切屏');
+      const stageLine = script.lines.find(l => l.content === 'cut scene');
       expect(stageLine).toBeDefined();
     });
 

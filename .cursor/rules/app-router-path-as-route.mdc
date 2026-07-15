@@ -1,35 +1,35 @@
 ---
-description: Next.js App Router 下以 src/app 内文件相对路径推导 URL；Link/redirect/面包屑等与目录结构一致
+description: With Next.js App Router, derive URLs from file paths relative to src/app; keep Link/redirect/breadcrumbs consistent with the directory structure
 globs: src/app/**/*.{tsx,ts}
 alwaysApply: false
 ---
 
-# 路由与文件路径一致
+# Routes must match file paths
 
-本仓库使用 Next.js App Router。**对外可访问的 URL 路径**应由 `src/app/` 下对应路由段的**目录相对路径**推导，避免与真实目录结构脱节的“手写路径”。
+This repo uses the Next.js App Router. **Publicly reachable URL paths** should be derived from the **directory-relative path** of the corresponding route segments under `src/app/`; avoid "hand-written paths" that drift from the real directory structure.
 
-## 推导方式
+## How to derive a URL
 
-- 以 `src/app/` 为根：其后每一级**文件夹名**（不含 `page.tsx`、`layout.tsx`、`loading.tsx`、`error.tsx`、`route.ts` 等文件名）按顺序组成路径段，用 `/` 连接即为主路径。
-- **路由组**目录名形如 `(dashboard)`、`(marketing)`：**不出现在 URL 中**，推导时跳过该段文件夹名。
-- **动态段**：文件夹名为 `[id]`、`[slug]` 等时，URL 中对应位置为实际参数值，文档或示例里可写为 `/.../:id` 或说明占位符。
-- **可选 / 捕获**：`[[...slug]]`、`[...slug]` 等按 Next.js 约定映射，勿自造另一套规则。
+- Use `src/app/` as the root: each subsequent **folder name** (excluding file names like `page.tsx`, `layout.tsx`, `loading.tsx`, `error.tsx`, `route.ts`) forms a path segment in order, joined with `/`.
+- **Route groups** — folder names like `(dashboard)`, `(marketing)` — **do not appear in the URL**; skip those segments when deriving the path.
+- **Dynamic segments**: for folder names like `[id]` or `[slug]`, the URL contains the actual parameter value at that position; in docs or examples write `/.../:id` or describe the placeholder.
+- **Optional / catch-all**: `[[...slug]]`, `[...slug]`, etc. map per Next.js conventions; do not invent a different scheme.
 
-## 编写导航与跳转时
+## When writing navigation and redirects
 
-- `Link` 的 `href`、`redirect()`、`router.push`/`replace`、服务端 `headers()` 相关重写、面包屑、sitemap 等**应能与当前或目标 `page.tsx` 所在目录一一对应**；新增页面时优先**从目标文件的父级路径抄出** href，再按需加 query/hash。
-- 不要在已有并列目录结构的情况下，再维护一套与目录不一致的“路由常量表”作为主要真相来源；若已有常量，**变更目录时同步改常量**，或改为由路径片段拼装并与目录注释对齐。
-- 内部跳转优先使用**以 `/` 开头的应用内绝对路径**（与浏览器地址栏一致），与 `src/app` 推导结果相同；避免把 `src/app` 物理路径当作 URL 前缀写出（例如不要写成 `/src/app/...`）。
+- `Link` `href`s, `redirect()`, `router.push`/`replace`, server-side `headers()`-related rewrites, breadcrumbs, sitemaps, etc. **should map one-to-one to the directory of the current or target `page.tsx`**; when adding a page, prefer **copying the href from the target file's parent path**, then add query/hash as needed.
+- When a parallel directory structure already exists, do not maintain a separate "route constants table" that diverges from it as the primary source of truth; if constants already exist, **update them in sync when directories change**, or build them from path segments and keep them aligned with directory comments.
+- For internal navigation prefer **in-app absolute paths starting with `/`** (matching the browser address bar), identical to the path derived from `src/app`; do not write the physical `src/app` path as a URL prefix (e.g. never `/src/app/...`).
 
-## 示例
+## Examples
 
-- 模拟器 UI 源码在**独立仓库** `keco-simulation`：`src/app/simulation-system/battle/skills/page.tsx`  
-  - URL：`/simulation-system/battle/skills`
-- Keco 主仓内仅保留嵌入壳：`src/app/(dashboard)/simulation-system/[[...segments]]/page.tsx` → 同上 URL（iframe 加载独立应用）
-- 文件：`src/app/(dashboard)/projects/[projectId]/page.tsx`  
-  - URL：`/projects/:projectId`（运行时替换为实际 id）
+- Simulator UI source lives in the **separate repo** `keco-simulation`: `src/app/simulation-system/battle/skills/page.tsx`
+  - URL: `/simulation-system/battle/skills`
+- The main Keco repo keeps only the embed shell: `src/app/(dashboard)/simulation-system/[[...segments]]/page.tsx` → same URL (iframe loads the standalone app)
+- File: `src/app/(dashboard)/projects/[projectId]/page.tsx`
+  - URL: `/projects/:projectId` (replaced by the actual id at runtime)
 
-## 反例
+## Anti-patterns
 
-- 目录已迁至 `battle/skills`，但 `Link` 仍指向旧的 `/battle-skill` 等**无法在 `src/app` 中找到对应文件夹链**的路径。
-- 文档或注释里描述路由时**使用与 `src/app` 不一致的拼写或层级**，导致排查困难。
+- The directory has moved to `battle/skills`, but a `Link` still points to the old `/battle-skill` or another path **with no matching folder chain under `src/app`**.
+- Docs or comments describe routes **with spelling or nesting inconsistent with `src/app`**, making debugging harder.

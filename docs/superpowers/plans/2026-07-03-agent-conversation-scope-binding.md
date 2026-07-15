@@ -1,8 +1,8 @@
-# Agent 会话 Project/Scope 绑定 Implementation Plan
+# Agent Conversation Project/Scope Binding Implementation Plan
 
-**Goal:** 让每个 Agent 会话在创建时冻结其所属 project 与数据范围（scope），运行时以会话绑定值为唯一权威，不再随前端实时导航漂移；History 列表与面板头部展示所属 project 与 scope 层级。
+**Goal:** Freeze each Agent conversation's owning project and data scope at creation time; at runtime the conversation-bound values are the single source of truth and no longer drift with the frontend's live navigation. The History list and panel header display the owning project and scope level.
 
-**Architecture:** 会话首次创建时按当时导航层级（table/folder/project/global）快照出 `scope`，存入 `agent_conversations.meta.scope`（jsonb，无表结构变更）。已存在会话续聊时，后端 `POST /api/agent-chat` 从 `meta.scope` 构造 `ToolContext`，忽略请求体的实时导航值。续聊唯一入口即主 POST 路由（`/messages` 仅 GET 拉历史，不驱动 turn）。全局档 v1 受限（不做跨-project）。
+**Architecture:** When a conversation is first created, snapshot a `scope` from the navigation level at that moment (table/folder/project/global) and store it in `agent_conversations.meta.scope` (jsonb, no table schema change). When continuing an existing conversation, the backend `POST /api/agent-chat` constructs the `ToolContext` from `meta.scope` and ignores the live navigation values in the request body. The only entry point for continuing a conversation is the main POST route (`/messages` is GET-only for fetching history and does not drive a turn). The global level is restricted in v1 (no cross-project support).
 
 **Tech Stack:** TypeScript, Next.js App Router, Supabase (jsonb meta), Jest
 
@@ -10,13 +10,13 @@
 
 ---
 
-## Key Findings（编码前已核实）
+## Key Findings (verified before coding)
 
-- 续聊唯一入口是 `POST /api/agent-chat`（带 `conversationId`）；`conversations/[id]/messages/route.ts` 只有 GET，不驱动 agent turn → spec §4.4 简化为单入口。
-- `metaForSave`（`conversation-meta.ts:50`）当前只返回 `{ autoExecute }`，创建会话写 meta 时会覆盖 scope → 创建路径需**合并** autoExecute + scope。
-- `resolveConversationMeta`（`conversation-meta.ts:8`）当前只解析 `autoExecute`，需扩展透出 `scope`。
-- `getOrCreateConversation`（`conversation-store.ts:55`）已有「已存在会话」与「新建」两分支，是快照与 project 锁的落点。
-- `ConversationList` 已显示 `projectName`，`listAllConversations` 的 select 已含 `meta` → 徽标仅需透出 `scope.level`。
+- The only entry point for continuing a conversation is `POST /api/agent-chat` (with `conversationId`); `conversations/[id]/messages/route.ts` only has GET and does not drive an agent turn → spec §4.4 simplifies to a single entry point.
+- `metaForSave` (`conversation-meta.ts:50`) currently only returns `{ autoExecute }`; writing meta on conversation creation would overwrite scope → the creation path must **merge** autoExecute + scope.
+- `resolveConversationMeta` (`conversation-meta.ts:8`) currently only parses `autoExecute`; it needs to be extended to expose `scope`.
+- `getOrCreateConversation` (`conversation-store.ts:55`) already has "existing conversation" and "create new" branches, which is where the snapshot and project lock land.
+- `ConversationList` already displays `projectName`, and the select in `listAllConversations` already includes `meta` → the badge only needs `scope.level` exposed.
 
 ---
 
@@ -24,26 +24,26 @@
 
 | Action | Path | Responsibility |
 |--------|------|----------------|
-| Create | `src/lib/agent/scope.ts` | `ConversationScope` 类型、`resolveScopeFromNavigation`、`buildContextFromScope` |
-| Modify | `src/lib/agent/types.ts` | `ConversationMeta` 增加 `scope?`；导出 `ConversationScope` |
-| Modify | `src/lib/agent/conversation-meta.ts` | `resolveConversationMeta` 透出 scope；`metaForSave` 支持合并 scope |
-| Modify | `src/lib/agent/conversation-store.ts` | `getOrCreateConversation` 快照 scope + project 锁；list 映射透出 scope |
-| Modify | `src/app/api/agent-chat/route.ts` | 新会话快照 scope；已存在会话以 meta.scope 构造 ToolContext |
-| Modify | `src/app/api/agent-chat/conversations/[id]/meta/route.ts` | GET meta 返回体已含 scope（meta 透传即可，确认无需改） |
-| Modify | `src/components/agent/types.ts` | `SendContext` 无需改；新增前端 scope 展示类型（如需要） |
-| Modify | `src/components/agent/ConversationList.tsx` | 渲染 scope 层级徽标 |
-| Modify | `src/components/agent/useAgentChat.ts` | 续聊不再发 live navigation；载入会话取回 scope |
-| Modify | `src/components/agent/ChatPanel.tsx` | 头部显示 🔒 锁定目标 |
-| Create | `tests/unit/agent/scope.test.ts` | `resolveScopeFromNavigation` + `buildContextFromScope` 单测 |
-| Modify | `tests/unit/agent/*` (meta) | `resolveConversationMeta` scope 解析 + legacy 降级 |
+| Create | `src/lib/agent/scope.ts` | `ConversationScope` type, `resolveScopeFromNavigation`, `buildContextFromScope` |
+| Modify | `src/lib/agent/types.ts` | Add `scope?` to `ConversationMeta`; export `ConversationScope` |
+| Modify | `src/lib/agent/conversation-meta.ts` | `resolveConversationMeta` exposes scope; `metaForSave` supports merging scope |
+| Modify | `src/lib/agent/conversation-store.ts` | `getOrCreateConversation` snapshots scope + project lock; list mapping exposes scope |
+| Modify | `src/app/api/agent-chat/route.ts` | New conversation snapshots scope; existing conversation builds ToolContext from meta.scope |
+| Modify | `src/app/api/agent-chat/conversations/[id]/meta/route.ts` | GET meta response body already includes scope (meta passes through as-is; confirm no change needed) |
+| Modify | `src/components/agent/types.ts` | `SendContext` needs no change; add frontend scope display types (if needed) |
+| Modify | `src/components/agent/ConversationList.tsx` | Render scope level badge |
+| Modify | `src/components/agent/useAgentChat.ts` | Continuing a conversation no longer sends live navigation; retrieve scope when loading a conversation |
+| Modify | `src/components/agent/ChatPanel.tsx` | Header shows 🔒 locked target |
+| Create | `tests/unit/agent/scope.test.ts` | Unit tests for `resolveScopeFromNavigation` + `buildContextFromScope` |
+| Modify | `tests/unit/agent/*` (meta) | `resolveConversationMeta` scope parsing + legacy fallback |
 
 ---
 
-## Task 1: Scope 类型与纯函数（`scope.ts`）
+## Task 1: Scope Types and Pure Functions (`scope.ts`)
 
 **Files:** Create `src/lib/agent/scope.ts`; Modify `src/lib/agent/types.ts`
 
-- [ ] **Step 1: 在 `types.ts` 定义 `ConversationScope` 并扩展 `ConversationMeta`**
+- [ ] **Step 1: Define `ConversationScope` in `types.ts` and extend `ConversationMeta`**
 
 ```typescript
 export type ScopeLevel = 'global' | 'project' | 'folder' | 'table';
@@ -58,13 +58,13 @@ export interface ConversationScope {
   sectionName?: string;
 }
 
-// 在 ConversationMeta 内新增：
+// Add inside ConversationMeta:
 //   scope?: ConversationScope;
 ```
 
-- [ ] **Step 2: 新建 `src/lib/agent/scope.ts`**
+- [ ] **Step 2: Create `src/lib/agent/scope.ts`**
 
-实现两个纯函数：
+Implement two pure functions:
 
 ```typescript
 import type { ConversationScope } from './types';
@@ -78,7 +78,7 @@ interface NavigationInput {
   currentSectionName?: string;
 }
 
-/** §3.1 由细到粗判定 scope level。 */
+/** §3.1 Determine scope level from finest to coarsest. */
 export function resolveScopeFromNavigation(nav: NavigationInput): ConversationScope {
   if (nav.currentLibraryId) {
     return {
@@ -100,13 +100,13 @@ export function resolveScopeFromNavigation(nav: NavigationInput): ConversationSc
   return { level: 'global' };
 }
 
-/** 从会话绑定的 scope 构造 ToolContext 的导航字段（§4.2）。legacy 无 scope 时降级为 project 档。 */
+/** Build the navigation fields of ToolContext from the conversation-bound scope (§4.2). Legacy conversations without scope fall back to project level. */
 export function contextFieldsFromScope(
   scope: ConversationScope | undefined,
   fallbackProjectId: string
 ): Pick<ToolContext, 'projectId' | 'currentFolderId' | 'currentFolderName' | 'currentLibraryId' | 'currentLibraryName' | 'currentSectionName'> {
   if (!scope) {
-    return { projectId: fallbackProjectId }; // §4.5 legacy → project 档
+    return { projectId: fallbackProjectId }; // §4.5 legacy → project level
   }
   return {
     projectId: scope.projectId ?? fallbackProjectId,
@@ -119,38 +119,38 @@ export function contextFieldsFromScope(
 }
 ```
 
-- [ ] **Step 3: 单测 `tests/unit/agent/scope.test.ts`**
+- [ ] **Step 3: Unit tests `tests/unit/agent/scope.test.ts`**
 
-覆盖：table/folder/project/global 四档判定；无 scope 降级；scope.projectId 缺失时用 fallback。
+Coverage: resolution of all four levels (table/folder/project/global); fallback when scope is absent; use fallback when scope.projectId is missing.
 
 ```bash
 cd /home/hetu/project/keco-studio && npx jest tests/unit/agent/scope.test.ts
 ```
 
-Expected: 全部通过。
+Expected: all pass.
 
 ---
 
-## Task 2: Meta 解析与保存合并 scope
+## Task 2: Meta Parsing and Save Merging for Scope
 
 **Files:** Modify `src/lib/agent/conversation-meta.ts`
 
-- [ ] **Step 1: `resolveConversationMeta` 透出 scope**
+- [ ] **Step 1: `resolveConversationMeta` exposes scope**
 
-保留 autoExecute 逻辑，附带原样透传 `raw.scope`：
+Keep the autoExecute logic, and additionally pass `raw.scope` through as-is:
 
 ```typescript
 export function resolveConversationMeta(raw): ConversationMeta {
-  const autoExecute = raw?.autoExecute === false ? false : true; // 现有语义
+  const autoExecute = raw?.autoExecute === false ? false : true; // existing semantics
   const resolved: ConversationMeta = { autoExecute };
   if (raw?.scope) resolved.scope = raw.scope;
   return resolved;
 }
 ```
 
-（保持现有 skipConfirmation 兼容分支不变。）
+(Keep the existing skipConfirmation compatibility branch unchanged.)
 
-- [ ] **Step 2: `metaForSave` 支持合并 scope**
+- [ ] **Step 2: `metaForSave` supports merging scope**
 
 ```typescript
 export function metaForSave(autoExecute: boolean, scope?: ConversationScope): ConversationMeta {
@@ -158,9 +158,9 @@ export function metaForSave(autoExecute: boolean, scope?: ConversationScope): Co
 }
 ```
 
-- [ ] **Step 3: 单测更新**
+- [ ] **Step 3: Update unit tests**
 
-`resolveConversationMeta`：有/无 scope；legacy（无 scope + 无 autoExecute）→ `{autoExecute:true}` 无 scope。
+`resolveConversationMeta`: with/without scope; legacy (no scope + no autoExecute) → `{autoExecute:true}` without scope.
 
 ```bash
 cd /home/hetu/project/keco-studio && npx jest tests/unit/agent
@@ -168,27 +168,27 @@ cd /home/hetu/project/keco-studio && npx jest tests/unit/agent
 
 ---
 
-## Task 3: 会话创建快照 scope + project 锁
+## Task 3: Snapshot Scope on Conversation Creation + Project Lock
 
 **Files:** Modify `src/lib/agent/conversation-store.ts`
 
-- [ ] **Step 1: `getOrCreateConversation` 新增 `scope` 参数，创建时合并写入 meta**
+- [ ] **Step 1: Add a `scope` parameter to `getOrCreateConversation`; merge it into meta on creation**
 
 ```typescript
 params: { conversationId?; userId; projectId; initialAutoExecute?; scope?: ConversationScope }
-// 新建分支：
+// Creation branch:
 const initialMeta = metaForSave(params.initialAutoExecute ?? true, params.scope);
 ```
 
-- [ ] **Step 2: 已存在会话分支加 project 锁（静默纠正 + warn，§4.3）**
+- [ ] **Step 2: Add the project lock to the existing-conversation branch (silent correction + warn, §4.3)**
 
-在返回前，若 `params.projectId && data.project_id !== params.projectId` → `console.warn('agent.scope.project_mismatch', {...})`。不抛错。
+Before returning, if `params.projectId && data.project_id !== params.projectId` → `console.warn('agent.scope.project_mismatch', {...})`. Do not throw.
 
-- [ ] **Step 3: `mapConversationListRow` 透出 scope**
+- [ ] **Step 3: `mapConversationListRow` exposes scope**
 
-`ConversationListItem` 已含 `meta`（经 `resolveConversationMeta`）；确认 scope 已随 meta 透出。若前端更方便，额外平铺一个 `scopeLevel` 字段。
+`ConversationListItem` already includes `meta` (via `resolveConversationMeta`); confirm scope is exposed along with meta. If it's more convenient for the frontend, additionally flatten out a `scopeLevel` field.
 
-- [ ] **Step 4: 编译检查**
+- [ ] **Step 4: Compile check**
 
 ```bash
 cd /home/hetu/project/keco-studio && npx tsc --noEmit
@@ -196,25 +196,25 @@ cd /home/hetu/project/keco-studio && npx tsc --noEmit
 
 ---
 
-## Task 4: 主 POST 路由——快照与绑定
+## Task 4: Main POST Route — Snapshot and Binding
 
 **Files:** Modify `src/app/api/agent-chat/route.ts`
 
-- [ ] **Step 1: 判定新会话 vs 已存在会话**
+- [ ] **Step 1: Distinguish new conversation vs existing conversation**
 
-- 无 `body.conversationId` → 新会话：`scope = resolveScopeFromNavigation(body)`，传入 `getOrCreateConversation`；`ToolContext` 用 live body（与快照一致）。
-- 有 `body.conversationId` → 已存在会话：`getOrCreateConversation` 取回 conversation，`const scope = resolveConversationMeta(conversation.meta).scope`；`ToolContext` 的导航字段用 `contextFieldsFromScope(scope, conversation.project_id)`，**忽略 body 的 folder/library/section**。
+- No `body.conversationId` → new conversation: `scope = resolveScopeFromNavigation(body)`, passed into `getOrCreateConversation`; `ToolContext` uses the live body (consistent with the snapshot).
+- Has `body.conversationId` → existing conversation: `getOrCreateConversation` retrieves the conversation, `const scope = resolveConversationMeta(conversation.meta).scope`; the navigation fields of `ToolContext` use `contextFieldsFromScope(scope, conversation.project_id)`, **ignoring the body's folder/library/section**.
 
-- [ ] **Step 2: global 档 v1 受限（§7）**
+- [ ] **Step 2: Global level restricted in v1 (§7)**
 
-已存在会话且 `scope?.level === 'global'`（或新会话判定为 global）→ 返回 400：
-`{ error: '此会话未绑定具体项目，请进入一个项目后新建对话。' }`
+Existing conversation with `scope?.level === 'global'` (or a new conversation resolved as global) → return 400:
+`{ error: 'This conversation is not bound to a specific project. Please enter a project and start a new conversation.' }`
 
-- [ ] **Step 3: projectId 校验适配**
+- [ ] **Step 3: Adapt projectId validation**
 
-已存在会话时，projectId 以会话绑定为准；body.projectId 的 UUID 校验仅用于新会话路径。
+For existing conversations, projectId follows the conversation binding; the UUID validation of body.projectId only applies to the new-conversation path.
 
-- [ ] **Step 4: 编译 + 冒烟**
+- [ ] **Step 4: Compile + smoke test**
 
 ```bash
 cd /home/hetu/project/keco-studio && npx tsc --noEmit && npm run build
@@ -222,19 +222,19 @@ cd /home/hetu/project/keco-studio && npx tsc --noEmit && npm run build
 
 ---
 
-## Task 5: 前端——续聊不发实时导航 + 载入取回 scope
+## Task 5: Frontend — Don't Send Live Navigation on Continuation + Retrieve Scope on Load
 
 **Files:** Modify `src/components/agent/useAgentChat.ts`
 
-- [ ] **Step 1: `send` 区分新/续聊**
+- [ ] **Step 1: `send` distinguishes new vs continued conversation**
 
-`conversationIdRef.current` 存在（续聊）时，body 只发 `conversationId` + `message` + `imageUrls`，不发 folder/library/section（§5.1 推荐）。新会话首条仍发全字段作快照来源。
+When `conversationIdRef.current` exists (continuation), the body sends only `conversationId` + `message` + `imageUrls`, without folder/library/section (§5.1 recommendation). The first message of a new conversation still sends all fields as the snapshot source.
 
-- [ ] **Step 2: 载入会话取回 scope 存 state**
+- [ ] **Step 2: Retrieve scope when loading a conversation and store it in state**
 
-`loadConversation` 中 `fetchConversationMeta` 已请求 `/meta`；扩展其解析出 `scope`，通过新增的 `scope` state 暴露给 ChatPanel。新增 hook 返回值 `activeScope`。
+In `loadConversation`, `fetchConversationMeta` already requests `/meta`; extend it to parse out `scope` and expose it to ChatPanel via a new `scope` state. Add a new hook return value `activeScope`.
 
-- [ ] **Step 3: 编译检查**
+- [ ] **Step 3: Compile check**
 
 ```bash
 cd /home/hetu/project/keco-studio && npx tsc --noEmit
@@ -242,24 +242,24 @@ cd /home/hetu/project/keco-studio && npx tsc --noEmit
 
 ---
 
-## Task 6: History 徽标 + 面板头部锁定目标
+## Task 6: History Badge + Panel Header Locked Target
 
 **Files:** Modify `src/components/agent/ConversationList.tsx`, `src/components/agent/ChatPanel.tsx`, `ChatPanel.module.css`
 
-- [ ] **Step 1: `ConversationList` 渲染 scope 徽标（§5.3）**
+- [ ] **Step 1: `ConversationList` renders the scope badge (§5.3)**
 
-`ConversationItem` 增加 `scope?: { level; folderName?; libraryName? }`（从 `/conversations?scope=all` 返回体透出）。meta 行渲染：
-- table → `📄 {libraryName}`；folder → `📁 {folderName}`；project → 省略；global → `🌐 Global`。
+Add `scope?: { level; folderName?; libraryName? }` to `ConversationItem` (exposed from the `/conversations?scope=all` response body). Render on the meta line:
+- table → `📄 {libraryName}`; folder → `📁 {folderName}`; project → omitted; global → `🌐 Global`.
 
-- [ ] **Step 2: `ChatPanel` 头部显示锁定目标（§5.4）**
+- [ ] **Step 2: `ChatPanel` header shows the locked target (§5.4)**
 
-载入会话后用 `activeScope` 渲染 `🔒 {projectName} / {scopeBadge}`（只读）。新会话显示实时导航预览（提示「本次将绑定到此」）。
+After loading a conversation, use `activeScope` to render `🔒 {projectName} / {scopeBadge}` (read-only). A new conversation shows a live navigation preview (with the hint "This conversation will be bound to this").
 
-- [ ] **Step 3: 样式**
+- [ ] **Step 3: Styles**
 
-在 `ChatPanel.module.css` 加徽标/锁定标签样式，复用现有 `convMeta` 风格。
+Add badge/lock label styles in `ChatPanel.module.css`, reusing the existing `convMeta` style.
 
-- [ ] **Step 4: 编译 + build**
+- [ ] **Step 4: Compile + build**
 
 ```bash
 cd /home/hetu/project/keco-studio && npm run build
@@ -267,28 +267,28 @@ cd /home/hetu/project/keco-studio && npm run build
 
 ---
 
-## Task 7: 集成验证与回归
+## Task 7: Integration Verification and Regression
 
-- [ ] **Step 1: 单测全绿**
+- [ ] **Step 1: All unit tests green**
 
 ```bash
 cd /home/hetu/project/keco-studio && npx jest tests/unit/agent
 ```
 
-- [ ] **Step 2: 手动验证（§9.2 / §9.3）**
+- [ ] **Step 2: Manual verification (§9.2 / §9.3)**
 
-1. 在某 table 上下文新建会话发消息 → DB `meta.scope.level === 'table'`，ids 正确。
-2. 切到另一 project → History 载入第 1 步会话续聊 → tool 命中**原** project 的 library。
-3. project 锁：构造 body.projectId 与会话不符 → 以会话 project 执行 + warn 日志。
-4. Legacy 会话（手动删除 meta.scope）→ 按 project 档运行，不报错。
-5. History 列表：多 project 会话各显示正确 project 名 + scope 徽标。
-6. 载入会话 → 头部 🔒 锁定目标；切 project 后头部不变。
+1. Create a conversation in some table context and send a message → DB `meta.scope.level === 'table'`, ids correct.
+2. Switch to another project → load the conversation from step 1 via History and continue → tools hit the **original** project's library.
+3. Project lock: craft a body.projectId that mismatches the conversation → executes with the conversation's project + warn log.
+4. Legacy conversation (manually delete meta.scope) → runs at project level without errors.
+5. History list: conversations across multiple projects each show the correct project name + scope badge.
+6. Load a conversation → header shows 🔒 locked target; switching projects does not change the header.
 
-- [ ] **Step 3: 回归**
+- [ ] **Step 3: Regression**
 
-auto-execute（Auto/Confirm 切换）、权限（Viewer 不可写）、RAG、多模态图片上传 行为无变化。
+auto-execute (Auto/Confirm toggle), permissions (Viewer cannot write), RAG, and multimodal image upload behavior unchanged.
 
-- [ ] **Step 4: 清理临时文件，最终 build**
+- [ ] **Step 4: Clean up temporary files, final build**
 
 ```bash
 cd /home/hetu/project/keco-studio && npm run build
@@ -296,20 +296,20 @@ cd /home/hetu/project/keco-studio && npm run build
 
 ---
 
-## Success Criteria（对齐 spec §12）
+## Success Criteria (aligned with spec §12)
 
-- [ ] 新会话创建时正确写入 `meta.scope`，四档判定符合规则
-- [ ] 已存在会话续聊以 `meta.scope` 为准，切换 project 不影响
-- [ ] project A 载入 project B 会话续聊，tool 命中 project B 数据
-- [ ] History 每条会话显示所属 project 名 + scope 徽标
-- [ ] ChatPanel 头部显示当前会话锁定目标
-- [ ] Legacy 会话（无 meta.scope）不报错，按 project 档运行
-- [ ] auto-execute / 权限 / RAG / 多模态 回归无变化
+- [ ] New conversations correctly write `meta.scope` on creation; all four level resolutions follow the rules
+- [ ] Continuing an existing conversation follows `meta.scope`; switching projects has no effect
+- [ ] Loading a project B conversation while in project A and continuing it → tools hit project B data
+- [ ] Each conversation in History shows its owning project name + scope badge
+- [ ] ChatPanel header shows the current conversation's locked target
+- [ ] Legacy conversations (no meta.scope) run at project level without errors
+- [ ] auto-execute / permissions / RAG / multimodal regressions unchanged
 
 ---
 
 ## Notes
 
-- **无数据库迁移、无破坏性变更**：scope 存于既有 `meta` jsonb，历史会话经降级路径兼容。
-- **Language rule:** 代码/注释英文；面向用户的错误文案与 UI 文案中文（如 global 受限提示、锁定徽标）。
-- **Commit:** 每个 Task 完成且 build/测试通过后再提交；当前分支 `debug`，如需推送另建 feature 分支，不直接推 main。
+- **No database migration, no breaking changes:** scope lives in the existing `meta` jsonb; historical conversations are handled via the fallback path.
+- **Language rule:** Code/comments in English; user-facing error copy and UI copy in English (e.g. the global restriction message, the lock badge).
+- **Commit:** Commit each Task only after it is complete and build/tests pass; current branch is `debug`. If pushing is needed, create a separate feature branch — do not push to main directly.

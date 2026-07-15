@@ -283,10 +283,10 @@ describe('compiled story fixture playback', () => {
     const east = playCompiledFixture('rainy-manor-story.txt', [0]);
     const west = playCompiledFixture('rainy-manor-story.txt', [1]);
 
-    expect(east.content).toContain('一夜安然无梦');
-    expect(east.content).not.toContain('彻底遗忘了自己');
-    expect(west.content).toContain('彻底遗忘了自己');
-    expect(west.content).not.toContain('一夜安然无梦');
+    expect(east.content).toContain('passes without dreams');
+    expect(east.content).not.toContain('wholly forgotten');
+    expect(west.content).toContain('wholly forgotten');
+    expect(west.content).not.toContain('passes without dreams');
     expect(east.state.done).toBe(true);
     expect(west.state.done).toBe(true);
   });

@@ -17,9 +17,9 @@ import { segmentStorySource } from './sourceSegments';
 
 const mockedCompleteLlm = completeLlm as jest.MockedFunction<typeof completeLlm>;
 const naturalContent = [
-  '七号：我们必须选择一条路线。',
-  '- 前往能源舱。选择时执行 $resolve+=1。',
-  '你进入能源舱。',
+  'Seven: We must choose a route.',
+  '- Go to the energy bay. Selecting it runs $resolve+=1',
+  'You enter the energy bay.',
 ].join('\n');
 const explicitContent = fs.readFileSync(
   path.join(process.cwd(), 'tests/fixtures/import-script/nested-trust-story.txt'),
@@ -43,11 +43,11 @@ function contentInventory(): StoryContentExtraction {
     version: 3,
     structuralUnitIds: [],
     nodes: [
-      { id: 'start', type: 'dialogue', presentationType: 1, speaker: '七号', content: '我们必须选择一条路线。', sourceUnitIds: ['fixture:0'] },
-      { id: 'energy', type: 'narration', presentationType: 3, speaker: '', content: '你进入能源舱。', sourceUnitIds: ['fixture:2'] },
+      { id: 'start', type: 'dialogue', presentationType: 1, speaker: 'Seven', content: 'We must choose a route.', sourceUnitIds: ['fixture:0'] },
+      { id: 'energy', type: 'narration', presentationType: 3, speaker: '', content: 'You enter the energy bay.', sourceUnitIds: ['fixture:2'] },
     ],
     choices: [
-      { id: 'go_energy', text: '前往能源舱。', sourceUnitIds: ['fixture:1'] },
+      { id: 'go_energy', text: 'Go to the energy bay.', sourceUnitIds: ['fixture:1'] },
     ],
   };
 }
@@ -121,13 +121,13 @@ describe('two-stage audited story extraction', () => {
   });
 
   it('audits the same character-order presentation Types that are materialized', async () => {
-    const source = '人物：你（守灯人）、海客少年\n少年：灯还亮着。\n你：我知道。';
+    const source = 'Characters: You (Lamp Keeper), Seafarer Boy\nBoy: The lamp is still lit.\nYou: I know.';
     const content: StoryContentExtraction = {
       version: 3,
       structuralUnitIds: ['roles:0'],
       nodes: [
-        { id: 'boy', type: 'dialogue', presentationType: 1, speaker: '少年', content: '灯还亮着。', sourceUnitIds: ['roles:1'] },
-        { id: 'you', type: 'dialogue', presentationType: 2, speaker: '你', content: '我知道。', sourceUnitIds: ['roles:2'] },
+        { id: 'boy', type: 'dialogue', presentationType: 1, speaker: 'Boy', content: 'The lamp is still lit.', sourceUnitIds: ['roles:1'] },
+        { id: 'you', type: 'dialogue', presentationType: 2, speaker: 'You', content: 'I know.', sourceUnitIds: ['roles:2'] },
       ],
       choices: [],
     };
@@ -146,9 +146,9 @@ describe('two-stage audited story extraction', () => {
     const result = await resolveStoryPlanForImport(source, { sourceId: 'roles' });
 
     expect(result.extraction.nodes.map((node) => [node.speaker, node.presentationType]))
-      .toEqual([['少年', 2], ['你', 1]]);
+      .toEqual([['Boy', 2], ['You', 1]]);
     expect(result.document.nodes.map((node) => [node.speaker, node.presentationType]))
-      .toEqual([['少年', 2], ['你', 1]]);
+      .toEqual([['Boy', 2], ['You', 1]]);
   });
 
   it('uses one combined semantic and table audit per candidate', async () => {

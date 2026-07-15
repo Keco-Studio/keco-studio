@@ -2,14 +2,14 @@ import { resolveFolderMatch } from '../../../src/lib/agent/data-access';
 
 describe('resolveFolderMatch', () => {
   const rows = [
-    { id: '11111111-1111-4111-8111-111111111111', name: '世界观' },
+    { id: '11111111-1111-4111-8111-111111111111', name: 'Worldview' },
     { id: '22222222-2222-4222-8222-222222222222', name: 'Characters' },
   ];
 
   it('returns exact name match', () => {
-    expect(resolveFolderMatch(rows, '世界观')).toEqual({
+    expect(resolveFolderMatch(rows, 'Worldview')).toEqual({
       id: '11111111-1111-4111-8111-111111111111',
-      name: '世界观',
+      name: 'Worldview',
     });
   });
 

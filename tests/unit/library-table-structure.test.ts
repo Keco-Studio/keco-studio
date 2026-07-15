@@ -40,12 +40,12 @@ describe('library table structure helpers', () => {
     expect(result.orderedProperties.map((item) => item.id)).toEqual(['a-1', 'b-1', 'b-2']);
   });
 
-  it('detects visual novel script columns by Chinese and English aliases', () => {
+  it('detects visual novel script columns by descriptive and short header aliases', () => {
     expect(
       detectScriptColumns([
-        property('label', 'section-a', '这里是跳转的节点', 1),
+        property('label', 'section-a', 'Story jump node', 1),
         property('type', 'section-a', 'Type', 2),
-        property('speaker', 'section-a', '说话人', 3),
+        property('speaker', 'section-a', 'Speaker', 3),
         property('content', 'section-a', 'Dialogue and options', 4),
       ])
     ).toEqual({

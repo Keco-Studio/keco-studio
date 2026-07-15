@@ -3,7 +3,7 @@
 **Feature Branch**: `001-architecture-review`  
 **Created**: 2026-01-30  
 **Status**: Draft  
-**Input**: User description: "现在有一个architecting 项目任务（Continued architecting the project structure, sorted out the structure (illustrated with diagrams), removed unnecessary files and improved code robustness.），主要目标就是，梳理一下整体项目，生成一个架构文档，整体评估与优化的建议。"
+**Input**: User description: "There is now an architecting project task (Continued architecting the project structure, sorted out the structure (illustrated with diagrams), removed unnecessary files and improved code robustness.). The main goal is to review the overall project, produce an architecture document, and provide an overall assessment with optimization recommendations."
 
 ## User Scenarios & Testing *(mandatory)*
 

@@ -39,11 +39,11 @@ describe('story workbook', () => {
 
     expect(readRow(worksheet, 1, columns.length)).toEqual(columns);
     expect(readRow(worksheet, 2, columns.length)).toEqual([
-      '这里是跳转的节点',
-      '1蓝对话框2粉3灰4无对话框5屏幕中央',
-      '说话人', '对话内容', '触发条件', '指令',
-      '左侧显示立绘', '右侧显示立绘', '显示CG',
-      '', '', '', '', '', '', '配音路径', '背景图', '选项指令',
+      'Story jump node',
+      '1 blue dialogue box, 2 pink, 3 gray, 4 no dialogue box, 5 screen center',
+      'Speaker', 'Dialogue and options', 'Trigger condition', 'Command list',
+      'Left-side portrait', 'Right-side portrait', 'CG image',
+      '', '', '', '', '', '', 'Voice-over path', 'Background image', 'Option commands',
     ]);
     expect(worksheet.getColumn(4).width).toBe(51);
     expect(worksheet.getColumn(6).width).toBe(17);

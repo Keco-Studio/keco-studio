@@ -24,13 +24,13 @@ describe('story audit projection', () => {
     expect(projection.rows[0]).toEqual({
       label: 'Start',
       type: 'dialogue',
-      speaker: '光球',
-      content: '你醒了。选一条路。',
+      speaker: 'Orb of Light',
+      content: 'You are awake. Pick a path.',
       commands: [],
       nextNodeId: '',
       choices: [
-        { text: '走左边。', targetNodeId: 'O1', commands: ['$trust+=1'] },
-        { text: '走右边。', targetNodeId: 'O2', commands: ['$trust+=2'] },
+        { text: 'Take the left path.', targetNodeId: 'O1', commands: ['$trust+=1'] },
+        { text: 'Take the right path.', targetNodeId: 'O2', commands: ['$trust+=2'] },
       ],
     });
     expect(projection.table.columns).toEqual([

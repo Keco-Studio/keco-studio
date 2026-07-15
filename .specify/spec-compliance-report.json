@@ -4,67 +4,67 @@
     "status": "warning",
     "issues": [
       {
-        "message": "有 8 个任务未完成: T015, T016, T017, T018, T019",
+        "message": "8 tasks incomplete: T015, T016, T017, T018, T019",
         "severity": "warning"
       }
     ],
     "passed": [
       {
-        "message": "文件存在: src/components/libraries/LibraryAssetsTable.tsx"
+        "message": "File exists: src/components/libraries/LibraryAssetsTable.tsx"
       },
       {
-        "message": "文件存在: src/components/libraries/LibraryAssetsTable.module.css"
+        "message": "File exists: src/components/libraries/LibraryAssetsTable.module.css"
       },
       {
-        "message": "文件存在: src/lib/services/libraryAssetsService.ts"
+        "message": "File exists: src/lib/services/libraryAssetsService.ts"
       },
       {
-        "message": "文件存在: src/lib/types/libraryAssets.ts"
+        "message": "File exists: src/lib/types/libraryAssets.ts"
       },
       {
-        "message": "文件存在: src/app/(dashboard)/[projectId]/[libraryId]/page.tsx"
+        "message": "File exists: src/app/(dashboard)/[projectId]/[libraryId]/page.tsx"
       },
       {
-        "message": "类型定义存在: LibrarySummary"
+        "message": "Type definition exists: LibrarySummary"
       },
       {
-        "message": "类型定义存在: SectionConfig"
+        "message": "Type definition exists: SectionConfig"
       },
       {
-        "message": "类型定义存在: PropertyConfig"
+        "message": "Type definition exists: PropertyConfig"
       },
       {
-        "message": "类型定义存在: AssetRow"
+        "message": "Type definition exists: AssetRow"
       },
       {
-        "message": "函数已实现: getLibrarySummary"
+        "message": "Function implemented: getLibrarySummary"
       },
       {
-        "message": "函数已实现: getLibrarySchema"
+        "message": "Function implemented: getLibrarySchema"
       },
       {
-        "message": "函数已实现: getLibraryAssetsWithProperties"
+        "message": "Function implemented: getLibraryAssetsWithProperties"
       },
       {
-        "message": "两层表头已实现"
+        "message": "Two-level table header implemented"
       },
       {
-        "message": "空状态处理已实现"
+        "message": "Empty state handling implemented"
       },
       {
-        "message": "缺失值占位已实现"
+        "message": "Missing value placeholder implemented"
       },
       {
-        "message": "Spec要求: 表格形式"
+        "message": "Spec requirement: table format"
       },
       {
-        "message": "Spec要求: 两层表头"
+        "message": "Spec requirement: two-level table header"
       },
       {
-        "message": "Spec要求: predefine配置"
+        "message": "Spec requirement: predefine configuration"
       },
       {
-        "message": "Spec要求: F2C-mcp"
+        "message": "Spec requirement: F2C-mcp"
       }
     ]
   }

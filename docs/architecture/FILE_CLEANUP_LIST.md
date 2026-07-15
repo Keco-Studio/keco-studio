@@ -1,597 +1,597 @@
-# Keco Studio - 文件清理建议列表
+# Keco Studio - File Cleanup Recommendation List
 
-**文档版本**: 1.0  
-**创建日期**: 2026-01-30  
-**状态**: 历史归档（已被 GitHub issues #177、#178、#180 的逐项核查和实现取代）  
-**关联文档**: [架构文档](./ARCHITECTURE.md) | [优化建议](./OPTIMIZATION_RECOMMENDATIONS.md)
-
----
-
-> **归档说明**: 本文档是 2026-01-30 的一次性架构审查产物，不再作为当前清理工作的执行清单。后续文件和依赖清理由 GitHub issues #177、#178、#180 的 spec 与 PR 记录作为权威来源。请不要按本文档直接删除文件。
-
-## 📋 目录
-
-1. [概述](#概述)
-2. [分类说明](#分类说明)
-3. [Safe to Remove (安全删除)](#safe-to-remove-安全删除)
-4. [Needs Review (需要审查)](#needs-review-需要审查)
-5. [Consider Refactoring (考虑重构)](#consider-refactoring-考虑重构)
-6. [Consolidate (合并整理)](#consolidate-合并整理)
-7. [总结与建议](#总结与建议)
+**Document Version**: 1.0  
+**Created**: 2026-01-30  
+**Status**: Historical archive (superseded by the item-by-item verification and implementation in GitHub issues #177, #178, and #180)  
+**Related Documents**: [Architecture Document](./ARCHITECTURE.md) | [Optimization Recommendations](./OPTIMIZATION_RECOMMENDATIONS.md)
 
 ---
 
-## 概述
+> **Archive Note**: This document is the output of a one-time architecture review conducted on 2026-01-30 and is no longer the execution checklist for current cleanup work. Subsequent file and dependency cleanup is governed by the specs and PR records of GitHub issues #177, #178, and #180 as the authoritative source. Do not delete files directly based on this document.
 
-本文档列出了Keco Studio项目中建议清理、审查或重构的文件。所有建议基于代码分析和架构审查，但**在执行任何删除操作前，请务必进行充分测试**。
+## 📋 Table of Contents
 
-### 统计概览
+1. [Overview](#overview)
+2. [Category Descriptions](#category-descriptions)
+3. [Safe to Remove](#safe-to-remove)
+4. [Needs Review](#needs-review)
+5. [Consider Refactoring](#consider-refactoring)
+6. [Consolidate](#consolidate)
+7. [Summary and Recommendations](#summary-and-recommendations)
 
-| 分类 | 文件数量 | 预计减少代码行数 | 预计减少代码库大小 |
+---
+
+## Overview
+
+This document lists files in the Keco Studio project that are recommended for cleanup, review, or refactoring. All recommendations are based on code analysis and architecture review, but **be sure to test thoroughly before performing any deletion**.
+
+### Statistics Overview
+
+| Category | File Count | Estimated Lines Reduced | Estimated Codebase Size Reduction |
 |------|---------|----------------|------------------|
-| Safe to Remove | 3 | ~250行 | ~1% |
-| Needs Review | 8 | ~500行 | ~2% |
-| Consider Refactoring | 6 | N/A (重构) | N/A |
-| Consolidate | 4组 | ~300行 | ~1% |
-| **总计** | **21项** | **~1,050行** | **~4%** |
+| Safe to Remove | 3 | ~250 lines | ~1% |
+| Needs Review | 8 | ~500 lines | ~2% |
+| Consider Refactoring | 6 | N/A (refactoring) | N/A |
+| Consolidate | 4 groups | ~300 lines | ~1% |
+| **Total** | **21 items** | **~1,050 lines** | **~4%** |
 
 ---
 
-## 分类说明
+## Category Descriptions
 
-### 🟢 Safe to Remove (安全删除)
-- **定义**: 已确认未被使用的文件，删除不会影响功能
-- **证据**: 无导入引用，或仅被测试/开发工具引用
-- **风险**: 低
-- **操作**: 可以直接删除（建议先提交到分支测试）
+### 🟢 Safe to Remove
+- **Definition**: Files confirmed to be unused; deletion will not affect functionality
+- **Evidence**: No import references, or only referenced by tests/dev tools
+- **Risk**: Low
+- **Action**: Can be deleted directly (recommend committing to a branch and testing first)
 
-### 🟡 Needs Review (需要审查)
-- **定义**: 可能未使用但需要进一步确认的文件
-- **证据**: 导入引用较少，或可能有隐藏依赖
-- **风险**: 中等
-- **操作**: 审查后再决定是否删除
+### 🟡 Needs Review
+- **Definition**: Files that may be unused but require further confirmation
+- **Evidence**: Few import references, or possible hidden dependencies
+- **Risk**: Medium
+- **Action**: Review before deciding whether to delete
 
-### 🔵 Consider Refactoring (考虑重构)
-- **定义**: 功能重复、代码质量低或架构不合理的文件
-- **证据**: 代码重复、过时模式、不符合当前架构
-- **风险**: 低（重构而非删除）
-- **操作**: 重构优化，保留核心功能
+### 🔵 Consider Refactoring
+- **Definition**: Files with duplicated functionality, low code quality, or unreasonable architecture
+- **Evidence**: Code duplication, outdated patterns, not conforming to the current architecture
+- **Risk**: Low (refactor rather than delete)
+- **Action**: Refactor and optimize, preserving core functionality
 
-### 🟣 Consolidate (合并整理)
-- **定义**: 可以合并到其他文件或统一管理的文件
-- **证据**: 功能相似、职责重叠
-- **风险**: 低
-- **操作**: 合并到统一位置
+### 🟣 Consolidate
+- **Definition**: Files that can be merged into other files or managed in a unified way
+- **Evidence**: Similar functionality, overlapping responsibilities
+- **Risk**: Low
+- **Action**: Merge into a unified location
 
 ---
 
-## Safe to Remove (安全删除)
+## Safe to Remove
 
-### SR-001: 开发测试页面 - Realtime测试页
+### SR-001: Development Test Page - Realtime Test Page
 
-**文件路径**: `src/app/realtime-test/page.tsx`
+**File Path**: `src/app/realtime-test/page.tsx`
 
-**文件大小**: 172行
+**File Size**: 172 lines
 
-**分类理由**:
-- 这是一个开发调试用的测试页面
-- 仅用于测试Supabase Realtime功能
-- 不应出现在生产环境
-- 未被任何业务逻辑引用
+**Rationale**:
+- This is a test page used for development debugging
+- Only used to test Supabase Realtime functionality
+- Should not appear in production
+- Not referenced by any business logic
 
-**证据**:
+**Evidence**:
 ```typescript
-// page.tsx 内容为Realtime订阅测试
+// page.tsx contains a Realtime subscription test
 export default function RealtimeTestPage() {
-  // ... 测试代码
+  // ... test code
 }
 ```
 
-**导入引用**: 0 (仅路由访问)
+**Import References**: 0 (route access only)
 
-**建议操作**:
-1. 如需保留测试功能，移动到 `tests/` 目录
-2. 或添加环境变量控制，仅在开发环境可访问
-3. 生产环境直接删除
+**Recommended Actions**:
+1. If the test functionality needs to be kept, move it to the `tests/` directory
+2. Or add environment-variable gating so it is only accessible in development
+3. Delete it outright in production
 
-**删除命令**:
+**Deletion Command**:
 ```bash
 rm -rf src/app/realtime-test
 ```
 
-**风险评估**: ✅ 低风险（开发工具）
+**Risk Assessment**: ✅ Low risk (development tool)
 
 ---
 
-### SR-002: 旧Context目录 - YjsContext.tsx
+### SR-002: Legacy Context Directory - YjsContext.tsx
 
-**文件路径**: `src/contexts/YjsContext.tsx`
+**File Path**: `src/contexts/YjsContext.tsx`
 
-**文件大小**: 约50-100行（估算）
+**File Size**: About 50-100 lines (estimated)
 
-**分类理由**:
-- 目录结构已迁移到 `src/lib/contexts/`
-- 只有1个文件的旧目录
-- 仅被1个文件导入（`useYjsSync.ts`）
-- 应该迁移到新的统一目录结构
+**Rationale**:
+- The directory structure has been migrated to `src/lib/contexts/`
+- A legacy directory containing only 1 file
+- Only imported by 1 file (`useYjsSync.ts`)
+- Should be migrated to the new unified directory structure
 
-**证据**:
+**Evidence**:
 ```bash
-# 搜索导入引用
+# Search for import references
 $ grep -r "from '@/contexts/YjsContext'" src/
-# 结果：仅 src/components/libraries/hooks/useYjsSync.ts
+# Result: only src/components/libraries/hooks/useYjsSync.ts
 ```
 
-**导入引用**: 1个文件
+**Import References**: 1 file
 
-**建议操作**:
-1. 将 `src/contexts/YjsContext.tsx` 移动到 `src/lib/contexts/YjsContext.tsx`
-2. 更新导入路径：
+**Recommended Actions**:
+1. Move `src/contexts/YjsContext.tsx` to `src/lib/contexts/YjsContext.tsx`
+2. Update the import path:
    ```typescript
-   // 旧路径
+   // Old path
    - import { YjsContext } from '@/contexts/YjsContext';
-   // 新路径
+   // New path
    + import { YjsContext } from '@/lib/contexts/YjsContext';
    ```
-3. 删除空的 `src/contexts/` 目录
+3. Delete the empty `src/contexts/` directory
 
-**迁移命令**:
+**Migration Commands**:
 ```bash
-# 1. 移动文件
+# 1. Move the file
 mv src/contexts/YjsContext.tsx src/lib/contexts/YjsContext.tsx
 
-# 2. 更新导入（使用sed或手动）
+# 2. Update imports (using sed or manually)
 sed -i "s|@/contexts/YjsContext|@/lib/contexts/YjsContext|g" src/components/libraries/hooks/useYjsSync.ts
 
-# 3. 删除旧目录
+# 3. Delete the old directory
 rm -rf src/contexts
 ```
 
-**风险评估**: ✅ 低风险（简单迁移）
+**Risk Assessment**: ✅ Low risk (simple migration)
 
 ---
 
-### SR-003: 旧Hooks目录 - useYjsRows.ts
+### SR-003: Legacy Hooks Directory - useYjsRows.ts
 
-**文件路径**: `src/hooks/useYjsRows.ts`
+**File Path**: `src/hooks/useYjsRows.ts`
 
-**文件大小**: 约50-100行（估算）
+**File Size**: About 50-100 lines (estimated)
 
-**分类理由**:
-- 目录结构已迁移到 `src/lib/hooks/`
-- 只有1个文件的旧目录
-- 仅被1个文件导入
-- 应该迁移到新的统一目录结构
+**Rationale**:
+- The directory structure has been migrated to `src/lib/hooks/`
+- A legacy directory containing only 1 file
+- Only imported by 1 file
+- Should be migrated to the new unified directory structure
 
-**证据**:
+**Evidence**:
 ```bash
-# 搜索导入引用
+# Search for import references
 $ grep -r "useYjsRows" src/
-# 结果：仅 src/components/libraries/hooks/useYjsSync.ts
+# Result: only src/components/libraries/hooks/useYjsSync.ts
 ```
 
-**导入引用**: 1个文件
+**Import References**: 1 file
 
-**建议操作**:
-1. 将 `src/hooks/useYjsRows.ts` 移动到 `src/lib/hooks/useYjsRows.ts`
-2. 更新导入路径
-3. 删除空的 `src/hooks/` 目录
+**Recommended Actions**:
+1. Move `src/hooks/useYjsRows.ts` to `src/lib/hooks/useYjsRows.ts`
+2. Update the import path
+3. Delete the empty `src/hooks/` directory
 
-**迁移命令**:
+**Migration Commands**:
 ```bash
-# 1. 移动文件
+# 1. Move the file
 mv src/hooks/useYjsRows.ts src/lib/hooks/useYjsRows.ts
 
-# 2. 更新导入
+# 2. Update imports
 sed -i "s|@/hooks/useYjsRows|@/lib/hooks/useYjsRows|g" src/components/libraries/hooks/useYjsSync.ts
 
-# 3. 删除旧目录
+# 3. Delete the old directory
 rm -rf src/hooks
 ```
 
-**风险评估**: ✅ 低风险（简单迁移）
+**Risk Assessment**: ✅ Low risk (simple migration)
 
 ---
 
-## Needs Review (需要审查)
+## Needs Review
 
-### NR-001: 资产详情路由目录（可能已废弃）
+### NR-001: Asset Detail Route Directory (Possibly Deprecated)
 
-**文件路径**: `src/app/assets/` 目录
+**File Path**: `src/app/assets/` directory
 
-**文件大小**: 未知（需要检查内容）
+**File Size**: Unknown (contents need to be checked)
 
-**分类理由**:
-- 存在 `src/app/assets/images/` 目录
-- 但资产详情功能已经在 `src/app/(dashboard)/[projectId]/[libraryId]/[assetId]/page.tsx` 实现
-- 可能是旧的路由结构
-- 需要确认是否还在使用
+**Rationale**:
+- A `src/app/assets/images/` directory exists
+- But the asset detail feature is already implemented in `src/app/(dashboard)/[projectId]/[libraryId]/[assetId]/page.tsx`
+- May be a legacy route structure
+- Need to confirm whether it is still in use
 
-**证据**:
+**Evidence**:
 ```bash
-# 检查assets路由是否被使用
+# Check whether the assets route is used
 $ grep -r "href.*'/assets'" src/
 $ grep -r "router.push.*'/assets'" src/
 ```
 
-**导入引用**: 需要检查
+**Import References**: Needs checking
 
-**建议操作**:
-1. **首先检查**: 访问 `/assets/` 路由，看是否有功能
-2. **搜索引用**: 确认是否有组件链接到这个路由
-3. **如果未使用**: 删除整个目录
-4. **如果是静态资源**: 移动到 `public/` 目录
+**Recommended Actions**:
+1. **Check first**: Visit the `/assets/` route to see whether it has any functionality
+2. **Search references**: Confirm whether any component links to this route
+3. **If unused**: Delete the entire directory
+4. **If it contains static assets**: Move them to the `public/` directory
 
-**风险评估**: ⚠️ 中等风险（需要确认用途）
+**Risk Assessment**: ⚠️ Medium risk (purpose needs confirmation)
 
-**审查清单**:
-- [ ] 检查 `/assets/` 路由是否可访问
-- [ ] 搜索代码中是否有链接引用
-- [ ] 确认是否包含静态资源
-- [ ] 测试删除后功能是否正常
+**Review Checklist**:
+- [ ] Check whether the `/assets/` route is accessible
+- [ ] Search the code for link references
+- [ ] Confirm whether it contains static assets
+- [ ] Test that functionality still works after deletion
 
 ---
 
-### NR-002: Supabase远程种子数据文件
+### NR-002: Supabase Remote Seed Data File
 
-**文件路径**: `supabase/seed-remote.sql`
+**File Path**: `supabase/seed-remote.sql`
 
-**文件大小**: 15KB, 406行
+**File Size**: 15KB, 406 lines
 
-**分类理由**:
-- 存在 `seed.sql` (本地) 和 `seed-remote.sql` (远程)
-- 两个文件功能相似但内容可能不同步
-- 远程种子数据可能已过时
-- 需要确认是否还在使用
+**Rationale**:
+- Both `seed.sql` (local) and `seed-remote.sql` (remote) exist
+- The two files serve similar purposes but their contents may be out of sync
+- The remote seed data may be outdated
+- Need to confirm whether it is still in use
 
-**证据**:
+**Evidence**:
 ```bash
-# 检查是否被脚本引用
+# Check whether it is referenced by scripts
 $ grep -r "seed-remote" .
 ```
 
-**导入引用**: 需要检查package.json脚本
+**Import References**: Need to check package.json scripts
 
-**建议操作**:
-1. **检查用途**: 确认 `seed-remote.sql` 是否被CI/CD或部署脚本使用
-2. **比较差异**: `diff supabase/seed.sql supabase/seed-remote.sql`
-3. **选择方案**:
-   - 如果不再使用：删除
-   - 如果需要两个版本：添加文档说明区别
-   - 如果内容应该一致：合并为一个文件
+**Recommended Actions**:
+1. **Check its purpose**: Confirm whether `seed-remote.sql` is used by CI/CD or deployment scripts
+2. **Compare differences**: `diff supabase/seed.sql supabase/seed-remote.sql`
+3. **Choose an approach**:
+   - If no longer used: delete
+   - If both versions are needed: add documentation explaining the difference
+   - If the contents should be identical: merge into a single file
 
-**风险评估**: ⚠️ 中等风险（可能影响部署）
+**Risk Assessment**: ⚠️ Medium risk (may affect deployment)
 
-**审查清单**:
-- [ ] 检查CI/CD配置中是否引用
-- [ ] 检查部署文档中是否提到
-- [ ] 比较两个seed文件的差异
-- [ ] 咨询团队是否还需要
+**Review Checklist**:
+- [ ] Check whether it is referenced in CI/CD configuration
+- [ ] Check whether it is mentioned in deployment documentation
+- [ ] Compare the differences between the two seed files
+- [ ] Consult the team about whether it is still needed
 
 ---
 
-### NR-003: 清理测试数据SQL脚本
+### NR-003: Test Data Cleanup SQL Script
 
-**文件路径**: `supabase/clean-test-data.sql`
+**File Path**: `supabase/clean-test-data.sql`
 
-**文件大小**: 1.6KB, 56行
+**File Size**: 1.6KB, 56 lines
 
-**分类理由**:
-- 专门用于清理测试数据
-- 可能已被 `scripts/clean-remote-test-data.ts` 替代
-- 需要确认哪个是当前使用的清理工具
+**Rationale**:
+- Dedicated to cleaning up test data
+- May have been replaced by `scripts/clean-remote-test-data.ts`
+- Need to confirm which cleanup tool is currently in use
 
-**证据**:
+**Evidence**:
 ```bash
-# 检查package.json中的清理脚本
+# Check the cleanup scripts in package.json
 $ grep "clean" package.json
 # "clean:test-data": "tsx scripts/clean-remote-test-data.ts"
 ```
 
-**导入引用**: package.json脚本
+**Import References**: package.json scripts
 
-**建议操作**:
-1. **确认功能**: 检查SQL脚本和TS脚本是否做相同的事
-2. **选择保留**: 如果功能重复，选择更灵活的TypeScript版本
-3. **如果删除**: 更新相关文档
+**Recommended Actions**:
+1. **Confirm functionality**: Check whether the SQL script and the TS script do the same thing
+2. **Choose which to keep**: If the functionality is duplicated, keep the more flexible TypeScript version
+3. **If deleting**: Update related documentation
 
-**风险评估**: ⚠️ 中等风险（测试工具）
+**Risk Assessment**: ⚠️ Medium risk (test tooling)
 
-**审查清单**:
-- [ ] 比较SQL脚本和TS脚本功能
-- [ ] 确认当前E2E测试使用哪个
-- [ ] 确认是否有其他引用
-- [ ] 测试删除后清理功能是否正常
+**Review Checklist**:
+- [ ] Compare the functionality of the SQL script and the TS script
+- [ ] Confirm which one the current E2E tests use
+- [ ] Confirm whether there are other references
+- [ ] Test that the cleanup functionality still works after deletion
 
 ---
 
-### NR-004: 旧的架构文档（可能重复）
+### NR-004: Old Architecture Documents (Possibly Duplicated)
 
-**文件路径**: 
+**File Paths**: 
 - `docs/ARCHITECTURE_ASSESSMENT_CN.md`
 - `docs/ARCHITECTURE_DOCUMENTATION_CN.md`
 - `docs/REFACTOR_ARCHITECTURE.md`
 - `docs/REFACTOR_SUMMARY.md`
 
-**文件大小**: 未知
+**File Size**: Unknown
 
-**分类理由**:
-- 现在有了新的统一架构文档 `docs/architecture/ARCHITECTURE.md`
-- 旧文档可能已过时
-- 多个文档容易造成混淆
-- 需要确认哪些内容还有价值
+**Rationale**:
+- There is now a new unified architecture document `docs/architecture/ARCHITECTURE.md`
+- The old documents may be outdated
+- Multiple documents easily cause confusion
+- Need to confirm which content is still valuable
 
-**导入引用**: 文档引用（需要检查）
+**Import References**: Documentation references (need to check)
 
-**建议操作**:
-1. **审查内容**: 逐个查看旧文档，提取仍然有价值的信息
-2. **整合到新文档**: 将有价值的内容合并到新的架构文档中
-3. **创建归档目录**: `docs/archive/` 存放旧文档
-4. **更新README**: 指向新的架构文档
+**Recommended Actions**:
+1. **Review the content**: Go through each old document and extract the information that is still valuable
+2. **Consolidate into the new document**: Merge valuable content into the new architecture document
+3. **Create an archive directory**: Store old documents in `docs/archive/`
+4. **Update the README**: Point to the new architecture document
 
-**迁移命令**:
+**Migration Commands**:
 ```bash
-# 创建归档目录
+# Create the archive directory
 mkdir -p docs/archive
 
-# 移动旧文档
+# Move the old documents
 mv docs/ARCHITECTURE_*.md docs/archive/
 mv docs/REFACTOR_*.md docs/archive/
 
-# 添加说明
+# Add a note
 echo "# Archived Documentation\n\nThese documents have been replaced by the unified architecture documentation in docs/architecture/ARCHITECTURE.md" > docs/archive/README.md
 ```
 
-**风险评估**: ⚠️ 低-中等风险（文档整理）
+**Risk Assessment**: ⚠️ Low-medium risk (documentation cleanup)
 
-**审查清单**:
-- [ ] 阅读每个旧文档
-- [ ] 提取仍然有价值的信息
-- [ ] 确认新架构文档已包含关键内容
-- [ ] 咨询团队是否有依赖这些文档
+**Review Checklist**:
+- [ ] Read each old document
+- [ ] Extract information that is still valuable
+- [ ] Confirm the new architecture document already covers the key content
+- [ ] Consult the team about whether anything depends on these documents
 
 ---
 
-### NR-005: 工作报告文档
+### NR-005: Work Report Documents
 
-**文件路径**: 
+**File Paths**: 
 - `docs/WORK_REPORT_ISOLATION.md`
 - `docs/TEST_ENVIRONMENT_ISOLATION.md`
 
-**文件大小**: 未知
+**File Size**: Unknown
 
-**分类理由**:
-- 这些文档可能是特定功能开发时的工作报告
-- 内容可能已过时或已实施完成
-- 需要确认是否还需要保留
+**Rationale**:
+- These documents may be work reports from the development of specific features
+- The content may be outdated or the work may already be complete
+- Need to confirm whether they should be kept
 
-**导入引用**: 无（独立文档）
+**Import References**: None (standalone documents)
 
-**建议操作**:
-1. **检查内容**: 确认文档描述的功能是否已实施
-2. **选择方案**:
-   - 如果功能已实施且文档有价值：保留并移到 `docs/completed-features/`
-   - 如果文档已过时：移到 `docs/archive/`
-   - 如果不需要保留：删除
+**Recommended Actions**:
+1. **Check the content**: Confirm whether the features described in the documents have been implemented
+2. **Choose an approach**:
+   - If the feature is implemented and the document is valuable: keep it and move it to `docs/completed-features/`
+   - If the document is outdated: move it to `docs/archive/`
+   - If it does not need to be kept: delete it
 
-**风险评估**: ⚠️ 低风险（独立文档）
+**Risk Assessment**: ⚠️ Low risk (standalone documents)
 
-**审查清单**:
-- [ ] 阅读文档内容
-- [ ] 确认描述的功能是否已实施
-- [ ] 评估文档的历史价值
-- [ ] 决定保留、归档或删除
+**Review Checklist**:
+- [ ] Read the document contents
+- [ ] Confirm whether the described features have been implemented
+- [ ] Assess the documents' historical value
+- [ ] Decide whether to keep, archive, or delete
 
 ---
 
-### NR-006: 中文优化对比文档
+### NR-006: Chinese Optimization Comparison Documents
 
-**文件路径**:
-- `优化效果对比图.md`
-- `缓存更新问题修复总结.md`
-- `验证缓存优化.md`
+**File Paths**:
+- `optimization-comparison-chart.md` (Chinese filename)
+- `cache-update-fix-summary.md` (Chinese filename)
+- `cache-optimization-verification.md` (Chinese filename)
 
-**文件大小**: 未知
+**File Size**: Unknown
 
-**分类理由**:
-- 根目录下的中文文档
-- 看起来是特定优化任务的记录
-- 应该移动到docs目录统一管理
-- 或者内容已过时可以归档
+**Rationale**:
+- Chinese-language documents in the repository root
+- They appear to be records of specific optimization tasks
+- Should be moved to the docs directory for unified management
+- Or the content may be outdated and can be archived
 
-**导入引用**: 无（独立文档）
+**Import References**: None (standalone documents)
 
-**建议操作**:
-1. **整理到docs**: 移动到 `docs/performance-optimizations/` 目录
-2. **翻译为英文**: 保持文档一致性
-3. **或归档**: 如果优化已完成且文档不再需要
+**Recommended Actions**:
+1. **Organize into docs**: Move to the `docs/performance-optimizations/` directory
+2. **Translate into English**: Keep the documentation consistent
+3. **Or archive**: If the optimization is complete and the documents are no longer needed
 
-**迁移命令**:
+**Migration Commands**:
 ```bash
-# 创建性能优化文档目录
+# Create the performance optimization docs directory
 mkdir -p docs/performance-optimizations
 
-# 移动文档
-mv 优化效果对比图.md docs/performance-optimizations/cache-optimization-comparison.md
-mv 缓存更新问题修复总结.md docs/performance-optimizations/cache-update-fix-summary.md
-mv 验证缓存优化.md docs/performance-optimizations/cache-optimization-verification.md
+# Move the documents (original Chinese filenames shown transliterated)
+mv optimization-comparison-chart.md docs/performance-optimizations/cache-optimization-comparison.md
+mv cache-update-fix-summary.md docs/performance-optimizations/cache-update-fix-summary.md
+mv cache-optimization-verification.md docs/performance-optimizations/cache-optimization-verification.md
 ```
 
-**风险评估**: ⚠️ 低风险（文档整理）
+**Risk Assessment**: ⚠️ Low risk (documentation cleanup)
 
-**审查清单**:
-- [ ] 阅读文档内容
-- [ ] 确认优化是否已完成
-- [ ] 评估文档的参考价值
-- [ ] 决定整理位置或归档
+**Review Checklist**:
+- [ ] Read the document contents
+- [ ] Confirm whether the optimization is complete
+- [ ] Assess the documents' reference value
+- [ ] Decide where to organize them or whether to archive
 
 ---
 
-### NR-007: CSS模块文件审查
+### NR-007: CSS Module File Review
 
-**文件路径**:
+**File Paths**:
 - `src/app/page.module.css`
 - `src/app/(dashboard)/[projectId]/page.module.css`
 - `src/app/(dashboard)/[projectId]/[libraryId]/page.module.css`
 - `src/app/(dashboard)/[projectId]/ProjectPage.module.css`
 
-**文件大小**: 未知
+**File Size**: Unknown
 
-**分类理由**:
-- 多个CSS模块文件
-- 可能包含未使用的样式
-- ProjectPage.module.css命名不规范（应该是小写）
-- 需要审查是否所有样式都在使用
+**Rationale**:
+- Multiple CSS module files
+- May contain unused styles
+- ProjectPage.module.css has non-standard naming (should be lowercase)
+- Need to review whether all styles are in use
 
-**导入引用**: 各自对应的页面组件
+**Import References**: Their corresponding page components
 
-**建议操作**:
-1. **审查每个CSS文件**: 确认所有样式类都在使用
-2. **删除未使用样式**: 使用工具或手动检查
-3. **规范命名**: 统一CSS文件命名格式
-4. **考虑合并**: 如果有共同样式，提取到全局样式
+**Recommended Actions**:
+1. **Review each CSS file**: Confirm that all style classes are in use
+2. **Delete unused styles**: Use tooling or check manually
+3. **Standardize naming**: Unify the CSS file naming convention
+4. **Consider merging**: Extract shared styles into global styles if any exist
 
-**工具推荐**:
+**Recommended Tooling**:
 ```bash
-# 使用 PurgeCSS 检查未使用的CSS
+# Use PurgeCSS to check for unused CSS
 npm install --save-dev purgecss
 ```
 
-**风险评估**: ⚠️ 低风险（样式优化）
+**Risk Assessment**: ⚠️ Low risk (style optimization)
 
-**审查清单**:
-- [ ] 检查每个CSS类是否被使用
-- [ ] 统一命名规范
-- [ ] 提取公共样式
-- [ ] 测试删除后UI是否正常
+**Review Checklist**:
+- [ ] Check whether each CSS class is used
+- [ ] Unify the naming convention
+- [ ] Extract shared styles
+- [ ] Test that the UI still looks correct after deletion
 
 ---
 
-### NR-008: Supabase临时目录
+### NR-008: Supabase Temporary Directories
 
-**文件路径**:
+**File Paths**:
 - `supabase/.branches/`
 - `supabase/.temp/`
 
-**文件大小**: 未知
+**File Size**: Unknown
 
-**分类理由**:
-- 隐藏目录，可能是Supabase CLI生成的临时文件
-- 应该在 `.gitignore` 中忽略
-- 需要确认是否应该提交到版本控制
+**Rationale**:
+- Hidden directories, likely temporary files generated by the Supabase CLI
+- Should be ignored in `.gitignore`
+- Need to confirm whether they should be committed to version control
 
-**导入引用**: 无
+**Import References**: None
 
-**建议操作**:
-1. **检查内容**: 确认目录中有什么
-2. **添加到.gitignore**: 如果是临时文件
+**Recommended Actions**:
+1. **Check the contents**: Confirm what is in the directories
+2. **Add to .gitignore**: If they are temporary files
 ```gitignore
 # supabase/.gitignore
 .branches/
 .temp/
 ```
-3. **从版本控制移除**:
+3. **Remove from version control**:
 ```bash
 git rm -r --cached supabase/.branches supabase/.temp
 ```
 
-**风险评估**: ⚠️ 低风险（临时文件）
+**Risk Assessment**: ⚠️ Low risk (temporary files)
 
-**审查清单**:
-- [ ] 检查目录内容
-- [ ] 确认是否是临时文件
-- [ ] 添加到.gitignore
-- [ ] 从git移除
-
----
-
-## Consider Refactoring (考虑重构)
-
-### CF-001: 超大组件 - Sidebar.tsx (2330行)
-
-**文件路径**: `src/components/layout/Sidebar.tsx`
-
-**文件大小**: 2330行
-
-**问题描述**:
-- 组件过于庞大，包含过多职责
-- 包括项目树、库树、文件夹树、版本控制、协作者管理等
-- 难以维护和测试
-- 修改风险高
-
-**重构建议**: 详见 [OPT-001优化建议](./OPTIMIZATION_RECOMMENDATIONS.md#opt-001-超大组件重构---sidebartsx-2330行)
-
-**预期收益**:
-- 代码可维护性提升90%
-- Bug定位效率提升70%
-- 测试覆盖率提升
-
-**工作量估算**: 2周
+**Review Checklist**:
+- [ ] Check the directory contents
+- [ ] Confirm whether they are temporary files
+- [ ] Add to .gitignore
+- [ ] Remove from git
 
 ---
 
-### CF-002: 超大组件 - LibraryAssetsTable.tsx (2335行)
+## Consider Refactoring
 
-**文件路径**: `src/components/libraries/LibraryAssetsTable.tsx`
+### CF-001: Oversized Component - Sidebar.tsx (2330 lines)
 
-**文件大小**: 2335行
+**File Path**: `src/components/layout/Sidebar.tsx`
 
-**问题描述**:
-- 项目中最复杂的组件
-- 包含表格渲染、编辑、拖拽、剪贴板、批量操作等
-- 性能问题（大表格渲染慢）
-- 状态管理混乱
+**File Size**: 2330 lines
 
-**重构建议**: 详见 [OPT-002优化建议](./OPTIMIZATION_RECOMMENDATIONS.md#opt-002-超大组件重构---libraryassetstabletsx-2335行)
+**Problem Description**:
+- The component is too large and carries too many responsibilities
+- Includes the project tree, library tree, folder tree, version control, collaborator management, etc.
+- Hard to maintain and test
+- High risk when making changes
 
-**预期收益**:
-- 渲染性能提升80%
-- 代码可读性提升90%
-- 支持大型表格（>10,000行）
+**Refactoring Recommendation**: See [OPT-001 optimization recommendation](./OPTIMIZATION_RECOMMENDATIONS.md#opt-001-oversized-component-refactoring---sidebartsx-2330-lines)
 
-**工作量估算**: 3周
+**Expected Benefits**:
+- Code maintainability improved by 90%
+- Bug localization efficiency improved by 70%
+- Improved test coverage
 
----
-
-### CF-003: 超大Context - LibraryDataContext.tsx (668行)
-
-**文件路径**: `src/lib/contexts/LibraryDataContext.tsx`
-
-**文件大小**: 668行
-
-**问题描述**:
-- Context职责过多
-- 集成了Yjs、Realtime、Presence、资产操作等
-- 难以测试和维护
-
-**重构建议**: 详见 [OPT-006优化建议](./OPTIMIZATION_RECOMMENDATIONS.md#opt-006-librarydatacontext职责过多需要拆分)
-
-**预期收益**:
-- 职责清晰
-- 可测试性提升
-- 可复用性提升
-
-**工作量估算**: 1.5周
+**Effort Estimate**: 2 weeks
 
 ---
 
-### CF-004: 字段定义组件 - FieldForm.tsx & FieldItem.tsx
+### CF-002: Oversized Component - LibraryAssetsTable.tsx (2335 lines)
 
-**文件路径**: 
-- `src/app/(dashboard)/[projectId]/[libraryId]/predefine/components/FieldForm.tsx` (530行)
-- `src/app/(dashboard)/[projectId]/[libraryId]/predefine/components/FieldItem.tsx` (509行)
+**File Path**: `src/components/libraries/LibraryAssetsTable.tsx`
 
-**文件大小**: 共1039行
+**File Size**: 2335 lines
 
-**问题描述**:
-- 两个组件都很大，超过500行
-- FieldForm包含所有字段类型的表单逻辑
-- FieldItem包含字段展示和编辑功能
-- 应该按字段类型拆分
+**Problem Description**:
+- The most complex component in the project
+- Includes table rendering, editing, drag-and-drop, clipboard, bulk operations, etc.
+- Performance issues (large tables render slowly)
+- Messy state management
 
-**重构建议**:
+**Refactoring Recommendation**: See [OPT-002 optimization recommendation](./OPTIMIZATION_RECOMMENDATIONS.md#opt-002-oversized-component-refactoring---libraryassetstabletsx-2335-lines)
 
-**拆分FieldForm**:
+**Expected Benefits**:
+- Rendering performance improved by 80%
+- Code readability improved by 90%
+- Support for large tables (>10,000 rows)
+
+**Effort Estimate**: 3 weeks
+
+---
+
+### CF-003: Oversized Context - LibraryDataContext.tsx (668 lines)
+
+**File Path**: `src/lib/contexts/LibraryDataContext.tsx`
+
+**File Size**: 668 lines
+
+**Problem Description**:
+- The Context has too many responsibilities
+- Integrates Yjs, Realtime, Presence, asset operations, etc.
+- Hard to test and maintain
+
+**Refactoring Recommendation**: See [OPT-006 optimization recommendation](./OPTIMIZATION_RECOMMENDATIONS.md#opt-006-librarydatacontext-has-too-many-responsibilities-and-needs-splitting)
+
+**Expected Benefits**:
+- Clear responsibilities
+- Improved testability
+- Improved reusability
+
+**Effort Estimate**: 1.5 weeks
+
+---
+
+### CF-004: Field Definition Components - FieldForm.tsx & FieldItem.tsx
+
+**File Paths**: 
+- `src/app/(dashboard)/[projectId]/[libraryId]/predefine/components/FieldForm.tsx` (530 lines)
+- `src/app/(dashboard)/[projectId]/[libraryId]/predefine/components/FieldItem.tsx` (509 lines)
+
+**File Size**: 1039 lines combined
+
+**Problem Description**:
+- Both components are large, exceeding 500 lines
+- FieldForm contains the form logic for all field types
+- FieldItem contains field display and editing functionality
+- They should be split by field type
+
+**Refactoring Recommendation**:
+
+**Split FieldForm**:
 ```
 predefine/components/field-forms/
 ├── TextFieldForm.tsx
@@ -604,7 +604,7 @@ predefine/components/field-forms/
 └── index.ts
 ```
 
-**拆分FieldItem**:
+**Split FieldItem**:
 ```
 predefine/components/field-items/
 ├── TextFieldItem.tsx
@@ -613,33 +613,33 @@ predefine/components/field-items/
 └── index.ts
 ```
 
-**预期收益**:
-- 单个组件<150行
-- 易于维护和测试
-- 添加新字段类型更简单
+**Expected Benefits**:
+- Each component <150 lines
+- Easy to maintain and test
+- Adding new field types becomes simpler
 
-**工作量估算**: 1周
+**Effort Estimate**: 1 week
 
 ---
 
-### CF-005: 存储适配器文件重复
+### CF-005: Duplicated Storage Adapter Files
 
-**文件路径**:
+**File Paths**:
 - `src/lib/hybridStorageAdapter.ts`
 - `src/lib/sessionStorageAdapter.ts`
 - `src/lib/tabIsolatedStorageAdapter.ts`
 - `src/lib/utils/cookieStorageAdapter.ts`
 
-**文件大小**: 未知
+**File Size**: Unknown
 
-**问题描述**:
-- 多个存储适配器分散在不同位置
-- cookieStorageAdapter在utils目录，其他在lib根目录
-- 应该统一管理
+**Problem Description**:
+- Multiple storage adapters are scattered across different locations
+- cookieStorageAdapter is in the utils directory while the others are in the lib root
+- They should be managed in one place
 
-**重构建议**:
+**Refactoring Recommendation**:
 
-**创建统一的存储适配器目录**:
+**Create a unified storage adapter directory**:
 ```
 src/lib/storage-adapters/
 ├── HybridStorageAdapter.ts
@@ -649,7 +649,7 @@ src/lib/storage-adapters/
 └── index.ts
 ```
 
-**统一导出**:
+**Unified exports**:
 ```typescript
 // src/lib/storage-adapters/index.ts
 export { HybridStorageAdapter } from './HybridStorageAdapter';
@@ -658,46 +658,46 @@ export { TabIsolatedStorageAdapter } from './TabIsolatedStorageAdapter';
 export { CookieStorageAdapter } from './CookieStorageAdapter';
 ```
 
-**预期收益**:
-- 代码组织更清晰
-- 易于查找和维护
-- 统一的导入路径
+**Expected Benefits**:
+- Clearer code organization
+- Easy to find and maintain
+- Unified import paths
 
-**工作量估算**: 半天
+**Effort Estimate**: Half a day
 
 ---
 
-### CF-006: 协作相关组件整理
+### CF-006: Collaboration Component Organization
 
-**文件路径**:
-- `src/components/collaboration/*` (协作组件)
-- `src/app/(dashboard)/[projectId]/collaborators/*` (协作者页面)
+**File Paths**:
+- `src/components/collaboration/*` (collaboration components)
+- `src/app/(dashboard)/[projectId]/collaborators/*` (collaborators pages)
 
-**文件大小**: 多个文件
+**File Size**: Multiple files
 
-**问题描述**:
-- 协作功能分散在两个地方
-- components下是UI组件
-- app下是页面逻辑
-- 但页面中也有大量的组件逻辑（AcceptInvitationContent, CollaboratorsContent）
-- 应该更清晰地分离
+**Problem Description**:
+- Collaboration functionality is scattered across two places
+- Under components are the UI components
+- Under app is the page logic
+- But the pages also contain a lot of component logic (AcceptInvitationContent, CollaboratorsContent)
+- Should be separated more clearly
 
-**重构建议**:
+**Refactoring Recommendation**:
 
-**统一协作组件位置**:
+**Unify the location of collaboration components**:
 ```
 src/components/collaboration/
 ├── CollaboratorsList.tsx
 ├── InviteCollaboratorModal.tsx
-├── AcceptInvitationContent.tsx    # 从app移过来
-├── CollaboratorsContent.tsx       # 从app移过来
+├── AcceptInvitationContent.tsx    # Moved from app
+├── CollaboratorsContent.tsx       # Moved from app
 ├── PresenceIndicators.tsx
 ├── StackedAvatars.tsx
 ├── ConnectionStatusIndicator.tsx
 └── FieldPresenceAvatars.tsx
 ```
 
-**页面只保留路由逻辑**:
+**Pages keep only routing logic**:
 ```typescript
 // app/(dashboard)/[projectId]/collaborators/page.tsx
 export default function CollaboratorsPage() {
@@ -710,22 +710,22 @@ export default function AcceptInvitationPage() {
 }
 ```
 
-**预期收益**:
-- 组件职责更清晰
-- 复用性更好
-- 页面更简洁
+**Expected Benefits**:
+- Clearer component responsibilities
+- Better reusability
+- Simpler pages
 
-**工作量估算**: 2天
+**Effort Estimate**: 2 days
 
 ---
 
-## Consolidate (合并整理)
+## Consolidate
 
-### CO-001: 版本控制组件目录整理
+### CO-001: Version Control Component Directory Organization
 
-**当前位置**: `src/components/version-control/`
+**Current Location**: `src/components/version-control/`
 
-**文件列表**:
+**File List**:
 - VersionControlSidebar.tsx
 - VersionList.tsx
 - VersionItem.tsx
@@ -736,14 +736,14 @@ export default function AcceptInvitationPage() {
 - RestoreConfirmModal.tsx
 - DeleteConfirmModal.tsx
 
-**问题描述**:
-- 所有版本控制组件都在一个扁平目录
-- 随着组件增多会难以管理
-- 应该按功能分组
+**Problem Description**:
+- All version control components are in one flat directory
+- This will become hard to manage as components grow
+- They should be grouped by function
 
-**整理建议**:
+**Organization Recommendation**:
 
-**按功能分组**:
+**Group by function**:
 ```
 src/components/version-control/
 ├── sidebar/
@@ -759,27 +759,27 @@ src/components/version-control/
 └── RestoreButton.tsx
 ```
 
-**预期收益**:
-- 代码组织更清晰
-- 易于导航和查找
-- 扩展性更好
+**Expected Benefits**:
+- Clearer code organization
+- Easy navigation and lookup
+- Better extensibility
 
-**工作量估算**: 半天
+**Effort Estimate**: Half a day
 
 ---
 
-### CO-002: Service层文件统一导出
+### CO-002: Unified Service Layer Exports
 
-**当前位置**: `src/lib/services/`
+**Current Location**: `src/lib/services/`
 
-**问题描述**:
-- 13个Service文件
-- 每次导入都需要写完整路径
-- 没有统一的导出文件
+**Problem Description**:
+- 13 Service files
+- Every import requires writing the full path
+- No unified export file
 
-**整理建议**:
+**Organization Recommendation**:
 
-**创建统一导出文件**:
+**Create a unified export file**:
 ```typescript
 // src/lib/services/index.ts
 export * from './projectService';
@@ -797,43 +797,43 @@ export * from './sharedDocumentService';
 export * from './userValidationService';
 ```
 
-**使用方式**:
+**Usage**:
 ```typescript
-// 之前
+// Before
 import { projectService } from '@/lib/services/projectService';
 import { libraryService } from '@/lib/services/libraryService';
 
-// 之后
+// After
 import { projectService, libraryService } from '@/lib/services';
 ```
 
-**预期收益**:
-- 导入更简洁
-- 统一管理
-- 易于维护
+**Expected Benefits**:
+- Cleaner imports
+- Unified management
+- Easy to maintain
 
-**工作量估算**: 15分钟
+**Effort Estimate**: 15 minutes
 
 ---
 
-### CO-003: 测试Page Object统一组织
+### CO-003: Unified Test Page Object Organization
 
-**当前位置**: `tests/e2e/pages/`
+**Current Location**: `tests/e2e/pages/`
 
-**文件列表**:
+**File List**:
 - project.page.ts
 - library.page.ts
 - asset.page.ts
 - predefined.page.ts
 
-**问题描述**:
-- 文件较少时没问题
-- 但随着测试增多会混乱
-- 应该提前规划好结构
+**Problem Description**:
+- Not a problem while there are few files
+- But it will become messy as tests grow
+- The structure should be planned ahead of time
 
-**整理建议**:
+**Organization Recommendation**:
 
-**按功能分组**:
+**Group by function**:
 ```
 tests/e2e/pages/
 ├── auth/
@@ -848,55 +848,55 @@ tests/e2e/pages/
 │   └── predefined.page.ts
 ├── asset/
 │   └── asset-detail.page.ts
-└── index.ts  // 统一导出
+└── index.ts  // Unified exports
 ```
 
-**预期收益**:
-- 测试代码更清晰
-- 易于扩展
-- 减少查找时间
+**Expected Benefits**:
+- Clearer test code
+- Easy to extend
+- Less time spent searching
 
-**工作量估算**: 1小时
+**Effort Estimate**: 1 hour
 
 ---
 
-### CO-004: 类型定义统一管理
+### CO-004: Unified Type Definition Management
 
-**当前位置**:
-- `src/lib/types/` (部分类型)
-- `types/` (全局类型)
-- 各组件内部定义的类型
+**Current Locations**:
+- `src/lib/types/` (some types)
+- `types/` (global types)
+- Types defined inside individual components
 
-**问题描述**:
-- 类型定义分散
-- 有些类型重复定义
-- 缺乏统一管理
+**Problem Description**:
+- Type definitions are scattered
+- Some types are defined more than once
+- Lacks unified management
 
-**整理建议**:
+**Organization Recommendation**:
 
-**统一类型目录结构**:
+**Unified type directory structure**:
 ```
 src/lib/types/
-├── database/          # 数据库表类型
+├── database/          # Database table types
 │   ├── project.ts
 │   ├── library.ts
 │   ├── asset.ts
 │   └── user.ts
-├── api/               # API请求/响应类型
+├── api/               # API request/response types
 │   ├── project.ts
 │   ├── library.ts
 │   └── asset.ts
-├── ui/                # UI组件类型
+├── ui/                # UI component types
 │   ├── table.ts
 │   ├── form.ts
 │   └── modal.ts
-├── collaboration.ts   # 协作相关类型
-├── version.ts         # 版本控制类型
-├── libraryAssets.ts   # 资产相关类型
-└── index.ts           # 统一导出
+├── collaboration.ts   # Collaboration-related types
+├── version.ts         # Version control types
+├── libraryAssets.ts   # Asset-related types
+└── index.ts           # Unified exports
 ```
 
-**统一导出**:
+**Unified exports**:
 ```typescript
 // src/lib/types/index.ts
 export * from './database';
@@ -907,185 +907,185 @@ export * from './version';
 export * from './libraryAssets';
 ```
 
-**预期收益**:
-- 类型定义统一
-- 避免重复定义
-- 易于查找和维护
-- 提升类型安全
+**Expected Benefits**:
+- Unified type definitions
+- Avoids duplicate definitions
+- Easy to find and maintain
+- Improved type safety
 
-**工作量估算**: 2天
-
----
-
-## 总结与建议
-
-### 清理优先级
-
-#### 🔴 高优先级（立即执行）
-1. **SR-001**: 删除开发测试页面（realtime-test）
-2. **SR-002, SR-003**: 统一目录结构（contexts, hooks）
-3. **CO-002**: 创建Service统一导出
-
-**预计时间**: 1天  
-**预计减少**: ~300行代码
+**Effort Estimate**: 2 days
 
 ---
 
-#### 🟡 中优先级（本月内完成）
-1. **NR-001 ~ NR-003**: 审查可能废弃的文件
-2. **NR-004 ~ NR-006**: 整理文档结构
-3. **CO-001, CO-003, CO-004**: 代码组织优化
-4. **CF-005, CF-006**: 简单重构任务
+## Summary and Recommendations
 
-**预计时间**: 1周  
-**预计减少**: ~400行代码
+### Cleanup Priorities
 
----
+#### 🔴 High Priority (Execute Immediately)
+1. **SR-001**: Delete the development test page (realtime-test)
+2. **SR-002, SR-003**: Unify the directory structure (contexts, hooks)
+3. **CO-002**: Create unified Service exports
 
-#### 🟢 低优先级（配合重构进行）
-1. **CF-001 ~ CF-003**: 超大组件重构（配合OPT-001, OPT-002进行）
-2. **CF-004**: 字段组件拆分
-3. **NR-007, NR-008**: 样式和临时文件清理
-
-**预计时间**: 随重构项目进行  
-**预计减少**: ~350行代码（重构而非删除）
+**Estimated Time**: 1 day  
+**Estimated Reduction**: ~300 lines of code
 
 ---
 
-### 执行流程建议
+#### 🟡 Medium Priority (Complete Within the Month)
+1. **NR-001 ~ NR-003**: Review possibly deprecated files
+2. **NR-004 ~ NR-006**: Organize documentation structure
+3. **CO-001, CO-003, CO-004**: Code organization improvements
+4. **CF-005, CF-006**: Simple refactoring tasks
 
-#### 阶段1: 安全清理（第1周）
+**Estimated Time**: 1 week  
+**Estimated Reduction**: ~400 lines of code
+
+---
+
+#### 🟢 Low Priority (Along with Refactoring)
+1. **CF-001 ~ CF-003**: Oversized component refactoring (alongside OPT-001, OPT-002)
+2. **CF-004**: Field component splitting
+3. **NR-007, NR-008**: Style and temporary file cleanup
+
+**Estimated Time**: Proceeds along with refactoring projects  
+**Estimated Reduction**: ~350 lines of code (refactoring rather than deletion)
+
+---
+
+### Recommended Execution Process
+
+#### Phase 1: Safe Cleanup (Week 1)
 
 ```bash
-# 1. 创建清理分支
+# 1. Create a cleanup branch
 git checkout -b cleanup/phase-1-safe-removal
 
-# 2. 执行安全删除
+# 2. Perform safe deletions
 rm -rf src/app/realtime-test
 
-# 3. 迁移旧目录
+# 3. Migrate legacy directories
 mv src/contexts/YjsContext.tsx src/lib/contexts/
 mv src/hooks/useYjsRows.ts src/lib/hooks/
 
-# 4. 更新导入路径（使用工具或手动）
+# 4. Update import paths (using tooling or manually)
 # ...
 
-# 5. 删除旧目录
+# 5. Delete legacy directories
 rm -rf src/contexts src/hooks
 
-# 6. 创建Service导出文件
-# 创建 src/lib/services/index.ts
+# 6. Create the Service export file
+# Create src/lib/services/index.ts
 
-# 7. 测试
+# 7. Test
 npm run build
 npm run test:e2e
 
-# 8. 提交
+# 8. Commit
 git add .
 git commit -m "chore: clean up unused files and consolidate directory structure"
 git push origin cleanup/phase-1-safe-removal
 ```
 
-#### 阶段2: 审查与整理（第2-3周）
+#### Phase 2: Review and Organization (Weeks 2-3)
 
 ```bash
-# 1. 创建整理分支
+# 1. Create an organization branch
 git checkout -b cleanup/phase-2-review
 
-# 2. 逐个审查NR文件
-# 根据审查结果执行相应操作
+# 2. Review NR files one by one
+# Take the corresponding action based on the review results
 
-# 3. 整理文档
+# 3. Organize documentation
 mkdir -p docs/archive docs/performance-optimizations
-# 移动相关文件...
+# Move the relevant files...
 
-# 4. 整理代码组织
-# 执行CO任务...
+# 4. Organize code structure
+# Execute the CO tasks...
 
-# 5. 测试
+# 5. Test
 npm run build
 npm run test:e2e
 
-# 6. 提交
+# 6. Commit
 git add .
 git commit -m "chore: organize project structure and archive outdated documentation"
 git push origin cleanup/phase-2-review
 ```
 
-#### 阶段3: 重构（长期）
+#### Phase 3: Refactoring (Long Term)
 
-- 配合优化建议文档中的重构任务进行
-- 每个CF任务单独创建分支
-- 逐步完成，避免一次性大改
-
----
-
-### 注意事项
-
-1. **⚠️ 执行任何删除操作前必须**:
-   - 创建新的Git分支
-   - 进行完整的测试（build + E2E）
-   - 代码Review
-   - 备份重要数据
-
-2. **⚠️ 对于"Needs Review"的文件**:
-   - 不要急于删除
-   - 先咨询团队其他成员
-   - 检查是否有文档说明用途
-   - 测试删除后的影响
-
-3. **⚠️ 重构任务**:
-   - 优先编写测试覆盖
-   - 逐步迁移，避免大规模重写
-   - 保持功能不变
-   - 每次重构后充分测试
-
-4. **⚠️ 文档清理**:
-   - 提取有价值的信息到新文档
-   - 保留历史文档到archive目录
-   - 更新README和导航
+- Proceed alongside the refactoring tasks in the optimization recommendations document
+- Create a separate branch for each CF task
+- Complete them incrementally; avoid one massive change
 
 ---
 
-### 预期成果
+### Notes
 
-完成所有清理和整理后：
+1. **⚠️ Before performing any deletion, you must**:
+   - Create a new Git branch
+   - Run the full test suite (build + E2E)
+   - Get a code review
+   - Back up important data
 
-| 指标 | 当前 | 目标 | 改进 |
+2. **⚠️ For "Needs Review" files**:
+   - Do not rush to delete
+   - Consult other team members first
+   - Check whether any documentation explains their purpose
+   - Test the impact after deletion
+
+3. **⚠️ Refactoring tasks**:
+   - Write test coverage first
+   - Migrate incrementally; avoid large-scale rewrites
+   - Keep functionality unchanged
+   - Test thoroughly after each refactoring
+
+4. **⚠️ Documentation cleanup**:
+   - Extract valuable information into new documents
+   - Keep historical documents in the archive directory
+   - Update the README and navigation
+
+---
+
+### Expected Outcomes
+
+After completing all cleanup and organization:
+
+| Metric | Current | Target | Improvement |
 |------|------|------|------|
-| **代码行数** | ~30,000行 | ~28,950行 | -3.5% |
-| **文件数量** | ~155个 | ~145个 | -6.5% |
-| **目录层级** | 混乱 | 清晰 | +90% |
-| **代码组织** | 中等 | 优秀 | +80% |
-| **可维护性** | 中等 | 高 | +70% |
-| **文档清晰度** | 中等 | 高 | +85% |
+| **Lines of code** | ~30,000 lines | ~28,950 lines | -3.5% |
+| **File count** | ~155 | ~145 | -6.5% |
+| **Directory hierarchy** | Messy | Clear | +90% |
+| **Code organization** | Medium | Excellent | +80% |
+| **Maintainability** | Medium | High | +70% |
+| **Documentation clarity** | Medium | High | +85% |
 
 ---
 
-### 后续维护建议
+### Ongoing Maintenance Recommendations
 
-1. **建立代码审查规范**:
-   - 新文件必须放在正确的目录
-   - 禁止创建超过300行的组件
-   - 必须使用TypeScript严格模式
+1. **Establish code review standards**:
+   - New files must be placed in the correct directory
+   - Prohibit creating components over 300 lines
+   - TypeScript strict mode must be used
 
-2. **定期清理**:
-   - 每月检查未使用的导入
-   - 每季度审查组件大小
-   - 每半年整理文档
+2. **Regular cleanup**:
+   - Check for unused imports monthly
+   - Review component sizes quarterly
+   - Organize documentation every six months
 
-3. **工具辅助**:
-   - 配置ESLint规则检查未使用代码
-   - 使用依赖分析工具
-   - 配置Git hooks防止提交过大文件
+3. **Tooling support**:
+   - Configure ESLint rules to detect unused code
+   - Use dependency analysis tools
+   - Configure Git hooks to prevent committing oversized files
 
-4. **文档维护**:
-   - 代码变更时更新架构文档
-   - 记录重要的架构决策
-   - 保持文档与代码同步
+4. **Documentation maintenance**:
+   - Update the architecture document when code changes
+   - Record important architecture decisions
+   - Keep documentation in sync with the code
 
 ---
 
-**文档结束**
+**End of Document**
 
-如有任何疑问或需要协助执行清理任务，请参考[优化建议文档](./OPTIMIZATION_RECOMMENDATIONS.md)或咨询架构团队。
+If you have any questions or need help executing cleanup tasks, please refer to the [Optimization Recommendations Document](./OPTIMIZATION_RECOMMENDATIONS.md) or consult the architecture team.

@@ -64,9 +64,9 @@ import {
 const selection: AgentSelectionContext = {
   source: 'library_table',
   libraryId: 'lib-1',
-  libraryName: '角色表',
-  sectionName: '基础信息',
-  selectionLabel: '角色表 · 第 2-3 行 · 2 列',
+  libraryName: 'Characters',
+  sectionName: 'Basic Info',
+  selectionLabel: 'Characters · Rows 2-3 · 2 columns',
   mode: 'cells',
   selectedCellCount: 4,
   selectedRowCount: 2,
@@ -98,7 +98,7 @@ describe('selection context helpers', () => {
 
   it('formats complete selected data for the LLM with exact identifiers', () => {
     const text = formatSelectionContextForLlm(selection);
-    expect(text).toContain('角色表 · 第 2-3 行 · 2 列');
+    expect(text).toContain('Characters · Rows 2-3 · 2 columns');
     expect(text).toContain('"assetId": "asset-1"');
     expect(text).toContain('"fieldId": "field-name"');
     expect(text).toContain('"displayValue": "Alice"');
@@ -247,17 +247,17 @@ const toolContext = {
   userId: 'user-1',
   projectId: 'project-1',
   conversationId: 'conv-1',
-  currentLibraryName: '角色表',
-  currentSectionName: '基础信息',
+  currentLibraryName: 'Characters',
+  currentSectionName: 'Basic Info',
   userRole: 'editor',
 } as ToolContext;
 
 const selection: AgentSelectionContext = {
   source: 'library_table',
   libraryId: 'lib-1',
-  libraryName: '角色表',
-  sectionName: '基础信息',
-  selectionLabel: '角色表 · 第 2 行 · 1 列',
+  libraryName: 'Characters',
+  sectionName: 'Basic Info',
+  selectionLabel: 'Characters · Row 2 · 1 column',
   mode: 'cells',
   selectedCellCount: 1,
   selectedRowCount: 1,
@@ -282,11 +282,11 @@ const selection: AgentSelectionContext = {
 
 describe('augmentUserMessageForLlm with selected table data', () => {
   it('injects selection context before the raw message for this turn', () => {
-    const augmented = augmentUserMessageForLlm('帮我改一下', toolContext, selection);
-    expect(augmented).toContain('[User is viewing: active library "角色表"');
-    expect(augmented).toContain('[User attached selected table data for this message: 角色表 · 第 2 行 · 1 列.');
+    const augmented = augmentUserMessageForLlm('Help me change this', toolContext, selection);
+    expect(augmented).toContain('[User is viewing: active library "Characters"');
+    expect(augmented).toContain('[User attached selected table data for this message: Characters · Row 2 · 1 column.');
     expect(augmented).toContain('"assetId": "asset-1"');
-    expect(augmented.endsWith('帮我改一下')).toBe(true);
+    expect(augmented.endsWith('Help me change this')).toBe(true);
   });
 
   it('stripContextAugmentation removes page and selection prefixes', () => {
@@ -427,15 +427,15 @@ describe('buildAgentSelectionContext', () => {
   it('serializes selected cells with row and field identifiers', () => {
     const ctx = buildAgentSelectionContext({
       libraryId: 'lib-1',
-      libraryName: '角色表',
-      sectionName: '基础信息',
+      libraryName: 'Characters',
+      sectionName: 'Basic Info',
       rows,
       visibleProperties: properties,
       selectedCells: new Set<CellKey>(['asset-1-name', 'asset-2-age'] as CellKey[]),
       selectedRowIds: new Set<string>(),
     });
 
-    expect(ctx?.selectionLabel).toBe('角色表 · 选中 2 个单元格');
+    expect(ctx?.selectionLabel).toBe('Characters · 2 cells selected');
     expect(ctx?.mode).toBe('cells');
     expect(ctx?.rows).toHaveLength(2);
     expect(ctx?.rows[0].cells[0]).toMatchObject({
@@ -449,15 +449,15 @@ describe('buildAgentSelectionContext', () => {
   it('serializes selected rows using all visible active-section cells', () => {
     const ctx = buildAgentSelectionContext({
       libraryId: 'lib-1',
-      libraryName: '角色表',
-      sectionName: '基础信息',
+      libraryName: 'Characters',
+      sectionName: 'Basic Info',
       rows,
       visibleProperties: properties,
       selectedCells: new Set<CellKey>(['asset-1-name'] as CellKey[]),
       selectedRowIds: new Set(['asset-1', 'asset-2']),
     });
 
-    expect(ctx?.selectionLabel).toBe('角色表 · 第 2-3 行');
+    expect(ctx?.selectionLabel).toBe('Characters · Rows 2-3');
     expect(ctx?.mode).toBe('rows');
     expect(ctx?.selectedCellCount).toBe(4);
     expect(ctx?.rows[0].cells.map((cell) => cell.fieldKey)).toEqual(['name', 'age']);
@@ -466,7 +466,7 @@ describe('buildAgentSelectionContext', () => {
   it('returns null when no cells or rows are selected', () => {
     expect(buildAgentSelectionContext({
       libraryId: 'lib-1',
-      libraryName: '角色表',
+      libraryName: 'Characters',
       rows,
       visibleProperties: properties,
       selectedCells: new Set<CellKey>(),
@@ -546,12 +546,12 @@ function rowLabelPart(rows: AssetRow[]): string | null {
     .sort((a, b) => a - b);
   if (indices.length !== rows.length || indices.length === 0) return null;
   const contiguous = indices.every((index, i) => i === 0 || index === indices[i - 1] + 1);
-  if (contiguous) return indices.length === 1 ? `第 ${indices[0]} 行` : `第 ${indices[0]}-${indices[indices.length - 1]} 行`;
-  return `选中 ${indices.length} 行`;
+  if (contiguous) return indices.length === 1 ? `Row ${indices[0]}` : `Rows ${indices[0]}-${indices[indices.length - 1]}`;
+  return `${indices.length} rows selected`;
 }
 
 export function buildAgentSelectionContext(input: BuildAgentSelectionContextInput): AgentSelectionContext | null {
-  const tableName = input.libraryName || '当前表';
+  const tableName = input.libraryName || 'Current table';
   const rowById = new Map(input.rows.map((row) => [row.id, row]));
   const propByKey = new Map(input.visibleProperties.map((property) => [property.key, property]));
 
@@ -564,7 +564,7 @@ export function buildAgentSelectionContext(input: BuildAgentSelectionContextInpu
       name: row.name,
       cells: input.visibleProperties.map((property) => buildCell(row, property)),
     }));
-    const rowLabel = rowLabelPart(selectedRows) ?? `选中 ${selectedRows.length} 行`;
+    const rowLabel = rowLabelPart(selectedRows) ?? `${selectedRows.length} rows selected`;
     return {
       source: 'library_table',
       libraryId: input.libraryId,
@@ -608,7 +608,7 @@ export function buildAgentSelectionContext(input: BuildAgentSelectionContextInpu
     libraryId: input.libraryId,
     libraryName: input.libraryName,
     sectionName: input.sectionName,
-    selectionLabel: `${tableName} · 选中 ${selectedCellCount} 个单元格`,
+    selectionLabel: `${tableName} · ${selectedCellCount} cells selected`,
     mode: 'cells',
     selectedCellCount,
     selectedRowCount: rows.length,
@@ -646,11 +646,11 @@ Append this test to `tests/unit/agent/user-message-display.test.ts`:
 
 ```ts
 it('shows selected table context as a compact attachment', () => {
-  const display = deriveUserDisplay('请分析', undefined, {
+  const display = deriveUserDisplay('Please analyze', undefined, {
     source: 'library_table',
     libraryId: 'lib-1',
-    libraryName: '角色表',
-    selectionLabel: '角色表 · 第 2-3 行 · 2 列',
+    libraryName: 'Characters',
+    selectionLabel: 'Characters · Rows 2-3 · 2 columns',
     mode: 'cells',
     selectedCellCount: 4,
     selectedRowCount: 2,
@@ -658,11 +658,11 @@ it('shows selected table context as a compact attachment', () => {
   });
 
   expect(display).toEqual({
-    text: '请分析',
+    text: 'Please analyze',
     attachments: [
       {
         kind: 'selection',
-        fileName: '角色表 · 第 2-3 行 · 2 列',
+        fileName: 'Characters · Rows 2-3 · 2 columns',
       },
     ],
   });

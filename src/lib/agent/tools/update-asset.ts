@@ -184,7 +184,7 @@ export const updateAsset: AgentTool = {
       rowIndex: {
         type: 'number',
         description:
-          'UI row number to update (1 = first row). Use this when the user says "第一行" / "row 1". Preferred over assetId for row targeting.',
+          'UI row number to update (1 = first row). Use this when the user says "row 1". Preferred over assetId for row targeting.',
       },
       assetId: { type: 'string', description: 'UUID of the asset to update. Omit when rowIndex is provided.' },
       name: { type: 'string', description: 'New asset name (optional)' },

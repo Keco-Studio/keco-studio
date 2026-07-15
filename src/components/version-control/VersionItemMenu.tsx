@@ -185,7 +185,7 @@ export function VersionItemMenu({ version, libraryId, externalMenuPosition, onEx
         onClose={() => setShowDeleteModal(false)}
         onSuccess={() => {
           setShowDeleteModal(false);
-          // 如果删除的版本是当前选中的版本，则回到 current version
+          // If the deleted version is the currently selected one, fall back to the current version
           if (isSelected && onVersionSelect) {
             onVersionSelect(null);
           }

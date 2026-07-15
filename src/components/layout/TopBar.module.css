@@ -53,7 +53,7 @@
 }
 
 .searchLabelFocused .searchIcon {
-  /* 把图标颜色调整为与边框相近的蓝色 */
+  /* Match the icon color to the border's blue */
   filter: brightness(0) saturate(100%) invert(46%) sepia(96%) saturate(1708%) hue-rotate(182deg) brightness(101%) contrast(99%);
 }
 

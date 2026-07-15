@@ -68,7 +68,7 @@ export async function writeStoryXlsxWorkbook(
 }
 
 function descriptionForColumn(column: string): string {
-  if (/^Option\d+_Commands$/.test(column)) return '选项指令';
+  if (/^Option\d+_Commands$/.test(column)) return 'Option commands';
   if (/^Option\d+(?:_Next)?$/.test(column)) return '';
   return STORY_COLUMN_DESCRIPTIONS[column] ?? '';
 }

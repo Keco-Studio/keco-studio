@@ -151,7 +151,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const createAsset: AgentTool = {
   name: 'create_asset',
   description:
-    'Add a new asset (row) to a library. Reuses the first empty UI row when one exists (row 1 if blank), otherwise appends. Use semantic field names in propertyValues (e.g. {"类型": "character"}). Reference fields cannot target empty assets. libraryName defaults to the user\'s active library from page context when omitted. Params: name (required), libraryName (optional), propertyValues.',
+    'Add a new asset (row) to a library. Reuses the first empty UI row when one exists (row 1 if blank), otherwise appends. Use semantic field names in propertyValues (e.g. {"type": "character"}). Reference fields cannot target empty assets. libraryName defaults to the user\'s active library from page context when omitted. Params: name (required), libraryName (optional), propertyValues.',
   category: 'write',
   confirmationMode: 'pre_execute',
   requiredPermission: 'editor',

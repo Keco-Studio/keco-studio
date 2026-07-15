@@ -2,7 +2,7 @@
 
 ## Context
 
-Real-environment profiling of the 17-row `深海灯塔 Type E2E` story library showed that Supabase reads complete in hundreds of milliseconds, while `next dev` loads about 17.4 MB of decoded JavaScript and can block the main thread for 18.9 seconds. Eight development chunks attributable to `mathjs` account for about 2.1 MB. The production build switches to Script view in 67-116 ms, so this change targets client bundle and development responsiveness without changing story playback.
+Real-environment profiling of the 17-row `Deep-Sea Lighthouse Type E2E` story library showed that Supabase reads complete in hundreds of milliseconds, while `next dev` loads about 17.4 MB of decoded JavaScript and can block the main thread for 18.9 seconds. Eight development chunks attributable to `mathjs` account for about 2.1 MB. The production build switches to Script view in 67-116 ms, so this change targets client bundle and development responsiveness without changing story playback.
 
 ## Decision
 

@@ -1,299 +1,299 @@
-# Keco Studio - 架构文档总览
+# Keco Studio - Architecture Documentation Overview
 
-**创建日期**: 2026-01-30  
-**文档版本**: 1.0  
-**项目分支**: `001-architecture-review`
-
----
-
-## 📚 文档索引
-
-本目录包含Keco Studio项目的完整架构分析和优化建议文档。所有文档基于2026年1月30日的项目状态进行分析。
-
-### 核心文档
-
-1. **[项目架构文档](./ARCHITECTURE.md)** 📘
-   - **内容**: 完整的系统架构说明，包括技术栈、目录结构、核心模块、数据流、已知痛点等
-   - **页数**: ~500行
-   - **目标读者**: 所有开发团队成员、新加入的开发者
-   - **用途**: 理解项目整体结构，快速定位代码，了解系统运作方式
-
-2. **[优化建议文档](./OPTIMIZATION_RECOMMENDATIONS.md)** 📗
-   - **内容**: 24个具体的优化建议，按严重程度分类（Critical: 3, High: 8, Medium: 6, Low: 5）
-   - **页数**: ~1000行
-   - **目标读者**: 技术负责人、架构师、开发团队
-   - **用途**: 制定技术债务清理计划，提升代码质量和系统性能
-
-3. **[文件清理列表归档](./FILE_CLEANUP_LIST.md)** 📕
-   - **内容**: 2026-01-30的一次性清理建议归档；当前清理以 GitHub issues #177、#178、#180 的 spec 和 PR 记录为准
-   - **页数**: ~400行
-   - **目标读者**: 项目维护者、代码审查人员
-   - **用途**: 减少代码库大小，提升可维护性，清理技术债务
-
-4. **[协作架构总览](./COLLABORATION_OVERVIEW.md)** 📙
-   - **内容**: 当前项目协作、库表协作、实时广播、Presence、Yjs 状态边界的代码索引
-   - **页数**: ~200行
-   - **目标读者**: 维护协作功能和实时表格的开发者
-   - **用途**: 理解当前协作实现和相关源码入口
-
-5. **[协作表格统一设计记录](./collaboration-table-unified-design.md)** 📓
-   - **内容**: 协作表格行顺序统一方案的历史设计记录，以及当前实现规则
-   - **页数**: ~60行
-   - **目标读者**: 排查表格协作一致性问题的开发者
-   - **用途**: 了解表格协作行集合、占位行、Realtime 收敛的设计背景
+**Created**: 2026-01-30  
+**Document Version**: 1.0  
+**Project Branch**: `001-architecture-review`
 
 ---
 
-## 🎯 文档覆盖范围
+## 📚 Document Index
 
-### 架构文档涵盖
+This directory contains the complete architecture analysis and optimization recommendation documents for the Keco Studio project. All documents are based on the project state as of January 30, 2026.
 
-- ✅ **系统架构**: 4层架构（Client, State & Collaboration, Backend, Persistence）
-- ✅ **技术栈**: 完整的前端、后端、开发工具列表
-- ✅ **目录结构**: 详细的目录说明和文件组织
-- ✅ **核心模块**: 8个主要功能模块的详细说明
-- ✅ **数据库架构**: ER图和15+个核心表说明
-- ✅ **关键数据流**: 4个关键业务流程的详细流程图
-- ✅ **实时协作**: Yjs + Supabase双层架构说明
-- ✅ **认证授权**: 完整的权限模型和RLS策略
-- ✅ **API路由**: 12个API端点列表和设计模式
-- ✅ **状态管理**: 5层状态管理架构
-- ✅ **测试架构**: E2E测试结构和覆盖范围
-- ✅ **已知痛点**: 9个主要痛点的详细分析
+### Core Documents
 
-### 优化建议涵盖
+1. **[Project Architecture Document](./ARCHITECTURE.md)** 📘
+   - **Content**: Complete system architecture description, including tech stack, directory structure, core modules, data flows, known pain points, etc.
+   - **Length**: ~500 lines
+   - **Target Audience**: All development team members, new developers joining the team
+   - **Purpose**: Understand the overall project structure, quickly locate code, and learn how the system works
 
-- ✅ **Critical级别**: 3个必须立即解决的问题
-  - 超大组件重构（Sidebar: 2330行, LibraryAssetsTable: 2335行）
-  - TypeScript严格模式启用
-- ✅ **High级别**: 8个重要优化
-  - 目录结构统一
-  - 虚拟化表格渲染
-  - 状态同步优化
-  - 单元测试覆盖
-  - 文件上传安全增强
-- ✅ **Medium级别**: 6个中等优先级优化
-- ✅ **Low级别**: 5个长期改进建议
-- ✅ **Security**: 2个安全相关优化
-- ✅ **实施路线图**: 4个阶段的详细执行计划
+2. **[Optimization Recommendations Document](./OPTIMIZATION_RECOMMENDATIONS.md)** 📗
+   - **Content**: 24 specific optimization recommendations, categorized by severity (Critical: 3, High: 8, Medium: 6, Low: 5)
+   - **Length**: ~1000 lines
+   - **Target Audience**: Tech leads, architects, development team
+   - **Purpose**: Develop a technical debt cleanup plan, improve code quality and system performance
 
-### 文件清理列表归档涵盖
+3. **[File Cleanup List Archive](./FILE_CLEANUP_LIST.md)** 📕
+   - **Content**: Archive of a one-time cleanup recommendation from 2026-01-30; current cleanup is governed by the specs and PR records of GitHub issues #177, #178, and #180
+   - **Length**: ~400 lines
+   - **Target Audience**: Project maintainers, code reviewers
+   - **Purpose**: Reduce codebase size, improve maintainability, clean up technical debt
 
-- ✅ **Safe to Remove**: 3个可安全删除的文件
-  - 开发测试页面（realtime-test）
-  - 旧目录结构（contexts/, hooks/）
-- ✅ **Needs Review**: 8个需要审查的文件/目录
-  - 可能废弃的路由
-  - 重复的种子数据文件
-  - 旧的架构文档
-  - 临时文件目录
-- ✅ **Consider Refactoring**: 6个需要重构的组件
-  - 超大组件（Sidebar, LibraryAssetsTable, LibraryDataContext）
-  - 字段定义组件
-  - 存储适配器
-- ✅ **Consolidate**: 4组需要合并整理的文件
-  - 版本控制组件
-  - Service层统一导出
-  - 测试Page Object
-  - 类型定义统一管理
+4. **[Collaboration Architecture Overview](./COLLABORATION_OVERVIEW.md)** 📙
+   - **Content**: Code index for current project collaboration, library table collaboration, realtime broadcast, Presence, and Yjs state boundaries
+   - **Length**: ~200 lines
+   - **Target Audience**: Developers maintaining collaboration features and realtime tables
+   - **Purpose**: Understand the current collaboration implementation and related source code entry points
+
+5. **[Collaboration Table Unified Design Record](./collaboration-table-unified-design.md)** 📓
+   - **Content**: Historical design record of the unified row-ordering approach for collaboration tables, plus the current implementation rules
+   - **Length**: ~60 lines
+   - **Target Audience**: Developers troubleshooting table collaboration consistency issues
+   - **Purpose**: Understand the design background of table collaboration row sets, placeholder rows, and Realtime convergence
 
 ---
 
-## 📊 关键统计数据
+## 🎯 Documentation Coverage
 
-### 项目规模
+### Architecture Document Covers
 
-| 指标 | 数值 |
+- ✅ **System Architecture**: 4-layer architecture (Client, State & Collaboration, Backend, Persistence)
+- ✅ **Tech Stack**: Complete list of frontend, backend, and development tools
+- ✅ **Directory Structure**: Detailed directory descriptions and file organization
+- ✅ **Core Modules**: Detailed descriptions of 8 major functional modules
+- ✅ **Database Architecture**: ER diagram and descriptions of 15+ core tables
+- ✅ **Key Data Flows**: Detailed flow diagrams of 4 key business processes
+- ✅ **Realtime Collaboration**: Yjs + Supabase dual-layer architecture description
+- ✅ **Authentication & Authorization**: Complete permission model and RLS policies
+- ✅ **API Routes**: List of 12 API endpoints and design patterns
+- ✅ **State Management**: 5-layer state management architecture
+- ✅ **Testing Architecture**: E2E test structure and coverage
+- ✅ **Known Pain Points**: Detailed analysis of 9 major pain points
+
+### Optimization Recommendations Cover
+
+- ✅ **Critical Level**: 3 issues that must be addressed immediately
+  - Oversized component refactoring (Sidebar: 2330 lines, LibraryAssetsTable: 2335 lines)
+  - Enabling TypeScript strict mode
+- ✅ **High Level**: 8 important optimizations
+  - Directory structure unification
+  - Virtualized table rendering
+  - State synchronization optimization
+  - Unit test coverage
+  - File upload security hardening
+- ✅ **Medium Level**: 6 medium-priority optimizations
+- ✅ **Low Level**: 5 long-term improvement recommendations
+- ✅ **Security**: 2 security-related optimizations
+- ✅ **Implementation Roadmap**: Detailed execution plan across 4 phases
+
+### File Cleanup List Archive Covers
+
+- ✅ **Safe to Remove**: 3 files that can be safely deleted
+  - Development test page (realtime-test)
+  - Legacy directory structure (contexts/, hooks/)
+- ✅ **Needs Review**: 8 files/directories requiring review
+  - Potentially deprecated routes
+  - Duplicate seed data files
+  - Old architecture documents
+  - Temporary file directories
+- ✅ **Consider Refactoring**: 6 components needing refactoring
+  - Oversized components (Sidebar, LibraryAssetsTable, LibraryDataContext)
+  - Field definition components
+  - Storage adapters
+- ✅ **Consolidate**: 4 groups of files needing consolidation
+  - Version control components
+  - Unified Service layer exports
+  - Test Page Objects
+  - Unified type definition management
+
+---
+
+## 📊 Key Statistics
+
+### Project Scale
+
+| Metric | Value |
 |------|------|
-| 代码行数 | ~30,000+ 行 |
-| TypeScript文件 | 73 个 .ts 文件 |
-| React组件 | 82 个 .tsx 文件 |
-| Service层 | 13 个服务文件 |
-| 数据库表 | 15+ 个核心表 |
-| 数据库迁移 | 40+ 个迁移文件 |
-| E2E测试 | 10+ 个测试规格 |
-| 依赖包 | 30+ 个生产依赖 |
+| Lines of code | ~30,000+ lines |
+| TypeScript files | 73 .ts files |
+| React components | 82 .tsx files |
+| Service layer | 13 service files |
+| Database tables | 15+ core tables |
+| Database migrations | 40+ migration files |
+| E2E tests | 10+ test specs |
+| Dependencies | 30+ production dependencies |
 
-### 识别问题
+### Identified Issues
 
-| 类型 | 数量 | 严重程度 |
+| Type | Count | Severity |
 |------|------|---------|
-| 超大组件（>500行） | 5 个 | Critical/High |
-| 目录结构问题 | 3 处 | High |
-| 性能问题 | 5 个 | High/Medium |
-| 安全问题 | 2 个 | High |
-| 代码质量问题 | 8 个 | Medium/Low |
-| 可删除文件 | 21 项 | - |
+| Oversized components (>500 lines) | 5 | Critical/High |
+| Directory structure issues | 3 | High |
+| Performance issues | 5 | High/Medium |
+| Security issues | 2 | High |
+| Code quality issues | 8 | Medium/Low |
+| Removable files | 21 items | - |
 
-### 预期改进
+### Expected Improvements
 
-| 指标 | 当前 | 优化后 | 提升 |
+| Metric | Current | After Optimization | Improvement |
 |------|------|--------|------|
-| 代码可维护性 | 中等 | 高 | +90% |
-| Bug定位效率 | 中等 | 高 | +70% |
-| 渲染性能 | 中等 | 高 | +80% |
-| 测试覆盖率 | <10% | >70% | +700% |
-| 代码库大小 | ~30,000行 | ~28,950行 | -3.5% |
-| 开发效率 | 中等 | 高 | +50% |
+| Code maintainability | Medium | High | +90% |
+| Bug localization efficiency | Medium | High | +70% |
+| Rendering performance | Medium | High | +80% |
+| Test coverage | <10% | >70% | +700% |
+| Codebase size | ~30,000 lines | ~28,950 lines | -3.5% |
+| Development efficiency | Medium | High | +50% |
 
 ---
 
-## 🚀 快速开始
+## 🚀 Quick Start
 
-### 新加入的开发者
+### New Developers
 
-1. **首先阅读**: [架构文档](./ARCHITECTURE.md)
-   - 花30分钟了解系统整体架构
-   - 重点关注"核心模块"和"关键数据流"章节
-   - 理解项目使用的技术栈
+1. **Read first**: [Architecture Document](./ARCHITECTURE.md)
+   - Spend 30 minutes understanding the overall system architecture
+   - Focus on the "Core Modules" and "Key Data Flows" sections
+   - Understand the tech stack used by the project
 
-2. **然后查看**: [优化建议文档](./OPTIMIZATION_RECOMMENDATIONS.md)
-   - 了解当前项目的技术债务
-   - 理解为什么某些代码写成这样
-   - 避免在已知问题区域引入新bug
+2. **Then review**: [Optimization Recommendations Document](./OPTIMIZATION_RECOMMENDATIONS.md)
+   - Learn about the project's current technical debt
+   - Understand why certain code is written the way it is
+   - Avoid introducing new bugs in known problem areas
 
-3. **如需重构**: 查看当前 GitHub issue/spec
-   - 不要直接执行归档清理列表
-   - 文件和依赖清理以 issues #177、#178、#180 的逐项核查为准
-   - 架构重构建议仍可参考优化建议文档
+3. **If refactoring is needed**: Check the current GitHub issue/spec
+   - Do not execute the archived cleanup list directly
+   - File and dependency cleanup is governed by the item-by-item verification in issues #177, #178, and #180
+   - Architecture refactoring recommendations can still refer to the optimization recommendations document
 
-### 技术负责人
+### Tech Leads
 
-1. **制定优化计划**: 
-   - 阅读[优化建议文档](./OPTIMIZATION_RECOMMENDATIONS.md)的"实施优先级"章节
-   - 根据团队规模和项目紧急程度选择优化任务
-   - 参考"优化路线图"制定4-6个月的改进计划
+1. **Develop an optimization plan**: 
+   - Read the "Implementation Priorities" section of the [Optimization Recommendations Document](./OPTIMIZATION_RECOMMENDATIONS.md)
+   - Choose optimization tasks based on team size and project urgency
+   - Refer to the "Optimization Roadmap" to develop a 4-6 month improvement plan
 
-2. **开始清理**:
-   - 按照当前 issue/spec 的逐项核查结果进行
-   - 从"安全清理"开始，逐步推进
-   - 每个阶段都要充分测试
+2. **Start cleanup**:
+   - Proceed according to the item-by-item verification results in the current issue/spec
+   - Start with "safe cleanup" and progress step by step
+   - Test thoroughly at each stage
 
-3. **持续改进**:
-   - 建立代码审查规范
-   - 定期更新架构文档
-   - 跟踪优化效果
+3. **Continuous improvement**:
+   - Establish code review standards
+   - Update architecture documentation regularly
+   - Track optimization outcomes
 
 ---
 
-## 📋 文档使用建议
+## 📋 Documentation Usage Recommendations
 
-### 日常开发
+### Daily Development
 
-- **修改bug时**: 先查架构文档，理解模块关系，避免引入新问题
-- **添加功能时**: 参考架构文档的设计模式，保持代码一致性
-- **性能优化时**: 查看优化建议文档中的相关建议
+- **When fixing bugs**: Check the architecture document first to understand module relationships and avoid introducing new issues
+- **When adding features**: Refer to the design patterns in the architecture document to keep code consistent
+- **When optimizing performance**: Check the relevant recommendations in the optimization recommendations document
 
 ### Code Review
 
-- **审查PR时**: 参考当前 issue/spec，确保新代码放在正确位置
-- **架构变更时**: 更新架构文档，保持文档与代码同步
-- **重构时**: 参考优化建议，确保朝正确方向改进
+- **When reviewing PRs**: Refer to the current issue/spec to ensure new code is placed in the right location
+- **When making architecture changes**: Update the architecture document to keep documentation in sync with the code
+- **When refactoring**: Refer to the optimization recommendations to ensure improvements move in the right direction
 
-### 技术决策
+### Technical Decisions
 
-- **选择技术方案时**: 参考架构文档中的"技术栈详解"
-- **处理技术债务时**: 参考优化建议文档的优先级
-- **删除文件时**: 参考当前 issue/spec 的分类和证据
-
----
-
-## ⚠️ 重要提醒
-
-### 文档时效性
-
-- 📅 **文档基准日期**: 2026-01-30
-- 📅 **建议更新周期**: 每季度或重大架构变更时
-- 📅 **下次审查**: 2026-10-31（建议）
-
-### 执行建议前须知
-
-1. **⚠️ 创建Git分支**: 任何删除或重构操作前必须创建新分支
-2. **⚠️ 充分测试**: 执行`npm run build`和`npm run test:e2e`
-3. **⚠️ 代码审查**: 重要变更需要团队审查
-4. **⚠️ 备份数据**: 数据库相关操作前做好备份
-5. **⚠️ 咨询团队**: 不确定的文件删除要先咨询
-
-### 不要盲目执行
-
-- ❌ 不要一次性删除所有建议的文件
-- ❌ 不要跳过测试直接合并到主分支
-- ❌ 不要在不理解的情况下修改核心逻辑
-- ❌ 不要忽略"Needs Review"的警告
+- **When choosing technical solutions**: Refer to "Tech Stack Details" in the architecture document
+- **When handling technical debt**: Refer to the priorities in the optimization recommendations document
+- **When deleting files**: Refer to the categorization and evidence in the current issue/spec
 
 ---
 
-## 📞 获取帮助
+## ⚠️ Important Reminders
 
-### 问题咨询
+### Documentation Freshness
 
-- **架构问题**: 查阅[架构文档](./ARCHITECTURE.md)的"已知痛点"章节
-- **优化建议**: 查阅[优化建议文档](./OPTIMIZATION_RECOMMENDATIONS.md)找到相关建议
-- **文件删除**: 查阅当前 issue/spec 的分类说明；[文件清理列表](./FILE_CLEANUP_LIST.md)仅作历史背景
+- 📅 **Documentation baseline date**: 2026-01-30
+- 📅 **Recommended update cycle**: Quarterly or upon major architecture changes
+- 📅 **Next review**: 2026-10-31 (recommended)
 
-### 文档反馈
+### Before Acting on Recommendations
 
-如果发现文档有错误、过时或需要补充的内容，请：
-1. 创建Issue说明问题
-2. 或直接提PR更新文档
-3. 联系架构团队进行审查
+1. **⚠️ Create a Git branch**: Always create a new branch before any deletion or refactoring
+2. **⚠️ Test thoroughly**: Run `npm run build` and `npm run test:e2e`
+3. **⚠️ Code review**: Important changes require team review
+4. **⚠️ Back up data**: Back up before any database-related operations
+5. **⚠️ Consult the team**: Consult first before deleting files you are unsure about
 
----
+### Do Not Execute Blindly
 
-## 📈 后续计划
-
-### Phase 1: 基础重构（月1-2）
-- ✅ 文档已完成
-- ⏳ 执行超大组件拆分
-- ⏳ 启用TypeScript严格模式
-- ⏳ 统一目录结构
-
-### Phase 2: 性能与测试（月3-4）
-- ⏳ 虚拟化表格渲染
-- ⏳ 优化状态同步
-- ⏳ 增加单元测试覆盖
-
-### Phase 3: 安全与体验（月5-6）
-- ⏳ 文件上传安全增强
-- ⏳ 审计日志实施
-- ⏳ 错误处理统一
-
-### Phase 4: 持续改进（月7+）
-- ⏳ 性能监控
-- ⏳ 代码质量工具
-- ⏳ 新功能开发
+- ❌ Do not delete all recommended files at once
+- ❌ Do not skip testing and merge directly into the main branch
+- ❌ Do not modify core logic without understanding it
+- ❌ Do not ignore "Needs Review" warnings
 
 ---
 
-## 📄 文档版本历史
+## 📞 Getting Help
 
-| 版本 | 日期 | 变更说明 |
+### Questions
+
+- **Architecture questions**: See the "Known Pain Points" section of the [Architecture Document](./ARCHITECTURE.md)
+- **Optimization recommendations**: See the [Optimization Recommendations Document](./OPTIMIZATION_RECOMMENDATIONS.md) to find relevant recommendations
+- **File deletion**: See the categorization notes in the current issue/spec; the [File Cleanup List](./FILE_CLEANUP_LIST.md) is for historical context only
+
+### Documentation Feedback
+
+If you find errors, outdated content, or missing content in the documentation, please:
+1. Create an issue describing the problem
+2. Or submit a PR directly to update the documentation
+3. Contact the architecture team for review
+
+---
+
+## 📈 Follow-up Plan
+
+### Phase 1: Foundational Refactoring (Months 1-2)
+- ✅ Documentation completed
+- ⏳ Split oversized components
+- ⏳ Enable TypeScript strict mode
+- ⏳ Unify directory structure
+
+### Phase 2: Performance & Testing (Months 3-4)
+- ⏳ Virtualized table rendering
+- ⏳ Optimize state synchronization
+- ⏳ Increase unit test coverage
+
+### Phase 3: Security & Experience (Months 5-6)
+- ⏳ File upload security hardening
+- ⏳ Audit log implementation
+- ⏳ Unified error handling
+
+### Phase 4: Continuous Improvement (Months 7+)
+- ⏳ Performance monitoring
+- ⏳ Code quality tooling
+- ⏳ New feature development
+
+---
+
+## 📄 Document Version History
+
+| Version | Date | Changes |
 |------|------|---------|
-| 1.0 | 2026-01-30 | 初始版本：完整的架构文档、优化建议、文件清理列表 |
+| 1.0 | 2026-01-30 | Initial version: complete architecture document, optimization recommendations, file cleanup list |
 
 ---
 
-## 📝 文档维护
+## 📝 Documentation Maintenance
 
-### 维护责任
+### Maintenance Responsibilities
 
-- **架构文档**: 架构团队负责，每季度更新
-- **优化建议**: 技术负责人负责，根据优化进度更新
-- **文件清理列表归档**: 仅保留历史背景；当前清理进度以 GitHub issue/spec 和 PR 记录为准
+- **Architecture Document**: Owned by the architecture team, updated quarterly
+- **Optimization Recommendations**: Owned by the tech lead, updated as optimization progresses
+- **File Cleanup List Archive**: Kept for historical context only; current cleanup progress is governed by GitHub issue/spec and PR records
 
-### 更新触发条件
+### Update Triggers
 
-- 重大架构变更（如引入新的技术栈）
-- 完成重要的优化任务
-- 新加入核心模块
-- 发现文档错误或过时内容
-
----
-
-**文档创建**: AI Assistant (Claude Sonnet 4.5)  
-**审查状态**: ⏳ 待团队审查  
-**批准状态**: ⏳ 待项目mentor批准
+- Major architecture changes (e.g., introducing a new tech stack)
+- Completion of important optimization tasks
+- Addition of new core modules
+- Discovery of documentation errors or outdated content
 
 ---
 
-_更多详细信息，请参阅各个具体文档。如有疑问，请联系架构团队。_
+**Document Author**: AI Assistant (Claude Sonnet 4.5)  
+**Review Status**: ⏳ Pending team review  
+**Approval Status**: ⏳ Pending project mentor approval
+
+---
+
+_For more details, please refer to the individual documents. If you have questions, please contact the architecture team._

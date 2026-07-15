@@ -52,6 +52,10 @@ function buildCell(row: AssetRow, property: PropertyConfig): AgentSelectionCell 
   };
 }
 
+function rowCountLabel(count: number): string {
+  return count === 1 ? '1 row selected' : `${count} rows selected`;
+}
+
 function rowLabelPart(rows: AssetRow[]): string | null {
   const indices = rows
     .map((row) => row.rowIndex)
@@ -60,11 +64,11 @@ function rowLabelPart(rows: AssetRow[]): string | null {
   if (indices.length === 0 || indices.length !== rows.length) return null;
 
   const contiguous = indices.every((index, i) => i === 0 || index === indices[i - 1] + 1);
-  if (!contiguous) return `选中 ${indices.length} 行`;
+  if (!contiguous) return rowCountLabel(indices.length);
 
   const first = indices[0];
   const last = indices[indices.length - 1];
-  return first === last ? `第 ${first} 行` : `第 ${first}-${last} 行`;
+  return first === last ? `Row ${first}` : `Rows ${first}-${last}`;
 }
 
 function resolveCellKey(
@@ -87,7 +91,7 @@ export function buildAgentSelectionContext(
   input: BuildAgentSelectionContextInput
 ): AgentSelectionContext | null {
   if (!input.libraryId) return null;
-  const tableName = input.libraryName || '当前表';
+  const tableName = input.libraryName || 'Current table';
 
   if (input.selectedRowIds.size > 0) {
     const selectedRows = input.rows.filter((row) => input.selectedRowIds.has(row.id));
@@ -98,7 +102,7 @@ export function buildAgentSelectionContext(
       name: row.name,
       cells: input.visibleProperties.map((property) => buildCell(row, property)),
     }));
-    const rowLabel = rowLabelPart(selectedRows) ?? `选中 ${selectedRows.length} 行`;
+    const rowLabel = rowLabelPart(selectedRows) ?? rowCountLabel(selectedRows.length);
     return {
       source: 'library_table',
       libraryId: input.libraryId,
@@ -145,7 +149,7 @@ export function buildAgentSelectionContext(
     libraryId: input.libraryId,
     libraryName: input.libraryName,
     sectionName: input.sectionName,
-    selectionLabel: `${tableName} · 选中 ${selectedCellCount} 个单元格`,
+    selectionLabel: `${tableName} · ${selectedCellCount === 1 ? '1 cell selected' : `${selectedCellCount} cells selected`}`,
     mode: 'cells',
     selectedCellCount,
     selectedRowCount: rows.length,

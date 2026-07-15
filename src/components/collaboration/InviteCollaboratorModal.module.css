@@ -12,7 +12,7 @@
   margin-bottom: 0;
 }
 
-/* 下拉框白色背景 */
+/* White background for the dropdown */
 .roleItem :global(.ant-select-selector) {
   background-color: #ffffff !important;
 }

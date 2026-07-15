@@ -1,5 +1,5 @@
 ---
-description: 生成代码时对齐依赖版本与兼容性；模块化组织；注释与用户可见文案（含 msg）使用规范英语
+description: When generating code, align with dependency versions and compatibility; organize modularly; write comments and user-visible copy (including msg) in proper English
 alwaysApply: true
 ---
 
@@ -36,7 +36,7 @@ alwaysApply: true
 
 ```typescript
 // Bad: vague or non-English in code-facing text
-// 这里处理一下
+// e.g. a vague "handle this here" comment, or a comment written in a non-English language
 ```
 
 ```typescript

@@ -107,9 +107,9 @@ describe('minimal audited story plan integration', () => {
     expect(mockedCompleteLlm).toHaveBeenCalledTimes(1);
     expect(mockedCompleteLlm.mock.calls[0][1].toolName).toBe('submit_story_plan_audit');
     expect(progress.map((event) => event.message).join('\n')).toContain('deterministic story structure');
-    expect(east.contents.join('\n')).toContain('此后余生，你岁岁平安');
-    expect(east.contents.join('\n')).not.toContain('彻底遗忘了自己进山的初衷');
-    expect(west.contents.join('\n')).toContain('彻底遗忘了自己进山的初衷');
-    expect(west.contents.join('\n')).not.toContain('此后余生，你岁岁平安');
+    expect(east.contents.join('\n')).toContain('For the rest of your life you remain safe and untroubled');
+    expect(east.contents.join('\n')).not.toContain('wholly forgotten why you entered the mountains');
+    expect(west.contents.join('\n')).toContain('wholly forgotten why you entered the mountains');
+    expect(west.contents.join('\n')).not.toContain('For the rest of your life you remain safe and untroubled');
   });
 });

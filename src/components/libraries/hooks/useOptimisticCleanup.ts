@@ -158,7 +158,9 @@ export function useOptimisticCleanup({
     }
 
     // Removed: "if row.name !== optimisticUpdate.name then delete optimistic"
-    // That caused 清空 name 列后 refetch 的 row.name='' 与 optimistic.name 旧值不等 → 整行乐观被删 → 其他列回退到 base（其他列恢复）.
+    // That broke clearing the name column: the refetched row.name='' differed from the stale
+    // optimistic.name, so the whole row's optimistic state was deleted and the other columns
+    // reverted to base values (appearing to "restore" themselves).
     // Cleanup now only happens in the first pass when optimistic fully matches row (allMatch).
   }, [rows, rowsSignature, optimisticNewAssets.size, setOptimisticEditUpdates, setOptimisticNewAssets, setOptimisticInsertIndices]);
 }

@@ -48,15 +48,15 @@ describe('buildAgentSelectionContext', () => {
   it('serializes selected cells with row and field identifiers', () => {
     const ctx = buildAgentSelectionContext({
       libraryId: 'lib-1',
-      libraryName: '角色表',
-      sectionName: '基础信息',
+      libraryName: 'Characters',
+      sectionName: 'Basic Info',
       rows,
       visibleProperties: properties,
       selectedCells: new Set<CellKey>(['asset-1-name', 'asset-2-age'] as CellKey[]),
       selectedRowIds: new Set<string>(),
     });
 
-    expect(ctx?.selectionLabel).toBe('角色表 · 选中 2 个单元格');
+    expect(ctx?.selectionLabel).toBe('Characters · 2 cells selected');
     expect(ctx?.mode).toBe('cells');
     expect(ctx?.rows).toHaveLength(2);
     expect(ctx?.rows[0].cells[0]).toMatchObject({
@@ -70,15 +70,15 @@ describe('buildAgentSelectionContext', () => {
   it('serializes selected rows using all visible active-section cells', () => {
     const ctx = buildAgentSelectionContext({
       libraryId: 'lib-1',
-      libraryName: '角色表',
-      sectionName: '基础信息',
+      libraryName: 'Characters',
+      sectionName: 'Basic Info',
       rows,
       visibleProperties: properties,
       selectedCells: new Set<CellKey>(['asset-1-name'] as CellKey[]),
       selectedRowIds: new Set(['asset-1', 'asset-2']),
     });
 
-    expect(ctx?.selectionLabel).toBe('角色表 · 第 2-3 行');
+    expect(ctx?.selectionLabel).toBe('Characters · Rows 2-3');
     expect(ctx?.mode).toBe('rows');
     expect(ctx?.selectedCellCount).toBe(4);
     expect(ctx?.rows[0].cells.map((cell) => cell.fieldKey)).toEqual(['name', 'age']);
@@ -88,7 +88,7 @@ describe('buildAgentSelectionContext', () => {
     expect(
       buildAgentSelectionContext({
         libraryId: 'lib-1',
-        libraryName: '角色表',
+        libraryName: 'Characters',
         rows,
         visibleProperties: properties,
         selectedCells: new Set<CellKey>(),

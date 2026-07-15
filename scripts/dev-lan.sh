@@ -1,116 +1,123 @@
 #!/bin/bash
 
-# 脚本用途：在WSL中启动开发服务器并配置局域网访问
-# 使局域网内的其他设备可以访问开发服务器
+# Purpose: start the dev server in WSL and configure LAN access
+# so other devices on the local network can reach the dev server.
 
 set -e
 
 PORT=3000
-echo "🚀 正在配置WSL局域网访问..."
+echo "🚀 Configuring WSL LAN access..."
 echo ""
 
-# 获取WSL的IP地址
+# Get the WSL IP address
 WSL_IP=$(hostname -I | awk '{print $1}')
 echo "📍 WSL IP: $WSL_IP"
 
-# 获取Windows主机的IP地址（通过/etc/resolv.conf）
+# Get the Windows host IP address (via /etc/resolv.conf)
 WINDOWS_IP=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}')
 echo "📍 Windows Host IP: $WINDOWS_IP"
 
-# 尝试获取Windows的局域网IP（通过PowerShell）
+# Try to get the Windows LAN IP (via PowerShell)
 echo ""
-echo "🔍 正在获取Windows主机的局域网IP地址..."
-LAN_IP=$(powershell.exe -Command "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi','以太网','Ethernet' | Where-Object {(\$_.IPAddress -like '192.168.*') -or (\$_.IPAddress -like '10.*') -or (\$_.IPAddress -like '172.*')} | Select-Object -First 1).IPAddress" 2>/dev/null | tr -d '\r')
+echo "🔍 Detecting the Windows host's LAN IP address..."
+# Note: the Chinese-locale Windows ethernet interface alias (previously matched
+# literally) is no longer included; on Chinese-locale Windows the LAN IP may not
+# be auto-detected and must be looked up manually with ipconfig.
+LAN_IP=$(powershell.exe -Command "(Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias 'Wi-Fi','Ethernet' | Where-Object {(\$_.IPAddress -like '192.168.*') -or (\$_.IPAddress -like '10.*') -or (\$_.IPAddress -like '172.*')} | Select-Object -First 1).IPAddress" 2>/dev/null | tr -d '\r')
 
 if [ -n "$LAN_IP" ]; then
-    echo "✅ Windows局域网IP: $LAN_IP"
+    echo "✅ Windows LAN IP: $LAN_IP"
     echo ""
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-    echo "📱 其他设备可通过以下地址访问："
+    echo "📱 Other devices can access via:"
     echo "   http://$LAN_IP:$PORT"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 else
-    echo "⚠️  无法自动获取局域网IP"
-    echo "   请手动在Windows上运行 ipconfig 查看局域网IP"
+    echo "⚠️  Could not detect the LAN IP automatically"
+    echo "   Run ipconfig on Windows to find the LAN IP manually"
 fi
 
 echo ""
-echo "🔧 正在配置Windows端口转发..."
+echo "🔧 Configuring Windows port forwarding..."
 
-# 检查现有的端口转发规则
+# Check existing port forwarding rules
 EXISTING_PROXY=$(powershell.exe -Command "netsh interface portproxy show v4tov4" 2>/dev/null | grep -i "$PORT")
 
 if [ -n "$EXISTING_PROXY" ]; then
-    echo "   检测到现有端口转发规则："
+    echo "   Found an existing port forwarding rule:"
     echo "   $EXISTING_PROXY"
-    echo "   正在更新规则..."
-    # 删除旧的端口转发规则
+    echo "   Updating the rule..."
+    # Delete the old port forwarding rule
     powershell.exe -Command "netsh interface portproxy delete v4tov4 listenport=$PORT listenaddress=0.0.0.0" 2>/dev/null || true
 fi
 
-# 添加新的端口转发规则：将Windows的端口转发到WSL
+# Add a new port forwarding rule: forward the Windows port to WSL
 PROXY_RESULT=$(powershell.exe -Command "netsh interface portproxy add v4tov4 listenport=$PORT listenaddress=0.0.0.0 connectport=$PORT connectaddress=$WSL_IP" 2>&1)
 
-if echo "$PROXY_RESULT" | grep -q "请求的操作需要提升\|requires elevation"; then
-    echo "⚠️  需要管理员权限配置端口转发"
+# Note: only the English elevation error message is matched; on non-English
+# Windows locales (e.g. Chinese) the elevation prompt may not be detected.
+if echo "$PROXY_RESULT" | grep -q "requires elevation"; then
+    echo "⚠️  Administrator privileges are required to configure port forwarding"
     echo ""
-    echo "   请在管理员PowerShell中运行以下命令："
+    echo "   Run the following command in an administrator PowerShell:"
     echo "   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "   netsh interface portproxy add v4tov4 listenport=$PORT listenaddress=0.0.0.0 connectport=$PORT connectaddress=$WSL_IP"
     echo "   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo ""
-    echo "   配置完成后，按回车继续启动服务器..."
+    echo "   After configuring, press Enter to continue starting the server..."
     read -r
 elif [ $? -eq 0 ]; then
-    echo "✅ 端口转发配置成功"
+    echo "✅ Port forwarding configured successfully"
 fi
 
-# 检查防火墙规则
+# Check firewall rules
 echo ""
-echo "🔥 正在检查Windows防火墙规则..."
+echo "🔥 Checking Windows firewall rules..."
 FIREWALL_RULE_EXISTS=$(powershell.exe -Command "Get-NetFirewallRule -DisplayName 'WSL Dev Server Port $PORT' -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name" 2>/dev/null | tr -d '\r')
 
 if [ -z "$FIREWALL_RULE_EXISTS" ]; then
-    echo "   正在添加防火墙规则..."
+    echo "   Adding a firewall rule..."
     FIREWALL_RESULT=$(powershell.exe -Command "New-NetFirewallRule -DisplayName 'WSL Dev Server Port $PORT' -Direction Inbound -LocalPort $PORT -Protocol TCP -Action Allow" 2>&1)
-    
-    if echo "$FIREWALL_RESULT" | grep -q "请求的操作需要提升\|requires elevation"; then
-        echo "⚠️  需要管理员权限配置防火墙"
+
+    # Note: only the English elevation error message is matched; on non-English
+    # Windows locales (e.g. Chinese) the elevation prompt may not be detected.
+    if echo "$FIREWALL_RESULT" | grep -q "requires elevation"; then
+        echo "⚠️  Administrator privileges are required to configure the firewall"
         echo ""
-        echo "   请在管理员PowerShell中运行以下命令："
+        echo "   Run the following command in an administrator PowerShell:"
         echo "   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "   New-NetFirewallRule -DisplayName 'WSL Dev Server Port $PORT' -Direction Inbound -LocalPort $PORT -Protocol TCP -Action Allow"
         echo "   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo ""
-        echo "   配置完成后，按回车继续启动服务器..."
+        echo "   After configuring, press Enter to continue starting the server..."
         read -r
     elif echo "$FIREWALL_RESULT" | grep -q "Name"; then
-        echo "✅ 防火墙规则添加成功"
+        echo "✅ Firewall rule added successfully"
     fi
 else
-    echo "✅ 防火墙规则已存在"
+    echo "✅ Firewall rule already exists"
 fi
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-echo "🎯 配置完成！正在启动开发服务器..."
+echo "🎯 Configuration complete! Starting the dev server..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# 定义清理函数
+# Define the cleanup function
 cleanup() {
     echo ""
-    echo "🛑 正在清理端口转发规则..."
+    echo "🛑 Cleaning up port forwarding rules..."
     powershell.exe -Command "netsh interface portproxy delete v4tov4 listenport=$PORT listenaddress=0.0.0.0" 2>/dev/null || true
-    echo "✅ 清理完成"
+    echo "✅ Cleanup complete"
     exit 0
 }
 
-# 捕获退出信号
+# Trap exit signals
 trap cleanup SIGINT SIGTERM EXIT
 
-# 启动Next.js开发服务器（监听所有网络接口）
+# Start the Next.js dev server (listen on all network interfaces)
 HOSTNAME=0.0.0.0 npm run dev
 
-# 注意：当服务器停止时，清理函数会自动运行
+# Note: the cleanup function runs automatically when the server stops
 

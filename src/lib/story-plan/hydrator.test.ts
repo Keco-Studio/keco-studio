@@ -15,7 +15,7 @@ describe('story plan hydration', () => {
     const source = segmentStorySource(fixture, 'fixture');
     const plan = tryParseExplicitStory(source)!;
     const document = hydrateStoryDocument(plan, source, {
-      光球: { id: 'guide-id', type: 1 },
+      'Orb of Light': { id: 'guide-id', type: 1 },
     });
 
     expect(document.entryLabel).toBe('Start');
@@ -23,10 +23,10 @@ describe('story plan hydration', () => {
       label: 'Start',
       type: 'dialogue',
       speaker: 'guide-id',
-      content: '你醒了。选一条路。',
+      content: 'You are awake. Pick a path.',
       options: [
         expect.objectContaining({
-          text: '走左边。',
+          text: 'Take the left path.',
           target: 'O1',
           commands: [expect.objectContaining({
             source: '$trust+=1',
@@ -35,13 +35,13 @@ describe('story plan hydration', () => {
             value: 1,
           })],
         }),
-        expect.objectContaining({ text: '走右边。', target: 'O2' }),
+        expect.objectContaining({ text: 'Take the right path.', target: 'O2' }),
       ],
     });
     expect(document.nodes.find((node) => node.label === 'O1A_END')?.next).toBe('Oend');
     expect(document.nodes.find((node) => node.label === 'Oend')).toMatchObject({
       speaker: 'guide-id',
-      content: '你到了。信任值: [trust]。',
+      content: 'You have arrived. Trust: [trust].',
     });
   });
 
@@ -55,7 +55,7 @@ describe('story plan hydration', () => {
       sourceId: 'fixture',
       unitId: 'fixture:0',
       start: 0,
-      end: '光球： “你醒了。选一条路。”'.length,
+      end: 'Orb of Light: "You are awake. Pick a path."'.length,
     }]);
     expect(start.options[0].commands[0].sourceRefs[0]).toMatchObject({
       sourceId: 'fixture',
@@ -69,16 +69,16 @@ describe('story plan hydration', () => {
     const document = hydrateStoryDocument(plan, source);
     const contents = document.nodes.map((node) => node.content);
 
-    expect(contents).not.toContain('左边小路');
-    expect(contents).not.toContain('老人点头');
+    expect(contents).not.toContain('Left trail');
+    expect(contents).not.toContain('The old man nods');
   });
 
   it('adds a shared terminal node so independent endings cannot fall through', () => {
     const source = segmentStorySource([
-      '引导：选择。',
-      '分支一：选择【Left】（left path）',
+      'Guide: Choose.',
+      'Branch 1: Choose [Left] (left path)',
       'Left ending.',
-      '分支二：选择【Right】（right path）',
+      'Branch 2: Choose [Right] (right path)',
       'Right ending.',
     ].join('\n'), 'fixture');
     const speaker = source.segments.find((segment) => segment.kind === 'speaker')!;

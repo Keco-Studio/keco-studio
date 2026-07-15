@@ -4,11 +4,11 @@ import { parseStoryExtraction, type StoryExtraction } from './schema';
 import { materializeStoryExtraction } from './materializer';
 
 const sourceText = [
-  '七号：我们必须选择一条路线。',
-  '- 前往能源舱。选择时执行 $resolve+=1。',
-  '这里开始能源路线。',
-  '你进入能源舱。',
-  '你抵达撤离平台。',
+  'Seven: We must pick a route.',
+  '- Head to the energy bay. When this choice is selected run $resolve+=1',
+  'The energy route begins here.',
+  'You enter the energy bay.',
+  'You reach the evacuation platform.',
 ].join('\n');
 
 function extraction(): StoryExtraction {
@@ -19,7 +19,7 @@ function extraction(): StoryExtraction {
     choices: [{
       id: 'go_energy',
       fromNodeId: 'start',
-      text: '前往能源舱。',
+      text: 'Head to the energy bay.',
       targetNodeId: 'energy',
       sourceUnitIds: ['fixture:1'],
       commandSources: ['$resolve+=1'],
@@ -28,8 +28,8 @@ function extraction(): StoryExtraction {
       {
         id: 'start',
         type: 'dialogue',
-        speaker: '七号',
-        content: '我们必须选择一条路线。',
+        speaker: 'Seven',
+        content: 'We must pick a route.',
         sourceUnitIds: ['fixture:0'],
         commandSources: [],
         nextNodeId: '',
@@ -38,7 +38,7 @@ function extraction(): StoryExtraction {
         id: 'energy',
         type: 'narration',
         speaker: '',
-        content: '你进入能源舱。',
+        content: 'You enter the energy bay.',
         sourceUnitIds: ['fixture:3'],
         commandSources: [],
         nextNodeId: 'end',
@@ -47,7 +47,7 @@ function extraction(): StoryExtraction {
         id: 'end',
         type: 'narration',
         speaker: '',
-        content: '你抵达撤离平台。',
+        content: 'You reach the evacuation platform.',
         sourceUnitIds: ['fixture:4'],
         commandSources: [],
         nextNodeId: '',
@@ -71,11 +71,11 @@ describe('full story extraction materializer', () => {
     expect(document.nodes[0]).toMatchObject({
       label: 'start',
       type: 'dialogue',
-      speaker: '七号',
-      content: '我们必须选择一条路线。',
+      speaker: 'Seven',
+      content: 'We must pick a route.',
       sourceRefs: [{ sourceId: 'fixture', unitId: 'fixture:0' }],
       options: [{
-        text: '前往能源舱。',
+        text: 'Head to the energy bay.',
         target: 'energy',
         commands: [{
           source: '$resolve+=1',
@@ -96,15 +96,15 @@ describe('full story extraction materializer', () => {
   it('normalizes redundant structural ownership when visible evidence uses the unit', () => {
     const value = extraction();
     value.structuralUnitIds.push('fixture:0');
-    expect(materialize(value).nodes[0].content).toBe('我们必须选择一条路线。');
+    expect(materialize(value).nodes[0].content).toBe('We must pick a route.');
   });
 
   it('allows distinct branch outcomes to cite different text from the same source unit', () => {
     const text = [
-      '请选择处理方式。',
-      '- 手动关闭。',
-      '- 远程关闭。',
-      '手动关闭时反应堆恢复稳定；远程关闭时备用灯全部熄灭。',
+      'Pick how to handle it.',
+      '- Shut it down manually.',
+      '- Shut it down remotely.',
+      'Manual shutdown stabilizes the reactor; remote shutdown darkens every backup light.',
     ].join('\n');
     const source = segmentStorySource(text, 'shared');
     const value: StoryExtraction = {
@@ -112,20 +112,20 @@ describe('full story extraction materializer', () => {
       entryNodeId: 'start',
       structuralUnitIds: [],
       choices: [
-        { id: 'manual_choice', fromNodeId: 'start', text: '手动关闭。', targetNodeId: 'manual', sourceUnitIds: ['shared:1'], commandSources: [] },
-        { id: 'remote_choice', fromNodeId: 'start', text: '远程关闭。', targetNodeId: 'remote', sourceUnitIds: ['shared:2'], commandSources: [] },
+        { id: 'manual_choice', fromNodeId: 'start', text: 'Shut it down manually.', targetNodeId: 'manual', sourceUnitIds: ['shared:1'], commandSources: [] },
+        { id: 'remote_choice', fromNodeId: 'start', text: 'Shut it down remotely.', targetNodeId: 'remote', sourceUnitIds: ['shared:2'], commandSources: [] },
       ],
       nodes: [
         {
-          id: 'start', type: 'narration', speaker: '', content: '请选择处理方式。',
+          id: 'start', type: 'narration', speaker: '', content: 'Pick how to handle it.',
           sourceUnitIds: ['shared:0'], commandSources: [], nextNodeId: '',
         },
         {
-          id: 'manual', type: 'narration', speaker: '', content: '手动关闭时反应堆恢复稳定',
+          id: 'manual', type: 'narration', speaker: '', content: 'Manual shutdown stabilizes the reactor',
           sourceUnitIds: ['shared:3'], commandSources: [], nextNodeId: '',
         },
         {
-          id: 'remote', type: 'narration', speaker: '', content: '远程关闭时备用灯全部熄灭',
+          id: 'remote', type: 'narration', speaker: '', content: 'remote shutdown darkens every backup light',
           sourceUnitIds: ['shared:3'], commandSources: [], nextNodeId: '',
         },
       ],
@@ -141,14 +141,14 @@ describe('full story extraction materializer', () => {
   });
 
   it('classifies an omitted pure merge marker as structural evidence', () => {
-    const text = '你抵达平台。\n最终合流：';
+    const text = 'You reach the platform.\nFinal merge:';
     const source = segmentStorySource(text, 'merge');
     const value: StoryExtraction = {
       version: 3,
       entryNodeId: 'end',
       structuralUnitIds: [],
       nodes: [{
-        id: 'end', type: 'narration', speaker: '', content: '你抵达平台。',
+        id: 'end', type: 'narration', speaker: '', content: 'You reach the platform.',
         sourceUnitIds: ['merge:0'], commandSources: [], nextNodeId: '',
       }],
       choices: [],
@@ -158,22 +158,22 @@ describe('full story extraction materializer', () => {
   });
 
   it('removes a visible path-merge control node and reconnects incoming branches', () => {
-    const text = '选择路线。\n- 左路\n- 右路\n左路结束。\n右路结束。\n两条路径最终在大厅合流。\n共同结尾。';
+    const text = 'Pick a route.\n- Left path\n- Right path\nThe left path ends.\nThe right path ends.\nThe two paths finally merge in the hall.\nA shared ending.';
     const source = segmentStorySource(text, 'path-merge');
     const value: StoryExtraction = {
       version: 3,
       entryNodeId: 'start',
       structuralUnitIds: [],
       nodes: [
-        { id: 'start', type: 'narration', speaker: '', content: '选择路线。', sourceUnitIds: ['path-merge:0'], commandSources: [], nextNodeId: '' },
-        { id: 'left', type: 'narration', speaker: '', content: '左路结束。', sourceUnitIds: ['path-merge:3'], commandSources: [], nextNodeId: 'merge' },
-        { id: 'right', type: 'narration', speaker: '', content: '右路结束。', sourceUnitIds: ['path-merge:4'], commandSources: [], nextNodeId: 'merge' },
-        { id: 'merge', type: 'narration', speaker: '', content: '两条路径最终在大厅合流。', sourceUnitIds: ['path-merge:5'], commandSources: [], nextNodeId: 'end' },
-        { id: 'end', type: 'narration', speaker: '', content: '共同结尾。', sourceUnitIds: ['path-merge:6'], commandSources: [], nextNodeId: '' },
+        { id: 'start', type: 'narration', speaker: '', content: 'Pick a route.', sourceUnitIds: ['path-merge:0'], commandSources: [], nextNodeId: '' },
+        { id: 'left', type: 'narration', speaker: '', content: 'The left path ends.', sourceUnitIds: ['path-merge:3'], commandSources: [], nextNodeId: 'merge' },
+        { id: 'right', type: 'narration', speaker: '', content: 'The right path ends.', sourceUnitIds: ['path-merge:4'], commandSources: [], nextNodeId: 'merge' },
+        { id: 'merge', type: 'narration', speaker: '', content: 'The two paths finally merge in the hall.', sourceUnitIds: ['path-merge:5'], commandSources: [], nextNodeId: 'end' },
+        { id: 'end', type: 'narration', speaker: '', content: 'A shared ending.', sourceUnitIds: ['path-merge:6'], commandSources: [], nextNodeId: '' },
       ],
       choices: [
-        { id: 'go_left', fromNodeId: 'start', text: '左路', targetNodeId: 'left', sourceUnitIds: ['path-merge:1'], commandSources: [] },
-        { id: 'go_right', fromNodeId: 'start', text: '右路', targetNodeId: 'right', sourceUnitIds: ['path-merge:2'], commandSources: [] },
+        { id: 'go_left', fromNodeId: 'start', text: 'Left path', targetNodeId: 'left', sourceUnitIds: ['path-merge:1'], commandSources: [] },
+        { id: 'go_right', fromNodeId: 'start', text: 'Right path', targetNodeId: 'right', sourceUnitIds: ['path-merge:2'], commandSources: [] },
       ],
     };
 
@@ -184,14 +184,14 @@ describe('full story extraction materializer', () => {
   });
 
   it('classifies omitted natural branch headings as structural evidence', () => {
-    const text = '如果你检查甲板：\n你在甲板上发现湿脚印。';
+    const text = 'If you check the deck:\nYou find wet footprints on the deck.';
     const source = segmentStorySource(text, 'branch-heading');
     const value: StoryExtraction = {
       version: 3,
       entryNodeId: 'deck',
       structuralUnitIds: [],
       nodes: [{
-        id: 'deck', type: 'narration', speaker: '', content: '你在甲板上发现湿脚印。',
+        id: 'deck', type: 'narration', speaker: '', content: 'You find wet footprints on the deck.',
         sourceUnitIds: ['branch-heading:1'], commandSources: [], nextNodeId: '',
       }],
       choices: [],
@@ -201,40 +201,40 @@ describe('full story extraction materializer', () => {
   });
 
   it('removes structural choice prompts and moves their choices to the preceding node', () => {
-    const text = '请选择路线。\n这里有两个选择：\n- 左边。\n左边结局。';
+    const text = 'Pick a route.\nThere are 2 choices here:\n- The left side.\nThe left ending.';
     const source = segmentStorySource(text, 'prompt');
     const value: StoryExtraction = {
       version: 3,
       entryNodeId: 'start',
       structuralUnitIds: [],
       nodes: [
-        { id: 'start', type: 'narration', speaker: '', content: '请选择路线。', sourceUnitIds: ['prompt:0'], commandSources: [], nextNodeId: 'marker' },
-        { id: 'marker', type: 'narration', speaker: '', content: '这里有两个选择：', sourceUnitIds: ['prompt:1'], commandSources: [], nextNodeId: '' },
-        { id: 'left', type: 'narration', speaker: '', content: '左边结局。', sourceUnitIds: ['prompt:3'], commandSources: [], nextNodeId: '' },
+        { id: 'start', type: 'narration', speaker: '', content: 'Pick a route.', sourceUnitIds: ['prompt:0'], commandSources: [], nextNodeId: 'marker' },
+        { id: 'marker', type: 'narration', speaker: '', content: 'There are 2 choices here:', sourceUnitIds: ['prompt:1'], commandSources: [], nextNodeId: '' },
+        { id: 'left', type: 'narration', speaker: '', content: 'The left ending.', sourceUnitIds: ['prompt:3'], commandSources: [], nextNodeId: '' },
       ],
-      choices: [{ id: 'go_left', fromNodeId: 'marker', text: '左边。', targetNodeId: 'left', sourceUnitIds: ['prompt:2'], commandSources: [] }],
+      choices: [{ id: 'go_left', fromNodeId: 'marker', text: 'The left side.', targetNodeId: 'left', sourceUnitIds: ['prompt:2'], commandSources: [] }],
     };
 
     const document = materializeStoryExtraction(value, source);
     expect(document.nodes.map((node) => node.label)).toEqual(['start', 'left']);
     expect(document.nodes[0]).toMatchObject({
-      options: [{ text: '左边。', target: 'left' }],
+      options: [{ text: 'The left side.', target: 'left' }],
     });
   });
 
   it('removes branch-command metadata nodes and redirects their incoming choice', () => {
-    const text = '请选择路线。\n如果选择左边，选择发生时让 $trust+=1。\n你进入左路。';
+    const text = 'Pick a route.\nIf you choose left, when this choice is selected run $trust+=1\nYou take the left path.';
     const source = segmentStorySource(text, 'metadata');
     const value: StoryExtraction = {
       version: 3,
       entryNodeId: 'start',
       structuralUnitIds: [],
       nodes: [
-        { id: 'start', type: 'narration', speaker: '', content: '请选择路线。', sourceUnitIds: ['metadata:0'], commandSources: [], nextNodeId: '' },
-        { id: 'metadata', type: 'narration', speaker: '', content: '如果选择左边，选择发生时让 $trust+=1', sourceUnitIds: ['metadata:1'], commandSources: [], nextNodeId: 'left' },
-        { id: 'left', type: 'narration', speaker: '', content: '你进入左路。', sourceUnitIds: ['metadata:2'], commandSources: [], nextNodeId: '' },
+        { id: 'start', type: 'narration', speaker: '', content: 'Pick a route.', sourceUnitIds: ['metadata:0'], commandSources: [], nextNodeId: '' },
+        { id: 'metadata', type: 'narration', speaker: '', content: 'If you choose left, when this choice is selected run $trust+=1', sourceUnitIds: ['metadata:1'], commandSources: [], nextNodeId: 'left' },
+        { id: 'left', type: 'narration', speaker: '', content: 'You take the left path.', sourceUnitIds: ['metadata:2'], commandSources: [], nextNodeId: '' },
       ],
-      choices: [{ id: 'go_left', fromNodeId: 'start', text: '左边', targetNodeId: 'metadata', sourceUnitIds: ['metadata:1'], commandSources: ['metadata:1'] }],
+      choices: [{ id: 'go_left', fromNodeId: 'start', text: 'left', targetNodeId: 'metadata', sourceUnitIds: ['metadata:1'], commandSources: ['metadata:1'] }],
     };
 
     const document = materializeStoryExtraction(value, source);
@@ -244,12 +244,12 @@ describe('full story extraction materializer', () => {
 
   it('rejects invented or paraphrased visible content', () => {
     const value = extraction();
-    value.nodes[1].content = '你修好了整个空间站。';
+    value.nodes[1].content = 'You repaired the entire station.';
     expect(() => materialize(value)).toThrow(/not traceable/i);
   });
 
   it('rejects collapsing multiple dialogue speakers onto one presentation Type', () => {
-    const text = '守灯人：你是谁？\n少年：我是海上的过客。';
+    const text = 'Keeper: Who are you?\nBoy: A passerby from the sea.';
     const source = segmentStorySource(text, 'dialogue-types');
     const value: StoryExtraction = {
       version: 3,
@@ -257,12 +257,12 @@ describe('full story extraction materializer', () => {
       structuralUnitIds: [],
       nodes: [
         {
-          id: 'keeper', type: 'dialogue', presentationType: 1, speaker: '守灯人',
-          content: '你是谁？', sourceUnitIds: ['dialogue-types:0'], commandSources: [], nextNodeId: 'youth',
+          id: 'keeper', type: 'dialogue', presentationType: 1, speaker: 'Keeper',
+          content: 'Who are you?', sourceUnitIds: ['dialogue-types:0'], commandSources: [], nextNodeId: 'youth',
         },
         {
-          id: 'youth', type: 'dialogue', presentationType: 1, speaker: '少年',
-          content: '我是海上的过客。', sourceUnitIds: ['dialogue-types:1'], commandSources: [], nextNodeId: '',
+          id: 'youth', type: 'dialogue', presentationType: 1, speaker: 'Boy',
+          content: 'A passerby from the sea.', sourceUnitIds: ['dialogue-types:1'], commandSources: [], nextNodeId: '',
         },
       ],
       choices: [],
@@ -272,7 +272,7 @@ describe('full story extraction materializer', () => {
   });
 
   it('rejects changing presentation Type for the same speaker', () => {
-    const text = '少年：第一句。\n少年：第二句。';
+    const text = 'Boy: The first line.\nBoy: The second line.';
     const source = segmentStorySource(text, 'speaker-type');
     const value: StoryExtraction = {
       version: 3,
@@ -280,12 +280,12 @@ describe('full story extraction materializer', () => {
       structuralUnitIds: [],
       nodes: [
         {
-          id: 'first', type: 'dialogue', presentationType: 1, speaker: '少年',
-          content: '第一句。', sourceUnitIds: ['speaker-type:0'], commandSources: [], nextNodeId: 'second',
+          id: 'first', type: 'dialogue', presentationType: 1, speaker: 'Boy',
+          content: 'The first line.', sourceUnitIds: ['speaker-type:0'], commandSources: [], nextNodeId: 'second',
         },
         {
-          id: 'second', type: 'dialogue', presentationType: 2, speaker: '少年',
-          content: '第二句。', sourceUnitIds: ['speaker-type:1'], commandSources: [], nextNodeId: '',
+          id: 'second', type: 'dialogue', presentationType: 2, speaker: 'Boy',
+          content: 'The second line.', sourceUnitIds: ['speaker-type:1'], commandSources: [], nextNodeId: '',
         },
       ],
       choices: [],
@@ -295,7 +295,7 @@ describe('full story extraction materializer', () => {
   });
 
   it('normalizes a character-list role name to the exact dialogue cue alias', () => {
-    const text = '人物：你（守灯人）、海客少年\n少年（站在码头边缘）：灯塔还亮着。\n少年身影渐渐透明：我该走了。';
+    const text = 'Characters: You (Keeper), Sea Boy\nBoy (standing at the pier edge): The lighthouse is still lit.\nBoy fades slowly: I should go.';
     const source = segmentStorySource(text, 'speaker-alias');
     const value: StoryExtraction = {
       version: 3,
@@ -303,31 +303,31 @@ describe('full story extraction materializer', () => {
       structuralUnitIds: ['speaker-alias:0'],
       nodes: [
         {
-          id: 'boy', type: 'dialogue', presentationType: 2, speaker: '海客少年',
-          content: '灯塔还亮着。', sourceUnitIds: ['speaker-alias:1'], commandSources: [], nextNodeId: 'fade',
+          id: 'boy', type: 'dialogue', presentationType: 2, speaker: 'Sea Boy',
+          content: 'The lighthouse is still lit.', sourceUnitIds: ['speaker-alias:1'], commandSources: [], nextNodeId: 'fade',
         },
         {
-          id: 'fade', type: 'dialogue', presentationType: 2, speaker: '海客少年',
-          content: '我该走了。', sourceUnitIds: ['speaker-alias:2'], commandSources: [], nextNodeId: '',
+          id: 'fade', type: 'dialogue', presentationType: 2, speaker: 'Sea Boy',
+          content: 'I should go.', sourceUnitIds: ['speaker-alias:2'], commandSources: [], nextNodeId: '',
         },
       ],
       choices: [],
     };
 
     expect(materializeStoryExtraction(value, source).nodes.map((node) => node.speaker))
-      .toEqual(['少年', '少年']);
+      .toEqual(['Boy', 'Boy']);
   });
 
   it('does not accept an incidental one-character prefix as a speaker alias', () => {
-    const text = '人物：海客少年\n海风吹过礁石：灯塔仍然亮着。';
+    const text = 'Characters: Sea Boy\nSudden wind sweeps the reef: The lighthouse still shines.';
     const source = segmentStorySource(text, 'false-alias');
     const value: StoryExtraction = {
       version: 3,
       entryNodeId: 'wind',
       structuralUnitIds: ['false-alias:0'],
       nodes: [{
-        id: 'wind', type: 'dialogue', presentationType: 1, speaker: '海客少年',
-        content: '灯塔仍然亮着。', sourceUnitIds: ['false-alias:1'], commandSources: [], nextNodeId: '',
+        id: 'wind', type: 'dialogue', presentationType: 1, speaker: 'Sea Boy',
+        content: 'The lighthouse still shines.', sourceUnitIds: ['false-alias:1'], commandSources: [], nextNodeId: '',
       }],
       choices: [],
     };
@@ -336,7 +336,7 @@ describe('full story extraction materializer', () => {
   });
 
   it('normalizes dialogue presentation Types to explicit character-list order', () => {
-    const text = '人物：你（守灯人）、海客少年\n少年：灯塔还亮着。\n你：我知道。';
+    const text = 'Characters: You (Keeper), Sea Boy\nBoy: The lighthouse is still lit.\nYou: I know.';
     const source = segmentStorySource(text, 'role-order');
     const value: StoryExtraction = {
       version: 3,
@@ -344,12 +344,12 @@ describe('full story extraction materializer', () => {
       structuralUnitIds: ['role-order:0'],
       nodes: [
         {
-          id: 'boy', type: 'dialogue', presentationType: 1, speaker: '少年',
-          content: '灯塔还亮着。', sourceUnitIds: ['role-order:1'], commandSources: [], nextNodeId: 'you',
+          id: 'boy', type: 'dialogue', presentationType: 1, speaker: 'Boy',
+          content: 'The lighthouse is still lit.', sourceUnitIds: ['role-order:1'], commandSources: [], nextNodeId: 'you',
         },
         {
-          id: 'you', type: 'dialogue', presentationType: 2, speaker: '你',
-          content: '我知道。', sourceUnitIds: ['role-order:2'], commandSources: [], nextNodeId: '',
+          id: 'you', type: 'dialogue', presentationType: 2, speaker: 'You',
+          content: 'I know.', sourceUnitIds: ['role-order:2'], commandSources: [], nextNodeId: '',
         },
       ],
       choices: [],
@@ -357,7 +357,7 @@ describe('full story extraction materializer', () => {
 
     const document = materializeStoryExtraction(value, source);
     expect(document.nodes.map((node) => [node.speaker, node.presentationType]))
-      .toEqual([['少年', 2], ['你', 1]]);
+      .toEqual([['Boy', 2], ['You', 1]]);
   });
 
   it('rejects a changed source command', () => {
@@ -382,10 +382,10 @@ describe('full story extraction materializer', () => {
 
   it('repairs a wrong option ref only when text and command units are deterministic', () => {
     const text = [
-      '请选择路线。',
-      '你可以先去能源舱，也可以先去资料舱。',
-      '如果选择前往能源舱，选择时执行 $resolve+=1。',
-      '你进入能源舱。',
+      'Pick a route.',
+      'You can visit the energy bay first, or the archive bay first.',
+      'If you choose to head to the energy bay, when this choice is selected run $resolve+=1',
+      'You enter the energy bay.',
     ].join('\n');
     const source = segmentStorySource(text, 'split-evidence');
     const value: StoryExtraction = {
@@ -393,13 +393,13 @@ describe('full story extraction materializer', () => {
       entryNodeId: 'start',
       structuralUnitIds: ['split-evidence:2'],
       nodes: [
-        { id: 'start', type: 'narration', speaker: '', content: '请选择路线。', sourceUnitIds: ['split-evidence:0'], commandSources: [], nextNodeId: '' },
-        { id: 'energy', type: 'narration', speaker: '', content: '你进入能源舱。', sourceUnitIds: ['split-evidence:3'], commandSources: [], nextNodeId: '' },
+        { id: 'start', type: 'narration', speaker: '', content: 'Pick a route.', sourceUnitIds: ['split-evidence:0'], commandSources: [], nextNodeId: '' },
+        { id: 'energy', type: 'narration', speaker: '', content: 'You enter the energy bay.', sourceUnitIds: ['split-evidence:3'], commandSources: [], nextNodeId: '' },
       ],
       choices: [{
         id: 'go_energy',
         fromNodeId: 'start',
-        text: '你可以先去能源舱',
+        text: 'You can visit the energy bay first',
         targetNodeId: 'energy',
         sourceUnitIds: ['split-evidence:2'],
         commandSources: ['$resolve+=1|split-evidence:2'],
@@ -416,24 +416,24 @@ describe('full story extraction materializer', () => {
 
   it('removes choice-control and command metadata from visible option text', () => {
     const value = extraction();
-    value.choices[0].text = '如果你选择前往能源舱，选择发生时让 $resolve+=1';
+    value.choices[0].text = 'If you choose to Head to the energy bay, when this choice is selected run $resolve+=1';
     value.choices[0].commandSources = ['$resolve+=1|fixture:1'];
 
-    expect(materialize(value).nodes[0].options[0].text).toBe('前往能源舱');
+    expect(materialize(value).nodes[0].options[0].text).toBe('Head to the energy bay');
   });
 
   it('adds the exact command unit to a choice source when the text and command are split', () => {
-    const text = '选择能源舱。\n执行 $resolve+=1。\n能源舱结局。';
+    const text = 'Choose the energy bay.\nRun $resolve+=1\nEnergy bay ending.';
     const source = segmentStorySource(text, 'split');
     const value: StoryExtraction = {
       version: 3,
       entryNodeId: 'start',
       structuralUnitIds: [],
       nodes: [
-        { id: 'start', type: 'narration', speaker: '', content: '选择能源舱。', sourceUnitIds: ['split:0'], commandSources: [], nextNodeId: '' },
-        { id: 'end', type: 'narration', speaker: '', content: '能源舱结局。', sourceUnitIds: ['split:2'], commandSources: [], nextNodeId: '' },
+        { id: 'start', type: 'narration', speaker: '', content: 'Choose the energy bay.', sourceUnitIds: ['split:0'], commandSources: [], nextNodeId: '' },
+        { id: 'end', type: 'narration', speaker: '', content: 'Energy bay ending.', sourceUnitIds: ['split:2'], commandSources: [], nextNodeId: '' },
       ],
-      choices: [{ id: 'go', fromNodeId: 'start', text: '能源舱', targetNodeId: 'end', sourceUnitIds: ['split:0'], commandSources: ['$resolve+=1'] }],
+      choices: [{ id: 'go', fromNodeId: 'start', text: 'the energy bay', targetNodeId: 'end', sourceUnitIds: ['split:0'], commandSources: ['$resolve+=1'] }],
     };
 
     expect(materializeStoryExtraction(value, source).nodes[0].options[0].commands[0].value).toBe(1);
@@ -441,11 +441,11 @@ describe('full story extraction materializer', () => {
 
   it('distinguishes identical command text by the owner source unit', () => {
     const text = [
-      '请选择路线。',
-      '左路。 $trust+=1',
-      '右路。 $trust+=1',
-      '你抵达左侧终点。',
-      '你抵达右侧终点。',
+      'Pick a route.',
+      'The left road. $trust+=1',
+      'The right road. $trust+=1',
+      'You reach the left end.',
+      'You reach the right end.',
     ].join('\n');
     const source = segmentStorySource(text, 'same-command');
     const value: StoryExtraction = {
@@ -453,13 +453,13 @@ describe('full story extraction materializer', () => {
       entryNodeId: 'start',
       structuralUnitIds: [],
       nodes: [
-        { id: 'start', type: 'narration', speaker: '', content: '请选择路线。', sourceUnitIds: ['same-command:0'], commandSources: [], nextNodeId: '' },
-        { id: 'left', type: 'narration', speaker: '', content: '你抵达左侧终点。', sourceUnitIds: ['same-command:3'], commandSources: [], nextNodeId: '' },
-        { id: 'right', type: 'narration', speaker: '', content: '你抵达右侧终点。', sourceUnitIds: ['same-command:4'], commandSources: [], nextNodeId: '' },
+        { id: 'start', type: 'narration', speaker: '', content: 'Pick a route.', sourceUnitIds: ['same-command:0'], commandSources: [], nextNodeId: '' },
+        { id: 'left', type: 'narration', speaker: '', content: 'You reach the left end.', sourceUnitIds: ['same-command:3'], commandSources: [], nextNodeId: '' },
+        { id: 'right', type: 'narration', speaker: '', content: 'You reach the right end.', sourceUnitIds: ['same-command:4'], commandSources: [], nextNodeId: '' },
       ],
       choices: [
-        { id: 'go_left', fromNodeId: 'start', text: '左路。', targetNodeId: 'left', sourceUnitIds: ['same-command:1'], commandSources: ['$trust+=1'] },
-        { id: 'go_right', fromNodeId: 'start', text: '右路。', targetNodeId: 'right', sourceUnitIds: ['same-command:2'], commandSources: ['$trust+=1'] },
+        { id: 'go_left', fromNodeId: 'start', text: 'The left road.', targetNodeId: 'left', sourceUnitIds: ['same-command:1'], commandSources: ['$trust+=1'] },
+        { id: 'go_right', fromNodeId: 'start', text: 'The right road.', targetNodeId: 'right', sourceUnitIds: ['same-command:2'], commandSources: ['$trust+=1'] },
       ],
     };
 
@@ -477,17 +477,17 @@ describe('full story extraction materializer', () => {
   });
 
   it('converts one synthetic Continue choice into an automatic transition', () => {
-    const text = '第一行。\n第二行。';
+    const text = 'The first line.\nThe second line.';
     const source = segmentStorySource(text, 'continue');
     const value: StoryExtraction = {
       version: 3,
       entryNodeId: 'first',
       structuralUnitIds: [],
       nodes: [
-        { id: 'first', type: 'narration', speaker: '', content: '第一行。', sourceUnitIds: ['continue:0'], commandSources: [], nextNodeId: '' },
-        { id: 'second', type: 'narration', speaker: '', content: '第二行。', sourceUnitIds: ['continue:1'], commandSources: [], nextNodeId: '' },
+        { id: 'first', type: 'narration', speaker: '', content: 'The first line.', sourceUnitIds: ['continue:0'], commandSources: [], nextNodeId: '' },
+        { id: 'second', type: 'narration', speaker: '', content: 'The second line.', sourceUnitIds: ['continue:1'], commandSources: [], nextNodeId: '' },
       ],
-      choices: [{ id: 'continue', fromNodeId: 'first', text: '继续', targetNodeId: 'second', sourceUnitIds: ['continue:0'], commandSources: [] }],
+      choices: [{ id: 'continue', fromNodeId: 'first', text: 'Continue', targetNodeId: 'second', sourceUnitIds: ['continue:0'], commandSources: [] }],
     };
 
     const document = materializeStoryExtraction(value, source);
@@ -513,9 +513,9 @@ describe('full story extraction materializer', () => {
 
   it('removes a direct option placeholder node duplicated from its choice row', () => {
     const text = [
-      '请选择路线。',
-      '- 前往能源舱。选择时执行 $resolve+=1。',
-      '你进入能源舱。',
+      'Pick a route.',
+      '- Head to the energy bay. When this choice is selected run $resolve+=1',
+      'You enter the energy bay.',
     ].join('\n');
     const source = segmentStorySource(text, 'option-node');
     const value: StoryExtraction = {
@@ -523,12 +523,12 @@ describe('full story extraction materializer', () => {
       entryNodeId: 'start',
       structuralUnitIds: [],
       nodes: [
-        { id: 'start', type: 'narration', speaker: '', content: '请选择路线。', sourceUnitIds: ['option-node:0'], commandSources: [], nextNodeId: '' },
-        { id: 'option_placeholder', type: 'narration', speaker: '', content: '前往能源舱。', sourceUnitIds: ['option-node:1'], commandSources: ['$resolve+=1'], nextNodeId: 'energy' },
-        { id: 'energy', type: 'narration', speaker: '', content: '你进入能源舱。', sourceUnitIds: ['option-node:2'], commandSources: [], nextNodeId: '' },
+        { id: 'start', type: 'narration', speaker: '', content: 'Pick a route.', sourceUnitIds: ['option-node:0'], commandSources: [], nextNodeId: '' },
+        { id: 'option_placeholder', type: 'narration', speaker: '', content: 'Head to the energy bay.', sourceUnitIds: ['option-node:1'], commandSources: ['$resolve+=1'], nextNodeId: 'energy' },
+        { id: 'energy', type: 'narration', speaker: '', content: 'You enter the energy bay.', sourceUnitIds: ['option-node:2'], commandSources: [], nextNodeId: '' },
       ],
       choices: [{
-        id: 'go_energy', fromNodeId: 'start', text: '前往能源舱。', targetNodeId: 'option_placeholder',
+        id: 'go_energy', fromNodeId: 'start', text: 'Head to the energy bay.', targetNodeId: 'option_placeholder',
         sourceUnitIds: ['option-node:1'], commandSources: ['$resolve+=1'],
       }],
     };
@@ -536,7 +536,7 @@ describe('full story extraction materializer', () => {
     const document = materializeStoryExtraction(value, source);
     expect(document.nodes.map((node) => node.label)).toEqual(['start', 'energy']);
     expect(document.nodes[0].options[0]).toMatchObject({
-      text: '前往能源舱。',
+      text: 'Head to the energy bay.',
       target: 'energy',
       commands: [expect.objectContaining({ source: '$resolve+=1' })],
     });

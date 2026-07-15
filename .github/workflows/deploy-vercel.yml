@@ -3,7 +3,7 @@ name: Deploy to Vercel
 on:
   push:
     branches:
-      - main      
+      - main
       - master
       - 'release/**'
   pull_request:
@@ -11,106 +11,107 @@ on:
       - main
       - master
       - 'release/**'
-    types: [opened, synchronize, reopened]  
+    types: [opened, synchronize, reopened]
 
 jobs:
- 
+
   check-migrations:
     runs-on: ubuntu-latest
     name: Check for Migration Changes
     if: github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio'
     outputs:
       has-migrations: ${{ steps.check.outputs.has-migrations }}
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整历史以便比较分支
+          fetch-depth: 0  # Fetch full history to allow branch comparison
 
       - name: Check for migration changes
         id: check
         run: |
-          echo "🔍 开始检查迁移文件..."
-          echo "当前分支: ${{ github.ref }}"
-          echo "当前 commit: ${{ github.sha }}"
-          
-          # 列出所有迁移文件（用于调试）
-          echo "📋 当前分支的迁移文件："
+          echo "🔍 Checking migration files..."
+          echo "Current branch: ${{ github.ref }}"
+          echo "Current commit: ${{ github.sha }}"
+
+          # List all migration files (for debugging)
+          echo "📋 Migration files on current branch:"
           if [ -d "supabase/migrations" ]; then
-            ls -la supabase/migrations/*.sql 2>/dev/null || echo "  没有找到 .sql 文件"
+            ls -la supabase/migrations/*.sql 2>/dev/null || echo "  No .sql files found"
           else
-            echo "  supabase/migrations 目录不存在"
+            echo "  supabase/migrations directory does not exist"
           fi
-          
-          # 确定 base 分支
+
+          # Determine the base branch
           if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
             BASE_BRANCH="origin/main"
-            # 如果 main 不存在，尝试 master
+            # If main does not exist, try master
             if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
               BASE_BRANCH="origin/master"
             fi
           elif [[ "${{ github.ref }}" =~ ^refs/heads/release ]]; then
-            # release 分支与 main 比较
+            # Compare release branches against main
             BASE_BRANCH="origin/main"
             if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
               BASE_BRANCH="origin/master"
             fi
           else
-            # PR 或其他情况，与 main 比较
+            # PRs and other cases: compare against main
             BASE_BRANCH="origin/main"
             if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
               BASE_BRANCH="origin/master"
             fi
           fi
-          
-          echo "Base 分支: $BASE_BRANCH"
-          
-          # 检查当前分支相对于 base 分支的迁移文件变化
-          # 如果 base 分支不存在（首次推送），检查是否有迁移文件
+
+          echo "Base branch: $BASE_BRANCH"
+
+          # Check migration file changes on the current branch relative to the base branch
+          # If the base branch does not exist (first push), check whether any migration files exist
           if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
-            echo "⚠️ Base 分支不存在，检查是否有迁移文件..."
+            echo "⚠️ Base branch does not exist, checking for migration files..."
             if [ -d "supabase/migrations" ] && [ "$(ls -A supabase/migrations/*.sql 2>/dev/null)" ]; then
               echo "has-migrations=true" >> $GITHUB_OUTPUT
-              echo "✅ 检测到迁移文件（首次推送）"
+              echo "✅ Migration files detected (first push)"
             else
               echo "has-migrations=false" >> $GITHUB_OUTPUT
-              echo "ℹ️ 没有迁移文件"
+              echo "ℹ️ No migration files"
             fi
           else
-            # 获取 base 分支的 commit
+            # Fetch the base branch commit
             git fetch origin ${BASE_BRANCH#origin/}:${BASE_BRANCH#origin/} 2>/dev/null || true
-            
-            # 比较当前分支与 base 分支的差异
+
+            # Diff the current branch against the base branch
             MIGRATION_FILES=$(git diff --name-only "$BASE_BRANCH" HEAD | grep "^supabase/migrations/" || true)
-            
+
             if [ -n "$MIGRATION_FILES" ]; then
               echo "has-migrations=true" >> $GITHUB_OUTPUT
-              echo "✅ 检测到迁移文件变化（相对于 $BASE_BRANCH）"
-              echo "变化的迁移文件："
+              echo "✅ Migration file changes detected (relative to $BASE_BRANCH)"
+              echo "Changed migration files:"
               echo "$MIGRATION_FILES" | while read -r file; do
                 echo "  - $file"
               done
             else
-              # 即使没有文件变化，也检查是否有迁移文件存在
-              # 因为可能之前的迁移没有成功应用
+              # Even with no file changes, check whether migration files exist,
+              # since earlier migrations may not have been applied successfully
               if [ -d "supabase/migrations" ] && [ "$(ls -A supabase/migrations/*.sql 2>/dev/null)" ]; then
                 echo "has-migrations=true" >> $GITHUB_OUTPUT
-                echo "✅ 检测到迁移文件（虽然没有变化，但可能存在未应用的迁移）"
+                echo "✅ Migration files detected (no changes, but unapplied migrations may exist)"
               else
                 echo "has-migrations=false" >> $GITHUB_OUTPUT
-                echo "ℹ️ 没有迁移文件变化（相对于 $BASE_BRANCH）"
+                echo "ℹ️ No migration file changes (relative to $BASE_BRANCH)"
               fi
             fi
           fi
 
-  
+
   migrate-database:
     runs-on: ubuntu-latest
     name: Run Supabase Migrations
     needs: check-migrations
-    # 对于 main 和 release 分支，总是运行迁移（supabase db push 是幂等的，只会应用未应用的迁移）
-    # 这样可以确保即使之前的迁移失败，也能重新应用
+    # For main and release branches, always run migrations (supabase db push is idempotent
+    # and only applies unapplied migrations)
+    # This ensures migrations can be re-applied even if a previous run failed
     if: |
       (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') && (
         needs.check-migrations.outputs.has-migrations == 'true' ||
@@ -118,7 +119,7 @@ jobs:
         github.ref == 'refs/heads/master' ||
         startsWith(github.ref, 'refs/heads/release/')
       )
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -140,15 +141,15 @@ jobs:
       - name: Check migration files exist
         run: |
           if [ ! -d "supabase/migrations" ] || [ -z "$(ls -A supabase/migrations/*.sql 2>/dev/null)" ]; then
-            echo "⚠️ 没有找到迁移文件，跳过迁移任务"
+            echo "⚠️ No migration files found, skipping migration job"
             exit 0
           else
-            echo "✅ 找到迁移文件，继续执行迁移"
+            echo "✅ Migration files found, proceeding with migrations"
             ls -la supabase/migrations/*.sql
           fi
 
-      # 根据分支选择 Supabase 项目和对应的 Access Token
-      # main 分支 → Production, release 分支 → Preview
+      # Select the Supabase project and corresponding Access Token based on the branch
+      # main branch → Production, release branches → Preview
       - name: Select Supabase Project and Token
         id: select-project
         env:
@@ -157,45 +158,45 @@ jobs:
           GENERAL_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: |
           if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
-            # main 分支使用 Production 环境
+            # main branch uses the Production environment
             echo "project-ref=${{ secrets.SUPABASE_PROJECT_REF_PROD }}" >> $GITHUB_OUTPUT
             echo "environment=production" >> $GITHUB_OUTPUT
-            # 如果配置了单独的 Production Token，使用它；否则使用通用的 Token
+            # Use the dedicated Production token if configured; otherwise fall back to the general token
             if [ -n "$PROD_TOKEN" ] && [ "$PROD_TOKEN" != "" ]; then
               echo "access-token=$PROD_TOKEN" >> $GITHUB_OUTPUT
-              echo "✅ 使用 Production Supabase 项目 (单独 Token)"
+              echo "✅ Using Production Supabase project (dedicated token)"
             else
               echo "access-token=$GENERAL_TOKEN" >> $GITHUB_OUTPUT
-              echo "✅ 使用 Production Supabase 项目 (通用 Token)"
+              echo "✅ Using Production Supabase project (general token)"
             fi
           elif [[ "${{ github.ref }}" =~ ^refs/heads/release ]]; then
-            # release 分支（包括 release/**）使用 Preview 环境
+            # release branches (including release/**) use the Preview environment
             echo "project-ref=${{ secrets.SUPABASE_PROJECT_REF_PREVIEW }}" >> $GITHUB_OUTPUT
             echo "environment=preview" >> $GITHUB_OUTPUT
-            # 如果配置了单独的 Preview Token，使用它；否则使用通用的 Token
+            # Use the dedicated Preview token if configured; otherwise fall back to the general token
             if [ -n "$PREVIEW_TOKEN" ] && [ "$PREVIEW_TOKEN" != "" ]; then
               echo "access-token=$PREVIEW_TOKEN" >> $GITHUB_OUTPUT
-              echo "✅ 使用 Preview Supabase 项目 (release 分支, 单独 Token)"
+              echo "✅ Using Preview Supabase project (release branch, dedicated token)"
             else
               echo "access-token=$GENERAL_TOKEN" >> $GITHUB_OUTPUT
-              echo "✅ 使用 Preview Supabase 项目 (release 分支, 通用 Token)"
+              echo "✅ Using Preview Supabase project (release branch, general token)"
             fi
           else
-            # 其他情况（PR 等）使用 Preview 环境
+            # Other cases (PRs, etc.) use the Preview environment
             echo "project-ref=${{ secrets.SUPABASE_PROJECT_REF_PREVIEW }}" >> $GITHUB_OUTPUT
             echo "environment=preview" >> $GITHUB_OUTPUT
             if [ -n "$PREVIEW_TOKEN" ] && [ "$PREVIEW_TOKEN" != "" ]; then
               echo "access-token=$PREVIEW_TOKEN" >> $GITHUB_OUTPUT
-              echo "✅ 使用 Preview Supabase 项目 (单独 Token)"
+              echo "✅ Using Preview Supabase project (dedicated token)"
             else
               echo "access-token=$GENERAL_TOKEN" >> $GITHUB_OUTPUT
-              echo "✅ 使用 Preview Supabase 项目 (通用 Token)"
+              echo "✅ Using Preview Supabase project (general token)"
             fi
           fi
 
       - name: Link to Supabase project
         run: |
-          echo "🔗 链接到 Supabase 项目: ${{ steps.select-project.outputs.environment }}"
+          echo "🔗 Linking to Supabase project: ${{ steps.select-project.outputs.environment }}"
           echo "📋 Project Ref: ${{ steps.select-project.outputs.project-ref }}"
           supabase link --project-ref ${{ steps.select-project.outputs.project-ref }}
         env:
@@ -203,20 +204,20 @@ jobs:
 
       - name: Push database migrations
         run: |
-          echo "🚀 开始推送数据库迁移到 ${{ steps.select-project.outputs.environment }} 环境..."
+          echo "🚀 Pushing database migrations to the ${{ steps.select-project.outputs.environment }} environment..."
           supabase db push --include-all
-          echo "✅ 迁移完成"
+          echo "✅ Migrations complete"
         env:
           SUPABASE_ACCESS_TOKEN: ${{ steps.select-project.outputs.access-token }}
-        continue-on-error: false  
+        continue-on-error: false
 
 
   deploy:
     runs-on: ubuntu-latest
-    needs: [check-migrations, migrate-database]  
+    needs: [check-migrations, migrate-database]
     if: (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') && always() && (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')
     name: Deploy to Vercel
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -232,13 +233,13 @@ jobs:
 
       - name: Run linter
         run: npm run lint
-        continue-on-error: true  
+        continue-on-error: true
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
       # Determine deployment environment based on branch
-      # main 分支 → Production, release 分支 → Preview
+      # main branch → Production, release branches → Preview
       - name: Determine deployment environment
         id: env
         run: |
@@ -246,19 +247,19 @@ jobs:
             echo "environment=production" >> $GITHUB_OUTPUT
             echo "is_prod=true" >> $GITHUB_OUTPUT
             echo "deployment_target=production" >> $GITHUB_OUTPUT
-            echo "✅ 部署到 Production 环境 (main 分支)"
+            echo "✅ Deploying to Production environment (main branch)"
           elif [[ "${{ github.ref }}" =~ ^refs/heads/release ]]; then
-            # release 分支（包括 release/**）部署到 Preview 环境
+            # release branches (including release/**) deploy to the Preview environment
             echo "environment=preview" >> $GITHUB_OUTPUT
             echo "is_prod=false" >> $GITHUB_OUTPUT
             echo "deployment_target=preview" >> $GITHUB_OUTPUT
-            echo "✅ 部署到 Preview 环境 (release 分支)"
+            echo "✅ Deploying to Preview environment (release branch)"
           else
-            # PR 等其他情况部署到 Preview
+            # PRs and other cases deploy to Preview
             echo "environment=preview" >> $GITHUB_OUTPUT
             echo "is_prod=false" >> $GITHUB_OUTPUT
             echo "deployment_target=preview" >> $GITHUB_OUTPUT
-            echo "✅ 部署到 Preview 环境"
+            echo "✅ Deploying to Preview environment"
           fi
 
       # Pull Vercel environment variables based on deployment environment
@@ -284,28 +285,28 @@ jobs:
       - name: Deploy Project Artifacts to Vercel
         run: |
           if [[ "${{ steps.env.outputs.is_prod }}" == "true" ]]; then
-            # Production 部署（main 分支）
-            echo "🚀 部署到 Production 环境..."
+            # Production deployment (main branch)
+            echo "🚀 Deploying to Production environment..."
             vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
           elif [[ "${{ github.ref }}" =~ ^refs/heads/release/ ]]; then
-            # Release 分支部署到 Preview 环境，可通过 Secret 自定义固定域名
+            # Release branches deploy to the Preview environment; a fixed domain can be set via a Secret
             BRANCH_NAME=${GITHUB_REF#refs/heads/}
-            echo "🚀 部署到 Preview 环境 (Branch: $BRANCH_NAME)..."
+            echo "🚀 Deploying to Preview environment (Branch: $BRANCH_NAME)..."
             DEPLOYMENT_URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }})
-            echo "📦 部署 URL: $DEPLOYMENT_URL"
+            echo "📦 Deployment URL: $DEPLOYMENT_URL"
             if [ -n "${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}" ]; then
-              echo "🔗 设置别名 ${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}..."
+              echo "🔗 Setting alias ${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}..."
               vercel alias set "$DEPLOYMENT_URL" "${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}" --token=${{ secrets.VERCEL_TOKEN }}
             else
-              echo "ℹ️ 未配置 VERCEL_PREVIEW_ALIAS_DOMAIN，跳过固定域名 alias"
+              echo "ℹ️ VERCEL_PREVIEW_ALIAS_DOMAIN not configured, skipping fixed domain alias"
             fi
-            echo "✅ Release 部署完成，Branch: $BRANCH_NAME"
+            echo "✅ Release deployment complete, Branch: $BRANCH_NAME"
             if [ -n "${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}" ]; then
               echo "🌐 Release URL: https://${{ secrets.VERCEL_PREVIEW_ALIAS_DOMAIN }}"
             fi
           else
-            # 其他 Preview 部署（PR 等）
-            echo "🚀 部署到 Preview 环境..."
+            # Other Preview deployments (PRs, etc.)
+            echo "🚀 Deploying to Preview environment..."
             vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }}
           fi
         env:

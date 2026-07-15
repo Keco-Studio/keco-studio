@@ -31,7 +31,7 @@ const ParamsSchema = z.object({
   rowIndex: z.number().int().positive().optional(),
 });
 
-const TYPE_FIELD_LABELS = ['类型', 'type', 'Type'];
+const TYPE_FIELD_LABELS = ['type', 'Type'];
 
 function invertLabelMap(labelMap: Record<string, string>): Record<string, string> {
   const inverted: Record<string, string> = {};
@@ -136,7 +136,7 @@ export const queryAssets: AgentTool = {
       rowIndex: {
         type: 'number',
         description:
-          'Return only the asset at this UI row number (1 = first row in the table). Use when the user says "row 1" / "第一行".',
+          'Return only the asset at this UI row number (1 = first row in the table). Use when the user says "row 1".',
       },
       nameFilter: { type: 'string', description: 'Optional substring filter on asset name' },
       type: { type: 'string', description: 'Optional value filter on the type field' },

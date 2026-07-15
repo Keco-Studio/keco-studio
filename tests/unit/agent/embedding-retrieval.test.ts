@@ -100,14 +100,14 @@ describe('formatRetrievedContext', () => {
   it('includes header and numbered snippets', () => {
     const block = formatRetrievedContext([
       {
-        ...candidate({ id: '1', sourceType: 'library_cell', content: '性格开朗', scope: 'library' }),
+        ...candidate({ id: '1', sourceType: 'library_cell', content: 'Cheerful personality', scope: 'library' }),
         finalScore: 0.9,
-        metadata: { libraryName: '角色库', assetName: '主角A', fieldLabel: '人设' },
+        metadata: { libraryName: 'Character Library', assetName: 'Protagonist A', fieldLabel: 'Persona' },
       },
     ]);
     expect(block).toContain('## Retrieved context');
     expect(block).toContain('library_cell');
-    expect(block).toContain('性格开朗');
+    expect(block).toContain('Cheerful personality');
     expect(block).toContain('trust tools');
   });
 });
