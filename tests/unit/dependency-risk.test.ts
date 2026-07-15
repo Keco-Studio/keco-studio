@@ -21,9 +21,9 @@ describe('dependency risk guardrails', () => {
     expect(pkg.dependencies).not.toHaveProperty('node-fetch');
     expect(pkg.dependencies).not.toHaveProperty('@types/echarts');
     expect(pkg.dependencies).not.toHaveProperty('@types/nodemailer');
+    expect(pkg.devDependencies).not.toHaveProperty('@types/nodemailer');
     expect(pkg.dependencies).not.toHaveProperty('ngrok');
     expect(pkg.devDependencies).toHaveProperty('ngrok');
-    expect(pkg.devDependencies).toHaveProperty('@types/nodemailer');
   });
 
   it('uses React 19 with the installed Ant Design React 19 patch', () => {
