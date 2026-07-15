@@ -3,12 +3,14 @@
 import { useCallback } from 'react';
 import { useState } from 'react';
 import dynamic from 'next/dynamic';
-import { HistoryOutlined } from '@ant-design/icons';
+import { DownloadOutlined, HistoryOutlined } from '@ant-design/icons';
+import { Dropdown } from 'antd';
 import { useQuery } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getDocument, type DocumentRecord } from '@/lib/services/documentService';
 import { uploadImageFiles } from '@/lib/services/documentImageUpload';
 import { queryKeys } from '@/lib/utils/queryKeys';
+import { showErrorToast } from '@/lib/utils/toast';
 import {
   useDocumentPermissions,
   type DocumentPermissionState,
@@ -112,6 +114,40 @@ function DocumentEditorSession({
     [permissions.userId, supabase]
   );
   const ignoreMarkdownChange = useCallback(() => undefined, []);
+  const exportItems = [
+    { key: 'docx', label: 'Download DOCX' },
+    { key: 'pdf', label: 'Download PDF' },
+  ];
+  const handleExport = useCallback(
+    async ({ key }: { key: string }) => {
+      try {
+        if (permissions.role !== 'viewer') {
+          await collaboration.session?.flush();
+        }
+        const response = await fetch(
+          `/api/documents/${document.id}/export?format=${key}`,
+          { headers: { Authorization: `Bearer ${permissions.accessToken}` } }
+        );
+        if (!response.ok) throw new Error('Document export failed');
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = window.document.createElement('a');
+        anchor.href = url;
+        anchor.download = `${document.name}.${key}`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      } catch (error) {
+        showErrorToast(error instanceof Error ? error.message : 'Document export failed');
+      }
+    },
+    [
+      collaboration.session,
+      document.id,
+      document.name,
+      permissions.accessToken,
+      permissions.role,
+    ]
+  );
   const editorKey = `${document.id}:${collaboration.token.epoch}:${
     collaboration.isLegacyView ? 'legacy' : 'collaborative'
   }`;
@@ -121,6 +157,21 @@ function DocumentEditorSession({
       <div className={styles.header}>
         <h1 className={styles.title}>{document.name}</h1>
         <div className={styles.headerActions}>
+          <Dropdown
+            menu={{ items: exportItems, onClick: handleExport }}
+            placement="bottomRight"
+            trigger={['click']}
+          >
+            <button
+              type="button"
+              className={styles.historyButton}
+              aria-label="Export document"
+              data-testid="document-export"
+              title="Export document"
+            >
+              <DownloadOutlined aria-hidden="true" />
+            </button>
+          </Dropdown>
           <button
             type="button"
             className={styles.historyButton}

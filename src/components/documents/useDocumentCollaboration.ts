@@ -23,6 +23,47 @@ type CollaborationPresentation = {
   tone: 'neutral' | 'live' | 'warning' | 'error';
 };
 
+type DocumentCollaborator = {
+  id: string;
+  name: string;
+  color: string;
+};
+
+export function getDocumentCollaborators(
+  states: ReadonlyMap<number, unknown>,
+  localUserId: string
+): DocumentCollaborator[] {
+  const collaborators = new Map<string, DocumentCollaborator>();
+
+  for (const value of states.values()) {
+    if (!value || typeof value !== 'object') continue;
+    const awarenessState = value as Record<string, unknown>;
+    const awarenessData = awarenessState.awarenessData;
+    if (!awarenessData || typeof awarenessData !== 'object') continue;
+
+    const userId = (awarenessData as Record<string, unknown>).userId;
+    const name = awarenessState.name;
+    const color = awarenessState.color;
+    if (
+      typeof userId !== 'string' ||
+      !userId.trim() ||
+      typeof name !== 'string' ||
+      !name.trim() ||
+      typeof color !== 'string' ||
+      !color.trim() ||
+      typeof awarenessState.focusing !== 'boolean' ||
+      userId === localUserId ||
+      collaborators.has(userId)
+    ) {
+      continue;
+    }
+
+    collaborators.set(userId, { id: userId, name, color });
+  }
+
+  return Array.from(collaborators.values());
+}
+
 export function getDocumentCollaborationPresentation(
   status: CollaborationStatus,
   role: DocumentCollaborationRole
@@ -233,11 +274,8 @@ export function useDocumentCollaboration({
   const collaborators = useMemo(() => {
     void awarenessRevision;
     if (!session) return [];
-    const states = session.awareness.getStates() as Map<number, { user?: { id?: string; name?: string; color?: string }; focus?: boolean }>;
-    return Array.from(states.values())
-      .map((state) => state.user)
-      .filter((user): user is { id: string; name: string; color: string } => Boolean(user?.id && user.name && user.color))
-      .filter((user) => user.id !== userId);
+    const states = session.awareness.getStates() as ReadonlyMap<number, unknown>;
+    return getDocumentCollaborators(states, userId);
   }, [awarenessRevision, session, userId]);
 
   useEffect(() => {

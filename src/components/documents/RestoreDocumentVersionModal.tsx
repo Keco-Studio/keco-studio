@@ -23,6 +23,11 @@ export function RestoreDocumentVersionModal({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
+  const handleCancel = () => {
+    if (submitting) return;
+    onClose();
+  };
+
   const handleRestore = async () => {
     if (!version || !session || submitting) return;
     setSubmitting(true);
@@ -42,11 +47,15 @@ export function RestoreDocumentVersionModal({
     <Modal
       open={open && Boolean(version)}
       title="Restore version"
-      onCancel={onClose}
+      onCancel={handleCancel}
       onOk={() => void handleRestore()}
       okText="Restore"
-      okButtonProps={{ danger: true }}
+      okButtonProps={{ danger: true, disabled: submitting }}
+      cancelButtonProps={{ disabled: submitting }}
       confirmLoading={submitting}
+      maskClosable={!submitting}
+      closable={!submitting}
+      keyboard={!submitting}
       destroyOnHidden
     >
       <p>

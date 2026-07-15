@@ -1,6 +1,6 @@
 import { Realm } from '@mdxeditor/gurx';
 import * as mdxEditorRuntime from '@mdxeditor/editor';
-import type { RealmPlugin } from '@mdxeditor/editor';
+import type { JsxComponentDescriptor, RealmPlugin } from '@mdxeditor/editor';
 import type { LexicalEditor } from 'lexical';
 
 const {
@@ -17,7 +17,14 @@ const {
   setMarkdown$,
   tablePlugin,
   thematicBreakPlugin,
+  jsxPlugin,
+  GenericJsxEditor,
 } = mdxEditorRuntime;
+import {
+  createSanctionedMdxDescriptors,
+  type SanctionedMdxEditorProps,
+} from './sanctionedMdxDescriptors';
+import type { ComponentType } from 'react';
 
 const corePlugin = (
   mdxEditorRuntime as unknown as {
@@ -31,11 +38,16 @@ const corePlugin = (
 
 export type HeadlessDocumentEditor = {
   editor: LexicalEditor;
+  clear(): void;
+  appendEmptyParagraph(): void;
   getMarkdown(): string;
   setMarkdown(markdown: string): Promise<void>;
 };
 
 function documentPlugins(): RealmPlugin[] {
+  const sanctionedMdxDescriptors = createSanctionedMdxDescriptors(
+    GenericJsxEditor as unknown as ComponentType<SanctionedMdxEditorProps>
+  );
   return [
     corePlugin({
       initialMarkdown: '',
@@ -46,6 +58,10 @@ function documentPlugins(): RealmPlugin[] {
     listsPlugin(),
     quotePlugin(),
     thematicBreakPlugin(),
+    jsxPlugin({
+      jsxComponentDescriptors:
+        sanctionedMdxDescriptors as unknown as JsxComponentDescriptor[],
+    }),
     linkPlugin(),
     imagePlugin(),
     tablePlugin(),
@@ -74,6 +90,11 @@ export async function waitForLexicalCommit(): Promise<void> {
 }
 
 export async function createHeadlessDocumentEditor(): Promise<HeadlessDocumentEditor> {
+  const lexicalRuntime: typeof import('lexical') =
+    process.env.DOCUMENT_CODEC_COMMONJS === '1'
+      ? require('lexical')
+      : await import('lexical');
+  const { $createParagraphNode, $getRoot } = lexicalRuntime;
   const realm = new Realm();
   const plugins = documentPlugins();
   for (const plugin of plugins) plugin.init?.(realm);
@@ -87,6 +108,15 @@ export async function createHeadlessDocumentEditor(): Promise<HeadlessDocumentEd
 
   return {
     editor,
+    clear() {
+      editor.update(() => $getRoot().clear(), { discrete: true });
+    },
+    appendEmptyParagraph() {
+      editor.update(
+        () => $getRoot().append($createParagraphNode()),
+        { discrete: true }
+      );
+    },
     getMarkdown: () => realm.getValue(markdown$),
     async setMarkdown(markdown: string) {
       realm.pub(setMarkdown$, markdown);

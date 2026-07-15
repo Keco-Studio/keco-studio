@@ -1,9 +1,16 @@
 import { once } from 'node:events';
+import {
+  syncYjsChangesToLexical,
+  type Provider,
+} from '@lexical/yjs';
+import { $getRoot } from 'lexical';
+import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import {
   documentContentCodec,
   mergeYjsState,
 } from '../../src/lib/documents/documentContentCodec';
+import { createDocumentLexicalYjsBinding } from '../../src/lib/documents/documentLexicalYjsBinding';
 import { createHeadlessDocumentEditor } from '../../src/lib/documents/headlessDocumentNodes';
 import {
   decodeBase64,
@@ -13,8 +20,10 @@ import {
 type ProbeInput =
   | { mode: 'roundtrip'; markdown: string }
   | { mode: 'structure'; markdown: string }
+  | { mode: 'decorators'; markdown: string }
   | { mode: 'lexical'; markdown: string }
   | { mode: 'merge'; markdown: string }
+  | { mode: 'crafted-invalid-jsx'; component: 'Callout' | 'Unknown' }
   | { mode: 'invalid'; markdown: string; state: string };
 
 async function readInput(): Promise<ProbeInput> {
@@ -22,6 +31,140 @@ async function readInput(): Promise<ProbeInput> {
   process.stdin.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
   await once(process.stdin, 'end');
   return JSON.parse(Buffer.concat(chunks).toString('utf8')) as ProbeInput;
+}
+
+const decoratorEmitterProperties = new Map([
+  ['table', 'focusEmitter'],
+  ['codeblock', '__focusEmitter'],
+  ['jsx', '__focusEmitter'],
+]);
+
+function visitYjsDecoratorNodes(
+  root: Y.XmlText,
+  visitor: (node: Y.XmlElement, type: string) => void
+): void {
+  const visit = (value: unknown): void => {
+    if (value instanceof Y.XmlElement) {
+      const type = value.getAttribute('__type');
+      if (typeof type === 'string' && decoratorEmitterProperties.has(type)) {
+        visitor(value, type);
+      }
+      for (const child of value.toArray()) visit(child);
+      return;
+    }
+    if (value instanceof Y.XmlText) {
+      for (const delta of value.toDelta()) {
+        if (typeof delta.insert !== 'string') visit(delta.insert);
+      }
+    }
+  };
+
+  visit(root);
+}
+
+function createProbeProvider(doc: Y.Doc): Provider & { destroy(): void } {
+  const awareness = new Awareness(doc);
+  return {
+    awareness: awareness as unknown as Provider['awareness'],
+    connect: () => undefined,
+    disconnect: () => undefined,
+    on: () => undefined,
+    off: () => undefined,
+    destroy: () => awareness.destroy(),
+  };
+}
+
+function craftedInvalidJsxState(component: 'Callout' | 'Unknown'): string {
+  const doc = new Y.Doc();
+  const jsx = new Y.XmlElement();
+  jsx.setAttribute('__type', 'jsx');
+  jsx.setAttribute('__mdastNode', {
+    type: 'mdxJsxFlowElement',
+    name: component,
+    attributes:
+      component === 'Callout'
+        ? [{ type: 'mdxJsxAttribute', name: 'type', value: 'danger' }]
+        : [],
+    children: [
+      { type: 'paragraph', children: [{ type: 'text', value: 'Body.' }] },
+    ],
+  });
+  doc.get('root', Y.XmlText).insertEmbed(0, jsx);
+  const encoded = encodeBase64(Y.encodeStateAsUpdate(doc));
+  doc.destroy();
+  return encoded;
+}
+
+async function inspectDecoratorBinding(markdown: string) {
+  const snapshot = await documentContentCodec.markdownToYjsState(markdown);
+  const snapshotDoc = new Y.Doc();
+  Y.applyUpdate(snapshotDoc, decodeBase64(snapshot));
+  const snapshotRoot = snapshotDoc.get('root', Y.XmlText);
+  const decoratorAttributes: Array<{
+    type: string;
+    attributes: string[];
+  }> = [];
+
+  visitYjsDecoratorNodes(snapshotRoot, (node, type) => {
+    decoratorAttributes.push({
+      type,
+      attributes: Object.keys(node.getAttributes()).sort(),
+    });
+    const emitterProperty = decoratorEmitterProperties.get(type)!;
+    node.setAttribute(emitterProperty, {});
+  });
+
+  const legacySnapshot = Y.encodeStateAsUpdate(snapshotDoc);
+  const headless = await createHeadlessDocumentEditor();
+  headless.editor.update(() => $getRoot().clear(), { discrete: true });
+  const hydratedDoc = new Y.Doc();
+  const provider = createProbeProvider(hydratedDoc);
+  const binding = createDocumentLexicalYjsBinding(
+    headless.editor,
+    provider,
+    'decorator-probe',
+    hydratedDoc,
+    new Map([['decorator-probe', hydratedDoc]])
+  );
+  const sharedRoot = binding.root.getSharedType();
+  const onYjsChange = (
+    events: Array<{ delta: unknown }>,
+    transaction: { origin: unknown }
+  ) => {
+    if (transaction.origin === binding) return;
+    events.forEach((event) => void event.delta);
+    syncYjsChangesToLexical(binding, provider, events as never, false);
+  };
+
+  sharedRoot.observeDeep(onYjsChange as never);
+  try {
+    Y.applyUpdate(hydratedDoc, legacySnapshot, 'decorator-probe-hydration');
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    const runtimeEmitters = headless.editor.getEditorState().read(() =>
+      $getRoot()
+        .getChildren()
+        .filter((node) => decoratorEmitterProperties.has(node.getType()))
+        .map((node) => {
+          const type = node.getType();
+          const emitterProperty = decoratorEmitterProperties.get(type)!;
+          const emitter = (node as unknown as Record<string, unknown>)[
+            emitterProperty
+          ] as { publish?: unknown; subscribe?: unknown } | undefined;
+          return {
+            type,
+            publish: typeof emitter?.publish,
+            subscribe: typeof emitter?.subscribe,
+          };
+        })
+    );
+    return { decoratorAttributes, runtimeEmitters };
+  } finally {
+    sharedRoot.unobserveDeep(onYjsChange as never);
+    binding.root.destroy(binding);
+    provider.destroy();
+    hydratedDoc.destroy();
+    snapshotDoc.destroy();
+  }
 }
 
 async function main() {
@@ -44,6 +187,10 @@ async function main() {
     };
     doc.destroy();
     return result;
+  }
+
+  if (input.mode === 'decorators') {
+    return inspectDecoratorBinding(input.markdown);
   }
 
   if (input.mode === 'lexical') {
@@ -79,6 +226,19 @@ async function main() {
     clientA.destroy();
     clientB.destroy();
     return result;
+  }
+
+  if (input.mode === 'crafted-invalid-jsx') {
+    let errorName = '';
+    try {
+      await documentContentCodec.yjsStateToMarkdown(
+        craftedInvalidJsxState(input.component),
+        []
+      );
+    } catch (error) {
+      errorName = error instanceof Error ? error.name : 'UnknownError';
+    }
+    return { errorName };
   }
 
   let validateError = '';

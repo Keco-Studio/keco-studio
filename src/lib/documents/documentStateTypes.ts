@@ -12,8 +12,11 @@ export type DurableYjsUpdate = {
 export type ReplaceDocumentStateInput = {
   documentId: string;
   expected: DocumentStateToken;
-  replacement: { kind: 'version'; versionId: string };
-  reason: 'restore';
+  expectedUpdateIds?: readonly string[];
+  replacement:
+    | { kind: 'version'; versionId: string }
+    | { kind: 'markdown'; markdown: string };
+  reason: 'restore' | 'agent';
 };
 
 export type AuthoritativeDocumentState = {

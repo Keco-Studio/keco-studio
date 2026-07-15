@@ -8,9 +8,11 @@
  */
 
 import {
+  useEffect,
   useMemo,
   useRef,
   type ChangeEvent,
+  type ComponentType,
   type MouseEvent,
   type Ref,
 } from 'react';
@@ -38,6 +40,9 @@ import {
   InsertCodeBlock,
   CodeToggle,
   Separator,
+  CodeMirrorEditor,
+  GenericJsxEditor,
+  PropertyPopover,
   activeEditor$,
   currentSelection$,
   iconComponentFor$,
@@ -46,14 +51,28 @@ import {
   useCellValue,
   usePublisher,
   type MDXEditorMethods,
+  type CodeBlockEditorProps,
+  type JsxComponentDescriptor,
+  type JsxEditorProps,
+  jsxPlugin,
 } from '@mdxeditor/editor';
 import '@mdxeditor/editor/style.css';
+import { EditorView } from '@codemirror/view';
 import { $getSelection, $isRangeSelection } from 'lexical';
 import type { DocumentCollaborationSession } from '@/lib/documents/documentCollaborationSession';
 import {
   documentCollaborationPlugin,
 } from './documentCollaborationPlugin';
 import styles from './MdxDocumentEditor.module.css';
+import {
+  createSanctionedMdxDescriptors,
+  type SanctionedMdxEditorProps,
+} from '@/lib/documents/sanctionedMdxDescriptors';
+import { syncCodeMirrorDocument } from './codeMirrorDocumentSync';
+import {
+  SanctionedMdxPropertyEditor,
+  type SanctionedMdxPropertyEditorControlProps,
+} from './SanctionedMdxPropertyEditor';
 
 export type { MDXEditorMethods } from '@mdxeditor/editor';
 
@@ -85,6 +104,65 @@ const CODE_BLOCK_LANGUAGES = {
   python: 'Python',
   sql: 'SQL',
 };
+
+function BoundSanctionedMdxPropertyEditor(
+  props: SanctionedMdxPropertyEditorControlProps
+) {
+  return (
+    <SanctionedMdxPropertyEditor
+      {...props}
+      PropertyEditorComponent={PropertyPopover}
+    />
+  );
+}
+
+function SanctionedMdxEditor(props: JsxEditorProps) {
+  return (
+    <div
+      className={styles.sanctionedMdx}
+      data-component={props.mdastNode.name ?? undefined}
+    >
+      <GenericJsxEditor
+        {...props}
+        PropertyEditor={BoundSanctionedMdxPropertyEditor}
+      />
+    </div>
+  );
+}
+
+const sanctionedMdxDescriptors = createSanctionedMdxDescriptors(
+  SanctionedMdxEditor as unknown as ComponentType<SanctionedMdxEditorProps>
+);
+
+function SyncedCodeMirrorEditor(props: CodeBlockEditorProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const syncMountedView = () => {
+      const view = EditorView.findFromDOM(container);
+      if (!view) return false;
+      syncCodeMirrorDocument(view, props.code);
+      return true;
+    };
+
+    if (syncMountedView()) return;
+
+    const observer = new MutationObserver(() => {
+      if (syncMountedView()) observer.disconnect();
+    });
+    observer.observe(container, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [props.code]);
+
+  return (
+    <div ref={containerRef}>
+      <CodeMirrorEditor {...props} />
+    </div>
+  );
+}
 
 function SelectedTextLinkButton() {
   const selection = useCellValue(currentSelection$);
@@ -184,9 +262,23 @@ export default function MdxDocumentEditor({
       linkDialogPlugin({ showLinkTitleField: false }),
       imagePlugin({ imageUploadHandler, disableImageSettingsButton: true }),
       tablePlugin(),
-      codeBlockPlugin({ defaultCodeBlockLanguage: '' }),
+      codeBlockPlugin({
+        defaultCodeBlockLanguage: '',
+        codeBlockEditorDescriptors: [
+          {
+            match: (language, meta) =>
+              !meta || Object.hasOwn(CODE_BLOCK_LANGUAGES, language ?? ''),
+            priority: 2,
+            Editor: SyncedCodeMirrorEditor,
+          },
+        ],
+      }),
       codeMirrorPlugin({ codeBlockLanguages: CODE_BLOCK_LANGUAGES }),
       markdownShortcutPlugin(),
+      jsxPlugin({
+        jsxComponentDescriptors:
+          sanctionedMdxDescriptors as unknown as JsxComponentDescriptor[],
+      }),
     ];
 
     if (

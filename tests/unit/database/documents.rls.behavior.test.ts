@@ -72,7 +72,7 @@ describeDb('documents project membership RLS (live RLS)', () => {
     ] as const) {
       const { error: updateError } = await actor.client
         .from('documents')
-        .update({ content: `# Edited by ${role}` })
+        .update({ name: `Edited by ${role}` })
         .eq('id', id);
       expect(updateError).toBeNull();
     }
@@ -80,7 +80,7 @@ describeDb('documents project membership RLS (live RLS)', () => {
     // Viewer cannot update (RLS denies; row count unaffected).
     const { error: viewerUpdateError, count } = await fx.viewer.client
       .from('documents')
-      .update({ content: '# Viewer tried' }, { count: 'exact' })
+      .update({ name: 'Viewer tried' }, { count: 'exact' })
       .eq('id', id);
     if (!viewerUpdateError) expect(count ?? 0).toBe(0);
 
@@ -103,10 +103,10 @@ describeDb('documents project membership RLS (live RLS)', () => {
 
     const { data: stored } = await fx.svc
       .from('documents')
-      .select('content')
+      .select('name')
       .eq('id', id)
       .single();
-    expect(stored?.content).toBe('# Edited by editor');
+    expect(stored?.name).toBe('Edited by editor');
   });
 
   it('blocks a non-member from reading or mutating project documents', async () => {

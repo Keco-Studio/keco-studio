@@ -6,6 +6,7 @@ import {
   type Page,
 } from '@playwright/test';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import * as Y from 'yjs';
 import { LoginPage } from '../pages/login.page';
 import { users } from '../fixures/users';
 
@@ -127,16 +128,83 @@ async function openDocument(
   return { page, context };
 }
 
-async function appendDraft(page: Page): Promise<void> {
+async function appendDraft(page: Page, lane: string, text: string): Promise<void> {
   const editor = page.locator('[contenteditable="true"]').first();
-  await editor.locator('p').first().click();
+  await editor.locator('p', { hasText: lane }).first().click();
   await editor.press('End');
-  await editor.pressSequentially(' newer-draft', { delay: 15 });
-  await expect(editor).toContainText('newer-draft');
+  await editor.pressSequentially(text, { delay: 15 });
+  await expect(editor).toContainText(text.trim());
+}
+
+const REHYDRATE_PROBE = '__documentVersionRehydrateProbe';
+
+async function installRehydrateProbe(page: Page): Promise<void> {
+  await page.evaluate((probeKey) => {
+    const rootSelector =
+      '.mdxeditor-root-contenteditable [aria-label="editable markdown"]';
+    const findLiveRoot = () =>
+      [...document.querySelectorAll(rootSelector)].find(
+        (root) => !root.closest('[role="dialog"]')
+      ) ?? null;
+    const initialRoot = findLiveRoot();
+    if (!initialRoot) throw new Error('Document editor root is not mounted');
+    initialRoot.setAttribute('data-live-document-editor', 'true');
+    const probe = { count: 0, currentRoot: initialRoot };
+    const seenRoots = new WeakSet<Element>([initialRoot]);
+    const markRoot = (nextRoot: Element) => {
+      if (!nextRoot.closest('[role="dialog"]') && !seenRoots.has(nextRoot)) {
+        probe.currentRoot.removeAttribute('data-live-document-editor');
+        nextRoot.setAttribute('data-live-document-editor', 'true');
+        probe.currentRoot = nextRoot;
+        seenRoots.add(nextRoot);
+        probe.count += 1;
+      }
+    };
+    const observer = new MutationObserver((records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof Element)) continue;
+          if (node.matches(rootSelector)) markRoot(node);
+          node.querySelectorAll(rootSelector).forEach(markRoot);
+        }
+      }
+      const currentRoot = findLiveRoot();
+      if (currentRoot) markRoot(currentRoot);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    (window as unknown as Record<string, unknown>)[probeKey] = probe;
+  }, REHYDRATE_PROBE);
+}
+
+async function rehydrateCount(page: Page): Promise<number> {
+  return page.evaluate((probeKey) => {
+    const probe = (window as unknown as Record<string, { count?: unknown }>)[
+      probeKey
+    ];
+    return typeof probe?.count === 'number' ? probe.count : -1;
+  }, REHYDRATE_PROBE);
+}
+
+async function expectExactlyOneRehydrate(pages: Page[]): Promise<void> {
+  for (const page of pages) {
+    await expect
+      .poll(() => rehydrateCount(page), { timeout: 30_000 })
+      .toBe(1);
+  }
+  await Promise.all(pages.map((page) => page.waitForTimeout(1_000)));
+  for (const page of pages) {
+    expect(await rehydrateCount(page)).toBe(1);
+  }
+}
+
+function validYjsUpdateBase64(text: string): string {
+  const document = new Y.Doc();
+  document.getText('stale').insert(0, text);
+  return Buffer.from(Y.encodeStateAsUpdate(document)).toString('base64');
 }
 
 test.describe.serial('Document version history', () => {
-  test.setTimeout(240_000);
+  test.setTimeout(360_000);
   let fixture: Fixture;
 
   test.beforeAll(async () => {
@@ -155,12 +223,14 @@ test.describe.serial('Document version history', () => {
 
   test('creates, previews, restores, and rehydrates a version across roles', async ({ browser }) => {
     const contexts: BrowserContext[] = [];
-    const owner = await openDocument(browser, users.seedEmpty2, fixture);
-    const editor = await openDocument(browser, users.seedEmpty3, fixture);
-    const viewer = await openDocument(browser, users.seedEmpty4, fixture, 'viewer');
-    contexts.push(owner.context, editor.context, viewer.context);
-
     try {
+      const owner = await openDocument(browser, users.seedEmpty2, fixture);
+      contexts.push(owner.context);
+      const editor = await openDocument(browser, users.seedEmpty3, fixture);
+      contexts.push(editor.context);
+      const viewer = await openDocument(browser, users.seedEmpty4, fixture, 'viewer');
+      contexts.push(viewer.context);
+
       for (const page of [owner.page, editor.page]) {
         await expect(page.locator('[contenteditable="true"]').first()).toContainText(
           'Collaborative seed'
@@ -176,11 +246,17 @@ test.describe.serial('Document version history', () => {
         .filter({ hasText: 'Before rewrite' });
       await expect(savedRow).toBeVisible({ timeout: 30_000 });
 
-      await appendDraft(owner.page);
+      await appendDraft(owner.page, 'Owner lane', ' owner-newer');
       await expect(editor.page.locator('[contenteditable="true"]').first()).toContainText(
-        'newer-draft',
+        'owner-newer',
         { timeout: 30_000 }
       );
+      await appendDraft(editor.page, 'Editor lane', ' editor-newer');
+      for (const page of [owner.page, editor.page]) {
+        const content = page.locator('[contenteditable="true"]').first();
+        await expect(content).toContainText('owner-newer', { timeout: 30_000 });
+        await expect(content).toContainText('editor-newer', { timeout: 30_000 });
+      }
 
       await viewer.page.getByTestId('version-history-toggle').click();
       await expect(viewer.page.getByRole('button', { name: 'Preview' }).first()).toBeVisible();
@@ -190,32 +266,90 @@ test.describe.serial('Document version history', () => {
       await expect(viewer.page.getByRole('dialog')).toContainText('Collaborative seed');
       await viewer.page.getByRole('button', { name: 'Close' }).last().click();
 
+      const oldEpochResult = await fixture.editor.client
+        .from('documents')
+        .select('collab_epoch')
+        .eq('id', fixture.documentId)
+        .single();
+      if (oldEpochResult.error || !oldEpochResult.data) {
+        throw oldEpochResult.error ?? new Error('Could not read pre-restore epoch');
+      }
+      const oldEpoch = Number(oldEpochResult.data.collab_epoch);
+      await Promise.all(
+        [owner.page, editor.page, viewer.page].map((page) =>
+          installRehydrateProbe(page)
+        )
+      );
+
       await savedRow.getByRole('button', { name: 'Restore' }).click();
       const restoreDialog = owner.page.getByRole('dialog', { name: 'Restore version' });
       await expect(restoreDialog).toContainText('backup');
       await restoreDialog.getByRole('button', { name: 'Restore', exact: true }).click();
 
-      await expect(owner.page.locator('[contenteditable="true"]').first()).not.toContainText(
-        'newer-draft',
-        { timeout: 30_000 }
-      );
-      await expect(editor.page.locator('[contenteditable="true"]').first()).not.toContainText(
-        'newer-draft',
-        { timeout: 30_000 }
-      );
-      await expect(viewer.page.locator('[contenteditable="false"]').first()).not.toContainText(
-        'newer-draft',
-        { timeout: 30_000 }
-      );
+      await expectExactlyOneRehydrate([owner.page, editor.page, viewer.page]);
 
-      await owner.page.reload({ waitUntil: 'domcontentloaded' });
-      await expect(owner.page.locator('[contenteditable="true"]').first()).toContainText(
-        'Collaborative seed',
-        { timeout: 30_000 }
+      for (const page of [owner.page, editor.page, viewer.page]) {
+        const liveRoot = page.locator('[data-live-document-editor="true"]');
+        await expect(liveRoot).toContainText('Collaborative seed', {
+          timeout: 30_000,
+        });
+        await expect(liveRoot).not.toContainText('owner-newer', {
+          timeout: 30_000,
+        });
+        await expect(liveRoot).not.toContainText('editor-newer', {
+          timeout: 30_000,
+        });
+      }
+
+      const beforeRestoreRow = owner.page
+        .locator('[data-testid^="document-version-row-"]')
+        .filter({ hasText: 'Before restore' });
+      const restoredAuditRow = owner.page
+        .locator('[data-testid^="document-version-row-"]')
+        .filter({ hasText: 'Restored: Before rewrite' });
+      await expect(beforeRestoreRow).toBeVisible({ timeout: 30_000 });
+      await expect(beforeRestoreRow).toContainText('Before restore');
+      await expect(restoredAuditRow).toBeVisible({ timeout: 30_000 });
+      await expect(restoredAuditRow).toContainText('Restore');
+
+      const staleAppend = await fixture.editor.client.rpc(
+        'append_document_yjs_updates',
+        {
+          p_document_id: fixture.documentId,
+          p_epoch: oldEpoch,
+          p_updates: [
+            {
+              id: crypto.randomUUID(),
+              updateBase64: validYjsUpdateBase64('stale-newer-content'),
+            },
+          ],
+        }
       );
-      await expect(owner.page.locator('[contenteditable="true"]').first()).not.toContainText(
-        'newer-draft'
-      );
+      expect(staleAppend.data).toBeNull();
+      expect(staleAppend.error?.code).toBe('PT409');
+
+      const newEpochResult = await fixture.service
+        .from('documents')
+        .select('collab_epoch')
+        .eq('id', fixture.documentId)
+        .single();
+      expect(newEpochResult.error).toBeNull();
+      expect(Number(newEpochResult.data?.collab_epoch)).toBe(oldEpoch + 1);
+
+      await expect(viewer.page.getByRole('button', { name: 'Preview' }).first()).toBeVisible();
+      await expect(viewer.page.getByRole('button', { name: 'Create version' })).toHaveCount(0);
+      await expect(viewer.page.getByRole('button', { name: 'Restore' })).toHaveCount(0);
+
+      for (const page of [owner.page, editor.page, viewer.page]) {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        const content = page.locator('[contenteditable]').first();
+        await expect(content).toContainText('Collaborative seed', {
+          timeout: 45_000,
+        });
+        await expect(content).not.toContainText('owner-newer');
+        await expect(content).not.toContainText('editor-newer');
+        await expect(content).not.toContainText('stale-newer-content');
+      }
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
     }

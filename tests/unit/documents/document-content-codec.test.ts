@@ -15,11 +15,17 @@ function runCodecProbe(input: Record<string, unknown>): ProbeResult {
     {
       cwd: process.cwd(),
       encoding: 'utf8',
+      env: {
+        ...process.env,
+        DOCUMENT_CODEC_COMMONJS: '1',
+      },
       input: JSON.stringify(input),
     }
   );
-  expect(result.status).toBe(0);
-  expect(result.stderr).toBe('');
+  expect({ status: result.status, stderr: result.stderr }).toEqual({
+    status: 0,
+    stderr: '',
+  });
   return JSON.parse(result.stdout) as ProbeResult;
 }
 
@@ -54,6 +60,20 @@ const value = 1
 | :--- | ---: |
 | One | 1 |
 `;
+
+const decoratorMarkdown = `| Name | Value |
+| --- | ---: |
+| One | 1 |
+
+\`\`\`ts
+const value = 1
+\`\`\`
+
+<Callout type="note" title="Heads up">
+
+Nested **Markdown**.
+
+</Callout>`;
 
 describe('document content codec', () => {
   it('round-trips every Phase 1 Markdown node through Lexical Yjs state', async () => {
@@ -101,6 +121,48 @@ describe('document content codec', () => {
     expect(result.rootLength as number).toBeGreaterThan(0);
   });
 
+  it('keeps decorator emitters out of Yjs and preserves runtime emitters when legacy attributes are hydrated', () => {
+    const result = runCodecProbe({
+      mode: 'decorators',
+      markdown: decoratorMarkdown,
+    }) as {
+      decoratorAttributes: Array<{ type: string; attributes: string[] }>;
+      runtimeEmitters: Array<{
+        type: string;
+        publish: string;
+        subscribe: string;
+      }>;
+    };
+
+    expect(result.decoratorAttributes.map(({ type }) => type).sort()).toEqual([
+      'codeblock',
+      'jsx',
+      'table',
+    ]);
+    expect(result.runtimeEmitters).toEqual([
+      { type: 'table', publish: 'function', subscribe: 'function' },
+      { type: 'codeblock', publish: 'function', subscribe: 'function' },
+      { type: 'jsx', publish: 'function', subscribe: 'function' },
+    ]);
+    for (const { attributes } of result.decoratorAttributes) {
+      expect(attributes).not.toContain('focusEmitter');
+      expect(attributes).not.toContain('__focusEmitter');
+    }
+  });
+
+  it('round-trips sanctioned MDX components without evaluating them', () => {
+    const source = `<Callout type="note" title="Heads up">\n\nNested **Markdown**.\n\n</Callout>\n\n<Details summary="More">\n\nAdditional content.\n\n</Details>`;
+    const { markdown: restored } = runCodecProbe({
+      mode: 'roundtrip',
+      markdown: source,
+    }) as { markdown: string };
+
+    expect(restored).toContain('<Callout type="note" title="Heads up">');
+    expect(restored).toContain('Nested **Markdown**.');
+    expect(restored).toContain('<Details summary="More">');
+    expect(restored).toContain('Additional content.');
+  });
+
   it('merges a snapshot and deduplicated concurrent tail updates deterministically', async () => {
     const result = runCodecProbe({ mode: 'merge', markdown: '# Shared' });
     expect(result.equal).toBe(true);
@@ -112,4 +174,16 @@ describe('document content codec', () => {
     expect(result.validateError).toBe('DocumentContentValidationError');
     expect(result.stateError).toBe('DocumentContentValidationError');
   });
+
+  it.each(['Callout', 'Unknown'] as const)(
+    'rejects crafted Yjs containing invalid %s JSX with a typed validation error',
+    (component) => {
+      const result = runCodecProbe({
+        mode: 'crafted-invalid-jsx',
+        component,
+      });
+
+      expect(result.errorName).toBe('DocumentContentValidationError');
+    }
+  );
 });

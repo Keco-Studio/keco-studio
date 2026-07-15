@@ -21,6 +21,7 @@ import {
   DocumentReadOnlyError,
   DocumentStateConflictError,
 } from './documentStateTypes';
+import { validateSanctionedMdxAstNode } from './sanctionedMdx';
 
 export type DocumentCollaborationRole = 'admin' | 'editor' | 'viewer';
 
@@ -74,6 +75,8 @@ export type DocumentCollaborationSessionOptions = {
   batchWindowMs?: number;
   compactionBackoffMs?: number;
   compactionJitterRatio?: number;
+  reconnectBackoffMs?: number;
+  reconnectJitterRatio?: number;
   onCompacted?: (state: AuthoritativeDocumentState) => void | Promise<void>;
   onStateReplaced?: (state: AuthoritativeDocumentState) => void | Promise<void>;
 };
@@ -109,8 +112,34 @@ const SYNC_EVENTS: DocumentCollaborationEventName[] = [
   'document-state-reset',
 ];
 
+class DocumentChannelTransportError extends Error {
+  constructor(message: string, readonly handled = false) {
+    super(message);
+    this.name = 'DocumentChannelTransportError';
+  }
+}
+
+class StaleDocumentChannelOperationError extends Error {}
+
 function newUpdateId(): string {
   return globalThis.crypto.randomUUID();
+}
+
+function validateSerializedMdxNodes(value: unknown): void {
+  if (value instanceof Y.XmlElement) {
+    if (value.getAttribute('__type') === 'jsx') {
+      validateSanctionedMdxAstNode(value.getAttribute('__mdastNode'));
+    }
+    for (const child of value.toArray()) validateSerializedMdxNodes(child);
+    return;
+  }
+  if (value instanceof Y.XmlText) {
+    for (const delta of value.toDelta()) {
+      if (typeof delta.insert !== 'string') {
+        validateSerializedMdxNodes(delta.insert);
+      }
+    }
+  }
 }
 
 export class DocumentCollaborationSession implements Provider {
@@ -126,6 +155,8 @@ export class DocumentCollaborationSession implements Provider {
   private readonly batchWindowMs: number;
   private readonly compactionBackoffMs: number;
   private readonly compactionJitterRatio: number;
+  private readonly reconnectBackoffMs: number;
+  private readonly reconnectJitterRatio: number;
   private readonly onCompacted?: (
     state: AuthoritativeDocumentState
   ) => void | Promise<void>;
@@ -152,11 +183,24 @@ export class DocumentCollaborationSession implements Provider {
   private compactInterval: ReturnType<typeof setInterval> | null = null;
   private compactRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private compactPromise: Promise<void> | null = null;
+  private reloadPromise: Promise<void> | null = null;
+  private reloadQueued = false;
+  private reloadMinimumToken: DocumentStateToken | null = null;
   private compactAttempts = 0;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectPromise: Promise<void> | null = null;
+  private hydrationPromise: Promise<void> | null = null;
+  private hydrationGeneration = 0;
+  private reconnectAttempts = 0;
+  private channelGeneration = 0;
+  private channelHealthy = false;
+  private cancelPendingSubscribe: ((error: Error) => void) | null = null;
   private heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   private bindingRequested = false;
   private hydrated = false;
   private destroyed = false;
+  private closing = false;
+  private destroyPromise: Promise<void> | null = null;
   private docListenerInstalled = false;
   private awarenessListenerInstalled = false;
   private durableTailCount = 0;
@@ -168,7 +212,10 @@ export class DocumentCollaborationSession implements Provider {
   private currentToken: DocumentStateToken = { epoch: 0, revision: 0 };
   private currentError: string | null = null;
   private stateReplacementInProgress = false;
+  private durableResetInProgress = false;
+  private semanticStateValidator: (() => void) | null = null;
   private activeDoc: Y.Doc;
+  private durableDoc: Y.Doc;
   private activeAwareness: Provider['awareness'];
 
   private readonly onDocUpdate = (update: Uint8Array, origin: unknown) => {
@@ -177,6 +224,8 @@ export class DocumentCollaborationSession implements Provider {
       origin === 'hydrate' ||
       this.role === 'viewer' ||
       this.stateReplacementInProgress ||
+      this.durableResetInProgress ||
+      this.closing ||
       this.destroyed
     ) {
       return;
@@ -198,6 +247,7 @@ export class DocumentCollaborationSession implements Provider {
     if (
       origin === 'remote' ||
       this.role === 'viewer' ||
+      this.closing ||
       this.destroyed ||
       !this.channel
     ) {
@@ -213,7 +263,7 @@ export class DocumentCollaborationSession implements Provider {
       documentId: this.documentId,
       epoch: this.currentToken.epoch,
       updateBase64: encodeBase64(update),
-    }).catch(() => this.failClosed('Awareness transport failed'));
+    }).catch(() => undefined);
   };
 
   constructor(options: DocumentCollaborationSessionOptions) {
@@ -228,10 +278,14 @@ export class DocumentCollaborationSession implements Provider {
     this.batchWindowMs = options.batchWindowMs ?? 75;
     this.compactionBackoffMs = options.compactionBackoffMs ?? 250;
     this.compactionJitterRatio = options.compactionJitterRatio ?? 0.2;
+    this.reconnectBackoffMs = options.reconnectBackoffMs ?? 500;
+    this.reconnectJitterRatio = options.reconnectJitterRatio ?? 0.2;
     this.onCompacted = options.onCompacted;
     this.onStateReplaced = options.onStateReplaced;
     this.activeDoc = new Y.Doc();
     this.activeDoc.get('root', Y.XmlText);
+    this.durableDoc = new Y.Doc();
+    this.durableDoc.get('root', Y.XmlText);
     this.activeAwareness = new awarenessProtocol.Awareness(
       this.activeDoc
     ) as unknown as Provider['awareness'];
@@ -305,6 +359,9 @@ export class DocumentCollaborationSession implements Provider {
     try {
       this.setStatus('authorizing');
       await this.supabase.realtime.setAuth(this.accessToken);
+      if (this.closing || this.destroyed) {
+        throw new DocumentCollaborationUnavailableError('Document session is closed');
+      }
       this.setStatus('connecting');
       this.channel = this.supabase.channel(documentCollabTopic(this.documentId), {
         config: {
@@ -313,69 +370,317 @@ export class DocumentCollaborationSession implements Provider {
           presence: { key: this.userId },
         },
       });
-      this.registerChannelHandlers(this.channel);
-      await this.subscribeChannel(this.channel);
-
-      this.setStatus('hydrating');
-      let state = await this.gateway.read(this.supabase, this.documentId);
-      if (state.projectId !== this.projectId) {
-        throw new Error('Document project does not match the open project');
+      const channelGeneration = ++this.channelGeneration;
+      this.registerChannelHandlers(this.channel, channelGeneration);
+      await this.subscribeChannel(this.channel, channelGeneration);
+      if (this.closing || this.destroyed) {
+        throw new DocumentCollaborationUnavailableError('Document session is closed');
       }
-      if (state.mode === 'legacy') {
-        if (this.role === 'viewer') {
-          this.pendingState = state;
-          this.currentToken = state.token;
-          this.setStatus('legacy-view');
-          this.startHeartbeat();
-          this.resolveConnect?.();
-          return;
-        }
-        state = await this.gateway.initialize(
-          this.supabase,
-          this.documentId,
-          state.markdown
-        );
-        await this.send('document-state-reset', {
-          v: 1,
-          documentId: this.documentId,
-          epoch: state.token.epoch,
-          revision: state.token.revision,
-          reason: 'initialize',
-          updatedAt: state.updatedAt,
-        });
-      }
-
-      this.pendingState = state;
-      this.currentToken = state.token;
-      this.durableTailCount = state.updateTail.length;
-      this.durableTailBytes = state.updateTail.reduce(
-        (total, update) => total + decodeBase64(update.updateBase64).byteLength,
-        0
-      );
-      this.setStatus('syncing');
-      if (this.bindingRequested) this.hydrateInitialState();
+      await this.loadInitialDurableState();
     } catch (error) {
-      this.failClosed(error instanceof Error ? error.message : 'Collaboration failed');
+      if (error instanceof StaleDocumentChannelOperationError) return;
+      if (
+        error instanceof DocumentChannelTransportError &&
+        !this.closing &&
+        !this.destroyed
+      ) {
+        if (!error.handled) this.handleChannelFailure(error);
+        return;
+      }
+      if (!this.closing && !this.destroyed) {
+        this.failClosed(error instanceof Error ? error.message : 'Collaboration failed');
+      }
       this.rejectConnect?.(error);
     }
   }
 
-  private subscribeChannel(channel: RealtimeChannel): Promise<void> {
-    return new Promise((resolve, reject) => {
-      channel.subscribe((status, error) => {
-        if (status === 'SUBSCRIBED') resolve();
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-          reject(error ?? new Error(`Document channel ${status.toLowerCase()}`));
-        }
+  private async loadInitialDurableState(): Promise<void> {
+    this.setStatus('hydrating');
+    let state = await this.gateway.read(this.supabase, this.documentId);
+    if (this.closing || this.destroyed) {
+      throw new DocumentCollaborationUnavailableError('Document session is closed');
+    }
+    if (state.projectId !== this.projectId) {
+      throw new Error('Document project does not match the open project');
+    }
+    if (state.mode === 'legacy') {
+      if (this.role === 'viewer') {
+        this.pendingState = state;
+        this.currentToken = state.token;
+        this.setStatus('legacy-view');
+        this.startHeartbeat();
+        this.resolveConnect?.();
+        return;
+      }
+      state = await this.gateway.initialize(
+        this.supabase,
+        this.documentId,
+        state.markdown
+      );
+      if (this.closing || this.destroyed) {
+        throw new DocumentCollaborationUnavailableError('Document session is closed');
+      }
+      await this.send('document-state-reset', {
+        v: 1,
+        documentId: this.documentId,
+        epoch: state.token.epoch,
+        revision: state.token.revision,
+        reason: 'initialize',
+        updatedAt: state.updatedAt,
       });
+      if (this.closing || this.destroyed) {
+        throw new DocumentCollaborationUnavailableError('Document session is closed');
+      }
+    }
+
+    this.pendingState = state;
+    this.currentToken = state.token;
+    this.durableTailCount = state.updateTail.length;
+    this.durableTailBytes = state.updateTail.reduce(
+      (total, update) => total + decodeBase64(update.updateBase64).byteLength,
+      0
+    );
+    this.setStatus('syncing');
+    if (this.bindingRequested) await this.hydrateInitialState();
+  }
+
+  private subscribeChannel(
+    channel: RealtimeChannel,
+    channelGeneration: number
+  ): Promise<void> {
+    return new Promise((resolve, reject) => {
+      let subscribed = false;
+      let settled = false;
+      const clearCancel = () => {
+        if (this.cancelPendingSubscribe === cancel) {
+          this.cancelPendingSubscribe = null;
+        }
+      };
+      const settleResolve = () => {
+        if (settled) return;
+        settled = true;
+        clearCancel();
+        resolve();
+      };
+      const settleReject = (error: Error) => {
+        if (settled) return;
+        settled = true;
+        clearCancel();
+        reject(error);
+      };
+      const cancel = (error: Error) => settleReject(error);
+      this.cancelPendingSubscribe = cancel;
+      try {
+        channel.subscribe((status, error) => {
+          if (
+            this.closing ||
+            this.destroyed ||
+            this.channel !== channel ||
+            this.channelGeneration !== channelGeneration
+          ) {
+            return;
+          }
+          if (status === 'SUBSCRIBED') {
+            this.channelHealthy = true;
+            subscribed = true;
+            settleResolve();
+          }
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            const failure = new DocumentChannelTransportError(
+              error?.message ?? `Document channel ${status.toLowerCase()}`
+            );
+            this.channelHealthy = false;
+            if (!subscribed) {
+              settleReject(failure);
+              return;
+            }
+            this.handleChannelFailure(failure);
+          }
+        });
+      } catch (error) {
+        settleReject(
+          error instanceof Error
+            ? error
+            : new Error('Document channel subscription failed')
+        );
+      }
     });
   }
 
-  private registerChannelHandlers(channel: RealtimeChannel): void {
+  private handleChannelFailure(error: Error): void {
+    if (this.closing || this.destroyed) return;
+    this.channelHealthy = false;
+    this.failClosed(error.message, 'degraded');
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.reconnectTimer || this.closing || this.destroyed) return;
+    if (this.reconnectAttempts >= 5) return;
+    this.reconnectAttempts += 1;
+    const baseDelay = Math.min(
+      this.reconnectBackoffMs * 2 ** (this.reconnectAttempts - 1),
+      30_000
+    );
+    const jitter =
+      baseDelay * this.reconnectJitterRatio * (Math.random() * 2 - 1);
+    const delay = Math.max(0, Math.round(baseDelay + jitter));
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      void this.reconnectChannel().catch((error) => {
+        if (this.closing || this.destroyed) return;
+        if (
+          error instanceof DocumentChannelTransportError &&
+          error.handled
+        ) {
+          return;
+        }
+        this.failClosed(
+          error instanceof Error ? error.message : 'Document reconnect failed',
+          'degraded'
+        );
+        this.scheduleReconnect();
+      });
+    }, delay);
+  }
+
+  private reconnectChannel(): Promise<void> {
+    if (this.reconnectPromise) return this.reconnectPromise;
+    const reconnectPromise = this.runReconnectChannel();
+    this.reconnectPromise = reconnectPromise;
+    reconnectPromise.then(
+      () => {
+        if (this.reconnectPromise === reconnectPromise) this.reconnectPromise = null;
+      },
+      () => {
+        if (this.reconnectPromise === reconnectPromise) this.reconnectPromise = null;
+      }
+    );
+    return reconnectPromise;
+  }
+
+  private async runReconnectChannel(): Promise<void> {
+    if (this.closing || this.destroyed) return;
+    const failedChannel = this.channel;
+    this.channel = null;
+    this.channelHealthy = false;
+    this.channelGeneration += 1;
+    if (failedChannel) {
+      await failedChannel.unsubscribe();
+      await this.supabase.removeChannel(failedChannel);
+    }
+    if (this.closing || this.destroyed) return;
+
+    this.setStatus('authorizing');
+    await this.supabase.realtime.setAuth(this.accessToken);
+    if (this.closing || this.destroyed) return;
+
+    this.setStatus('connecting');
+    const channel = this.supabase.channel(documentCollabTopic(this.documentId), {
+      config: {
+        private: true,
+        broadcast: { self: false },
+        presence: { key: this.userId },
+      },
+    });
+    this.channel = channel;
+    const channelGeneration = ++this.channelGeneration;
+    this.registerChannelHandlers(channel, channelGeneration);
+    await this.subscribeChannel(channel, channelGeneration);
+    if (this.closing || this.destroyed) return;
+
+    if (!this.hydrated && !this.pendingState) {
+      try {
+        await this.loadInitialDurableState();
+      } catch (error) {
+        if (
+          error instanceof DocumentChannelTransportError &&
+          !this.closing &&
+          !this.destroyed
+        ) {
+          if (!error.handled) this.handleChannelFailure(error);
+          return;
+        }
+        if (!this.closing && !this.destroyed) {
+          this.failClosed(
+            error instanceof Error ? error.message : 'Collaboration failed'
+          );
+        }
+        this.rejectConnect?.(error);
+      }
+      return;
+    }
+
+    const docBeforeCatchUp = this.doc;
+    this.setStatus('syncing');
+    await this.reloadDurableState();
+    if (
+      this.closing ||
+      this.destroyed ||
+      !this.channelHealthy ||
+      this.channel !== channel
+    ) {
+      return;
+    }
+    if (
+      !this.hydrated &&
+      this.currentStatus === 'legacy-view' &&
+      this.doc === docBeforeCatchUp
+    ) {
+      this.reconnectAttempts = 0;
+      return;
+    }
+    if (this.doc !== docBeforeCatchUp || !this.hydrated) return;
+    await this.synchronizePeersAfterReconnect();
+    if (!this.channelHealthy || this.channel !== channel) return;
+    this.completeReadyState();
+  }
+
+  private async synchronizePeersAfterReconnect(): Promise<void> {
+    if (this.role === 'viewer') return;
+    await this.flushPendingDurability();
+    await this.sendDifferentialSyncAndAwareness();
+  }
+
+  private async sendDifferentialSyncAndAwareness(
+    isCurrent: () => boolean = () => true
+  ): Promise<void> {
+    await this.send('yjs-sync-request', {
+      v: 1,
+      documentId: this.documentId,
+      epoch: this.currentToken.epoch,
+      requesterId: this.userId,
+      stateVectorBase64: encodeBase64(Y.encodeStateVector(this.doc)),
+    }, isCurrent);
+    if (!isCurrent()) return;
+    const awareness = this.awareness as unknown as awarenessProtocol.Awareness;
+    if (awareness.getLocalState() === null) return;
+    await this.send('yjs-awareness', {
+      v: 1,
+      documentId: this.documentId,
+      epoch: this.currentToken.epoch,
+      updateBase64: encodeBase64(
+        awarenessProtocol.encodeAwarenessUpdate(awareness, [awareness.clientID])
+      ),
+    }, isCurrent);
+  }
+
+  private registerChannelHandlers(
+    channel: RealtimeChannel,
+    channelGeneration: number
+  ): void {
     for (const event of SYNC_EVENTS) {
-      channel.on('broadcast', { event }, ({ payload }) =>
-        this.receive(event, payload)
-      );
+      channel.on('broadcast', { event }, ({ payload }) => {
+        if (
+          this.closing ||
+          this.destroyed ||
+          this.channel !== channel ||
+          this.channelGeneration !== channelGeneration
+        ) {
+          return;
+        }
+        return this.receive(event, payload);
+      });
     }
   }
 
@@ -384,22 +689,34 @@ export class DocumentCollaborationSession implements Provider {
     payload: unknown
   ): Promise<void> {
     if (event === 'document-state-reset') {
+      let reset: DocumentStateResetEvent;
       try {
-        const reset = parseDocumentCollaborationEvent(
+        reset = parseDocumentCollaborationEvent(
           'document-state-reset',
           payload
         ) as DocumentStateResetEvent;
-        if (
-          reset.documentId !== this.documentId ||
-          reset.epoch < this.currentToken.epoch ||
-          (reset.epoch === this.currentToken.epoch &&
-            reset.revision <= this.currentToken.revision)
-        ) {
-          return;
-        }
-        await this.reloadDurableState();
       } catch {
         // Invalid reset acceleration signals never change durable state.
+        return;
+      }
+      if (
+        reset.documentId !== this.documentId ||
+        reset.epoch < this.currentToken.epoch ||
+        (reset.epoch === this.currentToken.epoch &&
+          reset.revision <= this.currentToken.revision)
+      ) {
+        return;
+      }
+      try {
+        await this.reloadDurableState({
+          epoch: reset.epoch,
+          revision: reset.revision,
+        });
+      } catch (error) {
+        this.failClosed(
+          error instanceof Error ? error.message : 'Document reset catch-up failed',
+          'degraded'
+        );
       }
       return;
     }
@@ -415,7 +732,9 @@ export class DocumentCollaborationSession implements Provider {
       if (event === 'yjs-update' && 'updateId' in parsed) {
         if (this.appliedUpdateIds.has(parsed.updateId)) return;
         this.appliedUpdateIds.add(parsed.updateId);
-        Y.applyUpdate(this.doc, decodeBase64(parsed.updateBase64), 'remote');
+        const update = decodeBase64(parsed.updateBase64);
+        Y.applyUpdate(this.durableDoc, update, 'durable-remote');
+        Y.applyUpdate(this.doc, update, 'remote');
         return;
       }
       if (event === 'yjs-sync-request' && 'stateVectorBase64' in parsed) {
@@ -458,7 +777,13 @@ export class DocumentCollaborationSession implements Provider {
 
   attachBinding(): void {
     this.bindingRequested = true;
-    if (this.pendingState?.mode === 'collaborative') this.hydrateInitialState();
+    if (this.pendingState?.mode === 'collaborative') {
+      void this.hydrateInitialState();
+    }
+  }
+
+  setSemanticStateValidator(validator: () => void): void {
+    this.semanticStateValidator = validator;
   }
 
   /** @deprecated Use attachBinding after the Lexical Yjs observer is installed. */
@@ -474,13 +799,60 @@ export class DocumentCollaborationSession implements Provider {
     this.failClosed(`Document binding failed (${direction}): ${detail}`);
   }
 
-  private hydrateInitialState(): void {
-    if (this.hydrated || !this.pendingState?.yjsStateBase64) return;
+  private hydrateInitialState(): Promise<void> {
+    if (this.hydrationPromise) return this.hydrationPromise;
+    if (this.hydrated || !this.pendingState?.yjsStateBase64) {
+      return Promise.resolve();
+    }
     const state = this.pendingState;
-    Y.applyUpdate(this.doc, decodeBase64(state.yjsStateBase64), 'hydrate');
+    const hydrationGeneration = this.hydrationGeneration;
+    const hydrationPromise = this.runInitialHydration(
+      state,
+      hydrationGeneration
+    );
+    this.hydrationPromise = hydrationPromise;
+    hydrationPromise.then(
+      () => {
+        if (this.hydrationGeneration !== hydrationGeneration) return;
+        if (this.hydrationPromise === hydrationPromise) {
+          this.hydrationPromise = null;
+        }
+      },
+      (error: unknown) => {
+        if (this.hydrationGeneration !== hydrationGeneration) return;
+        if (this.hydrationPromise === hydrationPromise) {
+          this.hydrationPromise = null;
+        }
+        if (this.closing || this.destroyed) return;
+        if (error instanceof StaleDocumentChannelOperationError) return;
+        if (error instanceof DocumentChannelTransportError) {
+          if (!error.handled) this.handleChannelFailure(error);
+          return;
+        }
+        this.failClosed(
+          error instanceof Error ? error.message : 'Document hydration failed'
+        );
+        this.rejectConnect?.(error);
+      }
+    );
+    return hydrationPromise;
+  }
+
+  private async runInitialHydration(
+    state: AuthoritativeDocumentState,
+    hydrationGeneration: number
+  ): Promise<void> {
+    const hydrationDoc = this.doc;
+    const hydrationChannel = this.channel;
+    const hydrationChannelGeneration = this.channelGeneration;
+    const snapshot = decodeBase64(state.yjsStateBase64);
+    Y.applyUpdate(this.durableDoc, snapshot, 'durable-hydrate');
+    Y.applyUpdate(this.doc, snapshot, 'hydrate');
     for (const update of state.updateTail) {
       this.appliedUpdateIds.add(update.id);
-      Y.applyUpdate(this.doc, decodeBase64(update.updateBase64), 'hydrate');
+      const bytes = decodeBase64(update.updateBase64);
+      Y.applyUpdate(this.durableDoc, bytes, 'durable-hydrate');
+      Y.applyUpdate(this.doc, bytes, 'hydrate');
     }
     this.hydrated = true;
     this.installLocalListeners();
@@ -488,14 +860,30 @@ export class DocumentCollaborationSession implements Provider {
     this.bufferedEvents = [];
     for (const item of buffered) void this.receive(item.event, item.payload);
     if (this.role !== 'viewer') {
-      void this.send('yjs-sync-request', {
-        v: 1,
-        documentId: this.documentId,
-        epoch: this.currentToken.epoch,
-        requesterId: this.userId,
-        stateVectorBase64: encodeBase64(Y.encodeStateVector(this.doc)),
-      });
+      await this.sendDifferentialSyncAndAwareness(
+        () =>
+          this.hydrationGeneration === hydrationGeneration &&
+          this.doc === hydrationDoc &&
+          this.channel === hydrationChannel &&
+          this.channelGeneration === hydrationChannelGeneration
+      );
     }
+    if (
+      this.closing ||
+      this.destroyed ||
+      !this.channelHealthy ||
+      this.doc !== hydrationDoc ||
+      this.hydrationGeneration !== hydrationGeneration ||
+      this.channel !== hydrationChannel ||
+      this.channelGeneration !== hydrationChannelGeneration
+    ) {
+      return;
+    }
+    this.completeReadyState();
+  }
+
+  private completeReadyState(): void {
+    if (this.closing || this.destroyed) return;
     this.setStatus('ready');
     for (const listener of this.providerListeners.sync) listener(true);
     this.startHeartbeat();
@@ -503,6 +891,7 @@ export class DocumentCollaborationSession implements Provider {
       this.scheduleCompaction();
     }
     this.resolveConnect?.();
+    this.reconnectAttempts = 0;
   }
 
   private installLocalListeners(): void {
@@ -534,7 +923,10 @@ export class DocumentCollaborationSession implements Provider {
 
   private materializePendingUpdate(): void {
     if (this.pendingDurable || this.localUpdates.length === 0) return;
-    const bytes = Y.mergeUpdates(this.localUpdates);
+    const bytes = Y.encodeStateAsUpdate(
+      this.doc,
+      Y.encodeStateVector(this.durableDoc)
+    );
     this.localUpdates = [];
     this.pendingDurable = {
       id: newUpdateId(),
@@ -544,39 +936,56 @@ export class DocumentCollaborationSession implements Provider {
   }
 
   private async persistPendingUpdates(): Promise<void> {
-    this.materializePendingUpdate();
-    if (!this.pendingDurable) return;
     if (this.persistPromise) return this.persistPromise;
-    const pending = this.pendingDurable;
-    this.persistPromise = (async () => {
-      try {
-        await this.gateway.appendUpdates(this.supabase, {
-          documentId: this.documentId,
-          epoch: this.currentToken.epoch,
-          updates: [{ id: pending.id, updateBase64: pending.updateBase64 }],
-        });
-        await this.send('yjs-update', {
-          v: 1,
-          documentId: this.documentId,
-          epoch: this.currentToken.epoch,
-          updateId: pending.id,
-          updateBase64: pending.updateBase64,
-        });
-        this.pendingDurable = null;
-        this.durableTailCount += 1;
-        this.durableTailBytes += pending.bytes.byteLength;
-        this.scheduleCompaction();
-      } catch (error) {
-        this.failClosed(
-          error instanceof Error ? error.message : 'Document update could not be saved',
-          'degraded'
-        );
-        throw error;
-      } finally {
-        this.persistPromise = null;
+    const persistPromise = (async () => {
+      while (!this.destroyed) {
+        this.materializePendingUpdate();
+        if (!this.pendingDurable) return;
+        const pending = this.pendingDurable;
+        const pendingEpoch = this.currentToken.epoch;
+        try {
+          validateSerializedMdxNodes(this.doc.get('root', Y.XmlText));
+          this.semanticStateValidator?.();
+          await this.gateway.appendUpdates(this.supabase, {
+            documentId: this.documentId,
+            epoch: pendingEpoch,
+            updates: [{ id: pending.id, updateBase64: pending.updateBase64 }],
+          });
+          if (this.currentToken.epoch !== pendingEpoch) {
+            if (this.pendingDurable === pending) this.pendingDurable = null;
+            return;
+          }
+          Y.applyUpdate(this.durableDoc, pending.bytes, 'durable-local');
+          await this.send('yjs-update', {
+            v: 1,
+            documentId: this.documentId,
+            epoch: pendingEpoch,
+            updateId: pending.id,
+            updateBase64: pending.updateBase64,
+          });
+          if (this.currentToken.epoch !== pendingEpoch) {
+            if (this.pendingDurable === pending) this.pendingDurable = null;
+            return;
+          }
+          if (this.pendingDurable === pending) this.pendingDurable = null;
+          this.durableTailCount += 1;
+          this.durableTailBytes += pending.bytes.byteLength;
+          this.scheduleCompaction();
+        } catch (error) {
+          this.failClosed(
+            error instanceof Error ? error.message : 'Document update could not be saved',
+            'degraded'
+          );
+          throw error;
+        }
       }
     })();
-    return this.persistPromise;
+    this.persistPromise = persistPromise;
+    try {
+      await persistPromise;
+    } finally {
+      if (this.persistPromise === persistPromise) this.persistPromise = null;
+    }
   }
 
   private async flushPendingDurability(): Promise<void> {
@@ -734,6 +1143,26 @@ export class DocumentCollaborationSession implements Provider {
 
   async retry(): Promise<void> {
     if (this.destroyed) return;
+    if (!this.channelHealthy) {
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+      this.reconnectAttempts = 0;
+      try {
+        await this.reconnectChannel();
+      } catch (error) {
+        if (
+          !(error instanceof DocumentChannelTransportError && error.handled)
+        ) {
+          this.failClosed(
+            error instanceof Error ? error.message : 'Document reconnect failed',
+            'degraded'
+          );
+          this.scheduleReconnect();
+        }
+        throw error;
+      }
+      return;
+    }
     this.setStatus('syncing');
     await this.flushPendingDurability();
     this.setStatus('ready');
@@ -759,11 +1188,83 @@ export class DocumentCollaborationSession implements Provider {
     }
   }
 
-  private async reloadDurableState(): Promise<void> {
+  private reloadDurableState(minimumToken?: DocumentStateToken): Promise<void> {
+    if (minimumToken) {
+      if (minimumToken.epoch > this.currentToken.epoch) {
+        this.durableResetInProgress = true;
+        this.setStatus('hydrating');
+      }
+      if (
+        !this.reloadMinimumToken ||
+        minimumToken.epoch > this.reloadMinimumToken.epoch ||
+        (minimumToken.epoch === this.reloadMinimumToken.epoch &&
+          minimumToken.revision > this.reloadMinimumToken.revision)
+      ) {
+        this.reloadMinimumToken = minimumToken;
+      }
+    }
+    if (this.reloadPromise) {
+      if (!minimumToken) this.reloadQueued = true;
+      return this.reloadPromise;
+    }
+    this.reloadPromise = this.runDurableReload();
+    return this.reloadPromise;
+  }
+
+  private async runDurableReload(): Promise<void> {
+    try {
+      do {
+        this.reloadQueued = false;
+        const minimumToken = this.reloadMinimumToken;
+        this.reloadMinimumToken = null;
+        await this.readAndApplyDurableState(minimumToken);
+        if (
+          this.reloadMinimumToken &&
+          (this.reloadMinimumToken.epoch < this.currentToken.epoch ||
+            (this.reloadMinimumToken.epoch === this.currentToken.epoch &&
+              this.reloadMinimumToken.revision <= this.currentToken.revision))
+        ) {
+          this.reloadMinimumToken = null;
+        }
+      } while (this.reloadQueued || this.reloadMinimumToken);
+    } finally {
+      this.reloadPromise = null;
+      this.durableResetInProgress = false;
+    }
+  }
+
+  private async readAndApplyDurableState(
+    minimumToken: DocumentStateToken | null
+  ): Promise<void> {
     const state = await this.gateway.read(this.supabase, this.documentId);
+    if (
+      minimumToken &&
+      (state.token.epoch < minimumToken.epoch ||
+        (state.token.epoch === minimumToken.epoch &&
+          state.token.revision < minimumToken.revision))
+    ) {
+      throw new Error('Document reset state is behind the minimum token');
+    }
     if (state.token.epoch < this.currentToken.epoch) return;
+    if (
+      state.token.epoch === this.currentToken.epoch &&
+      state.token.revision < this.currentToken.revision
+    ) {
+      return;
+    }
     if (state.token.epoch > this.currentToken.epoch) {
       this.replaceActiveDocument(state);
+      return;
+    }
+    if (!this.hydrated && state.mode === 'legacy') {
+      this.pendingState = state;
+      this.currentToken = state.token;
+      this.durableTailCount = state.updateTail.length;
+      this.durableTailBytes = state.updateTail.reduce(
+        (total, update) => total + decodeBase64(update.updateBase64).byteLength,
+        0
+      );
+      this.setStatus('legacy-view');
       return;
     }
     if (!this.hydrated && state.mode === 'collaborative') {
@@ -774,17 +1275,38 @@ export class DocumentCollaborationSession implements Provider {
       for (const listener of this.providerListeners.reload) listener(this.doc);
       return;
     }
+    if (
+      state.token.revision > this.currentToken.revision &&
+      state.yjsStateBase64
+    ) {
+      const snapshot = decodeBase64(state.yjsStateBase64);
+      Y.applyUpdate(this.durableDoc, snapshot, 'durable-reload');
+      Y.applyUpdate(this.doc, snapshot, 'remote');
+    }
     for (const update of state.updateTail) {
-      if (this.appliedUpdateIds.has(update.id)) continue;
-      this.appliedUpdateIds.add(update.id);
-      Y.applyUpdate(this.doc, decodeBase64(update.updateBase64), 'remote');
+      const bytes = decodeBase64(update.updateBase64);
+      Y.applyUpdate(this.durableDoc, bytes, 'durable-reload');
+      if (!this.appliedUpdateIds.has(update.id)) {
+        this.appliedUpdateIds.add(update.id);
+        Y.applyUpdate(this.doc, bytes, 'remote');
+      }
     }
     this.currentToken = state.token;
+    this.durableTailCount = state.updateTail.length;
+    this.durableTailBytes = state.updateTail.reduce(
+      (total, update) => total + decodeBase64(update.updateBase64).byteLength,
+      0
+    );
+    if (this.role !== 'viewer' && this.durableTailCount > 0) {
+      this.scheduleCompaction();
+    }
   }
 
   private replaceActiveDocument(state: AuthoritativeDocumentState): void {
     this.setStatus('hydrating');
     this.clearPendingWork();
+    this.hydrationGeneration += 1;
+    this.hydrationPromise = null;
     const previousDoc = this.activeDoc;
     const previousAwareness =
       this.activeAwareness as unknown as awarenessProtocol.Awareness;
@@ -797,6 +1319,9 @@ export class DocumentCollaborationSession implements Provider {
 
     this.activeDoc = new Y.Doc();
     this.activeDoc.get('root', Y.XmlText);
+    this.durableDoc.destroy();
+    this.durableDoc = new Y.Doc();
+    this.durableDoc.get('root', Y.XmlText);
     this.activeAwareness = new awarenessProtocol.Awareness(
       this.activeDoc
     ) as unknown as Provider['awareness'];
@@ -821,6 +1346,8 @@ export class DocumentCollaborationSession implements Provider {
     if (this.batchTimer) clearTimeout(this.batchTimer);
     this.batchTimer = null;
     this.clearCompactionTimers();
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.localUpdates = [];
     this.pendingDurable = null;
     this.persistPromise = null;
@@ -841,12 +1368,40 @@ export class DocumentCollaborationSession implements Provider {
 
   private async send(
     event: DocumentCollaborationEventName,
-    payload: Record<string, unknown>
+    payload: Record<string, unknown>,
+    isCurrent: () => boolean = () => true
   ): Promise<void> {
-    if (!this.channel) throw new Error('Document collaboration channel is unavailable');
-    const result = await this.channel.send({ type: 'broadcast', event, payload });
-    if (result !== 'ok' && (result as { status?: string })?.status !== 'ok') {
-      throw new Error(`Document collaboration send failed: ${String(result)}`);
+    const invocationChannel = this.channel;
+    const invocationChannelGeneration = this.channelGeneration;
+    try {
+      if (!invocationChannel) {
+        throw new Error('Document collaboration channel is unavailable');
+      }
+      const result = await invocationChannel.send({
+        type: 'broadcast',
+        event,
+        payload,
+      });
+      if (result !== 'ok' && (result as { status?: string })?.status !== 'ok') {
+        throw new Error(`Document collaboration send failed: ${String(result)}`);
+      }
+    } catch (error) {
+      if (this.closing || this.destroyed) throw error;
+      if (
+        !isCurrent() ||
+        this.channel !== invocationChannel ||
+        this.channelGeneration !== invocationChannelGeneration
+      ) {
+        throw new StaleDocumentChannelOperationError(
+          'Document channel operation is stale'
+        );
+      }
+      const failure = new DocumentChannelTransportError(
+        error instanceof Error ? error.message : 'Document collaboration send failed',
+        true
+      );
+      this.handleChannelFailure(failure);
+      throw failure;
     }
   }
 
@@ -867,24 +1422,44 @@ export class DocumentCollaborationSession implements Provider {
     this.compactRetryTimer = null;
   }
 
-  async destroy(): Promise<void> {
+  destroy(): Promise<void> {
+    if (!this.destroyPromise) this.destroyPromise = this.destroyInternal();
+    return this.destroyPromise;
+  }
+
+  private async destroyInternal(): Promise<void> {
     if (this.destroyed) return;
-    this.destroyed = true;
+    this.closing = true;
+    const closedError = new DocumentCollaborationUnavailableError(
+      'Document session is closed'
+    );
+    this.hydrationGeneration += 1;
+    this.hydrationPromise = null;
+    this.rejectConnect?.(closedError);
+    this.cancelPendingSubscribe?.(closedError);
+    this.cancelPendingSubscribe = null;
     if (this.batchTimer) clearTimeout(this.batchTimer);
     this.batchTimer = null;
     this.clearCompactionTimers();
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     if (this.heartbeatInterval) clearInterval(this.heartbeatInterval);
     this.heartbeatInterval = null;
+    if (this.docListenerInstalled) {
+      this.doc.off('update', this.onDocUpdate);
+      this.docListenerInstalled = false;
+    }
+    const awareness = this.awareness as unknown as awarenessProtocol.Awareness;
+    if (this.awarenessListenerInstalled) {
+      awareness.off('update', this.onAwarenessUpdate);
+      this.awarenessListenerInstalled = false;
+    }
     try {
       await this.flushPendingDurability();
     } catch {
       // The caller's navigation boundary observes flush failures before destroy.
     }
-    if (this.docListenerInstalled) this.doc.off('update', this.onDocUpdate);
-    const awareness = this.awareness as unknown as awarenessProtocol.Awareness;
-    if (this.awarenessListenerInstalled) {
-      awareness.off('update', this.onAwarenessUpdate);
-    }
+    this.destroyed = true;
     awareness.setLocalState(null);
     awareness.destroy();
     if (this.channel) {
@@ -893,6 +1468,7 @@ export class DocumentCollaborationSession implements Provider {
     }
     this.channel = null;
     this.doc.destroy();
+    this.durableDoc.destroy();
     this.setStatus('closed');
   }
 

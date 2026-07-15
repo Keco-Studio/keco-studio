@@ -54,7 +54,7 @@ export default defineConfig({
     trace: 'retain-on-failure', // Only keep traces for failed tests to save resources
     /* Action timeout - CI environments need more time */
     actionTimeout: process.env.CI ? 30000 : 10000,
-    navigationTimeout: process.env.CI ? 60000 : 30000,
+    navigationTimeout: 60000,
     launchOptions: {
       slowMo: process.env.CI ? 0 : 0, // Removed slowMo for faster test execution
     },

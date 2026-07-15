@@ -6,6 +6,15 @@
 **Prerequisite:** `2026-07-14-document-phase1-completion-design.md` is implemented and remains the stable fallback baseline
 **Supersedes:** Phase 2 guidance in `2026-07-13-document-yjs-collab-design.md`
 
+**Security amendment (2026-07-15):** Operations that create a new encoded Yjs
+snapshot from semantic Markdown (Agent replacement and completed import
+publication) cross a narrow server-only command boundary. The server derives the
+actor from the authenticated request, generates the Yjs snapshot itself, and
+calls a `service_role`-only transactional RPC that rechecks the actor's project
+role. This exception prevents authenticated clients from submitting inconsistent
+Markdown/Yjs pairs. Reads, ordinary collaboration updates, restore, compaction,
+and reset Broadcast continue to use the caller-scoped client.
+
 ## Original Product Goal
 
 > Let users create and edit rich-text documents (notes, design docs, world-building
@@ -221,9 +230,11 @@ interface DocumentStateGateway {
 }
 ```
 
-Every method takes the caller's `SupabaseClient`; there is no `'use client'` and
-no service-role client. Table access uses RLS; privileged transactional RPCs use
-fixed-search-path functions with explicit caller/project-role checks. UI
+Every public gateway method takes the caller's `SupabaseClient`; there is no
+`'use client'`. Table access uses RLS; privileged transactional RPCs use
+fixed-search-path functions with explicit caller/project-role checks. The two
+server-generated snapshot commands described in the security amendment remain
+outside the public gateway and are the only service-role exceptions. UI
 permission checks are fast feedback only.
 
 Phase 2A implements `read`, `initialize`, `appendUpdates`, and `compact`.
@@ -432,9 +443,10 @@ lossy; it does not block Phase 2 completion.
 ### Phase 2F: Agent document tools
 
 Add create/read/edit tools under `src/lib/agent/tools/` using the existing
-data-access pattern. The tools receive the caller's RLS-scoped Supabase client;
-they never create a service-role client and never accept a project role supplied
-by the model.
+data-access pattern. The tools receive the caller's RLS-scoped Supabase client
+and never accept a project role supplied by the model. Confirmed replacement
+delegates to the security-amended server command, which derives the actor from
+the authenticated Agent request and never trusts model-supplied identity or role.
 
 - `create_document`: validate name/folder/content and create a new document; no
   confirmation because it is additive.
@@ -513,5 +525,6 @@ paths. English-comment and bundle/lazy-load guards remain green.
 This umbrella spec fixes shared contracts and task order. Each subtask still
 receives its own detailed design and implementation plan immediately before work
 starts. A sub-spec may refine internal names but may not introduce a second data
-authority, bypass the caller's RLS client, weaken the epoch/revision contract, or
-start a later subtask before its dependencies pass.
+authority, bypass the caller's RLS client except through the two audited
+server-generated snapshot commands above, weaken the epoch/revision contract,
+or start a later subtask before its dependencies pass.

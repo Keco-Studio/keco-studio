@@ -1,8 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import * as awarenessProtocol from 'y-protocols/awareness';
 import * as Y from 'yjs';
-import { encodeBase64 } from '@/lib/documents/documentCollaborationProtocol';
+import {
+  decodeBase64,
+  encodeBase64,
+} from '@/lib/documents/documentCollaborationProtocol';
 import { DocumentCollaborationSession } from '@/lib/documents/documentCollaborationSession';
+import { validateSanctionedMdxAstNode } from '@/lib/documents/sanctionedMdx';
 import type {
   AuthoritativeDocumentState,
   DurableYjsUpdate,
@@ -46,6 +50,63 @@ function mapUpdate(key: string, value: string): string {
   return encoded;
 }
 
+function invalidCalloutState(): string {
+  const doc = new Y.Doc();
+  const jsx = new Y.XmlElement();
+  jsx.setAttribute('__type', 'jsx');
+  jsx.setAttribute('__mdastNode', {
+    type: 'mdxJsxFlowElement',
+    name: 'Callout',
+    attributes: [
+      { type: 'mdxJsxAttribute', name: 'type', value: 'danger' },
+    ],
+    children: [
+      { type: 'paragraph', children: [{ type: 'text', value: 'Body.' }] },
+    ],
+  });
+  doc.get('root', Y.XmlText).insertEmbed(0, jsx);
+  const encoded = encodeBase64(Y.encodeStateAsUpdate(doc));
+  doc.destroy();
+  return encoded;
+}
+
+function calloutState(type: string): string {
+  const doc = new Y.Doc();
+  const jsx = new Y.XmlElement();
+  jsx.setAttribute('__type', 'jsx');
+  jsx.setAttribute('__mdastNode', {
+    type: 'mdxJsxFlowElement',
+    name: 'Callout',
+    attributes: [{ type: 'mdxJsxAttribute', name: 'type', value: type }],
+    children: [
+      { type: 'paragraph', children: [{ type: 'text', value: 'Body.' }] },
+    ],
+  });
+  doc.get('root', Y.XmlText).insertEmbed(0, jsx);
+  const encoded = encodeBase64(Y.encodeStateAsUpdate(doc));
+  doc.destroy();
+  return encoded;
+}
+
+function calloutElement(doc: Y.Doc): Y.XmlElement {
+  const embedded = doc.get('root', Y.XmlText).toDelta()[0]?.insert;
+  if (!(embedded instanceof Y.XmlElement)) {
+    throw new Error('Expected a Callout Yjs element');
+  }
+  return embedded;
+}
+
+function setCalloutType(doc: Y.Doc, type: string): void {
+  const element = calloutElement(doc);
+  const node = element.getAttribute('__mdastNode') as {
+    attributes: Array<Record<string, unknown>>;
+  };
+  element.setAttribute('__mdastNode', {
+    ...node,
+    attributes: [{ type: 'mdxJsxAttribute', name: 'type', value: type }],
+  });
+}
+
 type Handler = (message: { payload: unknown }) => void | Promise<void>;
 
 class FakeChannel {
@@ -54,6 +115,8 @@ class FakeChannel {
   readonly unsubscribe = jest.fn(async () => 'ok');
   subscribeCallback: ((status: string, error?: Error) => void) | null = null;
 
+  constructor(private readonly initialStatus: string | null = 'SUBSCRIBED') {}
+
   on(_type: string, filter: { event: string }, handler: Handler) {
     this.handlers.set(filter.event, handler);
     return this;
@@ -61,8 +124,12 @@ class FakeChannel {
 
   subscribe(callback: (status: string, error?: Error) => void) {
     this.subscribeCallback = callback;
-    callback('SUBSCRIBED');
+    if (this.initialStatus !== null) callback(this.initialStatus);
     return this;
+  }
+
+  emitStatus(status: string, error?: Error) {
+    this.subscribeCallback?.(status, error);
   }
 
   async emit(event: string, payload: unknown) {
@@ -73,6 +140,10 @@ class FakeChannel {
 function makeHarness(overrides: {
   state?: AuthoritativeDocumentState;
   role?: 'admin' | 'editor' | 'viewer';
+  channelStatuses?: Array<string | null>;
+  batchWindowMs?: number;
+  reconnectBackoffMs?: number;
+  configureChannel?: (channel: FakeChannel, index: number) => void;
   append?: (
     client: SupabaseClient,
     input: { updates: DurableYjsUpdate[] }
@@ -80,8 +151,18 @@ function makeHarness(overrides: {
   compact?: () => Promise<AuthoritativeDocumentState>;
   replace?: () => Promise<AuthoritativeDocumentState>;
 } = {}) {
-  const channel = new FakeChannel();
-  const channelFactory = jest.fn(() => channel);
+  const channels: FakeChannel[] = [];
+  const channelStatusAt = (index: number) =>
+    overrides.channelStatuses?.[index] === undefined
+      ? 'SUBSCRIBED'
+      : overrides.channelStatuses[index]!;
+  const channelFactory = jest.fn(() => {
+    const channelIndex = channels.length;
+    const channel = new FakeChannel(channelStatusAt(channelIndex));
+    overrides.configureChannel?.(channel, channelIndex);
+    channels.push(channel);
+    return channel;
+  });
   const setAuth = jest.fn(async () => undefined);
   const removeChannel = jest.fn(async () => 'ok');
   const supabase = {
@@ -127,14 +208,31 @@ function makeHarness(overrides: {
     accessToken: 'local-access-token',
     role: overrides.role ?? 'editor',
     user: { name: 'Editor', color: '#1677ff' },
-    batchWindowMs: 75,
+    batchWindowMs: overrides.batchWindowMs ?? 75,
     compactionBackoffMs: 250,
     compactionJitterRatio: 0,
+    reconnectBackoffMs: overrides.reconnectBackoffMs ?? 100,
+    reconnectJitterRatio: 0,
     onCompacted,
     onStateReplaced,
   });
+  const channel = channelFactory();
+  channelFactory.mockClear();
+  channels.length = 0;
+  channelFactory.mockImplementation(() => {
+    const channelIndex = channels.length;
+    const nextChannel = channelIndex === 0
+      ? channel
+      : new FakeChannel(channelStatusAt(channelIndex));
+    if (channelIndex > 0) {
+      overrides.configureChannel?.(nextChannel, channelIndex);
+    }
+    channels.push(nextChannel);
+    return nextChannel;
+  });
   return {
     channel,
+    channels,
     channelFactory,
     gateway,
     removeChannel,
@@ -183,6 +281,591 @@ describe('DocumentCollaborationSession', () => {
     expect(session.token).toEqual({ epoch: 2, revision: 4 });
   });
 
+  it('freezes immediately and schedules reconnect after a post-ready channel failure', async () => {
+    const harness = makeHarness();
+    const syncListener = jest.fn();
+    harness.session.on('sync', syncListener);
+    await connectReady(harness.session);
+    const timerCountBeforeFailure = jest.getTimerCount();
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+
+    expect(harness.session.status).toBe('degraded');
+    expect(syncListener).toHaveBeenLastCalledWith(false);
+    expect(jest.getTimerCount()).toBe(timerCountBeforeFailure + 1);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it('replaces only the failed channel, catches up durably, and returns to ready', async () => {
+    const harness = makeHarness();
+    await connectReady(harness.session);
+    const doc = harness.session.doc;
+    const awareness = harness.session.awareness;
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    await jest.advanceTimersByTimeAsync(100);
+
+    expect(harness.channel.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(harness.removeChannel).toHaveBeenCalledWith(harness.channel);
+    expect(harness.setAuth).toHaveBeenCalledTimes(2);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+    expect(harness.channels[1]).toBeDefined();
+    expect(harness.gateway.read).toHaveBeenCalledTimes(2);
+    expect(harness.session.doc).toBe(doc);
+    expect(harness.session.awareness).toBe(awareness);
+    expect(harness.session.status).toBe('ready');
+  });
+
+  it('flushes and replays editor sync and awareness before reconnect becomes ready', async () => {
+    const harness = makeHarness({ batchWindowMs: 1_000 });
+    const reconnectedReady = jest.fn();
+    harness.session.subscribe(({ status }) => {
+      if (status === 'ready') reconnectedReady();
+    });
+    await connectReady(harness.session);
+    reconnectedReady.mockClear();
+    harness.session.doc.getMap('local').set('pending-reconnect', true);
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    await jest.advanceTimersByTimeAsync(100);
+
+    const replacement = harness.channels[1]!;
+    const sentEvents = replacement.send.mock.calls.map(([message]) => message.event);
+    expect(harness.gateway.appendUpdates).toHaveBeenCalledTimes(1);
+    expect(sentEvents).toEqual([
+      'yjs-update',
+      'yjs-sync-request',
+      'yjs-awareness',
+    ]);
+    expect(replacement.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'yjs-sync-request',
+        payload: expect.objectContaining({
+          requesterId: USER_ID,
+          stateVectorBase64: expect.any(String),
+        }),
+      })
+    );
+    expect(replacement.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        event: 'yjs-awareness',
+        payload: expect.objectContaining({ updateBase64: expect.any(String) }),
+      })
+    );
+    expect(replacement.send.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      reconnectedReady.mock.invocationCallOrder[0]!
+    );
+    expect(harness.session.status).toBe('ready');
+  });
+
+  it('does not send peer sync or awareness when a viewer reconnects', async () => {
+    const harness = makeHarness({ role: 'viewer' });
+    await connectReady(harness.session);
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    await jest.advanceTimersByTimeAsync(100);
+
+    const replacement = harness.channels[1]!;
+    expect(
+      replacement.send.mock.calls.some(
+        ([message]) =>
+          message.event === 'yjs-sync-request' || message.event === 'yjs-awareness'
+      )
+    ).toBe(false);
+    expect(harness.session.status).toBe('ready');
+  });
+
+  it('returns a legacy viewer to legacy-view and resets reconnect backoff', async () => {
+    const legacy = {
+      ...collaborativeState(),
+      mode: 'legacy' as const,
+      yjsStateBase64: null,
+      token: { epoch: 0, revision: 0 },
+    };
+    const harness = makeHarness({ state: legacy, role: 'viewer' });
+    await harness.session.connect();
+    const doc = harness.session.doc;
+    const awareness = harness.session.awareness;
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    await jest.advanceTimersByTimeAsync(100);
+
+    expect(harness.channel.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(harness.removeChannel).toHaveBeenCalledWith(harness.channel);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+    expect(harness.gateway.read).toHaveBeenCalledTimes(2);
+    expect(harness.session.status).toBe('legacy-view');
+    expect(harness.session.doc).toBe(doc);
+    expect(harness.session.awareness).toBe(awareness);
+    expect(harness.channels[1]!.send).not.toHaveBeenCalled();
+
+    harness.channels[1]!.emitStatus('CHANNEL_ERROR', new Error('socket closed again'));
+    await jest.advanceTimersByTimeAsync(99);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(1);
+
+    expect(harness.channelFactory).toHaveBeenCalledTimes(3);
+    expect(harness.session.status).toBe('legacy-view');
+    expect(harness.channels[2]!.send).not.toHaveBeenCalled();
+  });
+
+  it('keeps a higher-epoch reconnect catch-up syncing until the new binding attaches', async () => {
+    const replacement = {
+      ...collaborativeState(),
+      yjsStateBase64: mapUpdate('restored', 'during-reconnect'),
+      token: { epoch: 3, revision: 1 },
+      updatedAt: '2026-07-14T12:10:00.000Z',
+    };
+    const harness = makeHarness();
+    harness.gateway.read
+      .mockResolvedValueOnce(collaborativeState())
+      .mockResolvedValueOnce(replacement);
+    const reload = jest.fn();
+    harness.session.on('reload', reload);
+    await connectReady(harness.session);
+    const previousDoc = harness.session.doc;
+    const previousAwareness = harness.session.awareness;
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    await jest.advanceTimersByTimeAsync(100);
+
+    expect(harness.session.doc).not.toBe(previousDoc);
+    expect(harness.session.awareness).not.toBe(previousAwareness);
+    expect(reload).toHaveBeenCalledWith(harness.session.doc);
+    expect(harness.session.status).toBe('syncing');
+  });
+
+  it.each(['yjs-awareness', 'yjs-sync-request'])(
+    'routes a higher-epoch binding %s send failure back through reconnect',
+    async (failedEvent) => {
+      const replacement = {
+        ...collaborativeState(),
+        yjsStateBase64: mapUpdate('restored', 'before-binding-send-failure'),
+        token: { epoch: 3, revision: 1 },
+        updatedAt: '2026-07-14T12:10:00.000Z',
+      };
+      const harness = makeHarness({
+        configureChannel: (channel, index) => {
+          if (index !== 1) return;
+          channel.send.mockImplementation(async (message) => {
+            if (message.event === failedEvent) throw new Error(`${failedEvent} offline`);
+            return { status: 'ok' };
+          });
+        },
+      });
+      harness.gateway.read
+        .mockResolvedValueOnce(collaborativeState())
+        .mockResolvedValueOnce(replacement);
+      await connectReady(harness.session);
+      harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+      await jest.advanceTimersByTimeAsync(100);
+      expect(harness.session.status).toBe('syncing');
+      const timerCountBeforeBinding = jest.getTimerCount();
+
+      harness.session.attachBinding();
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(harness.channels[1]!.send).toHaveBeenCalledWith(
+        expect.objectContaining({ event: failedEvent })
+      );
+      expect(harness.session.status).toBe('degraded');
+      expect(jest.getTimerCount()).toBe(timerCountBeforeBinding + 1);
+    }
+  );
+
+  it('starts a new hydration when a higher epoch replaces a doc with sync pending', async () => {
+    let resolveOldSync!: (value: { status: string }) => void;
+    let syncRequests = 0;
+    const replacement = {
+      ...collaborativeState(),
+      yjsStateBase64: mapUpdate('restored', 'new-hydration-generation'),
+      token: { epoch: 3, revision: 1 },
+      updatedAt: '2026-07-14T12:10:00.000Z',
+    };
+    const harness = makeHarness({
+      configureChannel: (channel, index) => {
+        if (index !== 0) return;
+        channel.send.mockImplementation((message) => {
+          if (message.event === 'yjs-sync-request') {
+            syncRequests += 1;
+            if (syncRequests === 1) {
+              return new Promise((resolve) => { resolveOldSync = resolve; });
+            }
+          }
+          return Promise.resolve({ status: 'ok' });
+        });
+      },
+    });
+    harness.gateway.read
+      .mockResolvedValueOnce(collaborativeState())
+      .mockResolvedValueOnce(replacement);
+    const syncListener = jest.fn();
+    harness.session.on('sync', syncListener);
+    const connecting = harness.session.connect();
+    harness.session.attachBinding();
+    for (let attempt = 0; attempt < 10 && syncRequests === 0; attempt += 1) {
+      await Promise.resolve();
+    }
+    const oldDoc = harness.session.doc;
+
+    await harness.channel.emit('document-state-reset', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 3,
+      revision: 1,
+      reason: 'restore',
+      updatedAt: replacement.updatedAt,
+    });
+    expect(harness.session.doc).not.toBe(oldDoc);
+    harness.session.attachBinding();
+    harness.session.attachBinding();
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(syncRequests).toBe(2);
+    expect(harness.session.status).toBe('ready');
+    await expect(connecting).resolves.toBeUndefined();
+    const awarenessCallsAfterNewHydration = harness.channel.send.mock.calls.filter(
+      ([message]) => message.event === 'yjs-awareness'
+    ).length;
+
+    resolveOldSync({ status: 'ok' });
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(harness.session.status).toBe('ready');
+    expect(syncRequests).toBe(2);
+    expect(
+      harness.channel.send.mock.calls.filter(
+        ([message]) => message.event === 'yjs-awareness'
+      )
+    ).toHaveLength(awarenessCallsAfterNewHydration);
+    expect(syncListener.mock.calls.filter(([synced]) => synced)).toHaveLength(1);
+  });
+
+  it('stops after five capped automatic reconnect attempts and lets manual retry recover', async () => {
+    const harness = makeHarness({
+      channelStatuses: [
+        'SUBSCRIBED',
+        'CHANNEL_ERROR',
+        'CHANNEL_ERROR',
+        'CHANNEL_ERROR',
+        'CHANNEL_ERROR',
+        'CHANNEL_ERROR',
+        'SUBSCRIBED',
+      ],
+      reconnectBackoffMs: 5_000,
+    });
+    await connectReady(harness.session);
+    const timerCountBeforeFailure = jest.getTimerCount();
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    const delays = [5_000, 10_000, 20_000, 30_000, 30_000];
+    for (const [attempt, delay] of delays.entries()) {
+      await jest.advanceTimersByTimeAsync(delay - 1);
+      expect(harness.channelFactory).toHaveBeenCalledTimes(attempt + 1);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(harness.channelFactory).toHaveBeenCalledTimes(attempt + 2);
+    }
+
+    expect(harness.session.status).toBe('degraded');
+    expect(harness.channelFactory).toHaveBeenCalledTimes(6);
+    expect(jest.getTimerCount()).toBe(timerCountBeforeFailure);
+
+    await harness.session.retry();
+
+    expect(harness.channelFactory).toHaveBeenCalledTimes(7);
+    expect(harness.session.status).toBe('ready');
+  });
+
+  it('counts persistent replacement send failures toward the five-attempt limit', async () => {
+    let failReplacementSends = true;
+    const harness = makeHarness({
+      configureChannel: (channel, index) => {
+        if (index === 0) return;
+        channel.send.mockImplementation(async (message) => {
+          if (failReplacementSends && message.event === 'yjs-sync-request') {
+            throw new Error('replacement sync offline');
+          }
+          return { status: 'ok' };
+        });
+      },
+    });
+    await connectReady(harness.session);
+    const timerCountBeforeFailure = jest.getTimerCount();
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    const delays = [100, 200, 400, 800, 1_600];
+    for (const [attempt, delay] of delays.entries()) {
+      await jest.advanceTimersByTimeAsync(delay - 1);
+      expect(harness.channelFactory).toHaveBeenCalledTimes(attempt + 1);
+      await jest.advanceTimersByTimeAsync(1);
+      expect(harness.channelFactory).toHaveBeenCalledTimes(attempt + 2);
+    }
+
+    expect(harness.session.status).toBe('degraded');
+    expect(harness.channelFactory).toHaveBeenCalledTimes(6);
+    expect(jest.getTimerCount()).toBe(timerCountBeforeFailure);
+
+    failReplacementSends = false;
+    await harness.session.retry();
+
+    expect(harness.channelFactory).toHaveBeenCalledTimes(7);
+    expect(harness.session.status).toBe('ready');
+  });
+
+  it('single-flights manual retry with an automatic reconnect already in progress', async () => {
+    let finishUnsubscribe!: () => void;
+    const harness = makeHarness();
+    harness.channel.unsubscribe.mockImplementationOnce(
+      () => new Promise<string>((resolve) => {
+        finishUnsubscribe = () => resolve('ok');
+      })
+    );
+    await connectReady(harness.session);
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    await jest.advanceTimersByTimeAsync(100);
+    expect(harness.channel.unsubscribe).toHaveBeenCalledTimes(1);
+
+    const firstRetry = harness.session.retry();
+    const secondRetry = harness.session.retry();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(harness.channelFactory).toHaveBeenCalledTimes(1);
+    finishUnsubscribe();
+    await Promise.all([firstRetry, secondRetry]);
+
+    expect(harness.removeChannel).toHaveBeenCalledTimes(1);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+    expect(harness.session.status).toBe('ready');
+  });
+
+  it('clears a pending reconnect timer when the session is destroyed', async () => {
+    const harness = makeHarness();
+    await connectReady(harness.session);
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    expect(harness.session.status).toBe('degraded');
+
+    await harness.session.destroy();
+
+    expect(jest.getTimerCount()).toBe(0);
+    await jest.advanceTimersByTimeAsync(100);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a pending initial subscribe when the session is destroyed', async () => {
+    const harness = makeHarness({ channelStatuses: [null] });
+    let connectOutcome = 'pending';
+    void harness.session.connect().then(
+      () => { connectOutcome = 'resolved'; },
+      () => { connectOutcome = 'rejected'; }
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(harness.channel.subscribeCallback).not.toBeNull();
+
+    await harness.session.destroy();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(connectOutcome).toBe('rejected');
+    expect(harness.channel.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(harness.removeChannel).toHaveBeenCalledWith(harness.channel);
+    expect(harness.session.status).toBe('closed');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('rejects an in-flight replacement subscribe when destroyed', async () => {
+    const harness = makeHarness({ channelStatuses: ['SUBSCRIBED', null] });
+    await connectReady(harness.session);
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    await jest.advanceTimersByTimeAsync(100);
+    expect(harness.channels[1]!.subscribeCallback).not.toBeNull();
+    let reconnectOutcome = 'pending';
+    void harness.session.retry().then(
+      () => { reconnectOutcome = 'resolved'; },
+      () => { reconnectOutcome = 'rejected'; }
+    );
+
+    await harness.session.destroy();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(reconnectOutcome).toBe('rejected');
+    expect(harness.channels[1]!.unsubscribe).toHaveBeenCalledTimes(1);
+    expect(harness.removeChannel).toHaveBeenCalledWith(harness.channels[1]);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+    expect(harness.session.status).toBe('closed');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('ignores a stale channel failure after its replacement is ready', async () => {
+    const harness = makeHarness();
+    await connectReady(harness.session);
+
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    await jest.advanceTimersByTimeAsync(100);
+    expect(harness.session.status).toBe('ready');
+    const timerCountAfterReconnect = jest.getTimerCount();
+
+    harness.channel.emitStatus('TIMED_OUT', new Error('late old-channel timeout'));
+
+    expect(harness.session.status).toBe('ready');
+    expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+    expect(jest.getTimerCount()).toBe(timerCountAfterReconnect);
+  });
+
+  it('ignores stale update, awareness, and reset broadcasts after reconnect', async () => {
+    const harness = makeHarness();
+    await connectReady(harness.session);
+    harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+    await jest.advanceTimersByTimeAsync(100);
+    expect(harness.session.status).toBe('ready');
+    const readsAfterReconnect = harness.gateway.read.mock.calls.length;
+
+    const peerDoc = new Y.Doc();
+    peerDoc.getMap('peer').set('stale-channel', true);
+    const peerAwareness = new awarenessProtocol.Awareness(peerDoc);
+    peerAwareness.setLocalState({ user: { id: 'stale-peer' } });
+    const awarenessUpdate = awarenessProtocol.encodeAwarenessUpdate(
+      peerAwareness,
+      [peerAwareness.clientID]
+    );
+
+    await harness.channel.emit('yjs-update', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 2,
+      updateId: '99999999-9999-4999-8999-999999999999',
+      updateBase64: encodeBase64(Y.encodeStateAsUpdate(peerDoc)),
+    });
+    await harness.channel.emit('yjs-awareness', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 2,
+      updateBase64: encodeBase64(awarenessUpdate),
+    });
+    await harness.channel.emit('document-state-reset', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 3,
+      revision: 1,
+      reason: 'restore',
+      updatedAt: '2026-07-14T12:10:00.000Z',
+    });
+
+    expect(harness.session.doc.getMap('peer').get('stale-channel')).toBeUndefined();
+    expect(
+      (harness.session.awareness as unknown as awarenessProtocol.Awareness)
+        .getStates()
+        .has(peerAwareness.clientID)
+    ).toBe(false);
+    expect(harness.gateway.read).toHaveBeenCalledTimes(readsAfterReconnect);
+    expect(harness.session.status).toBe('ready');
+    peerAwareness.destroy();
+    peerDoc.destroy();
+  });
+
+  it.each(['CHANNEL_ERROR', 'TIMED_OUT'])(
+    'keeps connect pending and automatically recovers an initial %s',
+    async (initialStatus) => {
+      const harness = makeHarness({
+        channelStatuses: [initialStatus, 'SUBSCRIBED'],
+      });
+      const timerCountBeforeConnect = jest.getTimerCount();
+      let settled = false;
+      const outcome = harness.session.connect().then(
+        () => {
+          settled = true;
+          return 'resolved';
+        },
+        () => {
+          settled = true;
+          return 'rejected';
+        }
+      );
+      harness.session.attachBinding();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(settled).toBe(false);
+      expect(harness.session.status).toBe('degraded');
+      expect(jest.getTimerCount()).toBe(timerCountBeforeConnect + 1);
+
+      await jest.advanceTimersByTimeAsync(100);
+
+      await expect(outcome).resolves.toBe('resolved');
+      expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+      expect(harness.gateway.read).toHaveBeenCalledTimes(1);
+      expect(harness.session.status).toBe('ready');
+    }
+  );
+
+  it('rejects an initial authorization error without entering transport retry', async () => {
+    const harness = makeHarness();
+    harness.setAuth.mockRejectedValueOnce(new Error('authorization rejected'));
+
+    await expect(harness.session.connect()).rejects.toThrow('authorization rejected');
+
+    expect(harness.session.status).toBe('error');
+    expect(harness.channelFactory).not.toHaveBeenCalled();
+  });
+
+  it('rejects a post-subscribe durable hydration error without transport retry', async () => {
+    const harness = makeHarness();
+    harness.gateway.read.mockRejectedValueOnce(new Error('durable read rejected'));
+
+    await expect(harness.session.connect()).rejects.toThrow('durable read rejected');
+
+    expect(harness.session.status).toBe('error');
+    expect(harness.channelFactory).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not create or revive a channel when destroyed during authorization', async () => {
+    let finishAuthorization!: () => void;
+    const harness = makeHarness();
+    harness.setAuth.mockImplementationOnce(
+      () => new Promise<void>((resolve) => { finishAuthorization = resolve; })
+    );
+
+    const connecting = harness.session.connect();
+    await Promise.resolve();
+    await harness.session.destroy();
+    finishAuthorization();
+
+    await expect(connecting).rejects.toThrow(/closed|destroyed/i);
+    expect(harness.channelFactory).not.toHaveBeenCalled();
+    expect(harness.session.status).toBe('closed');
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
+  it('does not revive a legacy session destroyed while the reset send is pending', async () => {
+    let finishSend!: () => void;
+    const legacy = { ...collaborativeState(), mode: 'legacy' as const, yjsStateBase64: null };
+    const harness = makeHarness({ state: legacy });
+    harness.channel.send.mockImplementationOnce(
+      () => new Promise<{ status: string }>((resolve) => {
+        finishSend = () => resolve({ status: 'ok' });
+      })
+    );
+
+    const connecting = harness.session.connect();
+    const connectionResult = connecting.catch((error: unknown) => error);
+    for (let attempt = 0; attempt < 10 && harness.channel.send.mock.calls.length === 0; attempt += 1) {
+      await Promise.resolve();
+    }
+    expect(harness.gateway.initialize).toHaveBeenCalled();
+    expect(harness.channel.send).toHaveBeenCalled();
+    await harness.session.destroy();
+    finishSend();
+
+    await expect(connectionResult).resolves.toMatchObject({
+      message: expect.stringMatching(/closed|destroyed/i),
+    });
+    expect(harness.session.status).toBe('closed');
+  });
+
   it('attaches one binding after connection and keeps the legacy alias idempotent', async () => {
     const { session } = makeHarness();
     const connecting = session.connect();
@@ -195,6 +878,269 @@ describe('DocumentCollaborationSession', () => {
     expect(session.status).toBe('ready');
     expect(session.doc.get('root', Y.XmlText).toString()).toBe('seed');
   });
+
+  it('waits for one initial sync and awareness flight before becoming ready', async () => {
+    let resolveSync!: (value: { status: string }) => void;
+    let resolveAwareness!: (value: { status: string }) => void;
+    const harness = makeHarness({
+      configureChannel: (channel, index) => {
+        if (index !== 0) return;
+        channel.send.mockImplementation((message) => {
+          if (message.event === 'yjs-sync-request') {
+            return new Promise((resolve) => { resolveSync = resolve; });
+          }
+          if (message.event === 'yjs-awareness') {
+            return new Promise((resolve) => { resolveAwareness = resolve; });
+          }
+          return Promise.resolve({ status: 'ok' });
+        });
+      },
+    });
+    const statuses: string[] = [];
+    const syncListener = jest.fn();
+    harness.session.subscribe(({ status }) => statuses.push(status));
+    harness.session.on('sync', syncListener);
+    let connectOutcome = 'pending';
+    void harness.session.connect().then(
+      () => { connectOutcome = 'resolved'; },
+      () => { connectOutcome = 'rejected'; }
+    );
+    harness.session.attachBinding();
+    harness.session.attachBinding();
+    for (
+      let attempt = 0;
+      attempt < 10 &&
+        !harness.channel.send.mock.calls.some(([message]) =>
+          message.event === 'yjs-sync-request'
+        );
+      attempt += 1
+    ) {
+      await Promise.resolve();
+    }
+
+    expect(harness.session.status).toBe('syncing');
+    expect(connectOutcome).toBe('pending');
+    expect(statuses).not.toContain('ready');
+    expect(syncListener).not.toHaveBeenCalledWith(true);
+    expect(
+      harness.channel.send.mock.calls.filter(
+        ([message]) => message.event === 'yjs-sync-request'
+      )
+    ).toHaveLength(1);
+
+    resolveSync({ status: 'ok' });
+    for (
+      let attempt = 0;
+      attempt < 10 &&
+        !harness.channel.send.mock.calls.some(([message]) =>
+          message.event === 'yjs-awareness'
+        );
+      attempt += 1
+    ) {
+      await Promise.resolve();
+    }
+
+    expect(harness.session.status).toBe('syncing');
+    expect(connectOutcome).toBe('pending');
+    expect(
+      harness.channel.send.mock.calls.filter(
+        ([message]) => message.event === 'yjs-awareness'
+      )
+    ).toHaveLength(1);
+
+    resolveAwareness({ status: 'ok' });
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(harness.session.status).toBe('ready');
+    expect(connectOutcome).toBe('resolved');
+    expect(syncListener.mock.calls.filter(([synced]) => synced)).toHaveLength(1);
+  });
+
+  it('degrades without ever becoming ready when initial peer sync rejects', async () => {
+    let rejectSync!: (error: Error) => void;
+    const harness = makeHarness({
+      configureChannel: (channel, index) => {
+        if (index !== 0) return;
+        channel.send.mockImplementation((message) => {
+          if (message.event === 'yjs-sync-request') {
+            return new Promise((_resolve, reject) => { rejectSync = reject; });
+          }
+          return Promise.resolve({ status: 'ok' });
+        });
+      },
+    });
+    const statuses: string[] = [];
+    const syncListener = jest.fn();
+    harness.session.subscribe(({ status }) => statuses.push(status));
+    harness.session.on('sync', syncListener);
+    let connectOutcome = 'pending';
+    void harness.session.connect().then(
+      () => { connectOutcome = 'resolved'; },
+      () => { connectOutcome = 'rejected'; }
+    );
+    harness.session.attachBinding();
+    harness.session.attachBinding();
+    for (
+      let attempt = 0;
+      attempt < 10 &&
+        !harness.channel.send.mock.calls.some(([message]) =>
+          message.event === 'yjs-sync-request'
+        );
+      attempt += 1
+    ) {
+      await Promise.resolve();
+    }
+    const timerCountBeforeFailure = jest.getTimerCount();
+
+    expect(harness.session.status).toBe('syncing');
+    rejectSync(new Error('initial sync offline'));
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(harness.session.status).toBe('degraded');
+    expect(statuses).not.toContain('ready');
+    expect(syncListener).not.toHaveBeenCalledWith(true);
+    expect(connectOutcome).toBe('pending');
+    expect(jest.getTimerCount()).toBe(timerCountBeforeFailure + 1);
+    expect(
+      harness.channel.send.mock.calls.filter(
+        ([message]) => message.event === 'yjs-sync-request'
+      )
+    ).toHaveLength(1);
+    expect(
+      harness.channel.send.mock.calls.filter(
+        ([message]) => message.event === 'yjs-awareness'
+      )
+    ).toHaveLength(0);
+
+    await harness.session.destroy();
+  });
+
+  it.each(['resolve', 'reject'])(
+    'ignores a stale hydration send that %s after the channel reconnects',
+    async (settlement) => {
+      let resolveOldSync!: (value: { status: string }) => void;
+      let rejectOldSync!: (error: Error) => void;
+      const harness = makeHarness({
+        configureChannel: (channel, index) => {
+          if (index !== 0) return;
+          channel.send.mockImplementation((message) => {
+            if (message.event === 'yjs-sync-request') {
+              return new Promise((resolve, reject) => {
+                resolveOldSync = resolve;
+                rejectOldSync = reject;
+              });
+            }
+            return Promise.resolve({ status: 'ok' });
+          });
+        },
+      });
+      const statuses: string[] = [];
+      const syncListener = jest.fn();
+      harness.session.subscribe(({ status }) => statuses.push(status));
+      harness.session.on('sync', syncListener);
+      const connecting = harness.session.connect();
+      harness.session.attachBinding();
+      for (
+        let attempt = 0;
+        attempt < 10 &&
+          !harness.channel.send.mock.calls.some(([message]) =>
+            message.event === 'yjs-sync-request'
+          );
+        attempt += 1
+      ) {
+        await Promise.resolve();
+      }
+
+      harness.channel.emitStatus('CHANNEL_ERROR', new Error('socket closed'));
+      await jest.advanceTimersByTimeAsync(100);
+      await expect(connecting).resolves.toBeUndefined();
+      expect(harness.session.status).toBe('ready');
+      const readyCount = statuses.filter((status) => status === 'ready').length;
+      const trueSyncCount = syncListener.mock.calls.filter(([synced]) => synced).length;
+      const replacementAwarenessCalls = harness.channels[1]!.send.mock.calls.filter(
+        ([message]) => message.event === 'yjs-awareness'
+      ).length;
+      const timerCountAfterReconnect = jest.getTimerCount();
+
+      if (settlement === 'resolve') {
+        resolveOldSync({ status: 'ok' });
+      } else {
+        rejectOldSync(new Error('stale sync failed'));
+      }
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(harness.session.status).toBe('ready');
+      expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+      expect(jest.getTimerCount()).toBe(timerCountAfterReconnect);
+      expect(statuses.filter((status) => status === 'ready')).toHaveLength(readyCount);
+      expect(syncListener.mock.calls.filter(([synced]) => synced)).toHaveLength(
+        trueSyncCount
+      );
+      expect(
+        harness.channels[1]!.send.mock.calls.filter(
+          ([message]) => message.event === 'yjs-awareness'
+        )
+      ).toHaveLength(replacementAwarenessCalls);
+    }
+  );
+
+  it.each(['resolve', 'reject'])(
+    'rejects connect immediately when destroyed with hydration send pending, then ignores %s',
+    async (settlement) => {
+      let resolveSync!: (value: { status: string }) => void;
+      let rejectSync!: (error: Error) => void;
+      const harness = makeHarness({
+        configureChannel: (channel, index) => {
+          if (index !== 0) return;
+          channel.send.mockImplementation((message) => {
+            if (message.event === 'yjs-sync-request') {
+              return new Promise((resolve, reject) => {
+                resolveSync = resolve;
+                rejectSync = reject;
+              });
+            }
+            return Promise.resolve({ status: 'ok' });
+          });
+        },
+      });
+      const statuses: string[] = [];
+      harness.session.subscribe(({ status }) => statuses.push(status));
+      let connectOutcome = 'pending';
+      void harness.session.connect().then(
+        () => { connectOutcome = 'resolved'; },
+        () => { connectOutcome = 'rejected'; }
+      );
+      harness.session.attachBinding();
+      for (
+        let attempt = 0;
+        attempt < 10 &&
+          !harness.channel.send.mock.calls.some(([message]) =>
+            message.event === 'yjs-sync-request'
+          );
+        attempt += 1
+      ) {
+        await Promise.resolve();
+      }
+
+      await harness.session.destroy();
+      await Promise.resolve();
+      const outcomeImmediatelyAfterDestroy = connectOutcome;
+
+      if (settlement === 'resolve') {
+        resolveSync({ status: 'ok' });
+      } else {
+        rejectSync(new Error('late hydration failure'));
+      }
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(outcomeImmediatelyAfterDestroy).toBe('rejected');
+      expect(connectOutcome).toBe('rejected');
+      expect(harness.session.status).toBe('closed');
+      expect(statuses).not.toContain('ready');
+      expect(harness.channelFactory).toHaveBeenCalledTimes(1);
+      expect(jest.getTimerCount()).toBe(0);
+    }
+  );
 
   it('fails closed and notifies the provider when the editor binding fails', () => {
     const { session } = makeHarness();
@@ -295,6 +1241,145 @@ describe('DocumentCollaborationSession', () => {
     );
   });
 
+  it('fails closed without appending when the current semantic state is invalid', async () => {
+    const state = {
+      ...collaborativeState(),
+      yjsStateBase64: invalidCalloutState(),
+    };
+    const harness = makeHarness({ state });
+    await connectReady(harness.session);
+
+    harness.session.doc.getMap('local').set('trigger', true);
+    await jest.advanceTimersByTimeAsync(75);
+    await Promise.resolve();
+
+    expect(harness.gateway.appendUpdates).not.toHaveBeenCalled();
+    expect(harness.session.status).toBe('degraded');
+  });
+
+  it('persists the validated active state when an undurable sync response repairs a local edit', async () => {
+    const durableSnapshot = calloutState('note');
+    const state = {
+      ...collaborativeState(),
+      yjsStateBase64: durableSnapshot,
+    };
+    const harness = makeHarness({ state });
+    await connectReady(harness.session);
+
+    setCalloutType(harness.session.doc, 'danger');
+    const invalidStateVector = Y.encodeStateVector(harness.session.doc);
+    const repairingPeer = new Y.Doc();
+    Y.applyUpdate(
+      repairingPeer,
+      Y.encodeStateAsUpdate(harness.session.doc)
+    );
+    setCalloutType(repairingPeer, 'success');
+    const repair = Y.encodeStateAsUpdate(repairingPeer, invalidStateVector);
+
+    await harness.channel.emit('yjs-sync-response', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 2,
+      requesterId: USER_ID,
+      updateBase64: encodeBase64(repair),
+    });
+    expect(
+      (calloutElement(harness.session.doc).getAttribute('__mdastNode') as {
+        attributes: Array<{ value: string }>;
+      }).attributes[0]?.value
+    ).toBe('success');
+
+    await jest.advanceTimersByTimeAsync(75);
+
+    const appended = harness.gateway.appendUpdates.mock.calls[0]![1].updates[0]!;
+    const reconstructed = new Y.Doc();
+    Y.applyUpdate(reconstructed, decodeBase64(durableSnapshot));
+    Y.applyUpdate(reconstructed, decodeBase64(appended.updateBase64));
+    const persistedNode = calloutElement(reconstructed).getAttribute('__mdastNode');
+    expect(() => validateSanctionedMdxAstNode(persistedNode)).not.toThrow();
+    expect(
+      (persistedNode as { attributes: Array<{ value: string }> }).attributes[0]
+        ?.value
+    ).toBe('success');
+
+    reconstructed.destroy();
+    repairingPeer.destroy();
+  });
+
+  it('drains edits queued while an append is still in flight', async () => {
+    let resolveFirstAppend!: (value: { acceptedIds: string[] }) => void;
+    const firstAppend = new Promise<{ acceptedIds: string[] }>((resolve) => {
+      resolveFirstAppend = resolve;
+    });
+    const append = jest
+      .fn()
+      .mockImplementationOnce(async () => firstAppend)
+      .mockResolvedValue({ acceptedIds: [] });
+    const harness = makeHarness({ append });
+    await connectReady(harness.session);
+
+    harness.session.doc.getMap('local').set('first', 1);
+    await jest.advanceTimersByTimeAsync(75);
+    expect(append).toHaveBeenCalledTimes(1);
+
+    harness.session.doc.getMap('local').set('second', 2);
+    await jest.advanceTimersByTimeAsync(75);
+    expect(append).toHaveBeenCalledTimes(1);
+
+    const firstIds = append.mock.calls[0]![1].updates.map(
+      (update: { id: string }) => update.id
+    );
+    resolveFirstAppend({ acceptedIds: firstIds });
+    await harness.session.flush();
+
+    expect(append).toHaveBeenCalledTimes(2);
+    expect(
+      harness.channel.send.mock.calls.filter(
+        ([message]) => message.event === 'yjs-update'
+      )
+    ).toHaveLength(2);
+  });
+
+  it('does not publish or count an old-epoch append after a reset replaces the document', async () => {
+    let resolveAppend!: (value: { acceptedIds: string[] }) => void;
+    const pendingAppend = new Promise<{ acceptedIds: string[] }>((resolve) => {
+      resolveAppend = resolve;
+    });
+    const harness = makeHarness({ append: async () => pendingAppend });
+    const replacement = {
+      ...collaborativeState(),
+      yjsStateBase64: mapUpdate('restored', 'while-append-pending'),
+      token: { epoch: 3, revision: 1 },
+      updatedAt: '2026-07-14T12:10:00.000Z',
+    };
+    harness.gateway.read
+      .mockResolvedValueOnce(collaborativeState())
+      .mockResolvedValue(replacement);
+    await connectReady(harness.session);
+    harness.session.doc.getMap('local').set('old-epoch-pending', true);
+    await jest.advanceTimersByTimeAsync(75);
+    const pending = harness.gateway.appendUpdates.mock.calls[0]![1];
+
+    await harness.channel.emit('document-state-reset', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 3,
+      revision: 1,
+      reason: 'restore',
+      updatedAt: replacement.updatedAt,
+    });
+    resolveAppend({ acceptedIds: pending.updates.map((update) => update.id) });
+    await jest.advanceTimersByTimeAsync(0);
+
+    expect(
+      harness.channel.send.mock.calls.filter(
+        ([message]) => message.event === 'yjs-update'
+      )
+    ).toHaveLength(0);
+    await jest.advanceTimersByTimeAsync(2_000);
+    expect(harness.gateway.compact).not.toHaveBeenCalled();
+  });
+
   it('keeps the Lexical awareness shape required for relative cursors', async () => {
     const harness = makeHarness();
     const awareness =
@@ -362,8 +1447,46 @@ describe('DocumentCollaborationSession', () => {
 
     await harness.session.retry();
     expect(append.mock.calls[1]![1].updates[0].id).toBe(firstId);
+    expect(harness.channel.unsubscribe).not.toHaveBeenCalled();
+    expect(harness.removeChannel).not.toHaveBeenCalled();
+    expect(harness.setAuth).toHaveBeenCalledTimes(1);
+    expect(harness.channelFactory).toHaveBeenCalledTimes(1);
     expect(harness.session.status).toBe('ready');
   });
+
+  it.each(['throw', 'error-result'])(
+    'reconnects after a channel send %s and rebroadcasts the same pending id',
+    async (failureMode) => {
+      const harness = makeHarness();
+      await connectReady(harness.session);
+      const timerCountBeforeFailure = jest.getTimerCount();
+      if (failureMode === 'throw') {
+        harness.channel.send.mockRejectedValueOnce(new Error('send offline'));
+      } else {
+        harness.channel.send.mockResolvedValueOnce({ status: 'error' });
+      }
+      harness.session.doc.getMap('local').set('send-failure', failureMode);
+
+      await jest.advanceTimersByTimeAsync(75);
+
+      const firstId = harness.gateway.appendUpdates.mock.calls[0]![1].updates[0].id;
+      expect(harness.session.status).toBe('degraded');
+      expect(jest.getTimerCount()).toBe(timerCountBeforeFailure + 1);
+
+      await jest.advanceTimersByTimeAsync(100);
+
+      const secondId = harness.gateway.appendUpdates.mock.calls[1]![1].updates[0].id;
+      expect(secondId).toBe(firstId);
+      expect(harness.channelFactory).toHaveBeenCalledTimes(2);
+      expect(harness.channels[1]!.send).toHaveBeenCalledWith(
+        expect.objectContaining({
+          event: 'yjs-update',
+          payload: expect.objectContaining({ updateId: firstId }),
+        })
+      );
+      expect(harness.session.status).toBe('ready');
+    }
+  );
 
   it('never persists or publishes awareness for a viewer', async () => {
     const harness = makeHarness({ role: 'viewer' });
@@ -512,6 +1635,73 @@ describe('DocumentCollaborationSession', () => {
     expect(harness.session.doc.getMap('peer').get('missed')).toBe('durable');
   });
 
+  it('applies a same-epoch compacted snapshot before advancing the token', async () => {
+    const initial = collaborativeState();
+    const caughtUp = {
+      ...initial,
+      yjsStateBase64: mapUpdate('compacted', 'durable'),
+      updateTail: [],
+      token: { epoch: 2, revision: 5 },
+    };
+    const harness = makeHarness();
+    harness.gateway.read.mockResolvedValueOnce(initial).mockResolvedValue(caughtUp);
+    await connectReady(harness.session);
+    const applied: Array<{ origin: unknown; token: { epoch: number; revision: number } }> = [];
+    harness.session.doc.on('update', (_update, origin) => {
+      if (harness.session.doc.getMap('peer').get('compacted') === 'durable') {
+        applied.push({ origin, token: harness.session.token });
+      }
+    });
+
+    await jest.advanceTimersByTimeAsync(15_000);
+
+    expect(harness.session.doc.getMap('peer').get('compacted')).toBe('durable');
+    expect(applied).toEqual([
+      { origin: 'remote', token: { epoch: 2, revision: 4 } },
+    ]);
+    expect(harness.session.token).toEqual({ epoch: 2, revision: 5 });
+  });
+
+  it('does not regress the token when a same-epoch durable read has a lower revision', async () => {
+    const stale = {
+      ...collaborativeState(),
+      token: { epoch: 2, revision: 3 },
+    };
+    const harness = makeHarness();
+    harness.gateway.read
+      .mockResolvedValueOnce(collaborativeState())
+      .mockResolvedValueOnce(stale);
+    await connectReady(harness.session);
+
+    await harness.session.refresh();
+
+    expect(harness.session.token).toEqual({ epoch: 2, revision: 4 });
+  });
+
+  it('synchronizes reloaded tail counters and schedules writer compaction', async () => {
+    const caughtUp = {
+      ...collaborativeState(),
+      token: { epoch: 2, revision: 5 },
+      updateTail: Array.from({ length: 100 }, (_, index) => ({
+        id: `${String(index).padStart(8, '0')}-3333-4333-8333-333333333333`,
+        updateBase64: mapUpdate(`reloaded-${index}`, `value-${index}`),
+      })),
+    };
+    const harness = makeHarness();
+    harness.gateway.read
+      .mockResolvedValueOnce(collaborativeState())
+      .mockResolvedValueOnce(caughtUp);
+    await connectReady(harness.session);
+
+    await harness.session.refresh();
+    await Promise.resolve();
+
+    expect(harness.gateway.compact).toHaveBeenCalledWith(expect.anything(), {
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 5 },
+    });
+  });
+
   it('replaces the Y.Doc and rehydrates exactly once after a higher-epoch reset', async () => {
     const harness = makeHarness();
     const replacement = {
@@ -540,9 +1730,18 @@ describe('DocumentCollaborationSession', () => {
     expect(harness.session.status).toBe('syncing');
     expect(harness.session.doc).not.toBe(oldDoc);
     expect(reload).toHaveBeenCalledTimes(1);
+    const syncCallsBeforeBinding = harness.channel.send.mock.calls.filter(
+      ([message]) => message.event === 'yjs-sync-request'
+    ).length;
     harness.session.attachBinding();
     harness.session.attachBinding();
+    await jest.advanceTimersByTimeAsync(0);
     expect(harness.session.status).toBe('ready');
+    expect(
+      harness.channel.send.mock.calls.filter(
+        ([message]) => message.event === 'yjs-sync-request'
+      )
+    ).toHaveLength(syncCallsBeforeBinding + 1);
     expect(harness.session.token).toEqual({ epoch: 3, revision: 1 });
     expect(harness.session.doc.getMap('peer').get('restored')).toBe('version');
     expect(reload).toHaveBeenCalledTimes(1);
@@ -557,6 +1756,103 @@ describe('DocumentCollaborationSession', () => {
     });
     expect(harness.gateway.read).toHaveBeenCalledTimes(2);
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('single-flights concurrent higher-epoch resets and freezes immediately', async () => {
+    let resolveRead!: (state: AuthoritativeDocumentState) => void;
+    const pendingRead = new Promise<AuthoritativeDocumentState>((resolve) => {
+      resolveRead = resolve;
+    });
+    const replacement = {
+      ...collaborativeState(),
+      yjsStateBase64: mapUpdate('restored', 'concurrent-reset'),
+      token: { epoch: 3, revision: 1 },
+      updatedAt: '2026-07-14T12:10:00.000Z',
+    };
+    const harness = makeHarness();
+    await connectReady(harness.session);
+    harness.gateway.read.mockImplementation(() => pendingRead);
+    const oldDoc = harness.session.doc;
+    const reload = jest.fn();
+    harness.session.on('reload', reload);
+    const reset = {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 3,
+      revision: 1,
+      reason: 'restore',
+      updatedAt: replacement.updatedAt,
+    };
+
+    const firstReset = harness.channel.emit('document-state-reset', reset);
+    const secondReset = harness.channel.emit('document-state-reset', reset);
+
+    expect(harness.session.status).toBe('hydrating');
+    expect(harness.session.doc).toBe(oldDoc);
+    expect(harness.gateway.read).toHaveBeenCalledTimes(2);
+    resolveRead(replacement);
+    await Promise.all([firstReset, secondReset]);
+
+    expect(harness.session.status).toBe('syncing');
+    expect(harness.session.doc).not.toBe(oldDoc);
+    expect(harness.gateway.read).toHaveBeenCalledTimes(2);
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('enters observable degraded state when a valid reset durable read fails', async () => {
+    const harness = makeHarness();
+    await connectReady(harness.session);
+    const states: Array<{ status: string; error: string | null }> = [];
+    harness.session.subscribe(({ status, error }) => states.push({ status, error }));
+    harness.gateway.read.mockRejectedValueOnce(new Error('durable reset read failed'));
+
+    await harness.channel.emit('document-state-reset', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 3,
+      revision: 1,
+      reason: 'restore',
+      updatedAt: '2026-07-14T12:10:00.000Z',
+    });
+
+    expect(harness.session.status).toBe('degraded');
+    expect(states.at(-1)).toEqual({
+      status: 'degraded',
+      error: 'durable reset read failed',
+    });
+  });
+
+  it('degrades when reset catch-up reads below its minimum token and allows refresh retry', async () => {
+    const stale = collaborativeState();
+    const replacement = {
+      ...collaborativeState(),
+      yjsStateBase64: mapUpdate('restored', 'after-stale-read'),
+      token: { epoch: 3, revision: 1 },
+      updatedAt: '2026-07-14T12:10:00.000Z',
+    };
+    const harness = makeHarness();
+    harness.gateway.read
+      .mockResolvedValueOnce(collaborativeState())
+      .mockResolvedValueOnce(stale)
+      .mockResolvedValueOnce(replacement);
+    const states: Array<{ status: string; error: string | null }> = [];
+    harness.session.subscribe(({ status, error }) => states.push({ status, error }));
+    await connectReady(harness.session);
+
+    await harness.channel.emit('document-state-reset', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 3,
+      revision: 1,
+      reason: 'restore',
+      updatedAt: replacement.updatedAt,
+    });
+
+    expect(harness.session.status).toBe('degraded');
+    expect(states.at(-1)?.error).toMatch(/behind.*minimum token/i);
+    await harness.session.refresh();
+    expect(harness.session.token).toEqual({ epoch: 3, revision: 1 });
+    expect(harness.session.status).toBe('syncing');
   });
 
   it('flushes, commits, reloads, and only then broadcasts a version restore', async () => {
@@ -612,6 +1908,23 @@ describe('DocumentCollaborationSession', () => {
     );
     expect(harness.gateway.appendUpdates).not.toHaveBeenCalled();
     expect(harness.gateway.replace).not.toHaveBeenCalled();
+  });
+
+  it('persists and broadcasts an edit when destroyed before the batch timer fires', async () => {
+    const harness = makeHarness();
+    await connectReady(harness.session);
+
+    harness.session.doc.getMap('local').set('last-second-edit', true);
+    await harness.session.destroy();
+
+    expect(harness.gateway.appendUpdates).toHaveBeenCalledTimes(1);
+    expect(harness.channel.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'broadcast',
+        event: 'yjs-update',
+        payload: expect.objectContaining({ documentId: DOCUMENT_ID, epoch: 2 }),
+      })
+    );
   });
 
   it('flushes once and removes channel, awareness, timers, and listeners on destroy', async () => {

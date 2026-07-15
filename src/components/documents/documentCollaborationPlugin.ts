@@ -1,8 +1,7 @@
 import { useEffect } from 'react';
-import { addComposerChild$, realmPlugin } from '@mdxeditor/editor';
+import { addComposerChild$, markdown$, realmPlugin } from '@mdxeditor/editor';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
-  createBinding,
   createUndoManager,
   initLocalState,
   setLocalStateFocus,
@@ -29,6 +28,8 @@ import type {
   DocumentBindingFailureDirection,
   DocumentCollaborationSession,
 } from '@/lib/documents/documentCollaborationSession';
+import { createDocumentLexicalYjsBinding } from '@/lib/documents/documentLexicalYjsBinding';
+import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 
 export type DocumentCollaborationParams = {
   session: DocumentCollaborationSession;
@@ -77,22 +78,22 @@ function releaseEditorBinding(
 
 function ensureCursorsContainer(
   binding: Binding,
-  editor: LexicalEditor
+  rootElement: HTMLElement | null
 ): HTMLElement {
-  if (binding.cursorsContainer?.isConnected) {
-    return binding.cursorsContainer;
-  }
-
-  const rootElement = editor.getRootElement();
   const parent = rootElement?.parentElement;
   if (!parent) {
     throw new Error('Document collaboration editor is not mounted');
   }
-  const container = document.createElement('div');
-  container.className = 'document-collab-cursors';
-  container.setAttribute('aria-hidden', 'true');
-  parent.appendChild(container);
-  binding.cursorsContainer = container;
+
+  const container = binding.cursorsContainer ?? document.createElement('div');
+  if (!binding.cursorsContainer) {
+    container.className = 'document-collab-cursors';
+    container.setAttribute('aria-hidden', 'true');
+    binding.cursorsContainer = container;
+  }
+  if (binding.cursorsContainer?.parentElement !== parent) {
+    parent.appendChild(container);
+  }
   return container;
 }
 
@@ -153,7 +154,13 @@ function attachEditorBinding(
   const doc: Doc = session.doc;
   const id = session.documentId;
   const docMap = new Map<string, Doc>([[id, doc]]);
-  const binding = createBinding(editor, provider, id, doc, docMap);
+  const binding = createDocumentLexicalYjsBinding(
+    editor,
+    provider,
+    id,
+    doc,
+    docMap
+  );
   const sharedRoot = binding.root.getSharedType();
   const undoManager = createUndoManager(binding, sharedRoot);
   const awareness = provider.awareness;
@@ -164,6 +171,31 @@ function attachEditorBinding(
   let disposed = false;
   let activeEntry: ActiveEditorBinding | null = null;
   let compositionState: CompositionState | null = null;
+  let cursorRefreshFrame: number | null = null;
+  let activeRoot: HTMLElement | null = null;
+  let removeRootListener = () => undefined;
+
+  const refreshCursorPositions = () => {
+    if (disposed || !activeRoot) return;
+    try {
+      ensureCursorsContainer(binding, activeRoot);
+      syncCursorPositions(binding, provider);
+    } catch (error) {
+      failBinding(error, 'presence');
+    }
+  };
+
+  const scheduleCursorRefresh = () => {
+    if (cursorRefreshFrame !== null) {
+      cancelAnimationFrame(cursorRefreshFrame);
+      cursorRefreshFrame = null;
+    }
+    if (disposed || !activeRoot) return;
+    cursorRefreshFrame = requestAnimationFrame(() => {
+      cursorRefreshFrame = null;
+      refreshCursorPositions();
+    });
+  };
 
   const failBinding = (
     error: unknown,
@@ -186,7 +218,8 @@ function attachEditorBinding(
         binding,
         provider,
         events as never,
-        isFromUndoManager
+        isFromUndoManager,
+        () => scheduleCursorRefresh()
       );
     } catch (error) {
       cleanupBinding();
@@ -232,13 +265,7 @@ function attachEditorBinding(
   };
 
   const onAwarenessUpdate = () => {
-    if (disposed) return;
-    try {
-      ensureCursorsContainer(binding, editor);
-      syncCursorPositions(binding, provider);
-    } catch (error) {
-      failBinding(error, 'presence');
-    }
+    refreshCursorPositions();
   };
 
   const updateUndoRedoState = () => {
@@ -246,14 +273,37 @@ function attachEditorBinding(
     editor.dispatchCommand(CAN_REDO_COMMAND, undoManager.redoStack.length > 0);
   };
 
-  const rootElement = editor.getRootElement();
-  ensureCursorsContainer(binding, editor);
-  rootElement?.addEventListener('compositionend', onCompositionEnd);
+  const cursorMutationObserver = new MutationObserver(scheduleCursorRefresh);
+  removeRootListener = editor.registerRootListener((nextRoot, previousRoot) => {
+    cursorMutationObserver.disconnect();
+    if (cursorRefreshFrame !== null) {
+      cancelAnimationFrame(cursorRefreshFrame);
+      cursorRefreshFrame = null;
+    }
+    previousRoot?.removeEventListener('compositionend', onCompositionEnd);
+    activeRoot = nextRoot;
+    if (!nextRoot) {
+      binding.cursorsContainer?.remove();
+      return;
+    }
+    try {
+      ensureCursorsContainer(binding, nextRoot);
+      cursorMutationObserver.observe(nextRoot, {
+        childList: true,
+        characterData: true,
+        subtree: true,
+      });
+      nextRoot?.addEventListener('compositionend', onCompositionEnd);
+      scheduleCursorRefresh();
+    } catch (error) {
+      failBinding(error, 'presence');
+    }
+  });
   initLocalState(
     provider,
     username,
     cursorColor,
-    document.activeElement === rootElement,
+    document.activeElement === activeRoot,
     { userId: session.userId }
   );
 
@@ -367,7 +417,14 @@ function attachEditorBinding(
     }
     queuedRemote.length = 0;
     compositionState = null;
-    rootElement?.removeEventListener('compositionend', onCompositionEnd);
+    cursorMutationObserver.disconnect();
+    if (cursorRefreshFrame !== null) {
+      cancelAnimationFrame(cursorRefreshFrame);
+      cursorRefreshFrame = null;
+    }
+    activeRoot?.removeEventListener('compositionend', onCompositionEnd);
+    activeRoot = null;
+    removeRootListener();
     removeUpdateListener();
     removeFocus();
     removeBlur();
@@ -403,6 +460,10 @@ export const documentCollaborationPlugin =
   realmPlugin<DocumentCollaborationParams>({
     init(realm, params) {
       if (!params) return;
+
+      params.session.setSemanticStateValidator(() => {
+        validateSanctionedMdx(realm.getValue(markdown$));
+      });
 
       function DocumentCollaborationLifecycle() {
         const [editor] = useLexicalComposerContext();

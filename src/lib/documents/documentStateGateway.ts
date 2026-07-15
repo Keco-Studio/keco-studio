@@ -17,6 +17,7 @@ import {
 const DOCUMENT_STATE_COLUMNS =
   'id, project_id, content, yjs_state, collab_epoch, collab_revision, updated_at';
 const DOCUMENT_UPDATE_COLUMNS = 'id, update_data, created_at';
+const MAX_STABLE_READ_ATTEMPTS = 3;
 
 type DocumentStateRow = {
   id: string;
@@ -109,33 +110,55 @@ async function readRawDocumentState(
   documentId: string
 ): Promise<RawDocumentState> {
   assertDocumentId(documentId);
-  const { data: headData, error: headError } = await client
-    .from('documents')
-    .select(DOCUMENT_STATE_COLUMNS)
-    .eq('id', documentId)
-    .single();
+  let latestToken: DocumentStateToken | undefined;
 
-  if (headError || !headData) {
-    if (!headError || headError.code === 'PGRST116' || headError.code === '42501') {
-      throw new DocumentAccessError();
+  for (let attempt = 0; attempt < MAX_STABLE_READ_ATTEMPTS; attempt += 1) {
+    const readHead = async (): Promise<DocumentStateRow> => {
+      const { data, error } = await client
+        .from('documents')
+        .select(DOCUMENT_STATE_COLUMNS)
+        .eq('id', documentId)
+        .single();
+
+      if (error || !data) {
+        if (!error || error.code === 'PGRST116' || error.code === '42501') {
+          throw new DocumentAccessError();
+        }
+        throw error;
+      }
+      return data as unknown as DocumentStateRow;
+    };
+
+    const head = await readHead();
+    const { data: tailData, error: tailError } = await client
+      .from('document_yjs_updates')
+      .select(DOCUMENT_UPDATE_COLUMNS)
+      .eq('document_id', documentId)
+      .eq('epoch', head.collab_epoch)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true });
+
+    if (tailError) throw tailError;
+
+    const verifiedHead = await readHead();
+    latestToken = {
+      epoch: Number(verifiedHead.collab_epoch),
+      revision: Number(verifiedHead.collab_revision),
+    };
+    if (
+      Number(head.collab_epoch) === latestToken.epoch &&
+      Number(head.collab_revision) === latestToken.revision
+    ) {
+      return {
+        head,
+        tail: (tailData ?? []) as unknown as DocumentUpdateRow[],
+      };
     }
-    throw headError;
   }
-
-  const head = headData as unknown as DocumentStateRow;
-  const { data: tailData, error: tailError } = await client
-    .from('document_yjs_updates')
-    .select(DOCUMENT_UPDATE_COLUMNS)
-    .eq('document_id', documentId)
-    .eq('epoch', head.collab_epoch)
-    .order('created_at', { ascending: true })
-    .order('id', { ascending: true });
-
-  if (tailError) throw tailError;
-  return {
-    head,
-    tail: (tailData ?? []) as unknown as DocumentUpdateRow[],
-  };
+  throw new DocumentStateConflictError(
+    'Document state changed while reading',
+    latestToken
+  );
 }
 
 export async function readDocumentState(
@@ -178,6 +201,14 @@ export async function initializeDocumentState(
 ): Promise<AuthoritativeDocumentState> {
   assertDocumentId(documentId);
   const yjsStateBase64 = await documentContentCodec.markdownToYjsState(markdown);
+  const projectResult = await client
+    .from('documents')
+    .select('project_id')
+    .eq('id', documentId)
+    .single();
+  if (projectResult.error || !projectResult.data) throw new DocumentAccessError();
+  const projectId = (projectResult.data as { project_id: string }).project_id;
+
   const { data, error } = await client.rpc('initialize_document_collab_state', {
     p_document_id: documentId,
     p_expected_epoch: 0,
@@ -185,16 +216,9 @@ export async function initializeDocumentState(
     p_markdown: markdown,
   });
   if (error) throwMutationError(error, { epoch: 0, revision: 0 });
-
-  const projectResult = await client
-    .from('documents')
-    .select('project_id')
-    .eq('id', documentId)
-    .single();
-  if (projectResult.error || !projectResult.data) throw new DocumentAccessError();
   return stateFromRpc(
     documentId,
-    (projectResult.data as { project_id: string }).project_id,
+    projectId,
     firstRpcRow(data)
   );
 }
@@ -270,13 +294,21 @@ export async function replaceDocumentState(
   input: ReplaceDocumentStateInput
 ): Promise<AuthoritativeDocumentState> {
   assertDocumentId(input.documentId);
-  if (
-    input.reason !== 'restore' ||
-    input.replacement.kind !== 'version'
-  ) {
-    throw new Error('Only version restore is supported');
+  const versionReplacement =
+    input.replacement.kind === 'version' ? input.replacement : null;
+  const markdownReplacement =
+    input.replacement.kind === 'markdown' ? input.replacement : null;
+  const restoring =
+    input.reason === 'restore' && versionReplacement !== null;
+  const agentEdit =
+    input.reason === 'agent' && markdownReplacement !== null;
+  if (agentEdit) {
+    throw new Error('Agent Markdown replacement requires the trusted server command');
   }
-  if (!isUuid(input.replacement.versionId)) {
+  if (!restoring && !agentEdit) {
+    throw new Error('Document replacement reason does not match its payload');
+  }
+  if (versionReplacement && !isUuid(versionReplacement.versionId)) {
     throw new Error('Invalid document version ID format');
   }
 
@@ -298,20 +330,44 @@ export async function replaceDocumentState(
     );
   }
 
+  if (agentEdit) {
+    const expectedUpdateIds = input.expectedUpdateIds ?? [];
+    const currentUpdateIds = tail.map((row) => row.id);
+    if (
+      expectedUpdateIds.length !== currentUpdateIds.length ||
+      expectedUpdateIds.some((id, index) => id !== currentUpdateIds[index])
+    ) {
+      throw new DocumentStateConflictError('Document update tail changed', current);
+    }
+  }
+
   const updateTail = tail.map((row) => row.update_data);
   const merged = mergeYjsState(head.yjs_state, updateTail);
   const markdown = await documentContentCodec.yjsStateToMarkdown(merged, []);
-  const { data, error } = await client.rpc('restore_document_version', {
+  const backupVersionId = globalThis.crypto.randomUUID();
+  const commonArgs = {
     p_document_id: input.documentId,
-    p_target_version_id: input.replacement.versionId,
-    p_backup_version_id: globalThis.crypto.randomUUID(),
-    p_audit_version_id: globalThis.crypto.randomUUID(),
+    p_backup_version_id: backupVersionId,
     p_expected_epoch: input.expected.epoch,
     p_expected_revision: input.expected.revision,
     p_included_update_ids: tail.map((row) => row.id),
     p_current_yjs_state: merged,
     p_current_markdown: markdown,
-  });
+  };
+  const rpc = restoring
+    ? await client.rpc('restore_document_version', {
+        ...commonArgs,
+        p_target_version_id: versionReplacement.versionId,
+        p_audit_version_id: globalThis.crypto.randomUUID(),
+      })
+    : await client.rpc('replace_document_with_markdown', {
+        ...commonArgs,
+        p_replacement_yjs_state: await documentContentCodec.markdownToYjsState(
+          markdownReplacement!.markdown
+        ),
+        p_replacement_markdown: markdownReplacement!.markdown,
+      });
+  const { data, error } = rpc;
   if (error) throwMutationError(error, current);
   return stateFromRpc(
     input.documentId,

@@ -25,6 +25,8 @@ type AuthenticatedClient = {
 
 type CollaborationFixture = {
   documentId: string;
+  navigationDocumentId: string;
+  navigationDocumentName: string;
   projectId: string;
   owner: AuthenticatedClient;
   editor: AuthenticatedClient;
@@ -110,7 +112,35 @@ async function createFixture(): Promise<CollaborationFixture> {
     .insert({
       project_id: projectId,
       name: `Shared Design ${suffix}`,
-      content: '# Collaborative seed\n\nOwner lane\n\nEditor lane\n',
+      content: [
+        '# Collaborative seed',
+        '',
+        '## Structure heading',
+        '',
+        'Owner lane',
+        '',
+        'Editor lane',
+        '',
+        'Overlap lane',
+        '',
+        '- List alpha',
+        '- List beta',
+        '',
+        '> Quote lane',
+        '',
+        '[Fixture link](https://example.com)',
+        '',
+        '![Fixture image](https://localhost:3000/document-fixture.png)',
+        '',
+        '| Column A | Column B |',
+        '| --- | --- |',
+        '| Table owner | Table editor |',
+        '',
+        '```text',
+        'code-seed',
+        '```',
+        '',
+      ].join('\n'),
       created_by: owner.userId,
     })
     .select('id')
@@ -119,8 +149,29 @@ async function createFixture(): Promise<CollaborationFixture> {
     throw documentError ?? new Error('Document fixture was not created');
   }
 
+  const navigationDocumentName = `Navigation target ${suffix}`;
+  const { data: navigationDocument, error: navigationDocumentError } =
+    await owner.client
+      .from('documents')
+      .insert({
+        project_id: projectId,
+        name: navigationDocumentName,
+        content: '# Navigation target\n',
+        created_by: owner.userId,
+      })
+      .select('id')
+      .single();
+  if (navigationDocumentError || !navigationDocument?.id) {
+    throw (
+      navigationDocumentError ??
+      new Error('Navigation document fixture was not created')
+    );
+  }
+
   return {
     documentId: document.id,
+    navigationDocumentId: navigationDocument.id,
+    navigationDocumentName,
     projectId,
     owner,
     editor,
@@ -183,8 +234,204 @@ async function appendText(
     .pressSequentially(text, { delay });
 }
 
+async function appendToNode(
+  page: Page,
+  locator: ReturnType<Page['locator']>,
+  text: string
+): Promise<void> {
+  await locator.click();
+  await locator.press('End');
+  await page.keyboard.insertText(text);
+}
+
+async function ensureEditable(page: Page): Promise<void> {
+  const editable = page.locator('[contenteditable="true"]').first();
+  if (await editable.isVisible()) return;
+
+  const retry = page.getByRole('button', { name: 'Retry' });
+  await expect(editable.or(retry)).toBeVisible({ timeout: 30_000 });
+  if (await retry.isVisible()) await retry.click();
+  await expect(editable).toBeVisible({ timeout: 30_000 });
+}
+
+async function insertInsideTextNode(
+  page: Page,
+  locator: ReturnType<Page['locator']>,
+  text: string
+): Promise<void> {
+  await locator.evaluate((element) => {
+    const editable = element.closest<HTMLElement>('[contenteditable="true"]');
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    let textNode: Text | null = null;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      textNode = node as Text;
+    }
+    if (!editable || !textNode || textNode.data.length === 0) {
+      throw new Error('Editable text node is not available');
+    }
+    editable.focus();
+    const range = document.createRange();
+    range.setStart(textNode, textNode.data.length - 1);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
+  await page.keyboard.insertText(text);
+}
+
+async function insertAtTextStart(
+  page: Page,
+  locator: ReturnType<Page['locator']>,
+  text: string
+): Promise<void> {
+  await locator.evaluate((element) => {
+    const editable = element.closest<HTMLElement>('[contenteditable="true"]');
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    const textNode = walker.nextNode() as Text | null;
+    if (!editable || !textNode) {
+      throw new Error('Editable text node is not available');
+    }
+    editable.focus();
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+  });
+  await page.keyboard.insertText(text);
+}
+
+async function markerEndPosition(
+  locator: ReturnType<Page['locator']>,
+  marker: string
+): Promise<{ x: number; y: number }> {
+  return locator.evaluate((element, expectedMarker) => {
+    const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const textNode = node as Text;
+      const markerIndex = textNode.data.indexOf(expectedMarker);
+      if (markerIndex === -1) continue;
+      const range = document.createRange();
+      range.setStart(textNode, markerIndex + expectedMarker.length);
+      range.collapse(true);
+      const rect = range.getBoundingClientRect();
+      return { x: rect.left, y: rect.top };
+    }
+    throw new Error(`Marker not found in paragraph: ${expectedMarker}`);
+  }, marker);
+}
+
+type StructureExpectations = {
+  heading: string | RegExp;
+  list: string;
+  quote: string;
+  link: string | RegExp;
+  table: string;
+  code: string;
+};
+
+const initialStructure: StructureExpectations = {
+  heading: 'Structure heading',
+  list: 'List alpha',
+  quote: 'Quote lane',
+  link: 'Fixture link',
+  table: 'Table owner',
+  code: 'code-seed',
+};
+
+async function expectStructureFixture(
+  page: Page,
+  expected: StructureExpectations = initialStructure
+): Promise<void> {
+  const editor = page.locator('.mdxeditor-root-contenteditable').first();
+  await expect(editor.getByRole('heading', { name: expected.heading })).toBeVisible();
+  await expect(editor.locator('li', { hasText: expected.list })).toBeVisible();
+  await expect(editor.locator('blockquote', { hasText: expected.quote })).toBeVisible();
+  await expect(editor.getByRole('link', { name: expected.link })).toHaveAttribute(
+    'href',
+    'https://example.com'
+  );
+  await expect(editor.locator('table')).toContainText(expected.table);
+  await expect(page.locator('.cm-content', { hasText: expected.code })).toBeVisible();
+}
+
+async function expectFixtureImage(page: Page): Promise<void> {
+  await expect(page.getByRole('img', { name: 'Fixture image' })).toBeVisible();
+}
+
+async function expectDurableFixture(page: Page): Promise<void> {
+  const content = page.locator('[contenteditable]').first();
+  await expect(content).toContainText('pending-retry', { timeout: 45_000 });
+  for (const durableText of [
+    'owner-heading',
+    'editor-list',
+    'owner-quote',
+    'editor-link',
+    'owner-table',
+    'editor-code',
+    'owner-overlap',
+    'editor-overlap',
+    'WIDE-PREFIX-',
+  ]) {
+    await expect(content).toContainText(durableText);
+  }
+  await expect(page.getByRole('img', { name: 'Fixture image' })).toHaveCount(0);
+  await expectStructureFixture(page, {
+    heading: /owner-heading/,
+    list: 'editor-list',
+    quote: 'owner-quote',
+    link: /editor-link/,
+    table: 'owner-table',
+    code: 'editor-code',
+  });
+}
+
+type Deferred = {
+  promise: Promise<void>;
+  resolve: () => void;
+};
+
+function createDeferred(): Deferred {
+  let settled = false;
+  let resolvePromise!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return {
+    promise,
+    resolve: () => {
+      if (settled) return;
+      settled = true;
+      resolvePromise();
+    },
+  };
+}
+
+async function waitForDeferred(
+  deferred: Deferred,
+  description: string,
+  timeout = 30_000
+): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      deferred.promise,
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Timed out waiting for ${description}`)),
+          timeout
+        );
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 test.describe.serial('Document realtime collaboration', () => {
-  test.setTimeout(240_000);
+  test.setTimeout(360_000);
   let fixture: CollaborationFixture;
 
   test.beforeAll(async () => {
@@ -279,68 +526,188 @@ test.describe.serial('Document realtime collaboration', () => {
         await expect(page.locator('[contenteditable]').first()).toContainText(
           'Editor lane'
         );
+        await expect(page.locator('[contenteditable]').first()).toContainText(
+          'Overlap lane'
+        );
+        await expectStructureFixture(page);
+        await expectFixtureImage(page);
       }
+
+      const ownerName = users.seedEmpty2.email.split('@')[0];
+      const editorName = users.seedEmpty3.email.split('@')[0];
+      const ownerRemoteAvatar = owner.page
+        .getByLabel('Collaborators currently editing')
+        .getByTitle(`${editorName} is editing`);
+      const editorRemoteAvatar = editor.page
+        .getByLabel('Collaborators currently editing')
+        .getByTitle(`${ownerName} is editing`);
+      await expect(ownerRemoteAvatar).toBeVisible({ timeout: 20_000 });
+      await expect(ownerRemoteAvatar).toHaveText(
+        editorName.charAt(0).toUpperCase()
+      );
+      await expect(editorRemoteAvatar).toBeVisible({ timeout: 20_000 });
+      await expect(editorRemoteAvatar).toHaveText(
+        ownerName.charAt(0).toUpperCase()
+      );
+
+      await appendToNode(
+        owner.page,
+        owner.page.getByRole('heading', { name: 'Structure heading' }),
+        ' owner-heading'
+      );
+      await expect(editor.page.locator('[contenteditable]').first()).toContainText(
+        'owner-heading',
+        { timeout: 30_000 }
+      );
+
+      await appendToNode(
+        editor.page,
+        editor.page.locator('li', { hasText: 'List alpha' }).first(),
+        ' editor-list'
+      );
+      await expect(owner.page.locator('[contenteditable]').first()).toContainText(
+        'editor-list',
+        { timeout: 30_000 }
+      );
+
+      await appendToNode(
+        owner.page,
+        owner.page.locator('blockquote', { hasText: 'Quote lane' }).first(),
+        ' owner-quote'
+      );
+      await expect(editor.page.locator('[contenteditable]').first()).toContainText(
+        'owner-quote',
+        { timeout: 30_000 }
+      );
+
+      await insertInsideTextNode(
+        editor.page,
+        editor.page.getByRole('link', { name: 'Fixture link' }),
+        ' editor-link'
+      );
+      await expect(owner.page.getByRole('link', { name: /editor-link/ })).toBeVisible({
+        timeout: 30_000,
+      });
+
+      const ownerTableCell = owner.page
+        .locator('table td:not([data-tool-cell="true"]) [contenteditable="true"]', {
+          hasText: 'Table owner',
+        })
+        .first();
+      await appendToNode(owner.page, ownerTableCell, ' owner-table');
+      await ownerTableCell.press('Tab');
+      await expect(editor.page.locator('table')).toContainText('owner-table', {
+        timeout: 30_000,
+      });
+
+      const editorCode = editor.page.locator('.cm-content', { hasText: 'code-seed' }).first();
+      await appendToNode(editor.page, editorCode, ' editor-code');
+      await expect(owner.page.locator('.cm-content').first()).toContainText('editor-code', {
+        timeout: 30_000,
+      });
+
+      const editorImage = editor.page.getByRole('img', { name: 'Fixture image' });
+      await editorImage.click();
+      await editor.page.keyboard.press('Delete');
+      await expect(owner.page.getByRole('img', { name: 'Fixture image' })).toHaveCount(0, {
+        timeout: 30_000,
+      });
 
       const appendPattern = '**/rest/v1/rpc/append_document_yjs_updates';
-      let releaseAppends!: () => void;
-      let markOwnerAppendSeen!: () => void;
-      let markEditorAppendSeen!: () => void;
-      const appendRelease = new Promise<void>((resolve) => {
-        releaseAppends = resolve;
-      });
-      const ownerAppendSeen = new Promise<void>((resolve) => {
-        markOwnerAppendSeen = resolve;
-      });
-      const editorAppendSeen = new Promise<void>((resolve) => {
-        markEditorAppendSeen = resolve;
-      });
-      await owner.page.route(appendPattern, async (route) => {
-        markOwnerAppendSeen();
-        await appendRelease;
-        await route.continue();
-      });
-      await editor.page.route(appendPattern, async (route) => {
-        markEditorAppendSeen();
-        await appendRelease;
-        await route.continue();
-      });
-
-      const ownerAppend = owner.page.waitForResponse(
-        (response) =>
-          response.url().includes('/rpc/append_document_yjs_updates') &&
-          response.ok()
-      );
-      const editorAppend = editor.page.waitForResponse(
-        (response) =>
-          response.url().includes('/rpc/append_document_yjs_updates') &&
-          response.ok()
-      );
-      await appendText(owner.page, ' owner-concurrent', 'Owner lane', 0);
-      await ownerAppendSeen;
-      await appendText(editor.page, ' editor-concurrent', 'Editor lane', 0);
-      await editorAppendSeen;
-      releaseAppends();
-      await Promise.all([ownerAppend, editorAppend]);
-      await Promise.all([
-        owner.page.unroute(appendPattern),
-        editor.page.unroute(appendPattern),
-      ]);
+      const appendRelease = createDeferred();
+      const ownerAppendSeen = createDeferred();
+      const editorAppendSeen = createDeferred();
+      try {
+        await owner.page.route(appendPattern, async (route) => {
+          ownerAppendSeen.resolve();
+          await appendRelease.promise;
+          await route.continue();
+        });
+        await editor.page.route(appendPattern, async (route) => {
+          editorAppendSeen.resolve();
+          await appendRelease.promise;
+          await route.continue();
+        });
+        await appendText(owner.page, ' owner-overlap', 'Overlap lane', 0);
+        await waitForDeferred(ownerAppendSeen, 'owner overlap append');
+        await appendText(editor.page, ' editor-overlap', 'Overlap lane', 0);
+        await waitForDeferred(editorAppendSeen, 'editor overlap append');
+        const ownerAppend = owner.page.waitForResponse(
+          (response) =>
+            response.url().includes('/rpc/append_document_yjs_updates') &&
+            response.ok(),
+          { timeout: 30_000 }
+        );
+        const editorAppend = editor.page.waitForResponse(
+          (response) =>
+            response.url().includes('/rpc/append_document_yjs_updates') &&
+            response.ok(),
+          { timeout: 30_000 }
+        );
+        appendRelease.resolve();
+        await Promise.all([ownerAppend, editorAppend]);
+      } finally {
+        appendRelease.resolve();
+        await Promise.allSettled([
+          owner.page.unroute(appendPattern),
+          editor.page.unroute(appendPattern),
+        ]);
+      }
       for (const page of [owner.page, editor.page]) {
         const content = page.locator('[contenteditable]').first();
-        await expect(content).toContainText('owner-concurrent', {
+        await expect(content).toContainText('owner-overlap', {
           timeout: 30_000,
         });
-        await expect(content).toContainText('editor-concurrent', {
+        await expect(content).toContainText('editor-overlap', {
           timeout: 30_000,
         });
       }
 
-      await owner.page.locator('[contenteditable="true"]').first().click();
-      await expect(
+      await appendText(owner.page, ' cursor-anchor', 'Owner lane', 0);
+      await expect(editor.page.locator('[contenteditable]').first()).toContainText(
+        'cursor-anchor',
+        { timeout: 30_000 }
+      );
+      const remoteOwnerCursor = editor.page
+        .locator('.document-collab-cursors > span > span > span')
+        .filter({ hasText: ownerName })
+        .first();
+      await expect(remoteOwnerCursor).toBeVisible({ timeout: 20_000 });
+      const remoteOwnerCaret = remoteOwnerCursor.locator('..');
+      const caretBefore = await remoteOwnerCaret.boundingBox();
+      const markerBefore = await markerEndPosition(
         editor.page
-          .locator('.document-collab-cursors')
-          .filter({ hasText: /\S+/ })
-      ).toBeVisible({ timeout: 20_000 });
+          .locator('[contenteditable="true"] p', { hasText: 'cursor-anchor' })
+          .first(),
+        'cursor-anchor'
+      );
+      expect(caretBefore).not.toBeNull();
+      expect(Math.abs(caretBefore!.x - markerBefore.x)).toBeLessThan(8);
+      const editorCursorLane = editor.page
+        .locator('[contenteditable="true"] p', { hasText: 'Owner lane' })
+        .first();
+      const adjacentPrefix = 'WIDE-PREFIX-';
+      await insertAtTextStart(editor.page, editorCursorLane, adjacentPrefix);
+      await expect(owner.page.locator('[contenteditable]').first()).toContainText(
+        adjacentPrefix,
+        { timeout: 30_000 }
+      );
+      await expect(remoteOwnerCursor).toBeVisible({ timeout: 20_000 });
+      const caretAfter = await remoteOwnerCaret.boundingBox();
+      const paragraphBounds = await editorCursorLane.boundingBox();
+      const markerAfter = await markerEndPosition(editorCursorLane, 'cursor-anchor');
+      expect(caretAfter).not.toBeNull();
+      expect(paragraphBounds).not.toBeNull();
+      expect(Math.abs(markerAfter.x - markerBefore.x)).toBeGreaterThan(20);
+      expect(Math.abs(caretAfter!.x - markerAfter.x)).toBeLessThan(8);
+      expect(caretAfter!.x).toBeGreaterThanOrEqual(paragraphBounds!.x);
+      expect(caretAfter!.x).toBeLessThanOrEqual(
+        paragraphBounds!.x + paragraphBounds!.width
+      );
+      expect(caretAfter!.y).toBeGreaterThanOrEqual(paragraphBounds!.y - 1);
+      expect(caretAfter!.y).toBeLessThanOrEqual(
+        paragraphBounds!.y + paragraphBounds!.height + 1
+      );
 
       await appendText(owner.page, ' undo-local');
       await expect(
@@ -407,20 +774,54 @@ test.describe.serial('Document realtime collaboration', () => {
       });
       await expect(
         viewer.page.locator('[contenteditable="false"]').first()
-      ).toContainText('owner-concurrent');
-      await expect(viewer.page.locator('[contenteditable="true"]')).toHaveCount(
-        0
+      ).toContainText('owner-overlap');
+      const viewerRoot = viewer.page.locator(
+        '.mdxeditor-root-contenteditable [aria-label="editable markdown"]'
+      );
+      await expect(viewerRoot).toHaveAttribute('contenteditable', 'false');
+      await viewerRoot.click();
+      await viewer.page.keyboard.insertText(' viewer-root-forbidden');
+      await expect(viewerRoot).not.toContainText('viewer-root-forbidden');
+      await expect(
+        owner.page.locator('[contenteditable]').first()
+      ).not.toContainText('viewer-root-forbidden');
+      const viewerCode = viewer.page.locator('.cm-content').first();
+      await expect(viewerCode).toHaveAttribute('aria-readonly', 'true');
+      await viewerCode.click();
+      await viewer.page.keyboard.insertText(' viewer-forbidden');
+      await expect(viewerCode).not.toContainText('viewer-forbidden');
+      await expect(
+        owner.page.locator('[contenteditable]').first()
+      ).not.toContainText(
+        'viewer-forbidden'
       );
 
       await editor.context.setOffline(true);
+      await ensureEditable(owner.page);
+      const durableOwnerLane = owner.page
+        .locator('[contenteditable="true"] p', { hasText: 'Owner lane' })
+        .first();
+      await expect(durableOwnerLane).toBeVisible({ timeout: 30_000 });
       const durableOnlyText = ` durable-catch-up-${Date.now()}`;
+      const durableAppendRequest = owner.page.waitForRequest(
+        (request) => request.url().includes('/rpc/append_document_yjs_updates'),
+        { timeout: 30_000 }
+      );
       const durableAppend = owner.page.waitForResponse(
         (response) =>
-          response.url().includes('/rpc/append_document_yjs_updates') &&
-          response.ok()
+          response.url().includes('/rpc/append_document_yjs_updates'),
+        { timeout: 30_000 }
       );
-      await appendText(owner.page, durableOnlyText);
-      await durableAppend;
+      await appendText(owner.page, durableOnlyText, 'Owner lane');
+      await expect(
+        owner.page.locator('[contenteditable="true"]').first()
+      ).toContainText(durableOnlyText.trim(), { timeout: 20_000 });
+      await durableAppendRequest;
+      const durableAppendResponse = await durableAppend;
+      expect(
+        durableAppendResponse.ok(),
+        `Durable append returned HTTP ${durableAppendResponse.status()}`
+      ).toBe(true);
       await editor.context.setOffline(false);
       await editor.page.bringToFront();
       await editor.page.evaluate(() =>
@@ -434,7 +835,13 @@ test.describe.serial('Document realtime collaboration', () => {
         '**/rest/v1/rpc/append_document_yjs_updates',
         (route) => route.abort('failed')
       );
-      await appendText(owner.page, ' pending-retry', 'Owner lane', 0);
+      await appendToNode(
+        owner.page,
+        owner.page
+          .locator('[contenteditable="true"] p', { hasText: 'Owner lane' })
+          .first(),
+        ' pending-retry'
+      );
       await expect(
         owner.page.getByRole('alert').getByText(/connection interrupted/i)
       ).toBeVisible({ timeout: 20_000 });
@@ -447,19 +854,84 @@ test.describe.serial('Document realtime collaboration', () => {
         timeout: 30_000,
       });
       await expect(
+        owner.page.locator('[contenteditable="true"]').first()
+      ).toBeVisible({ timeout: 30_000 });
+      await expect(
         editor.page.locator('[contenteditable]').first()
       ).toContainText('pending-retry', { timeout: 30_000 });
 
+      const isolatedReloads = [owner, editor, viewer];
       await Promise.all([
-        owner.page.reload(),
-        editor.page.reload(),
-        viewer.page.reload(),
+        editor.context.setOffline(true),
+        viewer.context.setOffline(true),
       ]);
-      for (const page of [owner.page, editor.page, viewer.page]) {
-        await expect(page.locator('[contenteditable]').first()).toContainText(
-          'pending-retry',
+      for (let index = 0; index < isolatedReloads.length; index += 1) {
+        const target = isolatedReloads[index];
+        if (index > 0) await target.context.setOffline(false);
+        await target.page.reload({ waitUntil: 'domcontentloaded' });
+        await expectDurableFixture(target.page);
+        if (index < isolatedReloads.length - 1) {
+          await target.context.setOffline(true);
+        }
+      }
+
+      await owner.context.setOffline(false);
+      await owner.page.evaluate(() => window.dispatchEvent(new Event('online')));
+      const ownerLive = owner.page.getByText('Live', { exact: true });
+      const ownerRetry = owner.page.getByRole('button', { name: 'Retry' });
+      await expect(ownerLive.or(ownerRetry)).toBeVisible({
+        timeout: 30_000,
+      });
+      if (await ownerRetry.isVisible()) await ownerRetry.click();
+      await expect(ownerLive).toBeVisible({ timeout: 30_000 });
+
+      const navigationAppendRelease = createDeferred();
+      const navigationAppendSeen = createDeferred();
+      let navigationClick: Promise<void> | null = null;
+      try {
+        await owner.page.route(appendPattern, async (route) => {
+          navigationAppendSeen.resolve();
+          await navigationAppendRelease.promise;
+          await route.continue();
+        });
+        await appendToNode(
+          owner.page,
+          owner.page
+            .locator('[contenteditable="true"] p', { hasText: 'Owner lane' })
+            .first(),
+          ' navigation-durable'
+        );
+        await waitForDeferred(navigationAppendSeen, 'navigation append');
+        const sourceUrl = owner.page.url();
+        navigationClick = owner.page
+          .getByRole('tree')
+          .locator(`[title="${fixture.navigationDocumentName}"]`)
+          .click();
+        await navigationClick;
+        await expect(owner.page).toHaveURL(sourceUrl);
+        await owner.page.waitForTimeout(1_000);
+        await expect(owner.page).toHaveURL(sourceUrl);
+        const navigationAppend = owner.page.waitForResponse(
+          (response) =>
+            response.url().includes('/rpc/append_document_yjs_updates') &&
+            response.ok(),
+          { timeout: 30_000 }
+        );
+        navigationAppendRelease.resolve();
+        await navigationAppend;
+        await expect(owner.page).toHaveURL(
+          `/${fixture.projectId}/doc/${fixture.navigationDocumentId}`,
+          { timeout: 30_000 }
+        );
+        await owner.page.goto(sourceUrl, { waitUntil: 'domcontentloaded' });
+        await expect(owner.page.locator('[contenteditable]').first()).toContainText(
+          'navigation-durable',
           { timeout: 45_000 }
         );
+      } finally {
+        navigationAppendRelease.resolve();
+        await navigationClick?.catch(() => undefined);
+        await owner.page.unroute(appendPattern).catch(() => undefined);
       }
     } finally {
       await Promise.all(contexts.map((context) => context.close()));

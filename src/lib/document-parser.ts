@@ -6,6 +6,9 @@
  * `.doc` is intentionally unsupported.
  */
 
+import TurndownService from 'turndown';
+import { gfm } from '@joplin/turndown-plugin-gfm';
+
 export const MAX_DESIGN_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
 /** Extensions accepted by the design-upload flow. */
@@ -23,6 +26,8 @@ export interface DesignFileValidation {
 export interface ExtractedImage {
   data: ArrayBuffer;
   contentType: string; // e.g. 'image/png'
+  /** Stable URL-shaped marker retained in DOCX Markdown until upload succeeds. */
+  placeholder?: string;
 }
 
 /** Result of parsing a design document: plain text plus any embedded images. */
@@ -39,6 +44,61 @@ export const MIN_IMAGE_BYTES = 5 * 1024;
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 /** Cap the number of images per document to bound token cost and request size. */
 export const MAX_DOC_IMAGES = 20;
+
+function safeImportedUrl(value: string, kind: 'link' | 'image'): boolean {
+  const normalized = value.trim();
+  if (
+    !normalized ||
+    normalized !== value ||
+    /[\u0000-\u001f\u007f]/.test(normalized) ||
+    normalized.includes('\\')
+  ) {
+    return false;
+  }
+  if (kind === 'link' && /^\/(?!\/)/.test(normalized)) return true;
+  try {
+    return new URL(normalized).protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
+function markdownDestination(value: string): string {
+  return value.replace(/([()])/g, '\\$1');
+}
+
+/** Convert Mammoth's semantic HTML through a DOM parser-backed Markdown codec. */
+export function convertDocumentHtmlToMarkdown(html: string): string {
+  const service = new TurndownService({
+    bulletListMarker: '-',
+    codeBlockStyle: 'fenced',
+    emDelimiter: '*',
+    headingStyle: 'atx',
+    strongDelimiter: '**',
+  });
+  service.use(gfm);
+  service.remove(['script', 'style', 'iframe', 'object', 'embed', 'form']);
+  service.addRule('safeImportedLink', {
+    filter: 'a',
+    replacement(content, node) {
+      const href = (node as HTMLElement).getAttribute('href') ?? '';
+      if (!safeImportedUrl(href, 'link')) return content;
+      const title = (node as HTMLElement).getAttribute('title');
+      return `[${content}](${markdownDestination(href)}${title ? ` "${title.replace(/"/g, '\\"')}"` : ''})`;
+    },
+  });
+  service.addRule('safeImportedImage', {
+    filter: 'img',
+    replacement(_content, node) {
+      const element = node as HTMLElement;
+      const src = element.getAttribute('src') ?? '';
+      const alt = (element.getAttribute('alt') ?? 'Imported image').replace(/[\[\]]/g, '');
+      if (!safeImportedUrl(src, 'image')) return alt;
+      return `![${alt}](${markdownDestination(src)})`;
+    },
+  });
+  return service.turndown(html).trim();
+}
 
 /**
  * Apply the supported-type / size / count rules to raw extracted images.
@@ -90,9 +150,8 @@ export function validateDesignFile(file: File): DesignFileValidation {
  * Parse a supported design document into plain text plus any embedded images.
  * Throws for unsupported or legacy formats so the caller can show the error.
  *
- * For `.docx` the text is taken from mammoth's raw-text extractor (cleaner than
- * HTML), while images are collected in a separate `convertToHtml` pass whose
- * HTML output is discarded — we only use the `convertImage` side effect.
+ * DOCX files use Mammoth's semantic HTML conversion so block and inline
+ * structure, including image positions, survives the import.
  */
 export async function parseDocument(file: File): Promise<ParsedDocument> {
   const ext = getExtension(file.name);
@@ -105,9 +164,7 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
     case 'docx': {
       const mammoth = await import('mammoth');
       const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.extractRawText({ arrayBuffer });
-      const images = await extractDocxImages(mammoth, arrayBuffer);
-      return { text: result.value, images: filterExtractedImages(images) };
+      return parseDocxHtml(mammoth, arrayBuffer);
     }
 
     case 'doc':
@@ -119,34 +176,47 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
 }
 
 /**
- * Collect embedded images from a .docx by abusing mammoth's `convertImage`
- * handler as a visitor. The returned HTML is ignored; we only keep the buffers
- * and content types pushed during conversion. Best-effort: a conversion failure
- * yields no images rather than blocking text parsing.
+ * Convert DOCX to semantic HTML once while collecting eligible embedded images.
+ * URL-shaped placeholders are safe to validate as Markdown and can later be
+ * replaced exactly with uploaded public URLs without moving the images.
  */
-async function extractDocxImages(
+async function parseDocxHtml(
   mammoth: typeof import('mammoth'),
   arrayBuffer: ArrayBuffer
-): Promise<ExtractedImage[]> {
+): Promise<ParsedDocument> {
   const collected: ExtractedImage[] = [];
-  try {
-    await mammoth.convertToHtml(
-      { arrayBuffer },
-      {
-        convertImage: mammoth.images.imgElement(async (image) => {
-          try {
-            const data = await image.readAsArrayBuffer();
-            collected.push({ data, contentType: image.contentType });
-          } catch {
-            // best-effort: skip an image that cannot be read
+  const nodeBuffer = typeof window === 'undefined'
+    ? (
+        globalThis as typeof globalThis & {
+          Buffer?: { from(value: ArrayBuffer): unknown };
+        }
+      ).Buffer
+    : undefined;
+  const input = nodeBuffer
+    ? { buffer: nodeBuffer.from(arrayBuffer) }
+    : { arrayBuffer };
+  const result = await mammoth.convertToHtml(
+    input as Parameters<typeof mammoth.convertToHtml>[0],
+    {
+      convertImage: mammoth.images.imgElement(async (image) => {
+        try {
+          const data = await image.readAsArrayBuffer();
+          const candidate = { data, contentType: image.contentType };
+          if (filterExtractedImages([candidate]).length === 0 || collected.length >= MAX_DOC_IMAGES) {
+            return { src: '' };
           }
-          // The HTML is discarded, so the returned src is irrelevant.
+          const placeholder = `https://document-import.invalid/image-${collected.length}`;
+          collected.push({ ...candidate, placeholder });
+          return { src: placeholder, alt: `Imported image ${collected.length}` } as { src: string };
+        } catch {
           return { src: '' };
-        }),
-      }
-    );
-  } catch {
-    // best-effort: if HTML conversion fails entirely, return whatever we have
-  }
-  return collected;
+        }
+      }),
+    }
+  );
+  const text = convertDocumentHtmlToMarkdown(result.value);
+  return {
+    text,
+    images: collected,
+  };
 }

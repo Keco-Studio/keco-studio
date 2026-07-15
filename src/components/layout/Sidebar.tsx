@@ -73,6 +73,14 @@ import {
 } from '@/lib/queryInvalidation';
 import styles from "./Sidebar.module.css";
 
+const ImportDocumentModal = dynamic(
+  () =>
+    import("@/components/documents/ImportDocumentModal").then(
+      (module) => module.ImportDocumentModal
+    ),
+  { ssr: false }
+);
+
 const MIN_SIDEBAR_WIDTH = 267;
 const MAX_SIDEBAR_WIDTH = 400;
 const DEFAULT_SIDEBAR_WIDTH = 267; // 16.6875rem
@@ -184,6 +192,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   } = modals;
 
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showImportDocumentModal, setShowImportDocumentModal] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -1053,6 +1062,16 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     openNewDocument();
   };
 
+  const handleImportDocument = () => {
+    setShowAddMenu(false);
+    if (!currentIds.projectId) {
+      setError('Please select a project first');
+      return;
+    }
+    setSelectedFolderId(null);
+    setShowImportDocumentModal(true);
+  };
+
   const handleLogoClick = () => {
     // Navigate to first project if available, otherwise go to projects list
     if (projects.length > 0) {
@@ -1295,6 +1314,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onCreated={handleDocumentCreated}
       />
 
+      <ImportDocumentModal
+        open={showImportDocumentModal}
+        onClose={() => setShowImportDocumentModal(false)}
+        projectId={currentIds.projectId || ''}
+        folderId={selectedFolderId}
+        onImported={handleDocumentCreated}
+      />
+
       <MoveDocumentModal
         key={movingDocumentId ?? 'none'}
         open={!!movingDocumentId}
@@ -1347,6 +1374,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onCreateLibrary={userRole === 'admin' ? handleCreateLibrary : undefined}
         onCreateDocument={
           userRole === 'admin' || userRole === 'editor' ? handleCreateDocument : undefined
+        }
+        onImportDocument={
+          userRole === 'admin' || userRole === 'editor' ? handleImportDocument : undefined
         }
         onGenerateFromDocument={
           userRole === 'admin'

@@ -37,6 +37,18 @@ describe('document version history UI wiring', () => {
     expect(create).toContain('createDocumentVersion');
     expect(restore).toContain('session.restoreVersion(version.id)');
     expect(restore).toContain('backup');
+    expect(restore).toMatch(
+      /const handleCancel = \(\) => \{\s*if \(submitting\) return;\s*onClose\(\);\s*\}/
+    );
+    expect(restore).toContain('onCancel={handleCancel}');
+    expect(restore).toContain('cancelButtonProps={{ disabled: submitting }}');
+    expect(restore).toContain('maskClosable={!submitting}');
+    expect(restore).toContain('closable={!submitting}');
+    expect(restore).toContain('keyboard={!submitting}');
+    expect(restore).toContain(
+      'okButtonProps={{ danger: true, disabled: submitting }}'
+    );
+    expect(restore).toContain('confirmLoading={submitting}');
     expect(preview).toContain('readOnly');
     expect(preview).toContain('showToolbar={false}');
     expect(preview).toContain('markdown={version.markdown}');

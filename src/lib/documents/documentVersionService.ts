@@ -17,6 +17,7 @@ import {
 const DOCUMENT_VERSION_METADATA_COLUMNS =
   'id, document_id, project_id, name, version_type, source_version_id, snapshot_epoch, snapshot_revision, created_by, created_at';
 const DOCUMENT_VERSION_PREVIEW_COLUMNS = `${DOCUMENT_VERSION_METADATA_COLUMNS}, snapshot_content`;
+const DOCUMENT_ACCESS_PROBE_COLUMNS = 'id';
 const PROFILE_COLUMNS = 'id, full_name, username';
 const MAX_CREATE_ATTEMPTS = 3;
 
@@ -87,6 +88,13 @@ function normalizeVersionName(name: string): string {
 
 function isConflictError(error: { code?: string } | null): boolean {
   return error?.code === 'PT409';
+}
+
+function throwVersionReadError(error: { code?: string }): never {
+  if (error.code === '42501' || error.code === 'PGRST116') {
+    throw new DocumentAccessError();
+  }
+  throw error;
 }
 
 function throwMutationError(
@@ -164,8 +172,17 @@ export async function listDocumentVersions(
     .eq('document_id', documentId)
     .order('created_at', { ascending: false })
     .order('id', { ascending: false });
-  if (error) throw error;
+  if (error) throwVersionReadError(error);
   const rows = (data ?? []) as unknown as DocumentVersionRow[];
+  if (rows.length === 0) {
+    const { data: document, error: accessError } = await client
+      .from('documents')
+      .select(DOCUMENT_ACCESS_PROBE_COLUMNS)
+      .eq('id', documentId)
+      .maybeSingle();
+    if (accessError) throwVersionReadError(accessError);
+    if (!document) throw new DocumentAccessError();
+  }
   const profiles = await loadProfiles(client, rows);
   return rows.map((row) => mapVersionRow(row, profiles));
 }
@@ -239,4 +256,36 @@ export async function createDocumentVersion(
   }
 
   throw new DocumentStateConflictError('Document state changed repeatedly');
+}
+
+export async function createDocumentImportCheckpoint(
+  client: SupabaseClient,
+  input: {
+    documentId: string;
+    expected: DocumentStateToken;
+    name: string;
+  }
+): Promise<DocumentVersionSummary> {
+  assertDocumentId(input.documentId);
+  const name = normalizeVersionName(input.name);
+  if (
+    !Number.isSafeInteger(input.expected.epoch) ||
+    input.expected.epoch < 0 ||
+    !Number.isSafeInteger(input.expected.revision) ||
+    input.expected.revision < 0
+  ) {
+    throw new Error('Invalid document state token');
+  }
+
+  const { data, error } = await client.rpc('create_document_import_checkpoint', {
+    p_version_id: globalThis.crypto.randomUUID(),
+    p_document_id: input.documentId,
+    p_expected_epoch: input.expected.epoch,
+    p_expected_revision: input.expected.revision,
+    p_name: name,
+  });
+  if (error) throwMutationError(error, input.expected);
+  const row = firstVersionRow(data);
+  const profiles = await loadProfiles(client, [row]);
+  return mapVersionRow(row, profiles);
 }

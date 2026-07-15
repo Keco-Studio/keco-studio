@@ -130,6 +130,72 @@ describeDb('document version history RLS and transactions (live database)', () =
     });
   }
 
+  async function replaceWithMarkdown(
+    actor: RlsUser,
+    documentId: string,
+    input: {
+      backupId?: string;
+      epoch?: number;
+      revision?: number;
+      includedIds?: string[];
+      currentYjsState?: string;
+      currentMarkdown?: string;
+      replacementYjsState?: string;
+      replacementMarkdown?: string;
+    } = {}
+  ) {
+    return fx.svc.rpc('replace_document_with_markdown', {
+      p_document_id: documentId,
+      p_actor_user_id: actor.id,
+      p_backup_version_id: input.backupId ?? randomUUID(),
+      p_expected_epoch: input.epoch ?? 0,
+      p_expected_revision: input.revision ?? 1,
+      p_included_update_ids: input.includedIds ?? [],
+      p_current_yjs_state: input.currentYjsState ?? 'AQID',
+      p_current_markdown: input.currentMarkdown ?? '# Initial',
+      p_replacement_yjs_state: input.replacementYjsState ?? 'BwgJ',
+      p_replacement_markdown: input.replacementMarkdown ?? '# Agent edit',
+    });
+  }
+
+  async function createImportCheckpoint(
+    actor: RlsUser,
+    documentId: string,
+    input: { epoch?: number; revision?: number; name?: string } = {}
+  ) {
+    return actor.client.rpc('create_document_import_checkpoint', {
+      p_version_id: randomUUID(),
+      p_document_id: documentId,
+      p_expected_epoch: input.epoch ?? 0,
+      p_expected_revision: input.revision ?? 1,
+      p_name: input.name ?? 'Initial import',
+    });
+  }
+
+  function importedDocumentArgs(
+    documentId: string,
+    versionId: string,
+    overrides: Partial<{
+      actorUserId: string;
+      projectId: string;
+      folderId: string | null;
+      name: string;
+      markdown: string;
+      yjsState: string;
+    }> = {}
+  ) {
+    return {
+      p_document_id: documentId,
+      p_version_id: versionId,
+      p_actor_user_id: overrides.actorUserId ?? fx.editor.id,
+      p_project_id: overrides.projectId ?? fx.projectId,
+      p_folder_id: overrides.folderId ?? null,
+      p_name: overrides.name ?? 'Imported guide',
+      p_markdown: overrides.markdown ?? '# Imported',
+      p_yjs_state: overrides.yjsState ?? 'AQID',
+    };
+  }
+
   it('allows writers to create versions while viewers only read and preview', async () => {
     for (const actor of [fx.owner, fx.admin, fx.editor]) {
       const documentId = await seedDocument();
@@ -173,6 +239,274 @@ describeDb('document version history RLS and transactions (live database)', () =
         snapshot_revision: 1,
       });
     expect(directInsertError).not.toBeNull();
+  });
+
+  it('atomically backs up and replaces state for a confirmed Agent edit', async () => {
+    const documentId = await seedDocument();
+    await initialize(fx.owner, documentId);
+    const updateId = randomUUID();
+    expect(
+      (
+        await append(fx.editor, documentId, 0, [
+          { id: updateId, updateBase64: 'BAUG' },
+        ])
+      ).error
+    ).toBeNull();
+    let includedIds = await tailIds(documentId, 0);
+
+    expect(
+      (
+        await replaceWithMarkdown(fx.viewer, documentId, {
+          includedIds,
+          currentYjsState: 'CgsM',
+          currentMarkdown: '# Current',
+        })
+      ).error
+    ).not.toBeNull();
+
+    expect(
+      (
+        await append(fx.editor, documentId, 0, [
+          { id: randomUUID(), updateBase64: 'BwgJ' },
+        ])
+      ).error
+    ).toBeNull();
+    expect(
+      (
+        await replaceWithMarkdown(fx.editor, documentId, {
+          includedIds,
+          currentYjsState: 'CgsM',
+          currentMarkdown: '# Current',
+        })
+      ).error?.code
+    ).toBe('PT409');
+    includedIds = await tailIds(documentId, 0);
+
+    const replaced = await replaceWithMarkdown(fx.editor, documentId, {
+      includedIds,
+      currentYjsState: 'CgsM',
+      currentMarkdown: '# Current',
+      replacementYjsState: 'DQ4P',
+      replacementMarkdown: '# Confirmed Agent edit',
+    });
+    expect(replaced.error).toBeNull();
+    expect(replaced.data).toEqual([
+      expect.objectContaining({
+        collab_epoch: 1,
+        collab_revision: 2,
+        yjs_state: 'DQ4P',
+        content: '# Confirmed Agent edit',
+      }),
+    ]);
+
+    const { data: versions, error: versionsError } = await fx.svc
+      .from('document_versions')
+      .select('version_type, snapshot_content, snapshot_epoch, snapshot_revision')
+      .eq('document_id', documentId);
+    expect(versionsError).toBeNull();
+    expect(versions).toEqual([
+      expect.objectContaining({
+        version_type: 'pre_agent',
+        snapshot_content: '# Current',
+        snapshot_epoch: 0,
+        snapshot_revision: 1,
+      }),
+    ]);
+
+    expect(
+      (
+        await append(fx.editor, documentId, 0, [
+          { id: randomUUID(), updateBase64: 'EBES' },
+        ])
+      ).error?.code
+    ).toBe('PT409');
+  });
+
+  it('creates an import checkpoint only for a writer in the document project', async () => {
+    const documentId = await seedDocument();
+    await initialize(fx.owner, documentId);
+
+    expect((await createImportCheckpoint(fx.viewer, documentId)).error).not.toBeNull();
+    expect((await createImportCheckpoint(fx.outsider, documentId)).error).not.toBeNull();
+
+    const created = await createImportCheckpoint(fx.editor, documentId);
+    expect(created.error).toBeNull();
+    expect(created.data).toEqual([
+      expect.objectContaining({
+        document_id: documentId,
+        project_id: fx.projectId,
+        name: 'Initial import',
+        version_type: 'import',
+        snapshot_epoch: 0,
+        snapshot_revision: 1,
+        created_by: fx.editor.id,
+      }),
+    ]);
+
+    const { data: versions, error } = await fx.svc
+      .from('document_versions')
+      .select('version_type, snapshot_content, snapshot_yjs_state')
+      .eq('document_id', documentId);
+    expect(error).toBeNull();
+    expect(versions).toEqual([
+      expect.objectContaining({
+        version_type: 'import',
+        snapshot_content: '# Initial',
+        snapshot_yjs_state: 'AQID',
+      }),
+    ]);
+  });
+
+  it('atomically publishes an imported collaborative document and checkpoint', async () => {
+    const documentId = randomUUID();
+    const versionId = randomUUID();
+    const created = await fx.svc.rpc('create_imported_document', {
+      p_document_id: documentId,
+      p_version_id: versionId,
+      p_actor_user_id: fx.editor.id,
+      p_project_id: fx.projectId,
+      p_folder_id: null,
+      p_name: 'Imported guide',
+      p_markdown: '# Imported',
+      p_yjs_state: 'AQID',
+    });
+
+    expect(created.error).toBeNull();
+    expect(created.data).toEqual([
+      expect.objectContaining({
+        id: documentId,
+        project_id: fx.projectId,
+        name: 'Imported guide',
+        content: '# Imported',
+      }),
+    ]);
+
+    const { data: version, error: versionError } = await fx.svc
+      .from('document_versions')
+      .select('id, document_id, version_type, snapshot_content, snapshot_revision')
+      .eq('id', versionId)
+      .single();
+    expect(versionError).toBeNull();
+    expect(version).toMatchObject({
+      document_id: documentId,
+      version_type: 'import',
+      snapshot_content: '# Imported',
+      snapshot_revision: 1,
+    });
+
+    for (const actor of [fx.viewer, fx.outsider]) {
+      const deniedDocumentId = randomUUID();
+      const denied = await fx.svc.rpc('create_imported_document', {
+        p_document_id: deniedDocumentId,
+        p_version_id: randomUUID(),
+        p_actor_user_id: actor.id,
+        p_project_id: fx.projectId,
+        p_folder_id: null,
+        p_name: 'Denied import',
+        p_markdown: '# Denied',
+        p_yjs_state: 'AQID',
+      });
+      expect(denied.error).not.toBeNull();
+      expect(
+        (await fx.svc.from('documents').select('id').eq('id', deniedDocumentId)).data
+      ).toEqual([]);
+    }
+  });
+
+  it('idempotently returns the same import for sequential and concurrent retries', async () => {
+    const sequentialDocumentId = randomUUID();
+    const sequentialVersionId = randomUUID();
+    const first = await fx.svc.rpc(
+      'create_imported_document',
+      importedDocumentArgs(sequentialDocumentId, sequentialVersionId)
+    );
+    const retried = await fx.svc.rpc(
+      'create_imported_document',
+      importedDocumentArgs(sequentialDocumentId, sequentialVersionId, {
+        yjsState: 'BwgJ',
+      })
+    );
+
+    expect(first.error).toBeNull();
+    expect(retried.error).toBeNull();
+    expect(retried.data).toEqual(first.data);
+
+    const concurrentDocumentId = randomUUID();
+    const concurrentVersionId = randomUUID();
+    const concurrent = await Promise.all([
+      fx.svc.rpc(
+        'create_imported_document',
+        importedDocumentArgs(concurrentDocumentId, concurrentVersionId)
+      ),
+      fx.svc.rpc(
+        'create_imported_document',
+        importedDocumentArgs(concurrentDocumentId, concurrentVersionId, {
+          yjsState: 'BwgJ',
+        })
+      ),
+    ]);
+
+    expect(concurrent.map((result) => result.error)).toEqual([null, null]);
+    expect(concurrent[1]?.data).toEqual(concurrent[0]?.data);
+  });
+
+  it('rejects import ids reused with different semantic input or actor scope', async () => {
+    const documentId = randomUUID();
+    const versionId = randomUUID();
+    expect(
+      (await fx.svc.rpc(
+        'create_imported_document',
+        importedDocumentArgs(documentId, versionId)
+      )).error
+    ).toBeNull();
+
+    const { data: folder, error: folderError } = await fx.svc
+      .from('folders')
+      .insert({ project_id: fx.projectId, name: `import-${randomUUID()}` })
+      .select('id')
+      .single();
+    expect(folderError).toBeNull();
+
+    const conflicts = [
+      { name: 'Changed name' },
+      { markdown: '# Changed' },
+      { actorUserId: fx.admin.id },
+      { folderId: folder!.id as string },
+      { actorUserId: other.editor.id, projectId: other.projectId },
+    ];
+    for (const overrides of conflicts) {
+      const result = await fx.svc.rpc(
+        'create_imported_document',
+        importedDocumentArgs(documentId, versionId, overrides)
+      );
+      expect(result.error?.code).toBe('22023');
+    }
+
+    const changedVersion = await fx.svc.rpc(
+      'create_imported_document',
+      importedDocumentArgs(documentId, randomUUID())
+    );
+    expect(changedVersion.error?.code).toBe('22023');
+  });
+
+  it('allows only one document to claim a concurrently reused import version id', async () => {
+    const versionId = randomUUID();
+    const documentIds = [randomUUID(), randomUUID()];
+    const results = await Promise.all(documentIds.map((documentId) =>
+      fx.svc.rpc(
+        'create_imported_document',
+        importedDocumentArgs(documentId, versionId)
+      )
+    ));
+
+    expect(results.filter((result) => result.error === null)).toHaveLength(1);
+    expect(results.filter((result) => result.error?.code === '22023')).toHaveLength(1);
+    const { count, error } = await fx.svc
+      .from('documents')
+      .select('id', { count: 'exact', head: true })
+      .in('id', documentIds);
+    expect(error).toBeNull();
+    expect(count).toBe(1);
   });
 
   it('hides every version from non-members and rejects cross-project restore targets', async () => {

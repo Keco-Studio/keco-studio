@@ -18,6 +18,7 @@ jest.mock('@/lib/documents/documentContentCodec', () => ({
 }));
 
 import {
+  createDocumentImportCheckpoint,
   createDocumentVersion,
   getDocumentVersionPreview,
   listDocumentVersions,
@@ -50,6 +51,7 @@ function versionRow(overrides: Record<string, unknown> = {}) {
 
 function makeClient(options: {
   list?: QueryResult;
+  document?: QueryResult;
   preview?: QueryResult;
   profiles?: QueryResult;
   rpc?: QueryResult[];
@@ -58,6 +60,10 @@ function makeClient(options: {
   const list = options.list ?? { data: [versionRow()], error: null };
   const preview = options.preview ?? {
     data: versionRow({ snapshot_content: '# Release 1' }),
+    error: null,
+  };
+  const document = options.document ?? {
+    data: { id: DOCUMENT_ID },
     error: null,
   };
   const profiles = options.profiles ?? {
@@ -93,6 +99,10 @@ function makeClient(options: {
       single() {
         calls.push({ kind: 'single', table, value: selected });
         return Promise.resolve(preview);
+      },
+      maybeSingle() {
+        calls.push({ kind: 'maybeSingle', table, value: selected });
+        return Promise.resolve(document);
       },
       then<TResult1 = QueryResult, TResult2 = never>(
         onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
@@ -175,6 +185,85 @@ describe('documentVersionService', () => {
         createdAt: '2026-07-14T12:00:00.000Z',
       },
     ]);
+  });
+
+  it('returns an accessible empty history after a metadata-only document probe', async () => {
+    const { client, calls } = makeClient({
+      list: { data: [], error: null },
+    });
+
+    await expect(listDocumentVersions(client, DOCUMENT_ID)).resolves.toEqual([]);
+
+    const documentSelect = calls.find(
+      (call) => call.kind === 'select' && call.table === 'documents'
+    );
+    expect(documentSelect?.value).toBe('id');
+    expect(calls).toContainEqual({
+      kind: 'eq:id',
+      table: 'documents',
+      value: DOCUMENT_ID,
+    });
+    expect(String(documentSelect?.value)).not.toContain('content');
+    expect(String(documentSelect?.value)).not.toContain('yjs_state');
+  });
+
+  it('maps a hidden or missing document behind an empty history to DocumentAccessError', async () => {
+    const { client } = makeClient({
+      list: { data: [], error: null },
+      document: { data: null, error: null },
+    });
+
+    await expect(
+      listDocumentVersions(client, DOCUMENT_ID)
+    ).rejects.toBeInstanceOf(DocumentAccessError);
+  });
+
+  it.each(['42501', 'PGRST116'])(
+    'does not leak document access probe error %s',
+    async (code) => {
+      const { client } = makeClient({
+        list: { data: [], error: null },
+        document: { data: null, error: { code, message: 'hidden detail' } },
+      });
+
+      await expect(
+        listDocumentVersions(client, DOCUMENT_ID)
+      ).rejects.toBeInstanceOf(DocumentAccessError);
+    }
+  );
+
+  it('preserves unexpected document access probe errors', async () => {
+    const error = { code: 'XX000', message: 'database unavailable' };
+    const { client } = makeClient({
+      list: { data: [], error: null },
+      document: { data: null, error },
+    });
+
+    await expect(listDocumentVersions(client, DOCUMENT_ID)).rejects.toBe(error);
+  });
+
+  it.each(['42501', 'PGRST116'])(
+    'does not leak version list error %s',
+    async (code) => {
+      const { client, calls } = makeClient({
+        list: { data: null, error: { code, message: 'hidden detail' } },
+      });
+
+      await expect(
+        listDocumentVersions(client, DOCUMENT_ID)
+      ).rejects.toBeInstanceOf(DocumentAccessError);
+      expect(calls.some((call) => call.table === 'documents')).toBe(false);
+    }
+  );
+
+  it('preserves unexpected version list errors without probing the document', async () => {
+    const error = { code: 'XX000', message: 'database unavailable' };
+    const { client, calls } = makeClient({
+      list: { data: null, error },
+    });
+
+    await expect(listDocumentVersions(client, DOCUMENT_ID)).rejects.toBe(error);
+    expect(calls.some((call) => call.table === 'documents')).toBe(false);
   });
 
   it('loads Markdown but never Yjs payload for one preview', async () => {
@@ -266,5 +355,42 @@ describe('documentVersionService', () => {
         name: 'Viewer attempt',
       })
     ).rejects.toBeInstanceOf(DocumentReadOnlyError);
+  });
+
+  it('creates an import checkpoint from a server-owned initialized snapshot', async () => {
+    const { client, rpc } = makeClient({
+      rpc: [{
+        data: [{
+          version_id: VERSION_ID,
+          document_id: DOCUMENT_ID,
+          project_id: PROJECT_ID,
+          name: 'Imported world.docx',
+          version_type: 'import',
+          source_version_id: null,
+          snapshot_epoch: 1,
+          snapshot_revision: 1,
+          created_by: USER_ID,
+          created_at: '2026-07-14T12:00:00.000Z',
+        }],
+        error: null,
+      }],
+    });
+
+    await expect(createDocumentImportCheckpoint(client, {
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 1, revision: 1 },
+      name: 'Imported world.docx',
+    })).resolves.toMatchObject({ type: 'import', name: 'Imported world.docx' });
+
+    expect(rpc).toHaveBeenCalledWith('create_document_import_checkpoint', {
+      p_version_id: expect.any(String),
+      p_document_id: DOCUMENT_ID,
+      p_expected_epoch: 1,
+      p_expected_revision: 1,
+      p_name: 'Imported world.docx',
+    });
+    const args = rpc.mock.calls[0]?.[1] as Record<string, unknown>;
+    expect(args).not.toHaveProperty('p_yjs_state');
+    expect(args).not.toHaveProperty('p_markdown');
   });
 });

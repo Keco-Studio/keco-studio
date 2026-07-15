@@ -1,11 +1,9 @@
 import {
-  createBinding,
   syncLexicalUpdateToYjs,
   syncYjsChangesToLexical,
   type Binding,
   type Provider,
 } from '@lexical/yjs';
-import { $createParagraphNode, $getRoot } from 'lexical';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import {
@@ -13,10 +11,15 @@ import {
   encodeBase64,
 } from './documentCollaborationProtocol';
 import { DocumentContentValidationError } from './documentStateTypes';
+import { createDocumentLexicalYjsBinding } from './documentLexicalYjsBinding';
 import {
   createHeadlessDocumentEditor,
   waitForLexicalCommit,
 } from './headlessDocumentNodes';
+import {
+  validateSanctionedMdx,
+  validateSanctionedMdxAstNode,
+} from './sanctionedMdx';
 
 export type ValidatedDocumentContent = {
   markdown: string;
@@ -70,13 +73,30 @@ function createCodecBinding(
   provider: Provider,
   doc: Y.Doc
 ): Binding {
-  return createBinding(
+  return createDocumentLexicalYjsBinding(
     editor,
     provider,
     'document',
     doc,
     new Map([['document', doc]])
   );
+}
+
+function validateSerializedMdxNodes(value: unknown): void {
+  if (value instanceof Y.XmlElement) {
+    if (value.getAttribute('__type') === 'jsx') {
+      validateSanctionedMdxAstNode(value.getAttribute('__mdastNode'));
+    }
+    for (const child of value.toArray()) validateSerializedMdxNodes(child);
+    return;
+  }
+  if (value instanceof Y.XmlText) {
+    for (const delta of value.toDelta()) {
+      if (typeof delta.insert !== 'string') {
+        validateSerializedMdxNodes(delta.insert);
+      }
+    }
+  }
 }
 
 export function mergeYjsState(
@@ -108,7 +128,7 @@ export function mergeYjsState(
 async function markdownToYjsState(markdown: string): Promise<string> {
   documentContentCodec.validate(markdown);
   const headless = await createHeadlessDocumentEditor();
-  headless.editor.update(() => $getRoot().clear(), { discrete: true });
+  headless.clear();
   const doc = new Y.Doc();
   const provider = createCodecProvider(doc);
   const binding = createCodecBinding(headless.editor, provider, doc);
@@ -144,10 +164,7 @@ async function markdownToYjsState(markdown: string): Promise<string> {
 
   try {
     if (markdown.trim().length === 0) {
-      headless.editor.update(
-        () => $getRoot().append($createParagraphNode()),
-        { discrete: true }
-      );
+      headless.appendEmptyParagraph();
     } else {
       await headless.setMarkdown(markdown);
     }
@@ -171,7 +188,7 @@ async function yjsStateToMarkdown(
   updateTailBase64: readonly string[]
 ): Promise<string> {
   const headless = await createHeadlessDocumentEditor();
-  headless.editor.update(() => $getRoot().clear(), { discrete: true });
+  headless.clear();
   const doc = new Y.Doc();
   const provider = createCodecProvider(doc);
   const binding = createCodecBinding(headless.editor, provider, doc);
@@ -191,9 +208,19 @@ async function yjsStateToMarkdown(
   sharedRoot.observeDeep(onYjsChange as never);
   try {
     const merged = mergeYjsState(snapshotBase64, updateTailBase64);
-    Y.applyUpdate(doc, decodeBase64(merged), 'codec-hydration');
+    const mergedUpdate = decodeBase64(merged);
+    const stagingDoc = new Y.Doc();
+    try {
+      Y.applyUpdate(stagingDoc, mergedUpdate, 'codec-validation');
+      validateSerializedMdxNodes(stagingDoc.get('root', Y.XmlText));
+    } finally {
+      stagingDoc.destroy();
+    }
+    Y.applyUpdate(doc, mergedUpdate, 'codec-hydration');
     await waitForLexicalCommit();
-    return headless.getMarkdown();
+    const markdown = headless.getMarkdown();
+    validateSanctionedMdx(markdown);
+    return markdown;
   } catch (error) {
     throw new DocumentContentValidationError(
       error instanceof Error
@@ -209,9 +236,7 @@ async function yjsStateToMarkdown(
 
 export const documentContentCodec: DocumentContentCodec = {
   validate(markdown) {
-    if (typeof markdown !== 'string' || markdown.includes('\u0000')) {
-      throw new DocumentContentValidationError();
-    }
+    validateSanctionedMdx(markdown);
     return { markdown };
   },
   markdownToYjsState,

@@ -25,7 +25,6 @@ import {
   DocumentAccessError,
   DocumentReadOnlyError,
   DocumentStateConflictError,
-  type ReplaceDocumentStateInput,
 } from '@/lib/documents/documentStateTypes';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -38,6 +37,7 @@ type ResponseValue = { data: unknown; error: null | { code?: string; message?: s
 
 function makeSupabase(options: {
   head?: ResponseValue;
+  heads?: ResponseValue[];
   tail?: ResponseValue;
   append?: ResponseValue;
   rpc?: ResponseValue;
@@ -55,6 +55,7 @@ function makeSupabase(options: {
     },
     error: null,
   };
+  let headRead = 0;
   const tail = options.tail ?? {
     data: [
       { id: UPDATE_A, update_data: 'tail-a', created_at: '2026-07-14T12:00:01.000Z' },
@@ -74,7 +75,13 @@ function makeSupabase(options: {
           calls.push({ kind: `document-eq:${column}`, value });
           return builder;
         },
-        single: async () => head,
+        single: async () => {
+          const heads = options.heads;
+          if (!heads?.length) return head;
+          const result = heads[Math.min(headRead, heads.length - 1)];
+          headRead += 1;
+          return result;
+        },
       };
       return builder;
     }
@@ -173,6 +180,69 @@ describe('documentStateGateway.read', () => {
     });
   });
 
+  it('retries when compaction changes the head token between head and tail reads', async () => {
+    const oldHead = {
+      data: {
+        id: DOCUMENT_ID,
+        project_id: PROJECT_ID,
+        content: '# Old',
+        yjs_state: 'old-snapshot',
+        collab_epoch: 2,
+        collab_revision: 4,
+        updated_at: '2026-07-14T12:00:00.000Z',
+      },
+      error: null,
+    } satisfies ResponseValue;
+    const compactedHead = {
+      data: {
+        ...oldHead.data,
+        content: '# Compacted',
+        yjs_state: 'compacted-snapshot',
+        collab_revision: 5,
+        updated_at: '2026-07-14T12:00:03.000Z',
+      },
+      error: null,
+    } satisfies ResponseValue;
+    const { client, calls } = makeSupabase({
+      heads: [oldHead, compactedHead, compactedHead, compactedHead],
+      tail: { data: [], error: null },
+    });
+
+    const state = await readDocumentState(client, DOCUMENT_ID);
+
+    expect(state).toMatchObject({
+      markdown: '# Derived',
+      yjsStateBase64: 'compacted-snapshot',
+      token: { epoch: 2, revision: 5 },
+    });
+    expect(yjsStateToMarkdown).toHaveBeenCalledWith('compacted-snapshot', []);
+    expect(calls.filter((call) => call.kind === 'document-select')).toHaveLength(4);
+  });
+
+  it('throws a typed conflict after bounded unstable snapshot reads', async () => {
+    const head = (revision: number): ResponseValue => ({
+      data: {
+        id: DOCUMENT_ID,
+        project_id: PROJECT_ID,
+        content: `# Revision ${revision}`,
+        yjs_state: `snapshot-${revision}`,
+        collab_epoch: 2,
+        collab_revision: revision,
+        updated_at: `2026-07-14T12:00:0${revision}.000Z`,
+      },
+      error: null,
+    });
+    const { client, calls } = makeSupabase({
+      heads: [head(1), head(2), head(2), head(3), head(3), head(4)],
+      tail: { data: [], error: null },
+    });
+
+    await expect(readDocumentState(client, DOCUMENT_ID)).rejects.toBeInstanceOf(
+      DocumentStateConflictError
+    );
+    expect(calls.filter((call) => call.kind === 'document-select')).toHaveLength(6);
+  });
+
   it('maps a hidden or missing document to DocumentAccessError', async () => {
     const { client } = makeSupabase({
       head: { data: null, error: { code: 'PGRST116' } },
@@ -213,6 +283,9 @@ describe('documentStateGateway mutations', () => {
         p_markdown: '# Initial',
       },
     });
+    expect(calls.findIndex((call) => call.kind === 'document-select')).toBeLessThan(
+      calls.findIndex((call) => call.kind === 'rpc:initialize_document_collab_state')
+    );
     expect(state.token).toEqual({ epoch: 0, revision: 1 });
   });
 
@@ -364,17 +437,33 @@ describe('documentStateGateway mutations', () => {
       false
     );
 
-    const unsupported = makeSupabase();
+  });
+
+  it('rejects Agent Markdown replacement outside the trusted server command', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: {
+        data: [{
+          collab_epoch: 3,
+          collab_revision: 5,
+          yjs_state: 'state:# Proposed',
+          content: '# Proposed',
+          updated_at: '2026-07-15T00:00:00.000Z',
+        }],
+        error: null,
+      },
+    });
+
     await expect(
-      replaceDocumentState(unsupported.client, {
+      replaceDocumentState(client, {
         documentId: DOCUMENT_ID,
         expected: { epoch: 2, revision: 4 },
-        replacement: { kind: 'markdown', markdown: '# Unsafe' },
+        expectedUpdateIds: [UPDATE_A, UPDATE_B],
+        replacement: { kind: 'markdown', markdown: '# Proposed' },
         reason: 'agent',
-      } as unknown as ReplaceDocumentStateInput)
-    ).rejects.toThrow('Only version restore is supported');
+      })
+    ).rejects.toThrow(/trusted server/i);
     expect(
-      unsupported.calls.some((call) => call.kind.startsWith('document-select'))
+      calls.some((entry) => entry.kind === 'rpc:replace_document_with_markdown')
     ).toBe(false);
   });
 

@@ -84,5 +84,15 @@ describe('document Lexical Yjs adapter contract', () => {
     expect(plugin).toContain('removeRedo()');
     expect(plugin).toContain('undoManager.destroy()');
     expect(plugin).toContain('binding.cursorsContainer?.remove()');
+    expect(plugin).toContain('cancelAnimationFrame(cursorRefreshFrame)');
+    expect(plugin).toContain('cursorMutationObserver.disconnect()');
+  });
+
+  it('moves cursor observation and composition handling when Lexical replaces its root', () => {
+    expect(plugin).toContain('editor.registerRootListener');
+    expect(plugin).toContain("previousRoot?.removeEventListener('compositionend'");
+    expect(plugin).toContain("nextRoot?.addEventListener('compositionend'");
+    expect(plugin).toContain('binding.cursorsContainer?.parentElement !== parent');
+    expect(plugin).toContain('cursorMutationObserver.disconnect()');
   });
 });
