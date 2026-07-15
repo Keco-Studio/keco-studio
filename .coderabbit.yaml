@@ -1,0 +1,8 @@
+# CodeRabbit configuration
+# Docs: https://docs.coderabbit.ai/reference/yaml-template
+reviews:
+  auto_review:
+    enabled: true
+    # Auto-review PRs targeting any branch, not just the default branch.
+    base_branches:
+      - ".*"
