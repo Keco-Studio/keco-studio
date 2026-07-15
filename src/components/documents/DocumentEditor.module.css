@@ -71,6 +71,34 @@
   flex-shrink: 0;
 }
 
+.collaborators {
+  display: flex;
+  align-items: center;
+  padding-right: 4px;
+}
+
+.collaboratorAvatar,
+.collaboratorMore {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  border: 2px solid var(--ant-color-bg-container, #fff);
+  margin-left: -5px;
+}
+
+.collaboratorAvatar:first-child { margin-left: 0; }
+
+.collaboratorMore {
+  background: var(--ant-color-fill-secondary, #f0f0f0);
+  color: var(--ant-color-text-secondary, #666);
+}
+
 .neutralTag {
   color: var(--ant-color-text-secondary, rgba(0, 0, 0, 0.45));
 }

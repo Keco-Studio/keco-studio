@@ -1,7 +1,7 @@
 # Document Realtime Collaboration and Presence Design
 
 **Date:** 2026-07-14
-**Status:** Approved design; implementation has not started
+**Status:** Approved design; revised for Google Docs-style CRDT collaboration
 **Phase:** 2A
 **Depends on:** Completed Phase 1 authoring gate
 **Parent:** `2026-07-14-document-phase2-design.md`
@@ -57,6 +57,11 @@ The spike files may be refactored or replaced. Keeping their names is not a goal
    swallowed while persistence continues.
 8. The document editor remains dynamically imported; Yjs/Lexical collaboration
    code does not enter the main dashboard bundle.
+9. Normal concurrent edits never produce a stale-copy fork or ask the user to
+   choose between "Reload remote" and "Keep mine". Yjs merges updates by CRDT
+   identity and Lexical maps selections with relative positions.
+10. Presence is part of normal editing: remote cursors, names, and a compact
+    avatar stack are visible to editors and viewers.
 
 ## Considered Approaches
 
@@ -469,6 +474,11 @@ editor cursors but publish none.
 The header shows connection state and current collaborators using existing
 connection/presence visual primitives where their props are generic. It does not
 reuse library cell-presence state or its field-specific event protocol.
+
+The avatar stack is informational, not a conflict-resolution workflow. Ordinary
+concurrent edits merge live, including overlapping ranges. Replacement prompts
+are reserved for explicit restore/import/agent replacement or unrecoverable
+provider/persistence failures.
 
 ## React and Module Boundaries
 

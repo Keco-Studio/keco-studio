@@ -47,12 +47,14 @@ the realtime gate in this document passes.
 ## Product Outcomes
 
 1. Every open document is collaborative by default. Admins and editors can edit;
-   viewers receive live content but remain read-only.
+   viewers receive live content but remain read-only. The UX follows Google Docs:
+   collaborators are visible through avatars and named colored cursors.
 2. A document has one logical content authority. Phase 1 LWW autosave never runs
    beside Yjs persistence.
 3. Disconnects do not silently fork a document. If the provider cannot establish
    or maintain a durable session, editing pauses in read-only mode and exposes a
-   retry action.
+   retry action. Ordinary concurrent edits merge through Yjs; there is no
+   Reload-remote/Keep-mine stale-copy prompt and no index-based remote overwrite.
 4. Version restore, import, Agent edits, and live editing all use one document
    state mutation boundary and one concurrency token.
 5. JSX is rendered only from a fixed component registry. Arbitrary JavaScript,

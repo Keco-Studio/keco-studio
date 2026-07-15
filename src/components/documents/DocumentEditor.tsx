@@ -132,6 +132,25 @@ function DocumentEditorSession({
             <HistoryOutlined aria-hidden="true" />
           </button>
           <div className={styles.status} aria-live="polite">
+            {collaboration.collaborators.length > 0 && (
+              <div className={styles.collaborators} aria-label="Collaborators currently editing">
+                {collaboration.collaborators.slice(0, 5).map((user) => (
+                  <span
+                    key={user.id}
+                    className={styles.collaboratorAvatar}
+                    style={{ backgroundColor: user.color }}
+                    title={`${user.name} is editing`}
+                  >
+                    {user.name.charAt(0).toUpperCase()}
+                  </span>
+                ))}
+                {collaboration.collaborators.length > 5 && (
+                  <span className={styles.collaboratorMore}>
+                    +{collaboration.collaborators.length - 5}
+                  </span>
+                )}
+              </div>
+            )}
             <span className={styles[`${collaboration.tone}Tag`]}>
               {collaboration.label}
             </span>

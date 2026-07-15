@@ -112,6 +112,7 @@ export function useDocumentCollaboration({
   const requestKey = `${projectId}:${documentId}:${userId}:${role}:${generation}`;
   const cursorColor = useMemo(() => colorForUserId(userId), [userId]);
   const [active, setActive] = useState<ActiveSession | null>(null);
+  const [awarenessRevision, setAwarenessRevision] = useState(0);
   const [loadFailure, setLoadFailure] = useState<{
     requestKey: string;
     error: string;
@@ -220,6 +221,27 @@ export function useDocumentCollaboration({
 
   useEffect(() => {
     if (!session) return;
+    const awareness = session.awareness as unknown as {
+      on: (event: 'change', listener: () => void) => void;
+      off: (event: 'change', listener: () => void) => void;
+    };
+    const onChange = () => setAwarenessRevision((value) => value + 1);
+    awareness.on('change', onChange);
+    return () => awareness.off('change', onChange);
+  }, [session]);
+
+  const collaborators = useMemo(() => {
+    void awarenessRevision;
+    if (!session) return [];
+    const states = session.awareness.getStates() as Map<number, { user?: { id?: string; name?: string; color?: string }; focus?: boolean }>;
+    return Array.from(states.values())
+      .map((state) => state.user)
+      .filter((user): user is { id: string; name: string; color: string } => Boolean(user?.id && user.name && user.color))
+      .filter((user) => user.id !== userId);
+  }, [awarenessRevision, session, userId]);
+
+  useEffect(() => {
+    if (!session) return;
     return registerDocumentFlushHandler(() => session.flush());
   }, [session]);
 
@@ -273,12 +295,14 @@ export function useDocumentCollaboration({
       token,
       error: currentLoadFailure?.error ?? current?.view.error ?? null,
       cursorColor,
+      collaborators,
       retry,
     }),
     [
       current?.view.error,
       currentLoadFailure?.error,
       cursorColor,
+      collaborators,
       presentation,
       retry,
       session,
