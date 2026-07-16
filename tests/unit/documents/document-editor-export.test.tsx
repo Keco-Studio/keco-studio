@@ -177,6 +177,19 @@ describe('DocumentEditor export durability', () => {
     );
   });
 
+  it('keeps the object URL alive until the browser starts the download', async () => {
+    jest.useFakeTimers();
+    try {
+      await exportHandler()({ key: 'pdf' });
+
+      expect(URL.revokeObjectURL).not.toHaveBeenCalled();
+      jest.runAllTimers();
+      expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:export');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('does not export without a current authenticated session', async () => {
     getSession.mockResolvedValue({ data: { session: null }, error: null });
 

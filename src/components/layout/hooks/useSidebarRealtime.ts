@@ -121,43 +121,8 @@ export function useSidebarRealtime({
   useEffect(() => {
     if (!currentProjectId || !userId) return;
 
-    const librariesChannel = supabase
-      .channel(`libraries:project:${currentProjectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'libraries',
-          filter: `project_id=eq.${currentProjectId}`,
-        },
-        async (payload) => {
-          await invalidateSidebarLibraryChange(
-            queryClient,
-            currentProjectId,
-            payload.new,
-            payload.old
-          );
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) {
-          console.error('[Sidebar] Libraries channel ERROR:', err);
-        } else if (status === 'TIMED_OUT') {
-          console.warn('[Sidebar] Libraries channel TIMED OUT');
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(librariesChannel);
-    };
-  }, [currentProjectId, userId, supabase, queryClient]);
-
-  useEffect(() => {
-    if (!currentProjectId || !userId) return;
-
     let unregisterProjectChannel = () => {};
-    const foldersChannel = supabase
+    const projectChannel = supabase
       // Single source of truth for the topic string, shared with the broadcast
       // sender (documentBroadcast.projectSidebarTopic).
       .channel(projectSidebarTopic(currentProjectId), {
@@ -168,10 +133,35 @@ export function useSidebarRealtime({
         {
           event: '*',
           schema: 'public',
-          table: 'folders',
-          filter: `project_id=eq.${currentProjectId}`,
         },
         async (payload) => {
+          if (payload.table === 'libraries') {
+            const projectId =
+              stringField(payload.new, 'project_id') ??
+              stringField(payload.old, 'project_id');
+            if (projectId !== currentProjectId) return;
+            await invalidateSidebarLibraryChange(
+              queryClient,
+              currentProjectId,
+              payload.new,
+              payload.old
+            );
+            return;
+          }
+
+          if (payload.table === 'predefine_properties') {
+            await invalidateLibraryData(queryClient, {
+              projectId: currentProjectId,
+              refetchActiveFoldersLibraries: true,
+            });
+            return;
+          }
+
+          if (payload.table !== 'folders') return;
+          const projectId =
+            stringField(payload.new, 'project_id') ??
+            stringField(payload.old, 'project_id');
+          if (projectId !== currentProjectId) return;
           const folderId =
             (payload.new && 'id' in payload.new ? payload.new.id : null) ||
             (payload.old && 'id' in payload.old ? payload.old.id : null);
@@ -188,8 +178,8 @@ export function useSidebarRealtime({
         }
       )
       // Documents are broadcast-only (not in the realtime publication, GitHub
-      // #208). Piggyback their change notifications on this existing channel so
-      // the sidebar refreshes without adding a sixth channel (GitHub #216).
+      // #208). Project-scoped sidebar changes share this channel to avoid
+      // exhausting the Realtime tenant connection pool during concurrent joins.
       .on(
         'broadcast',
         { event: DOCUMENT_UPDATED_EVENT },
@@ -214,50 +204,18 @@ export function useSidebarRealtime({
           unregisterProjectChannel();
           unregisterProjectChannel = registerProjectDocumentChannel(
             currentProjectId,
-            foldersChannel
+            projectChannel
           );
         } else if (status === 'CHANNEL_ERROR' && err) {
-          console.error('[Sidebar] Folders channel ERROR:', err);
+          console.error('[Sidebar] Project channel ERROR:', err);
         } else if (status === 'TIMED_OUT') {
-          console.warn('[Sidebar] Folders channel TIMED OUT');
+          console.warn('[Sidebar] Project channel TIMED OUT');
         }
       });
 
     return () => {
       unregisterProjectChannel();
-      supabase.removeChannel(foldersChannel);
-    };
-  }, [currentProjectId, userId, supabase, queryClient]);
-
-  useEffect(() => {
-    if (!currentProjectId || !userId) return;
-
-    const predefineChannel = supabase
-      .channel(`predefine:project:${currentProjectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'predefine_properties',
-        },
-        async (payload) => {
-          await invalidateLibraryData(queryClient, {
-            projectId: currentProjectId,
-            refetchActiveFoldersLibraries: true,
-          });
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) {
-          console.error('[Sidebar] Predefine channel ERROR:', err);
-        } else if (status === 'TIMED_OUT') {
-          console.warn('[Sidebar] Predefine channel TIMED OUT');
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(predefineChannel);
+      supabase.removeChannel(projectChannel);
     };
   }, [currentProjectId, userId, supabase, queryClient]);
 }

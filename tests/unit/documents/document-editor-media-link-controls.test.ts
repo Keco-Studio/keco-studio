@@ -18,13 +18,23 @@ describe('document editor media and link controls', () => {
   it('creates a URL-only link from selected text', () => {
     expect(source).not.toMatch(/\bCreateLink\b/);
     expect(source).toContain('currentSelection$');
+    expect(source).toContain('linkDialogState$');
     expect(source).toContain('openLinkEditDialog$');
+    expect(source).not.toContain('selection?.getTextContent()');
+    expect(source).not.toContain("input[name=\"url\"]");
     expect(source).toMatch(/disabled=\{!selection \|\| selection\.isCollapsed\(\)\}/);
+    expect(source).toContain('onClick={() => openLinkDialog()}');
+    expect(source).toContain('withAnchorText: false');
     expect(source).toMatch(/linkDialogPlugin\(\{ showLinkTitleField: false \}\)/);
   });
 
-  it('opens an editor link on double click', () => {
+  it('opens an editor link in a new tab on double click', () => {
     expect(source).toContain("closest<HTMLAnchorElement>('a[href]')");
+    expect(source).toContain("link.getAttribute('href')");
+    expect(source).toContain("`https://${href}`");
+    expect(source).toContain('registerNodeTransform(LinkNode');
+    expect(source).not.toContain('onMouseDown={handleLinkMouseDown}');
+    expect(source).not.toContain('onClick={handleLinkClick}');
     expect(source).toContain('onDoubleClick={handleLinkDoubleClick}');
     expect(source).toMatch(/window\.open\(href, '_blank'/);
   });

@@ -49,6 +49,20 @@ describe('realtime channel consolidation (issue #216)', () => {
     expect(collaboratorsPage).not.toContain('setCollaborators');
   });
 
+  it('uses one project channel for all sidebar project data', () => {
+    const sidebarRealtime = read(
+      'src/components/layout/hooks/useSidebarRealtime.ts'
+    );
+
+    expect(sidebarRealtime.match(/\.channel\(/g)).toHaveLength(2);
+    expect(sidebarRealtime.match(/'postgres_changes'/g)).toHaveLength(2);
+    expect(sidebarRealtime).not.toContain('.channel(`libraries:project:');
+    expect(sidebarRealtime).not.toContain('.channel(`predefine:project:');
+    expect(sidebarRealtime).toContain("payload.table === 'libraries'");
+    expect(sidebarRealtime).toContain("payload.table !== 'folders'");
+    expect(sidebarRealtime).toContain("payload.table === 'predefine_properties'");
+  });
+
   it('drops the unused snapshot GIN index in a forward migration', () => {
     const migration =
       'supabase/migrations/20260713060000_drop_library_versions_snapshot_index.sql';

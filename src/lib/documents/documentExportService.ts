@@ -1,3 +1,4 @@
+import path from 'node:path';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { parseValidatedSanctionedMdx } from './sanctionedMdx';
 import type { SanctionedMdxAstNode } from './sanctionedMdxParser';
@@ -51,6 +52,13 @@ type ResolvedImage = {
   width: number;
   height: number;
 };
+type PdfUnicodeFont = {
+  hasGlyphForCodePoint: (codePoint: number) => boolean;
+};
+type PdfUnicodeFonts = {
+  regular: PdfUnicodeFont;
+  bold: PdfUnicodeFont;
+};
 
 const MAX_REMOTE_IMAGES = 20;
 const MAX_REMOTE_IMAGE_BYTES = 5 * 1024 * 1024;
@@ -60,12 +68,20 @@ const MAX_IMAGE_HEIGHT = 360;
 const MAX_SOURCE_IMAGE_DIMENSION = 10_000;
 const MAX_SOURCE_IMAGE_PIXELS = 16_000_000;
 const IMAGE_RESOLUTION_WORKERS = 2;
-const WIN_ANSI_EXTENDED_CODE_POINTS = new Set([
-  0x0152, 0x0153, 0x0160, 0x0161, 0x0178, 0x017d, 0x017e, 0x0192,
-  0x02c6, 0x02dc, 0x2013, 0x2014, 0x2018, 0x2019, 0x201a, 0x201c,
-  0x201d, 0x201e, 0x2020, 0x2021, 0x2022, 0x2026, 0x2030, 0x2039,
-  0x203a, 0x20ac, 0x2122,
-]);
+const PDF_UNICODE_REGULAR_FONT = path.join(
+  process.cwd(),
+  'src',
+  'assets',
+  'fonts',
+  'NotoSansSC-Regular.otf'
+);
+const PDF_UNICODE_BOLD_FONT = path.join(
+  process.cwd(),
+  'src',
+  'assets',
+  'fonts',
+  'NotoSansSC-Bold.otf'
+);
 const TRUSTED_STORAGE_PREFIX = [
   'storage',
   'v1',
@@ -83,56 +99,13 @@ type TrustedMediaConfiguration = {
 
 let trustedMediaConfiguration: TrustedMediaConfiguration | null | undefined;
 let trustedMediaConfigurationKey: string | undefined;
+let pdfUnicodeFontsPromise: Promise<PdfUnicodeFonts> | undefined;
 
 export class DocumentExportConversionError extends Error {
   constructor(message = 'Document export conversion failed', options?: ErrorOptions) {
     super(message, options);
     this.name = 'DocumentExportConversionError';
   }
-}
-
-function assertPdfTextSupported(text: string): void {
-  for (const character of text) {
-    const codePoint = character.codePointAt(0)!;
-    if (
-      codePoint === 0x09 ||
-      codePoint === 0x0a ||
-      codePoint === 0x0d ||
-      (codePoint >= 0x20 && codePoint <= 0x7e) ||
-      (codePoint >= 0xa0 && codePoint <= 0xff) ||
-      WIN_ANSI_EXTENDED_CODE_POINTS.has(codePoint)
-    ) {
-      continue;
-    }
-    throw new DocumentExportConversionError(
-      'PDF export does not support every character in this document. Export as DOCX to preserve the original text.'
-    );
-  }
-}
-
-function assertPdfModelSupported(model: DocumentExportModel): void {
-  const visitInline = (content: readonly DocumentExportInline[]) => {
-    for (const inline of content) {
-      assertPdfTextSupported(inline.type === 'text' ? inline.text : inline.alt);
-    }
-  };
-  const visitBlocks = (blocks: readonly DocumentExportBlock[]) => {
-    for (const block of blocks) {
-      if (block.type === 'table') {
-        for (const row of block.rows) for (const cell of row) visitInline(cell);
-      } else if (block.type === 'code') {
-        assertPdfTextSupported(block.text);
-      } else if (block.type === 'callout') {
-        assertPdfTextSupported(block.label);
-        visitBlocks(block.children);
-      } else if (block.type === 'list-item') {
-        visitBlocks(block.children);
-      } else {
-        visitInline(block.content);
-      }
-    }
-  };
-  visitBlocks(model.blocks);
 }
 
 function sameStyle(left: DocumentExportTextRun, right: DocumentExportTextRun): boolean {
@@ -739,9 +712,71 @@ async function renderDocx(
   return docx.Packer.toBuffer(document);
 }
 
+function requiresUnicodePdfFont(text: string): boolean {
+  return /[^\u0000-\u00ff]/.test(text);
+}
+
+function loadPdfUnicodeFonts(): Promise<PdfUnicodeFonts> {
+  pdfUnicodeFontsPromise ??= import('fontkit').then((fontkit) => ({
+    regular: fontkit.openSync(PDF_UNICODE_REGULAR_FONT) as PdfUnicodeFont,
+    bold: fontkit.openSync(PDF_UNICODE_BOLD_FONT) as PdfUnicodeFont,
+  }));
+  return pdfUnicodeFontsPromise;
+}
+
+function assertPdfTextSupported(text: string, font: PdfUnicodeFont): void {
+  for (const character of text) {
+    const codePoint = character.codePointAt(0)!;
+    if (codePoint <= 0xff || font.hasGlyphForCodePoint(codePoint)) continue;
+    throw new DocumentExportConversionError(
+      'PDF export does not support every character in this document. Export as DOCX to preserve the original text.'
+    );
+  }
+}
+
+async function assertPdfModelSupported(model: DocumentExportModel): Promise<void> {
+  const fonts = await loadPdfUnicodeFonts();
+  const visitInline = (
+    content: readonly DocumentExportInline[],
+    defaults: InlineStyle = {}
+  ) => {
+    for (const inline of content) {
+      if (inline.type === 'image') {
+        assertPdfTextSupported(inline.alt, fonts.regular);
+        continue;
+      }
+      const font = inline.bold || defaults.bold ? fonts.bold : fonts.regular;
+      assertPdfTextSupported(inline.text, font);
+    }
+  };
+  const visitBlocks = (blocks: readonly DocumentExportBlock[]) => {
+    for (const block of blocks) {
+      if (block.type === 'table') {
+        for (const row of block.rows) for (const cell of row) visitInline(cell);
+      } else if (block.type === 'code') {
+        assertPdfTextSupported(block.text, fonts.regular);
+      } else if (block.type === 'callout') {
+        assertPdfTextSupported(block.label, fonts.bold);
+        visitBlocks(block.children);
+      } else if (block.type === 'list-item') {
+        visitBlocks(block.children);
+      } else {
+        visitInline(
+          block.content,
+          block.type === 'heading' ? { bold: true } : {}
+        );
+      }
+    }
+  };
+  visitBlocks(model.blocks);
+}
+
 function pdfFont(run: DocumentExportTextRun, defaults: InlineStyle): string {
   const bold = run.bold || defaults.bold;
   const italic = run.italic || defaults.italic;
+  if (requiresUnicodePdfFont(run.text)) {
+    return bold ? 'NotoSansSC-Bold' : 'NotoSansSC';
+  }
   if (run.code || defaults.code) return 'Courier';
   if (bold && italic) return 'Helvetica-BoldOblique';
   if (bold) return 'Helvetica-Bold';
@@ -789,6 +824,8 @@ async function renderPdf(
     pdf.on('end', () => resolve(Buffer.concat(chunks)));
     pdf.on('error', reject);
     try {
+      pdf.registerFont('NotoSansSC', PDF_UNICODE_REGULAR_FONT);
+      pdf.registerFont('NotoSansSC-Bold', PDF_UNICODE_BOLD_FONT);
       const renderBlocks = (blocks: readonly DocumentExportBlock[]) => {
        for (const block of blocks) {
         if (block.type === 'table') {
@@ -805,7 +842,7 @@ async function renderPdf(
         }
         if (block.type === 'code') {
           pdf
-            .font('Courier')
+            .font(requiresUnicodePdfFont(block.text) ? 'NotoSansSC' : 'Courier')
             .fontSize(10)
             .text(block.text)
             .moveDown(0.35);
@@ -826,7 +863,7 @@ async function renderPdf(
           renderBlocks(rest);
         } else if (block.type === 'callout') {
           pdf
-            .font('Helvetica-Bold')
+            .font(requiresUnicodePdfFont(block.label) ? 'NotoSansSC-Bold' : 'Helvetica-Bold')
             .fontSize(11)
             .text(block.label);
           renderBlocks(block.children);
@@ -856,7 +893,7 @@ export async function renderDocumentExportModel(
   model: DocumentExportModel,
   format: DocumentExportFormat
 ): Promise<Buffer> {
-  if (format === 'pdf') assertPdfModelSupported(model);
+  if (format === 'pdf') await assertPdfModelSupported(model);
   const images = await resolveModelImages(model);
   try {
     return format === 'docx' ? await renderDocx(model, images) : await renderPdf(model, images);

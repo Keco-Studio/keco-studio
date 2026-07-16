@@ -1,5 +1,7 @@
 import mammoth from 'mammoth';
 import JSZip from 'jszip';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   buildDocumentExportModel,
@@ -352,14 +354,45 @@ const n = 1
     expect(pdf).not.toMatch(/\/FontFile[23]?\b/);
   });
 
-  it('rejects unsupported PDF text instead of silently corrupting it', async () => {
-    const model = buildDocumentExportModel('# \u4f60\u597d\u4e16\u754c');
+  it('renders Chinese text with an embedded Unicode font', async () => {
+    const bytes = await renderDocumentExportModel(
+      buildDocumentExportModel('# \u4f60\u597d\u4e16\u754c\n\nPDF \u5bfc\u51fa\u5185\u5bb9'),
+      'pdf'
+    );
+    const pdf = bytes.toString('latin1');
+
+    expect(bytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+    expect(bytes.length).toBeGreaterThan(1_000);
+    expect(bytes.length).toBeLessThan(1_000_000);
+    expect(pdf).toMatch(/\/FontFile[23]?\b/);
+    expect(pdf).toContain('/Subtype /Type0');
+    expect(pdf).toContain('/ToUnicode');
+  });
+
+  it('rejects characters missing from the embedded PDF fonts', async () => {
+    const model = buildDocumentExportModel('# Unsupported \u{1f600} character');
 
     await expect(renderDocumentExportModel(model, 'pdf')).rejects.toThrow(
       /export as DOCX to preserve the original text/i
     );
     await expect(renderDocumentExportModel(model, 'docx')).resolves.toEqual(
       expect.any(Buffer)
+    );
+  });
+
+  it('uses two native OpenType font assets that Turbopack does not rewrite as module IDs', () => {
+    const source = readFileSync(
+      path.join(process.cwd(), 'src/lib/documents/documentExportService.ts'),
+      'utf8'
+    );
+
+    expect(source).not.toContain('require.resolve(');
+    expect(source).not.toMatch(/\.woff2?['"]/);
+    expect(source).toMatch(
+      /path\.join\(\s*process\.cwd\(\),\s*'src',\s*'assets',\s*'fonts',\s*'NotoSansSC-Regular\.otf'\s*\)/
+    );
+    expect(source).toMatch(
+      /path\.join\(\s*process\.cwd\(\),\s*'src',\s*'assets',\s*'fonts',\s*'NotoSansSC-Bold\.otf'\s*\)/
     );
   });
 
