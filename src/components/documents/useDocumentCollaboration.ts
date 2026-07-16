@@ -71,9 +71,9 @@ export function getDocumentCollaborationPresentation(
   const viewer = role === 'viewer';
   switch (status) {
     case 'authorizing':
-      return state('Authorizing...', true, false);
+      return state('Authorizing...', true, true);
     case 'connecting':
-      return state('Connecting...', true, false);
+      return state('Connecting...', true, true);
     case 'hydrating':
       return state('Loading live document...', true, false);
     case 'syncing':

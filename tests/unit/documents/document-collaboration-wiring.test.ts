@@ -151,7 +151,12 @@ describe('document collaboration React boundary', () => {
     expect(getDocumentCollaborationPresentation('authorizing', 'editor')).toMatchObject({
       label: 'Authorizing...',
       readOnly: true,
-      canBind: false,
+      canBind: true,
+    });
+    expect(getDocumentCollaborationPresentation('connecting', 'editor')).toMatchObject({
+      label: 'Connecting...',
+      readOnly: true,
+      canBind: true,
     });
     expect(getDocumentCollaborationPresentation('syncing', 'editor')).toMatchObject({
       label: 'Syncing...',
