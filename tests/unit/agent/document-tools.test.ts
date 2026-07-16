@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ToolContext } from '@/lib/agent/types';
 
+jest.mock('server-only', () => ({}));
+
 const read = jest.fn();
 const initialize = jest.fn();
 const replace = jest.fn();

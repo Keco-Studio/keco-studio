@@ -12,8 +12,6 @@ import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 const MAX_DOCUMENT_CHARS = 500_000;
 const APPROVED_PAYLOAD_CHANGED_ERROR = 'The approved document edit payload changed.';
-const TEST_CONFIRMATION_SIGNING_SECRET =
-  'keco-studio-test-only-agent-confirmation-signing-secret-v1';
 
 const OperationSchema = z.discriminatedUnion('type', [
   z.object({
@@ -101,18 +99,6 @@ function contentHash(markdown: string): string {
   return createHash('sha256').update(markdown, 'utf8').digest('hex');
 }
 
-function confirmationSigningSecret(): string {
-  const configured =
-    process.env.AGENT_CONFIRMATION_SIGNING_SECRET ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (process.env.NODE_ENV === 'test') {
-    return configured ?? TEST_CONFIRMATION_SIGNING_SECRET;
-  }
-  if (configured === undefined || configured.length < 32) {
-    throw new Error('Agent confirmation signing secret is not configured securely.');
-  }
-  return configured;
-}
-
 function canonicalOperation(operation: ParsedParams['operation']): readonly unknown[] {
   switch (operation.type) {
     case 'replace_all':
@@ -157,22 +143,25 @@ function canonicalApprovalPayload(
   ]);
 }
 
-function createApprovalSignature(
+async function createApprovalSignature(
   params: ParsedParams,
   preview: UnsignedPreviewData,
   ctx: ToolContext
-): string {
-  return createHmac('sha256', confirmationSigningSecret())
+): Promise<string> {
+  const { getAgentConfirmationSigningSecret } = await import(
+    '@/lib/server/agentConfirmationSigning'
+  );
+  return createHmac('sha256', getAgentConfirmationSigningSecret())
     .update(canonicalApprovalPayload(params, preview, ctx), 'utf8')
     .digest('hex');
 }
 
-function hasValidApprovalSignature(
+async function hasValidApprovalSignature(
   params: ParsedParams,
   preview: PreviewData,
   ctx: ToolContext
-): boolean {
-  const expected = Buffer.from(createApprovalSignature(params, preview, ctx), 'hex');
+): Promise<boolean> {
+  const expected = Buffer.from(await createApprovalSignature(params, preview, ctx), 'hex');
   const provided = Buffer.from(preview.approvalSignature, 'hex');
   return provided.length === expected.length && timingSafeEqual(provided, expected);
 }
@@ -266,7 +255,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       data: preview,
       internalData: {
         ...preview,
-        approvalSignature: createApprovalSignature(parsed.data, preview, ctx),
+        approvalSignature: await createApprovalSignature(parsed.data, preview, ctx),
       },
     };
   } catch (error) {
@@ -290,7 +279,7 @@ async function executeImport(
 
   try {
     if (
-      !hasValidApprovalSignature(parsedParams.data, preview.data, ctx) ||
+      !(await hasValidApprovalSignature(parsedParams.data, preview.data, ctx)) ||
       contentHash(preview.data.baseMarkdown) !== preview.data.baseHash ||
       contentHash(preview.data.proposedMarkdown) !== preview.data.proposedHash ||
       !proposalMatchesOperation(parsedParams.data, preview.data)
