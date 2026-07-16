@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import type {
@@ -13,6 +13,8 @@ import { colorForUserId } from '@/lib/documents/cursorColor';
 import { broadcastProjectDocumentUpdate } from '@/lib/documents/projectDocumentChannel';
 import { registerDocumentFlushHandler } from '@/lib/documents/documentFlushRegistry';
 import { queryKeys } from '@/lib/utils/queryKeys';
+
+const AGENT_PROJECT_DOCUMENT_REINDEX_DEBOUNCE_MS = 5000;
 
 type CollaborationPresentation = {
   label: string;
@@ -149,6 +151,9 @@ export function useDocumentCollaboration({
   userName,
 }: UseDocumentCollaborationOptions) {
   const [generation, setGeneration] = useState(0);
+  const reindexTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
   const queryClient = useQueryClient();
   const requestKey = `${projectId}:${documentId}:${userId}:${role}:${generation}`;
   const cursorColor = useMemo(() => colorForUserId(userId), [userId]);
@@ -163,6 +168,25 @@ export function useDocumentCollaboration({
     loadFailure?.requestKey === requestKey ? loadFailure : null;
   const status = currentLoadFailure ? 'error' : current?.view.status ?? 'idle';
   const presentation = getDocumentCollaborationPresentation(status, role);
+  const scheduleDocumentReindex = useCallback(() => {
+    if (role === 'viewer') return;
+    if (reindexTimerRef.current) clearTimeout(reindexTimerRef.current);
+    reindexTimerRef.current = setTimeout(() => {
+      reindexTimerRef.current = null;
+      void fetch('/api/agent-chat/reindex/document', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${accessTokenRef.current}`,
+        },
+        body: JSON.stringify({ projectId, documentId }),
+      }).catch(() => undefined);
+    }, AGENT_PROJECT_DOCUMENT_REINDEX_DEBOUNCE_MS);
+  }, [documentId, projectId, role]);
+
+  useEffect(() => () => {
+    if (reindexTimerRef.current) clearTimeout(reindexTimerRef.current);
+  }, [accessToken, documentId, projectId, role]);
 
   useEffect(() => {
     let mounted = true;
@@ -179,6 +203,7 @@ export function useDocumentCollaboration({
         const onDurableStateChanged = async (
           state: { updatedAt: string }
         ) => {
+          scheduleDocumentReindex();
           await queryClient.invalidateQueries({
             queryKey: queryKeys.documentVersions(documentId),
           });
@@ -220,6 +245,7 @@ export function useDocumentCollaboration({
             authSession?.user.id === userId &&
             authSession.access_token
           ) {
+            accessTokenRef.current = authSession.access_token;
             void session
               .updateAccessToken(authSession.access_token)
               .catch(() => undefined);
@@ -253,6 +279,7 @@ export function useDocumentCollaboration({
     queryClient,
     requestKey,
     role,
+    scheduleDocumentReindex,
     supabase,
     userId,
     userName,
@@ -280,8 +307,11 @@ export function useDocumentCollaboration({
 
   useEffect(() => {
     if (!session) return;
-    return registerDocumentFlushHandler(() => session.flush());
-  }, [session]);
+    return registerDocumentFlushHandler(async () => {
+      await session.flush();
+      scheduleDocumentReindex();
+    });
+  }, [scheduleDocumentReindex, session]);
 
   useEffect(() => {
     if (!session) return;
@@ -290,7 +320,7 @@ export function useDocumentCollaboration({
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        void session.flush().catch(() => undefined);
+        void session.flush().then(scheduleDocumentReindex).catch(() => undefined);
       } else if (document.visibilityState === 'visible') {
         recover();
       }
@@ -310,7 +340,7 @@ export function useDocumentCollaboration({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', guardPendingUnload);
     };
-  }, [session]);
+  }, [scheduleDocumentReindex, session]);
 
   const retry = useCallback(async () => {
     if (status === 'error') {

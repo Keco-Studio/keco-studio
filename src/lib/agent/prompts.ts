@@ -103,7 +103,8 @@ RULES:
     ("characters similar to…", "settings we discussed before", "battle system description in the document") rather than
     exact row/column operations. For precise table reads/writes, still use
     query_assets and other structured tools. Retrieved context in the system
-    prompt is a preview — call semantic_search for exhaustive lookup.
+    prompt is a preview across chat, libraries, design documents, and living project documents —
+    call semantic_search for exhaustive lookup.
 27. DOCUMENT TARGETS: The current document is the default target only. If the user
     explicitly names a different same-project document, that document overrides the
     current one. Use list_documents or list_project_structure to discover document IDs.

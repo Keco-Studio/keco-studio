@@ -9,6 +9,7 @@ const listResolvedProjectDocuments = jest.fn();
 const resolveDocumentForTool = jest.fn();
 const findFolderByName = jest.fn();
 const initialize = jest.fn();
+const reindexProjectDocumentAsActor = jest.fn();
 
 jest.mock('@/lib/services/documentService', () => ({
   createDocument,
@@ -23,6 +24,9 @@ jest.mock('@/lib/agent/document-resolver', () => ({
 jest.mock('@/lib/agent/data-access', () => ({ findFolderByName }));
 jest.mock('@/lib/documents/documentStateGateway', () => ({
   documentStateGateway: { initialize },
+}));
+jest.mock('@/lib/server/documentEmbeddingIndexService', () => ({
+  reindexProjectDocumentAsActor,
 }));
 
 import { createDocumentTool } from '@/lib/agent/tools/create-document';
@@ -77,6 +81,7 @@ describe('Agent document metadata tools', () => {
     initialize.mockResolvedValue(undefined);
     updateDocumentName.mockResolvedValue(undefined);
     moveDocument.mockResolvedValue(undefined);
+    reindexProjectDocumentAsActor.mockResolvedValue({ documentId: DOCUMENT_ID, chunks: 1 });
   });
 
   it.each([
@@ -370,5 +375,22 @@ describe('Agent document metadata tools', () => {
   it('registers both metadata tools', () => {
     expect(resolveTool('rename_document')).toBe(renameDocument);
     expect(resolveTool('move_document')).toBe(moveDocumentTool);
+  });
+
+  it('keeps create, rename, and move successful when background indexing fails', async () => {
+    reindexProjectDocumentAsActor.mockRejectedValue(new Error('embedding unavailable'));
+    const results = await Promise.all([
+      createDocumentTool.execute({ name: 'New', content: '# New' }, ctx),
+      renameDocument.execute({ newName: 'Renamed' }, ctx),
+      moveDocumentTool.execute({ moveToRoot: true }, ctx),
+    ]);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(results).toEqual([
+      expect.objectContaining({ success: true }),
+      expect.objectContaining({ success: true }),
+      expect.objectContaining({ success: true }),
+    ]);
+    expect(reindexProjectDocumentAsActor).toHaveBeenCalledTimes(3);
   });
 });

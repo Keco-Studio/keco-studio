@@ -33,6 +33,14 @@ export interface DesignDocChunk {
   chunkHeading?: string;
 }
 
+export interface ProjectDocumentChunk {
+  chunkIndex: number;
+  content: string;
+  heading?: string;
+  startLine: number;
+  endLine: number;
+}
+
 export interface TurnGroupOptions {
   maxMessages?: number;
   minMessages?: number;
@@ -215,6 +223,53 @@ export function chunkDesignDocument(
     chunks.push({ chunkIndex: chunkIndex++, content: buffer.trim() });
   }
 
+  return chunks;
+}
+
+/** Split living Markdown documents at ATX headings while retaining source lines. */
+export function chunkProjectDocument(text: string): ProjectDocumentChunk[] {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const chunks: ProjectDocumentChunk[] = [];
+  let start = 0;
+  let heading: string | undefined;
+  let fence: { marker: '`' | '~'; length: number } | null = null;
+
+  const flush = (endExclusive: number) => {
+    let first = start;
+    let last = endExclusive - 1;
+    while (first <= last && !lines[first].trim()) first += 1;
+    while (last >= first && !lines[last].trim()) last -= 1;
+    if (first > last) return;
+    chunks.push({
+      chunkIndex: chunks.length,
+      content: lines.slice(first, last + 1).join('\n'),
+      ...(heading ? { heading } : {}),
+      startLine: first + 1,
+      endLine: last + 1,
+    });
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (fence) {
+      const closing = new RegExp(`^ {0,3}\\${fence.marker}{${fence.length},}[ \\t]*$`);
+      if (closing.test(lines[index])) fence = null;
+      continue;
+    }
+    const fenceStart = /^ {0,3}(`{3,}|~{3,})/.exec(lines[index]);
+    if (fenceStart) {
+      fence = {
+        marker: fenceStart[1][0] as '`' | '~',
+        length: fenceStart[1].length,
+      };
+      continue;
+    }
+    const match = /^ {0,3}(#{1,6})(?:[ \t]+(.*)|[ \t]*)$/.exec(lines[index]);
+    if (!match) continue;
+    flush(index);
+    start = index;
+    heading = (match[2] ?? '').replace(/[ \t]+#+[ \t]*$/, '').trim() || undefined;
+  }
+  flush(lines.length);
   return chunks;
 }
 

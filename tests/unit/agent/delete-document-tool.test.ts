@@ -5,6 +5,7 @@ const resolveDocumentForTool = jest.fn();
 const deleteDocument = jest.fn();
 const deleteDocumentIfUnchanged = jest.fn();
 const readTransport = jest.fn();
+const removeProjectDocumentIndex = jest.fn();
 
 jest.mock('@/lib/agent/document-resolver', () => ({ resolveDocumentForTool }));
 jest.mock('@/lib/services/documentService', () => ({
@@ -13,6 +14,9 @@ jest.mock('@/lib/services/documentService', () => ({
 }));
 jest.mock('@/lib/documents/documentStateGateway', () => ({
   documentStateGateway: { readTransport },
+}));
+jest.mock('@/lib/server/documentEmbeddingIndexService', () => ({
+  removeProjectDocumentIndex,
 }));
 
 import { deleteDocumentTool } from '@/lib/agent/tools/delete-document';
@@ -80,6 +84,7 @@ describe('delete_document tool', () => {
       token: { epoch: 2, revision: 4 },
       updatedAt: UPDATED_AT,
     });
+    removeProjectDocumentIndex.mockResolvedValue(undefined);
   });
 
   it('declares mandatory post-preview confirmation and a closed selector schema', () => {
@@ -185,6 +190,23 @@ describe('delete_document tool', () => {
     });
     expect(deleteDocument).not.toHaveBeenCalled();
     expect(result).toEqual({ success: true, displayHint: 'text', data: preview });
+  });
+
+  it('keeps a confirmed deletion successful when index cleanup fails', async () => {
+    removeProjectDocumentIndex.mockRejectedValue(new Error('embedding cleanup unavailable'));
+    const result = await deleteDocumentTool.executeImport!(
+      { success: true, data: preview, internalData: savedPreview },
+      { documentId: DOCUMENT_ID },
+      ctx
+    );
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(result).toMatchObject({ success: true });
+    expect(removeProjectDocumentIndex).toHaveBeenCalledWith({
+      actorUserId: ctx.userId,
+      projectId: PROJECT_ID,
+      documentId: DOCUMENT_ID,
+    });
   });
 
   it('rejects an appended un-compacted update through the atomic delete boundary', async () => {

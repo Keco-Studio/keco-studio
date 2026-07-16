@@ -41,7 +41,7 @@ const LIBRARY_REINDEX_DEBOUNCE_MS = 2000;
 interface ChunkUpsertRow {
   project_id: string;
   user_id: string | null;
-  source_type: 'chat_message' | 'library_cell' | 'library_row' | 'library_schema' | 'design_document';
+  source_type: 'chat_message' | 'library_cell' | 'library_row' | 'library_schema' | 'design_document' | 'project_document';
   source_id: string;
   conversation_id: string | null;
   chunk_index: number;

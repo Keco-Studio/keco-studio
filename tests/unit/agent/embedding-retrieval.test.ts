@@ -53,6 +53,7 @@ describe('applyScopeQuotas', () => {
       chat_same_project: 2,
       library: 4,
       design_document: 3,
+      project_document: 3,
     };
     const ranked = items.map((item) => ({
       ...item,
@@ -109,6 +110,37 @@ describe('formatRetrievedContext', () => {
     expect(block).toContain('library_cell');
     expect(block).toContain('Cheerful personality');
     expect(block).toContain('trust tools');
+  });
+
+  it('identifies living project documents with navigable metadata', () => {
+    const block = formatRetrievedContext([
+      {
+        ...candidate({
+          id: 'project-document-1',
+          sourceType: 'project_document',
+          content: 'Install the package.',
+          scope: 'project_document',
+        }),
+        finalScore: 0.91,
+        metadata: {
+          documentId: '33333333-3333-4333-8333-333333333333',
+          documentName: 'Guide',
+          folderName: 'Docs',
+          heading: 'Setup',
+          startLine: 4,
+          endLine: 6,
+          documentUpdatedAt: '2026-07-16T06:30:00.000Z',
+        },
+      },
+    ]);
+
+    expect(block).toContain('project_document');
+    expect(block).toContain('Guide');
+    expect(block).toContain('Docs');
+    expect(block).toContain('Setup');
+    expect(block).toContain('lines 4-6');
+    expect(block).toContain('33333333-3333-4333-8333-333333333333');
+    expect(block).toContain('2026-07-16');
   });
 });
 

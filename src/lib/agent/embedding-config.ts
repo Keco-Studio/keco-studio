@@ -117,13 +117,15 @@ export type RetrievalScope =
   | 'chat_same_conversation'
   | 'chat_same_project'
   | 'library'
-  | 'design_document';
+  | 'design_document'
+  | 'project_document';
 
 export const SCOPE_QUOTAS: Record<RetrievalScope, number> = {
   chat_same_conversation: parseIntEnv('AGENT_RETRIEVAL_QUOTA_CHAT_SAME', 3),
   chat_same_project: parseIntEnv('AGENT_RETRIEVAL_QUOTA_CHAT_PROJECT', 2),
   library: parseIntEnv('AGENT_RETRIEVAL_QUOTA_LIBRARY', 6),
   design_document: parseIntEnv('AGENT_RETRIEVAL_QUOTA_DESIGN_DOC', 3),
+  project_document: parseIntEnv('AGENT_RETRIEVAL_QUOTA_PROJECT_DOCUMENT', 5),
 };
 
 export const RECENCY_HALF_LIFE_DAYS: Record<string, number> = {
@@ -132,4 +134,5 @@ export const RECENCY_HALF_LIFE_DAYS: Record<string, number> = {
   library_row: parseIntEnv('AGENT_RETRIEVAL_HALF_LIFE_LIBRARY_ROW_DAYS', 90),
   library_schema: parseIntEnv('AGENT_RETRIEVAL_HALF_LIFE_LIBRARY_SCHEMA_DAYS', 180),
   design_document: parseIntEnv('AGENT_RETRIEVAL_HALF_LIFE_DESIGN_DOC_DAYS', 60),
+  project_document: parseIntEnv('AGENT_RETRIEVAL_HALF_LIFE_PROJECT_DOCUMENT_DAYS', 90),
 };

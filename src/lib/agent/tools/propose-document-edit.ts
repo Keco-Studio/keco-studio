@@ -333,6 +333,20 @@ async function executeImport(
       '@/lib/documents/documentStateResetBroadcaster'
     );
     await broadcastDocumentStateReset(ctx.supabase, replaced).catch(() => undefined);
+    void import('@/lib/server/documentEmbeddingIndexService')
+      .then(({ reindexProjectDocumentAsActor }) =>
+        reindexProjectDocumentAsActor({
+          actorUserId: ctx.userId,
+          projectId: ctx.projectId,
+          documentId: replaced.documentId,
+        })
+      )
+      .catch((error: unknown) => {
+        console.error('embedding.index.project_document_failed', {
+          documentId: replaced.documentId,
+          error,
+        });
+      });
     return {
       success: true,
       displayHint: 'text',

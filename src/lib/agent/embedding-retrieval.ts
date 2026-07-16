@@ -215,6 +215,19 @@ function formatSnippetLine(index: number, c: RankedRetrievalCandidate): string {
     const heading = meta.chunkHeading ? ` · ${meta.chunkHeading}` : '';
     return `${index}. [design_document · chunk ${Number(chunkIdx) + 1}${heading} · ${updated}] ${c.content}`;
   }
+  if (c.sourceType === 'project_document') {
+    const name = String(meta.documentName ?? 'document');
+    const folder = meta.folderName ? ` · folder ${String(meta.folderName)}` : ' · project root';
+    const heading = meta.heading ? ` · ${String(meta.heading)}` : '';
+    const startLine = Number(meta.startLine);
+    const endLine = Number(meta.endLine);
+    const range = Number.isFinite(startLine) && Number.isFinite(endLine)
+      ? ` · lines ${startLine}-${endLine}`
+      : '';
+    const documentId = String(meta.documentId ?? 'unknown');
+    const updated = String(meta.documentUpdatedAt ?? c.sourceTimestamp).slice(0, 10);
+    return `${index}. [project_document · ${name}${folder}${heading}${range} · document ${documentId} · updated ${updated}] ${c.content}`;
+  }
   return `${index}. [${c.sourceType}] ${c.content}`;
 }
 
@@ -317,7 +330,7 @@ export interface SemanticSearchParams {
   projectId: string;
   userId: string;
   conversationId: string;
-  scope?: 'chat' | 'library' | 'design_document' | 'all';
+  scope?: 'chat' | 'library' | 'design_document' | 'project_document' | 'all';
   libraryName?: string;
   limit?: number;
   minScore?: number;
@@ -338,8 +351,11 @@ export async function semanticSearchChunks(
     case 'design_document':
       scopes = ['design_document'];
       break;
+    case 'project_document':
+      scopes = ['project_document'];
+      break;
     default:
-      scopes = ['chat_same_conversation', 'chat_same_project', 'library', 'design_document'];
+      scopes = ['chat_same_conversation', 'chat_same_project', 'library', 'design_document', 'project_document'];
   }
 
   const customQuotas = Object.fromEntries(

@@ -37,6 +37,20 @@ function selectorFromParams(params: z.infer<typeof ParamsSchema>): DocumentSelec
   return selector;
 }
 
+function queueDocumentReindex(ctx: ToolContext, documentId: string): void {
+  void import('@/lib/server/documentEmbeddingIndexService')
+    .then(({ reindexProjectDocumentAsActor }) =>
+      reindexProjectDocumentAsActor({
+        actorUserId: ctx.userId,
+        projectId: ctx.projectId,
+        documentId,
+      })
+    )
+    .catch((error: unknown) => {
+      console.error('embedding.index.project_document_failed', { documentId, error });
+    });
+}
+
 async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   const parsed = ParamsSchema.safeParse(params);
   if (!parsed.success) {
@@ -81,6 +95,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     await moveDocument(ctx.supabase, resolution.document.id, {
       folderId: destination.id,
     });
+    queueDocumentReindex(ctx, resolution.document.id);
     return {
       success: true,
       displayHint: 'text',

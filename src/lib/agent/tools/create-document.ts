@@ -19,6 +19,20 @@ const Params = z
   })
   .strict();
 
+function queueDocumentReindex(ctx: ToolContext, documentId: string): void {
+  void import('@/lib/server/documentEmbeddingIndexService')
+    .then(({ reindexProjectDocumentAsActor }) =>
+      reindexProjectDocumentAsActor({
+        actorUserId: ctx.userId,
+        projectId: ctx.projectId,
+        documentId,
+      })
+    )
+    .catch((error: unknown) => {
+      console.error('embedding.index.project_document_failed', { documentId, error });
+    });
+}
+
 export const createDocumentTool: AgentTool = {
   name: 'create_document',
   description: 'Create a project document with validated Markdown/MDX content.',
@@ -81,6 +95,7 @@ export const createDocumentTool: AgentTool = {
         '@/lib/documents/documentStateGateway'
       );
       await documentStateGateway.initialize(ctx.supabase, doc.id, parsed.data.content);
+      queueDocumentReindex(ctx, doc.id);
       return {
         success: true,
         displayHint: 'text',
@@ -94,6 +109,7 @@ export const createDocumentTool: AgentTool = {
           );
           const current = await documentStateGateway.read(ctx.supabase, createdDocumentId);
           if (current.projectId === ctx.projectId && current.mode === 'collaborative') {
+            queueDocumentReindex(ctx, createdDocumentId);
             return {
               success: true,
               displayHint: 'text',

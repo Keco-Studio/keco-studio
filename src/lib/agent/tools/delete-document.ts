@@ -172,6 +172,20 @@ async function executeImport(
       },
       expectedUpdateIds: preview.data.expectedUpdateIds,
     });
+    void import('@/lib/server/documentEmbeddingIndexService')
+      .then(({ removeProjectDocumentIndex }) =>
+        removeProjectDocumentIndex({
+          actorUserId: ctx.userId,
+          projectId: ctx.projectId,
+          documentId: preview.data.documentId,
+        })
+      )
+      .catch((error: unknown) => {
+        console.error('embedding.index.project_document_cleanup_failed', {
+          documentId: preview.data.documentId,
+          error,
+        });
+      });
     const publicPreview = PreviewSchema.parse({
       type: preview.data.type,
       documentId: preview.data.documentId,

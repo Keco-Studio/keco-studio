@@ -15,6 +15,7 @@ describe('buildSystemPrompt design-document table rules', () => {
     expect(prompt).toContain('list_documents or list_project_structure');
     expect(prompt).toContain('Never guess among duplicate document names');
     expect(prompt).toContain('read_document before editing document content');
+    expect(prompt).toContain('living project documents');
   });
 
   it('separates table extraction from prose generation and blocks low-quality tables', () => {

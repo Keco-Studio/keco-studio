@@ -11,6 +11,7 @@ const replaceDocumentAsAgent = jest.fn();
 const broadcastDocumentStateReset = jest.fn();
 const resolveDocumentForTool = jest.fn();
 const listResolvedProjectDocuments = jest.fn();
+const reindexProjectDocumentAsActor = jest.fn();
 
 jest.mock('@/lib/documents/documentStateGateway', () => ({
   documentStateGateway: { read, initialize, replace },
@@ -18,6 +19,9 @@ jest.mock('@/lib/documents/documentStateGateway', () => ({
 jest.mock('@/lib/services/documentService', () => ({ createDocument, deleteDocument }));
 jest.mock('@/lib/server/documentAgentEditService', () => ({
   replaceDocumentAsAgent,
+}));
+jest.mock('@/lib/server/documentEmbeddingIndexService', () => ({
+  reindexProjectDocumentAsActor,
 }));
 jest.mock('@/lib/documents/documentStateResetBroadcaster', () => ({
   broadcastDocumentStateReset,
@@ -109,6 +113,7 @@ describe('Agent document tools', () => {
     deleteDocument.mockResolvedValue(undefined);
     resolveDocumentForTool.mockResolvedValue(resolvedDocument());
     listResolvedProjectDocuments.mockResolvedValue([]);
+    reindexProjectDocumentAsActor.mockResolvedValue({ documentId: DOCUMENT_ID, chunks: 1 });
   });
 
   it.each([
@@ -661,6 +666,25 @@ describe('Agent document tools', () => {
       data: { documentId: DOCUMENT_ID, token: { epoch: 2, revision: 5 } },
     });
     expect(resolveDocumentForTool).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an applied edit successful when background indexing fails', async () => {
+    read.mockResolvedValue(state());
+    replaceDocumentAsAgent.mockResolvedValue(state('# Proposed', 5));
+    reindexProjectDocumentAsActor.mockRejectedValue(new Error('embedding unavailable'));
+    const params = replaceAllParams();
+    const result = await withoutConfirmationSecrets(async () => {
+      const preview = await proposeDocumentEdit.execute(params, ctx);
+      return proposeDocumentEdit.executeImport!(preview, params, ctx);
+    });
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    expect(result).toMatchObject({ success: true });
+    expect(reindexProjectDocumentAsActor).toHaveBeenCalledWith({
+      actorUserId: ctx.userId,
+      projectId: PROJECT_ID,
+      documentId: DOCUMENT_ID,
+    });
   });
 
   it('rejects proposed Markdown tampering even when its unkeyed hash is recomputed', async () => {

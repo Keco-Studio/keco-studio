@@ -224,6 +224,20 @@ describe('document collaboration React boundary', () => {
     expect(queryKeys).toContain('documentVersions: (id: string)');
   });
 
+  it('debounces authenticated reindex after durable editor saves and cleans up on unmount', () => {
+    const source = readFileSync(hookPath, 'utf8');
+    expect(source).toContain('/api/agent-chat/reindex/document');
+    expect(source).toContain("role === 'viewer'");
+    expect(source).toContain("authorization: `Bearer ${accessTokenRef.current}`");
+    expect(source).toContain('accessTokenRef.current = authSession.access_token');
+    expect(source).toContain('AGENT_PROJECT_DOCUMENT_REINDEX_DEBOUNCE_MS');
+    expect(source).toContain('clearTimeout');
+    expect(source).toMatch(
+      /useEffect\(\(\) => \(\) => \{[\s\S]+clearTimeout\(reindexTimerRef\.current\);[\s\S]+\}, \[accessToken, documentId, projectId, role\]\);/
+    );
+    expect(source).toMatch(/onCompacted:\s*onDurableStateChanged/);
+  });
+
   it('uses the authorized private project sidebar channel', () => {
     const source = readFileSync(sidebarRealtimePath, 'utf8');
     expect(source).toContain('projectSidebarTopic(currentProjectId), {');

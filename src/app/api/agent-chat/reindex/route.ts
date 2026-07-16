@@ -5,6 +5,7 @@ import {
   reindexProjectConversations,
   reindexProjectLibraryEmbeddings,
 } from '@/lib/agent/embedding-index';
+import { reindexProjectDocumentsAsActor } from '@/lib/server/documentEmbeddingIndexService';
 
 export const maxDuration = 300;
 
@@ -39,10 +40,15 @@ export const POST = withAuth(async function POST(
   try {
     const library = await reindexProjectLibraryEmbeddings(supabase, projectId);
     const chats = await reindexProjectConversations(supabase, projectId);
+    const projectDocuments = await reindexProjectDocumentsAsActor({
+      actorUserId: user.id,
+      projectId,
+    });
     return NextResponse.json({
       success: true,
       library,
       conversations: chats.conversations,
+      projectDocuments,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Reindex failed.';
