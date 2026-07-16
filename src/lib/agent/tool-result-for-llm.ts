@@ -33,7 +33,16 @@ type QueryAssetsData = {
 type ReadDocumentData = {
   documentId?: string;
   projectId?: string;
+  name?: string;
+  folderName?: string | null;
+  mode?: 'full' | 'outline' | 'heading' | 'lines';
+  requestedMode?: 'full' | 'outline' | 'heading' | 'lines';
   markdown?: string;
+  startLine?: number;
+  endLine?: number;
+  totalLines?: number;
+  complete?: boolean;
+  fallbackReason?: string;
   token?: unknown;
 };
 
@@ -84,8 +93,17 @@ function compactReadDocumentPayload(result: ToolResult): ToolResult {
       data: {
         documentId: data.documentId,
         projectId: data.projectId,
+        name: data.name,
+        folderName: data.folderName,
+        mode: data.mode,
+        requestedMode: data.requestedMode,
         token: data.token,
         markdown: data.markdown!.slice(0, visibleCharacters),
+        startLine: data.startLine,
+        endLine: data.endLine,
+        totalLines: data.totalLines,
+        complete: false,
+        fallbackReason: data.fallbackReason,
         totalCharacters,
         visibleCharacters,
         truncated: true,

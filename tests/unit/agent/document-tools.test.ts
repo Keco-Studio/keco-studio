@@ -8,6 +8,7 @@ const createDocument = jest.fn();
 const deleteDocument = jest.fn();
 const replaceDocumentAsAgent = jest.fn();
 const broadcastDocumentStateReset = jest.fn();
+const resolveDocumentForTool = jest.fn();
 
 jest.mock('@/lib/documents/documentStateGateway', () => ({
   documentStateGateway: { read, initialize, replace },
@@ -18,6 +19,9 @@ jest.mock('@/lib/server/documentAgentEditService', () => ({
 }));
 jest.mock('@/lib/documents/documentStateResetBroadcaster', () => ({
   broadcastDocumentStateReset,
+}));
+jest.mock('@/lib/agent/document-resolver', () => ({
+  resolveDocumentForTool,
 }));
 
 import { createDocumentTool } from '@/lib/agent/tools/create-document';
@@ -33,7 +37,26 @@ const ctx = {
   conversationId: '44444444-4444-4444-8444-444444444444',
   userRole: 'editor',
   supabase: {} as SupabaseClient,
+  currentDocumentId: DOCUMENT_ID,
+  currentDocumentName: 'Guide',
 } satisfies ToolContext;
+
+function resolvedDocument(overrides: Record<string, unknown> = {}) {
+  return {
+    ok: true,
+    source: 'current',
+    document: {
+      id: DOCUMENT_ID,
+      project_id: PROJECT_ID,
+      folder_id: null,
+      folderName: null,
+      name: 'Guide',
+      created_at: '2026-07-01T00:00:00.000Z',
+      updated_at: '2026-07-15T00:00:00.000Z',
+      ...overrides,
+    },
+  };
+}
 
 function state(markdown = '# Current', revision = 4) {
   return {
@@ -54,6 +77,7 @@ describe('Agent document tools', () => {
     broadcastDocumentStateReset.mockResolvedValue(undefined);
     initialize.mockResolvedValue(state('# Guide', 0));
     deleteDocument.mockResolvedValue(undefined);
+    resolveDocumentForTool.mockResolvedValue(resolvedDocument());
   });
 
   it.each([
@@ -138,6 +162,114 @@ describe('Agent document tools', () => {
     await expect(
       readDocument.execute({ documentId: DOCUMENT_ID }, ctx)
     ).resolves.toMatchObject({ success: false });
+  });
+
+  it('resolves an explicit selector and reads the latest gateway state', async () => {
+    resolveDocumentForTool.mockResolvedValue(
+      resolvedDocument({ name: 'Notes', folderName: 'Lore' })
+    );
+    read.mockResolvedValue(state('# Latest from Yjs tail'));
+
+    await expect(
+      readDocument.execute({ documentName: 'Notes', folderName: 'Lore' }, ctx)
+    ).resolves.toMatchObject({
+      success: true,
+      data: {
+        documentId: DOCUMENT_ID,
+        name: 'Notes',
+        folderName: 'Lore',
+        projectId: PROJECT_ID,
+        markdown: '# Latest from Yjs tail',
+        mode: 'full',
+        startLine: 1,
+        endLine: 1,
+        totalLines: 1,
+        complete: true,
+      },
+    });
+    expect(resolveDocumentForTool).toHaveBeenCalledWith(
+      ctx.supabase,
+      PROJECT_ID,
+      { documentName: 'Notes', folderName: 'Lore' },
+      ctx
+    );
+    expect(read).toHaveBeenCalledWith(ctx.supabase, DOCUMENT_ID);
+  });
+
+  it('defaults to the current document when no selector is supplied', async () => {
+    read.mockResolvedValue(state());
+    await readDocument.execute({ mode: 'outline' }, ctx);
+    expect(resolveDocumentForTool).toHaveBeenCalledWith(ctx.supabase, PROJECT_ID, {}, ctx);
+  });
+
+  it('returns safe ambiguity candidates without reading state', async () => {
+    const candidates = [
+      {
+        id: DOCUMENT_ID,
+        name: 'Guide',
+        folderId: null,
+        folderName: null,
+        updatedAt: '2026-07-15T00:00:00.000Z',
+      },
+    ];
+    resolveDocumentForTool.mockResolvedValue({
+      ok: false,
+      code: 'AMBIGUOUS',
+      error: 'Multiple documents named "Guide" were found in this project.',
+      candidates,
+    });
+
+    await expect(readDocument.execute({ documentName: 'Guide' }, ctx)).resolves.toEqual({
+      success: false,
+      error: 'Multiple documents named "Guide" were found in this project.',
+      data: { candidates },
+    });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['outline', { mode: 'outline' }, '# One\n## Child\n# Two', { startLine: 1, endLine: 4, complete: false }],
+    ['heading', { mode: 'heading', heading: 'One' }, '# One\nbody\n## Child', { startLine: 1, endLine: 3, complete: false }],
+    ['lines', { mode: 'lines', startLine: 2, endLine: 3 }, 'body\n## Child', { startLine: 2, endLine: 3, complete: false }],
+  ])('returns bounded %s reads with range metadata', async (_mode, params, markdown, metadata) => {
+    read.mockResolvedValue(state('# One\nbody\n## Child\n# Two'));
+    await expect(readDocument.execute(params, ctx)).resolves.toMatchObject({
+      success: true,
+      data: { mode: params.mode, markdown, totalLines: 4, ...metadata },
+    });
+  });
+
+  it('falls back to an outline instead of returning an oversized full body', async () => {
+    const markdown = `# Start\n${'x'.repeat(12_100)}\n## Details\nbody`;
+    read.mockResolvedValue(state(markdown));
+
+    const result = await readDocument.execute({}, ctx);
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        requestedMode: 'full',
+        mode: 'outline',
+        markdown: '# Start\n## Details',
+        complete: false,
+        fallbackReason: expect.stringMatching(/too large/i),
+        _llmNote: expect.stringMatching(/heading|lines/i),
+      },
+    });
+    expect((result.data as { markdown: string }).markdown).not.toContain('x'.repeat(100));
+  });
+
+  it.each([
+    { heading: 'One' },
+    { mode: 'heading' },
+    { mode: 'heading', heading: 'One', startLine: 1 },
+    { mode: 'lines', startLine: 1 },
+    { mode: 'lines', startLine: 1, endLine: 2, heading: 'One' },
+    { mode: 'outline', endLine: 2 },
+    { mode: 'full', heading: 'One' },
+  ])('rejects incompatible mode parameters: %p', async (params) => {
+    await expect(readDocument.execute(params, ctx)).resolves.toMatchObject({ success: false });
+    expect(resolveDocumentForTool).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
   });
 
   it('previews an exact token/hash and always uses post-preview confirmation', async () => {

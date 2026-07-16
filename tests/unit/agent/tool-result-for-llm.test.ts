@@ -27,6 +27,30 @@ describe('compactToolContentForLlm', () => {
     expect(compactToolContentForLlm(raw, 'read_document')).toBe(raw);
   });
 
+  it.each(['outline', 'heading', 'lines'])('keeps in-budget %s read metadata unchanged', (mode) => {
+    const raw = JSON.stringify({
+      success: true,
+      displayHint: 'text',
+      data: {
+        documentId: '11111111-1111-4111-8111-111111111111',
+        projectId: '22222222-2222-4222-8222-222222222222',
+        name: 'Guide',
+        folderName: 'Lore',
+        mode,
+        requestedMode: mode === 'outline' ? 'full' : undefined,
+        markdown: '# Selected',
+        startLine: 10,
+        endLine: 12,
+        totalLines: 100,
+        complete: false,
+        fallbackReason: mode === 'outline' ? 'Full read was too large.' : undefined,
+        token: { epoch: 2, revision: 4 },
+      },
+    });
+
+    expect(compactToolContentForLlm(raw, 'read_document')).toBe(raw);
+  });
+
   it('compacts query_assets rows while preserving summary', () => {
     const rows = Array.from({ length: 80 }, (_, i) => ({
       name: `row-${i}`,
@@ -63,9 +87,18 @@ describe('compactToolContentForLlm', () => {
       success: true,
       displayHint: 'text',
       data: {
+        name: 'Guide',
+        folderName: 'Lore',
+        mode: 'lines',
+        requestedMode: 'lines',
         documentId: '11111111-1111-4111-8111-111111111111',
         projectId: '22222222-2222-4222-8222-222222222222',
         markdown,
+        startLine: 20,
+        endLine: 4_019,
+        totalLines: 10_000,
+        complete: false,
+        fallbackReason: 'Upstream bounded selection.',
         token: { epoch: 2, revision: 4 },
       },
     });
@@ -77,6 +110,15 @@ describe('compactToolContentForLlm', () => {
         totalCharacters: number;
         visibleCharacters: number;
         truncated: boolean;
+        complete: boolean;
+        name: string;
+        folderName: string;
+        mode: string;
+        requestedMode: string;
+        startLine: number;
+        endLine: number;
+        totalLines: number;
+        fallbackReason: string;
         _llmNote: string;
       };
     };
@@ -86,6 +128,17 @@ describe('compactToolContentForLlm', () => {
     expect(compact.data.totalCharacters).toBe(markdown.length);
     expect(compact.data.visibleCharacters).toBeLessThan(markdown.length);
     expect(compact.data.truncated).toBe(true);
+    expect(compact.data).toMatchObject({
+      name: 'Guide',
+      folderName: 'Lore',
+      mode: 'lines',
+      requestedMode: 'lines',
+      startLine: 20,
+      endLine: 4_019,
+      totalLines: 10_000,
+      complete: false,
+      fallbackReason: 'Upstream bounded selection.',
+    });
     expect(compact.data._llmNote).toContain(
       `${compact.data.visibleCharacters} of ${compact.data.totalCharacters} characters`
     );
