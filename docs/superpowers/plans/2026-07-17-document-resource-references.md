@@ -50,7 +50,7 @@ Add rejection cases for invalid UUIDs, expression properties, event handlers, ch
 Run:
 
 ```bash
-npm test -- src/lib/documents/sanctionedMdx.test.ts --runInBand
+npm run test:unit -- src/lib/documents/sanctionedMdx.test.ts --runInBand
 ```
 
 Expected: FAIL because both component names are unsupported.
@@ -100,7 +100,7 @@ Update `createSanctionedMdxDescriptors` to use each entry's actual `kind` and `h
 - [ ] **Step 5: Run focused tests**
 
 ```bash
-npm test -- src/lib/documents/sanctionedMdx.test.ts tests/unit/documents/sanctioned-mdx-editor-wiring.test.ts --runInBand
+npm run test:unit -- src/lib/documents/sanctionedMdx.test.ts tests/unit/documents/sanctioned-mdx-editor-wiring.test.ts --runInBand
 ```
 
 Expected: PASS.
@@ -131,7 +131,7 @@ Add editor-level cases for text edits, moving a whole block, splitting, merging,
 - [ ] **Step 2: Verify failure**
 
 ```bash
-npm test -- tests/unit/documents/document-block-identity.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/document-block-identity.test.ts --runInBand
 ```
 
 Expected: FAIL because no block identity plugin exists.
@@ -192,7 +192,7 @@ Add the plugin before collaboration in `MdxDocumentEditor`. Add it to `headlessD
 - [ ] **Step 7: Run regression tests**
 
 ```bash
-npm test -- tests/unit/documents/document-block-identity.test.ts tests/unit/documents/document-content-codec.test.ts tests/unit/documents/document-collaboration-session.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/document-block-identity.test.ts tests/unit/documents/document-content-codec.test.ts tests/unit/documents/document-collaboration-session.test.ts --runInBand
 ```
 
 Expected: PASS.
@@ -264,7 +264,7 @@ Read transport state, normalize it, and append `normalizationUpdateBase64` throu
 - [ ] **Step 5: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/document-content-codec.test.ts tests/unit/documents/document-reference-blocks.test.ts tests/unit/documents/document-state-gateway.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/document-content-codec.test.ts tests/unit/documents/document-reference-blocks.test.ts tests/unit/documents/document-state-gateway.test.ts --runInBand
 ```
 
 Expected: PASS and normalization is idempotent.
@@ -325,7 +325,7 @@ The block loader calls `ensureDocumentReferenceBlocks` and rejects a project mis
 - [ ] **Step 4: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/resource-reference-service.test.ts tests/unit/database/document-resource-references.rls.behavior.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/resource-reference-service.test.ts tests/unit/database/document-resource-references.rls.behavior.test.ts --runInBand
 ```
 
 Expected: PASS for owner/admin/editor/viewer reads; outsider and cross-project targets return the same unavailable result.
@@ -384,7 +384,7 @@ Keep `Callout`/`Details` on `GenericJsxEditor`, render `BlockAnchor` as `null`, 
 - [ ] **Step 5: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/resource-reference-editor.test.tsx tests/unit/documents/sanctioned-mdx-editor-wiring.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/resource-reference-editor.test.tsx tests/unit/documents/sanctioned-mdx-editor-wiring.test.ts --runInBand
 ```
 
 Expected: PASS.
@@ -431,7 +431,7 @@ Before insertion or replacement, resolve the selected target once more. If it be
 - [ ] **Step 4: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/resource-reference-picker.test.tsx tests/unit/documents/resource-reference-editor.test.tsx --runInBand
+npm run test:unit -- tests/unit/documents/resource-reference-picker.test.tsx tests/unit/documents/resource-reference-editor.test.tsx --runInBand
 ```
 
 Expected: PASS.
@@ -469,7 +469,7 @@ Read `field` with `useSearchParams`. Add `data-field-id={f.id}` to every field r
 - [ ] **Step 4: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/document-reference-navigation.test.tsx --runInBand
+npm run test:unit -- tests/unit/documents/document-reference-navigation.test.tsx --runInBand
 ```
 
 Expected: PASS.
@@ -524,7 +524,7 @@ Add Agent edit-operation tests proving `replace_text`, insert, append, and delet
 - [ ] **Step 4: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/document-export-service.test.ts tests/unit/documents/document-export-route.test.ts tests/unit/agent/document-tools.test.ts tests/unit/agent/document-edit-operations.test.ts tests/unit/documents/document-version-service.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/document-export-service.test.ts tests/unit/documents/document-export-route.test.ts tests/unit/agent/document-tools.test.ts tests/unit/agent/document-edit-operations.test.ts tests/unit/documents/document-version-service.test.ts --runInBand
 ```
 
 Expected: PASS.
@@ -579,7 +579,7 @@ git commit -m "test: cover document resource references end to end"
 - [ ] **Step 1: Run document unit tests**
 
 ```bash
-npm test -- tests/unit/documents src/lib/documents/sanctionedMdx.test.ts --runInBand
+npm run test:unit -- tests/unit/documents src/lib/documents/sanctionedMdx.test.ts --runInBand
 ```
 
 Expected: PASS.
@@ -587,7 +587,7 @@ Expected: PASS.
 - [ ] **Step 2: Run Agent regressions**
 
 ```bash
-npm test -- tests/unit/agent/document-tools.test.ts tests/unit/agent/project-document-chunking.test.ts --runInBand
+npm run test:unit -- tests/unit/agent/document-tools.test.ts tests/unit/agent/project-document-chunking.test.ts --runInBand
 ```
 
 Expected: PASS.
