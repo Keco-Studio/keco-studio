@@ -99,6 +99,7 @@ describe('compactToolContentForLlm', () => {
         totalLines: 10_000,
         complete: false,
         fallbackReason: 'Upstream bounded selection.',
+        _llmNote: 'Call read_document with heading or lines.',
         token: { epoch: 2, revision: 4 },
       },
     });
@@ -142,6 +143,7 @@ describe('compactToolContentForLlm', () => {
     expect(compact.data._llmNote).toContain(
       `${compact.data.visibleCharacters} of ${compact.data.totalCharacters} characters`
     );
+    expect(compact.data._llmNote).toContain('Call read_document with heading or lines.');
     expect(compact.data._llmNote).toMatch(/do not propose a full-document replacement/i);
   });
 });

@@ -43,6 +43,7 @@ type ReadDocumentData = {
   totalLines?: number;
   complete?: boolean;
   fallbackReason?: string;
+  _llmNote?: string;
   token?: unknown;
 };
 
@@ -85,7 +86,8 @@ function compactReadDocumentPayload(result: ToolResult): ToolResult {
   const totalCharacters = data.markdown.length;
 
   const build = (visibleCharacters: number): ToolResult => {
-    const note = `This document was truncated for LLM context. You can see ${visibleCharacters} of ${totalCharacters} characters. Do not propose a full-document replacement from this partial content because unseen content would be lost. Tell the user the read is partial and ask them to narrow the operation.`;
+    const truncationNote = `This document was truncated for LLM context. You can see ${visibleCharacters} of ${totalCharacters} characters. Do not propose a full-document replacement from this partial content because unseen content would be lost. Tell the user the read is partial and ask them to narrow the operation.`;
+    const note = data._llmNote ? `${data._llmNote} ${truncationNote}` : truncationNote;
     return {
       success: result.success,
       error: result.error,
