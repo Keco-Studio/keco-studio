@@ -196,7 +196,7 @@ export type SSEEvent =
   | { type: 'tool_progress'; tool: string; progress: ImportProgressEvent }
   | { type: 'tool_result'; tool: string; data: unknown; displayHint?: DisplayHint; success?: boolean; error?: string }
   | { type: 'confirmation_request'; actionId: string; tool: string; args: unknown; confirmationMode: ConfirmationMode; preview?: unknown }
-  | { type: 'cache_invalidated'; invalidations: AgentInvalidation[] }
+  | { type: 'cache_invalidated'; invalidations: AgentInvalidation[]; paths?: string[] }
   | { type: 'done' }
   | { type: 'error'; message: string };
 

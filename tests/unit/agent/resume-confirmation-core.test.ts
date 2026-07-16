@@ -213,6 +213,27 @@ describe('resumeAgentTurn confirmation integrity', () => {
     expect(events.at(-1)).toEqual({ type: 'cache_invalidated', invalidations });
   });
 
+  it('dual-writes legacy paths for library invalidations', async () => {
+    const invalidations = [{ type: 'library' as const, id: 'library-1' }];
+    executeImport.mockResolvedValue({
+      success: true,
+      data: { libraryId: 'library-1' },
+      invalidations,
+    });
+    getToolsForLlmAsync.mockResolvedValue([]);
+    streamLlm.mockImplementation(async function* () {
+      yield { type: 'finish', reason: 'stop' };
+    });
+
+    const events = await eventsThroughInvalidation(resumeInput());
+
+    expect(events.at(-1)).toEqual({
+      type: 'cache_invalidated',
+      invalidations,
+      paths: ['library-1'],
+    });
+  });
+
   it('re-checks the resolved tool permission against the current caller role', async () => {
     executeImport.mockResolvedValue({ success: true, data: {} });
 

@@ -78,6 +78,19 @@ function publicToolResult(result: ToolResult): ToolResult {
   return publicResult;
 }
 
+function cacheInvalidatedEvent(
+  invalidations: NonNullable<ToolResult['invalidations']>
+): Extract<SSEEvent, { type: 'cache_invalidated' }> {
+  const paths = invalidations.flatMap((invalidation) =>
+    invalidation.type === 'library' ? [invalidation.id] : []
+  );
+  return {
+    type: 'cache_invalidated',
+    invalidations,
+    ...(paths.length > 0 ? { paths } : {}),
+  };
+}
+
 interface ParsedArgs {
   args: Record<string, unknown>;
   /** Present only when the raw JSON could not be parsed into an object. */
@@ -610,7 +623,7 @@ async function* continueLoop(
         error: finalResult.error,
       };
       if (finalResult.invalidations && finalResult.invalidations.length > 0) {
-        yield { type: 'cache_invalidated', invalidations: finalResult.invalidations };
+        yield cacheInvalidatedEvent(finalResult.invalidations);
       }
       messages.push(assistantMessage);
       const publicResult = publicToolResult(finalResult);
@@ -640,7 +653,7 @@ async function* continueLoop(
       error: result.error,
     };
     if (result.invalidations && result.invalidations.length > 0) {
-      yield { type: 'cache_invalidated', invalidations: result.invalidations };
+      yield cacheInvalidatedEvent(result.invalidations);
     }
 
     messages.push(assistantMessage);
@@ -832,7 +845,7 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       error: result.error,
     };
     if (result.invalidations && result.invalidations.length > 0) {
-      yield { type: 'cache_invalidated', invalidations: result.invalidations };
+      yield cacheInvalidatedEvent(result.invalidations);
     }
     // Persist assistant+tool_calls only after we have the tool result, so a
     // failed execution never leaves orphan tool_calls in the DB.

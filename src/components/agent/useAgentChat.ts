@@ -41,6 +41,16 @@ interface ParsedSSE {
   [key: string]: unknown;
 }
 
+export function parseAgentInvalidations(event: ParsedSSE): AgentInvalidation[] {
+  if (Array.isArray(event.invalidations)) {
+    return event.invalidations as AgentInvalidation[];
+  }
+  if (!Array.isArray(event.paths)) return [];
+  return event.paths
+    .filter((path): path is string => typeof path === 'string')
+    .map((id) => ({ type: 'library' as const, id }));
+}
+
 export async function invalidateAgentCaches(
   queryClient: QueryClient,
   router: { refresh: () => void },
@@ -62,6 +72,7 @@ export async function invalidateAgentCaches(
     if (invalidation.documentId) {
       await queryClient.invalidateQueries({
         queryKey: queryKeys.document(invalidation.documentId),
+        exact: true,
       });
       await queryClient.invalidateQueries({
         queryKey: queryKeys.documentState(invalidation.documentId),
@@ -303,10 +314,7 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'cache_invalidated': {
-            const invalidations = Array.isArray(event.invalidations)
-              ? (event.invalidations as AgentInvalidation[])
-              : [];
-            void invalidateCaches(invalidations);
+            void invalidateCaches(parseAgentInvalidations(event));
             break;
           }
           case 'error': {
