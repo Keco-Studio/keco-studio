@@ -316,7 +316,10 @@ function configuredTrustedMedia(): TrustedMediaConfiguration | null {
   const configuredValue = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
   const environment = process.env.NODE_ENV ?? '';
   const cacheKey = `${environment}\u0000${configuredValue}`;
-  if (trustedMediaConfigurationKey === cacheKey) {
+  if (
+    trustedMediaConfigurationKey === cacheKey &&
+    trustedMediaConfiguration !== undefined
+  ) {
     return trustedMediaConfiguration;
   }
   trustedMediaConfigurationKey = cacheKey;
