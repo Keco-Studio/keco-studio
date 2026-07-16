@@ -22,6 +22,7 @@ jest.mock('../../../src/lib/services/authorizationService', () => {
 import {
   getDocument,
   createDocument,
+  listDocuments,
   moveDocument,
   DocumentNotFoundError,
 } from '../../../src/lib/services/documentService';
@@ -78,6 +79,63 @@ function makeSupabase(cfg: {
   };
   return { from } as unknown as SupabaseClient;
 }
+
+describe('documentService.listDocuments', () => {
+  it('fetches deterministic, non-overlapping pages until the first short page', async () => {
+    const pages = [1000, 1000, 2].map((length, pageIndex) =>
+      Array.from({ length }, (_, rowIndex) => {
+        const ordinal = pageIndex * 1000 + rowIndex;
+        return {
+          id: `doc-${ordinal.toString().padStart(4, '0')}`,
+          project_id: PROJECT_A,
+          folder_id: null,
+          name: `Document ${ordinal}`,
+          created_at: '2026-07-16T00:00:00.000Z',
+          updated_at: '2026-07-16T00:00:00.000Z',
+        };
+      })
+    );
+    const orderCalls: Array<[string, { ascending: boolean }]> = [];
+    const rangeCalls: Array<[number, number]> = [];
+    const builder = {
+      select: jest.fn(),
+      eq: jest.fn(),
+      order: jest.fn((column: string, options: { ascending: boolean }) => {
+        orderCalls.push([column, options]);
+        return builder;
+      }),
+      range: jest.fn(async (from: number, to: number) => {
+        rangeCalls.push([from, to]);
+        const page = pages[rangeCalls.length - 1] ?? [];
+        return { data: page, error: null };
+      }),
+    };
+    builder.select.mockReturnValue(builder);
+    builder.eq.mockReturnValue(builder);
+    const supabase = {
+      from: jest.fn(() => builder),
+    } as unknown as SupabaseClient;
+
+    const result = await listDocuments(supabase, PROJECT_A);
+
+    expect(rangeCalls).toEqual([
+      [0, 999],
+      [1000, 1999],
+      [2000, 2999],
+    ]);
+    expect(orderCalls).toEqual([
+      ['created_at', { ascending: true }],
+      ['id', { ascending: true }],
+      ['created_at', { ascending: true }],
+      ['id', { ascending: true }],
+      ['created_at', { ascending: true }],
+      ['id', { ascending: true }],
+    ]);
+    expect(result).toHaveLength(2002);
+    expect(result.map((row) => row.id)).toEqual(pages.flat().map((row) => row.id));
+    expect(new Set(result.map((row) => row.id)).size).toBe(2002);
+  });
+});
 
 describe('documentService.getDocument', () => {
   it('throws DocumentNotFoundError when the row is missing or hidden by RLS', async () => {

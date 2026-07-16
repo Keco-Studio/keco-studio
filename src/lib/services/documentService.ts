@@ -42,6 +42,7 @@ export type DocumentSummary = Pick<
 const DOCUMENT_RECORD_COLUMNS =
   'id, project_id, folder_id, name, content, created_by, created_at, updated_at';
 const DOCUMENT_SUMMARY_COLUMNS = 'id, project_id, folder_id, name, created_at, updated_at';
+const DOCUMENT_LIST_PAGE_SIZE = 1000;
 
 /**
  * Thrown when a document does not exist OR the caller cannot read it (RLS makes
@@ -116,17 +117,29 @@ export async function listDocuments(
 
   await verifyProjectAccess(supabase, projectId);
 
-  const { data, error } = await supabase
-    .from('documents')
-    .select(DOCUMENT_SUMMARY_COLUMNS)
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: true });
+  const documents: DocumentSummary[] = [];
+  let from = 0;
 
-  if (error) {
-    throw error;
+  while (true) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SUMMARY_COLUMNS)
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + DOCUMENT_LIST_PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    const page = (data ?? []) as DocumentSummary[];
+    documents.push(...page);
+    if (page.length < DOCUMENT_LIST_PAGE_SIZE) break;
+    from += DOCUMENT_LIST_PAGE_SIZE;
   }
 
-  return (data ?? []) as DocumentSummary[];
+  return documents;
 }
 
 /**
