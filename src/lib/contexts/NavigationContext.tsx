@@ -27,6 +27,7 @@ type NavigationContextType = {
   currentLibraryId: string | null;
   currentLibraryName: string | null;
   currentAssetId: string | null;
+  currentDocumentId: string | null;
   currentFolderId: string | null;
   currentFolderName: string | null;
   isPredefinePage: boolean;
@@ -66,6 +67,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const currentProjectId = routeParams.projectId;
   const currentLibraryId = routeParams.libraryId;
   const currentAssetId = routeParams.assetId;
+  const currentDocumentId = routeParams.documentId;
   const currentFolderIdFromUrl = routeParams.folderId;
 
   // Current folder: from URL (routeParams) or from library's folder_id
@@ -449,6 +451,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     currentLibraryId,
     currentLibraryName: libraryName,
     currentAssetId,
+    currentDocumentId,
     currentFolderId,
     currentFolderName: folderName,
     isPredefinePage: routeParams.isPredefinePage,

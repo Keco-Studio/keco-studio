@@ -10,6 +10,16 @@ import {
   invalidateLibraryData,
   invalidateProjectData,
 } from '@/lib/queryInvalidation';
+import {
+  DOCUMENT_UPDATED_EVENT,
+  projectSidebarTopic,
+  type DocumentUpdatedPayload,
+} from '@/lib/documents/documentBroadcast';
+import {
+  notifyProjectDocumentUpdate,
+  registerProjectDocumentChannel,
+} from '@/lib/documents/projectDocumentChannel';
+import { queryKeys } from '@/lib/utils/queryKeys';
 
 export type UseSidebarRealtimeParams = {
   supabase: SupabaseClient;
@@ -146,8 +156,13 @@ export function useSidebarRealtime({
   useEffect(() => {
     if (!currentProjectId || !userId) return;
 
+    let unregisterProjectChannel = () => {};
     const foldersChannel = supabase
-      .channel(`folders:project:${currentProjectId}`)
+      // Single source of truth for the topic string, shared with the broadcast
+      // sender (documentBroadcast.projectSidebarTopic).
+      .channel(projectSidebarTopic(currentProjectId), {
+        config: { private: true },
+      })
       .on(
         'postgres_changes',
         {
@@ -172,8 +187,36 @@ export function useSidebarRealtime({
           }
         }
       )
+      // Documents are broadcast-only (not in the realtime publication, GitHub
+      // #208). Piggyback their change notifications on this existing channel so
+      // the sidebar refreshes without adding a sixth channel (GitHub #216).
+      .on(
+        'broadcast',
+        { event: DOCUMENT_UPDATED_EVENT },
+        (message) => {
+          const payload = message.payload as DocumentUpdatedPayload | undefined;
+          // Always refresh the sidebar tree (create/rename/move/delete/save).
+          void queryClient.invalidateQueries({
+            queryKey: queryKeys.documents(currentProjectId),
+          });
+          // For content saves and renames also refresh the OPEN document so a
+          // remote body / renamed title does not keep showing stale values.
+          if (payload?.documentId) {
+            void queryClient.invalidateQueries({
+              queryKey: queryKeys.document(payload.documentId),
+            });
+            notifyProjectDocumentUpdate(payload);
+          }
+        }
+      )
       .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) {
+        if (status === 'SUBSCRIBED') {
+          unregisterProjectChannel();
+          unregisterProjectChannel = registerProjectDocumentChannel(
+            currentProjectId,
+            foldersChannel
+          );
+        } else if (status === 'CHANNEL_ERROR' && err) {
           console.error('[Sidebar] Folders channel ERROR:', err);
         } else if (status === 'TIMED_OUT') {
           console.warn('[Sidebar] Folders channel TIMED OUT');
@@ -181,6 +224,7 @@ export function useSidebarRealtime({
       });
 
     return () => {
+      unregisterProjectChannel();
       supabase.removeChannel(foldersChannel);
     };
   }, [currentProjectId, userId, supabase, queryClient]);

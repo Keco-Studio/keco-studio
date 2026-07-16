@@ -23,12 +23,18 @@ import { deleteLibrary } from './delete-library';
 import { renameLibrary } from './rename-library';
 import { listProjectStructure } from './list-project-structure';
 import { semanticSearch } from './semantic-search';
+import { createDocumentTool } from './create-document';
+import { readDocument } from './read-document';
+import { proposeDocumentEdit } from './propose-document-edit';
 import { allSkills } from '../workflows';
 
 const tools: AgentTool[] = [
   listProjectStructure,
   queryAssets,
   semanticSearch,
+  createDocumentTool,
+  readDocument,
+  proposeDocumentEdit,
   queryScriptLines,
   addField,
   createAsset,

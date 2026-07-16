@@ -33,8 +33,19 @@ import { AddLibraryMenu } from "@/components/libraries/AddLibraryMenu";
 import { Project } from "@/lib/services/projectService";
 import { Library, deleteLibrary, moveLibraryToFolder } from "@/lib/services/libraryService";
 import { Folder, deleteFolder } from "@/lib/services/folderService";
+import {
+  updateDocumentName,
+  moveDocument,
+  type DocumentRecord,
+  type DocumentSummary,
+} from "@/lib/services/documentService";
+import { broadcastProjectDocumentUpdate } from "@/lib/documents/projectDocumentChannel";
+import { flushOpenDocumentEditor } from "@/lib/documents/documentFlushRegistry";
+import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
+import { MoveDocumentModal } from "@/components/documents/MoveDocumentModal";
 import { useSidebarProjects } from "./hooks/useSidebarProjects";
 import { useSidebarFoldersLibraries } from "./hooks/useSidebarFoldersLibraries";
+import { useSidebarDocuments } from "./hooks/useSidebarDocuments";
 import { useSidebarModals } from "./hooks/useSidebarModals";
 import { useSidebarContextMenu } from "./hooks/useSidebarContextMenu";
 import { SidebarTreeView } from "./components/SidebarTreeView";
@@ -62,6 +73,14 @@ import {
 } from '@/lib/queryInvalidation';
 import styles from "./Sidebar.module.css";
 
+const ImportDocumentModal = dynamic(
+  () =>
+    import("@/components/documents/ImportDocumentModal").then(
+      (module) => module.ImportDocumentModal
+    ),
+  { ssr: false }
+);
+
 const MIN_SIDEBAR_WIDTH = 267;
 const MAX_SIDEBAR_WIDTH = 400;
 const DEFAULT_SIDEBAR_WIDTH = 267; // 16.6875rem
@@ -84,6 +103,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     currentLibraryId,
     currentFolderId,
     currentAssetId,
+    currentDocumentId,
     isPredefinePage,
     isLibraryPage,
   } = useNavigation();
@@ -93,10 +113,11 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       libraryId: currentLibraryId,
       folderId: currentFolderId,
       assetId: currentAssetId,
+      documentId: currentDocumentId,
       isPredefinePage,
       isLibraryPage,
     }),
-    [currentProjectId, currentLibraryId, currentFolderId, currentAssetId, isPredefinePage, isLibraryPage]
+    [currentProjectId, currentLibraryId, currentFolderId, currentAssetId, currentDocumentId, isPredefinePage, isLibraryPage]
   );
   const supabase = useSupabase();
   const queryClient = useQueryClient();
@@ -165,9 +186,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     importingScriptFolderId,
     openImportScript,
     closeImportScriptModal,
+    showDocumentModal,
+    openNewDocument,
+    closeDocumentModal,
   } = modals;
 
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [showImportDocumentModal, setShowImportDocumentModal] = useState(false);
   const [addButtonRef, setAddButtonRef] = useState<HTMLButtonElement | null>(null);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [editingKey, setEditingKey] = useState<string | null>(null);
@@ -195,6 +220,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const [isMovingLibrary, setIsMovingLibrary] = useState(false);
   const [moveFolderSearch, setMoveFolderSearch] = useState('');
   const [useIndependentLibrary, setUseIndependentLibrary] = useState(false);
+  const [movingDocumentId, setMovingDocumentId] = useState<string | null>(null);
+  const [isMovingDocument, setIsMovingDocument] = useState(false);
   const resizeStartX = useRef(0);
   const resizeStartWidth = useRef(DEFAULT_SIDEBAR_WIDTH);
   const { contextMenu, openContextMenu, closeContextMenu } = useSidebarContextMenu();
@@ -267,6 +294,38 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
             entityType: 'folder',
           });
           showSuccessToast('Folder name updated');
+        } else if (key.startsWith('document-')) {
+          const id = key.replace('document-', '');
+          const documentsKey = currentIds.projectId
+            ? queryKeys.documents(currentIds.projectId)
+            : null;
+          if (documentsKey) {
+            queryClient.setQueryData<DocumentSummary[]>(documentsKey, (old) =>
+              old ? old.map((doc) => (doc.id === id ? { ...doc, name: trimmed } : doc)) : old
+            );
+          }
+          try {
+            await updateDocumentName(supabase, id, trimmed);
+            queryClient.setQueryData<DocumentRecord>(
+              queryKeys.document(id),
+              (old) => (old ? { ...old, name: trimmed } : old)
+            );
+            if (currentIds.projectId) {
+              void broadcastProjectDocumentUpdate({
+                documentId: id,
+                projectId: currentIds.projectId,
+                name: trimmed,
+                action: 'rename',
+              });
+            }
+            showSuccessToast('Document name updated');
+          } catch (docErr) {
+            if (currentIds.projectId) {
+              queryClient.invalidateQueries({ queryKey: queryKeys.documents(currentIds.projectId) });
+            }
+            queryClient.invalidateQueries({ queryKey: queryKeys.document(id) });
+            throw docErr;
+          }
         }
       } catch (err: unknown) {
         queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -282,7 +341,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         throw err;
       }
     },
-    [updateName, setError, currentIds.projectId, queryClient]
+    [updateName, setError, currentIds.projectId, queryClient, supabase]
   );
 
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
@@ -324,6 +383,8 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     libraries,
     isLoading: loadingFoldersAndLibraries,
   } = useSidebarFoldersLibraries(currentIds.projectId);
+
+  const { documents } = useSidebarDocuments(currentIds.projectId);
 
   const loadingFolders = loadingFoldersAndLibraries;
   const loadingLibraries = loadingFoldersAndLibraries;
@@ -425,16 +486,38 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
   }, []);
 
+  /**
+   * Flush open document autosave before leaving the editor route. If the flush
+   * fails we keep the user on the page (the editor shows the error) rather than
+   * navigating away and losing unsaved edits.
+   */
+  const navigateWithFlush = useCallback(
+    async (href: string) => {
+      const flushed = await flushOpenDocumentEditor();
+      if (!flushed) {
+        Modal.error({
+          title: 'Unsaved changes could not be saved',
+          content:
+            'We could not save your latest changes. Please check your connection and try again before leaving this document.',
+          zIndex: 11000,
+        });
+        return;
+      }
+      router.push(href);
+    },
+    [router]
+  );
+
   // actions
   const handleProjectClick = async (projectId: string) => {
     await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
-    router.push(`/${projectId}`);
+    await navigateWithFlush(`/${projectId}`);
   };
 
   const handleLibraryClick = async (projectId: string, libraryId: string) => {
     await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     await queryClient.invalidateQueries({ queryKey: ['library', libraryId] });
-    router.push(`/${projectId}/${libraryId}`);
+    await navigateWithFlush(`/${projectId}/${libraryId}`);
     fetchAssets(libraryId);
   };
 
@@ -442,7 +525,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     await queryClient.invalidateQueries({ queryKey: ['library', libraryId] });
     await queryClient.invalidateQueries({ queryKey: ['asset', assetId] });
-    router.push(`/${projectId}/${libraryId}/${assetId}`);
+    await navigateWithFlush(`/${projectId}/${libraryId}/${assetId}`);
   };
 
   const handleAssetDelete = useCallback(async (
@@ -535,13 +618,19 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
       if (currentIds.projectId) {
         await queryClient.invalidateQueries({ queryKey: ['project', currentIds.projectId] });
         await queryClient.invalidateQueries({ queryKey: ['folder', id] });
-        router.push(`/${currentIds.projectId}/folder/${id}`);
+        await navigateWithFlush(`/${currentIds.projectId}/folder/${id}`);
       }
     } else if (key.startsWith('library-')) {
       const id = key.replace('library-', '');
       setSelectedFolderId(null); // Clear folder selection when library is selected
       const projId = libraries.find((l) => l.id === id)?.project_id || currentIds.projectId || '';
       await handleLibraryClick(projId, id);
+    } else if (key.startsWith('document-')) {
+      const id = key.replace('document-', '');
+      setSelectedFolderId(null);
+      if (currentIds.projectId) {
+        await navigateWithFlush(`/${currentIds.projectId}/doc/${id}`);
+      }
     } else if (key.startsWith('asset-')) {
       const assetId = key.replace('asset-', '');
       setSelectedFolderId(null); // Clear folder selection when asset is selected
@@ -581,7 +670,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (!node || !node.key) return;
 
     const rawKey = String(node.key);
-    let type: 'project' | 'library' | 'folder' | 'asset' | null = null;
+    let type: 'project' | 'library' | 'folder' | 'asset' | 'document' | null = null;
     let id: string | null = null;
 
     if (rawKey.startsWith('folder-')) {
@@ -590,6 +679,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     } else if (rawKey.startsWith('library-')) {
       type = 'library';
       id = rawKey.replace('library-', '');
+    } else if (rawKey.startsWith('document-')) {
+      type = 'document';
+      id = rawKey.replace('document-', '');
     } else if (rawKey.startsWith('asset-')) {
       type = 'asset';
       id = rawKey.replace('asset-', '');
@@ -607,7 +699,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   };
 
   // Context menu handlers
-  const handleContextMenu = useCallback((e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset', id: string) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, type: 'project' | 'library' | 'folder' | 'asset' | 'document', id: string) => {
     e.preventDefault();
     e.stopPropagation();
     // Get the element that triggered the context menu
@@ -619,6 +711,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     currentIds,
     folders,
     libraries,
+    documents,
     {
       router,
       userRole,
@@ -710,6 +803,71 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     }
   }, [movingLibraryId, targetFolderId, useIndependentLibrary, libraries, supabase, currentIds.projectId, queryClient, expandFolder]);
 
+  const openMoveDocument = useCallback((documentId: string) => {
+    if (userRole !== 'admin' && userRole !== 'editor') return;
+    setMovingDocumentId(documentId);
+  }, [userRole]);
+
+  const openNewDocumentInFolder = useCallback((folderId: string) => {
+    if (userRole !== 'admin' && userRole !== 'editor') return;
+    setSelectedFolderId(folderId);
+    openNewDocument();
+  }, [openNewDocument, userRole]);
+
+  const handleConfirmMoveDocument = useCallback(async (folderId: string | null) => {
+    if (!movingDocumentId) return;
+    setIsMovingDocument(true);
+    try {
+      await moveDocument(supabase, movingDocumentId, { folderId });
+      if (currentIds.projectId) {
+        void broadcastProjectDocumentUpdate({
+          documentId: movingDocumentId,
+          projectId: currentIds.projectId,
+          action: 'move',
+        });
+        await queryClient.invalidateQueries({ queryKey: queryKeys.documents(currentIds.projectId) });
+      }
+      expandFolder(folderId);
+      showSuccessToast('Document moved successfully');
+      setMovingDocumentId(null);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to move document';
+      setError(msg);
+      showErrorToast(msg);
+    } finally {
+      setIsMovingDocument(false);
+    }
+  }, [movingDocumentId, supabase, currentIds.projectId, queryClient, expandFolder]);
+
+  const handleDocumentCreated = useCallback(async (documentId: string) => {
+    closeDocumentModal();
+    const createdFolderId = selectedFolderId;
+    setSelectedFolderId(null);
+    if (currentIds.projectId) {
+      // Tell other clients a document appeared so their sidebar refreshes.
+      void broadcastProjectDocumentUpdate({
+        documentId,
+        projectId: currentIds.projectId,
+        action: 'create',
+      });
+      await queryClient.invalidateQueries({ queryKey: queryKeys.documents(currentIds.projectId) });
+      expandFolder(createdFolderId);
+      // Persist the currently open document before navigating to the new one;
+      // keep the user in place if that flush fails.
+      const flushed = await flushOpenDocumentEditor();
+      if (!flushed) {
+        Modal.error({
+          title: 'Unsaved changes could not be saved',
+          content:
+            'The new document was created, but we could not save your current document. Please retry before switching.',
+          zIndex: 11000,
+        });
+        return;
+      }
+      router.push(`/${currentIds.projectId}/doc/${documentId}`);
+    }
+  }, [closeDocumentModal, selectedFolderId, currentIds.projectId, queryClient, expandFolder, router]);
+
   const movingLibrary = useMemo(
     () => libraries.find((lib) => lib.id === movingLibraryId) ?? null,
     [libraries, movingLibraryId]
@@ -766,6 +924,9 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     fetchAssets,
     onProjectDeleteViaAPI: handleProjectDeleteViaAPI,
     openMoveLibrary,
+    openMoveDocument,
+    openNewDocumentInFolder,
+    startInlineRename: (key: string) => setEditingKey(key),
     userRole,
     requestDeleteConfirm: ({ title, content, onConfirm }) => {
       setDeleteConfirmState({
@@ -888,6 +1049,27 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     // selectedFolderId is already set when button is clicked
     setSelectedFolderId(null);
     openNewLibrary();
+  };
+
+  const handleCreateDocument = () => {
+    setShowAddMenu(false);
+    if (!currentIds.projectId) {
+      setError('Please select a project first');
+      return;
+    }
+    // New documents created from the top add button land at the project root.
+    setSelectedFolderId(null);
+    openNewDocument();
+  };
+
+  const handleImportDocument = () => {
+    setShowAddMenu(false);
+    if (!currentIds.projectId) {
+      setError('Please select a project first');
+      return;
+    }
+    setSelectedFolderId(null);
+    setShowImportDocumentModal(true);
   };
 
   const handleLogoClick = () => {
@@ -1124,6 +1306,35 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         onCreated={handleFolderCreated}
       />
 
+      <NewDocumentModal
+        open={showDocumentModal}
+        onClose={closeDocumentModal}
+        projectId={currentIds.projectId || ''}
+        folderId={selectedFolderId}
+        onCreated={handleDocumentCreated}
+      />
+
+      <ImportDocumentModal
+        open={showImportDocumentModal}
+        onClose={() => setShowImportDocumentModal(false)}
+        projectId={currentIds.projectId || ''}
+        folderId={selectedFolderId}
+        onImported={handleDocumentCreated}
+      />
+
+      <MoveDocumentModal
+        key={movingDocumentId ?? 'none'}
+        open={!!movingDocumentId}
+        folders={folders}
+        currentFolderId={documents.find((d) => d.id === movingDocumentId)?.folder_id ?? null}
+        submitting={isMovingDocument}
+        onClose={() => {
+          if (isMovingDocument) return;
+          setMovingDocumentId(null);
+        }}
+        onConfirm={handleConfirmMoveDocument}
+      />
+
       {editingFolderId && (
         <EditFolderModal
           open={showEditFolderModal}
@@ -1159,16 +1370,26 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
         open={showAddMenu}
         anchorElement={addButtonRef}
         onClose={() => setShowAddMenu(false)}
-        onCreateFolder={handleCreateFolder}
-        onCreateLibrary={handleCreateLibrary}
-        onGenerateFromDocument={() => {
-          setShowAddMenu(false);
-          if (!currentIds.projectId) {
-            setError('Please select a project first');
-            return;
-          }
-          router.push(`/${currentIds.projectId}/design-upload`);
-        }}
+        onCreateFolder={userRole === 'admin' ? handleCreateFolder : undefined}
+        onCreateLibrary={userRole === 'admin' ? handleCreateLibrary : undefined}
+        onCreateDocument={
+          userRole === 'admin' || userRole === 'editor' ? handleCreateDocument : undefined
+        }
+        onImportDocument={
+          userRole === 'admin' || userRole === 'editor' ? handleImportDocument : undefined
+        }
+        onGenerateFromDocument={
+          userRole === 'admin'
+            ? () => {
+                setShowAddMenu(false);
+                if (!currentIds.projectId) {
+                  setError('Please select a project first');
+                  return;
+                }
+                router.push(`/${currentIds.projectId}/design-upload`);
+              }
+            : undefined
+        }
       />
 
       {contextMenu && (

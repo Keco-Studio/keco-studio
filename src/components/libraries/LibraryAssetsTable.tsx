@@ -780,7 +780,7 @@ export function LibraryAssetsTable({
   useEffect(() => {
     const handleOpenAgentWithSelection = (event: KeyboardEvent) => {
       const isSelectionShortcut =
-        event.key.toLowerCase() === 'l' && (event.ctrlKey || event.metaKey);
+        (event.key === 'l' || event.key === 'L') && (event.ctrlKey || event.metaKey);
       if (!isSelectionShortcut) return;
       if (selectedCells.size === 0 && selectedRowIds.size === 0) return;
 

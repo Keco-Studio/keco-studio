@@ -1,0 +1,59 @@
+/* Theme MDXEditor to match the antd 5 dashboard tokens. */
+.editorFrame {
+  position: relative;
+  min-width: 0;
+}
+
+.editor {
+  --accentBase: var(--ant-color-primary, #1677ff);
+  --accentBorder: var(--ant-color-primary-border, #91caff);
+  font-family: inherit;
+  background: var(--ant-color-bg-container, #ffffff);
+  border: 1px solid var(--ant-color-border, #d9d9d9);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.contentEditable {
+  min-height: 60vh;
+  padding: 16px 24px;
+  color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.contentEditable:focus {
+  outline: none;
+}
+
+.hiddenFileInput {
+  display: none;
+}
+
+.sanctionedMdx {
+  margin: 12px 0;
+  padding: 10px 12px;
+  background: var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-left: 3px solid var(--ant-color-primary, #1677ff);
+  border-radius: 4px;
+}
+
+.sanctionedMdx[data-component='Details'] {
+  border-left-color: var(--ant-color-success, #52c41a);
+}
+
+:global(.document-collab-cursors) {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+  contain: layout paint;
+}
+
+:global(.document-collab-cursors > span > span > span) {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

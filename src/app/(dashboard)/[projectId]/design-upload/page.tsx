@@ -3,15 +3,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useSupabase } from '@/lib/SupabaseContext';
-import { getUserProjectRole, getCurrentUserId } from '@/lib/services/authorizationService';
+import { getUserProjectRole } from '@/lib/services/authorizationService';
 import { showErrorToast, showInfoToast } from '@/lib/utils/toast';
 import {
-  parseDocument,
   validateDesignFile,
   LARGE_DESIGN_TEXT_THRESHOLD,
 } from '@/lib/document-parser';
-import { uploadDocumentImages } from '@/lib/services/documentImageUpload';
 import { buildDesignMessage } from '@/lib/design-message';
+import { createImportedDocument } from '@/lib/documents/documentImportService';
 import { saveDesignHandoff, DESIGN_UPLOAD_EVENT } from '@/lib/design-upload-handoff';
 import { DocumentDropZone } from '@/components/design-upload/DocumentDropZone';
 import styles from './page.module.css';
@@ -64,35 +63,29 @@ export default function DesignUploadPage() {
 
     setSubmitting(true);
     try {
-      const { text, images } = await parseDocument(file);
-      const documentText = text.trim();
-      if (!documentText) {
-        showErrorToast('Could not extract any text from this file.');
-        return;
-      }
-
-      let imageUrls: string[] = [];
-      if (images.length > 0) {
-        try {
-          const userId = await getCurrentUserId(supabase);
-          imageUrls = await uploadDocumentImages(supabase, images, userId);
-          if (imageUrls.length < images.length) {
-            showInfoToast(
-              `${images.length - imageUrls.length} image(s) could not be processed and were skipped.`
-            );
-          }
-        } catch {
-          // best-effort: continue with a text-only design message
-        }
+      const imported = await createImportedDocument(supabase, {
+        projectId,
+        file,
+      });
+      if (imported.skippedImageCount > 0) {
+        showInfoToast(
+          `${imported.skippedImageCount} image(s) could not be processed and were skipped.`
+        );
       }
 
       const message = buildDesignMessage({
         fileName: file.name,
-        documentText,
+        documentText: imported.sourceText,
+        documentId: imported.document.id,
         additionalInstructions: instructions,
       });
 
-      saveDesignHandoff(projectId, { message, fileName: file.name, imageUrls });
+      saveDesignHandoff(projectId, {
+        message,
+        fileName: file.name,
+        imageUrls: imported.imageUrls,
+        documentId: imported.document.id,
+      });
       window.dispatchEvent(
         new CustomEvent(DESIGN_UPLOAD_EVENT, { detail: { projectId } })
       );

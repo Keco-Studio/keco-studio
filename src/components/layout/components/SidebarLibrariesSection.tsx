@@ -85,12 +85,12 @@ export function SidebarLibrariesSection({
     <>
       <div className={styles.sectionTitle}>
         <span>Libraries</span>
-        {userRole === 'admin' && (
+        {(userRole === 'admin' || userRole === 'editor') && (
           <button
             ref={addButtonRef}
             className={styles.addButton}
             onClick={onAddButtonClick}
-            title="Add new folder or library"
+            title="Add new folder, library, or document"
           >
             <Image src={addProjectIcon} alt="Add library" width={16} height={16} className="icon-16" />
           </button>

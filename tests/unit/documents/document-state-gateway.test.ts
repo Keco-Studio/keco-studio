@@ -1,0 +1,552 @@
+import type { SupabaseClient } from '@supabase/supabase-js';
+
+const markdownToYjsState = jest.fn(async (markdown: string) => `state:${markdown}`);
+const yjsStateToMarkdown = jest.fn(async () => '# Derived');
+const mergeYjsState = jest.fn(() => 'merged-state');
+
+jest.mock('@/lib/documents/documentContentCodec', () => ({
+  documentContentCodec: {
+    validate: jest.fn((markdown: string) => ({ markdown })),
+    markdownToYjsState,
+    yjsStateToMarkdown,
+    mergeYjsState,
+  },
+  mergeYjsState,
+}));
+
+import {
+  appendDocumentYjsUpdates,
+  compactDocumentState,
+  initializeDocumentState,
+  readDocumentState,
+  readDocumentTransportState,
+  replaceDocumentState,
+} from '@/lib/documents/documentStateGateway';
+import {
+  DocumentAccessError,
+  DocumentReadOnlyError,
+  DocumentStateConflictError,
+} from '@/lib/documents/documentStateTypes';
+
+const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
+const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
+const UPDATE_A = '33333333-3333-4333-8333-333333333333';
+const UPDATE_B = '44444444-4444-4444-8444-444444444444';
+const VERSION_ID = '55555555-5555-4555-8555-555555555555';
+
+type ResponseValue = { data: unknown; error: null | { code?: string; message?: string } };
+
+function makeSupabase(options: {
+  head?: ResponseValue;
+  heads?: ResponseValue[];
+  tail?: ResponseValue;
+  tailPages?: ResponseValue[];
+  append?: ResponseValue;
+  rpc?: ResponseValue;
+} = {}) {
+  const calls: Array<{ kind: string; value: unknown }> = [];
+  const head = options.head ?? {
+    data: {
+      id: DOCUMENT_ID,
+      project_id: PROJECT_ID,
+      content: '# Stored',
+      yjs_state: 'snapshot',
+      collab_epoch: 2,
+      collab_revision: 4,
+      updated_at: '2026-07-14T12:00:00.000Z',
+    },
+    error: null,
+  };
+  let headRead = 0;
+  const tail = options.tail ?? {
+    data: [
+      { id: UPDATE_A, update_data: 'tail-a', created_at: '2026-07-14T12:00:01.000Z' },
+      { id: UPDATE_B, update_data: 'tail-b', created_at: '2026-07-14T12:00:02.000Z' },
+    ],
+    error: null,
+  };
+
+  const from = jest.fn((table: string) => {
+    if (table === 'documents') {
+      const builder = {
+        select(columns: string) {
+          calls.push({ kind: 'document-select', value: columns });
+          return builder;
+        },
+        eq(column: string, value: unknown) {
+          calls.push({ kind: `document-eq:${column}`, value });
+          return builder;
+        },
+        single: async () => {
+          const heads = options.heads;
+          if (!heads?.length) return head;
+          const result = heads[Math.min(headRead, heads.length - 1)];
+          headRead += 1;
+          return result;
+        },
+      };
+      return builder;
+    }
+
+    const updateBuilder = {
+      select(columns: string) {
+        calls.push({ kind: 'tail-select', value: columns });
+        return updateBuilder;
+      },
+      eq(column: string, value: unknown) {
+        calls.push({ kind: `tail-eq:${column}`, value });
+        return updateBuilder;
+      },
+      order(column: string, config: unknown) {
+        calls.push({ kind: `tail-order:${column}`, value: config });
+        return updateBuilder;
+      },
+      range: async (from: number, to: number) => {
+        calls.push({ kind: 'tail-range', value: { from, to } });
+        const page = Math.floor(from / 1000);
+        return options.tailPages?.[page] ?? tail;
+      },
+      upsert: async (rows: unknown, config: unknown) => {
+        calls.push({ kind: 'tail-upsert', value: { rows, config } });
+        return options.append ?? { data: null, error: null };
+      },
+    };
+    return updateBuilder;
+  });
+
+  const rpc = jest.fn(async (name: string, args: unknown) => {
+    calls.push({ kind: `rpc:${name}`, value: args });
+    return options.rpc ?? {
+      data: [
+        {
+          collab_epoch: 2,
+          collab_revision: 5,
+          yjs_state: 'committed-state',
+          content: '# Committed',
+          updated_at: '2026-07-14T12:00:03.000Z',
+        },
+      ],
+      error: null,
+    };
+  });
+
+  return {
+    calls,
+    client: { from, rpc } as unknown as SupabaseClient,
+  };
+}
+
+describe('documentStateGateway.read', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('returns legacy Markdown without invoking the Yjs codec', async () => {
+    const { client } = makeSupabase({
+      head: {
+        data: {
+          id: DOCUMENT_ID,
+          project_id: PROJECT_ID,
+          content: '# Legacy',
+          yjs_state: null,
+          collab_epoch: 0,
+          collab_revision: 0,
+          updated_at: '2026-07-14T12:00:00.000Z',
+        },
+        error: null,
+      },
+      tail: { data: [], error: null },
+    });
+
+    await expect(readDocumentState(client, DOCUMENT_ID)).resolves.toMatchObject({
+      mode: 'legacy',
+      markdown: '# Legacy',
+      yjsStateBase64: null,
+      updateTail: [],
+      token: { epoch: 0, revision: 0 },
+    });
+    expect(yjsStateToMarkdown).not.toHaveBeenCalled();
+  });
+
+  it('derives current Markdown from the snapshot and ordered current-epoch tail', async () => {
+    const { client, calls } = makeSupabase();
+    const state = await readDocumentState(client, DOCUMENT_ID);
+
+    expect(state).toMatchObject({
+      documentId: DOCUMENT_ID,
+      projectId: PROJECT_ID,
+      mode: 'collaborative',
+      markdown: '# Derived',
+      token: { epoch: 2, revision: 4 },
+    });
+    expect(state.updateTail.map((update) => update.id)).toEqual([UPDATE_A, UPDATE_B]);
+    expect(yjsStateToMarkdown).toHaveBeenCalledWith('snapshot', ['tail-a', 'tail-b']);
+    expect(calls).toContainEqual({ kind: 'tail-eq:epoch', value: 2 });
+    expect(calls).toContainEqual({
+      kind: 'tail-select',
+      value: 'id, update_data, created_at',
+    });
+    expect(calls).toContainEqual({
+      kind: 'tail-range',
+      value: { from: 0, to: 999 },
+    });
+  });
+
+  it('reads every ordered update page before materializing Markdown', async () => {
+    const rows = Array.from({ length: 1_001 }, (_, index) => ({
+      id: `${String(index).padStart(8, '0')}-3333-4333-8333-333333333333`,
+      update_data: `tail-${index}`,
+      created_at: `2026-07-14T12:${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}.000Z`,
+    }));
+    const { client, calls } = makeSupabase({
+      tailPages: [
+        { data: rows.slice(0, 1_000), error: null },
+        { data: rows.slice(1_000), error: null },
+      ],
+    });
+
+    const state = await readDocumentState(client, DOCUMENT_ID);
+
+    expect(state.updateTail).toHaveLength(1_001);
+    expect(yjsStateToMarkdown).toHaveBeenCalledWith(
+      'snapshot',
+      rows.map((row) => row.update_data)
+    );
+    expect(calls.filter((call) => call.kind === 'tail-range')).toEqual([
+      { kind: 'tail-range', value: { from: 0, to: 999 } },
+      { kind: 'tail-range', value: { from: 1000, to: 1999 } },
+    ]);
+  });
+
+  it('returns transport state without materializing collaborative Markdown', async () => {
+    const { client } = makeSupabase();
+
+    const state = await readDocumentTransportState(client, DOCUMENT_ID);
+
+    expect(state).toMatchObject({
+      documentId: DOCUMENT_ID,
+      mode: 'collaborative',
+      updateTail: [{ id: UPDATE_A }, { id: UPDATE_B }],
+    });
+    expect(state).not.toHaveProperty('markdown');
+    expect(yjsStateToMarkdown).not.toHaveBeenCalled();
+  });
+
+  it('retries when compaction changes the head token between head and tail reads', async () => {
+    const oldHead = {
+      data: {
+        id: DOCUMENT_ID,
+        project_id: PROJECT_ID,
+        content: '# Old',
+        yjs_state: 'old-snapshot',
+        collab_epoch: 2,
+        collab_revision: 4,
+        updated_at: '2026-07-14T12:00:00.000Z',
+      },
+      error: null,
+    } satisfies ResponseValue;
+    const compactedHead = {
+      data: {
+        ...oldHead.data,
+        content: '# Compacted',
+        yjs_state: 'compacted-snapshot',
+        collab_revision: 5,
+        updated_at: '2026-07-14T12:00:03.000Z',
+      },
+      error: null,
+    } satisfies ResponseValue;
+    const { client, calls } = makeSupabase({
+      heads: [oldHead, compactedHead, compactedHead, compactedHead],
+      tail: { data: [], error: null },
+    });
+
+    const state = await readDocumentState(client, DOCUMENT_ID);
+
+    expect(state).toMatchObject({
+      markdown: '# Derived',
+      yjsStateBase64: 'compacted-snapshot',
+      token: { epoch: 2, revision: 5 },
+    });
+    expect(yjsStateToMarkdown).toHaveBeenCalledWith('compacted-snapshot', []);
+    expect(calls.filter((call) => call.kind === 'document-select')).toHaveLength(4);
+    expect(
+      calls.filter(
+        (call) =>
+          call.kind === 'tail-range' &&
+          (call.value as { from: number }).from === 0
+      )
+    ).toHaveLength(2);
+  });
+
+  it('throws a typed conflict after bounded unstable snapshot reads', async () => {
+    const head = (revision: number): ResponseValue => ({
+      data: {
+        id: DOCUMENT_ID,
+        project_id: PROJECT_ID,
+        content: `# Revision ${revision}`,
+        yjs_state: `snapshot-${revision}`,
+        collab_epoch: 2,
+        collab_revision: revision,
+        updated_at: `2026-07-14T12:00:0${revision}.000Z`,
+      },
+      error: null,
+    });
+    const { client, calls } = makeSupabase({
+      heads: [head(1), head(2), head(2), head(3), head(3), head(4)],
+      tail: { data: [], error: null },
+    });
+
+    await expect(readDocumentState(client, DOCUMENT_ID)).rejects.toBeInstanceOf(
+      DocumentStateConflictError
+    );
+    expect(calls.filter((call) => call.kind === 'document-select')).toHaveLength(6);
+  });
+
+  it('maps a hidden or missing document to DocumentAccessError', async () => {
+    const { client } = makeSupabase({
+      head: { data: null, error: { code: 'PGRST116' } },
+    });
+    await expect(readDocumentState(client, DOCUMENT_ID)).rejects.toBeInstanceOf(
+      DocumentAccessError
+    );
+  });
+});
+
+describe('documentStateGateway mutations', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('initializes Markdown and Yjs atomically through the guarded RPC', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: {
+        data: [
+          {
+            collab_epoch: 0,
+            collab_revision: 1,
+            yjs_state: 'state:# Initial',
+            content: '# Initial',
+            updated_at: '2026-07-14T12:00:00.000Z',
+          },
+        ],
+        error: null,
+      },
+    });
+    const state = await initializeDocumentState(client, DOCUMENT_ID, '# Initial');
+
+    expect(markdownToYjsState).toHaveBeenCalledWith('# Initial');
+    expect(calls).toContainEqual({
+      kind: 'rpc:initialize_document_collab_state',
+      value: {
+        p_document_id: DOCUMENT_ID,
+        p_expected_epoch: 0,
+        p_yjs_state: 'state:# Initial',
+        p_markdown: '# Initial',
+      },
+    });
+    expect(calls.findIndex((call) => call.kind === 'document-select')).toBeLessThan(
+      calls.findIndex((call) => call.kind === 'rpc:initialize_document_collab_state')
+    );
+    expect(state.token).toEqual({ epoch: 0, revision: 1 });
+  });
+
+  it('maps initialization CAS failures to DocumentStateConflictError', async () => {
+    const { client } = makeSupabase({
+      rpc: { data: null, error: { code: 'PT409', message: 'changed' } },
+    });
+    await expect(
+      initializeDocumentState(client, DOCUMENT_ID, '# Initial')
+    ).rejects.toBeInstanceOf(DocumentStateConflictError);
+  });
+
+  it('appends an idempotent batch through the guarded creator-stamping RPC', async () => {
+    const { client, calls } = makeSupabase();
+    await expect(
+      appendDocumentYjsUpdates(client, {
+        documentId: DOCUMENT_ID,
+        epoch: 2,
+        updates: [
+          { id: UPDATE_A, updateBase64: 'tail-a' },
+          { id: UPDATE_B, updateBase64: 'tail-b' },
+        ],
+      })
+    ).resolves.toEqual({ acceptedIds: [UPDATE_A, UPDATE_B] });
+
+    expect(calls).toContainEqual({
+      kind: 'rpc:append_document_yjs_updates',
+      value: {
+        p_document_id: DOCUMENT_ID,
+        p_epoch: 2,
+        p_updates: [
+          { id: UPDATE_A, updateBase64: 'tail-a' },
+          { id: UPDATE_B, updateBase64: 'tail-b' },
+        ],
+      },
+    });
+  });
+
+  it('maps stale append epochs to DocumentStateConflictError', async () => {
+    const { client } = makeSupabase({
+      rpc: { data: null, error: { code: 'PT409', message: 'epoch changed' } },
+    });
+    await expect(
+      appendDocumentYjsUpdates(client, {
+        documentId: DOCUMENT_ID,
+        epoch: 2,
+        updates: [{ id: UPDATE_A, updateBase64: 'tail-a' }],
+      })
+    ).rejects.toBeInstanceOf(DocumentStateConflictError);
+  });
+
+  it('compacts exactly the head and tail read under the expected token', async () => {
+    const { client, calls } = makeSupabase();
+    const state = await compactDocumentState(client, {
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+    });
+
+    expect(mergeYjsState).toHaveBeenCalledWith('snapshot', ['tail-a', 'tail-b']);
+    expect(yjsStateToMarkdown).toHaveBeenCalledWith('merged-state', []);
+    expect(calls).toContainEqual({
+      kind: 'rpc:compact_document_collab_state',
+      value: {
+        p_document_id: DOCUMENT_ID,
+        p_expected_epoch: 2,
+        p_expected_revision: 4,
+        p_included_update_ids: [UPDATE_A, UPDATE_B],
+        p_yjs_state: 'merged-state',
+        p_markdown: '# Derived',
+      },
+    });
+    expect(state.token).toEqual({ epoch: 2, revision: 5 });
+  });
+
+  it('rejects compaction when the caller token is already stale locally', async () => {
+    const { client, calls } = makeSupabase();
+    await expect(
+      compactDocumentState(client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 3 },
+      })
+    ).rejects.toBeInstanceOf(DocumentStateConflictError);
+    expect(calls.some((call) => call.kind.startsWith('rpc:compact'))).toBe(false);
+  });
+
+  it('restores a version with an exact pre-restore snapshot and distinct audit ids', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: {
+        data: [
+          {
+            collab_epoch: 3,
+            collab_revision: 5,
+            yjs_state: 'restored-state',
+            content: '# Restored',
+            updated_at: '2026-07-14T12:00:04.000Z',
+            backup_version_id: '66666666-6666-4666-8666-666666666666',
+            audit_version_id: '77777777-7777-4777-8777-777777777777',
+          },
+        ],
+        error: null,
+      },
+    });
+
+    const state = await replaceDocumentState(client, {
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+      replacement: { kind: 'version', versionId: VERSION_ID },
+      reason: 'restore',
+    });
+
+    const restoreCall = calls.find(
+      (call) => call.kind === 'rpc:restore_document_version'
+    );
+    expect(restoreCall).toBeDefined();
+    const args = restoreCall!.value as Record<string, unknown>;
+    expect(args).toMatchObject({
+      p_document_id: DOCUMENT_ID,
+      p_target_version_id: VERSION_ID,
+      p_expected_epoch: 2,
+      p_expected_revision: 4,
+      p_included_update_ids: [UPDATE_A, UPDATE_B],
+      p_current_yjs_state: 'merged-state',
+      p_current_markdown: '# Derived',
+    });
+    expect(args.p_backup_version_id).toEqual(expect.any(String));
+    expect(args.p_audit_version_id).toEqual(expect.any(String));
+    expect(args.p_backup_version_id).not.toBe(args.p_audit_version_id);
+    expect(mergeYjsState).toHaveBeenCalledWith('snapshot', ['tail-a', 'tail-b']);
+    expect(yjsStateToMarkdown).toHaveBeenCalledWith('merged-state', []);
+    expect(state).toMatchObject({
+      markdown: '# Restored',
+      yjsStateBase64: 'restored-state',
+      updateTail: [],
+      token: { epoch: 3, revision: 5 },
+    });
+  });
+
+  it('rejects stale or unsupported replacement requests before the RPC', async () => {
+    const stale = makeSupabase();
+    await expect(
+      replaceDocumentState(stale.client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 3 },
+        replacement: { kind: 'version', versionId: VERSION_ID },
+        reason: 'restore',
+      })
+    ).rejects.toBeInstanceOf(DocumentStateConflictError);
+    expect(stale.calls.some((call) => call.kind.startsWith('rpc:restore'))).toBe(
+      false
+    );
+
+  });
+
+  it('rejects Agent Markdown replacement outside the trusted server command', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: {
+        data: [{
+          collab_epoch: 3,
+          collab_revision: 5,
+          yjs_state: 'state:# Proposed',
+          content: '# Proposed',
+          updated_at: '2026-07-15T00:00:00.000Z',
+        }],
+        error: null,
+      },
+    });
+
+    await expect(
+      replaceDocumentState(client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 4 },
+        expectedUpdateIds: [UPDATE_A, UPDATE_B],
+        replacement: { kind: 'markdown', markdown: '# Proposed' },
+        reason: 'agent',
+      })
+    ).rejects.toThrow(/trusted server/i);
+    expect(
+      calls.some((entry) => entry.kind === 'rpc:replace_document_with_markdown')
+    ).toBe(false);
+  });
+
+  it('maps restore CAS and permission failures to typed document errors', async () => {
+    const conflict = makeSupabase({
+      rpc: { data: null, error: { code: 'PT409', message: 'changed' } },
+    });
+    await expect(
+      replaceDocumentState(conflict.client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 4 },
+        replacement: { kind: 'version', versionId: VERSION_ID },
+        reason: 'restore',
+      })
+    ).rejects.toBeInstanceOf(DocumentStateConflictError);
+
+    const denied = makeSupabase({
+      rpc: { data: null, error: { code: '42501', message: 'denied' } },
+    });
+    await expect(
+      replaceDocumentState(denied.client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 4 },
+        replacement: { kind: 'version', versionId: VERSION_ID },
+        reason: 'restore',
+      })
+    ).rejects.toBeInstanceOf(DocumentReadOnlyError);
+  });
+});

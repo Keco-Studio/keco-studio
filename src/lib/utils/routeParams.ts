@@ -5,6 +5,7 @@
 
 export const SPECIAL_ROUTE_SEGMENTS = [
   'folder',
+  'doc',
   'collaborators',
   'settings',
   'members',
@@ -20,6 +21,7 @@ export type RouteParamsResult = {
   libraryId: string | null;
   folderId: string | null;
   assetId: string | null;
+  documentId: string | null;
   isPredefinePage: boolean;
   isLibraryPage: boolean;
 };
@@ -37,6 +39,7 @@ export function parseRouteParams(
       libraryId: null,
       folderId: null,
       assetId: null,
+      documentId: null,
       isPredefinePage: false,
       isLibraryPage: false,
     };
@@ -54,6 +57,7 @@ export function parseRouteParams(
           libraryId: null,
           folderId: null,
           assetId: null,
+          documentId: null,
           isPredefinePage: true,
           isLibraryPage: false,
         };
@@ -64,6 +68,7 @@ export function parseRouteParams(
         libraryId: null,
         folderId: null,
         assetId: null,
+        documentId: null,
         isPredefinePage: true,
         isLibraryPage: false,
       };
@@ -75,6 +80,7 @@ export function parseRouteParams(
         libraryId: null,
         folderId: null,
         assetId: null,
+        documentId: null,
         isPredefinePage: true,
         isLibraryPage: false,
       };
@@ -85,6 +91,7 @@ export function parseRouteParams(
       libraryId: null,
       folderId: null,
       assetId: null,
+      documentId: null,
       isPredefinePage: true,
       isLibraryPage: false,
     };
@@ -93,12 +100,16 @@ export function parseRouteParams(
   const projectId = parts[0] && parts[0] !== 'projects' ? parts[0] : null;
   let libraryId: string | null = null;
   let folderId: string | null = null;
+  let documentId: string | null = null;
   let isPredefinePage = false;
   let assetId: string | null = null;
   let isLibraryPage = false;
 
   if (parts.length >= 2 && parts[1] === 'folder' && parts[2]) {
     folderId = parts[2];
+  } else if (parts.length >= 3 && parts[1] === 'doc') {
+    // /[projectId]/doc/[documentId] — a document page, not a library.
+    documentId = parts[2];
   } else if (
     parts.length >= 2 &&
     SPECIAL_ROUTE_SEGMENTS.includes(parts[1] as (typeof SPECIAL_ROUTE_SEGMENTS)[number])
@@ -120,6 +131,7 @@ export function parseRouteParams(
     libraryId,
     folderId,
     assetId,
+    documentId,
     isPredefinePage,
     isLibraryPage,
   };

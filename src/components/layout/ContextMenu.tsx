@@ -8,6 +8,7 @@ export type ContextMenuAction =
   | 'export'
   | 'import'
   | 'import-script'
+  | 'new-document'
   | 'version-history'
   | 'star'
   | 'rename'
@@ -19,7 +20,7 @@ export type ContextMenuAction =
 type ContextMenuProps = {
   x: number;
   y: number;
-  type?: 'project' | 'library' | 'folder' | 'asset';
+  type?: 'project' | 'library' | 'folder' | 'asset' | 'document';
   onClose: () => void;
   onAction?: (action: ContextMenuAction) => void;
   userRole?: 'admin' | 'editor' | 'viewer' | null;
@@ -207,8 +208,8 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
     } else if (type === 'library' || type === 'folder') {
       // Only admin can delete library or folder
       return userRole === 'admin';
-    } else if (type === 'asset') {
-      // Admin and editor can delete asset, viewer cannot
+    } else if (type === 'asset' || type === 'document') {
+      // Admin and editor can delete assets/documents, viewer cannot
       return userRole === 'admin' || userRole === 'editor';
     }
     return false;
@@ -219,8 +220,8 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
     if (type === 'project' || type === 'library' || type === 'folder') {
       // Only admin can edit project info, library info, or folder name
       return userRole === 'admin';
-    } else if (type === 'asset') {
-      // Admin and editor can edit asset, viewer cannot
+    } else if (type === 'asset' || type === 'document') {
+      // Admin and editor can edit assets/documents, viewer cannot
       return userRole === 'admin' || userRole === 'editor';
     }
     return false;
@@ -239,6 +240,9 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
 
   // Import (creates library): admin only, same as create library
   const canImport = () => userRole === 'admin';
+
+  const canCreateDocument = () =>
+    userRole === 'admin' || userRole === 'editor';
 
   // Move library between folders: admin only (editor/viewer cannot)
   const canMoveLibrary = () => userRole === 'admin';
@@ -360,6 +364,14 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
       // Folder: Import (admin), Rename (admin), Duplicate, separator, Delete (admin)
       return (
         <>
+          {canCreateDocument() && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('new-document')}
+            >
+              New document
+            </button>
+          )}
           {canImport() && (
             <>
               <button
@@ -423,6 +435,39 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
               onClick={() => handleAction('duplicate')}
             >
               Duplicate
+            </button>
+          )}
+          {showDeleteButton && (
+            <>
+              <div className={styles.separator} />
+              <button
+                className={`${styles.menuItem} ${styles.deleteItem}`}
+                onClick={() => handleAction('delete')}
+              >
+                Delete
+              </button>
+            </>
+          )}
+        </>
+      );
+    } else if (type === 'document') {
+      // Document: Rename (editor/admin), Move to... (editor/admin), separator, Delete (editor/admin)
+      return (
+        <>
+          {showEditButton && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('rename')}
+            >
+              Rename
+            </button>
+          )}
+          {showEditButton && (
+            <button
+              className={styles.menuItem}
+              onClick={() => handleAction('move-to')}
+            >
+              Move to...
             </button>
           )}
           {showDeleteButton && (
@@ -514,4 +559,3 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
   // Use portal to render menu at the body level, avoiding z-index and overflow issues
   return createPortal(menuContent, document.body);
 }
-

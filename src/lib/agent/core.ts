@@ -749,6 +749,10 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     refreshLastUserContext(messages, turnContext);
 
     const tool = resolveTool(pending.toolName);
+    const permissionError =
+      input.decision === 'approve' && tool
+        ? checkToolPermission(tool, toolContext)
+        : null;
     const resumeArgs =
       pending.args && typeof pending.args === 'object' && !Array.isArray(pending.args)
         ? (pending.args as Record<string, unknown>)
@@ -760,6 +764,10 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       result = { success: false, error: 'User cancelled this action.' };
     } else if (!tool) {
       result = { success: false, error: `Tool "${pending.toolName}" is no longer available.` };
+    } else if (permissionError) {
+      yield { type: 'tool_call_start', tool: tool.name, args: JSON.stringify(pending.args) };
+      result = permissionError;
+      yield { type: 'tool_call_end' };
     } else if (pending.confirmationMode === 'post_preview') {
       if (!tool.executeImport || !savedResult) {
         result = { success: false, error: 'Import data unavailable; please retry.' };
@@ -795,7 +803,14 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       yield { type: 'tool_call_end' };
     }
 
-    yield { type: 'tool_result', tool: pending.toolName, data: result.data, displayHint: result.displayHint };
+    yield {
+      type: 'tool_result',
+      tool: pending.toolName,
+      data: result.data,
+      displayHint: result.displayHint,
+      success: result.success,
+      error: result.error,
+    };
     if (result.invalidateCache && result.invalidateCache.length > 0) {
       yield { type: 'cache_invalidated', paths: result.invalidateCache };
     }

@@ -1,0 +1,72 @@
+import { z } from 'zod';
+import {
+  createDocument,
+  deleteDocument,
+} from '@/lib/services/documentService';
+import type { AgentTool, ToolContext, ToolResult } from '../types';
+import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
+
+const Params = z
+  .object({
+    name: z.string().min(1).max(200),
+    content: z.string().max(500_000).default(''),
+    folderId: z.string().uuid().nullable().optional(),
+  })
+  .strict();
+
+export const createDocumentTool: AgentTool = {
+  name: 'create_document',
+  description: 'Create a project document with validated Markdown/MDX content.',
+  category: 'write', confirmationMode: 'pre_execute', confirmationRequired: true, requiredPermission: 'editor',
+  parameters: { type: 'object', properties: { name: { type: 'string' }, content: { type: 'string' }, folderId: { type: ['string', 'null'] } }, required: ['name'], additionalProperties: false },
+  async execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
+    const parsed = Params.safeParse(params); if (!parsed.success) return { success: false, error: parsed.error.message };
+    let createdDocumentId: string | undefined;
+    let createdDocumentName: string | undefined;
+    try {
+      validateSanctionedMdx(parsed.data.content);
+      const doc = await createDocument(ctx.supabase, {
+        projectId: ctx.projectId,
+        name: parsed.data.name,
+        content: parsed.data.content,
+        folderId: parsed.data.folderId,
+      });
+      createdDocumentId = doc.id;
+      createdDocumentName = doc.name;
+      const { documentStateGateway } = await import(
+        '@/lib/documents/documentStateGateway'
+      );
+      await documentStateGateway.initialize(ctx.supabase, doc.id, parsed.data.content);
+      return {
+        success: true,
+        displayHint: 'text',
+        data: { documentId: doc.id, name: doc.name },
+      };
+    } catch (error) {
+      if (createdDocumentId) {
+        try {
+          const { documentStateGateway } = await import(
+            '@/lib/documents/documentStateGateway'
+          );
+          const current = await documentStateGateway.read(ctx.supabase, createdDocumentId);
+          if (current.projectId === ctx.projectId && current.mode === 'collaborative') {
+            return {
+              success: true,
+              displayHint: 'text',
+              data: { documentId: createdDocumentId, name: createdDocumentName },
+            };
+          }
+          if (current.projectId === ctx.projectId && current.mode === 'legacy') {
+            await deleteDocument(ctx.supabase, createdDocumentId).catch(() => undefined);
+          }
+        } catch {
+          // Preserve an outcome-unknown row rather than deleting committed state.
+        }
+      }
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to create document.',
+      };
+    }
+  },
+};

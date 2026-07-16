@@ -50,9 +50,8 @@ describe('plain library stores (issue #214)', () => {
     expect(store.toArray().map((row) => row.id)).toEqual(['real-1']);
   });
 
-  it('removes Yjs source modules and production dependency', () => {
+  it('removes Yjs from the library store path', () => {
     const root = process.cwd();
-    const packageJson = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
     for (const file of [
       'src/lib/library/yjsAssetHydration.ts',
       'src/lib/contexts/YjsContext.tsx',
@@ -61,9 +60,11 @@ describe('plain library stores (issue #214)', () => {
     ]) {
       expect(existsSync(path.join(root, file))).toBe(false);
     }
-    expect(packageJson.dependencies).not.toHaveProperty('yjs');
-    expect(readFileSync(path.join(root, 'package-lock.json'), 'utf8')).not.toContain(
-      'node_modules/yjs'
+    expect(readFileSync(path.join(root, 'src/lib/library/assetStore.ts'), 'utf8')).not.toMatch(
+      /from ['"]yjs['"]/
+    );
+    expect(readFileSync(path.join(root, 'src/lib/library/rowStore.ts'), 'utf8')).not.toMatch(
+      /from ['"]yjs['"]/
     );
   });
 });

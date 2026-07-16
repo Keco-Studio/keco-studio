@@ -8,6 +8,9 @@ import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import type { SidebarContextMenuState } from './useSidebarContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
 import { deleteFolder } from '@/lib/services/folderService';
+import { deleteDocument } from '@/lib/services/documentService';
+import { broadcastProjectDocumentUpdate } from '@/lib/documents/projectDocumentChannel';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import {
   invalidateFolderData,
   invalidateLibraryAssetsData,
@@ -35,6 +38,7 @@ export type UseSidebarContextMenuActionsParams = {
     libraryId: string | null;
     folderId: string | null;
     assetId: string | null;
+    documentId: string | null;
   };
   libraries: Library[];
   setError: (msg: string | null) => void;
@@ -42,6 +46,9 @@ export type UseSidebarContextMenuActionsParams = {
   fetchAssets: (libraryId: string | null | undefined) => Promise<void>;
   onProjectDeleteViaAPI: (projectId: string) => void | Promise<void>;
   openMoveLibrary: (libraryId: string) => void;
+  openMoveDocument: (documentId: string) => void;
+  openNewDocumentInFolder: (folderId: string) => void;
+  startInlineRename: (key: string) => void;
   userRole: 'admin' | 'editor' | 'viewer' | null;
   requestDeleteConfirm: (options: {
     title: string;
@@ -75,6 +82,9 @@ export function useSidebarContextMenuActions({
   fetchAssets,
   onProjectDeleteViaAPI,
   openMoveLibrary,
+  openMoveDocument,
+  openNewDocumentInFolder,
+  startInlineRename,
   userRole,
   requestDeleteConfirm,
 }: UseSidebarContextMenuActionsParams) {
@@ -86,6 +96,14 @@ export function useSidebarContextMenuActions({
       if (action === 'collaborators' && contextMenu.type === 'project') {
         closeContextMenu();
         router.push(`/${contextMenu.id}/collaborators`);
+        return;
+      }
+
+      if (action === 'new-document' && contextMenu.type === 'folder') {
+        if (userRole === 'admin' || userRole === 'editor') {
+          openNewDocumentInFolder(contextMenu.id);
+        }
+        closeContextMenu();
         return;
       }
 
@@ -105,6 +123,10 @@ export function useSidebarContextMenuActions({
           return;
         } else if (contextMenu.type === 'asset') {
           openEditAsset(contextMenu.id);
+          closeContextMenu();
+          return;
+        } else if (contextMenu.type === 'document') {
+          startInlineRename(`document-${contextMenu.id}`);
           closeContextMenu();
           return;
         }
@@ -129,6 +151,15 @@ export function useSidebarContextMenuActions({
             return;
           }
           openMoveLibrary(contextMenu.id);
+          closeContextMenu();
+          return;
+        }
+        if (contextMenu.type === 'document') {
+          if (userRole !== 'admin' && userRole !== 'editor') {
+            closeContextMenu();
+            return;
+          }
+          openMoveDocument(contextMenu.id);
           closeContextMenu();
           return;
         }
@@ -236,6 +267,35 @@ export function useSidebarContextMenuActions({
           });
           closeContextMenu();
           return;
+        } else if (contextMenu.type === 'document') {
+          requestDeleteConfirm({
+            title: 'Confirm deletion',
+            content: 'Delete this document?',
+            onConfirm: () => {
+              const documentId = contextMenu.id;
+              return deleteDocument(supabase, documentId)
+                .then(async () => {
+                  if (currentIds.projectId) {
+                    void broadcastProjectDocumentUpdate({
+                      documentId,
+                      projectId: currentIds.projectId,
+                      action: 'delete',
+                    });
+                    await queryClient.invalidateQueries({
+                      queryKey: queryKeys.documents(currentIds.projectId),
+                    });
+                  }
+                  if (currentIds.documentId === documentId && currentIds.projectId) {
+                    router.push(`/${currentIds.projectId}`);
+                  }
+                })
+                .catch((err: unknown) => {
+                  setError(err instanceof Error ? err.message : 'Failed to delete document');
+                });
+            },
+          });
+          closeContextMenu();
+          return;
         } else if (contextMenu.type === 'asset') {
           requestDeleteConfirm({
             title: 'Confirm deletion',
@@ -295,12 +355,16 @@ export function useSidebarContextMenuActions({
       currentIds.libraryId,
       currentIds.folderId,
       currentIds.assetId,
+      currentIds.documentId,
       libraries,
       setError,
       assets,
       fetchAssets,
       onProjectDeleteViaAPI,
       openMoveLibrary,
+      openMoveDocument,
+      openNewDocumentInFolder,
+      startInlineRename,
       userRole,
       requestDeleteConfirm,
     ]

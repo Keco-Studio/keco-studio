@@ -21,6 +21,7 @@ export default [
     ],
   },
   {
+    files: ['**/*.{js,jsx,mjs,ts,tsx,mts,cts}'],
     rules: {
       // React Compiler-era rules newly surfaced by the ESLint 9 flat preset.
       // The legacy `next lint` never checked these, so they represent a large

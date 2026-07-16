@@ -64,11 +64,30 @@ export async function getCurrentUserId(
   }
 
   const resolve = async () => {
-    const { data: { user }, error } = await supabase.auth.getUser();
-    if (error || !user) {
+    // Prefer getSession (local/storage) first — getUser() hits the Auth network
+    // and frequently throws "Failed to fetch" during Fast Refresh / brief
+    // connectivity blips, which callers misread as "not logged in".
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+    if (!sessionError && session?.user?.id) {
+      return session.user.id;
+    }
+
+    try {
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
+      if (error || !user) {
+        throw new AuthorizationError('User not logged in');
+      }
+      return user.id;
+    } catch (err) {
+      if (err instanceof AuthorizationError) throw err;
       throw new AuthorizationError('User not logged in');
     }
-    return user.id;
   };
 
   return withAuthCache('auth:current-user-id', resolve);

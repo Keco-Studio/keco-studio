@@ -8,9 +8,11 @@ type AddLibraryMenuProps = {
   open: boolean;
   anchorElement: HTMLElement | null;
   onClose: () => void;
-  onCreateFolder: () => void;
-  onCreateLibrary: () => void;
+  onCreateFolder?: () => void;
+  onCreateLibrary?: () => void;
   onGenerateFromDocument?: () => void;
+  onCreateDocument?: () => void;
+  onImportDocument?: () => void;
 };
 
 export function AddLibraryMenu({
@@ -20,6 +22,8 @@ export function AddLibraryMenu({
   onCreateFolder,
   onCreateLibrary,
   onGenerateFromDocument,
+  onCreateDocument,
+  onImportDocument,
 }: AddLibraryMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [mounted, setMounted] = useState(false);
@@ -70,12 +74,26 @@ export function AddLibraryMenu({
 
   return createPortal(
     <div ref={menuRef} className={styles.menu}>
-      <button className={styles.menuItem} onClick={onCreateFolder}>
-        Create new folder
-      </button>
-      <button className={styles.menuItem} onClick={onCreateLibrary}>
-        Create new library
-      </button>
+      {onCreateFolder && (
+        <button className={styles.menuItem} onClick={onCreateFolder}>
+          Create new folder
+        </button>
+      )}
+      {onCreateLibrary && (
+        <button className={styles.menuItem} onClick={onCreateLibrary}>
+          Create new library
+        </button>
+      )}
+      {onCreateDocument && (
+        <button className={styles.menuItem} onClick={onCreateDocument}>
+          Create new document
+        </button>
+      )}
+      {onImportDocument && (
+        <button className={styles.menuItem} onClick={onImportDocument}>
+          Import document
+        </button>
+      )}
       {onGenerateFromDocument && (
         <button className={styles.menuItem} onClick={onGenerateFromDocument}>
           Generate tables from document

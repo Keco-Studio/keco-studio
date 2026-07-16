@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 
-export type SidebarContextMenuType = 'project' | 'library' | 'folder' | 'asset';
+export type SidebarContextMenuType = 'project' | 'library' | 'folder' | 'asset' | 'document';
 
 export type SidebarContextMenuState = {
   x: number;

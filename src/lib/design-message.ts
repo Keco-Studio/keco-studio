@@ -18,6 +18,7 @@ const CONTENT_HEADER = '[Document content]';
 export interface BuildDesignMessageParams {
   fileName: string;
   documentText: string;
+  documentId?: string;
   additionalInstructions?: string;
 }
 
@@ -38,6 +39,12 @@ export function buildDesignMessage(params: BuildDesignMessageParams): string {
       'user the table quality would be poor and ask for clearer source data or an explicit ' +
       'generation instruction. Present a short summary of the planned tables before creating anything.'
   );
+  if (params.documentId) {
+    parts.push(
+      `The uploaded source is also stored as project document ${params.documentId}. ` +
+        'Use read_document when you need the latest logical document state.'
+    );
+  }
 
   const extra = params.additionalInstructions?.trim();
   if (extra) {
