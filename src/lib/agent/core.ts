@@ -44,8 +44,7 @@ import { inlineLocalImages } from './image-inlining';
 import {
   savePendingAction,
   loadPendingAction,
-  markPendingAction,
-  deletePendingAction,
+  consumePendingAction,
 } from './confirmation';
 import {
   needsConfirmation,
@@ -73,6 +72,11 @@ const MAX_ITERATIONS = 50;
 
 /** Cap how much of the raw argument string we echo back to the model on a parse failure. */
 const MAX_RAW_ARGS_IN_ERROR = 200;
+
+function publicToolResult(result: ToolResult): ToolResult {
+  const { internalData: _internalData, ...publicResult } = result;
+  return publicResult;
+}
 
 interface ParsedArgs {
   args: Record<string, unknown>;
@@ -487,7 +491,7 @@ async function* continueLoop(
             nextIteration: iterations,
             tokenUsageTotal: usedTokenTotal,
           },
-        });
+        }, ctx.userId);
         trace?.recordConfirmation({
           actionId,
           tool: tool.name,
@@ -522,9 +526,10 @@ async function* continueLoop(
         yield { type: 'tool_call_end' };
         if (!result.success) {
           messages.push(assistantMessage);
-          messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+          const publicResult = publicToolResult(result);
+          messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
           await persistMessage(ctx, conversationId, assistantMessage);
-          await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+          await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
           yield { type: 'tool_result', tool: tool.name, data: result.data, displayHint: result.displayHint };
           continue;
         }
@@ -546,7 +551,7 @@ async function* continueLoop(
             nextIteration: iterations,
             tokenUsageTotal: usedTokenTotal,
           },
-        });
+        }, ctx.userId);
         trace?.recordConfirmation({
           actionId,
           tool: tool.name,
@@ -608,9 +613,10 @@ async function* continueLoop(
         yield { type: 'cache_invalidated', paths: finalResult.invalidateCache };
       }
       messages.push(assistantMessage);
-      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(finalResult) });
+      const publicResult = publicToolResult(finalResult);
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
       await persistMessage(ctx, conversationId, assistantMessage);
-      await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(finalResult) });
+      await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
       continue;
     }
 
@@ -638,9 +644,10 @@ async function* continueLoop(
     }
 
     messages.push(assistantMessage);
-    messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+    const publicResult = publicToolResult(result);
+    messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
     await persistMessage(ctx, conversationId, assistantMessage);
-    await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+    await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
   }
 
   yield { type: 'error', message: 'Agent reached maximum iterations.' };
@@ -717,8 +724,19 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     ...toolContext,
     accessCache: createAccessVerificationCache(),
   };
-  const pending = await loadPendingAction(turnContext.supabase, input.actionId);
+  const pending = await loadPendingAction(turnContext.supabase, input.actionId, turnContext.userId);
   if (!pending) {
+    yield { type: 'error', message: 'This action has expired or was already handled.' };
+    yield { type: 'done' };
+    return;
+  }
+  const consumed = await consumePendingAction(
+    turnContext.supabase,
+    input.actionId,
+    turnContext.userId,
+    input.decision === 'approve' ? 'approved' : 'rejected'
+  );
+  if (!consumed) {
     yield { type: 'error', message: 'This action has expired or was already handled.' };
     yield { type: 'done' };
     return;
@@ -823,15 +841,12 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     const toolMessage: ChatMessage = {
       role: 'tool',
       tool_call_id: pendingToolCall.id,
-      content: JSON.stringify(result),
+      content: JSON.stringify(publicToolResult(result)),
     };
     messages.push(assistantMessage);
     messages.push(toolMessage);
     await persistMessage(turnContext, conversationId, assistantMessage);
     await saveMessage(turnContext.supabase, conversationId, toolMessage);
-
-    await markPendingAction(turnContext.supabase, input.actionId, input.decision === 'approve' ? 'approved' : 'rejected');
-    await deletePendingAction(turnContext.supabase, input.actionId);
 
     // Continue the loop so the LLM can summarize the result.
     const resumeIteration = pending.suspendedState.nextIteration ?? 0;

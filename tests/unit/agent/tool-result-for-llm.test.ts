@@ -12,6 +12,17 @@ describe('compactToolContentForLlm', () => {
     expect(compactToolContentForLlm(raw, 'create_library')).toBe(raw);
   });
 
+  it('removes server-only tool data before content is sent to the LLM', () => {
+    const raw = JSON.stringify({
+      success: true,
+      data: { type: 'document_edit' },
+      internalData: { approvalSignature: 'server-secret' },
+    });
+
+    const compact = JSON.parse(compactToolContentForLlm(raw, 'propose_document_edit'));
+    expect(compact).toEqual({ success: true, data: { type: 'document_edit' } });
+  });
+
   it('keeps a complete in-budget read_document result unchanged', () => {
     const raw = JSON.stringify({
       success: true,

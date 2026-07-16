@@ -8,35 +8,48 @@ import type {
 } from '@/lib/agent/types';
 
 const loadPendingAction = jest.fn();
-const markPendingAction = jest.fn();
-const deletePendingAction = jest.fn();
+const consumePendingAction = jest.fn();
+const savePendingAction = jest.fn();
 const resolveTool = jest.fn();
+const getToolsForLlmAsync = jest.fn();
 const getConversation = jest.fn();
+const loadConversationHistory = jest.fn();
+const saveMessage = jest.fn();
+const streamLlm = jest.fn();
+const executeAgentTool = jest.fn();
 const executeImport = jest.fn<Promise<ToolResult>, [ToolResult, unknown, ToolContext]>();
 
 jest.mock('@/lib/agent/confirmation', () => ({
   loadPendingAction,
-  markPendingAction,
-  deletePendingAction,
-  savePendingAction: jest.fn(),
+  consumePendingAction,
+  savePendingAction,
 }));
 jest.mock('@/lib/agent/conversation-store', () => ({
   getConversation,
-  loadConversationHistory: jest.fn(),
-  saveMessage: jest.fn(),
+  loadConversationHistory,
+  saveMessage,
+  sanitizeMessagesForLlm: (messages: unknown[]) => messages,
 }));
 jest.mock('@/lib/agent/tools', () => ({
   allTools: [],
-  getToolsForLlmAsync: jest.fn(),
+  getToolsForLlmAsync,
   resolveTool,
 }));
+jest.mock('@/lib/agent/llm-client', () => ({ streamLlm }));
+jest.mock('@/lib/agent/tool-execution-stream', () => ({ executeAgentTool }));
+jest.mock('@/lib/agent/embedding-config', () => ({ AGENT_RETRIEVAL_ENABLED: false }));
 jest.mock('@/lib/agent/trace-store', () => ({
-  TurnTraceCollector: jest.fn(),
+  TurnTraceCollector: jest.fn(() => ({
+    turnId: 'turn-1',
+    recordLlmCall: jest.fn(),
+    recordToolCall: jest.fn(),
+    recordConfirmation: jest.fn(),
+  })),
   loadTraceCollector: jest.fn().mockResolvedValue(undefined),
   persistAgentTrace: jest.fn(),
 }));
 
-import { resumeAgentTurn } from '@/lib/agent/core';
+import { resumeAgentTurn, runAgentTurn } from '@/lib/agent/core';
 
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 
@@ -103,6 +116,7 @@ describe('resumeAgentTurn confirmation integrity', () => {
     jest.clearAllMocks();
     getConversation.mockResolvedValue({ meta: {} });
     resolveTool.mockReturnValue(resolvedTool);
+    consumePendingAction.mockResolvedValue(true);
     loadPendingAction.mockResolvedValue({
       conversationId: '44444444-4444-4444-8444-444444444444',
       toolName: resolvedTool.name,
@@ -132,6 +146,20 @@ describe('resumeAgentTurn confirmation integrity', () => {
       tool: resolvedTool.name,
       success: true,
     });
+    expect(loadPendingAction).toHaveBeenCalledWith(
+      expect.anything(),
+      'action-1',
+      '33333333-3333-4333-8333-333333333333'
+    );
+    expect(consumePendingAction).toHaveBeenCalledWith(
+      expect.anything(),
+      'action-1',
+      '33333333-3333-4333-8333-333333333333',
+      'approved'
+    );
+    expect(consumePendingAction.mock.invocationCallOrder[0]).toBeLessThan(
+      executeImport.mock.invocationCallOrder[0]
+    );
   });
 
   it('emits explicit failure metadata after a confirmed edit becomes stale', async () => {
@@ -164,5 +192,93 @@ describe('resumeAgentTurn confirmation integrity', () => {
       error: 'Viewer role cannot perform write operations.',
     });
     expect(executeImport).not.toHaveBeenCalled();
+  });
+
+  it('does not execute when atomic consumption reports the action was already handled', async () => {
+    consumePendingAction.mockResolvedValue(false);
+
+    const events: SSEEvent[] = [];
+    for await (const event of resumeAgentTurn(resumeInput())) events.push(event);
+
+    expect(events).toEqual([
+      { type: 'error', message: 'This action has expired or was already handled.' },
+      { type: 'done' },
+    ]);
+    expect(executeImport).not.toHaveBeenCalled();
+  });
+
+  it('does not replay a same-context signed proposal after the first consumption', async () => {
+    consumePendingAction.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+    executeImport.mockResolvedValue({ success: true, data: {} });
+
+    await nextToolResult(resumeInput());
+    const replayEvents: SSEEvent[] = [];
+    for await (const event of resumeAgentTurn(resumeInput())) replayEvents.push(event);
+
+    expect(executeImport).toHaveBeenCalledTimes(1);
+    expect(replayEvents).toEqual([
+      { type: 'error', message: 'This action has expired or was already handled.' },
+      { type: 'done' },
+    ]);
+  });
+});
+
+describe('post-preview confirmation data boundary', () => {
+  it('persists the signed preview internally while emitting only public preview data', async () => {
+    const approvalSignature = 'a'.repeat(64);
+    const publicPreview = { type: 'document_edit', proposedMarkdown: '# Public preview' };
+    const previewResult: ToolResult = {
+      success: true,
+      data: publicPreview,
+      internalData: { ...publicPreview, approvalSignature },
+      displayHint: 'text',
+    };
+    const previewTool: AgentTool = {
+      ...resolvedTool,
+      execute: jest.fn().mockResolvedValue(previewResult),
+    };
+    resolveTool.mockReturnValue(previewTool);
+    getToolsForLlmAsync.mockResolvedValue([]);
+    loadConversationHistory.mockResolvedValue([]);
+    saveMessage.mockResolvedValue({ id: 'message-1' });
+    executeAgentTool.mockImplementation(async function* () {
+      return previewResult;
+    });
+    streamLlm.mockImplementation(async function* () {
+      yield {
+        type: 'tool_call_delta',
+        index: 0,
+        id: 'call-1',
+        name: previewTool.name,
+        arguments: '{}',
+      };
+      yield { type: 'finish', reason: 'tool_calls' };
+    });
+
+    const events: SSEEvent[] = [];
+    for await (const event of runAgentTurn({
+      conversationId: '44444444-4444-4444-8444-444444444444',
+      userMessage: 'Apply the edit.',
+      toolContext: toolContext('editor'),
+      conversationMeta: {},
+    })) {
+      events.push(event);
+    }
+
+    expect(events.find((event) => event.type === 'tool_result')).toMatchObject({
+      data: publicPreview,
+    });
+    expect(events.find((event) => event.type === 'confirmation_request')).toMatchObject({
+      preview: publicPreview,
+    });
+    expect(JSON.stringify(events)).not.toContain(approvalSignature);
+    expect(savePendingAction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        suspendedState: expect.objectContaining({ toolResult: previewResult }),
+      }),
+      '33333333-3333-4333-8333-333333333333'
+    );
+    expect(JSON.stringify(saveMessage.mock.calls)).not.toContain(approvalSignature);
   });
 });

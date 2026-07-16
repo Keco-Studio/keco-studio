@@ -164,7 +164,17 @@ export function compactToolContentForLlm(content: string, toolName?: string): st
     return `${content.slice(0, MAX_TOOL_CONTENT_CHARS)}...[truncated for LLM context]`;
   }
 
-  if (toolName === 'read_document' && content.length <= MAX_TOOL_CONTENT_CHARS) return content;
+  const hadInternalData = Object.prototype.hasOwnProperty.call(parsed, 'internalData');
+  const { internalData: _internalData, ...publicResult } = parsed;
+  parsed = publicResult;
+
+  if (
+    toolName === 'read_document' &&
+    content.length <= MAX_TOOL_CONTENT_CHARS &&
+    !hadInternalData
+  ) {
+    return content;
+  }
 
   const compact = compactToolResult(parsed, toolName);
   let serialized = JSON.stringify(compact);

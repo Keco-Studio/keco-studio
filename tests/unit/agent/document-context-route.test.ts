@@ -176,6 +176,11 @@ describe('agent confirmation route current-document project boundary', () => {
     );
 
     expect(response.status).toBe(200);
+    expect(loadPendingAction).toHaveBeenCalledWith(
+      authedSupabase,
+      'action-id',
+      AUTH_USER_ID
+    );
     expect(resolveDocumentForTool).toHaveBeenCalledWith(
       authedSupabase,
       BOUND_PROJECT_ID,

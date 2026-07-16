@@ -42,7 +42,7 @@ export const POST = withAuth(async function POST(
   }
 
   try {
-    const pending = await loadPendingAction(supabase, actionId);
+    const pending = await loadPendingAction(supabase, actionId, user.id);
     if (!pending) {
       return NextResponse.json({ error: 'This action has expired or was already handled.' }, { status: 404 });
     }

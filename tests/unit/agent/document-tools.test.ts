@@ -602,14 +602,14 @@ describe('Agent document tools', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
-  it('rejects a confirmed proposal whose displayed base Markdown was changed', async () => {
+  it('rejects a confirmed proposal whose signed base Markdown was changed', async () => {
     read.mockResolvedValue(state());
     const params = replaceAllParams();
     const preview = await proposeDocumentEdit.execute(params, ctx);
     const tamperedPreview = {
       ...preview,
-      data: {
-        ...(preview.data as Record<string, unknown>),
+      internalData: {
+        ...(preview.internalData as Record<string, unknown>),
         baseMarkdown: '# Tampered original',
       },
     };
@@ -633,8 +633,9 @@ describe('Agent document tools', () => {
     });
     expect(preview).toMatchObject({
       success: true,
-      data: { approvalSignature: expect.stringMatching(/^[0-9a-f]{64}$/) },
+      internalData: { approvalSignature: expect.stringMatching(/^[0-9a-f]{64}$/) },
     });
+    expect(preview.data).not.toHaveProperty('approvalSignature');
 
     expect(replaceDocumentAsAgent).toHaveBeenCalledWith({
       actorUserId: ctx.userId,
@@ -666,8 +667,8 @@ describe('Agent document tools', () => {
     const preview = await proposeDocumentEdit.execute(params, ctx);
     const tamperedPreview = {
       ...preview,
-      data: {
-        ...(preview.data as Record<string, unknown>),
+      internalData: {
+        ...(preview.internalData as Record<string, unknown>),
         proposedMarkdown: '# Tampered',
         proposedHash: contentHash('# Tampered'),
       },
@@ -691,8 +692,8 @@ describe('Agent document tools', () => {
     const tamperedParams = replaceAllParams('# Different');
     const tamperedPreview = {
       ...preview,
-      data: {
-        ...(preview.data as Record<string, unknown>),
+      internalData: {
+        ...(preview.internalData as Record<string, unknown>),
         operationSummary: 'Replace entire document (11 characters).',
         proposedMarkdown: '# Different',
         proposedHash: contentHash('# Different'),
@@ -716,8 +717,8 @@ describe('Agent document tools', () => {
     const preview = await proposeDocumentEdit.execute(params, ctx);
     const tamperedPreview = {
       ...preview,
-      data: {
-        ...(preview.data as Record<string, unknown>),
+      internalData: {
+        ...(preview.internalData as Record<string, unknown>),
         operationSummary: 'Append 10 characters.',
       },
     };
@@ -737,14 +738,29 @@ describe('Agent document tools', () => {
     replaceDocumentAsAgent.mockResolvedValue(state('# Proposed', 5));
     const params = replaceAllParams();
     const preview = await proposeDocumentEdit.execute(params, ctx);
-    const { approvalSignature: _approvalSignature, ...unsignedData } = preview.data as Record<
+    const { approvalSignature: _approvalSignature, ...unsignedData } = preview.internalData as Record<
       string,
       unknown
     >;
-    const unsignedPreview = { ...preview, data: unsignedData };
+    const unsignedPreview = { ...preview, internalData: unsignedData };
 
     await expect(
       proposeDocumentEdit.executeImport!(unsignedPreview, params, ctx)
+    ).resolves.toEqual({
+      success: false,
+      error: 'The approved document edit payload changed.',
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(replaceDocumentAsAgent).not.toHaveBeenCalled();
+  });
+
+  it('rejects a proposal when server-only signed preview data is missing', async () => {
+    read.mockResolvedValue(state());
+    const params = replaceAllParams();
+    const preview = await proposeDocumentEdit.execute(params, ctx);
+
+    await expect(
+      proposeDocumentEdit.executeImport!({ ...preview, internalData: undefined }, params, ctx)
     ).resolves.toEqual({
       success: false,
       error: 'The approved document edit payload changed.',

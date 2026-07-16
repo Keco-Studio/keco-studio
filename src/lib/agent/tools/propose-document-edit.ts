@@ -263,7 +263,8 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     return {
       success: true,
       displayHint: 'text',
-      data: {
+      data: preview,
+      internalData: {
         ...preview,
         approvalSignature: createApprovalSignature(parsed.data, preview, ctx),
       },
@@ -282,7 +283,7 @@ async function executeImport(
   ctx: ToolContext
 ): Promise<ToolResult> {
   const parsedParams = ParamsSchema.safeParse(params);
-  const preview = PreviewSchema.safeParse(previewResult.data);
+  const preview = PreviewSchema.safeParse(previewResult.internalData);
   if (!parsedParams.success || !preview.success) {
     return { success: false, error: APPROVED_PAYLOAD_CHANGED_ERROR };
   }

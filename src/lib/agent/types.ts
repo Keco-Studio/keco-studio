@@ -52,6 +52,8 @@ export interface ToolContext {
 export interface ToolResult {
   success: boolean;
   data?: unknown;
+  /** Server-only data persisted in suspended state; never emit to UI, LLM, or tool-result events. */
+  internalData?: unknown;
   error?: string;
   displayHint?: DisplayHint;
   /** Library ids whose cached data should be refreshed by the frontend after a write. */
