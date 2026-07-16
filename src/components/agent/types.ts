@@ -61,6 +61,7 @@ export interface ChatItem {
 export interface SendContext {
   userId?: string;
   projectId: string;
+  currentDocumentId?: string;
   currentFolderId?: string;
   currentFolderName?: string;
   currentLibraryId?: string;

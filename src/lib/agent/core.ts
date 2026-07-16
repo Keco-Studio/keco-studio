@@ -159,6 +159,8 @@ async function buildSystemMessage(
       projectId: ctx.projectId,
       currentFolderId: ctx.currentFolderId,
       currentFolderName,
+      currentDocumentId: ctx.currentDocumentId,
+      currentDocumentName: ctx.currentDocumentName,
       currentLibraryId: ctx.currentLibraryId,
       currentLibraryName,
       currentSectionName: ctx.currentSectionName,

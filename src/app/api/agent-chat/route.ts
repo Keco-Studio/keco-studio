@@ -8,6 +8,7 @@ import { resolveScopeFromNavigation, contextFieldsFromScope } from '@/lib/agent/
 import { sseResponse } from '@/lib/agent/sse';
 import { sanitizeImageUrls } from '@/lib/agent/image-url-validation';
 import { isAgentSelectionContext } from '@/lib/agent/selection-context';
+import { resolveCurrentDocumentContext } from '@/lib/agent/current-document-context';
 import type { ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
@@ -27,6 +28,7 @@ export const POST = withAuth(async function POST(
     message?: string;
     imageUrls?: unknown;
     selectionContext?: unknown;
+    currentDocumentId?: string;
     currentFolderId?: string;
     currentFolderName?: string;
     currentLibraryId?: string;
@@ -103,6 +105,11 @@ export const POST = withAuth(async function POST(
 
     const contextFields = contextFieldsFromScope(boundScope, conversation.project_id);
     const userRole = await resolveUserRole(supabase, contextFields.projectId, user.id);
+    const currentDocumentContext = await resolveCurrentDocumentContext(
+      supabase,
+      contextFields.projectId,
+      typeof body.currentDocumentId === 'string' ? body.currentDocumentId.trim() : undefined
+    );
 
     const toolContext: ToolContext = {
       userId: user.id,
@@ -110,6 +117,7 @@ export const POST = withAuth(async function POST(
       supabase,
       userRole,
       ...contextFields,
+      ...currentDocumentContext,
     };
 
     const abortController = new AbortController();

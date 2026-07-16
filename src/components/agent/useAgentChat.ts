@@ -358,6 +358,7 @@ export function useAgentChat(ctx: SendContext) {
         const requestBody = isNew
           ? {
               projectId: ctx.projectId,
+              currentDocumentId: ctx.currentDocumentId,
               message,
               imageUrls: opts?.imageUrls,
               selectionContext: opts?.selectionContext,
@@ -370,6 +371,7 @@ export function useAgentChat(ctx: SendContext) {
             }
           : {
               conversationId: conversationIdRef.current,
+              currentDocumentId: ctx.currentDocumentId,
               message,
               imageUrls: opts?.imageUrls,
               selectionContext: opts?.selectionContext,

@@ -33,6 +33,8 @@ export interface ToolContext {
   conversationId: string;
   currentFolderId?: string;
   currentFolderName?: string;
+  currentDocumentId?: string;
+  currentDocumentName?: string;
   currentLibraryId?: string;
   currentLibraryName?: string;
   currentSectionName?: string;

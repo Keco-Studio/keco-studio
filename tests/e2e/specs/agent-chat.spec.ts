@@ -36,6 +36,8 @@ test.describe('Agent chat', () => {
   let admin: SupabaseClient;
   let owner: TemporaryUser;
   let projectId: string;
+  let firstDocumentId: string;
+  let secondDocumentId: string;
 
   async function openProject(page: Page): Promise<AgentPage> {
     const loginPage = new LoginPage(page);
@@ -52,6 +54,17 @@ test.describe('Agent chat', () => {
     admin = getE2EAdminClient();
     owner = await createTemporaryUser(admin, 'agent-chat-owner');
     projectId = await createProjectFixture(admin, owner.id);
+    const { data, error } = await admin
+      .from('documents')
+      .insert([
+        { project_id: projectId, name: 'Agent Current Document One', content: '', created_by: owner.id },
+        { project_id: projectId, name: 'Agent Current Document Two', content: '', created_by: owner.id },
+      ])
+      .select('id');
+    if (error || !data || data.length !== 2) {
+      throw error ?? new Error('Could not create agent document fixtures');
+    }
+    [firstDocumentId, secondDocumentId] = data.map((row) => row.id);
   });
 
   test.afterAll(async () => {
@@ -75,6 +88,51 @@ test.describe('Agent chat', () => {
     await expect(page.getByTestId('agent-message-assistant')).toContainText(
       'Project status: ready for review.'
     );
+  });
+
+  test('sends live document context on every turn without rebinding the conversation', async ({ page }) => {
+    const conversationId = crypto.randomUUID();
+    const bodies: Array<Record<string, unknown>> = [];
+    await page.route('**/api/agent-chat', async (route) => {
+      bodies.push(route.request().postDataJSON() as Record<string, unknown>);
+      await fulfillAgentStream(route, conversationId, [
+        { type: 'text_delta', content: `Reply ${bodies.length}` },
+      ]);
+    });
+
+    const loginPage = new LoginPage(page);
+    await loginPage.goto();
+    await loginPage.login(owner);
+    await loginPage.expectLoginSuccess();
+    await page.goto(`/${projectId}/doc/${firstDocumentId}`);
+    const agent = new AgentPage(page);
+    await agent.open();
+    await agent.send('First document turn');
+    await expect(page.getByTestId('agent-message-assistant')).toContainText('Reply 1');
+
+    expect(bodies[0]).toMatchObject({
+      projectId,
+      currentDocumentId: firstDocumentId,
+      message: 'First document turn',
+    });
+
+    await page.locator(`[data-node-key="document-${secondDocumentId}"]`).click();
+    await expect(page).toHaveURL(`/${projectId}/doc/${secondDocumentId}`);
+    await expect(agent.panel).toBeVisible();
+    await agent.send('Second document turn');
+    await expect(page.getByTestId('agent-message-assistant')).toContainText('Reply 2');
+
+    expect(bodies[1]).toMatchObject({
+      conversationId,
+      currentDocumentId: secondDocumentId,
+      message: 'Second document turn',
+    });
+    expect(bodies[1]).not.toHaveProperty('projectId');
+    expect(bodies[1]).not.toHaveProperty('currentFolderId');
+    expect(bodies[1]).not.toHaveProperty('currentFolderName');
+    expect(bodies[1]).not.toHaveProperty('currentLibraryId');
+    expect(bodies[1]).not.toHaveProperty('currentLibraryName');
+    expect(bodies[1]).not.toHaveProperty('currentSectionName');
   });
 
   test('approves a confirmation and resumes the turn', async ({ page }) => {

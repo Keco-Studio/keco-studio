@@ -24,6 +24,7 @@ export function ChatPanel() {
     currentLibraryName,
     currentFolderId,
     currentFolderName,
+    currentDocumentId,
   } = useNavigation();
   const [open, setOpen] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
@@ -61,6 +62,7 @@ export function ChatPanel() {
     () => ({
       userId: userProfile?.id,
       projectId: currentProjectId ?? '',
+      currentDocumentId: currentDocumentId ?? undefined,
       currentFolderId: currentFolderId ?? undefined,
       currentFolderName: currentFolderName ?? undefined,
       currentLibraryId: currentLibraryId ?? undefined,
@@ -70,6 +72,7 @@ export function ChatPanel() {
     [
       userProfile?.id,
       currentProjectId,
+      currentDocumentId,
       currentFolderId,
       currentFolderName,
       currentLibraryId,
