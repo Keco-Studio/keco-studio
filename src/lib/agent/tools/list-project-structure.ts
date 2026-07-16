@@ -1,8 +1,9 @@
 /**
- * list_project_structure — read folders, libraries, and field layout for the project.
+ * list_project_structure — read folders, libraries, documents, and field layout.
  */
 
 import { getLibraryProperties, listProjectFolders } from '../data-access';
+import { listResolvedProjectDocuments } from '../document-resolver';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 function sectionNameFromId(sectionId: string, libraryId: string): string {
@@ -12,7 +13,10 @@ function sectionNameFromId(sectionId: string, libraryId: string): string {
 
 async function execute(_params: unknown, ctx: ToolContext): Promise<ToolResult> {
   try {
-    const folders = await listProjectFolders(ctx.supabase, ctx.projectId, ctx);
+    const [folders, documents] = await Promise.all([
+      listProjectFolders(ctx.supabase, ctx.projectId, ctx),
+      listResolvedProjectDocuments(ctx.supabase, ctx.projectId),
+    ]);
 
     const { data: libraryRows, error } = await ctx.supabase
       .from('libraries')
@@ -48,8 +52,17 @@ async function execute(_params: unknown, ctx: ToolContext): Promise<ToolResult> 
       data: {
         folderCount: folders.length,
         libraryCount: (libraryRows ?? []).length,
+        documentCount: documents.length,
         folders: folders.map((f) => ({ id: f.id, name: f.name })),
         libraries: librariesDetailed,
+        documents: documents.map((document) => ({
+          id: document.id,
+          name: document.name,
+          folderId: document.folder_id,
+          folderName: document.folderName,
+          createdAt: document.created_at,
+          updatedAt: document.updated_at,
+        })),
       },
     };
   } catch (e) {
@@ -60,9 +73,9 @@ async function execute(_params: unknown, ctx: ToolContext): Promise<ToolResult> 
 export const listProjectStructure: AgentTool = {
   name: 'list_project_structure',
   description:
-    'List folders, libraries, sections, and field definitions in the current project. Use this FIRST when exploring project layout or before creating new libraries. No parameters.',
+    'List folders, libraries, documents, sections, and field definitions in the current project. Use this FIRST when exploring project layout or before creating new libraries. Document content is not included. No parameters.',
   category: 'read',
   confirmationMode: 'pre_execute',
-  parameters: { type: 'object', properties: {}, required: [] },
+  parameters: { type: 'object', properties: {}, required: [], additionalProperties: false },
   execute,
 };
