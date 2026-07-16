@@ -70,4 +70,17 @@ describe('live current-document context', () => {
     );
     expect(hook.match(/currentDocumentId: ctx\.currentDocumentId/g)).toHaveLength(2);
   });
+
+  it('refreshes the navigation context value when the live document id changes', () => {
+    const navigationContext = readFileSync(
+      path.join(process.cwd(), 'src/lib/contexts/NavigationContext.tsx'),
+      'utf8'
+    );
+    const valueMemo = navigationContext.match(
+      /const value = useMemo<NavigationContextType>\([\s\S]*?\), \[([\s\S]*?)\]\);/
+    );
+
+    expect(valueMemo).not.toBeNull();
+    expect(valueMemo?.[1]).toMatch(/\bcurrentDocumentId\b/);
+  });
 });

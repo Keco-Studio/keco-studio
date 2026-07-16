@@ -461,6 +461,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }), [
     breadcrumbs,
     currentAssetId,
+    currentDocumentId,
     currentFolderId,
     currentLibraryId,
     currentProjectId,
