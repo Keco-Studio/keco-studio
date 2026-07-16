@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
-import { deleteDocument } from '@/lib/services/documentService';
+import { deleteDocumentIfUnchanged } from '@/lib/services/documentService';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import { codePointBoundedString } from './document-parameter-schema';
 
@@ -36,6 +36,17 @@ const PreviewSchema = z
   })
   .strict();
 
+const SavedPreviewSchema = PreviewSchema.extend({
+  folderId: z.string().uuid().nullable(),
+  expectedToken: z
+    .object({
+      epoch: z.number().int().nonnegative(),
+      revision: z.number().int().nonnegative(),
+    })
+    .strict(),
+  expectedUpdateIds: z.array(z.string().uuid()),
+}).strict();
+
 function selectorFromParams(params: z.infer<typeof ParamsSchema>): DocumentSelector {
   const selector: DocumentSelector = {};
   if (params.documentId !== undefined) selector.documentId = params.documentId;
@@ -68,19 +79,37 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       return { success: false, error: 'Document not found in this project.' };
     }
 
+    const { documentStateGateway } = await import('@/lib/documents/documentStateGateway');
+    const state = await documentStateGateway.readTransport(
+      ctx.supabase,
+      resolution.document.id
+    );
+    if (
+      state.documentId !== resolution.document.id ||
+      state.projectId !== ctx.projectId
+    ) {
+      return { success: false, error: 'Document not found in this project.' };
+    }
+
     const preview = PreviewSchema.parse({
       type: 'document_delete',
       documentId: resolution.document.id,
       projectId: resolution.document.project_id,
       name: resolution.document.name,
       folderName: resolution.document.folderName,
-      updatedAt: resolution.document.updated_at,
+      updatedAt: state.updatedAt,
+    });
+    const savedPreview = SavedPreviewSchema.parse({
+      ...preview,
+      folderId: resolution.document.folder_id,
+      expectedToken: state.token,
+      expectedUpdateIds: state.updateTail.map((update) => update.id),
     });
     return {
       success: true,
       displayHint: 'text',
       data: preview,
-      internalData: preview,
+      internalData: savedPreview,
     };
   } catch (error) {
     return {
@@ -95,7 +124,7 @@ async function executeImport(
   _params: unknown,
   ctx: ToolContext
 ): Promise<ToolResult> {
-  const preview = PreviewSchema.safeParse(previewResult.internalData);
+  const preview = SavedPreviewSchema.safeParse(previewResult.internalData);
   if (!preview.success) {
     return { success: false, error: 'Delete confirmation data is unavailable; please retry.' };
   }
@@ -131,8 +160,27 @@ async function executeImport(
       };
     }
 
-    await deleteDocument(ctx.supabase, preview.data.documentId);
-    return { success: true, displayHint: 'text', data: preview.data };
+    await deleteDocumentIfUnchanged(ctx.supabase, {
+      documentId: preview.data.documentId,
+      projectId: preview.data.projectId,
+      name: preview.data.name,
+      folderId: preview.data.folderId,
+      updatedAt: preview.data.updatedAt,
+      expected: {
+        epoch: preview.data.expectedToken.epoch,
+        revision: preview.data.expectedToken.revision,
+      },
+      expectedUpdateIds: preview.data.expectedUpdateIds,
+    });
+    const publicPreview = PreviewSchema.parse({
+      type: preview.data.type,
+      documentId: preview.data.documentId,
+      projectId: preview.data.projectId,
+      name: preview.data.name,
+      folderName: preview.data.folderName,
+      updatedAt: preview.data.updatedAt,
+    });
+    return { success: true, displayHint: 'text', data: publicPreview };
   } catch (error) {
     return {
       success: false,

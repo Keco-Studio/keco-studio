@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { DocumentStateConflictError } from '../../../src/lib/documents/documentStateTypes';
 
 // Authorization is exercised by its own suites; here we stub it so the tests
 // focus on documentService's own validation (ids, folder-project integrity,
@@ -24,6 +25,7 @@ import {
   createDocument,
   listDocuments,
   moveDocument,
+  deleteDocumentIfUnchanged,
   DocumentNotFoundError,
 } from '../../../src/lib/services/documentService';
 
@@ -201,5 +203,65 @@ describe('documentService cross-project folder integrity', () => {
     await expect(
       moveDocument(supabase, DOC, { folderId: FOLDER })
     ).rejects.toThrow(/does not belong to the project/);
+  });
+});
+
+describe('documentService atomic document deletion', () => {
+  const snapshot = {
+    documentId: DOC,
+    projectId: PROJECT_A,
+    name: 'Guide',
+    folderId: FOLDER,
+    updatedAt: '2026-07-16T00:00:00.000Z',
+    expected: { epoch: 2, revision: 4 },
+    expectedUpdateIds: ['55555555-5555-4555-8555-555555555555'],
+  };
+
+  it('exposes a focused unchanged-snapshot delete operation', () => {
+    expect(typeof deleteDocumentIfUnchanged).toBe('function');
+  });
+
+  it('passes the exact metadata and collaboration snapshot to one atomic RPC', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: DOC, error: null });
+    const supabase = { rpc } as unknown as SupabaseClient;
+
+    await expect(deleteDocumentIfUnchanged(supabase, snapshot)).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('delete_document_if_unchanged', {
+      p_document_id: DOC,
+      p_project_id: PROJECT_A,
+      p_expected_name: 'Guide',
+      p_expected_folder_id: FOLDER,
+      p_expected_updated_at: '2026-07-16T00:00:00.000Z',
+      p_expected_epoch: 2,
+      p_expected_revision: 4,
+      p_expected_update_ids: ['55555555-5555-4555-8555-555555555555'],
+    });
+  });
+
+  it('maps metadata mutation at the atomic boundary to a state conflict', async () => {
+    const supabase = {
+      rpc: jest.fn().mockResolvedValue({
+        data: null,
+        error: { code: 'PT409', message: 'Document metadata changed' },
+      }),
+    } as unknown as SupabaseClient;
+
+    await expect(deleteDocumentIfUnchanged(supabase, snapshot)).rejects.toBeInstanceOf(
+      DocumentStateConflictError
+    );
+  });
+
+  it('maps an appended update tail at the atomic boundary to a state conflict', async () => {
+    const supabase = {
+      rpc: jest.fn().mockResolvedValue({
+        data: null,
+        error: { code: 'PT409', message: 'Document update tail changed' },
+      }),
+    } as unknown as SupabaseClient;
+
+    await expect(deleteDocumentIfUnchanged(supabase, snapshot)).rejects.toMatchObject({
+      name: 'DocumentStateConflictError',
+      message: 'Document update tail changed',
+    });
   });
 });

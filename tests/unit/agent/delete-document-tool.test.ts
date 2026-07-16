@@ -3,9 +3,17 @@ import type { ToolContext } from '@/lib/agent/types';
 
 const resolveDocumentForTool = jest.fn();
 const deleteDocument = jest.fn();
+const deleteDocumentIfUnchanged = jest.fn();
+const readTransport = jest.fn();
 
 jest.mock('@/lib/agent/document-resolver', () => ({ resolveDocumentForTool }));
-jest.mock('@/lib/services/documentService', () => ({ deleteDocument }));
+jest.mock('@/lib/services/documentService', () => ({
+  deleteDocument,
+  deleteDocumentIfUnchanged,
+}));
+jest.mock('@/lib/documents/documentStateGateway', () => ({
+  documentStateGateway: { readTransport },
+}));
 
 import { deleteDocumentTool } from '@/lib/agent/tools/delete-document';
 
@@ -13,6 +21,7 @@ const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const OTHER_PROJECT_ID = '55555555-5555-4555-8555-555555555555';
 const UPDATED_AT = '2026-07-15T00:00:00.000Z';
+const UPDATE_A = '77777777-7777-4777-8777-777777777777';
 
 const ctx = {
   projectId: PROJECT_ID,
@@ -49,11 +58,28 @@ const preview = {
   updatedAt: UPDATED_AT,
 };
 
+const savedPreview = {
+  ...preview,
+  folderId: '66666666-6666-4666-8666-666666666666',
+  expectedToken: { epoch: 2, revision: 4 },
+  expectedUpdateIds: [UPDATE_A],
+};
+
 describe('delete_document tool', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resolveDocumentForTool.mockResolvedValue(resolvedDocument());
     deleteDocument.mockResolvedValue(undefined);
+    deleteDocumentIfUnchanged.mockResolvedValue(undefined);
+    readTransport.mockResolvedValue({
+      documentId: DOCUMENT_ID,
+      projectId: PROJECT_ID,
+      mode: 'collaborative',
+      yjsStateBase64: 'head-state',
+      updateTail: [{ id: UPDATE_A, updateBase64: 'tail-a' }],
+      token: { epoch: 2, revision: 4 },
+      updatedAt: UPDATED_AT,
+    });
   });
 
   it('declares mandatory post-preview confirmation and a closed selector schema', () => {
@@ -86,13 +112,15 @@ describe('delete_document tool', () => {
   });
 
   it('resolves once and returns an exact saved preview without mutating', async () => {
-    await expect(
-      deleteDocumentTool.execute({ documentName: 'Guide', folderName: 'Lore' }, ctx)
-    ).resolves.toEqual({
+    const result = await deleteDocumentTool.execute(
+      { documentName: 'Guide', folderName: 'Lore' },
+      ctx
+    );
+    expect(result).toEqual({
       success: true,
       displayHint: 'text',
       data: preview,
-      internalData: preview,
+      internalData: savedPreview,
     });
     expect(resolveDocumentForTool).toHaveBeenCalledWith(
       ctx.supabase,
@@ -100,7 +128,10 @@ describe('delete_document tool', () => {
       { documentName: 'Guide', folderName: 'Lore' },
       ctx
     );
+    expect(readTransport).toHaveBeenCalledWith(ctx.supabase, DOCUMENT_ID);
     expect(deleteDocument).not.toHaveBeenCalled();
+    expect(deleteDocumentIfUnchanged).not.toHaveBeenCalled();
+    expect(JSON.stringify(result.data)).not.toContain(UPDATE_A);
   });
 
   it.each([
@@ -133,7 +164,7 @@ describe('delete_document tool', () => {
 
   it('deletes only the saved stable ID after re-resolving it in the same project', async () => {
     const result = await deleteDocumentTool.executeImport!(
-      { success: true, data: preview, internalData: preview },
+      { success: true, data: preview, internalData: savedPreview },
       { documentName: 'Guide', folderName: 'Lore' },
       ctx
     );
@@ -143,15 +174,41 @@ describe('delete_document tool', () => {
       { documentId: DOCUMENT_ID },
       ctx
     );
-    expect(deleteDocument).toHaveBeenCalledWith(ctx.supabase, DOCUMENT_ID);
+    expect(deleteDocumentIfUnchanged).toHaveBeenCalledWith(ctx.supabase, {
+      documentId: DOCUMENT_ID,
+      projectId: PROJECT_ID,
+      name: 'Guide',
+      folderId: '66666666-6666-4666-8666-666666666666',
+      updatedAt: UPDATED_AT,
+      expected: { epoch: 2, revision: 4 },
+      expectedUpdateIds: [UPDATE_A],
+    });
+    expect(deleteDocument).not.toHaveBeenCalled();
     expect(result).toEqual({ success: true, displayHint: 'text', data: preview });
+  });
+
+  it('rejects an appended un-compacted update through the atomic delete boundary', async () => {
+    deleteDocumentIfUnchanged.mockRejectedValue(new Error('Document update tail changed'));
+
+    await expect(
+      deleteDocumentTool.executeImport!(
+        { success: true, data: preview, internalData: savedPreview },
+        { documentId: DOCUMENT_ID },
+        ctx
+      )
+    ).resolves.toMatchObject({
+      success: false,
+      error: 'Document update tail changed',
+    });
+    expect(deleteDocumentIfUnchanged).toHaveBeenCalledTimes(1);
+    expect(deleteDocument).not.toHaveBeenCalled();
   });
 
   it('rejects approval when the saved document was renamed', async () => {
     resolveDocumentForTool.mockResolvedValue(resolvedDocument({ name: 'Renamed Guide' }));
     await expect(
       deleteDocumentTool.executeImport!(
-        { success: true, data: preview, internalData: preview },
+        { success: true, data: preview, internalData: savedPreview },
         { documentName: 'Guide' },
         ctx
       )
@@ -163,7 +220,7 @@ describe('delete_document tool', () => {
     resolveDocumentForTool.mockResolvedValue(resolvedDocument({ project_id: OTHER_PROJECT_ID }));
     await expect(
       deleteDocumentTool.executeImport!(
-        { success: true, data: preview, internalData: preview },
+        { success: true, data: preview, internalData: savedPreview },
         { documentId: DOCUMENT_ID },
         ctx
       )
@@ -179,7 +236,7 @@ describe('delete_document tool', () => {
     });
     await expect(
       deleteDocumentTool.executeImport!(
-        { success: true, data: preview, internalData: preview },
+        { success: true, data: preview, internalData: savedPreview },
         { documentId: DOCUMENT_ID },
         ctx
       )

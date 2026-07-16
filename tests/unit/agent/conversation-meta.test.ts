@@ -94,6 +94,15 @@ describe('needsConfirmation', () => {
     expect(needsConfirmation(post, { autoExecute: true })).toBe(true);
   });
 
+  it('lets always-confirm policy take precedence over confirmationRequired false', () => {
+    const irreversible = mockTool({
+      confirmationMode: 'post_preview',
+      confirmationPolicy: 'always',
+      confirmationRequired: false,
+    });
+    expect(needsConfirmation(irreversible, { autoExecute: true })).toBe(true);
+  });
+
   it('requires confirmation for legacy post-preview writes in auto mode', () => {
     const post = mockTool({ confirmationMode: 'post_preview' });
     expect(needsConfirmation(post, { autoExecute: true })).toBe(true);
@@ -101,6 +110,14 @@ describe('needsConfirmation', () => {
 
   it('requires confirmation for meta writes even when autoExecute is true', () => {
     const metaTool = mockTool({ confirmationMode: 'meta' });
+    expect(needsConfirmation(metaTool, { autoExecute: true })).toBe(true);
+  });
+
+  it('lets meta mode take precedence over confirmationRequired false', () => {
+    const metaTool = mockTool({
+      confirmationMode: 'meta',
+      confirmationRequired: false,
+    });
     expect(needsConfirmation(metaTool, { autoExecute: true })).toBe(true);
   });
 
