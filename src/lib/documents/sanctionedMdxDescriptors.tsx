@@ -12,7 +12,7 @@ type SanctionedMdxEditorProps = {
 
 type SanctionedMdxDescriptor = {
   name: string;
-  kind: 'flow';
+  kind: 'flow' | 'text';
   props: Array<{
     name: string;
     type: 'string';
@@ -29,12 +29,13 @@ type SanctionedMdxDescriptor = {
 
 const descriptor = (
   name: SanctionedComponentName,
+  kind: SanctionedMdxDescriptor['kind'],
   props: SanctionedMdxDescriptor['props'],
   Editor: ComponentType<SanctionedMdxEditorProps>,
-  hasChildren = true
+  hasChildren: boolean
 ): SanctionedMdxDescriptor => ({
   name,
-  kind: 'flow',
+  kind,
   props,
   hasChildren,
   Editor,
@@ -47,6 +48,7 @@ export function createSanctionedMdxDescriptors(
   return Object.entries(SANCTIONED_MDX_REGISTRY).map(([name, rule]) =>
     descriptor(
       name as SanctionedComponentName,
+      rule.kind,
       rule.props.map((property) => ({
         name: property.name,
         type: 'string' as const,
