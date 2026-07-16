@@ -34,6 +34,8 @@ const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const OTHER_DOCUMENT_ID = '55555555-5555-4555-8555-555555555555';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const ARCHIVE_ID = '66666666-6666-4666-8666-666666666666';
+const MIXED_CASE_FOLDER_ID = 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA';
+const CANONICAL_FOLDER_ID = MIXED_CASE_FOLDER_ID.toLowerCase();
 
 const ctx = {
   projectId: PROJECT_ID,
@@ -90,7 +92,7 @@ describe('Agent document metadata tools', () => {
   it('keeps runtime and JSON Schema name constraints aligned', async () => {
     expect(createDocumentTool.parameters).toMatchObject({
       properties: {
-        name: { minLength: 1, maxLength: 200 },
+        name: { minLength: 1, maxLength: 200, pattern: '\\S' },
         content: { maxLength: 500_000, default: '' },
         folderId: { format: 'uuid' },
       },
@@ -103,6 +105,25 @@ describe('Agent document metadata tools', () => {
       error: expect.stringMatching(/invalid parameters/i),
     });
     expect(resolveDocumentForTool).not.toHaveBeenCalled();
+  });
+
+  it('measures JSON Schema string limits in Unicode code points', async () => {
+    const maximumName = '\u{1F680}'.repeat(200);
+    const tooLongName = `${maximumName}\u{1F680}`;
+
+    await expect(
+      createDocumentTool.execute({ name: maximumName, content: '' }, ctx)
+    ).resolves.toMatchObject({ success: true });
+    expect(createDocument).toHaveBeenCalledWith(
+      ctx.supabase,
+      expect.objectContaining({ name: maximumName })
+    );
+
+    createDocument.mockClear();
+    await expect(
+      createDocumentTool.execute({ name: tooLongName, content: '' }, ctx)
+    ).resolves.toMatchObject({ success: false });
+    expect(createDocument).not.toHaveBeenCalled();
   });
 
   it('preflights an exact duplicate in the target folder without creating it', async () => {
@@ -139,12 +160,51 @@ describe('Agent document metadata tools', () => {
     expect(createDocument).not.toHaveBeenCalled();
   });
 
-  it('allows an explicitly confirmed duplicate creation retry', async () => {
+  it('preflights a root duplicate using the service-trimmed document name', async () => {
     listResolvedProjectDocuments.mockResolvedValue([documentSummary()]);
 
     await expect(
+      createDocumentTool.execute({ name: ' Guide ', content: '# New' }, ctx)
+    ).resolves.toMatchObject({
+      success: false,
+      error: 'A document named "Guide" already exists in the target folder.',
+      data: { candidates: [{ id: DOCUMENT_ID, name: 'Guide', folderId: null }] },
+    });
+    expect(createDocument).not.toHaveBeenCalled();
+  });
+
+  it('preflights a folder duplicate using a canonical lowercase UUID', async () => {
+    listResolvedProjectDocuments.mockResolvedValue([
+      documentSummary({ folder_id: CANONICAL_FOLDER_ID, folderName: 'Archive' }),
+    ]);
+
+    await expect(
       createDocumentTool.execute(
-        { name: 'Guide', content: '# New', allowDuplicate: true },
+        { name: 'Guide', content: '# New', folderId: MIXED_CASE_FOLDER_ID },
+        ctx
+      )
+    ).resolves.toMatchObject({
+      success: false,
+      data: {
+        candidates: [{ id: DOCUMENT_ID, folderId: CANONICAL_FOLDER_ID }],
+      },
+    });
+    expect(createDocument).not.toHaveBeenCalled();
+  });
+
+  it('uses the same canonical values for an explicitly confirmed duplicate retry', async () => {
+    listResolvedProjectDocuments.mockResolvedValue([
+      documentSummary({ folder_id: CANONICAL_FOLDER_ID, folderName: 'Archive' }),
+    ]);
+
+    await expect(
+      createDocumentTool.execute(
+        {
+          name: ' Guide ',
+          content: '# New',
+          folderId: MIXED_CASE_FOLDER_ID,
+          allowDuplicate: true,
+        },
         ctx
       )
     ).resolves.toMatchObject({ success: true, data: { name: 'Guide' } });
@@ -152,7 +212,7 @@ describe('Agent document metadata tools', () => {
       projectId: PROJECT_ID,
       name: 'Guide',
       content: '# New',
-      folderId: undefined,
+      folderId: CANONICAL_FOLDER_ID,
     });
   });
 

@@ -2,13 +2,14 @@ import { z } from 'zod';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
 import { updateDocumentName } from '@/lib/services/documentService';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
+import { codePointBoundedString } from './document-parameter-schema';
 
 const ParamsSchema = z
   .object({
     documentId: z.string().uuid().optional(),
-    documentName: z.string().min(1).max(200).optional(),
-    folderName: z.string().min(1).max(200).optional(),
-    newName: z.string().min(1).max(200).refine((value) => /\S/.test(value), {
+    documentName: codePointBoundedString(1, 200).optional(),
+    folderName: codePointBoundedString(1, 200).optional(),
+    newName: codePointBoundedString(1, 200).refine((value) => /\S/.test(value), {
       message: 'newName must contain a non-whitespace character.',
     }),
   })

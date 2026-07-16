@@ -6,11 +6,14 @@ import {
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import { listResolvedProjectDocuments } from '../document-resolver';
+import { codePointBoundedString } from './document-parameter-schema';
 
 const Params = z
   .object({
-    name: z.string().min(1).max(200),
-    content: z.string().max(500_000).default(''),
+    name: codePointBoundedString(1, 200).refine((value) => /\S/.test(value), {
+      message: 'name must contain a non-whitespace character.',
+    }),
+    content: codePointBoundedString(0, 500_000).default(''),
     folderId: z.string().uuid().nullable().optional(),
     allowDuplicate: z.boolean().optional(),
   })
@@ -23,7 +26,7 @@ export const createDocumentTool: AgentTool = {
   parameters: {
     type: 'object',
     properties: {
-      name: { type: 'string', minLength: 1, maxLength: 200 },
+      name: { type: 'string', minLength: 1, maxLength: 200, pattern: '\\S' },
       content: { type: 'string', maxLength: 500_000, default: '' },
       folderId: { type: ['string', 'null'], format: 'uuid' },
       allowDuplicate: { type: 'boolean' },
@@ -37,20 +40,24 @@ export const createDocumentTool: AgentTool = {
     let createdDocumentName: string | undefined;
     try {
       validateSanctionedMdx(parsed.data.content);
-      const targetFolderId = parsed.data.folderId ?? null;
+      const canonicalName = parsed.data.name.trim();
+      if (!canonicalName) {
+        return { success: false, error: 'Document name is required.' };
+      }
+      const canonicalFolderId = parsed.data.folderId?.toLowerCase();
       const existingDocuments = await listResolvedProjectDocuments(
         ctx.supabase,
         ctx.projectId
       );
       const duplicates = existingDocuments.filter(
         (document) =>
-          document.name === parsed.data.name &&
-          document.folder_id === targetFolderId
+          document.name === canonicalName &&
+          (document.folder_id?.toLowerCase() ?? undefined) === canonicalFolderId
       );
       if (duplicates.length > 0 && parsed.data.allowDuplicate !== true) {
         return {
           success: false,
-          error: `A document named "${parsed.data.name}" already exists in the target folder.`,
+          error: `A document named "${canonicalName}" already exists in the target folder.`,
           data: {
             candidates: duplicates.map((document) => ({
               id: document.id,
@@ -64,9 +71,9 @@ export const createDocumentTool: AgentTool = {
       }
       const doc = await createDocument(ctx.supabase, {
         projectId: ctx.projectId,
-        name: parsed.data.name,
+        name: canonicalName,
         content: parsed.data.content,
-        folderId: parsed.data.folderId,
+        folderId: canonicalFolderId,
       });
       createdDocumentId = doc.id;
       createdDocumentName = doc.name;

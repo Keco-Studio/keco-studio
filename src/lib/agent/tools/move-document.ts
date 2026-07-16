@@ -3,12 +3,13 @@ import { findFolderByName } from '../data-access';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
 import { moveDocument } from '@/lib/services/documentService';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
+import { codePointBoundedString } from './document-parameter-schema';
 
 const ParamsSchema = z
   .object({
     documentId: z.string().uuid().optional(),
-    documentName: z.string().min(1).max(200).optional(),
-    folderName: z.string().min(1).max(200).optional(),
+    documentName: codePointBoundedString(1, 200).optional(),
+    folderName: codePointBoundedString(1, 200).optional(),
     moveToRoot: z.boolean().optional(),
   })
   .strict()
