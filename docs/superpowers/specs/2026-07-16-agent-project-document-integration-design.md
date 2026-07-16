@@ -191,9 +191,11 @@ Replace the implicit boolean-only decision with an additive tool policy:
 type ConfirmationPolicy = 'mode' | 'always';
 ```
 
-`mode` preserves current Auto/Confirm behavior and is the default. `always`
-forces the existing pending-action confirmation path regardless of conversation
-mode. Only `delete_document` uses `always` in this phase.
+`mode` follows Auto/Confirm behavior. `always` forces the existing pending-action
+confirmation path regardless of conversation mode. An omitted policy preserves
+the legacy behavior of existing tools, so this feature does not silently change
+confirmation semantics for table workflows. `propose_document_edit` explicitly
+uses `mode`; only `delete_document` uses `always` in this phase.
 
 The existing `confirmationMode` continues to define whether confirmation occurs
 before execution or after a non-mutating preview. `delete_document` uses
