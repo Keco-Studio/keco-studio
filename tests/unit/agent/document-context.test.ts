@@ -53,7 +53,7 @@ describe('live current-document context', () => {
     expect(resolveDocumentForTool).not.toHaveBeenCalled();
   });
 
-  it('wires the live id into both client request branches without changing the frozen key', () => {
+  it('wires the live id into send and confirmation requests without changing the frozen key', () => {
     const chatPanel = readFileSync(
       path.join(process.cwd(), 'src/components/agent/ChatPanel.tsx'),
       'utf8'
@@ -68,7 +68,10 @@ describe('live current-document context', () => {
     expect(chatPanel).not.toContain(
       "`${currentProjectId}|${currentFolderId ?? ''}|${currentLibraryId ?? ''}|${currentDocumentId"
     );
-    expect(hook.match(/currentDocumentId: ctx\.currentDocumentId/g)).toHaveLength(2);
+    expect(hook.match(/currentDocumentId: ctx\.currentDocumentId/g)).toHaveLength(3);
+    expect(hook).toMatch(
+      /fetch\('\/api\/agent-chat\/confirm'[\s\S]*?currentDocumentId: ctx\.currentDocumentId/
+    );
   });
 
   it('refreshes the navigation context value when the live document id changes', () => {

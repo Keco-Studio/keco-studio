@@ -6,6 +6,7 @@ import { getConversation } from '@/lib/agent/conversation-store';
 import { resolveConversationMeta } from '@/lib/agent/conversation-meta';
 import { loadPendingAction } from '@/lib/agent/confirmation';
 import { sseResponse } from '@/lib/agent/sse';
+import { resolveCurrentDocumentContext } from '@/lib/agent/current-document-context';
 import type { ToolContext } from '@/lib/agent/types';
 
 export const maxDuration = 120;
@@ -18,6 +19,7 @@ export const POST = withAuth(async function POST(
   let body: {
     actionId?: string;
     decision?: 'approve' | 'reject';
+    currentDocumentId?: string;
     currentFolderId?: string;
     currentFolderName?: string;
     currentLibraryId?: string;
@@ -51,6 +53,11 @@ export const POST = withAuth(async function POST(
     }
 
     const userRole = await resolveUserRole(supabase, conversation.project_id, user.id);
+    const currentDocumentContext = await resolveCurrentDocumentContext(
+      supabase,
+      conversation.project_id,
+      typeof body.currentDocumentId === 'string' ? body.currentDocumentId.trim() : undefined
+    );
 
     const toolContext: ToolContext = {
       userId: user.id,
@@ -63,6 +70,7 @@ export const POST = withAuth(async function POST(
       currentSectionName: body.currentSectionName,
       supabase,
       userRole,
+      ...currentDocumentContext,
     };
 
     const abortController = new AbortController();

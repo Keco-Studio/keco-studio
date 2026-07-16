@@ -477,6 +477,7 @@ export function useAgentChat(ctx: SendContext) {
           body: JSON.stringify({
             actionId,
             decision,
+            currentDocumentId: ctx.currentDocumentId,
             currentFolderId: ctx.currentFolderId,
             currentFolderName: ctx.currentFolderName,
             currentLibraryId: ctx.currentLibraryId,
