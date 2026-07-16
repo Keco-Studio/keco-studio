@@ -7,7 +7,7 @@ import { sanitizeMessagesForLlm } from './conversation-store';
 import type { ChatMessage, ToolCall, ToolResult } from './types';
 
 const MAX_QUERY_ASSET_ROWS = 30;
-const MAX_TOOL_CONTENT_CHARS = 16_000;
+export const MAX_TOOL_CONTENT_CHARS = 16_000;
 
 /**
  * Max non-system messages kept in the LLM context. Older turns are dropped to

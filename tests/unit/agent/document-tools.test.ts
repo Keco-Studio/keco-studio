@@ -27,6 +27,7 @@ jest.mock('@/lib/agent/document-resolver', () => ({
 import { createDocumentTool } from '@/lib/agent/tools/create-document';
 import { readDocument } from '@/lib/agent/tools/read-document';
 import { proposeDocumentEdit } from '@/lib/agent/tools/propose-document-edit';
+import { MAX_TOOL_CONTENT_CHARS } from '@/lib/agent/tool-result-for-llm';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -202,6 +203,15 @@ describe('Agent document tools', () => {
     expect(resolveDocumentForTool).toHaveBeenCalledWith(ctx.supabase, PROJECT_ID, {}, ctx);
   });
 
+  it('rejects a folder qualifier without a document selector', async () => {
+    await expect(readDocument.execute({ folderName: 'Other' }, ctx)).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/invalid parameters/i),
+    });
+    expect(resolveDocumentForTool).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  });
+
   it('returns safe ambiguity candidates without reading state', async () => {
     const candidates = [
       {
@@ -240,7 +250,7 @@ describe('Agent document tools', () => {
   });
 
   it('falls back to an outline instead of returning an oversized full body', async () => {
-    const markdown = `# Start\n${'x'.repeat(12_100)}\n## Details\nbody`;
+    const markdown = `# Start\n${'x'.repeat(16_100)}\n## Details\nbody`;
     read.mockResolvedValue(state(markdown));
 
     const result = await readDocument.execute({}, ctx);
@@ -258,6 +268,48 @@ describe('Agent document tools', () => {
     expect((result.data as { markdown: string }).markdown).not.toContain('x'.repeat(100));
   });
 
+  it('falls back when escaping makes the complete full-read result exceed the LLM budget', async () => {
+    const denseBody = '\\\"\n'.repeat(3_900);
+    const markdown = `# Start\n${denseBody}## Details\nbody`;
+    expect(markdown.length).toBeLessThan(12_000);
+    expect(
+      JSON.stringify({
+        success: true,
+        displayHint: 'text',
+        data: {
+          documentId: DOCUMENT_ID,
+          name: 'Guide',
+          folderName: null,
+          projectId: PROJECT_ID,
+          token: { epoch: 2, revision: 4 },
+          mode: 'full',
+          markdown,
+          startLine: 1,
+          endLine: 3_903,
+          totalLines: 3_903,
+          complete: true,
+        },
+      }).length
+    ).toBeGreaterThan(MAX_TOOL_CONTENT_CHARS);
+    read.mockResolvedValue(state(markdown));
+
+    const result = await readDocument.execute({}, ctx);
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        requestedMode: 'full',
+        mode: 'outline',
+        markdown: '# Start\n## Details',
+        complete: false,
+        fallbackReason: expect.stringMatching(/too large/i),
+        _llmNote: expect.stringMatching(/heading|lines/i),
+      },
+    });
+    expect(JSON.stringify(result).length).toBeLessThanOrEqual(MAX_TOOL_CONTENT_CHARS);
+    expect((result.data as { markdown: string }).markdown).not.toContain(denseBody.slice(0, 100));
+  });
+
   it.each([
     { heading: 'One' },
     { mode: 'heading' },
@@ -268,6 +320,20 @@ describe('Agent document tools', () => {
     { mode: 'full', heading: 'One' },
   ])('rejects incompatible mode parameters: %p', async (params) => {
     await expect(readDocument.execute(params, ctx)).resolves.toMatchObject({ success: false });
+    expect(resolveDocumentForTool).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { mode: 'lines', startLine: 0, endLine: 1 },
+    { mode: 'lines', startLine: 1, endLine: 0 },
+    { mode: 'lines', startLine: -1, endLine: 1 },
+    { mode: 'lines', startLine: 1, endLine: -1 },
+  ])('rejects non-positive line bounds before resolving a document: %p', async (params) => {
+    await expect(readDocument.execute(params, ctx)).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/invalid parameters/i),
+    });
     expect(resolveDocumentForTool).not.toHaveBeenCalled();
     expect(read).not.toHaveBeenCalled();
   });

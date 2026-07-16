@@ -1,9 +1,8 @@
 import { z } from 'zod';
 import { readDocumentSlice, type DocumentReadRequest } from '../document-read';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
+import { MAX_TOOL_CONTENT_CHARS } from '../tool-result-for-llm';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
-
-const MAX_FULL_READ_MARKDOWN_CHARS = 12_000;
 
 const ParamsSchema = z
   .object({
@@ -12,8 +11,8 @@ const ParamsSchema = z
     folderName: z.string().min(1).max(200).optional(),
     mode: z.enum(['full', 'outline', 'heading', 'lines']).optional(),
     heading: z.string().min(1).optional(),
-    startLine: z.number().int().optional(),
-    endLine: z.number().int().optional(),
+    startLine: z.number().int().min(1).optional(),
+    endLine: z.number().int().min(1).optional(),
   })
   .strict()
   .superRefine((params, refinement) => {
@@ -22,6 +21,17 @@ const ParamsSchema = z
     const hasStartLine = params.startLine !== undefined;
     const hasEndLine = params.endLine !== undefined;
 
+    if (
+      params.folderName !== undefined &&
+      params.documentName === undefined &&
+      params.documentId === undefined
+    ) {
+      refinement.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['folderName'],
+        message: 'folderName requires documentName or documentId.',
+      });
+    }
     if (mode === 'heading' && !hasHeading) {
       refinement.addIssue({ code: z.ZodIssueCode.custom, path: ['heading'], message: 'Required for heading mode.' });
     }
@@ -84,21 +94,10 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     }
 
     const requestedMode = parsed.data.mode ?? 'full';
-    const fullReadIsTooLarge =
-      requestedMode === 'full' && state.markdown.length > MAX_FULL_READ_MARKDOWN_CHARS;
-    const slice = readDocumentSlice(
-      state.markdown,
-      fullReadIsTooLarge ? { mode: 'outline' } : requestFromParams(parsed.data)
-    );
-    const fallbackMetadata = fullReadIsTooLarge
-      ? {
-          requestedMode: 'full' as const,
-          fallbackReason: `The full document is too large for a safe model read (${state.markdown.length} characters; maximum ${MAX_FULL_READ_MARKDOWN_CHARS}).`,
-          _llmNote: 'The full document was not returned. Call read_document with mode "heading" or "lines" to read the needed bounded section. Do not replace the full document from this outline.',
-        }
-      : {};
-
-    return {
+    const buildResult = (
+      slice: ReturnType<typeof readDocumentSlice>,
+      fallbackMetadata: Record<string, unknown> = {}
+    ): ToolResult => ({
       success: true,
       displayHint: 'text',
       data: {
@@ -110,7 +109,21 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         ...slice,
         ...fallbackMetadata,
       },
-    };
+    });
+    const requestedResult = buildResult(
+      readDocumentSlice(state.markdown, requestFromParams(parsed.data))
+    );
+    const serializedResultLength = JSON.stringify(requestedResult).length;
+
+    if (requestedMode !== 'full' || serializedResultLength <= MAX_TOOL_CONTENT_CHARS) {
+      return requestedResult;
+    }
+
+    return buildResult(readDocumentSlice(state.markdown, { mode: 'outline' }), {
+      requestedMode: 'full' as const,
+      fallbackReason: `The full document is too large for a safe model read (${serializedResultLength} serialized characters; maximum ${MAX_TOOL_CONTENT_CHARS}).`,
+      _llmNote: 'The full document was not returned. Call read_document with mode "heading" or "lines" to read the needed bounded section. Do not replace the full document from this outline.',
+    });
   } catch (error) {
     return {
       success: false,
