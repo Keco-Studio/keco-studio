@@ -1,11 +1,11 @@
 import { describe, expect, it } from '@jest/globals';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 
 const repoRoot = process.cwd();
 const migrationPath = path.join(
   repoRoot,
-  'supabase/migrations/20260713000000_create_documents.sql'
+  'supabase/migrations/20260716000000_create_documents.sql'
 );
 
 describe('documents table + RLS migration (Phase 1)', () => {
@@ -16,6 +16,9 @@ describe('documents table + RLS migration (Phase 1)', () => {
     expect(migration).toMatch(/project_id uuid not null references public\.projects\(id\) on delete cascade/i);
     expect(migration).toMatch(/folder_id uuid references public\.folders\(id\) on delete set null/i);
     expect(migration).toMatch(/content text not null default ''/i);
+    expect(migration).toMatch(
+      /constraint documents_content_size_check\s+check \(pg_catalog\.octet_length\(content\) <= 2097152\)/i
+    );
   });
 
   it('defines project-membership RLS policies for select/insert/update/delete', () => {
@@ -35,6 +38,9 @@ describe('documents table + RLS migration (Phase 1)', () => {
     expect(migration).toContain(
       'public.is_editor_or_admin_collaborator(project_id, (select auth.uid()))'
     );
+    expect(migration).toMatch(
+      /create policy "documents_insert_policy"[\s\S]+created_by = \(select auth\.uid\(\)\)/i
+    );
   });
 
   it('enforces cross-project integrity between folder_id and project_id', () => {
@@ -49,5 +55,13 @@ describe('documents table + RLS migration (Phase 1)', () => {
 
   it('does NOT drop shared_documents (that is a separate, guarded migration)', () => {
     expect(migration).not.toMatch(/drop table[^;]*shared_documents/i);
+  });
+
+  it('keeps every migration timestamp unique', () => {
+    const migrationNames = readdirSync(path.join(repoRoot, 'supabase/migrations'))
+      .filter((name) => /^\d{14}_.+\.sql$/.test(name));
+    const timestamps = migrationNames.map((name) => name.slice(0, 14));
+
+    expect(new Set(timestamps).size).toBe(timestamps.length);
   });
 });

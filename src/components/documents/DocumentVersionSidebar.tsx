@@ -1,10 +1,11 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Empty, Spin } from 'antd';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Button, Empty, Modal, Spin } from 'antd';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import {
+  deleteDocumentVersion,
   getDocumentVersionPreview,
   listDocumentVersions,
   type DocumentVersionPreview,
@@ -13,6 +14,7 @@ import {
 import type { DocumentCollaborationSession } from '@/lib/documents/documentCollaborationSession';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { subscribeToProjectDocumentUpdates } from '@/lib/documents/projectDocumentChannel';
+import { showErrorToast, showSuccessToast } from '@/lib/utils/toast';
 import { CreateDocumentVersionModal } from './CreateDocumentVersionModal';
 import { DocumentVersionPreviewModal } from './DocumentVersionPreviewModal';
 import { RestoreDocumentVersionModal } from './RestoreDocumentVersionModal';
@@ -39,6 +41,10 @@ function versionTypeLabel(type: DocumentVersionSummary['type']): string {
           : type;
 }
 
+function canDeleteVersion(type: DocumentVersionSummary['type']): boolean {
+  return type === 'manual' || type === 'automatic';
+}
+
 export function DocumentVersionSidebar({
   open,
   projectId,
@@ -63,6 +69,30 @@ export function DocumentVersionSidebar({
     queryFn: () => getDocumentVersionPreview(supabase, documentId, previewId!),
     enabled: open && Boolean(previewId),
   });
+  const deleteMutation = useMutation({
+    mutationFn: (versionId: string) =>
+      deleteDocumentVersion(supabase, documentId, versionId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.documentVersions(documentId),
+      });
+      showSuccessToast('Version deleted');
+    },
+    onError: (error: Error) => {
+      showErrorToast(error.message || 'Unable to delete version');
+    },
+  });
+
+  const confirmDelete = (version: DocumentVersionSummary) => {
+    Modal.confirm({
+      title: 'Delete version',
+      content: `Delete "${version.name}"? This action cannot be undone.`,
+      okText: 'Delete',
+      cancelText: 'Cancel',
+      okButtonProps: { danger: true },
+      onOk: () => deleteMutation.mutateAsync(version.id),
+    });
+  };
 
   useEffect(() => {
     return subscribeToProjectDocumentUpdates((payload) => {
@@ -108,6 +138,18 @@ export function DocumentVersionSidebar({
               {canMutate && (
                 <Button type="link" danger size="small" data-testid={`restore-version-${version.id}`} onClick={() => setRestoreVersion(version)}>
                   Restore
+                </Button>
+              )}
+              {canMutate && canDeleteVersion(version.type) && (
+                <Button
+                  type="link"
+                  danger
+                  size="small"
+                  loading={deleteMutation.isPending && deleteMutation.variables === version.id}
+                  data-testid={`delete-version-${version.id}`}
+                  onClick={() => confirmDelete(version)}
+                >
+                  Delete
                 </Button>
               )}
             </div>

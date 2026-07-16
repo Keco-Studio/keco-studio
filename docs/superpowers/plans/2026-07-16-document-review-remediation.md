@@ -66,13 +66,13 @@ the original `next-env.d.ts` working-tree change remains uncommitted.
 ### Task 2: Migration Identity, Archive RLS, Payload Bounds, and Version Retention
 
 **Files:**
-- Rename: `supabase/migrations/20260713000000_create_documents.sql` -> `supabase/migrations/20260716000000_create_documents.sql`
-- Rename: `supabase/migrations/20260713010000_retire_shared_documents.sql` -> `supabase/migrations/20260716010000_retire_shared_documents.sql`
-- Rename: `supabase/migrations/20260713100000_documents_yjs_state.sql` -> `supabase/migrations/20260716020000_documents_yjs_state.sql`
-- Rename: `supabase/migrations/20260714000000_document_realtime_collaboration.sql` -> `supabase/migrations/20260716030000_document_realtime_collaboration.sql`
-- Rename: `supabase/migrations/20260714010000_document_version_history.sql` -> `supabase/migrations/20260716040000_document_version_history.sql`
-- Rename: `supabase/migrations/20260715000000_document_agent_edit.sql` -> `supabase/migrations/20260716050000_document_agent_edit.sql`
-- Rename: `supabase/migrations/20260715010000_document_import_checkpoint.sql` -> `supabase/migrations/20260716060000_document_import_checkpoint.sql`
+- Migration: `supabase/migrations/20260716000000_create_documents.sql`
+- Migration: `supabase/migrations/20260716010000_retire_shared_documents.sql`
+- Migration: `supabase/migrations/20260716020000_documents_yjs_state.sql`
+- Migration: `supabase/migrations/20260716030000_document_realtime_collaboration.sql`
+- Migration: `supabase/migrations/20260716040000_document_version_history.sql`
+- Migration: `supabase/migrations/20260716050000_document_agent_edit.sql`
+- Migration: `supabase/migrations/20260716060000_document_import_checkpoint.sql`
 - Modify: `src/lib/documents/documentVersionService.ts`
 - Modify: `src/components/documents/DocumentVersionSidebar.tsx`
 - Modify: `tests/unit/database/*document*.test.ts`
@@ -85,9 +85,9 @@ the original `next-env.d.ts` working-tree change remains uncommitted.
 
 - [ ] **Step 1: Renumber migrations and all path references**
 
-Rename the seven migrations in dependency order to the exact versions listed
-above. Update tests and documentation that open or name the old paths. Confirm
-`rg '20260713000000_create_documents|20260713010000_retire_shared_documents|20260713100000_documents_yjs_state|20260714000000_document_realtime_collaboration|20260714010000_document_version_history|20260715000000_document_agent_edit|20260715010000_document_import_checkpoint'` returns no stale document-migration references.
+Keep the seven migrations in the dependency order listed above. Update tests
+and documentation whenever a migration path changes, and confirm there are no
+stale document-migration references.
 
 - [ ] **Step 2: Lock down the archive table**
 

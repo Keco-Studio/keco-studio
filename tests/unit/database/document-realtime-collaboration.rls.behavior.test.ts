@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import {
   RLS_DB_TESTS_ENABLED,
+  anonClient,
   buildProjectFixture,
   teardownProjectFixture,
   type ProjectFixture,
@@ -86,6 +87,139 @@ describeDb('document collaboration durability RLS (live database)', () => {
       expect(tailError).toBeNull();
       expect(tail?.map((row) => row.id)).toContain(updateId);
     }
+  });
+
+  it('denies anonymous durable update reads', async () => {
+    const documentId = await seedDocument();
+    expect((await initialize(fx.owner, documentId)).error).toBeNull();
+    const { data, error } = await anonClient()
+      .from('document_yjs_updates')
+      .select('id')
+      .eq('document_id', documentId);
+
+    expect(data ?? []).toEqual([]);
+    if (error) expect(error.code).toBe('42501');
+  });
+
+  it('rejects non-canonical and oversized update and snapshot payloads', async () => {
+    const documentId = await seedDocument();
+    const oversizedUpdate = Buffer.alloc(262145).toString('base64');
+    const nonCanonical = await append(fx.owner, documentId, 0, [
+      { id: randomUUID(), updateBase64: 'AQID\n' },
+    ]);
+    const oversized = await append(fx.owner, documentId, 0, [
+      { id: randomUUID(), updateBase64: oversizedUpdate },
+    ]);
+    const oversizedSnapshot = await initialize(
+      fx.owner,
+      documentId,
+      Buffer.alloc(8388609).toString('base64')
+    );
+    const oversizedMarkdown = await fx.owner.client.rpc(
+      'initialize_document_collab_state',
+      {
+        p_document_id: documentId,
+        p_expected_epoch: 0,
+        p_yjs_state: 'AQID',
+        p_markdown: 'x'.repeat(2097153),
+      }
+    );
+
+    expect(nonCanonical.error?.code).toBe('22023');
+    expect(oversized.error?.code).toBe('22023');
+    expect(oversizedSnapshot.error?.code).toBe('22023');
+    expect(oversizedMarkdown.error?.code).toBe('22023');
+  });
+
+  it('allows metadata-only document creation but blocks raw state and tail bypasses', async () => {
+    const allowed = await fx.editor.client
+      .from('documents')
+      .insert({
+        project_id: fx.projectId,
+        folder_id: null,
+        name: `guarded-create-${fx.suffix}`,
+        content: '# Created',
+        created_by: fx.editor.id,
+      })
+      .select('id, yjs_state, collab_epoch, collab_revision')
+      .single();
+    expect(allowed.error).toBeNull();
+    expect(allowed.data).toMatchObject({
+      yjs_state: null,
+      collab_epoch: 0,
+      collab_revision: 0,
+    });
+
+    const rawState = await fx.editor.client.from('documents').insert({
+      project_id: fx.projectId,
+      name: `raw-state-${fx.suffix}`,
+      content: '# Bypass',
+      created_by: fx.editor.id,
+      yjs_state: 'AQID',
+      collab_epoch: 9,
+      collab_revision: 9,
+    });
+    const oversizedDocument = await fx.editor.client.from('documents').insert({
+      project_id: fx.projectId,
+      name: `oversized-${fx.suffix}`,
+      content: 'x'.repeat(2097153),
+      created_by: fx.editor.id,
+    });
+    const rawTail = await fx.editor.client.from('document_yjs_updates').insert({
+      id: randomUUID(),
+      document_id: allowed.data!.id,
+      epoch: 0,
+      update_data: Buffer.alloc(262145).toString('base64'),
+      created_by: fx.editor.id,
+    });
+
+    expect(rawState.error?.code).toBe('42501');
+    expect(oversizedDocument.error?.code).toBe('23514');
+    expect(rawTail.error?.code).toBe('42501');
+  });
+
+  it('rejects invalid compaction snapshots and Markdown before mutation', async () => {
+    const documentId = await seedDocument();
+    const initialized = await initialize(fx.owner, documentId);
+    expect(initialized.error).toBeNull();
+    const revision = Number(
+      (initialized.data as Array<{ collab_revision: number }>)[0]?.collab_revision
+    );
+
+    const invalidSnapshot = await fx.owner.client.rpc(
+      'compact_document_collab_state',
+      {
+        p_document_id: documentId,
+        p_expected_epoch: 0,
+        p_expected_revision: revision,
+        p_included_update_ids: [],
+        p_yjs_state: 'AQID\n',
+        p_markdown: '# Invalid',
+      }
+    );
+    const invalidMarkdown = await fx.owner.client.rpc(
+      'compact_document_collab_state',
+      {
+        p_document_id: documentId,
+        p_expected_epoch: 0,
+        p_expected_revision: revision,
+        p_included_update_ids: [],
+        p_yjs_state: 'AQID',
+        p_markdown: 'x'.repeat(2097153),
+      }
+    );
+
+    expect(invalidSnapshot.error?.code).toBe('22023');
+    expect(invalidMarkdown.error?.code).toBe('22023');
+    const stored = await fx.svc
+      .from('documents')
+      .select('content, collab_revision')
+      .eq('id', documentId)
+      .single();
+    expect(stored.data).toMatchObject({
+      content: '# Initial',
+      collab_revision: revision,
+    });
   });
 
   it('allows only owner/admin/editor to initialize and append current-epoch updates', async () => {

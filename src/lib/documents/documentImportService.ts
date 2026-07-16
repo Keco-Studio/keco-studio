@@ -66,10 +66,26 @@ function assertImagePositions(
 ): void {
   const positions = images.map((image) => image.placeholder?.trim() ?? '');
   if (
-    positions.some((position) => !position || !markdown.includes(position)) ||
-    new Set(positions).size !== positions.length
+    positions.some((position) => !position) ||
+    new Set(positions).size !== positions.length ||
+    positions.some((position) => markdown.split(position).length !== 2)
   ) {
     throw new Error('Imported document image positions are invalid');
+  }
+}
+
+function assertUploadedImagePositions(
+  parsedImages: readonly { placeholder?: string }[],
+  uploadedImages: readonly UploadedDocumentImage[]
+): void {
+  const expected = parsedImages.map((image) => image.placeholder?.trim() ?? '');
+  const actual = uploadedImages.map((image) => image.placeholder.trim());
+  if (
+    actual.length !== expected.length ||
+    new Set(actual).size !== actual.length ||
+    actual.some((position, index) => position !== expected[index])
+  ) {
+    throw new Error('Uploaded document image positions are invalid');
   }
 }
 
@@ -116,6 +132,7 @@ export async function createImportedDocument(
         parsed.images,
         userId
       );
+      assertUploadedImagePositions(parsed.images, uploadedImages);
     }
     const markdown = replaceImagePositions(provisionalMarkdown, uploadedImages);
     validateSanctionedMdx(markdown);

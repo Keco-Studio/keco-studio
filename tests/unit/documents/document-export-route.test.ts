@@ -4,16 +4,33 @@ import { NextRequest } from 'next/server';
 import { DocumentAccessError, DocumentContentValidationError, DocumentReadOnlyError } from '../../../src/lib/documents/documentStateTypes';
 
 const exportDocument = jest.fn();
-const createSupabaseServerClient = jest.fn(() => ({}));
+const authedSupabase = { source: 'withAuth' };
+let authenticated = true;
+const withAuth = jest.fn((handler: unknown) => async (
+  request: NextRequest,
+  context: { params: Promise<{ documentId: string }> }
+) => {
+  if (!authenticated) {
+    return Response.json({ error: 'Please sign in to continue' }, { status: 401 });
+  }
+  return (handler as (
+    request: NextRequest,
+    context: { params: Promise<{ documentId: string }> },
+    auth: { supabase: object; user: { id: string } }
+  ) => Promise<Response>)(request, context, {
+    supabase: authedSupabase,
+    user: { id: 'user-id' },
+  });
+});
 
 jest.mock('../../../src/lib/documents/documentExportService', () => ({
   exportDocument: (...args: unknown[]) => exportDocument(...args),
 }));
-jest.mock('../../../src/lib/createSupabaseServerClient', () => ({
-  createSupabaseServerClient: (...args: unknown[]) => createSupabaseServerClient(...args),
+jest.mock('@/lib/auth/route-auth', () => ({
+  withAuth: (...args: unknown[]) => withAuth(...args),
 }));
 
-import { GET } from '../../../src/app/api/documents/[documentId]/export/route';
+import { GET, maxDuration } from '../../../src/app/api/documents/[documentId]/export/route';
 
 const editor = fs.readFileSync(
   path.resolve(__dirname, '../../../src/components/documents/DocumentEditor.tsx'),
@@ -37,28 +54,29 @@ async function get(format = 'docx', documentId = DOCUMENT_ID) {
 describe('document export route and UI wiring', () => {
   beforeEach(() => {
     exportDocument.mockReset();
-    createSupabaseServerClient.mockClear();
+    authenticated = true;
   });
 
   it('returns explicit binary download headers', async () => {
     exportDocument.mockResolvedValue({
       bytes: Buffer.from('bytes'),
       mediaType: 'application/test',
-      fileName: '世界 notes.docx',
+      fileName: 'project notes.docx',
     });
 
     const response = await get();
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/test');
-    expect(response.headers.get('content-disposition')).toContain("filename*=UTF-8''%E4%B8%96%E7%95%8C%20notes.docx");
+    expect(response.headers.get('content-disposition')).toContain("filename*=UTF-8''project%20notes.docx");
     expect(response.headers.get('cache-control')).toBe('private, no-store');
+    expect(exportDocument).toHaveBeenCalledWith(authedSupabase, DOCUMENT_ID, 'docx');
   });
 
   it('returns 400 for unsupported formats and invalid content', async () => {
     expect((await get('html')).status).toBe(400);
     expect((await get('docx', 'not-a-uuid')).status).toBe(400);
-    expect(createSupabaseServerClient).not.toHaveBeenCalled();
+    expect(exportDocument).not.toHaveBeenCalled();
 
     exportDocument.mockRejectedValue(new DocumentContentValidationError());
     expect((await get()).status).toBe(400);
@@ -90,5 +108,14 @@ describe('document export route and UI wiring', () => {
     expect(editor).toContain("key: 'pdf'");
     expect(editor).toContain('data-testid="document-export"');
     expect(nextConfig).toContain("'@mdxeditor/editor'");
+  });
+
+  it('uses shared authentication and a 60-second route duration', async () => {
+    authenticated = false;
+
+    expect((await get()).status).toBe(401);
+    expect(exportDocument).not.toHaveBeenCalled();
+    expect(withAuth).toHaveBeenCalledTimes(1);
+    expect(maxDuration).toBe(60);
   });
 });

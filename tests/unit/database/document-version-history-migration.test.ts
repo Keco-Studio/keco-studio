@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const migrationPath = path.join(
   process.cwd(),
-  'supabase/migrations/20260714010000_document_version_history.sql'
+  'supabase/migrations/20260716040000_document_version_history.sql'
 );
 const migration = existsSync(migrationPath)
   ? readFileSync(migrationPath, 'utf8')
@@ -46,13 +46,34 @@ describe('document version history migration', () => {
     expect(migration).toMatch(/values \([\s\S]+p_version_id[\s\S]+p_yjs_state[\s\S]+p_markdown/is);
   });
 
-  it('creates automatic checkpoints inside compaction at most once per ten minutes', () => {
+  it('creates rate-limited automatic checkpoints and retains only the newest 100', () => {
     expect(migration).toMatch(/create or replace function public\.compact_document_collab_state/i);
     expect(migration).toMatch(/p_markdown is distinct from v_document\.content/i);
     expect(migration).toMatch(/v\.version_type = 'automatic'/i);
     expect(migration).toMatch(/now\(\) - interval '10 minutes'/i);
     expect(migration).toMatch(/p_expected_revision \+ 1/i);
+    expect(migration).toMatch(
+      /delete from public\.document_versions stale[\s\S]+stale\.version_type = 'automatic'[\s\S]+order by candidate\.created_at desc, candidate\.id desc[\s\S]+offset 100/i
+    );
+    expect(migration).toMatch(
+      /not exists \([\s\S]+audit\.source_version_id = stale\.id[\s\S]+\)/i
+    );
     expect(migration).toMatch(/delete from public\.document_yjs_updates[\s\S]+id = any\(coalesce\(p_included_update_ids, array\[\]::uuid\[\]\)\)/i);
+  });
+
+  it('validates each manual, compaction, and restore snapshot at its function boundary', () => {
+    expect(migration).toMatch(
+      /function public\.create_document_version[\s\S]+?begin\s+perform public\.assert_document_snapshot_payload\(p_yjs_state, p_markdown\)/i
+    );
+    expect(migration).toMatch(
+      /function public\.compact_document_collab_state[\s\S]+?begin\s+perform public\.assert_document_snapshot_payload\(p_yjs_state, p_markdown\)/i
+    );
+    expect(migration).toMatch(
+      /function public\.restore_document_version[\s\S]+?begin\s+perform public\.assert_document_snapshot_payload\(\s*p_current_yjs_state,\s*p_current_markdown\s*\)/i
+    );
+    expect(migration).toMatch(
+      /where v\.id = p_target_version_id[\s\S]+?if not found then[\s\S]+?end if;\s+perform public\.assert_document_snapshot_payload\(\s*v_target\.snapshot_yjs_state,\s*v_target\.snapshot_content\s*\);\s+insert into public\.document_versions/i
+    );
   });
 
   it('restores backup, audit, head, and tail in one guarded function', () => {
@@ -74,5 +95,28 @@ describe('document version history migration', () => {
     expect(migration).toMatch(/grant execute on function public\.create_document_version[\s\S]+to authenticated/i);
     expect(migration).toMatch(/grant execute on function public\.restore_document_version[\s\S]+to authenticated/i);
     expect(migration).not.toMatch(/alter publication supabase_realtime/i);
+  });
+
+  it('deletes only manual or automatic versions through a writer-guarded RPC', () => {
+    expect(migration).toMatch(
+      /create or replace function public\.delete_document_version\(\s*p_document_id uuid,\s*p_version_id uuid\s*\)/i
+    );
+    expect(migration).toMatch(
+      /from public\.documents d[\s\S]+for update[\s\S]+public\.is_project_owner[\s\S]+public\.is_editor_or_admin_collaborator/i
+    );
+    expect(migration).toContain("v_version.version_type not in ('manual', 'automatic')");
+    expect(migration).toMatch(
+      /raise exception 'Document version not found'\s+using errcode = 'P0002'/i
+    );
+    expect(migration).toMatch(
+      /raise exception 'Audit document versions cannot be deleted'\s+using errcode = 'PT409'/i
+    );
+    expect(migration).toMatch(/exception when foreign_key_violation[\s\S]+errcode = 'PT409'/i);
+    expect(migration).toMatch(
+      /revoke all on function public\.delete_document_version\(uuid, uuid\)\s+from public, anon, service_role/i
+    );
+    expect(migration).toMatch(
+      /grant execute on function public\.delete_document_version\(uuid, uuid\)\s+to authenticated/i
+    );
   });
 });

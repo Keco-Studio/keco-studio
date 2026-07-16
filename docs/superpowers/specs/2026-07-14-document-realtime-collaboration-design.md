@@ -21,6 +21,10 @@ provides a reusable editor engine: Phase 2A reuses membership, roles, JWT/RLS,
 Supabase clients, visual presence primitives, and sidebar infrastructure, while
 building a document-specific Yjs provider and persistence protocol.
 
+Rich-text nodes collaborate through character-level Yjs operations. Code-block
+payloads remain atomic last-writer-wins values, so simultaneous edits inside the
+same code block do not merge character by character.
+
 ## Current Evidence
 
 The repository has useful spike code but no enabled collaboration path:

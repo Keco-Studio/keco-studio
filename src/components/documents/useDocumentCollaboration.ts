@@ -285,12 +285,14 @@ export function useDocumentCollaboration({
 
   useEffect(() => {
     if (!session) return;
-    const refresh = () => {
-      void session.refresh().catch(() => undefined);
+    const recover = () => {
+      void session.recoverNow().catch(() => undefined);
     };
-    const flushWhenHidden = () => {
+    const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
         void session.flush().catch(() => undefined);
+      } else if (document.visibilityState === 'visible') {
+        recover();
       }
     };
     const guardPendingUnload = (event: BeforeUnloadEvent) => {
@@ -298,14 +300,14 @@ export function useDocumentCollaboration({
       event.preventDefault();
       event.returnValue = '';
     };
-    window.addEventListener('focus', refresh);
-    window.addEventListener('online', refresh);
-    document.addEventListener('visibilitychange', flushWhenHidden);
+    window.addEventListener('focus', recover);
+    window.addEventListener('online', recover);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('beforeunload', guardPendingUnload);
     return () => {
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('online', refresh);
-      document.removeEventListener('visibilitychange', flushWhenHidden);
+      window.removeEventListener('focus', recover);
+      window.removeEventListener('online', recover);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', guardPendingUnload);
     };
   }, [session]);

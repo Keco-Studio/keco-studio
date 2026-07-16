@@ -199,6 +199,7 @@ export function validateSanctionedMdxPropertyEdit(
   const validated: Record<string, string> = {};
   for (const property of rule.props) {
     const value = values[property.name] ?? '';
+    if (!property.required && value.length === 0) continue;
     if (
       ((property.required || value.length > 0) && value.trim().length === 0) ||
       CONTROL_CHARACTER_PATTERN.test(value)

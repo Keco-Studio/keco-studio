@@ -2,6 +2,7 @@ import type { ReactElement, ReactNode } from 'react';
 
 const flush = jest.fn<Promise<void>, []>();
 const showErrorToast = jest.fn();
+const getSession = jest.fn();
 let permissionRole: 'editor' | 'viewer' = 'editor';
 
 jest.mock('react', () => ({
@@ -27,7 +28,9 @@ jest.mock('@tanstack/react-query', () => ({
     error: null,
   }),
 }));
-jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
+jest.mock('@/lib/SupabaseContext', () => ({
+  useSupabase: () => ({ auth: { getSession } }),
+}));
 jest.mock('@/lib/services/documentImageUpload', () => ({ uploadImageFiles: jest.fn() }));
 jest.mock('@/lib/utils/toast', () => ({
   showErrorToast: (...args: unknown[]) => showErrorToast(...args),
@@ -98,6 +101,11 @@ describe('DocumentEditor export durability', () => {
     permissionRole = 'editor';
     flush.mockReset();
     showErrorToast.mockReset();
+    getSession.mockReset();
+    getSession.mockResolvedValue({
+      data: { session: { access_token: 'fresh-access-token' } },
+      error: null,
+    });
     global.fetch = jest.fn().mockResolvedValue({
       ok: true,
       blob: async () => new Blob(['export']),
@@ -153,5 +161,28 @@ describe('DocumentEditor export durability', () => {
 
     expect(flush).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the current session token instead of the mount-captured token', async () => {
+    await exportHandler()({ key: 'docx' });
+
+    expect(getSession).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/documents/document-id/export?format=docx',
+      { headers: { Authorization: 'Bearer fresh-access-token' } }
+    );
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.anything(),
+      { headers: { Authorization: 'Bearer access-token' } }
+    );
+  });
+
+  it('does not export without a current authenticated session', async () => {
+    getSession.mockResolvedValue({ data: { session: null }, error: null });
+
+    await exportHandler()({ key: 'pdf' });
+
+    expect(fetch).not.toHaveBeenCalled();
+    expect(showErrorToast).toHaveBeenCalledWith('Please sign in before exporting');
   });
 });

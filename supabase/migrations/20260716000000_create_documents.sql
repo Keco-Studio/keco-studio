@@ -6,7 +6,7 @@
 -- inaccessible under RLS (GitHub issue #172). We never repeat that here.
 --
 -- Retiring the dead shared_documents table is intentionally a SEPARATE, guarded
--- migration (20260713010000_retire_shared_documents.sql) so table creation and a
+-- migration (20260716010000_retire_shared_documents.sql) so table creation and a
 -- destructive drop can be reviewed and reverted independently.
 --
 -- documents are deliberately NOT added to the supabase_realtime publication
@@ -27,7 +27,9 @@ create table if not exists public.documents (
   content text not null default '',
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  updated_at timestamptz not null default now(),
+  constraint documents_content_size_check
+    check (pg_catalog.octet_length(content) <= 2097152)
 );
 
 comment on table public.documents is
@@ -127,8 +129,11 @@ create policy "documents_select_policy"
 create policy "documents_insert_policy"
   on public.documents for insert
   with check (
-    public.is_project_owner(project_id, (select auth.uid()))
-    or public.is_editor_or_admin_collaborator(project_id, (select auth.uid()))
+    created_by = (select auth.uid())
+    and (
+      public.is_project_owner(project_id, (select auth.uid()))
+      or public.is_editor_or_admin_collaborator(project_id, (select auth.uid()))
+    )
   );
 
 create policy "documents_update_policy"

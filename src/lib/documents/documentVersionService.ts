@@ -104,6 +104,9 @@ function throwMutationError(
   if (isConflictError(error)) {
     throw new DocumentStateConflictError(error.message, token);
   }
+  if (error.code === 'P0002' || error.code === 'PGRST116') {
+    throw new DocumentAccessError('Document version not found');
+  }
   if (error.code === '42501') throw new DocumentReadOnlyError();
   throw error;
 }
@@ -212,6 +215,24 @@ export async function getDocumentVersionPreview(
     ...mapVersionRow(row, profiles),
     markdown: row.snapshot_content ?? '',
   };
+}
+
+export async function deleteDocumentVersion(
+  client: SupabaseClient,
+  documentId: string,
+  versionId: string
+): Promise<string> {
+  assertDocumentId(documentId);
+  assertVersionId(versionId);
+  const { data, error } = await client.rpc('delete_document_version', {
+    p_document_id: documentId,
+    p_version_id: versionId,
+  });
+  if (error) throwMutationError(error);
+  if (data !== versionId) {
+    throw new DocumentAccessError('Document version deletion returned no id');
+  }
+  return data;
 }
 
 export async function createDocumentVersion(

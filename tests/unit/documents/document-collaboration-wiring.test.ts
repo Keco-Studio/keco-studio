@@ -193,6 +193,13 @@ describe('document collaboration React boundary', () => {
     expect(source).toContain('registerDocumentFlushHandler');
     expect(source).toContain('session.flush()');
     expect(source).toContain("addEventListener('beforeunload'");
+    expect(source).toContain("addEventListener('focus', recover)");
+    expect(source).toContain("addEventListener('online', recover)");
+    expect(source).toContain("document.visibilityState === 'visible'");
+    expect(source).toContain('session.recoverNow()');
+    expect(source).toContain("removeEventListener('focus', recover)");
+    expect(source).toContain("removeEventListener('online', recover)");
+    expect(source).not.toContain('const refresh = () =>');
     expect(source).toContain('session.hasPendingChanges');
     expect(source).toContain('cursorColor');
     expect(source).toContain('setLoadFailure');

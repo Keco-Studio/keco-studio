@@ -90,7 +90,7 @@ describeDb('Agent document tools caller RLS (live database)', () => {
     const created = await createDocumentTool.execute(
       {
         name: `agent-${label}-${fx.suffix}`,
-        content: `# ${label} seed\n\n中文初始内容`,
+        content: `# ${label} seed\n\nInitial document content`,
       },
       context(actor, fx.projectId, role)
     );
@@ -117,7 +117,7 @@ describeDb('Agent document tools caller RLS (live database)', () => {
         },
       });
 
-      const proposedMarkdown = `# ${label} confirmed edit\n\n中文确认内容`;
+      const proposedMarkdown = `# ${label} confirmed edit\n\nConfirmed document content`;
       const preview = await proposeDocumentEdit.execute(
         { documentId: id, markdown: proposedMarkdown },
         ctx

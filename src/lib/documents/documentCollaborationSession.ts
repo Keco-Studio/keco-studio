@@ -11,6 +11,7 @@ import {
 } from './documentCollaborationProtocol';
 import type {
   AuthoritativeDocumentState,
+  AuthoritativeDocumentTransportState,
   CollaborationStatus,
   DocumentStateToken,
   DurableYjsUpdate,
@@ -27,6 +28,10 @@ export type DocumentCollaborationRole = 'admin' | 'editor' | 'viewer';
 
 export type DocumentCollaborationGateway = {
   read(client: SupabaseClient, documentId: string): Promise<AuthoritativeDocumentState>;
+  readTransport(
+    client: SupabaseClient,
+    documentId: string
+  ): Promise<AuthoritativeDocumentTransportState>;
   initialize(
     client: SupabaseClient,
     documentId: string,
@@ -172,7 +177,7 @@ export class DocumentCollaborationSession implements Provider {
   };
 
   private channel: RealtimeChannel | null = null;
-  private pendingState: AuthoritativeDocumentState | null = null;
+  private pendingState: AuthoritativeDocumentTransportState | null = null;
   private bufferedEvents: BufferedEvent[] = [];
   private appliedUpdateIds = new Set<string>();
   private localUpdates: Uint8Array[] = [];
@@ -203,6 +208,7 @@ export class DocumentCollaborationSession implements Provider {
   private destroyPromise: Promise<void> | null = null;
   private docListenerInstalled = false;
   private awarenessListenerInstalled = false;
+  private departureInProgress = false;
   private durableTailCount = 0;
   private durableTailBytes = 0;
   private connectPromise: Promise<void> | null = null;
@@ -223,6 +229,7 @@ export class DocumentCollaborationSession implements Provider {
       origin === 'remote' ||
       origin === 'hydrate' ||
       this.role === 'viewer' ||
+      this.departureInProgress ||
       this.stateReplacementInProgress ||
       this.durableResetInProgress ||
       this.closing ||
@@ -247,6 +254,7 @@ export class DocumentCollaborationSession implements Provider {
     if (
       origin === 'remote' ||
       this.role === 'viewer' ||
+      this.departureInProgress ||
       this.closing ||
       this.destroyed ||
       !this.channel
@@ -482,6 +490,7 @@ export class DocumentCollaborationSession implements Provider {
           }
           if (status === 'SUBSCRIBED') {
             this.channelHealthy = true;
+            this.reconnectAttempts = 0;
             subscribed = true;
             settleResolve();
           }
@@ -516,7 +525,6 @@ export class DocumentCollaborationSession implements Provider {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer || this.closing || this.destroyed) return;
-    if (this.reconnectAttempts >= 5) return;
     this.reconnectAttempts += 1;
     const baseDelay = Math.min(
       this.reconnectBackoffMs * 2 ** (this.reconnectAttempts - 1),
@@ -731,10 +739,11 @@ export class DocumentCollaborationSession implements Provider {
       });
       if (event === 'yjs-update' && 'updateId' in parsed) {
         if (this.appliedUpdateIds.has(parsed.updateId)) return;
-        this.appliedUpdateIds.add(parsed.updateId);
         const update = decodeBase64(parsed.updateBase64);
+        this.validatePeerCandidate(update);
         Y.applyUpdate(this.durableDoc, update, 'durable-remote');
         Y.applyUpdate(this.doc, update, 'remote');
+        this.appliedUpdateIds.add(parsed.updateId);
         return;
       }
       if (event === 'yjs-sync-request' && 'stateVectorBase64' in parsed) {
@@ -759,7 +768,9 @@ export class DocumentCollaborationSession implements Provider {
         'updateBase64' in parsed
       ) {
         if (parsed.requesterId !== this.userId) return;
-        Y.applyUpdate(this.doc, decodeBase64(parsed.updateBase64), 'remote');
+        const update = decodeBase64(parsed.updateBase64);
+        this.validatePeerCandidate(update);
+        Y.applyUpdate(this.doc, update, 'remote');
         return;
       }
       if (event === 'yjs-awareness' && 'updateBase64' in parsed) {
@@ -772,6 +783,17 @@ export class DocumentCollaborationSession implements Provider {
       }
     } catch {
       // Malformed, oversized, and cross-scope peer payloads never change state.
+    }
+  }
+
+  private validatePeerCandidate(update: Uint8Array): void {
+    const candidate = new Y.Doc();
+    try {
+      Y.applyUpdate(candidate, Y.encodeStateAsUpdate(this.doc));
+      Y.applyUpdate(candidate, update);
+      validateSerializedMdxNodes(candidate.get('root', Y.XmlText));
+    } finally {
+      candidate.destroy();
     }
   }
 
@@ -839,7 +861,7 @@ export class DocumentCollaborationSession implements Provider {
   }
 
   private async runInitialHydration(
-    state: AuthoritativeDocumentState,
+    state: AuthoritativeDocumentTransportState,
     hydrationGeneration: number
   ): Promise<void> {
     const hydrationDoc = this.doc;
@@ -956,21 +978,21 @@ export class DocumentCollaborationSession implements Provider {
             return;
           }
           Y.applyUpdate(this.durableDoc, pending.bytes, 'durable-local');
-          await this.send('yjs-update', {
-            v: 1,
-            documentId: this.documentId,
-            epoch: pendingEpoch,
-            updateId: pending.id,
-            updateBase64: pending.updateBase64,
-          });
-          if (this.currentToken.epoch !== pendingEpoch) {
-            if (this.pendingDurable === pending) this.pendingDurable = null;
-            return;
-          }
           if (this.pendingDurable === pending) this.pendingDurable = null;
           this.durableTailCount += 1;
           this.durableTailBytes += pending.bytes.byteLength;
           this.scheduleCompaction();
+          try {
+            await this.send('yjs-update', {
+              v: 1,
+              documentId: this.documentId,
+              epoch: pendingEpoch,
+              updateId: pending.id,
+              updateBase64: pending.updateBase64,
+            });
+          } catch {
+            // Durable catch-up delivers an update when live broadcast is unavailable.
+          }
         } catch (error) {
           this.failClosed(
             error instanceof Error ? error.message : 'Document update could not be saved',
@@ -1100,7 +1122,10 @@ export class DocumentCollaborationSession implements Provider {
         await this.onCompacted?.(state);
       } catch (error) {
         if (error instanceof DocumentStateConflictError) {
-          const winner = await this.gateway.read(this.supabase, this.documentId);
+          const winner = await this.gateway.readTransport(
+            this.supabase,
+            this.documentId
+          );
           if (winner.token.epoch > this.currentToken.epoch) {
             this.replaceActiveDocument(winner);
             return;
@@ -1150,15 +1175,13 @@ export class DocumentCollaborationSession implements Provider {
       try {
         await this.reconnectChannel();
       } catch (error) {
-        if (
-          !(error instanceof DocumentChannelTransportError && error.handled)
-        ) {
+        if (!(error instanceof DocumentChannelTransportError && error.handled)) {
           this.failClosed(
             error instanceof Error ? error.message : 'Document reconnect failed',
             'degraded'
           );
-          this.scheduleReconnect();
         }
+        this.scheduleReconnect();
         throw error;
       }
       return;
@@ -1184,6 +1207,33 @@ export class DocumentCollaborationSession implements Provider {
         error instanceof Error ? error.message : 'Document catch-up failed',
         'degraded'
       );
+      throw error;
+    }
+  }
+
+  async recoverNow(): Promise<void> {
+    if (this.destroyed || this.closing) return;
+    if (
+      this.currentStatus === 'idle' ||
+      this.currentStatus === 'authorizing' ||
+      this.currentStatus === 'connecting' ||
+      this.currentStatus === 'hydrating' ||
+      this.currentStatus === 'syncing'
+    ) {
+      return;
+    }
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    try {
+      await this.reconnectChannel();
+    } catch (error) {
+      if (!(error instanceof DocumentChannelTransportError && error.handled)) {
+        this.failClosed(
+          error instanceof Error ? error.message : 'Document reconnect failed',
+          'degraded'
+        );
+      }
+      this.scheduleReconnect();
       throw error;
     }
   }
@@ -1236,7 +1286,7 @@ export class DocumentCollaborationSession implements Provider {
   private async readAndApplyDurableState(
     minimumToken: DocumentStateToken | null
   ): Promise<void> {
-    const state = await this.gateway.read(this.supabase, this.documentId);
+    const state = await this.gateway.readTransport(this.supabase, this.documentId);
     if (
       minimumToken &&
       (state.token.epoch < minimumToken.epoch ||
@@ -1302,7 +1352,7 @@ export class DocumentCollaborationSession implements Provider {
     }
   }
 
-  private replaceActiveDocument(state: AuthoritativeDocumentState): void {
+  private replaceActiveDocument(state: AuthoritativeDocumentTransportState): void {
     this.setStatus('hydrating');
     this.clearPendingWork();
     this.hydrationGeneration += 1;
@@ -1429,6 +1479,13 @@ export class DocumentCollaborationSession implements Provider {
 
   private async destroyInternal(): Promise<void> {
     if (this.destroyed) return;
+    const awareness = this.awareness as unknown as awarenessProtocol.Awareness;
+    this.departureInProgress = true;
+    const hadLocalAwareness = awareness.getLocalState() !== null;
+    awareness.setLocalState(null);
+    if (hadLocalAwareness && this.role !== 'viewer') {
+      await this.sendAwarenessRemoval(awareness);
+    }
     this.closing = true;
     const closedError = new DocumentCollaborationUnavailableError(
       'Document session is closed'
@@ -1449,7 +1506,6 @@ export class DocumentCollaborationSession implements Provider {
       this.doc.off('update', this.onDocUpdate);
       this.docListenerInstalled = false;
     }
-    const awareness = this.awareness as unknown as awarenessProtocol.Awareness;
     if (this.awarenessListenerInstalled) {
       awareness.off('update', this.onAwarenessUpdate);
       this.awarenessListenerInstalled = false;
@@ -1460,7 +1516,6 @@ export class DocumentCollaborationSession implements Provider {
       // The caller's navigation boundary observes flush failures before destroy.
     }
     this.destroyed = true;
-    awareness.setLocalState(null);
     awareness.destroy();
     if (this.channel) {
       await this.channel.unsubscribe();
@@ -1470,6 +1525,40 @@ export class DocumentCollaborationSession implements Provider {
     this.doc.destroy();
     this.durableDoc.destroy();
     this.setStatus('closed');
+  }
+
+  private async sendAwarenessRemoval(
+    awareness: awarenessProtocol.Awareness
+  ): Promise<void> {
+    const channel = this.channel;
+    if (!channel) return;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const update = awarenessProtocol.encodeAwarenessUpdate(awareness, [
+        awareness.clientID,
+      ]);
+      await Promise.race([
+        Promise.resolve(
+          channel.send({
+            type: 'broadcast',
+            event: 'yjs-awareness',
+            payload: {
+              v: 1,
+              documentId: this.documentId,
+              epoch: this.currentToken.epoch,
+              updateBase64: encodeBase64(update),
+            },
+          })
+        ),
+        new Promise<void>((resolve) => {
+          timeout = setTimeout(resolve, 250);
+        }),
+      ]);
+    } catch {
+      // Departure is best-effort; server awareness expiry remains the fallback.
+    } finally {
+      if (timeout) clearTimeout(timeout);
+    }
   }
 
   disconnect(): void {

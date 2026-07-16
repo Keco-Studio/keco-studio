@@ -133,7 +133,9 @@ describe('parseDocument', () => {
     expect(parsed.text).toMatch(/\| Name\s+\| Role\s+\|/);
     expect(parsed.text).toContain('[rules](https://example.com/rules)');
     expect(parsed.images).toHaveLength(1);
-    expect(parsed.images[0]?.placeholder).toMatch(/^https:\/\/document-import\.invalid\/image-/);
+    expect(parsed.images[0]?.placeholder).toMatch(
+      /^https:\/\/document-import\.invalid\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    );
     expect(parsed.text).toContain(`Before ![Imported image 1](${parsed.images[0]?.placeholder}) after`);
   });
 });
@@ -148,14 +150,16 @@ describe('convertDocumentHtmlToMarkdown', () => {
         <thead><tr><th>Name</th><th>Role</th></tr></thead>
         <tbody><tr><td>Ada</td><td>Guide</td></tr></tbody>
       </table>
-      <p>Before <img src="https://document-import.invalid/image-0" alt="Map" /> after.</p>
+      <p>Before <img src="https://document-import.invalid/00000000-0000-4000-8000-000000000000" alt="Map" /> after.</p>
     `);
 
     expect(markdown).toContain('# World guide');
     expect(markdown).toContain('[rules](https://example.com/rules)');
     expect(markdown).toMatch(/[-*]\s+First/);
     expect(markdown).toMatch(/\| Name\s+\| Role\s+\|/);
-    expect(markdown).toContain('Before ![Map](https://document-import.invalid/image-0) after.');
+    expect(markdown).toContain(
+      'Before ![Map](https://document-import.invalid/00000000-0000-4000-8000-000000000000) after.'
+    );
   });
 
   it('drops unsafe HTML and unsafe link or image destinations', () => {

@@ -56,7 +56,7 @@ import {
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const DOCUMENT_ID = '22222222-2222-4222-8222-222222222222';
-const PLACEHOLDER = 'https://document-import.invalid/image-0';
+const PLACEHOLDER = 'https://document-import.invalid/00000000-0000-4000-8000-000000000000';
 const PUBLIC_URL = 'https://storage.example/user/image.png';
 const client = { rpc } as never;
 
@@ -203,6 +203,59 @@ describe('document import service', () => {
     expect(createDocument).not.toHaveBeenCalled();
     expect(initialize).not.toHaveBeenCalled();
     expect(createDocumentImportCheckpoint).not.toHaveBeenCalled();
+  });
+
+  it('replaces 11 fixed-length sentinels without corrupting later image URLs', async () => {
+    const placeholders = Array.from({ length: 11 }, (_, index) =>
+      `https://document-import.invalid/00000000-0000-4000-8000-${String(index).padStart(12, '0')}`
+    );
+    const urls = placeholders.map((_, index) => `https://storage.example/user/image-${index + 1}.png`);
+    parseDocument.mockResolvedValue({
+      text: placeholders.map((placeholder, index) =>
+        `![Imported image ${index + 1}](${placeholder})`
+      ).join('\n\n'),
+      images: placeholders.map((placeholder) => ({
+        data: new ArrayBuffer(6000),
+        contentType: 'image/png',
+        placeholder,
+      })),
+    });
+    uploadDocumentImagesAtomically.mockResolvedValue(placeholders.map((placeholder, index) => ({
+      placeholder,
+      url: urls[index],
+      storagePath: `user-1/image-${index + 1}.png`,
+    })));
+
+    const imported = await createImportedDocument(client, {
+      projectId: PROJECT_ID,
+      file: file('images.docx'),
+    });
+
+    expect(imported.markdown).toContain(`![Imported image 10](${urls[9]})`);
+    expect(imported.markdown).toContain(`![Imported image 11](${urls[10]})`);
+    for (const placeholder of placeholders) expect(imported.markdown).not.toContain(placeholder);
+  });
+
+  it.each([
+    ['missing', `# World`, [PLACEHOLDER]],
+    ['duplicate', `![One](${PLACEHOLDER})\n\n![Two](${PLACEHOLDER})`, [PLACEHOLDER]],
+    ['reused', `![One](${PLACEHOLDER})`, [PLACEHOLDER, PLACEHOLDER]],
+  ])('rejects %s image sentinels before upload', async (_case, text, placeholders) => {
+    parseDocument.mockResolvedValue({
+      text,
+      images: placeholders.map((placeholder) => ({
+        data: new ArrayBuffer(6000),
+        contentType: 'image/png',
+        placeholder,
+      })),
+    });
+
+    await expect(createImportedDocument(client, {
+      projectId: PROJECT_ID,
+      file: file('invalid.docx'),
+    })).rejects.toThrow('Imported document image positions are invalid');
+    expect(uploadDocumentImagesAtomically).not.toHaveBeenCalled();
+    expect(publishImportedDocument).not.toHaveBeenCalled();
   });
 
   it('removes uploaded images when document publication fails', async () => {

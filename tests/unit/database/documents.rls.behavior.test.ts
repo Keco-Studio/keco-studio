@@ -13,6 +13,7 @@
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import {
   RLS_DB_TESTS_ENABLED,
+  anonClient,
   buildProjectFixture,
   teardownProjectFixture,
   type ProjectFixture,
@@ -60,6 +61,17 @@ describeDb('documents project membership RLS (live RLS)', () => {
       expect(error).toBeNull();
       expect(data?.length).toBe(1);
     }
+  });
+
+  it('denies anonymous document reads', async () => {
+    const id = await seedDocument(fx, 'anonymous');
+    const { data, error } = await anonClient()
+      .from('documents')
+      .select('id')
+      .eq('id', id);
+
+    expect(data ?? []).toEqual([]);
+    if (error) expect(error.code).toBe('42501');
   });
 
   it('allows owner/admin/editor to write but keeps viewers read-only', async () => {

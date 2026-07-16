@@ -19,16 +19,20 @@ export type ReplaceDocumentStateInput = {
   reason: 'restore' | 'agent';
 };
 
-export type AuthoritativeDocumentState = {
+export type AuthoritativeDocumentTransportState = {
   documentId: string;
   projectId: string;
   mode: 'legacy' | 'collaborative';
-  markdown: string;
   yjsStateBase64: string | null;
   updateTail: DurableYjsUpdate[];
   token: DocumentStateToken;
   updatedAt: string;
 };
+
+export type AuthoritativeDocumentState =
+  AuthoritativeDocumentTransportState & {
+    markdown: string;
+  };
 
 export type CollaborationStatus =
   | 'idle'

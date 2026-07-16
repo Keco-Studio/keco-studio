@@ -81,7 +81,7 @@ async function verifyDocumentWritePermission(
   projectId: string,
   userId?: string
 ): Promise<void> {
-  const role = await getUserProjectRole(supabase, projectId, userId);
+  const { role } = await getUserProjectRole(supabase, projectId, userId);
   if (role !== 'admin' && role !== 'editor') {
     throw new AuthorizationError('Only admin and editor users can modify documents');
   }
@@ -233,39 +233,6 @@ export async function updateDocumentName(
   if (error) {
     throw error;
   }
-}
-
-/**
- * Persist Markdown content for a document. This is the legacy Phase 1 writer
- * and must not be mounted after a collaborative session starts. Pass `userId` when the caller already
- * resolved auth (e.g. editor shell) so we do not re-hit Auth during autosave.
- * @deprecated Use documentStateGateway for collaborative document bodies.
- */
-export async function updateDocumentContent(
-  supabase: SupabaseClient,
-  documentId: string,
-  content: string,
-  userId?: string
-): Promise<{ updatedAt: string }> {
-  if (!isUuid(documentId)) {
-    throw new Error('Invalid document ID format');
-  }
-
-  const projectId = await getDocumentProjectId(supabase, documentId);
-  await verifyDocumentWritePermission(supabase, projectId, userId);
-
-  const { data, error } = await supabase
-    .from('documents')
-    .update({ content })
-    .eq('id', documentId)
-    .select('updated_at')
-    .single();
-
-  if (error) {
-    throw error;
-  }
-
-  return { updatedAt: (data as { updated_at: string }).updated_at };
 }
 
 type MoveDocumentInput = {

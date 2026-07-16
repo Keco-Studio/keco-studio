@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { withAuth } from '@/lib/auth/route-auth';
+
+export const maxDuration = 60;
 
 const Body = z.object({
   documentId: z.string().uuid(),
@@ -20,20 +22,21 @@ function safeErrorDetails(error: unknown): { name: string; code?: string } {
   };
 }
 
-export async function POST(request: NextRequest) {
+export const POST = withAuth(async function POST(
+  request: NextRequest,
+  _context,
+  { user }
+) {
   try {
     const body = Body.safeParse(await request.json());
     if (!body.success) return NextResponse.json({ error: 'Invalid import request' }, { status: 400 });
-    const client = createSupabaseServerClient(request);
-    const { data, error } = await client.auth.getUser();
-    if (error || !data.user) return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     const { publishImportedDocumentAsActor } = await import(
       '@/lib/server/documentImportPublishService'
     );
     const document = await publishImportedDocumentAsActor({
       documentId: body.data.documentId!,
       versionId: body.data.versionId!,
-      actorUserId: data.user.id,
+      actorUserId: user.id,
       projectId: body.data.projectId!,
       folderId: body.data.folderId ?? null,
       name: body.data.name!,
@@ -47,4 +50,7 @@ export async function POST(request: NextRequest) {
     console.error('[POST /api/documents/import] Import failed', safeErrorDetails(error));
     return NextResponse.json({ error: 'Document import failed' }, { status: 500 });
   }
-}
+}, {
+  unauthorizedResponse: () =>
+    NextResponse.json({ error: 'Authentication required' }, { status: 401 }),
+});

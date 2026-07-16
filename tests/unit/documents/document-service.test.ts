@@ -14,7 +14,7 @@ jest.mock('../../../src/lib/services/authorizationService', () => {
     __esModule: true,
     AuthorizationError,
     verifyProjectAccess: jest.fn(async () => undefined),
-    getUserProjectRole: jest.fn(async () => 'editor'),
+    getUserProjectRole: jest.fn(async () => ({ role: 'editor', isOwner: false })),
     getCurrentUserId: jest.fn(async () => 'user-1'),
   };
 });

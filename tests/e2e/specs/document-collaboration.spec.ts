@@ -747,7 +747,7 @@ test.describe.serial('Document realtime collaboration', () => {
       await owner.page.keyboard.press('Shift+ArrowLeft');
       await owner.page.keyboard.press('Shift+ArrowLeft');
       await owner.page.keyboard.press('Shift+ArrowLeft');
-      await owner.page.keyboard.insertText('汉');
+      await owner.page.keyboard.insertText('\u6c49');
       await ownerContentEditable.evaluate((element) => {
         element.dispatchEvent(
           new CompositionEvent('compositionend', {
@@ -758,14 +758,14 @@ test.describe.serial('Document realtime collaboration', () => {
       });
       await expect(
         editor.page.locator('[contenteditable]').first()
-      ).toContainText('汉', {
+      ).toContainText('\u6c49', {
         timeout: 20_000,
       });
       const remoteText = await editor.page
         .locator('[contenteditable]')
         .first()
         .innerText();
-      expect(remoteText.match(/汉/g)).toHaveLength(1);
+      expect(remoteText.match(/\u6c49/g)).toHaveLength(1);
 
       const viewer = await loginAndOpen(browser, users.seedEmpty4, fixture);
       contexts.push(viewer.context);

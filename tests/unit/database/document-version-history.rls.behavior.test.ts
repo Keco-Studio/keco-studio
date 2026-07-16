@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import {
   RLS_DB_TESTS_ENABLED,
+  anonClient,
   buildProjectFixture,
   teardownProjectFixture,
   type ProjectFixture,
@@ -241,6 +242,223 @@ describeDb('document version history RLS and transactions (live database)', () =
     expect(directInsertError).not.toBeNull();
   });
 
+  it('rejects invalid manual-version snapshots and Markdown', async () => {
+    const documentId = await seedDocument();
+    await initialize(fx.owner, documentId);
+
+    const invalidSnapshot = await createVersion(fx.owner, documentId, {
+      yjsState: 'AQID\n',
+    });
+    const invalidMarkdown = await createVersion(fx.owner, documentId, {
+      markdown: 'x'.repeat(2097153),
+    });
+
+    expect(invalidSnapshot.error?.code).toBe('22023');
+    expect(invalidMarkdown.error?.code).toBe('22023');
+  });
+
+  it('denies anonymous version reads and deletion RPC execution', async () => {
+    const documentId = await seedDocument();
+    await initialize(fx.owner, documentId);
+    const versionId = randomUUID();
+    expect(
+      (await createVersion(fx.owner, documentId, { id: versionId })).error
+    ).toBeNull();
+
+    const anonymous = anonClient();
+    const read = await anonymous
+      .from('document_versions')
+      .select('id')
+      .eq('document_id', documentId);
+    const deleted = await anonymous.rpc('delete_document_version', {
+      p_document_id: documentId,
+      p_version_id: versionId,
+    });
+
+    expect(read.data ?? []).toEqual([]);
+    if (read.error) expect(read.error.code).toBe('42501');
+    expect(deleted.error).not.toBeNull();
+  });
+
+  it('allows writers to delete manual and automatic versions but denies viewers', async () => {
+    const documentId = await seedDocument();
+    await initialize(fx.owner, documentId);
+    const ownerVersionId = randomUUID();
+    const editorVersionId = randomUUID();
+    const automaticVersionId = randomUUID();
+    expect(
+      (await createVersion(fx.owner, documentId, { id: ownerVersionId })).error
+    ).toBeNull();
+    expect(
+      (await createVersion(fx.editor, documentId, { id: editorVersionId })).error
+    ).toBeNull();
+    expect(
+      (
+        await fx.svc.from('document_versions').insert({
+          id: automaticVersionId,
+          document_id: documentId,
+          project_id: fx.projectId,
+          name: 'Automatic checkpoint',
+          version_type: 'automatic',
+          snapshot_yjs_state: 'AQID',
+          snapshot_content: '# Initial',
+          snapshot_epoch: 0,
+          snapshot_revision: 1,
+          created_by: fx.owner.id,
+        })
+      ).error
+    ).toBeNull();
+
+    const denied = await fx.viewer.client.rpc('delete_document_version', {
+      p_document_id: documentId,
+      p_version_id: ownerVersionId,
+    });
+    const ownerDeleted = await fx.owner.client.rpc('delete_document_version', {
+      p_document_id: documentId,
+      p_version_id: ownerVersionId,
+    });
+    const editorDeleted = await fx.editor.client.rpc('delete_document_version', {
+      p_document_id: documentId,
+      p_version_id: editorVersionId,
+    });
+    const automaticDeleted = await fx.admin.client.rpc('delete_document_version', {
+      p_document_id: documentId,
+      p_version_id: automaticVersionId,
+    });
+
+    expect(denied.error?.code).toBe('42501');
+    expect(ownerDeleted).toMatchObject({ data: ownerVersionId, error: null });
+    expect(editorDeleted).toMatchObject({ data: editorVersionId, error: null });
+    expect(automaticDeleted).toMatchObject({ data: automaticVersionId, error: null });
+  });
+
+  it('protects audit versions and referenced source versions from deletion', async () => {
+    const documentId = await seedDocument();
+    await initialize(fx.owner, documentId);
+    const targetVersionId = randomUUID();
+    expect(
+      (await createVersion(fx.owner, documentId, { id: targetVersionId })).error
+    ).toBeNull();
+    const auditId = randomUUID();
+    expect(
+      (
+        await restoreVersion(fx.owner, documentId, targetVersionId, {
+          auditId,
+        })
+      ).error
+    ).toBeNull();
+
+    const referenced = await fx.owner.client.rpc('delete_document_version', {
+      p_document_id: documentId,
+      p_version_id: targetVersionId,
+    });
+    const audit = await fx.owner.client.rpc('delete_document_version', {
+      p_document_id: documentId,
+      p_version_id: auditId,
+    });
+
+    expect(referenced.error?.code).toBe('PT409');
+    expect(audit.error?.code).toBe('PT409');
+  });
+
+  it('returns not-found after writer authorization for a stale deletion target', async () => {
+    const documentId = await seedDocument();
+    await initialize(fx.owner, documentId);
+
+    const missing = await fx.owner.client.rpc('delete_document_version', {
+      p_document_id: documentId,
+      p_version_id: randomUUID(),
+    });
+
+    expect(missing.error?.code).toBe('P0002');
+  });
+
+  it('validates restore backup input and stored target before changing the head', async () => {
+    const documentId = await seedDocument();
+    await initialize(fx.owner, documentId);
+    const validTargetId = randomUUID();
+    expect(
+      (await createVersion(fx.owner, documentId, { id: validTargetId })).error
+    ).toBeNull();
+
+    const invalidCurrent = await restoreVersion(
+      fx.owner,
+      documentId,
+      validTargetId,
+      { currentYjsState: 'AQID\n' }
+    );
+    expect(invalidCurrent.error?.code).toBe('22023');
+
+    const invalidTargetId = randomUUID();
+    const inserted = await fx.svc.from('document_versions').insert({
+      id: invalidTargetId,
+      document_id: documentId,
+      project_id: fx.projectId,
+      name: 'Invalid maintenance snapshot',
+      version_type: 'manual',
+      snapshot_yjs_state: 'AQID\n',
+      snapshot_content: '# Invalid',
+      snapshot_epoch: 0,
+      snapshot_revision: 1,
+      created_by: fx.owner.id,
+    });
+    expect(inserted.error).toBeNull();
+
+    const invalidTarget = await restoreVersion(
+      fx.owner,
+      documentId,
+      invalidTargetId
+    );
+    expect(invalidTarget.error?.code).toBe('22023');
+
+    const stored = await fx.svc
+      .from('documents')
+      .select('content, yjs_state, collab_epoch, collab_revision')
+      .eq('id', documentId)
+      .single();
+    expect(stored.data).toMatchObject({
+      content: '# Initial',
+      yjs_state: 'AQID',
+      collab_epoch: 0,
+      collab_revision: 1,
+    });
+    const audits = await fx.svc
+      .from('document_versions')
+      .select('id')
+      .eq('document_id', documentId)
+      .in('version_type', ['pre_restore', 'restore']);
+    expect(audits.data).toEqual([]);
+  });
+
+  it('rejects invalid Agent current and replacement snapshots before mutation', async () => {
+    const documentId = await seedDocument();
+    await initialize(fx.owner, documentId);
+
+    const invalidCurrent = await replaceWithMarkdown(fx.editor, documentId, {
+      currentYjsState: 'AQID\n',
+    });
+    const invalidReplacement = await replaceWithMarkdown(fx.editor, documentId, {
+      replacementYjsState: 'AQID\n',
+    });
+    const oversizedReplacement = await replaceWithMarkdown(fx.editor, documentId, {
+      replacementMarkdown: 'x'.repeat(2097153),
+    });
+
+    expect(invalidCurrent.error?.code).toBe('22023');
+    expect(invalidReplacement.error?.code).toBe('22023');
+    expect(oversizedReplacement.error?.code).toBe('22023');
+    const stored = await fx.svc
+      .from('documents')
+      .select('content, collab_epoch, collab_revision')
+      .eq('id', documentId)
+      .single();
+    expect(stored.data).toMatchObject({
+      content: '# Initial',
+      collab_epoch: 0,
+      collab_revision: 1,
+    });
+  });
+
   it('atomically backs up and replaces state for a confirmed Agent edit', async () => {
     const documentId = await seedDocument();
     await initialize(fx.owner, documentId);
@@ -411,6 +629,46 @@ describeDb('document version history RLS and transactions (live database)', () =
         (await fx.svc.from('documents').select('id').eq('id', deniedDocumentId)).data
       ).toEqual([]);
     }
+  });
+
+  it('rejects invalid imported-document payloads before publication', async () => {
+    const invalidStateId = randomUUID();
+    const invalidState = await fx.svc.rpc('create_imported_document', {
+      ...importedDocumentArgs(invalidStateId, randomUUID()),
+      p_yjs_state: 'AQID\n',
+    });
+    const oversizedMarkdownId = randomUUID();
+    const oversizedMarkdown = await fx.svc.rpc('create_imported_document', {
+      ...importedDocumentArgs(oversizedMarkdownId, randomUUID()),
+      p_markdown: 'x'.repeat(2097153),
+    });
+
+    expect(invalidState.error?.code).toBe('22023');
+    expect(oversizedMarkdown.error?.code).toBe('22023');
+    const documents = await fx.svc
+      .from('documents')
+      .select('id')
+      .in('id', [invalidStateId, oversizedMarkdownId]);
+    expect(documents.data).toEqual([]);
+  });
+
+  it('revalidates server-owned state before creating an import checkpoint', async () => {
+    const documentId = await seedDocument();
+    await initialize(fx.owner, documentId);
+    const corrupted = await fx.svc
+      .from('documents')
+      .update({ yjs_state: 'AQID\n' })
+      .eq('id', documentId);
+    expect(corrupted.error).toBeNull();
+
+    const checkpoint = await createImportCheckpoint(fx.owner, documentId);
+
+    expect(checkpoint.error?.code).toBe('22023');
+    const versions = await fx.svc
+      .from('document_versions')
+      .select('id')
+      .eq('document_id', documentId);
+    expect(versions.data).toEqual([]);
   });
 
   it('idempotently returns the same import for sequential and concurrent retries', async () => {
@@ -647,6 +905,78 @@ describeDb('document version history RLS and transactions (live database)', () =
         snapshot_revision: 2,
       },
     ]);
+  });
+
+  it('retains the newest 100 automatic checkpoints without pruning audit versions', async () => {
+    const documentId = await seedDocument();
+    const initialized = await initialize(fx.owner, documentId);
+    const automaticIds = Array.from({ length: 101 }, () => randomUUID());
+    const automaticRows = automaticIds.map((id, index) => ({
+      id,
+      document_id: documentId,
+      project_id: fx.projectId,
+      name: 'Automatic checkpoint',
+      version_type: 'automatic',
+      snapshot_yjs_state: 'AQID',
+      snapshot_content: `# Automatic ${index}`,
+      snapshot_epoch: 0,
+      snapshot_revision: 1,
+      created_by: fx.owner.id,
+      created_at: new Date(Date.now() - (200 + index) * 60_000).toISOString(),
+    }));
+    const auditId = randomUUID();
+    const seeded = await fx.svc.from('document_versions').insert([
+      ...automaticRows,
+      {
+        id: auditId,
+        document_id: documentId,
+        project_id: fx.projectId,
+        name: 'Initial import',
+        version_type: 'import',
+        snapshot_yjs_state: 'AQID',
+        snapshot_content: '# Initial',
+        snapshot_epoch: 0,
+        snapshot_revision: 1,
+        created_by: fx.owner.id,
+        created_at: new Date(Date.now() - 400 * 60_000).toISOString(),
+      },
+    ]);
+    expect(seeded.error).toBeNull();
+
+    const updateId = randomUUID();
+    expect(
+      (
+        await append(fx.owner, documentId, 0, [
+          { id: updateId, updateBase64: 'BAUG' },
+        ])
+      ).error
+    ).toBeNull();
+    const compacted = await fx.owner.client.rpc('compact_document_collab_state', {
+      p_document_id: documentId,
+      p_expected_epoch: initialized.collab_epoch,
+      p_expected_revision: initialized.collab_revision,
+      p_included_update_ids: [updateId],
+      p_yjs_state: 'BwgJ',
+      p_markdown: '# Retained',
+    });
+    expect(compacted.error).toBeNull();
+
+    const { data: automatic, error: automaticError } = await fx.svc
+      .from('document_versions')
+      .select('id')
+      .eq('document_id', documentId)
+      .eq('version_type', 'automatic');
+    const { data: audit, error: auditError } = await fx.svc
+      .from('document_versions')
+      .select('id')
+      .eq('id', auditId);
+    expect(automaticError).toBeNull();
+    expect(automatic).toHaveLength(100);
+    expect(automatic?.map((row) => row.id)).not.toContain(automaticIds[100]);
+    expect(automatic?.map((row) => row.id)).not.toContain(automaticIds[99]);
+    expect(automatic?.map((row) => row.id)).toContain(automaticIds[0]);
+    expect(auditError).toBeNull();
+    expect(audit).toEqual([{ id: auditId }]);
   });
 
   it('restores atomically, preserves a backup and audit, and rejects the old epoch', async () => {

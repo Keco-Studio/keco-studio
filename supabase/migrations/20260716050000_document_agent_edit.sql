@@ -34,12 +34,17 @@ declare
   v_tail_ids uuid[];
   v_user_id uuid := p_actor_user_id;
 begin
+  perform public.assert_document_snapshot_payload(
+    p_current_yjs_state,
+    p_current_markdown
+  );
+  perform public.assert_document_snapshot_payload(
+    p_replacement_yjs_state,
+    p_replacement_markdown
+  );
+
   if p_backup_version_id is null
-    or p_current_yjs_state is null
-    or length(p_current_yjs_state) = 0
-    or p_replacement_yjs_state is null
-    or length(p_replacement_yjs_state) = 0
-    or p_replacement_markdown is null then
+  then
     raise exception 'Document Agent edit input is invalid'
       using errcode = '22023';
   end if;

@@ -19,6 +19,7 @@ import {
   compactDocumentState,
   initializeDocumentState,
   readDocumentState,
+  readDocumentTransportState,
   replaceDocumentState,
 } from '@/lib/documents/documentStateGateway';
 import {
@@ -39,6 +40,7 @@ function makeSupabase(options: {
   head?: ResponseValue;
   heads?: ResponseValue[];
   tail?: ResponseValue;
+  tailPages?: ResponseValue[];
   append?: ResponseValue;
   rpc?: ResponseValue;
 } = {}) {
@@ -97,8 +99,12 @@ function makeSupabase(options: {
       },
       order(column: string, config: unknown) {
         calls.push({ kind: `tail-order:${column}`, value: config });
-        if (column === 'id') return Promise.resolve(tail);
         return updateBuilder;
+      },
+      range: async (from: number, to: number) => {
+        calls.push({ kind: 'tail-range', value: { from, to } });
+        const page = Math.floor(from / 1000);
+        return options.tailPages?.[page] ?? tail;
       },
       upsert: async (rows: unknown, config: unknown) => {
         calls.push({ kind: 'tail-upsert', value: { rows, config } });
@@ -178,6 +184,50 @@ describe('documentStateGateway.read', () => {
       kind: 'tail-select',
       value: 'id, update_data, created_at',
     });
+    expect(calls).toContainEqual({
+      kind: 'tail-range',
+      value: { from: 0, to: 999 },
+    });
+  });
+
+  it('reads every ordered update page before materializing Markdown', async () => {
+    const rows = Array.from({ length: 1_001 }, (_, index) => ({
+      id: `${String(index).padStart(8, '0')}-3333-4333-8333-333333333333`,
+      update_data: `tail-${index}`,
+      created_at: `2026-07-14T12:${String(Math.floor(index / 60)).padStart(2, '0')}:${String(index % 60).padStart(2, '0')}.000Z`,
+    }));
+    const { client, calls } = makeSupabase({
+      tailPages: [
+        { data: rows.slice(0, 1_000), error: null },
+        { data: rows.slice(1_000), error: null },
+      ],
+    });
+
+    const state = await readDocumentState(client, DOCUMENT_ID);
+
+    expect(state.updateTail).toHaveLength(1_001);
+    expect(yjsStateToMarkdown).toHaveBeenCalledWith(
+      'snapshot',
+      rows.map((row) => row.update_data)
+    );
+    expect(calls.filter((call) => call.kind === 'tail-range')).toEqual([
+      { kind: 'tail-range', value: { from: 0, to: 999 } },
+      { kind: 'tail-range', value: { from: 1000, to: 1999 } },
+    ]);
+  });
+
+  it('returns transport state without materializing collaborative Markdown', async () => {
+    const { client } = makeSupabase();
+
+    const state = await readDocumentTransportState(client, DOCUMENT_ID);
+
+    expect(state).toMatchObject({
+      documentId: DOCUMENT_ID,
+      mode: 'collaborative',
+      updateTail: [{ id: UPDATE_A }, { id: UPDATE_B }],
+    });
+    expect(state).not.toHaveProperty('markdown');
+    expect(yjsStateToMarkdown).not.toHaveBeenCalled();
   });
 
   it('retries when compaction changes the head token between head and tail reads', async () => {
@@ -217,6 +267,13 @@ describe('documentStateGateway.read', () => {
     });
     expect(yjsStateToMarkdown).toHaveBeenCalledWith('compacted-snapshot', []);
     expect(calls.filter((call) => call.kind === 'document-select')).toHaveLength(4);
+    expect(
+      calls.filter(
+        (call) =>
+          call.kind === 'tail-range' &&
+          (call.value as { from: number }).from === 0
+      )
+    ).toHaveLength(2);
   });
 
   it('throws a typed conflict after bounded unstable snapshot reads', async () => {

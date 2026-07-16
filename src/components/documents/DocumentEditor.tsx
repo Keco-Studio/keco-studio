@@ -124,9 +124,16 @@ function DocumentEditorSession({
         if (permissions.role !== 'viewer') {
           await collaboration.session?.flush();
         }
+        const {
+          data: { session },
+          error: sessionError,
+        } = await supabase.auth.getSession();
+        if (sessionError || !session?.access_token) {
+          throw new Error('Please sign in before exporting');
+        }
         const response = await fetch(
           `/api/documents/${document.id}/export?format=${key}`,
-          { headers: { Authorization: `Bearer ${permissions.accessToken}` } }
+          { headers: { Authorization: `Bearer ${session.access_token}` } }
         );
         if (!response.ok) throw new Error('Document export failed');
         const blob = await response.blob();
@@ -144,8 +151,8 @@ function DocumentEditorSession({
       collaboration.session,
       document.id,
       document.name,
-      permissions.accessToken,
       permissions.role,
+      supabase,
     ]
   );
   const editorKey = `${document.id}:${collaboration.token.epoch}:${

@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { fetchAllPaged } from '@/lib/services/pagination';
 import { isUuid } from '@/lib/utils/uuid';
 import {
   documentContentCodec,
@@ -9,6 +10,7 @@ import {
   DocumentReadOnlyError,
   DocumentStateConflictError,
   type AuthoritativeDocumentState,
+  type AuthoritativeDocumentTransportState,
   type ReplaceDocumentStateInput,
   type DocumentStateToken,
   type DurableYjsUpdate,
@@ -54,6 +56,11 @@ export type CompactDocumentStateInput = {
 type RawDocumentState = {
   head: DocumentStateRow;
   tail: DocumentUpdateRow[];
+};
+
+type TransportReadResult = {
+  state: AuthoritativeDocumentTransportState;
+  legacyMarkdown: string;
 };
 
 function assertDocumentId(documentId: string): void {
@@ -130,15 +137,19 @@ async function readRawDocumentState(
     };
 
     const head = await readHead();
-    const { data: tailData, error: tailError } = await client
-      .from('document_yjs_updates')
-      .select(DOCUMENT_UPDATE_COLUMNS)
-      .eq('document_id', documentId)
-      .eq('epoch', head.collab_epoch)
-      .order('created_at', { ascending: true })
-      .order('id', { ascending: true });
-
-    if (tailError) throw tailError;
+    const tail = await fetchAllPaged<DocumentUpdateRow>((from, to) =>
+      client
+        .from('document_yjs_updates')
+        .select(DOCUMENT_UPDATE_COLUMNS)
+        .eq('document_id', documentId)
+        .eq('epoch', head.collab_epoch)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{
+          data: DocumentUpdateRow[] | null;
+          error: { message: string } | null;
+        }>
+    );
 
     const verifiedHead = await readHead();
     latestToken = {
@@ -151,7 +162,7 @@ async function readRawDocumentState(
     ) {
       return {
         head,
-        tail: (tailData ?? []) as unknown as DocumentUpdateRow[],
+        tail,
       };
     }
   }
@@ -161,36 +172,59 @@ async function readRawDocumentState(
   );
 }
 
-export async function readDocumentState(
+async function readAuthoritativeTransportState(
   client: SupabaseClient,
   documentId: string
-): Promise<AuthoritativeDocumentState> {
+): Promise<TransportReadResult> {
   const { head, tail } = await readRawDocumentState(client, documentId);
   const updateTail = tail.map((row) => ({
     id: row.id,
     updateBase64: row.update_data,
     createdAt: row.created_at,
   }));
-  const collaborative = head.yjs_state !== null;
-  const markdown = collaborative
-    ? await documentContentCodec.yjsStateToMarkdown(
-        head.yjs_state,
-        updateTail.map((update) => update.updateBase64)
-      )
-    : head.content;
 
   return {
-    documentId: head.id,
-    projectId: head.project_id,
-    mode: collaborative ? 'collaborative' : 'legacy',
-    markdown,
-    yjsStateBase64: head.yjs_state,
-    updateTail,
-    token: {
-      epoch: Number(head.collab_epoch),
-      revision: Number(head.collab_revision),
+    state: {
+      documentId: head.id,
+      projectId: head.project_id,
+      mode: head.yjs_state === null ? 'legacy' : 'collaborative',
+      yjsStateBase64: head.yjs_state,
+      updateTail,
+      token: {
+        epoch: Number(head.collab_epoch),
+        revision: Number(head.collab_revision),
+      },
+      updatedAt: head.updated_at,
     },
-    updatedAt: head.updated_at,
+    legacyMarkdown: head.content,
+  };
+}
+
+export async function readDocumentTransportState(
+  client: SupabaseClient,
+  documentId: string
+): Promise<AuthoritativeDocumentTransportState> {
+  return (await readAuthoritativeTransportState(client, documentId)).state;
+}
+
+export async function readDocumentState(
+  client: SupabaseClient,
+  documentId: string
+): Promise<AuthoritativeDocumentState> {
+  const { state, legacyMarkdown } = await readAuthoritativeTransportState(
+    client,
+    documentId
+  );
+  const markdown = state.mode === 'collaborative'
+    ? await documentContentCodec.yjsStateToMarkdown(
+        state.yjsStateBase64!,
+        state.updateTail.map((update) => update.updateBase64)
+      )
+    : legacyMarkdown;
+
+  return {
+    ...state,
+    markdown,
   };
 }
 
@@ -378,6 +412,7 @@ export async function replaceDocumentState(
 
 export const documentStateGateway = {
   read: readDocumentState,
+  readTransport: readDocumentTransportState,
   initialize: initializeDocumentState,
   appendUpdates: appendDocumentYjsUpdates,
   compact: compactDocumentState,

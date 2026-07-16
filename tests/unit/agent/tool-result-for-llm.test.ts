@@ -12,6 +12,21 @@ describe('compactToolContentForLlm', () => {
     expect(compactToolContentForLlm(raw, 'create_library')).toBe(raw);
   });
 
+  it('keeps a complete in-budget read_document result unchanged', () => {
+    const raw = JSON.stringify({
+      success: true,
+      displayHint: 'text',
+      data: {
+        documentId: '11111111-1111-4111-8111-111111111111',
+        projectId: '22222222-2222-4222-8222-222222222222',
+        markdown: '# Complete',
+        token: { epoch: 2, revision: 4 },
+      },
+    });
+
+    expect(compactToolContentForLlm(raw, 'read_document')).toBe(raw);
+  });
+
   it('compacts query_assets rows while preserving summary', () => {
     const rows = Array.from({ length: 80 }, (_, i) => ({
       name: `row-${i}`,
@@ -37,6 +52,44 @@ describe('compactToolContentForLlm', () => {
     };
     expect(compact.data.rows.length).toBeLessThanOrEqual(30);
     expect(compact.data._llmNote).toMatch(/first 30 of 80 rows/i);
+  });
+
+  it('compacts read_document as valid structured JSON with an explicit partial-read note', () => {
+    const markdown = Array.from(
+      { length: 4_000 },
+      (_, index) => `Line ${index}: \"quoted content\" and a newline-safe payload.`
+    ).join('\n');
+    const raw = JSON.stringify({
+      success: true,
+      displayHint: 'text',
+      data: {
+        documentId: '11111111-1111-4111-8111-111111111111',
+        projectId: '22222222-2222-4222-8222-222222222222',
+        markdown,
+        token: { epoch: 2, revision: 4 },
+      },
+    });
+
+    const content = compactToolContentForLlm(raw, 'read_document');
+    const compact = JSON.parse(content) as {
+      data: {
+        markdown: string;
+        totalCharacters: number;
+        visibleCharacters: number;
+        truncated: boolean;
+        _llmNote: string;
+      };
+    };
+
+    expect(content.length).toBeLessThanOrEqual(16_000);
+    expect(compact.data.markdown).toBe(markdown.slice(0, compact.data.visibleCharacters));
+    expect(compact.data.totalCharacters).toBe(markdown.length);
+    expect(compact.data.visibleCharacters).toBeLessThan(markdown.length);
+    expect(compact.data.truncated).toBe(true);
+    expect(compact.data._llmNote).toContain(
+      `${compact.data.visibleCharacters} of ${compact.data.totalCharacters} characters`
+    );
+    expect(compact.data._llmNote).toMatch(/do not propose a full-document replacement/i);
   });
 });
 

@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const migrationPath = path.join(
   process.cwd(),
-  'supabase/migrations/20260715010000_document_import_checkpoint.sql'
+  'supabase/migrations/20260716060000_document_import_checkpoint.sql'
 );
 const migration = existsSync(migrationPath)
   ? readFileSync(migrationPath, 'utf8')
@@ -39,6 +39,15 @@ describe('document import checkpoint migration', () => {
     );
     expect(migration).toMatch(/Imported document id was reused/i);
     expect(migration).toMatch(/Imported document version id was reused/i);
+  });
+
+  it('bounds imported snapshots and revalidates server-owned checkpoint state', () => {
+    expect(migration).toMatch(
+      /function public\.create_imported_document[\s\S]+?begin\s+perform public\.assert_document_snapshot_payload\(p_yjs_state, p_markdown\);\s+if p_document_id/i
+    );
+    expect(migration).toMatch(
+      /function public\.create_document_import_checkpoint[\s\S]+?if not found or v_user_id is null[\s\S]+?end if;\s+perform public\.assert_document_snapshot_payload\(\s*v_document\.yjs_state,\s*v_document\.content\s*\);\s+select v\.\*/i
+    );
   });
 
   it('creates only an import snapshot under write permission and CAS', () => {

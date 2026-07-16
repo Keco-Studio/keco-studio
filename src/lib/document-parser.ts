@@ -26,7 +26,7 @@ export interface DesignFileValidation {
 export interface ExtractedImage {
   data: ArrayBuffer;
   contentType: string; // e.g. 'image/png'
-  /** Stable URL-shaped marker retained in DOCX Markdown until upload succeeds. */
+  /** Stable URL-shaped sentinel retained in DOCX Markdown until upload succeeds. */
   placeholder?: string;
 }
 
@@ -177,7 +177,7 @@ export async function parseDocument(file: File): Promise<ParsedDocument> {
 
 /**
  * Convert DOCX to semantic HTML once while collecting eligible embedded images.
- * URL-shaped placeholders are safe to validate as Markdown and can later be
+ * URL-shaped sentinels are safe to validate as Markdown and can later be
  * replaced exactly with uploaded public URLs without moving the images.
  */
 async function parseDocxHtml(
@@ -205,7 +205,7 @@ async function parseDocxHtml(
           if (filterExtractedImages([candidate]).length === 0 || collected.length >= MAX_DOC_IMAGES) {
             return { src: '' };
           }
-          const placeholder = `https://document-import.invalid/image-${collected.length}`;
+          const placeholder = `https://document-import.invalid/${globalThis.crypto.randomUUID()}`;
           collected.push({ ...candidate, placeholder });
           return { src: placeholder, alt: `Imported image ${collected.length}` } as { src: string };
         } catch {

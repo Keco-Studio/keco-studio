@@ -4,7 +4,7 @@ import path from 'node:path';
 const migration = fs.readFileSync(
   path.resolve(
     __dirname,
-    '../../../supabase/migrations/20260715000000_document_agent_edit.sql'
+    '../../../supabase/migrations/20260716050000_document_agent_edit.sql'
   ),
   'utf8'
 );
@@ -26,6 +26,12 @@ describe('document Agent edit migration', () => {
     expect(migration).toMatch(/insert into public\.document_versions[\s\S]+update public\.documents/i);
     expect(migration).toMatch(/collab_epoch = v_document\.collab_epoch \+ 1/i);
     expect(migration).toMatch(/delete from public\.document_yjs_updates[\s\S]+epoch = v_document\.collab_epoch/i);
+  });
+
+  it('bounds both current and replacement snapshots before authorization or mutation', () => {
+    expect(migration).toMatch(
+      /function public\.replace_document_with_markdown[\s\S]+?begin\s+perform public\.assert_document_snapshot_payload\(\s*p_current_yjs_state,\s*p_current_markdown\s*\);\s+perform public\.assert_document_snapshot_payload\(\s*p_replacement_yjs_state,\s*p_replacement_markdown\s*\);\s+if p_backup_version_id/i
+    );
   });
 
   it('exposes the encoded-state function only to the trusted service role', () => {

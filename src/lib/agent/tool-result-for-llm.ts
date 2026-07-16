@@ -30,6 +30,13 @@ type QueryAssetsData = {
   _llmNote?: string;
 };
 
+type ReadDocumentData = {
+  documentId?: string;
+  projectId?: string;
+  markdown?: string;
+  token?: unknown;
+};
+
 function toolNameForMessage(messages: ChatMessage[], toolMessage: ChatMessage): string | undefined {
   const toolCallId = toolMessage.tool_call_id;
   if (!toolCallId) return undefined;
@@ -61,9 +68,54 @@ function compactQueryAssetsPayload(result: ToolResult): ToolResult {
   };
 }
 
+function compactReadDocumentPayload(result: ToolResult): ToolResult {
+  if (!result.success || !result.data || typeof result.data !== 'object') return result;
+
+  const data = result.data as ReadDocumentData;
+  if (typeof data.markdown !== 'string') return result;
+  const totalCharacters = data.markdown.length;
+
+  const build = (visibleCharacters: number): ToolResult => {
+    const note = `This document was truncated for LLM context. You can see ${visibleCharacters} of ${totalCharacters} characters. Do not propose a full-document replacement from this partial content because unseen content would be lost. Tell the user the read is partial and ask them to narrow the operation.`;
+    return {
+      success: result.success,
+      error: result.error,
+      displayHint: result.displayHint,
+      data: {
+        documentId: data.documentId,
+        projectId: data.projectId,
+        token: data.token,
+        markdown: data.markdown!.slice(0, visibleCharacters),
+        totalCharacters,
+        visibleCharacters,
+        truncated: true,
+        _llmNote: note,
+      },
+    };
+  };
+
+  let low = 0;
+  let high = totalCharacters;
+  let best = build(0);
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    const candidate = build(middle);
+    if (JSON.stringify(candidate).length <= MAX_TOOL_CONTENT_CHARS) {
+      best = candidate;
+      low = middle + 1;
+    } else {
+      high = middle - 1;
+    }
+  }
+  return best;
+}
+
 function compactToolResult(result: ToolResult, toolName?: string): ToolResult {
   if (toolName === 'query_assets') {
     return compactQueryAssetsPayload(result);
+  }
+  if (toolName === 'read_document') {
+    return compactReadDocumentPayload(result);
   }
   return result;
 }
@@ -92,9 +144,16 @@ export function compactToolContentForLlm(content: string, toolName?: string): st
     return `${content.slice(0, MAX_TOOL_CONTENT_CHARS)}...[truncated for LLM context]`;
   }
 
+  if (toolName === 'read_document' && content.length <= MAX_TOOL_CONTENT_CHARS) return content;
+
   const compact = compactToolResult(parsed, toolName);
   let serialized = JSON.stringify(compact);
   if (serialized.length <= MAX_TOOL_CONTENT_CHARS) return serialized;
+
+  if (toolName === 'read_document') {
+    // The structured compactor always returns valid JSON within the budget.
+    return JSON.stringify(compactReadDocumentPayload(compact));
+  }
 
   if (toolName === 'query_assets' && compact.data && typeof compact.data === 'object') {
     const data = compact.data as QueryAssetsData;

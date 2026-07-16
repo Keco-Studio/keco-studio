@@ -40,10 +40,15 @@ describe('SanctionedMdxPropertyEditor', () => {
     expect(renderPropertyEdit(title, values)).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['Callout', { type: 'success', title: '' }],
-    ['Details', { summary: 'Changed' }],
-  ] as const)('emits valid %s property edits', (title, values) => {
-    expect(renderPropertyEdit(title, values)).toHaveBeenCalledWith(values);
+  it('omits empty optional properties from valid Callout edits', () => {
+    expect(renderPropertyEdit('Callout', { type: 'success', title: '' })).toHaveBeenCalledWith({
+      type: 'success',
+    });
+  });
+
+  it('emits valid required Details properties', () => {
+    expect(renderPropertyEdit('Details', { summary: 'Changed' })).toHaveBeenCalledWith({
+      summary: 'Changed',
+    });
   });
 });

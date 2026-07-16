@@ -42,28 +42,58 @@ create policy "document_yjs_updates_select_policy"
     )
   );
 
-create policy "document_yjs_updates_insert_policy"
-  on public.document_yjs_updates for insert
-  to authenticated
-  with check (
-    created_by = (select auth.uid())
-    and exists (
-      select 1
-      from public.documents d
-      where d.id = document_yjs_updates.document_id
-        and d.collab_epoch = document_yjs_updates.epoch
-        and (
-          public.is_project_owner(d.project_id, (select auth.uid()))
-          or public.is_editor_or_admin_collaborator(
-            d.project_id,
-            (select auth.uid())
-          )
-        )
-    )
-  );
+grant select on table public.document_yjs_updates to authenticated;
+revoke insert, update, delete on table public.document_yjs_updates
+  from anon, authenticated;
 
-grant select, insert on table public.document_yjs_updates to authenticated;
-revoke update, delete on table public.document_yjs_updates from anon, authenticated;
+create or replace function public.assert_document_snapshot_payload(
+  p_yjs_state text,
+  p_markdown text
+)
+returns void
+language plpgsql
+immutable
+set search_path = ''
+as $$
+declare
+  v_decoded bytea;
+begin
+  if p_yjs_state is null
+    or length(p_yjs_state) = 0
+    or length(p_yjs_state) > 11184812
+    or length(p_yjs_state) % 4 <> 0
+    or p_yjs_state !~ '^[A-Za-z0-9+/]*={0,2}$' then
+    raise exception 'Document collaboration snapshot is invalid'
+      using errcode = '22023';
+  end if;
+
+  begin
+    v_decoded := pg_catalog.decode(p_yjs_state, 'base64');
+  exception when others then
+    raise exception 'Document collaboration snapshot is invalid'
+      using errcode = '22023';
+  end;
+
+  if pg_catalog.octet_length(v_decoded) > 8388608
+    or pg_catalog.translate(
+      pg_catalog.encode(v_decoded, 'base64'),
+      E'\n\r',
+      ''
+    ) <> p_yjs_state then
+    raise exception 'Document collaboration snapshot is invalid'
+      using errcode = '22023';
+  end if;
+
+  if p_markdown is null
+    or pg_catalog.octet_length(p_markdown) > 2097152 then
+    raise exception 'Document Markdown exceeds the allowed size'
+      using errcode = '22023';
+  end if;
+end;
+$$;
+
+revoke all on function public.assert_document_snapshot_payload(text, text)
+  from public;
 
 create or replace function public.initialize_document_collab_state(
   p_document_id uuid,
@@ -86,10 +116,7 @@ declare
   v_document public.documents%rowtype;
   v_user_id uuid := (select auth.uid());
 begin
-  if p_yjs_state is null or length(p_yjs_state) = 0 then
-    raise exception 'Document collaboration state cannot be empty'
-      using errcode = '22023';
-  end if;
+  perform public.assert_document_snapshot_payload(p_yjs_state, p_markdown);
 
   select d.*
     into v_document
@@ -174,11 +201,40 @@ begin
   if exists (
     select 1
     from jsonb_array_elements(p_updates) item
-    where jsonb_typeof(item->'id') <> 'string'
-      or jsonb_typeof(item->'updateBase64') <> 'string'
+    where jsonb_typeof(item->'id') is distinct from 'string'
+      or jsonb_typeof(item->'updateBase64') is distinct from 'string'
+      or item->>'id' !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
       or length(item->>'updateBase64') = 0
+      or length(item->>'updateBase64') > 349528
+      or length(item->>'updateBase64') % 4 <> 0
+      or item->>'updateBase64' !~ '^[A-Za-z0-9+/]*={0,2}$'
   ) then
     raise exception 'Document update payload is invalid'
+      using errcode = '22023';
+  end if;
+
+  if exists (
+    select 1
+    from jsonb_array_elements(p_updates) item
+    cross join lateral (
+      select pg_catalog.decode(item->>'updateBase64', 'base64') as decoded
+    ) payload
+    where pg_catalog.octet_length(payload.decoded) > 262144
+      or pg_catalog.translate(
+        pg_catalog.encode(payload.decoded, 'base64'),
+        E'\n\r',
+        ''
+      ) <> item->>'updateBase64'
+  ) then
+    raise exception 'Document update payload is invalid'
+      using errcode = '22023';
+  end if;
+
+  if (
+    select count(*) <> count(distinct item->>'id')
+    from jsonb_array_elements(p_updates) item
+  ) then
+    raise exception 'Document update ids must be unique'
       using errcode = '22023';
   end if;
 
@@ -246,10 +302,7 @@ declare
   v_document public.documents%rowtype;
   v_user_id uuid := (select auth.uid());
 begin
-  if p_yjs_state is null or length(p_yjs_state) = 0 then
-    raise exception 'Compacted collaboration state cannot be empty'
-      using errcode = '22023';
-  end if;
+  perform public.assert_document_snapshot_payload(p_yjs_state, p_markdown);
 
   select d.*
     into v_document
@@ -319,7 +372,11 @@ grant execute on function public.compact_document_collab_state(uuid, bigint, big
   to authenticated;
 
 -- Body/state columns are mutated only by the guarded functions above. Document
--- name and same-project folder movement retain their existing direct path.
+-- creation exposes metadata/Markdown columns only. Name and same-project folder
+-- movement retain their existing direct update path.
+revoke insert on table public.documents from anon, authenticated;
+grant insert (project_id, folder_id, name, content, created_by)
+  on table public.documents to authenticated;
 revoke update on table public.documents from anon;
 revoke update on table public.documents from authenticated;
 grant update (name, folder_id) on table public.documents to authenticated;

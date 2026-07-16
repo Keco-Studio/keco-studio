@@ -17,7 +17,7 @@ const Params = z
 export const createDocumentTool: AgentTool = {
   name: 'create_document',
   description: 'Create a project document with validated Markdown/MDX content.',
-  category: 'write', confirmationMode: 'pre_execute', confirmationRequired: false, requiredPermission: 'editor',
+  category: 'write', confirmationMode: 'pre_execute', confirmationRequired: true, requiredPermission: 'editor',
   parameters: { type: 'object', properties: { name: { type: 'string' }, content: { type: 'string' }, folderId: { type: ['string', 'null'] } }, required: ['name'], additionalProperties: false },
   async execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     const parsed = Params.safeParse(params); if (!parsed.success) return { success: false, error: parsed.error.message };

@@ -89,15 +89,18 @@ function extractUncompressedPdfText(bytes: Buffer): string {
 
 describe('document export service', () => {
   const originalSupabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const originalNodeEnv = process.env.NODE_ENV;
 
   beforeEach(() => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co';
+    process.env.NODE_ENV = 'test';
     readDocumentState.mockReset();
     jest.restoreAllMocks();
   });
 
   afterAll(() => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = originalSupabaseUrl;
+    process.env.NODE_ENV = originalNodeEnv;
   });
 
   it('builds format-neutral inline runs without flattening formatting or links', () => {
@@ -337,15 +340,27 @@ const n = 1
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('renders Chinese text into a valid PDF with an embedded Unicode font', async () => {
+  it('renders English text into a valid PDF with built-in fonts', async () => {
     const bytes = await renderDocumentExportModel(
-      buildDocumentExportModel('# 中文标题\n\n正文包含 **加粗内容**。'),
+      buildDocumentExportModel('# Export title\n\nBody with **bold content**.'),
       'pdf'
     );
     const pdf = bytes.toString('latin1');
 
     expect(bytes.subarray(0, 5).toString('ascii')).toBe('%PDF-');
-    expect(pdf).toMatch(/\/FontFile[23]?\b/);
+    expect(extractUncompressedPdfText(bytes)).toContain('Export title');
+    expect(pdf).not.toMatch(/\/FontFile[23]?\b/);
+  });
+
+  it('rejects unsupported PDF text instead of silently corrupting it', async () => {
+    const model = buildDocumentExportModel('# \u4f60\u597d\u4e16\u754c');
+
+    await expect(renderDocumentExportModel(model, 'pdf')).rejects.toThrow(
+      /export as DOCX to preserve the original text/i
+    );
+    await expect(renderDocumentExportModel(model, 'docx')).resolves.toEqual(
+      expect.any(Buffer)
+    );
   });
 
   it('does not fetch untrusted images and degrades them to alt text in both formats', async () => {
@@ -359,6 +374,88 @@ const n = 1
     expect(fetchSpy).not.toHaveBeenCalled();
     expect(docxHtml).toContain('Private diagram');
     expect(extractUncompressedPdfText(pdfBytes)).toContain('Private diagram');
+  });
+
+  it('uses at most two workers while resolving distinct trusted images', async () => {
+    let active = 0;
+    let maximumActive = 0;
+    const fetchSpy = jest.spyOn(global, 'fetch').mockImplementation(async () => {
+      active += 1;
+      maximumActive = Math.max(maximumActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      active -= 1;
+      return new Response(PNG_1X1, {
+        headers: { 'content-type': 'image/png', 'content-length': String(PNG_1X1.length) },
+      });
+    });
+    const markdown = Array.from({ length: 6 }, (_, index) =>
+      `![Image ${index}](https://project.supabase.co/storage/v1/object/public/library-media-files/user/image-${index}.png)`
+    ).join('\n\n');
+
+    await renderDocumentExportModel(buildDocumentExportModel(markdown), 'docx');
+
+    expect(fetchSpy).toHaveBeenCalledTimes(6);
+    expect(maximumActive).toBe(2);
+  });
+
+  it('denies loopback HTTP storage in production', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://localhost:54321';
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const model = buildDocumentExportModel(
+      '![Local](http://localhost:54321/storage/v1/object/public/library-media-files/user/local.png)'
+    );
+
+    await renderDocumentExportModel(model, 'docx');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['localhost', 'https://localhost:54321'],
+    ['IPv4 loopback', 'https://127.0.0.1:54321'],
+    ['IPv6 loopback', 'https://[::1]:54321'],
+  ])('denies configured production HTTPS storage on %s', async (_case, origin) => {
+    process.env.NODE_ENV = 'production';
+    process.env.NEXT_PUBLIC_SUPABASE_URL = origin;
+    const fetchSpy = jest.spyOn(global, 'fetch');
+    const model = buildDocumentExportModel(
+      `![Local](${origin}/storage/v1/object/public/library-media-files/user/local.png)`
+    );
+
+    await renderDocumentExportModel(model, 'docx');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('allows configured loopback HTTP storage outside production', async () => {
+    process.env.NODE_ENV = 'development';
+    process.env.NEXT_PUBLIC_SUPABASE_URL = 'http://127.0.0.1:54321';
+    const fetchSpy = jest.spyOn(global, 'fetch').mockResolvedValue(
+      new Response(PNG_1X1, {
+        headers: { 'content-type': 'image/png', 'content-length': String(PNG_1X1.length) },
+      })
+    );
+    const model = buildDocumentExportModel(
+      '![Local](http://127.0.0.1:54321/storage/v1/object/public/library-media-files/user/local.png)'
+    );
+
+    await renderDocumentExportModel(model, 'docx');
+
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['encoded traversal', 'https://project.supabase.co/storage/v1/object/public/library-media-files/%2e%2e/private.png'],
+    ['encoded slash', 'https://project.supabase.co/storage/v1/object/public/library-media-files/user%2Fprivate.png'],
+    ['encoded backslash', 'https://project.supabase.co/storage/v1/object/public/library-media-files/user%5Cprivate.png'],
+    ['malformed encoding', 'https://project.supabase.co/storage/v1/object/public/library-media-files/user/%ZZ.png'],
+  ])('rejects trusted-origin URLs with %s', async (_case, url) => {
+    const fetchSpy = jest.spyOn(global, 'fetch');
+
+    await renderDocumentExportModel(buildDocumentExportModel(`![Unsafe](${url})`), 'docx');
+
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -492,8 +589,8 @@ const n = 1
     expect(() => buildDocumentExportModel('<Unknown />')).toThrow();
   });
 
-  it('sanitizes response filenames without losing readable Unicode', () => {
-    expect(sanitizeExportFileName(' 世界 / notes?.md ')).toBe('世界 - notes-.md');
+  it('sanitizes response filenames without losing readable text', () => {
+    expect(sanitizeExportFileName(' Project / notes?.md ')).toBe('Project - notes-.md');
     expect(sanitizeExportFileName('...')).toBe('document');
   });
 });

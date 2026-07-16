@@ -17,6 +17,7 @@ const Preview = z.object({
     .object({ epoch: z.number().int(), revision: z.number().int() })
     .strict(),
   baseHash: z.string().length(64),
+  baseMarkdown: z.string().max(500_000),
   baseUpdateIds: z.array(z.string().uuid()).max(100_000),
   proposedHash: z.string().length(64),
   proposedMarkdown: z.string().max(500_000),
@@ -49,6 +50,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         projectId: state.projectId,
         expectedToken: state.token,
         baseHash: contentHash(state.markdown),
+        baseMarkdown: state.markdown,
         baseUpdateIds: state.updateTail.map((update) => update.id),
         proposedHash: contentHash(parsed.data.markdown),
         proposedMarkdown: parsed.data.markdown,
@@ -70,6 +72,9 @@ async function executeImport(
   const preview = Preview.safeParse(previewResult.data);
   if (!preview.success) {
     return { success: false, error: 'Document edit preview is unavailable; regenerate it.' };
+  }
+  if (contentHash(preview.data.baseMarkdown) !== preview.data.baseHash) {
+    return { success: false, error: 'The approved document edit payload changed.' };
   }
   const expectedToken: DocumentStateToken = {
     epoch: preview.data.expectedToken.epoch,

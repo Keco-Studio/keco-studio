@@ -1,5 +1,4 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import path from 'node:path';
 import { parseValidatedSanctionedMdx } from './sanctionedMdx';
 import type { SanctionedMdxAstNode } from './sanctionedMdxParser';
 import { DocumentAccessError } from './documentStateTypes';
@@ -60,12 +59,80 @@ const MAX_IMAGE_WIDTH = 480;
 const MAX_IMAGE_HEIGHT = 360;
 const MAX_SOURCE_IMAGE_DIMENSION = 10_000;
 const MAX_SOURCE_IMAGE_PIXELS = 16_000_000;
+const IMAGE_RESOLUTION_WORKERS = 2;
+const WIN_ANSI_EXTENDED_CODE_POINTS = new Set([
+  0x0152, 0x0153, 0x0160, 0x0161, 0x0178, 0x017d, 0x017e, 0x0192,
+  0x02c6, 0x02dc, 0x2013, 0x2014, 0x2018, 0x2019, 0x201a, 0x201c,
+  0x201d, 0x201e, 0x2020, 0x2021, 0x2022, 0x2026, 0x2030, 0x2039,
+  0x203a, 0x20ac, 0x2122,
+]);
+const TRUSTED_STORAGE_PREFIX = [
+  'storage',
+  'v1',
+  'object',
+  'public',
+  'library-media-files',
+] as const;
+
+type TrustedMediaConfiguration = {
+  configuredValue: string;
+  environment: string;
+  origin: string;
+  permitsHttp: boolean;
+};
+
+let trustedMediaConfiguration: TrustedMediaConfiguration | null | undefined;
+let trustedMediaConfigurationKey: string | undefined;
 
 export class DocumentExportConversionError extends Error {
   constructor(message = 'Document export conversion failed', options?: ErrorOptions) {
     super(message, options);
     this.name = 'DocumentExportConversionError';
   }
+}
+
+function assertPdfTextSupported(text: string): void {
+  for (const character of text) {
+    const codePoint = character.codePointAt(0)!;
+    if (
+      codePoint === 0x09 ||
+      codePoint === 0x0a ||
+      codePoint === 0x0d ||
+      (codePoint >= 0x20 && codePoint <= 0x7e) ||
+      (codePoint >= 0xa0 && codePoint <= 0xff) ||
+      WIN_ANSI_EXTENDED_CODE_POINTS.has(codePoint)
+    ) {
+      continue;
+    }
+    throw new DocumentExportConversionError(
+      'PDF export does not support every character in this document. Export as DOCX to preserve the original text.'
+    );
+  }
+}
+
+function assertPdfModelSupported(model: DocumentExportModel): void {
+  const visitInline = (content: readonly DocumentExportInline[]) => {
+    for (const inline of content) {
+      assertPdfTextSupported(inline.type === 'text' ? inline.text : inline.alt);
+    }
+  };
+  const visitBlocks = (blocks: readonly DocumentExportBlock[]) => {
+    for (const block of blocks) {
+      if (block.type === 'table') {
+        for (const row of block.rows) for (const cell of row) visitInline(cell);
+      } else if (block.type === 'code') {
+        assertPdfTextSupported(block.text);
+      } else if (block.type === 'callout') {
+        assertPdfTextSupported(block.label);
+        visitBlocks(block.children);
+      } else if (block.type === 'list-item') {
+        visitBlocks(block.children);
+      } else {
+        visitInline(block.content);
+      }
+    }
+  };
+  visitBlocks(model.blocks);
 }
 
 function sameStyle(left: DocumentExportTextRun, right: DocumentExportTextRun): boolean {
@@ -238,20 +305,98 @@ export function sanitizeExportFileName(name: string): string {
   return sanitized || 'document';
 }
 
+function isLoopbackHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  if (normalized === 'localhost' || normalized === '[::1]') return true;
+  const octets = normalized.split('.');
+  return octets.length === 4 && octets[0] === '127' && octets.every((octet) => /^\d{1,3}$/.test(octet));
+}
+
+function configuredTrustedMedia(): TrustedMediaConfiguration | null {
+  const configuredValue = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+  const environment = process.env.NODE_ENV ?? '';
+  const cacheKey = `${environment}\u0000${configuredValue}`;
+  if (trustedMediaConfigurationKey === cacheKey) {
+    return trustedMediaConfiguration;
+  }
+  trustedMediaConfigurationKey = cacheKey;
+  if (!configuredValue) {
+    trustedMediaConfiguration = null;
+    return null;
+  }
+  try {
+    const configured = new URL(configuredValue);
+    const isLoopback = isLoopbackHostname(configured.hostname);
+    const permitsHttp =
+      environment !== 'production' &&
+      configured.protocol === 'http:' &&
+      isLoopback;
+    if (
+      configured.username ||
+      configured.password ||
+      configured.hash ||
+      (environment === 'production' && isLoopback) ||
+      (configured.protocol !== 'https:' && !permitsHttp)
+    ) {
+      trustedMediaConfiguration = null;
+      return null;
+    }
+    trustedMediaConfiguration = {
+      configuredValue,
+      environment,
+      origin: configured.origin,
+      permitsHttp,
+    };
+    return trustedMediaConfiguration;
+  } catch {
+    trustedMediaConfiguration = null;
+    return null;
+  }
+}
+
+function rawPathSegments(value: string): string[] | null {
+  const match = /^[a-z][a-z\d+.-]*:\/\/[^/?#]*(\/[^?#]*)?(?:\?[^#]*)?(?:#.*)?$/i.exec(value);
+  if (!match) return null;
+  const pathname = match[1] ?? '/';
+  try {
+    return pathname.split('/').slice(1).map((segment) => decodeURIComponent(segment));
+  } catch {
+    return null;
+  }
+}
+
 function trustedMediaUrl(value: string): boolean {
-  const configured = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!configured) return false;
+  const configured = configuredTrustedMedia();
+  if (!configured || value !== value.trim() || value.includes('\\') || value.includes('#')) {
+    return false;
+  }
   try {
     const url = new URL(value);
-    const origin = new URL(configured);
-    const safeProtocol = url.protocol === 'https:' || (url.protocol === 'http:' && url.hostname === '127.0.0.1');
-    return (
-      safeProtocol &&
-      url.origin === origin.origin &&
-      url.username === '' &&
-      url.password === '' &&
-      url.pathname.startsWith('/storage/v1/object/public/library-media-files/')
-    );
+    if (
+      url.origin !== configured.origin ||
+      url.username ||
+      url.password ||
+      url.hash ||
+      (url.protocol !== 'https:' && !(configured.permitsHttp && url.protocol === 'http:'))
+    ) {
+      return false;
+    }
+    const segments = rawPathSegments(value);
+    if (
+      !segments ||
+      segments.length <= TRUSTED_STORAGE_PREFIX.length ||
+      segments.some((segment) =>
+        !segment ||
+        segment === '.' ||
+        segment === '..' ||
+        /[\u0000-\u001f\u007f]/.test(segment) ||
+        segment.includes('/') ||
+        segment.includes('\\')
+      )
+    ) {
+      return false;
+    }
+    return TRUSTED_STORAGE_PREFIX.every((segment, index) => segments[index] === segment);
   } catch {
     return false;
   }
@@ -431,7 +576,17 @@ function modelImages(model: DocumentExportModel): DocumentExportImage[] {
 
 async function resolveModelImages(model: DocumentExportModel): Promise<Map<string, ResolvedImage | null>> {
   const urls = Array.from(new Set(modelImages(model).map((image) => image.url))).slice(0, MAX_REMOTE_IMAGES);
-  const entries = await Promise.all(urls.map(async (url) => [url, await fetchTrustedImage(url)] as const));
+  const entries = new Array<readonly [string, ResolvedImage | null]>(urls.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(IMAGE_RESOLUTION_WORKERS, urls.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < urls.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      const url = urls[index]!;
+      entries[index] = [url, await fetchTrustedImage(url)];
+    }
+  }));
   return new Map(entries);
 }
 
@@ -581,16 +736,9 @@ async function renderDocx(
   return docx.Packer.toBuffer(document);
 }
 
-function requiresUnicodePdfFont(text: string): boolean {
-  return /[^\u0000-\u00ff]/.test(text);
-}
-
 function pdfFont(run: DocumentExportTextRun, defaults: InlineStyle): string {
   const bold = run.bold || defaults.bold;
   const italic = run.italic || defaults.italic;
-  if (requiresUnicodePdfFont(run.text)) {
-    return bold ? 'NotoSansSC-Bold' : 'NotoSansSC';
-  }
   if (run.code || defaults.code) return 'Courier';
   if (bold && italic) return 'Helvetica-BoldOblique';
   if (bold) return 'Helvetica-Bold';
@@ -631,13 +779,6 @@ async function renderPdf(
   images: ReadonlyMap<string, ResolvedImage | null>
 ): Promise<Buffer> {
   const { default: PDFDocument } = await import('pdfkit');
-  const fontDirectory = path.join(
-    process.cwd(),
-    'node_modules',
-    '@fontsource',
-    'noto-sans-sc',
-    'files'
-  );
   return new Promise<Buffer>((resolve, reject) => {
     const pdf = new PDFDocument({ margin: 50, bufferPages: true, compress: false });
     const chunks: Buffer[] = [];
@@ -645,20 +786,6 @@ async function renderPdf(
     pdf.on('end', () => resolve(Buffer.concat(chunks)));
     pdf.on('error', reject);
     try {
-      pdf.registerFont(
-        'NotoSansSC',
-        path.join(
-          fontDirectory,
-          'noto-sans-sc-chinese-simplified-400-normal.woff2'
-        )
-      );
-      pdf.registerFont(
-        'NotoSansSC-Bold',
-        path.join(
-          fontDirectory,
-          'noto-sans-sc-chinese-simplified-700-normal.woff2'
-        )
-      );
       const renderBlocks = (blocks: readonly DocumentExportBlock[]) => {
        for (const block of blocks) {
         if (block.type === 'table') {
@@ -675,7 +802,7 @@ async function renderPdf(
         }
         if (block.type === 'code') {
           pdf
-            .font(requiresUnicodePdfFont(block.text) ? 'NotoSansSC' : 'Courier')
+            .font('Courier')
             .fontSize(10)
             .text(block.text)
             .moveDown(0.35);
@@ -696,7 +823,7 @@ async function renderPdf(
           renderBlocks(rest);
         } else if (block.type === 'callout') {
           pdf
-            .font(requiresUnicodePdfFont(block.label) ? 'NotoSansSC-Bold' : 'Helvetica-Bold')
+            .font('Helvetica-Bold')
             .fontSize(11)
             .text(block.label);
           renderBlocks(block.children);
@@ -726,6 +853,7 @@ export async function renderDocumentExportModel(
   model: DocumentExportModel,
   format: DocumentExportFormat
 ): Promise<Buffer> {
+  if (format === 'pdf') assertPdfModelSupported(model);
   const images = await resolveModelImages(model);
   try {
     return format === 'docx' ? await renderDocx(model, images) : await renderPdf(model, images);

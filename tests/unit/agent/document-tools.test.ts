@@ -87,6 +87,7 @@ describe('Agent document tools', () => {
   });
 
   it('creates a validated document inside the caller project', async () => {
+    expect(createDocumentTool.confirmationRequired).toBe(true);
     createDocument.mockResolvedValue({ id: DOCUMENT_ID, name: 'Guide' });
     await expect(
       createDocumentTool.execute({ name: 'Guide', content: '# Guide' }, ctx)
@@ -154,6 +155,7 @@ describe('Agent document tools', () => {
         type: 'document_edit',
         documentId: DOCUMENT_ID,
         expectedToken: { epoch: 2, revision: 4 },
+        baseMarkdown: '# Current',
         baseUpdateIds: [],
         proposedMarkdown: '# Proposed',
       },
@@ -170,6 +172,28 @@ describe('Agent document tools', () => {
 
     expect(result).toMatchObject({ success: false });
     expect(replace).not.toHaveBeenCalled();
+  });
+
+  it('rejects a confirmed proposal whose displayed base Markdown was changed', async () => {
+    read.mockResolvedValue(state());
+    const preview = await proposeDocumentEdit.execute(
+      { documentId: DOCUMENT_ID, markdown: '# Proposed' },
+      ctx
+    );
+    const tamperedPreview = {
+      ...preview,
+      data: {
+        ...(preview.data as Record<string, unknown>),
+        baseMarkdown: '# Tampered original',
+      },
+    };
+
+    await expect(proposeDocumentEdit.executeImport!(tamperedPreview, {}, ctx)).resolves.toEqual({
+      success: false,
+      error: 'The approved document edit payload changed.',
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(replaceDocumentAsAgent).not.toHaveBeenCalled();
   });
 
   it('applies the exact approved proposal through the guarded gateway', async () => {

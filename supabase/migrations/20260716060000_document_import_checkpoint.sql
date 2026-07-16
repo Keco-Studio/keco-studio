@@ -34,15 +34,15 @@ declare
   v_existing_version public.document_versions%rowtype;
   v_user_id uuid := p_actor_user_id;
 begin
+  perform public.assert_document_snapshot_payload(p_yjs_state, p_markdown);
+
   if p_document_id is null
     or p_version_id is null
     or p_project_id is null
     or p_name is null
     or p_name <> btrim(p_name)
     or char_length(p_name) not between 1 and 255
-    or p_markdown is null
-    or p_yjs_state is null
-    or length(p_yjs_state) = 0 then
+  then
     raise exception 'Imported document input is invalid'
       using errcode = '22023';
   end if;
@@ -264,6 +264,11 @@ begin
     raise exception 'Document not found or not writable'
       using errcode = '42501';
   end if;
+
+  perform public.assert_document_snapshot_payload(
+    v_document.yjs_state,
+    v_document.content
+  );
 
   select v.*
     into v_existing

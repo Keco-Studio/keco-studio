@@ -16,6 +16,11 @@ describe('document version history UI wiring', () => {
     expect(sidebar).toContain('queryKeys.documentVersions(documentId)');
     expect(sidebar).toContain('listDocumentVersions');
     expect(sidebar).toContain('canMutate');
+    expect(sidebar).toContain('deleteDocumentVersion');
+    expect(sidebar).toContain('canDeleteVersion(version.type)');
+    expect(sidebar).toContain("type === 'manual' || type === 'automatic'");
+    expect(sidebar).toContain('Modal.confirm');
+    expect(sidebar).toContain('queryKeys.documentVersions(documentId)');
     expect(sidebar).not.toContain('@/lib/services/versionService');
     expect(sidebar).not.toContain('library_versions');
   });

@@ -47,7 +47,7 @@ describe('sanctioned MDX validation', () => {
     expect(callout.validateProperties?.(
       { type: 'success', title: '' },
       { type: 'note', title: 'Original' }
-    )).toEqual({ type: 'success', title: '' });
+    )).toEqual({ type: 'success' });
   });
 
   it('accepts the v1 component registry', () => {

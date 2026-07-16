@@ -240,7 +240,7 @@ async function makeStructuredDocx(suffix: string): Promise<Buffer> {
               new TextRun({ text: 'Bold marker', bold: true }),
               new TextRun(' and '),
               new TextRun({ text: 'italic marker', italics: true }),
-              new TextRun(` 中文 ${suffix}`),
+              new TextRun(` localized text ${suffix}`),
             ],
           }),
           new Paragraph({ text: `Bullet ${suffix}`, bullet: { level: 0 } }),
@@ -252,14 +252,14 @@ async function makeStructuredDocx(suffix: string): Promise<Buffer> {
             rows: [
               new TableRow({
                 children: [
-                  new TableCell({ children: [new Paragraph('字段')] }),
-                  new TableCell({ children: [new Paragraph('值')] }),
+                  new TableCell({ children: [new Paragraph('Field')] }),
+                  new TableCell({ children: [new Paragraph('Value')] }),
                 ],
               }),
               new TableRow({
                 children: [
-                  new TableCell({ children: [new Paragraph('状态')] }),
-                  new TableCell({ children: [new Paragraph(`完成 ${suffix}`)] }),
+                  new TableCell({ children: [new Paragraph('Status')] }),
+                  new TableCell({ children: [new Paragraph(`Complete ${suffix}`)] }),
                 ],
               }),
             ],
@@ -336,25 +336,25 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
     const markdown = [
       `# Phase 2 Markdown ${suffix}`,
       '',
-      '中文验收内容',
+      'Localized acceptance content',
       '',
-      '<Callout type="info" title="提示 &amp; 说明">',
+      '<Callout type="info" title="Tip &amp; explanation">',
       '',
-      `Callout 中文 ${suffix}`,
+      `Callout localized text ${suffix}`,
       '',
       '</Callout>',
       '',
-      '<Details summary="查看更多">',
+      '<Details summary="View more">',
       '',
-      `Details 中文 ${suffix}`,
+      `Details localized text ${suffix}`,
       '',
       '</Details>',
       '',
-      '| 项目 | 状态 |',
+      '| Item | Status |',
       '| --- | --- |',
-      '| 导入 | 完成 |',
+      '| Import | Complete |',
       '',
-      `[安全链接](https://example.com/phase2?run=${suffix})`,
+      `[Safe link](https://example.com/phase2?run=${suffix})`,
       '',
       initialMarker,
       '',
@@ -378,14 +378,14 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
         timeout: 45_000,
       });
       await expect(owner.page.locator('[data-component="Callout"]')).toContainText(
-        `Callout 中文 ${suffix}`
+        `Callout localized text ${suffix}`
       );
       await expect(owner.page.locator('[data-component="Details"]')).toContainText(
-        `Details 中文 ${suffix}`
+        `Details localized text ${suffix}`
       );
-      await expect(owner.page.locator('table')).toContainText('导入');
+      await expect(owner.page.locator('table')).toContainText('Import');
       await expect(
-        owner.page.getByRole('link', { name: '安全链接' })
+        owner.page.getByRole('link', { name: 'Safe link' })
       ).toHaveAttribute('href', `https://example.com/phase2?run=${suffix}`);
       await expect(owner.page.locator('[contenteditable="true"]').first()).toContainText(
         initialMarker
@@ -400,7 +400,7 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
       const docx = await downloadFromEditor(owner.page, 'Download DOCX');
       const docxHtml = (await mammoth.convertToHtml({ buffer: docx })).value;
       expect(docxHtml).toContain(editedMarker);
-      expect(docxHtml).toContain('提示 &amp; 说明');
+      expect(docxHtml).toContain('Tip &amp; explanation');
       expect(docxHtml).not.toContain('&amp;amp;');
 
       const pdf = await downloadFromEditor(owner.page, 'Download PDF');
@@ -422,10 +422,10 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
         viewer.page.getByText('View only - Live', { exact: true })
       ).toBeVisible({ timeout: 45_000 });
       await expect(viewer.page.locator('[data-component="Callout"]')).toContainText(
-        `Callout 中文 ${suffix}`
+        `Callout localized text ${suffix}`
       );
       await expect(viewer.page.locator('[data-component="Details"]')).toContainText(
-        `Details 中文 ${suffix}`
+        `Details localized text ${suffix}`
       );
       await expect(viewer.page.locator('[contenteditable="true"]')).toHaveCount(0);
       await expect(viewer.page.locator('[contenteditable="false"]').first()).toBeVisible();
@@ -466,12 +466,12 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
       })).toBeVisible();
       await expect(owner.page.getByText(`Bullet ${suffix}`, { exact: true })).toBeVisible();
       await expect(owner.page.getByText(`Ordered ${suffix}`, { exact: true })).toBeVisible();
-      await expect(owner.page.locator('table')).toContainText(`完成 ${suffix}`);
+      await expect(owner.page.locator('table')).toContainText(`Complete ${suffix}`);
       await expect(owner.page.getByRole('link', { name: 'DOCX link' })).toHaveAttribute(
         'href',
         `https://example.com/docx?run=${suffix}`
       );
-      await expect(owner.page.getByText(`中文 ${suffix}`, { exact: false })).toBeVisible();
+      await expect(owner.page.getByText(`localized text ${suffix}`, { exact: false })).toBeVisible();
       await expect(owner.page.locator('img[alt="Imported image 1"]')).toBeVisible();
 
       await owner.page.reload({ waitUntil: 'domcontentloaded' });
@@ -481,7 +481,7 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
       await expect(owner.page.getByRole('heading', {
         name: `DOCX Phase 2 ${suffix}`,
       })).toBeVisible();
-      await expect(owner.page.locator('table')).toContainText(`完成 ${suffix}`);
+      await expect(owner.page.locator('table')).toContainText(`Complete ${suffix}`);
       await expect(owner.page.locator('img[alt="Imported image 1"]')).toBeVisible();
     } finally {
       await owner.context.close();

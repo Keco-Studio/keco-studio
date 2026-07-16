@@ -5,7 +5,7 @@ import path from 'node:path';
 const repoRoot = process.cwd();
 const migrationPath = path.join(
   repoRoot,
-  'supabase/migrations/20260713100000_documents_yjs_state.sql'
+  'supabase/migrations/20260716020000_documents_yjs_state.sql'
 );
 
 describe('documents yjs_state migration (Phase 2A)', () => {

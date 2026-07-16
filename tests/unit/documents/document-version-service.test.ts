@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { DocumentAccessError, DocumentReadOnlyError } from '@/lib/documents/documentStateTypes';
+import {
+  DocumentAccessError,
+  DocumentReadOnlyError,
+  DocumentStateConflictError,
+} from '@/lib/documents/documentStateTypes';
 
 const readDocumentState = jest.fn();
 const mergeYjsState = jest.fn();
@@ -20,6 +24,7 @@ jest.mock('@/lib/documents/documentContentCodec', () => ({
 import {
   createDocumentImportCheckpoint,
   createDocumentVersion,
+  deleteDocumentVersion,
   getDocumentVersionPreview,
   listDocumentVersions,
 } from '@/lib/documents/documentVersionService';
@@ -295,6 +300,68 @@ describe('documentVersionService', () => {
     await expect(
       getDocumentVersionPreview(hidden.client, DOCUMENT_ID, VERSION_ID)
     ).rejects.toBeInstanceOf(DocumentAccessError);
+  });
+
+  it('deletes a version through the guarded document-scoped RPC', async () => {
+    const { client, rpc } = makeClient({
+      rpc: [{ data: VERSION_ID, error: null }],
+    });
+
+    await expect(
+      deleteDocumentVersion(client, DOCUMENT_ID, VERSION_ID)
+    ).resolves.toBe(VERSION_ID);
+    expect(rpc).toHaveBeenCalledWith('delete_document_version', {
+      p_document_id: DOCUMENT_ID,
+      p_version_id: VERSION_ID,
+    });
+  });
+
+  it('maps deletion permission and reference conflicts to typed errors', async () => {
+    const denied = makeClient({
+      rpc: [{ data: null, error: { code: '42501', message: 'denied' } }],
+    });
+    await expect(
+      deleteDocumentVersion(denied.client, DOCUMENT_ID, VERSION_ID)
+    ).rejects.toBeInstanceOf(DocumentReadOnlyError);
+
+    const referenced = makeClient({
+      rpc: [{ data: null, error: { code: 'PT409', message: 'referenced' } }],
+    });
+    await expect(
+      deleteDocumentVersion(referenced.client, DOCUMENT_ID, VERSION_ID)
+    ).rejects.toBeInstanceOf(DocumentStateConflictError);
+  });
+
+  it('maps missing deletion targets to DocumentAccessError', async () => {
+    const missing = makeClient({
+      rpc: [{ data: null, error: { code: 'P0002', message: 'missing' } }],
+    });
+
+    await expect(
+      deleteDocumentVersion(missing.client, DOCUMENT_ID, VERSION_ID)
+    ).rejects.toBeInstanceOf(DocumentAccessError);
+  });
+
+  it('maps protected audit deletion to DocumentStateConflictError', async () => {
+    const protectedAudit = makeClient({
+      rpc: [{ data: null, error: { code: 'PT409', message: 'audit protected' } }],
+    });
+
+    await expect(
+      deleteDocumentVersion(protectedAudit.client, DOCUMENT_ID, VERSION_ID)
+    ).rejects.toBeInstanceOf(DocumentStateConflictError);
+  });
+
+  it('validates deletion ids before calling the RPC', async () => {
+    const { client, rpc } = makeClient();
+
+    await expect(
+      deleteDocumentVersion(client, 'not-a-document', VERSION_ID)
+    ).rejects.toThrow('Invalid document ID format');
+    await expect(
+      deleteDocumentVersion(client, DOCUMENT_ID, 'not-a-version')
+    ).rejects.toThrow('Invalid document version ID format');
+    expect(rpc).not.toHaveBeenCalled();
   });
 
   it('creates one exact merged snapshot and retries conflicts with a stable id', async () => {

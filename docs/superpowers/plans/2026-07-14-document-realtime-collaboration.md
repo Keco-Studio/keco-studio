@@ -25,7 +25,7 @@
 ### Task 1: Collaboration schema, RPCs, and private-channel authorization
 
 **Files:**
-- Create: `supabase/migrations/20260714000000_document_realtime_collaboration.sql`
+- Create: `supabase/migrations/20260716030000_document_realtime_collaboration.sql`
 - Create: `tests/unit/database/document-realtime-collaboration-migration.test.ts`
 - Create: `tests/unit/database/document-realtime-collaboration.rls.behavior.test.ts`
 
@@ -41,7 +41,7 @@
 - [x] **Step 4: Add the migration**. Use `(select auth.uid())`, correlated membership checks, `security definer set search_path = ''`, `FOR UPDATE` document locks, and deterministic SQLSTATE values for epoch/revision conflicts. Revoke table-level authenticated `UPDATE`, then grant metadata-only `UPDATE(name, folder_id)`; body writes occur only in guarded functions.
 - [x] **Step 5: Run static tests GREEN** with the command from Step 2.
 - [x] **Step 6: Apply the migration and run live behavior tests when `RLS_DB_TESTS=1`** using the existing local Supabase harness; expect every role matrix case to pass.
-- [x] **Step 7: Commit** with `git add supabase/migrations/20260714000000_document_realtime_collaboration.sql tests/unit/database/document-realtime-collaboration* && git commit -m "feat: add durable document collaboration schema"`.
+- [x] **Step 7: Commit** with `git add supabase/migrations/20260716030000_document_realtime_collaboration.sql tests/unit/database/document-realtime-collaboration* && git commit -m "feat: add durable document collaboration schema"`.
 
 ### Task 2: Shared state types, errors, encoding, and wire validation
 

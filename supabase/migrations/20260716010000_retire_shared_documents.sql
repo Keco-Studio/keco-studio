@@ -29,10 +29,14 @@ begin
 
   execute 'select count(*) from public.shared_documents' into v_row_count;
 
+  -- Create and lock down the archive before copying any surviving rows.
+  execute 'create table if not exists public.shared_documents_archive
+           (like public.shared_documents including all)';
+  execute 'alter table public.shared_documents_archive enable row level security';
+  execute 'revoke all on table public.shared_documents_archive from anon, authenticated';
+
   -- Archive surviving rows so the drop is reversible.
   if v_row_count > 0 then
-    execute 'create table if not exists public.shared_documents_archive
-             (like public.shared_documents including all)';
     execute 'insert into public.shared_documents_archive
              select * from public.shared_documents';
     execute 'select count(*) from public.shared_documents_archive' into v_archived;

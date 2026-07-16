@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createSupabaseServerClient } from '@/lib/createSupabaseServerClient';
+import { withAuth } from '@/lib/auth/route-auth';
 import { exportDocument } from '@/lib/documents/documentExportService';
 import { isUuid } from '@/lib/utils/uuid';
 import {
@@ -8,13 +8,16 @@ import {
   DocumentReadOnlyError,
 } from '@/lib/documents/documentStateTypes';
 
+export const maxDuration = 60;
+
 function safeErrorDetails(error: unknown): { name: string } {
   return { name: error instanceof Error ? error.name : 'UnknownError' };
 }
 
-export async function GET(
+export const GET = withAuth(async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ documentId: string }> }
+  { params }: { params: Promise<{ documentId: string }> },
+  { supabase }
 ) {
   const { documentId } = await params;
   const format = request.nextUrl.searchParams.get('format') ?? 'docx';
@@ -22,9 +25,8 @@ export async function GET(
     return NextResponse.json({ error: 'Invalid export request' }, { status: 400 });
   }
 
-  const client = createSupabaseServerClient(request);
   try {
-    const exported = await exportDocument(client, documentId, format);
+    const exported = await exportDocument(supabase, documentId, format);
     const encodedName = encodeURIComponent(exported.fileName);
     return new NextResponse(new Uint8Array(exported.bytes), {
       headers: {
@@ -49,4 +51,4 @@ export async function GET(
     );
     return NextResponse.json({ error: 'Document export failed' }, { status: 500 });
   }
-}
+});

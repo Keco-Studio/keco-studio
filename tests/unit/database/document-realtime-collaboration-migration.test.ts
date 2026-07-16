@@ -4,7 +4,7 @@ import path from 'node:path';
 
 const migrationPath = path.join(
   process.cwd(),
-  'supabase/migrations/20260714000000_document_realtime_collaboration.sql'
+  'supabase/migrations/20260716030000_document_realtime_collaboration.sql'
 );
 const migration = existsSync(migrationPath) ? readFileSync(migrationPath, 'utf8') : '';
 
@@ -30,15 +30,20 @@ describe('document realtime collaboration migration', () => {
     expect(migration).not.toMatch(/create index[^;]+\bcontent\b/is);
   });
 
-  it('makes application update rows immutable and role-scoped', () => {
+  it('makes durable update rows RPC-only and role-scoped for reads', () => {
     expect(migration).toContain('alter table public.document_yjs_updates enable row level security');
     expect(migration).toContain('document_yjs_updates_select_policy');
-    expect(migration).toContain('document_yjs_updates_insert_policy');
+    expect(migration).not.toContain('document_yjs_updates_insert_policy');
+    expect(migration).toMatch(
+      /revoke insert, update, delete on table public\.document_yjs_updates\s+from anon, authenticated/i
+    );
+    expect(migration).not.toMatch(
+      /grant[^;]*insert[^;]*document_yjs_updates/i
+    );
     expect(migration).not.toMatch(/create policy[^;]+for update/is);
     expect(migration).not.toMatch(/create policy[^;]+for delete/is);
     expect(migration).toContain('(select auth.uid())');
     expect(migration).toContain('public.is_accepted_collaborator');
-    expect(migration).toContain('public.is_editor_or_admin_collaborator');
   });
 
   it('initializes and compacts through guarded fixed-search-path functions', () => {
@@ -55,7 +60,35 @@ describe('document realtime collaboration migration', () => {
     expect(migration).toMatch(/epoch = p_expected_epoch/i);
   });
 
+  it('bounds canonical updates, snapshots, and Markdown before mutation', () => {
+    expect(migration).toMatch(/jsonb_array_length\(p_updates\)/i);
+    expect(migration).toContain('v_update_count < 1 or v_update_count > 100');
+    expect(migration).toContain("count(distinct item->>'id')");
+    expect(migration).toContain("length(item->>'updateBase64') > 349528");
+    expect(migration).toContain('pg_catalog.octet_length(payload.decoded) > 262144');
+    expect(migration).toContain("pg_catalog.decode(item->>'updateBase64', 'base64')");
+    expect(migration).toContain("pg_catalog.encode(payload.decoded, 'base64')");
+    expect(migration).toContain('length(p_yjs_state) > 11184812');
+    expect(migration).toContain('pg_catalog.octet_length(v_decoded) > 8388608');
+    expect(migration).toContain('pg_catalog.octet_length(p_markdown) > 2097152');
+    expect(migration).toMatch(
+      /function public\.initialize_document_collab_state[\s\S]+?begin\s+perform public\.assert_document_snapshot_payload\(p_yjs_state, p_markdown\);[\s\S]+?select d\.\*/i
+    );
+    expect(migration).toMatch(
+      /function public\.compact_document_collab_state[\s\S]+?begin\s+perform public\.assert_document_snapshot_payload\(p_yjs_state, p_markdown\);[\s\S]+?select d\.\*/i
+    );
+  });
+
   it('removes direct authenticated body updates while retaining metadata updates', () => {
+    expect(migration).toMatch(
+      /revoke insert on table public\.documents from anon, authenticated/i
+    );
+    expect(migration).toMatch(
+      /grant insert \(project_id, folder_id, name, content, created_by\)\s+on table public\.documents to authenticated/i
+    );
+    expect(migration).not.toMatch(
+      /grant insert[^;]*(yjs_state|collab_epoch|collab_revision)/i
+    );
     expect(migration).toMatch(/revoke update on table public\.documents from authenticated/i);
     expect(migration).toMatch(/grant update \(name, folder_id\) on table public\.documents to authenticated/i);
     expect(migration).not.toMatch(/grant update[^;]*(content|yjs_state|collab_epoch|collab_revision)/i);

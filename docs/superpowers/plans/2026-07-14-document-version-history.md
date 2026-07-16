@@ -25,8 +25,8 @@
 
 **Files:**
 - Create: `tests/unit/database/document-version-history-migration.test.ts`
-- Create: `supabase/migrations/20260714010000_document_version_history.sql`
-- Modify: `supabase/migrations/20260714000000_document_realtime_collaboration.sql` only if a test proves a compatibility defect; otherwise leave the landed migration immutable.
+- Create: `supabase/migrations/20260716040000_document_version_history.sql`
+- Modify: `supabase/migrations/20260716030000_document_realtime_collaboration.sql` only if a test proves a compatibility defect; otherwise leave the landed migration immutable.
 
 **Interfaces:**
 - Produces table `public.document_versions` and index `document_versions_document_created_idx`.
@@ -56,7 +56,7 @@ expect(migration).not.toMatch(/alter publication supabase_realtime/i);
 
 Run: `npm run test:unit -- tests/unit/database/document-version-history-migration.test.ts --runInBand`
 
-Expected: FAIL because `20260714010000_document_version_history.sql` does not exist.
+Expected: FAIL because `20260716040000_document_version_history.sql` does not exist.
 
 - [ ] **Step 3: Add the schema, RLS, and create/restore functions**
 
@@ -108,12 +108,12 @@ Expected: both suites PASS.
 
 Run: `supabase migration up`
 
-Expected: migration `20260714010000_document_version_history.sql` applies without SQL or dependency errors.
+Expected: migration `20260716040000_document_version_history.sql` applies without SQL or dependency errors.
 
 - [ ] **Step 6: Commit the database contract**
 
 ```bash
-git add tests/unit/database/document-version-history-migration.test.ts supabase/migrations/20260714010000_document_version_history.sql
+git add tests/unit/database/document-version-history-migration.test.ts supabase/migrations/20260716040000_document_version_history.sql
 git commit -m "feat: add document version history schema"
 ```
 
@@ -160,7 +160,7 @@ Expected: FAIL on any missing grant, function behavior, rollback, or policy defe
 
 - [ ] **Step 3: Correct only the migration defects exposed by the live test**
 
-Patch `20260714010000_document_version_history.sql` so every expected actor and transaction assertion passes. Do not weaken RLS, add direct mutation grants, or add a service-role application path.
+Patch `20260716040000_document_version_history.sql` so every expected actor and transaction assertion passes. Do not weaken RLS, add direct mutation grants, or add a service-role application path.
 
 - [ ] **Step 4: Rebuild/apply local database state and rerun live behavior**
 
@@ -173,7 +173,7 @@ Expected: all version history live database tests PASS.
 - [ ] **Step 5: Commit live database coverage**
 
 ```bash
-git add tests/unit/database/document-version-history.rls.behavior.test.ts supabase/migrations/20260714010000_document_version_history.sql
+git add tests/unit/database/document-version-history.rls.behavior.test.ts supabase/migrations/20260716040000_document_version_history.sql
 git commit -m "test: prove document version transaction isolation"
 ```
 
@@ -576,6 +576,6 @@ Expected: exit code 0 with no output.
 - [ ] **Step 6: Commit any verification-only corrections**
 
 ```bash
-git add supabase/migrations/20260714010000_document_version_history.sql src/lib/documents/documentVersionService.ts src/lib/documents/documentStateTypes.ts src/lib/documents/documentStateGateway.ts src/lib/documents/documentCollaborationSession.ts src/components/documents/useDocumentCollaboration.ts src/components/documents/DocumentVersionSidebar.tsx src/components/documents/DocumentVersionSidebar.module.css src/components/documents/CreateDocumentVersionModal.tsx src/components/documents/DocumentVersionPreviewModal.tsx src/components/documents/RestoreDocumentVersionModal.tsx src/components/documents/DocumentEditor.tsx src/components/documents/DocumentEditor.module.css tests/unit/database/document-version-history-migration.test.ts tests/unit/database/document-version-history.rls.behavior.test.ts tests/unit/documents/document-version-service.test.ts tests/unit/documents/document-state-gateway.test.ts tests/unit/documents/document-collaboration-session.test.ts tests/unit/documents/document-collaboration-wiring.test.ts tests/unit/documents/document-version-ui-wiring.test.ts tests/e2e/specs/document-version-history.spec.ts
+git add supabase/migrations/20260716040000_document_version_history.sql src/lib/documents/documentVersionService.ts src/lib/documents/documentStateTypes.ts src/lib/documents/documentStateGateway.ts src/lib/documents/documentCollaborationSession.ts src/components/documents/useDocumentCollaboration.ts src/components/documents/DocumentVersionSidebar.tsx src/components/documents/DocumentVersionSidebar.module.css src/components/documents/CreateDocumentVersionModal.tsx src/components/documents/DocumentVersionPreviewModal.tsx src/components/documents/RestoreDocumentVersionModal.tsx src/components/documents/DocumentEditor.tsx src/components/documents/DocumentEditor.module.css tests/unit/database/document-version-history-migration.test.ts tests/unit/database/document-version-history.rls.behavior.test.ts tests/unit/documents/document-version-service.test.ts tests/unit/documents/document-state-gateway.test.ts tests/unit/documents/document-collaboration-session.test.ts tests/unit/documents/document-collaboration-wiring.test.ts tests/unit/documents/document-version-ui-wiring.test.ts tests/e2e/specs/document-version-history.spec.ts
 git commit -m "fix: close document version history release gaps"
 ```
