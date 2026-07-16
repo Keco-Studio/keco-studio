@@ -351,7 +351,7 @@ async function expectStructureFixture(
   await expect(editor.locator('blockquote', { hasText: expected.quote })).toBeVisible();
   await expect(editor.getByRole('link', { name: expected.link })).toHaveAttribute(
     'href',
-    'https://example.com'
+    'https://example.com/'
   );
   await expect(editor.locator('table')).toContainText(expected.table);
   await expect(page.locator('.cm-content', { hasText: expected.code })).toBeVisible();

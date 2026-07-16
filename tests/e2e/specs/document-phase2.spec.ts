@@ -407,9 +407,10 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const initialMarker = `ROOT-${suffix}`;
     const editedMarker = `${initialMarker}-EDITED`;
-    const chinesePdfText = '中文 PDF 导出验证：你好世界';
+    const chinesePdfText = '\u4e2d\u6587 PDF \u5bfc\u51fa\u9a8c\u8bc1\uff1a\u4f60\u597d\u4e16\u754c';
+    const chinesePdfHeading = `\u4e2d\u6587 Phase 2 Markdown ${suffix}`;
     const markdown = [
-      `# 中文 Phase 2 Markdown ${suffix}`,
+      `# ${chinesePdfHeading}`,
       '',
       'Localized acceptance content',
       '',
@@ -492,7 +493,7 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
       expect(parsedPdf.operatorCount).toBeGreaterThan(0);
       expect(parsedPdf.glyphWarnings).toEqual([]);
       expectTextInOrder(parsedPdf.text, [
-        `中文 Phase 2 Markdown ${suffix}`,
+        chinesePdfHeading,
         'Localized acceptance content',
         chinesePdfText,
         'Tip & explanation',

@@ -133,10 +133,35 @@ export function useSidebarRealtime({
         {
           event: '*',
           schema: 'public',
-          table: 'folders',
-          filter: `project_id=eq.${currentProjectId}`,
         },
         async (payload) => {
+          if (payload.table === 'libraries') {
+            const projectId =
+              stringField(payload.new, 'project_id') ??
+              stringField(payload.old, 'project_id');
+            if (projectId !== currentProjectId) return;
+            await invalidateSidebarLibraryChange(
+              queryClient,
+              currentProjectId,
+              payload.new,
+              payload.old
+            );
+            return;
+          }
+
+          if (payload.table === 'predefine_properties') {
+            await invalidateLibraryData(queryClient, {
+              projectId: currentProjectId,
+              refetchActiveFoldersLibraries: true,
+            });
+            return;
+          }
+
+          if (payload.table !== 'folders') return;
+          const projectId =
+            stringField(payload.new, 'project_id') ??
+            stringField(payload.old, 'project_id');
+          if (projectId !== currentProjectId) return;
           const folderId =
             (payload.new && 'id' in payload.new ? payload.new.id : null) ||
             (payload.old && 'id' in payload.old ? payload.old.id : null);
@@ -150,37 +175,6 @@ export function useSidebarRealtime({
           if (payload.new && 'id' in payload.new) {
             await invalidateFolderData(queryClient, { folderId: payload.new.id });
           }
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'libraries',
-          filter: `project_id=eq.${currentProjectId}`,
-        },
-        async (payload) => {
-          await invalidateSidebarLibraryChange(
-            queryClient,
-            currentProjectId,
-            payload.new,
-            payload.old
-          );
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'predefine_properties',
-        },
-        async () => {
-          await invalidateLibraryData(queryClient, {
-            projectId: currentProjectId,
-            refetchActiveFoldersLibraries: true,
-          });
         }
       )
       // Documents are broadcast-only (not in the realtime publication, GitHub
