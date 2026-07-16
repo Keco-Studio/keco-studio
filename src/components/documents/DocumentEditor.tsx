@@ -95,6 +95,7 @@ function DocumentEditorSession({
 }) {
   const supabase = useSupabase();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   const collaboration = useDocumentCollaboration({
     supabase,
     documentId: document.id,
@@ -120,6 +121,8 @@ function DocumentEditorSession({
   ];
   const handleExport = useCallback(
     async ({ key }: { key: string }) => {
+      if (exportingFormat) return;
+      setExportingFormat(key);
       try {
         if (permissions.role !== 'viewer') {
           await collaboration.session?.flush();
@@ -142,15 +145,18 @@ function DocumentEditorSession({
         anchor.href = url;
         anchor.download = `${document.name}.${key}`;
         anchor.click();
-        URL.revokeObjectURL(url);
+        globalThis.setTimeout(() => URL.revokeObjectURL(url), 0);
       } catch (error) {
         showErrorToast(error instanceof Error ? error.message : 'Document export failed');
+      } finally {
+        setExportingFormat(null);
       }
     },
     [
       collaboration.session,
       document.id,
       document.name,
+      exportingFormat,
       permissions.role,
       supabase,
     ]
@@ -172,9 +178,10 @@ function DocumentEditorSession({
             <button
               type="button"
               className={styles.historyButton}
-              aria-label="Export document"
+              aria-label={exportingFormat ? `Exporting ${exportingFormat.toUpperCase()}` : 'Export document'}
               data-testid="document-export"
-              title="Export document"
+              title={exportingFormat ? `Exporting ${exportingFormat.toUpperCase()}...` : 'Export document'}
+              disabled={Boolean(exportingFormat)}
             >
               <DownloadOutlined aria-hidden="true" />
             </button>
