@@ -10,6 +10,7 @@ const deleteDocument = jest.fn();
 const replaceDocumentAsAgent = jest.fn();
 const broadcastDocumentStateReset = jest.fn();
 const resolveDocumentForTool = jest.fn();
+const listResolvedProjectDocuments = jest.fn();
 
 jest.mock('@/lib/documents/documentStateGateway', () => ({
   documentStateGateway: { read, initialize, replace },
@@ -23,6 +24,7 @@ jest.mock('@/lib/documents/documentStateResetBroadcaster', () => ({
 }));
 jest.mock('@/lib/agent/document-resolver', () => ({
   resolveDocumentForTool,
+  listResolvedProjectDocuments,
 }));
 
 import { createDocumentTool } from '@/lib/agent/tools/create-document';
@@ -106,6 +108,7 @@ describe('Agent document tools', () => {
     initialize.mockResolvedValue(state('# Guide', 0));
     deleteDocument.mockResolvedValue(undefined);
     resolveDocumentForTool.mockResolvedValue(resolvedDocument());
+    listResolvedProjectDocuments.mockResolvedValue([]);
   });
 
   it.each([

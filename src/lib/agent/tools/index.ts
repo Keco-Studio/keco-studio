@@ -27,6 +27,8 @@ import { semanticSearch } from './semantic-search';
 import { createDocumentTool } from './create-document';
 import { readDocument } from './read-document';
 import { proposeDocumentEdit } from './propose-document-edit';
+import { renameDocument } from './rename-document';
+import { moveDocumentTool } from './move-document';
 import { allSkills } from '../workflows';
 
 const tools: AgentTool[] = [
@@ -37,6 +39,8 @@ const tools: AgentTool[] = [
   createDocumentTool,
   readDocument,
   proposeDocumentEdit,
+  renameDocument,
+  moveDocumentTool,
   queryScriptLines,
   addField,
   createAsset,
