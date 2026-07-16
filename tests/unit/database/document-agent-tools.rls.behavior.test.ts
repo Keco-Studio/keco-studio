@@ -119,7 +119,7 @@ describeDb('Agent document tools caller RLS (live database)', () => {
 
       const proposedMarkdown = `# ${label} confirmed edit\n\nConfirmed document content`;
       const preview = await proposeDocumentEdit.execute(
-        { documentId: id, markdown: proposedMarkdown },
+        { documentId: id, operation: { type: 'replace_all', markdown: proposedMarkdown } },
         ctx
       );
       expect(preview).toMatchObject({ success: true });
@@ -176,7 +176,7 @@ describeDb('Agent document tools caller RLS (live database)', () => {
     ).resolves.toMatchObject({ success: false });
 
     const preview = await proposeDocumentEdit.execute(
-      { documentId: id, markdown: '# Viewer must not edit' },
+      { documentId: id, operation: { type: 'replace_all', markdown: '# Viewer must not edit' } },
       viewerCtx
     );
     expect(preview).toMatchObject({ success: true });
@@ -205,7 +205,7 @@ describeDb('Agent document tools caller RLS (live database)', () => {
     const id = await createThroughAgent(fx.editor, 'editor', 'isolated');
     const ownerCtx = context(fx.owner, fx.projectId, 'admin');
     const approvedPreview = await proposeDocumentEdit.execute(
-      { documentId: id, markdown: '# Hidden edit payload' },
+      { documentId: id, operation: { type: 'replace_all', markdown: '# Hidden edit payload' } },
       ownerCtx
     );
     expect(approvedPreview).toMatchObject({ success: true });
@@ -219,7 +219,7 @@ describeDb('Agent document tools caller RLS (live database)', () => {
       ).resolves.toMatchObject({ success: false });
       await expect(
         proposeDocumentEdit.execute(
-          { documentId: id, markdown: '# Unauthorized proposal' },
+          { documentId: id, operation: { type: 'replace_all', markdown: '# Unauthorized proposal' } },
           deniedCtx
         )
       ).resolves.toMatchObject({ success: false });
@@ -243,11 +243,11 @@ describeDb('Agent document tools caller RLS (live database)', () => {
     const ownerCtx = context(fx.owner, fx.projectId, 'admin');
 
     const stalePreview = await proposeDocumentEdit.execute(
-      { documentId: id, markdown: '# Stale editor replacement' },
+      { documentId: id, operation: { type: 'replace_all', markdown: '# Stale editor replacement' } },
       editorCtx
     );
     const newerPreview = await proposeDocumentEdit.execute(
-      { documentId: id, markdown: '# Newer owner replacement' },
+      { documentId: id, operation: { type: 'replace_all', markdown: '# Newer owner replacement' } },
       ownerCtx
     );
     expect(stalePreview).toMatchObject({ success: true });

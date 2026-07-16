@@ -97,7 +97,11 @@ describe('Agent document tools', () => {
       ),
       readDocument.execute({ documentId: DOCUMENT_ID, unexpected: true }, ctx),
       proposeDocumentEdit.execute(
-        { documentId: DOCUMENT_ID, markdown: '# Proposed', unexpected: true },
+        {
+          documentId: DOCUMENT_ID,
+          operation: { type: 'replace_all', markdown: '# Proposed' },
+          unexpected: true,
+        },
         ctx
       ),
     ]);
@@ -338,10 +342,17 @@ describe('Agent document tools', () => {
     expect(read).not.toHaveBeenCalled();
   });
 
-  it('previews an exact token/hash and always uses post-preview confirmation', async () => {
+  it('resolves a document selector and previews an exact token/hash with metadata', async () => {
+    resolveDocumentForTool.mockResolvedValue(
+      resolvedDocument({ name: 'Notes', folderName: 'Lore' })
+    );
     read.mockResolvedValue(state());
     const result = await proposeDocumentEdit.execute(
-      { documentId: DOCUMENT_ID, markdown: '# Proposed' },
+      {
+        documentName: 'Notes',
+        folderName: 'Lore',
+        operation: { type: 'replace_all', markdown: '# Proposed' },
+      },
       ctx
     );
 
@@ -352,18 +363,179 @@ describe('Agent document tools', () => {
       data: {
         type: 'document_edit',
         documentId: DOCUMENT_ID,
+        documentName: 'Notes',
+        folderName: 'Lore',
+        operationType: 'replace_all',
+        operationSummary: 'Replace entire document (10 characters).',
         expectedToken: { epoch: 2, revision: 4 },
         baseMarkdown: '# Current',
         baseUpdateIds: [],
         proposedMarkdown: '# Proposed',
       },
     });
+    expect(resolveDocumentForTool).toHaveBeenCalledWith(
+      ctx.supabase,
+      PROJECT_ID,
+      { documentName: 'Notes', folderName: 'Lore' },
+      ctx
+    );
+  });
+
+  it('defaults an edit proposal to the current document', async () => {
+    read.mockResolvedValue(state());
+    await proposeDocumentEdit.execute(
+      { operation: { type: 'append', content: 'Appendix' } },
+      ctx
+    );
+    expect(resolveDocumentForTool).toHaveBeenCalledWith(ctx.supabase, PROJECT_ID, {}, ctx);
+  });
+
+  it('rejects a folder qualifier without a document selector', async () => {
+    await expect(
+      proposeDocumentEdit.execute(
+        { folderName: 'Other', operation: { type: 'append', content: 'Appendix' } },
+        ctx
+      )
+    ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/invalid parameters/i) });
+    expect(resolveDocumentForTool).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('returns safe ambiguity candidates without reading document state', async () => {
+    const candidates = [
+      {
+        id: DOCUMENT_ID,
+        name: 'Guide',
+        folderId: null,
+        folderName: null,
+        updatedAt: '2026-07-15T00:00:00.000Z',
+      },
+    ];
+    resolveDocumentForTool.mockResolvedValue({
+      ok: false,
+      code: 'AMBIGUOUS',
+      error: 'Multiple documents named "Guide" were found in this project.',
+      candidates,
+    });
+
+    await expect(
+      proposeDocumentEdit.execute(
+        { documentName: 'Guide', operation: { type: 'append', content: 'Appendix' } },
+        ctx
+      )
+    ).resolves.toEqual({
+      success: false,
+      error: 'Multiple documents named "Guide" were found in this project.',
+      data: { candidates },
+    });
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('rejects resolved gateway state from another project', async () => {
+    read.mockResolvedValue({
+      ...state(),
+      projectId: '55555555-5555-4555-8555-555555555555',
+    });
+
+    await expect(
+      proposeDocumentEdit.execute(
+        { documentId: DOCUMENT_ID, operation: { type: 'append', content: 'Appendix' } },
+        ctx
+      )
+    ).resolves.toEqual({ success: false, error: 'Document not found in this project.' });
+  });
+
+  it.each([
+    [
+      'replace_all',
+      '# Heading\nOld\nFooter',
+      { type: 'replace_all', markdown: '# Entire replacement' },
+      '# Entire replacement',
+    ],
+    [
+      'replace_text',
+      '# Heading\nOld\nFooter',
+      { type: 'replace_text', target: 'Old', replacement: 'New' },
+      '# Heading\nNew\nFooter',
+    ],
+    [
+      'insert_before',
+      '# Heading\nOld\nFooter',
+      { type: 'insert_before', anchor: 'Footer', content: 'Middle' },
+      '# Heading\nOld\nMiddle\nFooter',
+    ],
+    [
+      'insert_after',
+      '# Heading\nOld\nFooter',
+      { type: 'insert_after', anchor: '# Heading', content: 'Intro' },
+      '# Heading\nIntro\nOld\nFooter',
+    ],
+    [
+      'append',
+      '# Heading\nOld\nFooter',
+      { type: 'append', content: 'Appendix' },
+      '# Heading\nOld\nFooter\n\nAppendix',
+    ],
+    [
+      'delete_text',
+      '# Heading\nOld\nFooter',
+      { type: 'delete_text', target: 'Old' },
+      '# Heading\n\nFooter',
+    ],
+  ] as const)(
+    'generates a %s proposal against the latest gateway state',
+    async (operationType, currentMarkdown, operation, proposedMarkdown) => {
+      read.mockResolvedValue(state(currentMarkdown));
+
+      await expect(
+        proposeDocumentEdit.execute({ documentId: DOCUMENT_ID, operation }, ctx)
+      ).resolves.toMatchObject({
+        success: true,
+        data: { operationType, baseMarkdown: currentMarkdown, proposedMarkdown },
+      });
+      expect(read).toHaveBeenCalledWith(ctx.supabase, DOCUMENT_ID);
+    }
+  );
+
+  it.each([
+    { documentId: DOCUMENT_ID, operation: { type: 'append', content: 'x', unknown: true } },
+    { documentId: DOCUMENT_ID, operation: { type: 'unknown', content: 'x' } },
+    { documentId: DOCUMENT_ID, operation: { type: 'replace_text', target: 'x' } },
+    { documentId: DOCUMENT_ID, operation: { type: 'delete_text', target: '', unknown: false } },
+  ])('rejects an invalid or open operation object before resolving: %p', async (params) => {
+    await expect(proposeDocumentEdit.execute(params, ctx)).resolves.toMatchObject({
+      success: false,
+      error: expect.stringMatching(/invalid parameters/i),
+    });
+    expect(resolveDocumentForTool).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('rejects provided and resulting strings over the document maximum', async () => {
+    await expect(
+      proposeDocumentEdit.execute(
+        {
+          documentId: DOCUMENT_ID,
+          operation: { type: 'append', content: 'x'.repeat(500_001) },
+        },
+        ctx
+      )
+    ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/invalid parameters/i) });
+    expect(read).not.toHaveBeenCalled();
+
+    read.mockResolvedValue(state('x'.repeat(499_999)));
+    await expect(
+      proposeDocumentEdit.execute(
+        { documentId: DOCUMENT_ID, operation: { type: 'append', content: 'y' } },
+        ctx
+      )
+    ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/500000|too large/i) });
   });
 
   it('re-reads and rejects a stale confirmed proposal without replacing state', async () => {
     read.mockResolvedValueOnce(state()).mockResolvedValueOnce(state('# Changed', 5));
     const preview = await proposeDocumentEdit.execute(
-      { documentId: DOCUMENT_ID, markdown: '# Proposed' },
+      { documentId: DOCUMENT_ID, operation: { type: 'replace_all', markdown: '# Proposed' } },
       ctx
     );
     const result = await proposeDocumentEdit.executeImport!(preview, {}, ctx);
@@ -375,7 +547,7 @@ describe('Agent document tools', () => {
   it('rejects a confirmed proposal whose displayed base Markdown was changed', async () => {
     read.mockResolvedValue(state());
     const preview = await proposeDocumentEdit.execute(
-      { documentId: DOCUMENT_ID, markdown: '# Proposed' },
+      { documentId: DOCUMENT_ID, operation: { type: 'replace_all', markdown: '# Proposed' } },
       ctx
     );
     const tamperedPreview = {
@@ -398,7 +570,7 @@ describe('Agent document tools', () => {
     read.mockResolvedValue(state());
     replaceDocumentAsAgent.mockResolvedValue(state('# Proposed', 5));
     const preview = await proposeDocumentEdit.execute(
-      { documentId: DOCUMENT_ID, markdown: '# Proposed' },
+      { documentId: DOCUMENT_ID, operation: { type: 'replace_all', markdown: '# Proposed' } },
       ctx
     );
     const result = await proposeDocumentEdit.executeImport!(preview, {}, ctx);
@@ -423,6 +595,29 @@ describe('Agent document tools', () => {
       displayHint: 'text',
       data: { documentId: DOCUMENT_ID, token: { epoch: 2, revision: 5 } },
     });
+    expect(resolveDocumentForTool).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a confirmed proposal when the gateway update tail changed', async () => {
+    const baseState = {
+      ...state(),
+      updateTail: [{ id: '55555555-5555-4555-8555-555555555555' }],
+    };
+    const changedTail = {
+      ...baseState,
+      updateTail: [{ id: '66666666-6666-4666-8666-666666666666' }],
+    };
+    read.mockResolvedValueOnce(baseState).mockResolvedValueOnce(changedTail);
+    const preview = await proposeDocumentEdit.execute(
+      { documentId: DOCUMENT_ID, operation: { type: 'replace_all', markdown: '# Proposed' } },
+      ctx
+    );
+
+    await expect(proposeDocumentEdit.executeImport!(preview, {}, ctx)).resolves.toMatchObject({
+      success: false,
+      error: expect.stringContaining('changed after this edit was proposed'),
+    });
+    expect(replaceDocumentAsAgent).not.toHaveBeenCalled();
   });
 
   it('keeps a committed Agent edit successful when reset acceleration fails', async () => {
@@ -430,7 +625,7 @@ describe('Agent document tools', () => {
     replaceDocumentAsAgent.mockResolvedValue(state('# Proposed', 5));
     broadcastDocumentStateReset.mockRejectedValueOnce(new Error('realtime offline'));
     const preview = await proposeDocumentEdit.execute(
-      { documentId: DOCUMENT_ID, markdown: '# Proposed' },
+      { documentId: DOCUMENT_ID, operation: { type: 'replace_all', markdown: '# Proposed' } },
       ctx
     );
 

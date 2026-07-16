@@ -16,12 +16,21 @@ describe('Agent document edit confirmation UI', () => {
         actionId: 'action-1',
         tool: 'propose_document_edit',
         args: {
-          documentId: '11111111-1111-4111-8111-111111111111',
-          markdown: proposedMarkdown,
+          documentName: 'Guide',
+          folderName: 'Lore',
+          operation: {
+            type: 'replace_text',
+            target: 'Keep this context.',
+            replacement: 'Only this preview contains this text.',
+          },
         },
         confirmationMode: 'post_preview',
         preview: {
           type: 'document_edit',
+          documentName: 'Guide',
+          folderName: 'Lore',
+          operationType: 'replace_text',
+          operationSummary: 'Replace one exact text occurrence (18 characters) with 37 characters.',
           baseMarkdown,
           proposedMarkdown,
         },
@@ -37,7 +46,12 @@ describe('Agent document edit confirmation UI', () => {
     expect(markup.match(/Only this preview contains this text\./g)).toHaveLength(2);
     expect(markup).toContain('Document changes');
     expect(markup).toContain('Proposed Markdown');
+    expect(markup).toContain('Guide');
+    expect(markup).toContain('Lore');
+    expect(markup).toContain('Replace one exact text occurrence');
+    expect(markup).toContain('&quot;type&quot;: &quot;replace_text&quot;');
     expect(markup).toContain('[shown in document diff]');
+    expect(markup.match(/Keep this context\./g)).toHaveLength(1);
     expect(markup).not.toContain('Import preview:');
     expect(markup).not.toContain('Import Directly');
   });
@@ -119,10 +133,17 @@ describe('Agent document edit confirmation UI', () => {
       confirmation: {
         actionId: 'action-accessible',
         tool: 'propose_document_edit',
-        args: { documentId: '11111111-1111-4111-8111-111111111111', markdown: 'New line' },
+        args: {
+          documentId: '11111111-1111-4111-8111-111111111111',
+          operation: { type: 'replace_all', markdown: 'New line' },
+        },
         confirmationMode: 'post_preview',
         preview: {
           type: 'document_edit',
+          documentName: 'Guide',
+          folderName: null,
+          operationType: 'replace_all',
+          operationSummary: 'Replace entire document (8 characters).',
           baseMarkdown: 'Old line',
           proposedMarkdown: 'New line',
         },

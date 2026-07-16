@@ -258,15 +258,41 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
   const { actionId, tool, args, resolved } = confirmation;
   const label = TOOL_LABELS[tool] ?? tool;
   const documentPreview = confirmation.preview as
-    | { type?: string; baseMarkdown?: string; proposedMarkdown?: string }
+    | {
+        type?: string;
+        documentName?: string;
+        folderName?: string | null;
+        operationType?: string;
+        operationSummary?: string;
+        baseMarkdown?: string;
+        proposedMarkdown?: string;
+      }
     | undefined;
   const isDocumentEdit =
     documentPreview?.type === 'document_edit' &&
     typeof documentPreview.baseMarkdown === 'string' &&
     typeof documentPreview.proposedMarkdown === 'string';
-  const visibleArgs = isDocumentEdit && args && typeof args === 'object'
-    ? { ...(args as Record<string, unknown>), markdown: '[shown in document diff]' }
-    : args;
+  let visibleArgs = args;
+  if (isDocumentEdit && args && typeof args === 'object') {
+    const rawArgs = args as Record<string, unknown>;
+    const rawOperation = rawArgs.operation;
+    const visibleOperation =
+      rawOperation && typeof rawOperation === 'object'
+        ? Object.fromEntries(
+            Object.entries(rawOperation as Record<string, unknown>).map(([key, value]) => [
+              key,
+              key === 'type' ? value : '[shown in document diff]',
+            ])
+          )
+        : rawOperation;
+    visibleArgs = {
+      ...rawArgs,
+      ...(Object.hasOwn(rawArgs, 'markdown')
+        ? { markdown: '[shown in document diff]' }
+        : {}),
+      ...(rawOperation !== undefined ? { operation: visibleOperation } : {}),
+    };
+  }
   const diff = isDocumentEdit
     ? buildDocumentEditDiff(documentPreview.baseMarkdown!, documentPreview.proposedMarkdown!)
     : [];
@@ -275,6 +301,17 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
     <div className={styles.confirmCard} data-testid="agent-confirmation">
       <div className={styles.confirmTitle}>Confirm: {label}</div>
       <pre className={styles.pre}>{JSON.stringify(visibleArgs, null, 2)}</pre>
+      {isDocumentEdit &&
+        typeof documentPreview.documentName === 'string' &&
+        typeof documentPreview.operationSummary === 'string' && (
+          <div className={styles.documentEditMeta}>
+            <div className={styles.documentEditTarget}>
+              {documentPreview.documentName}
+              {documentPreview.folderName ? ` / ${documentPreview.folderName}` : ''}
+            </div>
+            <div>{documentPreview.operationSummary}</div>
+          </div>
+        )}
       {isDocumentEdit && (
         <div className={styles.documentDiff} aria-label="Document changes">
           {diff.map((row, index) => (
