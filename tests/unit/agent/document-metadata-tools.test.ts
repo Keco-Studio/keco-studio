@@ -247,6 +247,38 @@ describe('Agent document metadata tools', () => {
     );
   });
 
+  it('seals rename and move confirmations to the resolved document id', async () => {
+    const renamePreparation = await renameDocument.prepareConfirmation?.(
+      { newName: 'Updated' },
+      ctx
+    );
+    const movePreparation = await moveDocumentTool.prepareConfirmation?.(
+      { folderName: 'Archive' },
+      ctx
+    );
+
+    expect(renamePreparation).toEqual({
+      success: true,
+      args: { documentId: DOCUMENT_ID, newName: 'Updated' },
+      preview: {
+        documentId: DOCUMENT_ID,
+        name: 'Guide',
+        folderId: null,
+        folderName: null,
+      },
+    });
+    expect(movePreparation).toEqual({
+      success: true,
+      args: { documentId: DOCUMENT_ID, folderName: 'Archive' },
+      preview: {
+        documentId: DOCUMENT_ID,
+        name: 'Guide',
+        folderId: null,
+        folderName: null,
+      },
+    });
+  });
+
   it('uses an explicit selector instead of the current document for rename', async () => {
     resolveDocumentForTool.mockResolvedValue({
       ok: true,

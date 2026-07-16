@@ -64,6 +64,21 @@ export interface ToolResult {
   invalidations?: AgentInvalidation[];
 }
 
+export type ConfirmationPreparation =
+  | {
+      success: true;
+      /** Canonical arguments persisted for approval and later execution. */
+      args: unknown;
+      /** Optional public context shown with the confirmation request. */
+      preview?: unknown;
+    }
+  | {
+      success: false;
+      error: string;
+      data?: unknown;
+      displayHint?: DisplayHint;
+    };
+
 export interface AgentTool {
   name: string;
   description: string;
@@ -75,6 +90,11 @@ export interface AgentTool {
   /** False when the tool's validated operation is itself the user-requested action. */
   confirmationRequired?: boolean;
   requiredPermission?: 'editor' | 'admin';
+  /** Resolve and seal approval-critical arguments before a pre-execute pause. */
+  prepareConfirmation?: (
+    params: unknown,
+    ctx: ToolContext
+  ) => Promise<ConfirmationPreparation>;
   execute: (params: unknown, ctx: ToolContext) => Promise<ToolResult>;
   executeStream?: (
     params: unknown,

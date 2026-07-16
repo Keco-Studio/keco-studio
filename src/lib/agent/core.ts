@@ -486,6 +486,50 @@ async function* continueLoop(
     if (needsConfirmation(tool, meta)) {
       // pre_execute / meta -> pause BEFORE execution.
       if (tool.confirmationMode === 'pre_execute' || tool.confirmationMode === 'meta') {
+        let confirmationArgs: unknown = parsedArgs;
+        let confirmationPreview: unknown;
+        if (tool.prepareConfirmation) {
+          throwIfAborted(signal);
+          const preparation = await tool.prepareConfirmation(parsedArgs, ctx);
+          if (preparation.success === false) {
+            const preparationResult: ToolResult = {
+              success: false,
+              error: preparation.error,
+              data: preparation.data,
+              displayHint: preparation.displayHint,
+            };
+            trace?.recordToolCall({
+              tool: tool.name,
+              args: parsedArgs,
+              success: false,
+              error: preparation.error,
+              phase: 'execute',
+            });
+            messages.push(assistantMessage);
+            messages.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: JSON.stringify(preparationResult),
+            });
+            await persistMessage(ctx, conversationId, assistantMessage);
+            await saveMessage(ctx.supabase, conversationId, {
+              role: 'tool',
+              tool_call_id: call.id,
+              content: JSON.stringify(preparationResult),
+            });
+            yield {
+              type: 'tool_result',
+              tool: tool.name,
+              data: preparation.data,
+              displayHint: preparation.displayHint,
+              success: false,
+              error: preparation.error,
+            };
+            continue;
+          }
+          confirmationArgs = preparation.args;
+          confirmationPreview = preparation.preview;
+        }
         const actionId = crypto.randomUUID();
         // Persist assistant text (tool_calls deferred until resume) for display continuity.
         if (assistantContent) {
@@ -495,7 +539,7 @@ async function* continueLoop(
           id: actionId,
           conversationId,
           toolName: tool.name,
-          args: parsedArgs,
+          args: confirmationArgs,
           confirmationMode: tool.confirmationMode,
           suspendedState: {
             messages: [...messages],
@@ -515,8 +559,9 @@ async function* continueLoop(
           type: 'confirmation_request',
           actionId,
           tool: tool.name,
-          args: parsedArgs,
+          args: confirmationArgs,
           confirmationMode: tool.confirmationMode,
+          ...(confirmationPreview === undefined ? {} : { preview: confirmationPreview }),
         };
         yield { type: 'done' };
         return;

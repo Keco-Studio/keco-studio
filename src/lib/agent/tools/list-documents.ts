@@ -12,6 +12,7 @@ const ParamsSchema = z
     nameQuery: z.string().max(200).optional(),
     folderName: z.string().max(200).optional(),
     limit: z.number().int().positive().max(200).default(DEFAULT_LIMIT),
+    offset: z.number().int().nonnegative().default(0),
   })
   .strict();
 
@@ -33,7 +34,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   }
 
   try {
-    const { nameQuery, folderName, limit } = parsed.data;
+    const { nameQuery, folderName, limit, offset } = parsed.data;
     const allDocuments = await listResolvedProjectDocuments(ctx.supabase, ctx.projectId);
     const normalizedNameQuery = nameQuery?.toLowerCase();
     const matchedDocuments = allDocuments.filter(
@@ -42,7 +43,13 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
           document.name.toLowerCase().includes(normalizedNameQuery)) &&
         (folderName === undefined || document.folderName === folderName)
     );
-    const documents = matchedDocuments.slice(0, limit).map(metadataFromDocument);
+    const documents = matchedDocuments
+      .slice(offset, offset + limit)
+      .map(metadataFromDocument);
+    const nextOffset =
+      offset + documents.length < matchedDocuments.length
+        ? offset + documents.length
+        : null;
 
     return {
       success: true,
@@ -57,7 +64,10 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
           nameMatch: nameQuery === undefined ? null : 'case-insensitive substring',
           folderMatch: folderName === undefined ? null : 'exact',
           limit,
-          isLimited: matchedDocuments.length > documents.length,
+          offset,
+          nextOffset,
+          isLimited:
+            offset > 0 || offset + documents.length < matchedDocuments.length,
         },
       },
     };
@@ -93,6 +103,12 @@ export const listDocumentsTool: AgentTool = {
         maximum: 200,
         default: DEFAULT_LIMIT,
         description: `Maximum documents to return (default ${DEFAULT_LIMIT}, max 200).`,
+      },
+      offset: {
+        type: 'integer',
+        minimum: 0,
+        default: 0,
+        description: 'Number of matched documents to skip for pagination.',
       },
     },
     required: [],

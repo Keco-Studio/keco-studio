@@ -406,3 +406,88 @@ describe('post-preview confirmation data boundary', () => {
     expect(JSON.stringify(saveMessage.mock.calls)).not.toContain(approvalSignature);
   });
 });
+
+describe('pre-execute confirmation target binding', () => {
+  it('executes the document resolved at suspension after navigation changes', async () => {
+    const documentA = '11111111-1111-4111-8111-111111111111';
+    const documentB = '55555555-5555-4555-8555-555555555555';
+    const execute = jest.fn().mockResolvedValue({ success: true, data: {} });
+    const prepareConfirmation = jest.fn().mockResolvedValue({
+      success: true,
+      args: { documentId: documentA, newName: 'Renamed' },
+      preview: { documentId: documentA, name: 'Guide' },
+    });
+    const renameTool = {
+      ...resolvedTool,
+      name: 'rename_document',
+      confirmationMode: 'pre_execute' as const,
+      executeImport: undefined,
+      execute,
+      prepareConfirmation,
+    } as AgentTool & {
+      prepareConfirmation: typeof prepareConfirmation;
+    };
+    resolveTool.mockReturnValue(renameTool);
+    getToolsForLlmAsync.mockResolvedValue([]);
+    loadConversationHistory.mockResolvedValue([]);
+    saveMessage.mockResolvedValue({ id: 'message-1' });
+    streamLlm.mockImplementation(async function* () {
+      yield {
+        type: 'tool_call_delta',
+        index: 0,
+        id: 'call-rename',
+        name: renameTool.name,
+        arguments: '{"newName":"Renamed"}',
+      };
+      yield { type: 'finish', reason: 'tool_calls' };
+    });
+
+    const suspensionContext = {
+      ...toolContext('editor'),
+      currentDocumentId: documentA,
+      currentDocumentName: 'Guide',
+    };
+    const suspensionEvents: SSEEvent[] = [];
+    for await (const event of runAgentTurn({
+      conversationId: suspensionContext.conversationId,
+      userMessage: 'Rename this document.',
+      toolContext: suspensionContext,
+      conversationMeta: {},
+    })) {
+      suspensionEvents.push(event);
+    }
+
+    expect(prepareConfirmation).toHaveBeenCalledWith(
+      { newName: 'Renamed' },
+      expect.objectContaining(suspensionContext)
+    );
+    expect(suspensionEvents.find((event) => event.type === 'confirmation_request')).toMatchObject({
+      args: { documentId: documentA, newName: 'Renamed' },
+      preview: { documentId: documentA, name: 'Guide' },
+    });
+    const savedAction = savePendingAction.mock.calls.at(-1)?.[1];
+    expect(savedAction).toMatchObject({
+      args: { documentId: documentA, newName: 'Renamed' },
+    });
+
+    loadPendingAction.mockResolvedValue(savedAction);
+    consumePendingAction.mockResolvedValue(true);
+    getConversation.mockResolvedValue({ meta: {} });
+    const navigationContext = {
+      ...toolContext('editor'),
+      currentDocumentId: documentB,
+      currentDocumentName: 'Notes',
+    };
+    await nextToolResult({
+      actionId: savedAction.id,
+      decision: 'approve',
+      toolContext: navigationContext,
+      conversationMeta: {},
+    });
+
+    expect(execute).toHaveBeenCalledWith(
+      { documentId: documentA, newName: 'Renamed' },
+      expect.objectContaining({ currentDocumentId: documentB })
+    );
+  });
+});

@@ -16,6 +16,8 @@ const TOOL_LABELS: Record<string, string> = {
   set_conversation_option: 'Change conversation option',
   propose_document_edit: 'Apply document edit',
   delete_document: 'Delete document permanently',
+  rename_document: 'Rename document',
+  move_document: 'Move document',
 };
 
 export type DiffRow = {
@@ -261,6 +263,7 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
   const documentPreview = confirmation.preview as
     | {
         type?: string;
+        documentId?: string;
         name?: string;
         documentName?: string;
         folderName?: string | null;
@@ -276,6 +279,11 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
     typeof documentPreview.proposedMarkdown === 'string';
   const isDocumentDelete =
     documentPreview?.type === 'document_delete' &&
+    typeof documentPreview.name === 'string';
+  const isBoundDocument =
+    !isDocumentEdit &&
+    !isDocumentDelete &&
+    typeof documentPreview?.documentId === 'string' &&
     typeof documentPreview.name === 'string';
   let visibleArgs = args;
   if (isDocumentEdit && args && typeof args === 'object') {
@@ -327,6 +335,15 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
             This document will be permanently deleted. This action is irreversible and cannot be
             undone.
           </div>
+        </div>
+      )}
+      {isBoundDocument && (
+        <div className={styles.documentEditMeta}>
+          <div className={styles.documentEditTarget}>
+            {documentPreview.name}
+            {documentPreview.folderName ? ` / ${documentPreview.folderName}` : ''}
+          </div>
+          <div>Bound document</div>
         </div>
       )}
       {isDocumentEdit && (

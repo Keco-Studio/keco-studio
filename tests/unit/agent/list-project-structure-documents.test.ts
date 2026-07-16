@@ -103,6 +103,36 @@ describe('Agent document discovery tools', () => {
     );
   });
 
+  it('bounds document summaries for large projects with explicit pagination guidance', async () => {
+    const manyDocuments = Array.from({ length: 1_000 }, (_, index) => ({
+      ...documents[0],
+      id: `${String(index).padStart(8, '0')}-3333-4333-8333-333333333333`,
+      name: `Document ${String(index).padStart(4, '0')}`,
+    }));
+    listResolvedProjectDocuments.mockResolvedValue(manyDocuments);
+
+    const result = await listProjectStructure.execute({}, context());
+    const data = result.data as {
+      documentCount: number;
+      documents: unknown[];
+      documentResultMetadata: Record<string, unknown>;
+    };
+
+    expect(data.documentCount).toBe(1_000);
+    expect(data.documents).toHaveLength(50);
+    expect(data.documentResultMetadata).toEqual({
+      totalProjectDocumentCount: 1_000,
+      returnedDocumentCount: 50,
+      limit: 50,
+      isLimited: true,
+      isTruncated: true,
+      nextTool: 'list_documents',
+      guidance: expect.stringContaining('list_documents'),
+    });
+    expect(JSON.stringify(result).length).toBeLessThan(20_000);
+    expect(() => JSON.parse(JSON.stringify(result))).not.toThrow();
+  });
+
   it('filters list_documents metadata and explicitly reports a limited partial result', async () => {
     const result = await listDocumentsTool.execute(
       { nameQuery: 'WORLD', folderName: 'Lore', limit: 1 },
@@ -131,11 +161,36 @@ describe('Agent document discovery tools', () => {
           nameMatch: 'case-insensitive substring',
           folderMatch: 'exact',
           limit: 1,
+          offset: 0,
+          nextOffset: 1,
           isLimited: true,
         },
       },
     });
     expect(JSON.stringify(result)).not.toContain('SECRET BODY');
+  });
+
+  it('paginates list_documents so structure truncation guidance is actionable', async () => {
+    const result = await listDocumentsTool.execute(
+      { limit: 1, offset: 1 },
+      context()
+    );
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        documentCount: 1,
+        documents: [{ id: documents[1].id }],
+        resultMetadata: {
+          totalProjectDocumentCount: 3,
+          matchedDocumentCount: 3,
+          returnedDocumentCount: 1,
+          offset: 1,
+          nextOffset: 2,
+          isLimited: true,
+        },
+      },
+    });
   });
 
   it('declares closed JSON schemas and rejects unknown list parameters at runtime', async () => {

@@ -15,6 +15,59 @@ import { registerDocumentFlushHandler } from '@/lib/documents/documentFlushRegis
 import { queryKeys } from '@/lib/utils/queryKeys';
 
 const AGENT_PROJECT_DOCUMENT_REINDEX_DEBOUNCE_MS = 5000;
+const AGENT_PROJECT_DOCUMENT_REINDEX_ATTEMPTS = 2;
+
+type DocumentReindexRequest = {
+  projectId: string;
+  documentId: string;
+  accessToken: string;
+};
+
+type PendingDocumentReindex = Omit<DocumentReindexRequest, 'accessToken'>;
+
+export async function requestDocumentReindex(
+  input: DocumentReindexRequest,
+  fetcher: typeof fetch = fetch
+): Promise<boolean> {
+  let lastFailure = 'unknown failure';
+  for (let attempt = 1; attempt <= AGENT_PROJECT_DOCUMENT_REINDEX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetcher('/api/agent-chat/reindex/document', {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${input.accessToken}`,
+        },
+        body: JSON.stringify({
+          projectId: input.projectId,
+          documentId: input.documentId,
+        }),
+      });
+      if (response.ok) return true;
+      lastFailure = `HTTP ${response.status}`;
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error);
+    }
+
+    if (attempt < AGENT_PROJECT_DOCUMENT_REINDEX_ATTEMPTS) {
+      console.warn('embedding.index.project_document_retry', {
+        projectId: input.projectId,
+        documentId: input.documentId,
+        attempt,
+        error: lastFailure,
+      });
+    }
+  }
+
+  console.error('embedding.index.project_document_failed', {
+    projectId: input.projectId,
+    documentId: input.documentId,
+    attempts: AGENT_PROJECT_DOCUMENT_REINDEX_ATTEMPTS,
+    error: lastFailure,
+  });
+  return false;
+}
 
 type CollaborationPresentation = {
   label: string;
@@ -152,6 +205,7 @@ export function useDocumentCollaboration({
 }: UseDocumentCollaborationOptions) {
   const [generation, setGeneration] = useState(0);
   const reindexTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDocumentReindexRef = useRef<PendingDocumentReindex | null>(null);
   const accessTokenRef = useRef(accessToken);
   accessTokenRef.current = accessToken;
   const queryClient = useQueryClient();
@@ -168,25 +222,31 @@ export function useDocumentCollaboration({
     loadFailure?.requestKey === requestKey ? loadFailure : null;
   const status = currentLoadFailure ? 'error' : current?.view.status ?? 'idle';
   const presentation = getDocumentCollaborationPresentation(status, role);
+  const flushScheduledDocumentReindex = useCallback(() => {
+    if (reindexTimerRef.current) {
+      clearTimeout(reindexTimerRef.current);
+      reindexTimerRef.current = null;
+    }
+    const pending = pendingDocumentReindexRef.current;
+    pendingDocumentReindexRef.current = null;
+    if (!pending) return;
+    void requestDocumentReindex({
+      ...pending,
+      accessToken: accessTokenRef.current,
+    });
+  }, []);
   const scheduleDocumentReindex = useCallback(() => {
     if (role === 'viewer') return;
     if (reindexTimerRef.current) clearTimeout(reindexTimerRef.current);
+    pendingDocumentReindexRef.current = { projectId, documentId };
     reindexTimerRef.current = setTimeout(() => {
-      reindexTimerRef.current = null;
-      void fetch('/api/agent-chat/reindex/document', {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${accessTokenRef.current}`,
-        },
-        body: JSON.stringify({ projectId, documentId }),
-      }).catch(() => undefined);
+      flushScheduledDocumentReindex();
     }, AGENT_PROJECT_DOCUMENT_REINDEX_DEBOUNCE_MS);
-  }, [documentId, projectId, role]);
+  }, [documentId, flushScheduledDocumentReindex, projectId, role]);
 
   useEffect(() => () => {
-    if (reindexTimerRef.current) clearTimeout(reindexTimerRef.current);
-  }, [documentId, projectId, role]);
+    flushScheduledDocumentReindex();
+  }, [documentId, flushScheduledDocumentReindex, projectId, role]);
 
   useEffect(() => {
     let mounted = true;

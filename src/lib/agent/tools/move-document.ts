@@ -2,7 +2,12 @@ import { z } from 'zod';
 import { findFolderByName } from '../data-access';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
 import { moveDocument } from '@/lib/services/documentService';
-import type { AgentTool, ToolContext, ToolResult } from '../types';
+import type {
+  AgentTool,
+  ConfirmationPreparation,
+  ToolContext,
+  ToolResult,
+} from '../types';
 import { codePointBoundedString } from './document-parameter-schema';
 
 const ParamsSchema = z
@@ -49,6 +54,53 @@ function queueDocumentReindex(ctx: ToolContext, documentId: string): void {
     .catch((error: unknown) => {
       console.error('embedding.index.project_document_failed', { documentId, error });
     });
+}
+
+async function prepareConfirmation(
+  params: unknown,
+  ctx: ToolContext
+): Promise<ConfirmationPreparation> {
+  const parsed = ParamsSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: `Invalid parameters: ${parsed.error.message}` };
+  }
+
+  try {
+    const resolution = await resolveDocumentForTool(
+      ctx.supabase,
+      ctx.projectId,
+      selectorFromParams(parsed.data),
+      ctx
+    );
+    if (resolution.ok === false) {
+      return {
+        success: false,
+        error: resolution.error,
+        ...(resolution.candidates ? { data: { candidates: resolution.candidates } } : {}),
+      };
+    }
+
+    return {
+      success: true,
+      args: {
+        documentId: resolution.document.id,
+        ...(parsed.data.moveToRoot === true
+          ? { moveToRoot: true }
+          : { folderName: parsed.data.folderName }),
+      },
+      preview: {
+        documentId: resolution.document.id,
+        name: resolution.document.name,
+        folderId: resolution.document.folder_id,
+        folderName: resolution.document.folderName,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to resolve document for move.',
+    };
+  }
 }
 
 async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
@@ -128,6 +180,7 @@ export const moveDocumentTool: AgentTool = {
   category: 'write',
   confirmationMode: 'pre_execute',
   requiredPermission: 'editor',
+  prepareConfirmation,
   parameters: {
     type: 'object',
     properties: {

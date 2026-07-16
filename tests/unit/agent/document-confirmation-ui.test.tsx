@@ -6,6 +6,35 @@ import type { ChatItem } from '@/components/agent/types';
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
 
 describe('Agent document edit confirmation UI', () => {
+  it('shows the document bound to a rename confirmation', () => {
+    const item: ChatItem = {
+      id: 'confirmation-rename',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-rename',
+        tool: 'rename_document',
+        args: {
+          documentId: '11111111-1111-4111-8111-111111111111',
+          newName: 'Updated Guide',
+        },
+        confirmationMode: 'pre_execute',
+        preview: {
+          documentId: '11111111-1111-4111-8111-111111111111',
+          name: 'Guide',
+          folderName: 'Lore',
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Confirm: Rename document');
+    expect(markup).toContain('Bound document');
+    expect(markup).toContain('Guide / Lore');
+  });
+
   it('renders permanent document deletion through the generic confirmation card', () => {
     const item: ChatItem = {
       id: 'confirmation-delete',
