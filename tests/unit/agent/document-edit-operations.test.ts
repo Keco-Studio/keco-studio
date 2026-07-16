@@ -48,20 +48,20 @@ describe('document edit operations', () => {
     [{ type: 'delete_text', target: 'same' } as const, 2],
     [{ type: 'insert_before', anchor: 'same', content: 'x' } as const, 2],
     [{ type: 'insert_after', anchor: 'missing', content: 'x' } as const, 0],
-  ])('rejects zero or multiple non-overlapping exact matches', (operation, count) => {
+  ])('rejects zero or multiple exact matches', (operation, count) => {
     expect(() => applyDocumentEditOperation('same and same', operation)).toThrow(
       `Edit target must occur exactly once; found ${count} matches.`
     );
   });
 
-  it('counts only non-overlapping exact matches', () => {
-    expect(
+  it('rejects overlapping exact matches as ambiguous', () => {
+    expect(() =>
       applyDocumentEditOperation('aaa', {
         type: 'replace_text',
         target: 'aa',
         replacement: 'X',
       })
-    ).toBe('Xa');
+    ).toThrow('Edit target must occur exactly once; found 2 matches.');
   });
 
   it.each([
@@ -108,6 +108,10 @@ describe('document edit operations', () => {
     ).toBe('  Added\n  ');
   });
 
+  it('treats an empty append as a no-op', () => {
+    expect(applyDocumentEditOperation('Body', { type: 'append', content: '' })).toBe('Body');
+  });
+
   it('normalizes existing CRLF while preserving unrelated whitespace', () => {
     expect(
       applyDocumentEditOperation('  Before\r\nTarget\r\nAfter  ', {
@@ -116,6 +120,16 @@ describe('document edit operations', () => {
         replacement: 'Replacement',
       })
     ).toBe('  Before\nReplacement\nAfter  ');
+  });
+
+  it('normalizes lone carriage returns as line endings', () => {
+    expect(
+      applyDocumentEditOperation('Before\rTarget\rAfter', {
+        type: 'replace_text',
+        target: 'Target',
+        replacement: 'Replacement',
+      })
+    ).toBe('Before\nReplacement\nAfter');
   });
 
   it.each([

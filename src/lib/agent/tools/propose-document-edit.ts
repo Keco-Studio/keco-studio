@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { z } from 'zod';
 import { validateSanctionedMdx } from '@/lib/documents/sanctionedMdx';
 import type { DocumentStateToken } from '@/lib/documents/documentStateTypes';
@@ -11,6 +11,9 @@ import { resolveDocumentForTool, type DocumentSelector } from '../document-resol
 import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 const MAX_DOCUMENT_CHARS = 500_000;
+const APPROVED_PAYLOAD_CHANGED_ERROR = 'The approved document edit payload changed.';
+const TEST_CONFIRMATION_SIGNING_SECRET =
+  'keco-studio-test-only-agent-confirmation-signing-secret-v1';
 
 const OperationSchema = z.discriminatedUnion('type', [
   z.object({
@@ -34,7 +37,7 @@ const OperationSchema = z.discriminatedUnion('type', [
   }).strict(),
   z.object({
     type: z.literal('append'),
-    content: z.string().max(MAX_DOCUMENT_CHARS),
+    content: z.string().min(1).max(MAX_DOCUMENT_CHARS),
   }).strict(),
   z.object({
     type: z.literal('delete_text'),
@@ -87,10 +90,106 @@ const PreviewSchema = z.object({
   baseUpdateIds: z.array(z.string().uuid()).max(100_000),
   proposedHash: z.string().length(64),
   proposedMarkdown: z.string().max(MAX_DOCUMENT_CHARS),
+  approvalSignature: z.string().regex(/^[0-9a-f]{64}$/),
 }).strict();
+
+type ParsedParams = z.infer<typeof ParamsSchema>;
+type PreviewData = z.infer<typeof PreviewSchema>;
+type UnsignedPreviewData = Omit<PreviewData, 'approvalSignature'>;
 
 function contentHash(markdown: string): string {
   return createHash('sha256').update(markdown, 'utf8').digest('hex');
+}
+
+function confirmationSigningSecret(): string {
+  const configured =
+    process.env.AGENT_CONFIRMATION_SIGNING_SECRET ?? process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (process.env.NODE_ENV === 'test') {
+    return configured ?? TEST_CONFIRMATION_SIGNING_SECRET;
+  }
+  if (configured === undefined || configured.length < 32) {
+    throw new Error('Agent confirmation signing secret is not configured securely.');
+  }
+  return configured;
+}
+
+function canonicalOperation(operation: ParsedParams['operation']): readonly unknown[] {
+  switch (operation.type) {
+    case 'replace_all':
+      return [operation.type, operation.markdown];
+    case 'replace_text':
+      return [operation.type, operation.target, operation.replacement];
+    case 'insert_before':
+    case 'insert_after':
+      return [operation.type, operation.anchor, operation.content];
+    case 'append':
+      return [operation.type, operation.content];
+    case 'delete_text':
+      return [operation.type, operation.target];
+  }
+}
+
+function canonicalApprovalPayload(
+  params: ParsedParams,
+  preview: UnsignedPreviewData,
+  ctx: ToolContext
+): string {
+  return JSON.stringify([
+    'document-edit-approval-v1',
+    ctx.userId,
+    ctx.conversationId,
+    ctx.projectId,
+    preview.projectId,
+    preview.documentId,
+    params.documentId ?? null,
+    params.documentName ?? null,
+    params.folderName ?? null,
+    canonicalOperation(params.operation),
+    preview.documentName,
+    preview.folderName,
+    preview.operationType,
+    preview.operationSummary,
+    preview.expectedToken.epoch,
+    preview.expectedToken.revision,
+    preview.baseHash,
+    preview.baseUpdateIds,
+    preview.proposedHash,
+  ]);
+}
+
+function createApprovalSignature(
+  params: ParsedParams,
+  preview: UnsignedPreviewData,
+  ctx: ToolContext
+): string {
+  return createHmac('sha256', confirmationSigningSecret())
+    .update(canonicalApprovalPayload(params, preview, ctx), 'utf8')
+    .digest('hex');
+}
+
+function hasValidApprovalSignature(
+  params: ParsedParams,
+  preview: PreviewData,
+  ctx: ToolContext
+): boolean {
+  const expected = Buffer.from(createApprovalSignature(params, preview, ctx), 'hex');
+  const provided = Buffer.from(preview.approvalSignature, 'hex');
+  return provided.length === expected.length && timingSafeEqual(provided, expected);
+}
+
+function proposalMatchesOperation(params: ParsedParams, preview: PreviewData): boolean {
+  try {
+    const operation = params.operation as DocumentEditOperation;
+    const proposedMarkdown = applyDocumentEditOperation(preview.baseMarkdown, operation);
+    return (
+      operation.type === preview.operationType &&
+      summarizeDocumentEditOperation(operation) === preview.operationSummary &&
+      proposedMarkdown === preview.proposedMarkdown &&
+      contentHash(proposedMarkdown) === preview.proposedHash
+    );
+  } catch {
+    return false;
+  }
 }
 
 function sameToken(left: DocumentStateToken, right: DocumentStateToken): boolean {
@@ -146,23 +245,27 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     }
     validateSanctionedMdx(proposedMarkdown);
 
+    const preview: UnsignedPreviewData = {
+      type: 'document_edit',
+      documentId: state.documentId,
+      documentName: resolution.document.name,
+      folderName: resolution.document.folderName,
+      projectId: state.projectId,
+      operationType: operation.type,
+      operationSummary: summarizeDocumentEditOperation(operation),
+      expectedToken: state.token,
+      baseHash: contentHash(state.markdown),
+      baseMarkdown: state.markdown,
+      baseUpdateIds: state.updateTail.map((update) => update.id),
+      proposedHash: contentHash(proposedMarkdown),
+      proposedMarkdown,
+    };
     return {
       success: true,
       displayHint: 'text',
       data: {
-        type: 'document_edit',
-        documentId: state.documentId,
-        documentName: resolution.document.name,
-        folderName: resolution.document.folderName,
-        projectId: state.projectId,
-        operationType: operation.type,
-        operationSummary: summarizeDocumentEditOperation(operation),
-        expectedToken: state.token,
-        baseHash: contentHash(state.markdown),
-        baseMarkdown: state.markdown,
-        baseUpdateIds: state.updateTail.map((update) => update.id),
-        proposedHash: contentHash(proposedMarkdown),
-        proposedMarkdown,
+        ...preview,
+        approvalSignature: createApprovalSignature(parsed.data, preview, ctx),
       },
     };
   } catch (error) {
@@ -175,22 +278,28 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 
 async function executeImport(
   previewResult: ToolResult,
-  _params: unknown,
+  params: unknown,
   ctx: ToolContext
 ): Promise<ToolResult> {
+  const parsedParams = ParamsSchema.safeParse(params);
   const preview = PreviewSchema.safeParse(previewResult.data);
-  if (!preview.success) {
-    return { success: false, error: 'Document edit preview is unavailable; regenerate it.' };
+  if (!parsedParams.success || !preview.success) {
+    return { success: false, error: APPROVED_PAYLOAD_CHANGED_ERROR };
   }
-  if (contentHash(preview.data.baseMarkdown) !== preview.data.baseHash) {
-    return { success: false, error: 'The approved document edit payload changed.' };
-  }
-  const expectedToken: DocumentStateToken = {
-    epoch: preview.data.expectedToken.epoch,
-    revision: preview.data.expectedToken.revision,
-  };
 
   try {
+    if (
+      !hasValidApprovalSignature(parsedParams.data, preview.data, ctx) ||
+      contentHash(preview.data.baseMarkdown) !== preview.data.baseHash ||
+      contentHash(preview.data.proposedMarkdown) !== preview.data.proposedHash ||
+      !proposalMatchesOperation(parsedParams.data, preview.data)
+    ) {
+      return { success: false, error: APPROVED_PAYLOAD_CHANGED_ERROR };
+    }
+    const expectedToken: DocumentStateToken = {
+      epoch: preview.data.expectedToken.epoch,
+      revision: preview.data.expectedToken.revision,
+    };
     const { documentStateGateway } = await import('@/lib/documents/documentStateGateway');
     const current = await documentStateGateway.read(ctx.supabase, preview.data.documentId);
     const currentUpdateIds = current.updateTail.map((update) => update.id);
@@ -209,9 +318,6 @@ async function executeImport(
     }
 
     validateSanctionedMdx(preview.data.proposedMarkdown);
-    if (contentHash(preview.data.proposedMarkdown) !== preview.data.proposedHash) {
-      return { success: false, error: 'The approved document edit payload changed.' };
-    }
 
     const { replaceDocumentAsAgent } = await import('@/lib/server/documentAgentEditService');
     const replaced = await replaceDocumentAsAgent({
@@ -283,7 +389,7 @@ const operationVariants = [
     type: 'object',
     properties: {
       type: { type: 'string', enum: ['append'] },
-      content: { type: 'string', maxLength: MAX_DOCUMENT_CHARS },
+      content: { type: 'string', minLength: 1, maxLength: MAX_DOCUMENT_CHARS },
     },
     required: ['type', 'content'],
     additionalProperties: false,
@@ -316,6 +422,11 @@ export const proposeDocumentEdit: AgentTool = {
     },
     required: ['operation'],
     additionalProperties: false,
+    anyOf: [
+      { not: { required: ['folderName'] } },
+      { required: ['documentId'] },
+      { required: ['documentName'] },
+    ],
   },
   execute,
   executeImport,

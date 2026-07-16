@@ -7,7 +7,7 @@ export type DocumentEditOperation =
   | { type: 'delete_text'; target: string };
 
 function normalizeLineEndings(value: string): string {
-  return value.replace(/\r\n/g, '\n');
+  return value.replace(/\r\n?/g, '\n');
 }
 
 function exactMatchIndex(markdown: string, target: string): number {
@@ -23,7 +23,8 @@ function exactMatchIndex(markdown: string, target: string): number {
     if (index === -1) break;
     if (firstIndex === -1) firstIndex = index;
     count += 1;
-    searchFrom = index + target.length;
+    if (count === 2) break;
+    searchFrom = index + 1;
   }
 
   if (count !== 1) {
@@ -83,6 +84,7 @@ export function applyDocumentEditOperation(
       return insertAtLineBoundary(markdown.slice(0, index), content, markdown.slice(index));
     }
     case 'append':
+      if (operation.content.length === 0) return markdown;
       return appendWithBlankLine(markdown, normalizeLineEndings(operation.content));
   }
 }

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ToolContext } from '@/lib/agent/types';
 
@@ -72,6 +73,32 @@ function state(markdown = '# Current', revision = 4) {
   };
 }
 
+function replaceAllParams(markdown = '# Proposed') {
+  return {
+    documentId: DOCUMENT_ID,
+    operation: { type: 'replace_all' as const, markdown },
+  };
+}
+
+function contentHash(markdown: string): string {
+  return createHash('sha256').update(markdown, 'utf8').digest('hex');
+}
+
+async function withoutConfirmationSecrets<T>(run: () => Promise<T>): Promise<T> {
+  const signingSecret = process.env.AGENT_CONFIRMATION_SIGNING_SECRET;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  delete process.env.AGENT_CONFIRMATION_SIGNING_SECRET;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  try {
+    return await run();
+  } finally {
+    if (signingSecret === undefined) delete process.env.AGENT_CONFIRMATION_SIGNING_SECRET;
+    else process.env.AGENT_CONFIRMATION_SIGNING_SECRET = signingSecret;
+    if (serviceRoleKey === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = serviceRoleKey;
+  }
+}
+
 describe('Agent document tools', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -87,6 +114,28 @@ describe('Agent document tools', () => {
     ['propose_document_edit', proposeDocumentEdit],
   ])('declares a closed JSON schema for %s', (_name, tool) => {
     expect(tool.parameters).toMatchObject({ additionalProperties: false });
+  });
+
+  it('declares the edit selector dependency and non-empty append content in JSON Schema', () => {
+    expect(proposeDocumentEdit.parameters).toMatchObject({
+      anyOf: [
+        { not: { required: ['folderName'] } },
+        { required: ['documentId'] },
+        { required: ['documentName'] },
+      ],
+      properties: {
+        operation: {
+          oneOf: expect.arrayContaining([
+            expect.objectContaining({
+              properties: {
+                type: { type: 'string', enum: ['append'] },
+                content: expect.objectContaining({ minLength: 1 }),
+              },
+            }),
+          ]),
+        },
+      },
+    });
   });
 
   it('rejects unknown runtime parameters for every document tool', async () => {
@@ -212,6 +261,17 @@ describe('Agent document tools', () => {
       success: false,
       error: expect.stringMatching(/invalid parameters/i),
     });
+    expect(resolveDocumentForTool).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it('rejects empty append content before resolving a document', async () => {
+    await expect(
+      proposeDocumentEdit.execute(
+        { documentId: DOCUMENT_ID, operation: { type: 'append', content: '' } },
+        ctx
+      )
+    ).resolves.toMatchObject({ success: false, error: expect.stringMatching(/invalid parameters/i) });
     expect(resolveDocumentForTool).not.toHaveBeenCalled();
     expect(read).not.toHaveBeenCalled();
   });
@@ -534,11 +594,9 @@ describe('Agent document tools', () => {
 
   it('re-reads and rejects a stale confirmed proposal without replacing state', async () => {
     read.mockResolvedValueOnce(state()).mockResolvedValueOnce(state('# Changed', 5));
-    const preview = await proposeDocumentEdit.execute(
-      { documentId: DOCUMENT_ID, operation: { type: 'replace_all', markdown: '# Proposed' } },
-      ctx
-    );
-    const result = await proposeDocumentEdit.executeImport!(preview, {}, ctx);
+    const params = replaceAllParams();
+    const preview = await proposeDocumentEdit.execute(params, ctx);
+    const result = await proposeDocumentEdit.executeImport!(preview, params, ctx);
 
     expect(result).toMatchObject({ success: false });
     expect(replace).not.toHaveBeenCalled();
@@ -546,10 +604,8 @@ describe('Agent document tools', () => {
 
   it('rejects a confirmed proposal whose displayed base Markdown was changed', async () => {
     read.mockResolvedValue(state());
-    const preview = await proposeDocumentEdit.execute(
-      { documentId: DOCUMENT_ID, operation: { type: 'replace_all', markdown: '# Proposed' } },
-      ctx
-    );
+    const params = replaceAllParams();
+    const preview = await proposeDocumentEdit.execute(params, ctx);
     const tamperedPreview = {
       ...preview,
       data: {
@@ -558,7 +614,7 @@ describe('Agent document tools', () => {
       },
     };
 
-    await expect(proposeDocumentEdit.executeImport!(tamperedPreview, {}, ctx)).resolves.toEqual({
+    await expect(proposeDocumentEdit.executeImport!(tamperedPreview, params, ctx)).resolves.toEqual({
       success: false,
       error: 'The approved document edit payload changed.',
     });
@@ -566,14 +622,19 @@ describe('Agent document tools', () => {
     expect(replaceDocumentAsAgent).not.toHaveBeenCalled();
   });
 
-  it('applies the exact approved proposal through the guarded gateway', async () => {
+  it('applies a valid signed proposal through the guarded gateway', async () => {
     read.mockResolvedValue(state());
     replaceDocumentAsAgent.mockResolvedValue(state('# Proposed', 5));
-    const preview = await proposeDocumentEdit.execute(
-      { documentId: DOCUMENT_ID, operation: { type: 'replace_all', markdown: '# Proposed' } },
-      ctx
-    );
-    const result = await proposeDocumentEdit.executeImport!(preview, {}, ctx);
+    const params = replaceAllParams();
+    const { preview, result } = await withoutConfirmationSecrets(async () => {
+      const signedPreview = await proposeDocumentEdit.execute(params, ctx);
+      const applied = await proposeDocumentEdit.executeImport!(signedPreview, params, ctx);
+      return { preview: signedPreview, result: applied };
+    });
+    expect(preview).toMatchObject({
+      success: true,
+      data: { approvalSignature: expect.stringMatching(/^[0-9a-f]{64}$/) },
+    });
 
     expect(replaceDocumentAsAgent).toHaveBeenCalledWith({
       actorUserId: ctx.userId,
@@ -598,6 +659,100 @@ describe('Agent document tools', () => {
     expect(resolveDocumentForTool).toHaveBeenCalledTimes(1);
   });
 
+  it('rejects proposed Markdown tampering even when its unkeyed hash is recomputed', async () => {
+    read.mockResolvedValue(state());
+    replaceDocumentAsAgent.mockResolvedValue(state('# Tampered', 5));
+    const params = replaceAllParams();
+    const preview = await proposeDocumentEdit.execute(params, ctx);
+    const tamperedPreview = {
+      ...preview,
+      data: {
+        ...(preview.data as Record<string, unknown>),
+        proposedMarkdown: '# Tampered',
+        proposedHash: contentHash('# Tampered'),
+      },
+    };
+
+    await expect(
+      proposeDocumentEdit.executeImport!(tamperedPreview, params, ctx)
+    ).resolves.toEqual({
+      success: false,
+      error: 'The approved document edit payload changed.',
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(replaceDocumentAsAgent).not.toHaveBeenCalled();
+  });
+
+  it('rejects coherent operation argument and preview content tampering', async () => {
+    read.mockResolvedValue(state());
+    replaceDocumentAsAgent.mockResolvedValue(state('# Different', 5));
+    const params = replaceAllParams();
+    const preview = await proposeDocumentEdit.execute(params, ctx);
+    const tamperedParams = replaceAllParams('# Different');
+    const tamperedPreview = {
+      ...preview,
+      data: {
+        ...(preview.data as Record<string, unknown>),
+        operationSummary: 'Replace entire document (11 characters).',
+        proposedMarkdown: '# Different',
+        proposedHash: contentHash('# Different'),
+      },
+    };
+
+    await expect(
+      proposeDocumentEdit.executeImport!(tamperedPreview, tamperedParams, ctx)
+    ).resolves.toEqual({
+      success: false,
+      error: 'The approved document edit payload changed.',
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(replaceDocumentAsAgent).not.toHaveBeenCalled();
+  });
+
+  it('rejects operation metadata tampering', async () => {
+    read.mockResolvedValue(state());
+    replaceDocumentAsAgent.mockResolvedValue(state('# Proposed', 5));
+    const params = replaceAllParams();
+    const preview = await proposeDocumentEdit.execute(params, ctx);
+    const tamperedPreview = {
+      ...preview,
+      data: {
+        ...(preview.data as Record<string, unknown>),
+        operationSummary: 'Append 10 characters.',
+      },
+    };
+
+    await expect(
+      proposeDocumentEdit.executeImport!(tamperedPreview, params, ctx)
+    ).resolves.toEqual({
+      success: false,
+      error: 'The approved document edit payload changed.',
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(replaceDocumentAsAgent).not.toHaveBeenCalled();
+  });
+
+  it('rejects a proposal with a missing approval signature', async () => {
+    read.mockResolvedValue(state());
+    replaceDocumentAsAgent.mockResolvedValue(state('# Proposed', 5));
+    const params = replaceAllParams();
+    const preview = await proposeDocumentEdit.execute(params, ctx);
+    const { approvalSignature: _approvalSignature, ...unsignedData } = preview.data as Record<
+      string,
+      unknown
+    >;
+    const unsignedPreview = { ...preview, data: unsignedData };
+
+    await expect(
+      proposeDocumentEdit.executeImport!(unsignedPreview, params, ctx)
+    ).resolves.toEqual({
+      success: false,
+      error: 'The approved document edit payload changed.',
+    });
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(replaceDocumentAsAgent).not.toHaveBeenCalled();
+  });
+
   it('rejects a confirmed proposal when the gateway update tail changed', async () => {
     const baseState = {
       ...state(),
@@ -608,12 +763,10 @@ describe('Agent document tools', () => {
       updateTail: [{ id: '66666666-6666-4666-8666-666666666666' }],
     };
     read.mockResolvedValueOnce(baseState).mockResolvedValueOnce(changedTail);
-    const preview = await proposeDocumentEdit.execute(
-      { documentId: DOCUMENT_ID, operation: { type: 'replace_all', markdown: '# Proposed' } },
-      ctx
-    );
+    const params = replaceAllParams();
+    const preview = await proposeDocumentEdit.execute(params, ctx);
 
-    await expect(proposeDocumentEdit.executeImport!(preview, {}, ctx)).resolves.toMatchObject({
+    await expect(proposeDocumentEdit.executeImport!(preview, params, ctx)).resolves.toMatchObject({
       success: false,
       error: expect.stringContaining('changed after this edit was proposed'),
     });
@@ -624,13 +777,11 @@ describe('Agent document tools', () => {
     read.mockResolvedValue(state());
     replaceDocumentAsAgent.mockResolvedValue(state('# Proposed', 5));
     broadcastDocumentStateReset.mockRejectedValueOnce(new Error('realtime offline'));
-    const preview = await proposeDocumentEdit.execute(
-      { documentId: DOCUMENT_ID, operation: { type: 'replace_all', markdown: '# Proposed' } },
-      ctx
-    );
+    const params = replaceAllParams();
+    const preview = await proposeDocumentEdit.execute(params, ctx);
 
     await expect(
-      proposeDocumentEdit.executeImport!(preview, {}, ctx)
+      proposeDocumentEdit.executeImport!(preview, params, ctx)
     ).resolves.toMatchObject({ success: true });
   });
 });
