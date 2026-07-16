@@ -233,7 +233,7 @@ describe('document collaboration React boundary', () => {
     expect(source).toContain('AGENT_PROJECT_DOCUMENT_REINDEX_DEBOUNCE_MS');
     expect(source).toContain('clearTimeout');
     expect(source).toMatch(
-      /useEffect\(\(\) => \(\) => \{[\s\S]+clearTimeout\(reindexTimerRef\.current\);[\s\S]+\}, \[accessToken, documentId, projectId, role\]\);/
+      /useEffect\(\(\) => \(\) => \{[\s\S]+clearTimeout\(reindexTimerRef\.current\);[\s\S]+\}, \[documentId, projectId, role\]\);/
     );
     expect(source).toMatch(/onCompacted:\s*onDurableStateChanged/);
   });

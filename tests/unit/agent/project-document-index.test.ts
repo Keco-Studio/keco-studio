@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 const getSupabaseServiceRoleClient = jest.fn();
 const read = jest.fn();
 const embedTexts = jest.fn();
+let mockIndexingEnabled = true;
 
 jest.mock('server-only', () => ({}));
 jest.mock('@/lib/server/supabaseServiceRole', () => ({ getSupabaseServiceRoleClient }));
@@ -10,6 +11,11 @@ jest.mock('@/lib/documents/documentStateGateway', () => ({
   documentStateGateway: { read },
 }));
 jest.mock('@/lib/agent/embedding-client', () => ({ embedTexts }));
+jest.mock('@/lib/agent/embedding-config', () => ({
+  get AGENT_INDEXING_ENABLED() {
+    return mockIndexingEnabled;
+  },
+}));
 
 import {
   reindexProjectDocumentAsActor,
@@ -37,6 +43,7 @@ function query(result: { data?: unknown; error?: unknown } = { data: null, error
 describe('project document embedding index service', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockIndexingEnabled = true;
     read.mockResolvedValue({
       documentId: DOCUMENT_ID,
       projectId: PROJECT_ID,
@@ -122,6 +129,25 @@ describe('project document embedding index service', () => {
       })
     ).rejects.toThrow(/access/i);
     expect(from).not.toHaveBeenCalled();
+  });
+
+  it('skips single and project-wide reindexing when indexing is disabled', async () => {
+    mockIndexingEnabled = false;
+
+    await expect(
+      reindexProjectDocumentAsActor({
+        actorUserId: ACTOR_ID,
+        projectId: PROJECT_ID,
+        documentId: DOCUMENT_ID,
+      })
+    ).resolves.toEqual({ documentId: DOCUMENT_ID, chunks: 0, skipped: true });
+    await expect(
+      reindexProjectDocumentsAsActor({ actorUserId: ACTOR_ID, projectId: PROJECT_ID })
+    ).resolves.toEqual({ documents: 0, chunks: 0, skipped: true });
+
+    expect(getSupabaseServiceRoleClient).not.toHaveBeenCalled();
+    expect(read).not.toHaveBeenCalled();
+    expect(embedTexts).not.toHaveBeenCalled();
   });
 
   it('retries latest logical state when only the un-compacted update tail changed', async () => {

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 
 const reindexProjectDocumentAsActor = jest.fn();
+const resolveUserRole = jest.fn();
 class ProjectDocumentIndexAccessError extends Error {}
 let authenticatedUser: { id: string } | null = null;
 const withAuth = jest.fn((handler: unknown) => async (request: NextRequest) => {
@@ -16,6 +17,7 @@ jest.mock('@/lib/server/documentEmbeddingIndexService', () => ({
   ProjectDocumentIndexAccessError,
   reindexProjectDocumentAsActor: (...args: unknown[]) => reindexProjectDocumentAsActor(...args),
 }));
+jest.mock('@/lib/agent/permissions', () => ({ resolveUserRole }));
 
 import { POST } from '@/app/api/agent-chat/reindex/document/route';
 
@@ -39,6 +41,7 @@ describe('document reindex route', () => {
     jest.clearAllMocks();
     authenticatedUser = { id: ACTOR_ID };
     reindexProjectDocumentAsActor.mockResolvedValue({ documentId: DOCUMENT_ID, chunks: 2 });
+    resolveUserRole.mockResolvedValue('editor');
   });
 
   it('strictly validates scope and invokes the actor-checked service', async () => {
@@ -62,5 +65,18 @@ describe('document reindex route', () => {
     authenticatedUser = { id: ACTOR_ID };
     reindexProjectDocumentAsActor.mockRejectedValueOnce(new Error('Document project mismatch'));
     expect((await post({ projectId: PROJECT_ID, documentId: DOCUMENT_ID })).status).toBe(403);
+  });
+
+  it('rejects viewers before indexing and allows editors and admins', async () => {
+    resolveUserRole.mockResolvedValueOnce('viewer');
+    expect((await post({ projectId: PROJECT_ID, documentId: DOCUMENT_ID })).status).toBe(403);
+    expect(reindexProjectDocumentAsActor).not.toHaveBeenCalled();
+
+    for (const role of ['editor', 'admin']) {
+      resolveUserRole.mockResolvedValueOnce(role);
+      expect((await post({ projectId: PROJECT_ID, documentId: DOCUMENT_ID })).status).toBe(200);
+    }
+    expect(resolveUserRole).toHaveBeenCalledWith({}, PROJECT_ID, ACTOR_ID);
+    expect(reindexProjectDocumentAsActor).toHaveBeenCalledTimes(2);
   });
 });

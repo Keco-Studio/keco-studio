@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
+import { resolveUserRole } from '@/lib/agent/permissions';
 import {
   ProjectDocumentIndexAccessError,
   reindexProjectDocumentAsActor,
@@ -18,7 +19,7 @@ const BodySchema = z
 export const POST = withAuth(async function POST(
   request: NextRequest,
   _context,
-  { user }
+  { supabase, user }
 ) {
   let body: unknown;
   try {
@@ -32,6 +33,10 @@ export const POST = withAuth(async function POST(
   }
 
   try {
+    const role = await resolveUserRole(supabase, parsed.data.projectId, user.id);
+    if (role !== 'editor' && role !== 'admin') {
+      return NextResponse.json({ error: 'Editor role required for reindex.' }, { status: 403 });
+    }
     const result = await reindexProjectDocumentAsActor({
       actorUserId: user.id,
       projectId: parsed.data.projectId,

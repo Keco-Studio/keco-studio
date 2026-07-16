@@ -3,6 +3,7 @@ import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { chunkProjectDocument, hashContent } from '@/lib/agent/chunking';
 import { embedTexts } from '@/lib/agent/embedding-client';
+import { AGENT_INDEXING_ENABLED } from '@/lib/agent/embedding-config';
 import { documentStateGateway } from '@/lib/documents/documentStateGateway';
 import { fetchAllPaged } from '@/lib/services/pagination';
 import { isUuid } from '@/lib/utils/uuid';
@@ -12,6 +13,18 @@ type DocumentIndexScope = {
   actorUserId: string;
   projectId: string;
   documentId: string;
+};
+
+type DocumentReindexResult = {
+  documentId: string;
+  chunks: number;
+  skipped?: true;
+};
+
+type ProjectDocumentsReindexResult = {
+  documents: number;
+  chunks: number;
+  skipped?: true;
 };
 
 type DocumentMetadata = {
@@ -150,8 +163,11 @@ async function reindexWithVerifiedActor(
 
 export async function reindexProjectDocumentAsActor(
   input: DocumentIndexScope
-): Promise<{ documentId: string; chunks: number }> {
+): Promise<DocumentReindexResult> {
   assertScope(input);
+  if (!AGENT_INDEXING_ENABLED) {
+    return { documentId: input.documentId, chunks: 0, skipped: true };
+  }
   const admin = getSupabaseServiceRoleClient();
   await assertActorProjectAccess(admin, input.actorUserId, input.projectId);
   return reindexWithVerifiedActor(admin, input);
@@ -167,9 +183,12 @@ export async function removeProjectDocumentIndex(input: DocumentIndexScope): Pro
 export async function reindexProjectDocumentsAsActor(input: {
   actorUserId: string;
   projectId: string;
-}): Promise<{ documents: number; chunks: number }> {
+}): Promise<ProjectDocumentsReindexResult> {
   if (!isUuid(input.actorUserId) || !isUuid(input.projectId)) {
     throw new Error('Invalid project document indexing scope');
+  }
+  if (!AGENT_INDEXING_ENABLED) {
+    return { documents: 0, chunks: 0, skipped: true };
   }
   const admin = getSupabaseServiceRoleClient();
   await assertActorProjectAccess(admin, input.actorUserId, input.projectId);

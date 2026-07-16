@@ -186,7 +186,7 @@ export function useDocumentCollaboration({
 
   useEffect(() => () => {
     if (reindexTimerRef.current) clearTimeout(reindexTimerRef.current);
-  }, [accessToken, documentId, projectId, role]);
+  }, [documentId, projectId, role]);
 
   useEffect(() => {
     let mounted = true;

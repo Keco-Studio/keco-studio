@@ -1,4 +1,5 @@
 import { chunkProjectDocument } from '@/lib/agent/chunking';
+import { AGENT_PROJECT_DOCUMENT_CHUNK_MAX_CHARS } from '@/lib/agent/embedding-config';
 
 describe('chunkProjectDocument', () => {
   it('chunks Markdown on ATX headings and preserves heading and line ranges', () => {
@@ -65,5 +66,29 @@ describe('chunkProjectDocument', () => {
     expect(chunks).toHaveLength(2);
     expect(chunks[0]).toMatchObject({ heading: 'C#', startLine: 1, endLine: 5 });
     expect(chunks[1]).toMatchObject({ heading: 'Next', startLine: 7, endLine: 8 });
+  });
+
+  it('hard-splits a huge heading-free line below the provider-safe maximum', () => {
+    const markdown = 'word'.repeat(AGENT_PROJECT_DOCUMENT_CHUNK_MAX_CHARS);
+    const chunks = chunkProjectDocument(markdown);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((chunk) => chunk.content.length <= AGENT_PROJECT_DOCUMENT_CHUNK_MAX_CHARS)).toBe(true);
+    expect(chunks.every((chunk) => chunk.startLine === 1 && chunk.endLine === 1)).toBe(true);
+    expect(chunks.map((chunk) => chunk.chunkIndex)).toEqual(
+      chunks.map((_chunk, index) => index)
+    );
+  });
+
+  it('splits a huge heading section at line boundaries and preserves its heading and ranges', () => {
+    const bodyLine = 'x'.repeat(Math.floor(AGENT_PROJECT_DOCUMENT_CHUNK_MAX_CHARS / 2));
+    const markdown = ['# Large section', bodyLine, bodyLine, bodyLine, bodyLine].join('\n');
+    const chunks = chunkProjectDocument(markdown);
+
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.every((chunk) => chunk.content.length <= AGENT_PROJECT_DOCUMENT_CHUNK_MAX_CHARS)).toBe(true);
+    expect(chunks.every((chunk) => chunk.heading === 'Large section')).toBe(true);
+    expect(chunks[0].startLine).toBe(1);
+    expect(chunks.at(-1)?.endLine).toBe(5);
   });
 });
