@@ -66,6 +66,8 @@ export interface AgentTool {
   parameters: JSONSchema;
   category: 'read' | 'write';
   confirmationMode: ConfirmationMode;
+  /** Whether confirmation follows conversation mode or is mandatory. */
+  confirmationPolicy?: 'mode' | 'always';
   /** False when the tool's validated operation is itself the user-requested action. */
   confirmationRequired?: boolean;
   requiredPermission?: 'editor' | 'admin';

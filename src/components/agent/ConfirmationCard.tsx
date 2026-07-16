@@ -15,6 +15,7 @@ const TOOL_LABELS: Record<string, string> = {
   delete_asset: 'Delete asset',
   set_conversation_option: 'Change conversation option',
   propose_document_edit: 'Apply document edit',
+  delete_document: 'Delete document permanently',
 };
 
 export type DiffRow = {
@@ -260,6 +261,7 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
   const documentPreview = confirmation.preview as
     | {
         type?: string;
+        name?: string;
         documentName?: string;
         folderName?: string | null;
         operationType?: string;
@@ -272,6 +274,9 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
     documentPreview?.type === 'document_edit' &&
     typeof documentPreview.baseMarkdown === 'string' &&
     typeof documentPreview.proposedMarkdown === 'string';
+  const isDocumentDelete =
+    documentPreview?.type === 'document_delete' &&
+    typeof documentPreview.name === 'string';
   let visibleArgs = args;
   if (isDocumentEdit && args && typeof args === 'object') {
     const rawArgs = args as Record<string, unknown>;
@@ -312,6 +317,18 @@ export function ConfirmationCard({ confirmation, disabled, onDecision }: Props) 
             <div>{documentPreview.operationSummary}</div>
           </div>
         )}
+      {isDocumentDelete && (
+        <div className={styles.documentEditMeta}>
+          <div className={styles.documentEditTarget}>
+            {documentPreview.name}
+            {documentPreview.folderName ? ` / ${documentPreview.folderName}` : ''}
+          </div>
+          <div>
+            This document will be permanently deleted. This action is irreversible and cannot be
+            undone.
+          </div>
+        </div>
+      )}
       {isDocumentEdit && (
         <div className={styles.documentDiff} aria-label="Document changes">
           {diff.map((row, index) => (

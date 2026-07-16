@@ -412,6 +412,7 @@ export const proposeDocumentEdit: AgentTool = {
     'Preview a validated Markdown/MDX edit against the latest document state. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Read the latest relevant content before editing. Exact targets and anchors must occur exactly once. Applying the preview requires the existing confirmation policy and creates a restorable backup.',
   category: 'write',
   confirmationMode: 'post_preview',
+  confirmationPolicy: 'mode',
   requiredPermission: 'editor',
   parameters: {
     type: 'object',

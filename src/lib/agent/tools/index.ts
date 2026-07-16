@@ -29,6 +29,7 @@ import { readDocument } from './read-document';
 import { proposeDocumentEdit } from './propose-document-edit';
 import { renameDocument } from './rename-document';
 import { moveDocumentTool } from './move-document';
+import { deleteDocumentTool } from './delete-document';
 import { allSkills } from '../workflows';
 
 const tools: AgentTool[] = [
@@ -41,6 +42,7 @@ const tools: AgentTool[] = [
   proposeDocumentEdit,
   renameDocument,
   moveDocumentTool,
+  deleteDocumentTool,
   queryScriptLines,
   addField,
   createAsset,

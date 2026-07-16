@@ -224,6 +224,72 @@ describe('resumeAgentTurn confirmation integrity', () => {
 });
 
 describe('post-preview confirmation data boundary', () => {
+  it('pauses an always-confirm deletion in auto mode without importing it', async () => {
+    executeImport.mockClear();
+    const deletePreview = {
+      type: 'document_delete',
+      documentId: '11111111-1111-4111-8111-111111111111',
+      projectId: PROJECT_ID,
+      name: 'Guide',
+      folderName: 'Lore',
+      updatedAt: '2026-07-15T00:00:00.000Z',
+    };
+    const previewResult: ToolResult = {
+      success: true,
+      data: deletePreview,
+      internalData: deletePreview,
+      displayHint: 'text',
+    };
+    const deleteTool: AgentTool = {
+      ...resolvedTool,
+      name: 'delete_document',
+      confirmationPolicy: 'always',
+      execute: jest.fn().mockResolvedValue(previewResult),
+    };
+    resolveTool.mockReturnValue(deleteTool);
+    getToolsForLlmAsync.mockResolvedValue([]);
+    loadConversationHistory.mockResolvedValue([]);
+    saveMessage.mockResolvedValue({ id: 'message-1' });
+    executeAgentTool.mockImplementation(async function* () {
+      return previewResult;
+    });
+    streamLlm.mockImplementation(async function* () {
+      yield {
+        type: 'tool_call_delta',
+        index: 0,
+        id: 'call-delete',
+        name: deleteTool.name,
+        arguments: '{"documentId":"11111111-1111-4111-8111-111111111111"}',
+      };
+      yield { type: 'finish', reason: 'tool_calls' };
+    });
+
+    const events: SSEEvent[] = [];
+    for await (const event of runAgentTurn({
+      conversationId: '44444444-4444-4444-8444-444444444444',
+      userMessage: 'Delete the guide.',
+      toolContext: toolContext('editor'),
+      conversationMeta: { autoExecute: true },
+    })) {
+      events.push(event);
+    }
+
+    expect(events.find((event) => event.type === 'confirmation_request')).toMatchObject({
+      tool: 'delete_document',
+      confirmationMode: 'post_preview',
+      preview: deletePreview,
+    });
+    expect(executeImport).not.toHaveBeenCalled();
+    expect(savePendingAction).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        toolName: 'delete_document',
+        suspendedState: expect.objectContaining({ toolResult: previewResult }),
+      }),
+      '33333333-3333-4333-8333-333333333333'
+    );
+  });
+
   it('persists the signed preview internally while emitting only public preview data', async () => {
     const approvalSignature = 'a'.repeat(64);
     const publicPreview = { type: 'document_edit', proposedMarkdown: '# Public preview' };

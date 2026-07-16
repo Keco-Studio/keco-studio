@@ -6,6 +6,40 @@ import type { ChatItem } from '@/components/agent/types';
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
 
 describe('Agent document edit confirmation UI', () => {
+  it('renders permanent document deletion through the generic confirmation card', () => {
+    const item: ChatItem = {
+      id: 'confirmation-delete',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-delete',
+        tool: 'delete_document',
+        args: { documentName: 'Guide', folderName: 'Lore' },
+        confirmationMode: 'post_preview',
+        preview: {
+          type: 'document_delete',
+          documentId: '11111111-1111-4111-8111-111111111111',
+          projectId: '22222222-2222-4222-8222-222222222222',
+          name: 'Guide',
+          folderName: 'Lore',
+          updatedAt: '2026-07-15T00:00:00.000Z',
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Confirm: Delete document permanently');
+    expect(markup).toContain('Guide');
+    expect(markup).toContain('Lore');
+    expect(markup).toContain('permanently deleted');
+    expect(markup).toContain('irreversible');
+    expect(markup).toContain('cannot be undone');
+    expect(markup).not.toContain('Import preview:');
+    expect(markup).not.toContain('Import Directly');
+  });
+
   it('renders the exact document proposal in ConfirmationCard instead of ScriptPreviewCard', () => {
     const baseMarkdown = '# Original\n\nKeep this context.';
     const proposedMarkdown = '# Exact proposal\n\nOnly this preview contains this text.';
