@@ -351,6 +351,11 @@ async function executeImport(
       success: true,
       displayHint: 'text',
       data: { documentId: replaced.documentId, token: replaced.token },
+      invalidations: [{
+        type: 'documents',
+        projectId: ctx.projectId,
+        documentId: replaced.documentId,
+      }],
     };
   } catch (error) {
     return {
@@ -423,7 +428,7 @@ const operationVariants = [
 export const proposeDocumentEdit: AgentTool = {
   name: 'propose_document_edit',
   description:
-    'Preview a validated Markdown/MDX edit against the latest document state. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Read the latest relevant content before editing. Exact targets and anchors must occur exactly once. Applying the preview requires the existing confirmation policy and creates a restorable backup.',
+    'Preview a validated Markdown/MDX edit against the latest document state. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Stop when an exact name matches multiple documents and ask the user to choose a candidate. Call read_document before editing document content. Exact targets and anchors must occur exactly once. Applying the preview requires the existing confirmation policy and creates a restorable backup.',
   category: 'write',
   confirmationMode: 'post_preview',
   confirmationPolicy: 'mode',

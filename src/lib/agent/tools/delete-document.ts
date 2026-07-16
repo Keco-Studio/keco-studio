@@ -194,7 +194,16 @@ async function executeImport(
       folderName: preview.data.folderName,
       updatedAt: preview.data.updatedAt,
     });
-    return { success: true, displayHint: 'text', data: publicPreview };
+    return {
+      success: true,
+      displayHint: 'text',
+      data: publicPreview,
+      invalidations: [{
+        type: 'documents',
+        projectId: preview.data.projectId,
+        documentId: preview.data.documentId,
+      }],
+    };
   } catch (error) {
     return {
       success: false,
@@ -206,7 +215,7 @@ async function executeImport(
 export const deleteDocumentTool: AgentTool = {
   name: 'delete_document',
   description:
-    'Permanently delete a project document after an irreversible-action confirmation. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used.',
+    'Permanently delete a project document after an irreversible-action confirmation. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Stop when an exact name matches multiple documents and ask the user to choose a candidate.',
   category: 'write',
   confirmationMode: 'post_preview',
   confirmationPolicy: 'always',

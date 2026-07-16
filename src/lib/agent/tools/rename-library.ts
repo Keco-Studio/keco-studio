@@ -43,7 +43,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       success: true,
       displayHint: 'text',
       data: { libraryId: library.id, oldName: library.name, newName: newName.trim() },
-      invalidateCache: [library.id],
+      invalidations: [{ type: 'library', id: library.id }],
     };
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to rename library.' };

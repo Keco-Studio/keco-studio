@@ -27,4 +27,16 @@ export class AgentPage {
     await this.input.fill(message);
     await this.sendButton.click();
   }
+
+  async enableAutoMode(): Promise<void> {
+    const modeToggle = this.panel.getByRole('button', { name: /^(Auto|Confirm)$/ });
+    if ((await modeToggle.textContent())?.trim() !== 'Auto') {
+      await modeToggle.click();
+    }
+    await expect(modeToggle).toHaveText('Auto');
+  }
+
+  toolResult(tool: string, status: 'success' | 'failure'): Locator {
+    return this.panel.getByText(`${tool} · ${status}`, { exact: true }).locator('../..');
+  }
 }

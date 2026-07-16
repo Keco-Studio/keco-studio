@@ -34,6 +34,9 @@ jest.mock('@/lib/agent/document-resolver', () => ({
 import { createDocumentTool } from '@/lib/agent/tools/create-document';
 import { readDocument } from '@/lib/agent/tools/read-document';
 import { proposeDocumentEdit } from '@/lib/agent/tools/propose-document-edit';
+import { renameDocument } from '@/lib/agent/tools/rename-document';
+import { moveDocumentTool } from '@/lib/agent/tools/move-document';
+import { deleteDocumentTool } from '@/lib/agent/tools/delete-document';
 import { MAX_TOOL_CONTENT_CHARS } from '@/lib/agent/tool-result-for-llm';
 
 const DOCUMENT_ID = '11111111-1111-4111-8111-111111111111';
@@ -124,6 +127,28 @@ describe('Agent document tools', () => {
     expect(tool.parameters).toMatchObject({ additionalProperties: false });
   });
 
+  it.each([
+    ['read_document', readDocument],
+    ['propose_document_edit', proposeDocumentEdit],
+    ['rename_document', renameDocument],
+    ['move_document', moveDocumentTool],
+    ['delete_document', deleteDocumentTool],
+  ])('documents selector order and duplicate-name stop behavior for %s', (_name, tool) => {
+    expect(tool.description).toContain('Select by documentId first');
+    expect(tool.description).toContain('exact documentName');
+    expect(tool.description).toContain('current document');
+    expect(tool.description).toContain('Stop when an exact name matches multiple documents');
+  });
+
+  it('requires reading content before proposing an edit and explains duplicate creation', () => {
+    expect(proposeDocumentEdit.description).toContain(
+      'Call read_document before editing document content'
+    );
+    expect(createDocumentTool.description).toContain(
+      'Stop when the target folder already contains the same exact name'
+    );
+  });
+
   it('declares the edit selector dependency and non-empty append content in JSON Schema', () => {
     expect(proposeDocumentEdit.parameters).toMatchObject({
       anyOf: [
@@ -177,7 +202,11 @@ describe('Agent document tools', () => {
     createDocument.mockResolvedValue({ id: DOCUMENT_ID, name: 'Guide' });
     await expect(
       createDocumentTool.execute({ name: 'Guide', content: '# Guide' }, ctx)
-    ).resolves.toMatchObject({ success: true, data: { documentId: DOCUMENT_ID } });
+    ).resolves.toMatchObject({
+      success: true,
+      data: { documentId: DOCUMENT_ID },
+      invalidations: [{ type: 'documents', projectId: PROJECT_ID, documentId: DOCUMENT_ID }],
+    });
     expect(createDocument).toHaveBeenCalledWith(ctx.supabase, {
       projectId: PROJECT_ID,
       name: 'Guide',
@@ -664,6 +693,7 @@ describe('Agent document tools', () => {
       success: true,
       displayHint: 'text',
       data: { documentId: DOCUMENT_ID, token: { epoch: 2, revision: 5 } },
+      invalidations: [{ type: 'documents', projectId: PROJECT_ID, documentId: DOCUMENT_ID }],
     });
     expect(resolveDocumentForTool).toHaveBeenCalledTimes(1);
   });

@@ -49,6 +49,10 @@ export interface ToolContext {
   };
 }
 
+export type AgentInvalidation =
+  | { type: 'library'; id: string }
+  | { type: 'documents'; projectId: string; documentId?: string };
+
 export interface ToolResult {
   success: boolean;
   data?: unknown;
@@ -56,8 +60,8 @@ export interface ToolResult {
   internalData?: unknown;
   error?: string;
   displayHint?: DisplayHint;
-  /** Library ids whose cached data should be refreshed by the frontend after a write. */
-  invalidateCache?: string[];
+  /** Structured caches the frontend should refresh after a successful write. */
+  invalidations?: AgentInvalidation[];
 }
 
 export interface AgentTool {
@@ -192,7 +196,7 @@ export type SSEEvent =
   | { type: 'tool_progress'; tool: string; progress: ImportProgressEvent }
   | { type: 'tool_result'; tool: string; data: unknown; displayHint?: DisplayHint; success?: boolean; error?: string }
   | { type: 'confirmation_request'; actionId: string; tool: string; args: unknown; confirmationMode: ConfirmationMode; preview?: unknown }
-  | { type: 'cache_invalidated'; paths: string[] }
+  | { type: 'cache_invalidated'; invalidations: AgentInvalidation[] }
   | { type: 'done' }
   | { type: 'error'; message: string };
 

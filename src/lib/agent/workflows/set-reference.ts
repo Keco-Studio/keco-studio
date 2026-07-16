@@ -213,7 +213,7 @@ async function executeImport(
         targetField: preview.targetField,
         referenceCount: preview.referenceCount,
       },
-      invalidateCache: [preview.targetLibraryId],
+      invalidations: [{ type: 'library', id: preview.targetLibraryId }],
     };
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to set references.' };

@@ -272,7 +272,7 @@ async function executeImport(
       totalFields: preview.totalFields,
       writeGuide,
     },
-    invalidateCache: [libraryId],
+    invalidations: [{ type: 'library', id: libraryId }],
   };
 }
 

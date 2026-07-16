@@ -117,7 +117,7 @@ async function* executeStream(
         rowCount: result.rowCount,
         fieldCount: result.fieldCount,
       },
-      invalidateCache: [result.libraryId],
+      invalidations: [{ type: 'library', id: result.libraryId }],
     };
   } catch (error) {
     return { success: false, error: (error as Error).message || 'Import failed.' };

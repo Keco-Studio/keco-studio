@@ -189,7 +189,12 @@ describe('delete_document tool', () => {
       expectedUpdateIds: [UPDATE_A],
     });
     expect(deleteDocument).not.toHaveBeenCalled();
-    expect(result).toEqual({ success: true, displayHint: 'text', data: preview });
+    expect(result).toEqual({
+      success: true,
+      displayHint: 'text',
+      data: preview,
+      invalidations: [{ type: 'documents', projectId: PROJECT_ID, documentId: DOCUMENT_ID }],
+    });
   });
 
   it('keeps a confirmed deletion successful when index cleanup fails', async () => {

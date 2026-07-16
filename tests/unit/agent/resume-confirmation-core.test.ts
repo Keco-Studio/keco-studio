@@ -111,6 +111,21 @@ async function eventsThroughToolResult(input: ResumeInput): Promise<SSEEvent[]> 
   }
 }
 
+async function eventsThroughInvalidation(input: ResumeInput): Promise<SSEEvent[]> {
+  const events: SSEEvent[] = [];
+  const iterator = resumeAgentTurn(input);
+  try {
+    while (true) {
+      const next = await iterator.next();
+      if (next.done) throw new Error('resume ended without a cache_invalidated event');
+      events.push(next.value);
+      if (next.value.type === 'cache_invalidated') return events;
+    }
+  } finally {
+    await iterator.return(undefined);
+  }
+}
+
 describe('resumeAgentTurn confirmation integrity', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -174,6 +189,28 @@ describe('resumeAgentTurn confirmation integrity', () => {
       success: false,
       error: 'The document changed after this edit was proposed.',
     });
+  });
+
+  it('emits structured document invalidations after a confirmed edit', async () => {
+    const invalidations = [{
+      type: 'documents' as const,
+      projectId: PROJECT_ID,
+      documentId: '11111111-1111-4111-8111-111111111111',
+    }];
+    executeImport.mockResolvedValue({
+      success: true,
+      data: { documentId: invalidations[0].documentId },
+      invalidations,
+    });
+    getToolsForLlmAsync.mockResolvedValue([]);
+    streamLlm.mockImplementation(async function* () {
+      yield { type: 'finish', reason: 'stop' };
+    });
+
+    const events = await eventsThroughInvalidation(resumeInput());
+
+    expect(events.at(-2)).toMatchObject({ type: 'tool_result', success: true });
+    expect(events.at(-1)).toEqual({ type: 'cache_invalidated', invalidations });
   });
 
   it('re-checks the resolved tool permission against the current caller role', async () => {

@@ -4,6 +4,7 @@
  */
 
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
+export type { AgentInvalidation } from '@/lib/agent/types';
 
 export type ChatItemRole = 'user' | 'assistant' | 'tool' | 'error' | 'confirmation';
 

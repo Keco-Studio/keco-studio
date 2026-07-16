@@ -70,7 +70,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         libraryName: name.trim(),
         folderName: resolvedFolderName,
       },
-      invalidateCache: [libraryId],
+      invalidations: [{ type: 'library', id: libraryId }],
     };
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to create library.' };

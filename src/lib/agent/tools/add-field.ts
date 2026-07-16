@@ -105,7 +105,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         label: parsed.data.label.trim(),
         dataType,
       },
-      invalidateCache: [library.id],
+      invalidations: [{ type: 'library', id: library.id }],
     };
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to add field.' };

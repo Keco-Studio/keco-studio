@@ -135,6 +135,164 @@ test.describe('Agent chat', () => {
     expect(bodies[1]).not.toHaveProperty('currentSectionName');
   });
 
+  test('keeps current document A while explicitly targeting document B', async ({ page }) => {
+    const prompt = 'Read Agent Current Document Two explicitly';
+    await page.route('**/api/agent-chat', async (route) => {
+      expect(route.request().postDataJSON()).toMatchObject({
+        projectId,
+        currentDocumentId: firstDocumentId,
+        message: prompt,
+      });
+      await fulfillAgentStream(route, crypto.randomUUID(), [
+        {
+          type: 'tool_call_start',
+          tool: 'read_document',
+          args: JSON.stringify({ documentId: secondDocumentId }),
+        },
+        { type: 'tool_call_end' },
+        {
+          type: 'tool_result',
+          tool: 'read_document',
+          success: true,
+          displayHint: 'text',
+          data: {
+            documentId: secondDocumentId,
+            name: 'Agent Current Document Two',
+            markdown: '# Explicit B',
+          },
+        },
+      ]);
+    });
+
+    const loginPage = new LoginPage(page);
+    await loginPage.goto();
+    await loginPage.login(owner);
+    await loginPage.expectLoginSuccess();
+    await page.goto(`/${projectId}/doc/${firstDocumentId}`);
+    const agent = new AgentPage(page);
+    await agent.open();
+    await agent.send(prompt);
+
+    const result = agent.toolResult('read_document', 'success');
+    await result.click();
+    await expect(result).toContainText(secondDocumentId);
+    await expect(result).toContainText('Agent Current Document Two');
+    await expect(page).toHaveURL(`/${projectId}/doc/${firstDocumentId}`);
+  });
+
+  test('renders duplicate document candidates and stops the tool', async ({ page }) => {
+    await page.route('**/api/agent-chat', async (route) => {
+      await fulfillAgentStream(route, crypto.randomUUID(), [
+        {
+          type: 'tool_call_start',
+          tool: 'read_document',
+          args: JSON.stringify({ documentName: 'Duplicate Guide' }),
+        },
+        { type: 'tool_call_end' },
+        {
+          type: 'tool_result',
+          tool: 'read_document',
+          success: false,
+          error: 'Multiple documents named "Duplicate Guide" were found in this project.',
+          data: {
+            candidates: [
+              { id: firstDocumentId, name: 'Duplicate Guide', folderName: 'Lore' },
+              { id: secondDocumentId, name: 'Duplicate Guide', folderName: 'Archive' },
+            ],
+          },
+        },
+      ]);
+    });
+
+    const agent = await openProject(page);
+    await agent.send('Read Duplicate Guide');
+
+    const result = agent.toolResult('read_document', 'failure');
+    await result.click();
+    await expect(result).toContainText('Multiple documents named');
+    await expect(result).toContainText('Lore');
+    await expect(result).toContainText('Archive');
+  });
+
+  test('renders an Auto-mode document edit result', async ({ page }) => {
+    await page.route('**/api/agent-chat', async (route) => {
+      expect(route.request().postDataJSON()).toMatchObject({
+        projectId,
+        autoExecute: true,
+        message: 'Append the approved note',
+      });
+      await fulfillAgentStream(route, crypto.randomUUID(), [
+        {
+          type: 'tool_call_start',
+          tool: 'propose_document_edit',
+          args: JSON.stringify({
+            documentId: firstDocumentId,
+            operation: { type: 'append', content: 'Approved note' },
+          }),
+        },
+        { type: 'tool_call_end' },
+        {
+          type: 'tool_result',
+          tool: 'propose_document_edit',
+          success: true,
+          displayHint: 'text',
+          data: { documentId: firstDocumentId, token: { epoch: 1, revision: 2 } },
+        },
+        {
+          type: 'cache_invalidated',
+          invalidations: [{ type: 'documents', projectId, documentId: firstDocumentId }],
+        },
+        { type: 'text_delta', content: 'The document edit was applied.' },
+      ]);
+    });
+
+    const agent = await openProject(page);
+    await agent.enableAutoMode();
+    await agent.send('Append the approved note');
+
+    await expect(agent.toolResult('propose_document_edit', 'success')).toBeVisible();
+    await expect(
+      page
+        .getByTestId('agent-message-assistant')
+        .filter({ hasText: 'The document edit was applied.' })
+    ).toBeVisible();
+  });
+
+  test('keeps Auto-mode document deletion behind mandatory confirmation', async ({ page }) => {
+    const actionId = crypto.randomUUID();
+    await page.route('**/api/agent-chat', async (route) => {
+      expect(route.request().postDataJSON()).toMatchObject({
+        projectId,
+        autoExecute: true,
+        message: 'Delete Agent Current Document One',
+      });
+      await fulfillAgentStream(route, crypto.randomUUID(), [{
+        type: 'confirmation_request',
+        actionId,
+        tool: 'delete_document',
+        args: { documentId: firstDocumentId },
+        confirmationMode: 'post_preview',
+        preview: {
+          type: 'document_delete',
+          documentId: firstDocumentId,
+          projectId,
+          name: 'Agent Current Document One',
+          folderName: null,
+          updatedAt: '2026-07-17T00:00:00.000Z',
+        },
+      }]);
+    });
+
+    const agent = await openProject(page);
+    await agent.enableAutoMode();
+    await agent.send('Delete Agent Current Document One');
+
+    const confirmation = page.getByTestId('agent-confirmation');
+    await expect(confirmation).toContainText('Confirm: Delete document permanently');
+    await expect(confirmation).toContainText('Agent Current Document One');
+    await expect(confirmation).toContainText('cannot be undone');
+  });
+
   test('approves a confirmation and resumes the turn', async ({ page }) => {
     const actionId = crypto.randomUUID();
     await page.route('**/api/agent-chat', async (route) => {

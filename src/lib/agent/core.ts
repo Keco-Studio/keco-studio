@@ -609,8 +609,8 @@ async function* continueLoop(
         success: finalResult.success,
         error: finalResult.error,
       };
-      if (finalResult.invalidateCache && finalResult.invalidateCache.length > 0) {
-        yield { type: 'cache_invalidated', paths: finalResult.invalidateCache };
+      if (finalResult.invalidations && finalResult.invalidations.length > 0) {
+        yield { type: 'cache_invalidated', invalidations: finalResult.invalidations };
       }
       messages.push(assistantMessage);
       const publicResult = publicToolResult(finalResult);
@@ -639,8 +639,8 @@ async function* continueLoop(
       success: result.success,
       error: result.error,
     };
-    if (result.invalidateCache && result.invalidateCache.length > 0) {
-      yield { type: 'cache_invalidated', paths: result.invalidateCache };
+    if (result.invalidations && result.invalidations.length > 0) {
+      yield { type: 'cache_invalidated', invalidations: result.invalidations };
     }
 
     messages.push(assistantMessage);
@@ -831,10 +831,9 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       success: result.success,
       error: result.error,
     };
-    if (result.invalidateCache && result.invalidateCache.length > 0) {
-      yield { type: 'cache_invalidated', paths: result.invalidateCache };
+    if (result.invalidations && result.invalidations.length > 0) {
+      yield { type: 'cache_invalidated', invalidations: result.invalidations };
     }
-
     // Persist assistant+tool_calls only after we have the tool result, so a
     // failed execution never leaves orphan tool_calls in the DB.
     const assistantMessage: ChatMessage = { role: 'assistant', content: '', tool_calls: [pendingToolCall] };

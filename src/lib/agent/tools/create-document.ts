@@ -35,7 +35,8 @@ function queueDocumentReindex(ctx: ToolContext, documentId: string): void {
 
 export const createDocumentTool: AgentTool = {
   name: 'create_document',
-  description: 'Create a project document with validated Markdown/MDX content.',
+  description:
+    'Create a project document with validated Markdown/MDX content. Stop when the target folder already contains the same exact name unless the user explicitly allows a duplicate.',
   category: 'write', confirmationMode: 'pre_execute', confirmationRequired: true, requiredPermission: 'editor',
   parameters: {
     type: 'object',
@@ -100,6 +101,7 @@ export const createDocumentTool: AgentTool = {
         success: true,
         displayHint: 'text',
         data: { documentId: doc.id, name: doc.name },
+        invalidations: [{ type: 'documents', projectId: ctx.projectId, documentId: doc.id }],
       };
     } catch (error) {
       if (createdDocumentId) {
@@ -114,6 +116,11 @@ export const createDocumentTool: AgentTool = {
               success: true,
               displayHint: 'text',
               data: { documentId: createdDocumentId, name: createdDocumentName },
+              invalidations: [{
+                type: 'documents',
+                projectId: ctx.projectId,
+                documentId: createdDocumentId,
+              }],
             };
           }
           if (current.projectId === ctx.projectId && current.mode === 'legacy') {

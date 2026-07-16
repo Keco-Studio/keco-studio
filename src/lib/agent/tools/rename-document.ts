@@ -81,6 +81,11 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     return {
       success: true,
       displayHint: 'text',
+      invalidations: [{
+        type: 'documents',
+        projectId: ctx.projectId,
+        documentId: resolution.document.id,
+      }],
       data: {
         documentId: resolution.document.id,
         oldName: resolution.document.name,
@@ -100,7 +105,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const renameDocument: AgentTool = {
   name: 'rename_document',
   description:
-    'Rename a project document. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used.',
+    'Rename a project document. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Stop when an exact name matches multiple documents and ask the user to choose a candidate.',
   category: 'write',
   confirmationMode: 'pre_execute',
   requiredPermission: 'editor',

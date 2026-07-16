@@ -226,6 +226,7 @@ describe('Agent document metadata tools', () => {
       renameDocument.execute({ newName: 'Updated' }, ctx)
     ).resolves.toMatchObject({
       success: true,
+      invalidations: [{ type: 'documents', projectId: PROJECT_ID, documentId: DOCUMENT_ID }],
       data: {
         documentId: DOCUMENT_ID,
         oldName: 'Guide',
@@ -284,6 +285,7 @@ describe('Agent document metadata tools', () => {
       )
     ).resolves.toMatchObject({
       success: true,
+      invalidations: [{ type: 'documents', projectId: PROJECT_ID, documentId: DOCUMENT_ID }],
       data: {
         documentId: DOCUMENT_ID,
         name: 'Guide',

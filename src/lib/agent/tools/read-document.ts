@@ -135,7 +135,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const readDocument: AgentTool = {
   name: 'read_document',
   description:
-    'Read the latest logical state of a project document. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Use outline, heading, or lines modes for bounded reads. Large full reads return an outline and must be followed by a bounded read.',
+    'Read the latest logical state of a project document. Select by documentId first, otherwise exact documentName (optionally folderName); with no selector, the current document is used. Stop when an exact name matches multiple documents and ask the user to choose a candidate. Use outline, heading, or lines modes for bounded reads. Large full reads return an outline and must be followed by a bounded read.',
   category: 'read',
   confirmationMode: 'pre_execute',
   confirmationRequired: false,
