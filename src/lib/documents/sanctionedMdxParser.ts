@@ -2,7 +2,10 @@ import { fromMarkdown } from 'mdast-util-from-markdown';
 import { mdxFromMarkdown } from 'mdast-util-mdx';
 import { mdxjs } from 'micromark-extension-mdxjs';
 import { gfmFromMarkdown } from 'mdast-util-gfm';
+import { gfmToMarkdown } from 'mdast-util-gfm';
 import { gfm } from 'micromark-extension-gfm';
+import { mdxToMarkdown } from 'mdast-util-mdx';
+import { defaultHandlers, toMarkdown } from 'mdast-util-to-markdown';
 
 export type SanctionedMdxAstAttribute = {
   type: string;
@@ -30,4 +33,16 @@ export function parseSanctionedMdxAst(markdown: string): SanctionedMdxAstNode {
     extensions: [gfm(), mdxjs()],
     mdastExtensions: [gfmFromMarkdown(), mdxFromMarkdown()],
   }) as SanctionedMdxAstNode;
+}
+
+export function serializeSanctionedMdxAst(ast: SanctionedMdxAstNode): string {
+  return toMarkdown(ast as Parameters<typeof toMarkdown>[0], {
+    extensions: [gfmToMarkdown(), mdxToMarkdown()],
+    handlers: {
+      text(node, parent, state, info) {
+        if (node.data?.exactPlainText === true) return node.value;
+        return defaultHandlers.text(node, parent, state, info);
+      },
+    },
+  });
 }

@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { parseValidatedSanctionedMdx } from './sanctionedMdx';
 import type { SanctionedMdxAstNode } from './sanctionedMdxParser';
 import { DocumentAccessError } from './documentStateTypes';
+import { resolveReferencesForPlainMarkdown } from './resourceReferenceMarkdown';
 
 export type DocumentExportTextRun = {
   type: 'text';
@@ -42,7 +43,8 @@ export type DocumentExportBlock =
     };
 
 export type DocumentExportModel = { blocks: DocumentExportBlock[] };
-export type DocumentExportFormat = 'docx' | 'pdf';
+export type DocumentExportFormat = 'docx' | 'pdf' | 'mdx';
+type RenderedDocumentExportFormat = Exclude<DocumentExportFormat, 'mdx'>;
 
 type InlineStyle = Omit<DocumentExportTextRun, 'type' | 'text'>;
 type ResolvedImage = {
@@ -205,6 +207,11 @@ function astInline(
       if (url) output.push({ type: 'image', alt: node.alt ?? '', url });
     } else if (node.type === 'mdxJsxTextElement' && node.name === 'u') {
       output.push(...astInline(astChildren(node), definitions, { ...inherited, underline: true }));
+    } else if (
+      (node.type === 'mdxJsxTextElement' || node.type === 'mdxJsxFlowElement') &&
+      node.name === 'ResourceReference'
+    ) {
+      appendText(output, '[Reference unavailable]', inherited);
     } else if (node.children) {
       output.push(...astInline(astChildren(node), definitions, inherited));
     }
@@ -854,7 +861,7 @@ async function renderPdf(
 
 export async function renderDocumentExportModel(
   model: DocumentExportModel,
-  format: DocumentExportFormat
+  format: RenderedDocumentExportFormat
 ): Promise<Buffer> {
   if (format === 'pdf') assertPdfModelSupported(model);
   const images = await resolveModelImages(model);
@@ -879,7 +886,20 @@ export async function exportDocument(
   }
   const { documentStateGateway } = await import('./documentStateGateway');
   const state = await documentStateGateway.read(client, documentId);
-  const model = buildDocumentExportModel(state.markdown);
+  if (format === 'mdx') {
+    parseValidatedSanctionedMdx(state.markdown);
+    return {
+      bytes: Buffer.from(state.markdown, 'utf8'),
+      mediaType: 'text/markdown; charset=utf-8',
+      fileName: `${sanitizeExportFileName((metadata.data as { name: string }).name)}.mdx`,
+    };
+  }
+  const markdown = await resolveReferencesForPlainMarkdown(
+    client,
+    state.projectId,
+    state.markdown
+  );
+  const model = buildDocumentExportModel(markdown);
   const bytes = await renderDocumentExportModel(model, format);
   return {
     bytes,

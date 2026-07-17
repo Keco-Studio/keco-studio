@@ -124,6 +124,7 @@ function DocumentEditorSession({
   const exportItems = [
     { key: 'docx', label: 'Download DOCX' },
     { key: 'pdf', label: 'Download PDF' },
+    { key: 'mdx', label: 'Download MDX' },
   ];
   const handleExport = useCallback(
     async ({ key }: { key: string }) => {
