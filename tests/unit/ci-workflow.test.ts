@@ -63,4 +63,21 @@ describe('CI workflow gates', () => {
       'curl -f -s http://127.0.0.1:54321/rest/v1/'
     );
   });
+
+  it('does not deploy migrations for a PR with no migration diff', () => {
+    expect(deployWorkflow).toContain(
+      'MIGRATION_FILES=$(git diff --name-only "$BASE_BRANCH" HEAD | grep "^supabase/migrations/" || true)'
+    );
+    expect(deployWorkflow).toContain('echo "has-migrations=true" >> $GITHUB_OUTPUT');
+    expect(deployWorkflow).toContain('echo "has-migrations=false" >> $GITHUB_OUTPUT');
+    expect(deployWorkflow).not.toContain(
+      'Migration files detected (no changes, but unapplied migrations may exist)'
+    );
+    expect(deployWorkflow).toContain("github.ref == 'refs/heads/main'");
+    expect(deployWorkflow).toContain("github.ref == 'refs/heads/master'");
+    expect(deployWorkflow).toContain("startsWith(github.ref, 'refs/heads/release/')");
+    expect(deployWorkflow).toContain('supabase db push --include-all');
+    expect(deployWorkflow).toContain('continue-on-error: false');
+    expect(deployWorkflow).toContain("needs.migrate-database.result == 'skipped'");
+  });
 });

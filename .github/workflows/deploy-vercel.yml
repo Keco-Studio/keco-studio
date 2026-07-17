@@ -92,15 +92,8 @@ jobs:
                 echo "  - $file"
               done
             else
-              # Even with no file changes, check whether migration files exist,
-              # since earlier migrations may not have been applied successfully
-              if [ -d "supabase/migrations" ] && [ "$(ls -A supabase/migrations/*.sql 2>/dev/null)" ]; then
-                echo "has-migrations=true" >> $GITHUB_OUTPUT
-                echo "✅ Migration files detected (no changes, but unapplied migrations may exist)"
-              else
-                echo "has-migrations=false" >> $GITHUB_OUTPUT
-                echo "ℹ️ No migration file changes (relative to $BASE_BRANCH)"
-              fi
+              echo "has-migrations=false" >> $GITHUB_OUTPUT
+              echo "No migration file changes (relative to $BASE_BRANCH)"
             fi
           fi
 
