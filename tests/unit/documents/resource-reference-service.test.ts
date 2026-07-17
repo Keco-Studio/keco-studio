@@ -43,9 +43,37 @@ type QueryResult = {
   error: null | { message: string; code?: string };
 };
 
+function indexedUuid(prefix: string, index: number): string {
+  return `${prefix}-0000-4000-8000-${index.toString(16).padStart(12, '0')}`;
+}
+
+function applyFilters(
+  rows: readonly unknown[],
+  filters: ReadonlyArray<[string, string, unknown]>
+): unknown[] {
+  return rows.filter((rawRow) => {
+    const row = rawRow as Record<string, unknown>;
+    return filters.every(([operation, column, value]) => {
+      if (operation === 'eq') return row[column] === value;
+      if (operation === 'neq') return row[column] !== value;
+      if (operation === 'in') return (value as readonly unknown[]).includes(row[column]);
+      if (operation !== 'or') return true;
+      const pairs = Array.from(
+        String(value).matchAll(
+          /and\(asset_id\.eq\.([^,]+),field_id\.eq\.([^)]+)\)/g
+        )
+      );
+      return pairs.some(
+        (match) => row.asset_id === match[1] && row.field_id === match[2]
+      );
+    });
+  });
+}
+
 function makeClient(
   rows: Partial<Record<string, unknown[]>> = {},
-  errors: Partial<Record<string, QueryResult['error']>> = {}
+  errors: Partial<Record<string, QueryResult['error']>> = {},
+  rangeErrors: Partial<Record<string, Record<number, QueryResult['error']>>> = {}
 ): {
   client: SupabaseClient;
   calls: Array<[string, string, unknown?]>;
@@ -82,23 +110,30 @@ function makeClient(
         query.filters.push(['neq', column, value]);
         return builder;
       },
+      or(filter: string) {
+        calls.push([table, 'or', filter]);
+        query.filters.push(['or', '', filter]);
+        return builder;
+      },
       order(column: string, options: unknown) {
         calls.push([table, `order:${column}`, options]);
         return builder;
       },
       range(from: number, to: number) {
         calls.push([table, 'range', { from, to }]);
+        const filtered = applyFilters(rows[table] ?? [], query.filters);
         return Promise.resolve({
-          data: (rows[table] ?? []).slice(from, to + 1),
-          error: errors[table] ?? null,
+          data: filtered.slice(from, to + 1),
+          error: rangeErrors[table]?.[from] ?? errors[table] ?? null,
         });
       },
       then<TResult1 = QueryResult, TResult2 = never>(
         onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
         onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null
       ) {
+        const filtered = applyFilters(rows[table] ?? [], query.filters);
         return Promise.resolve({
-          data: (rows[table] ?? []).slice(0, 1_000),
+          data: filtered.slice(0, 1_000),
           error: errors[table] ?? null,
         }).then(onfulfilled, onrejected);
       },
@@ -208,64 +243,60 @@ describe('resolveResourceReferences', () => {
     const valueQueries = queries.filter(
       (query) => query.table === 'library_asset_values'
     );
-    expect(valueQueries).toHaveLength(2);
-    expect(valueQueries.map((query) => query.filters)).toEqual(expect.arrayContaining([
-      expect.arrayContaining([
-        ['eq', 'field_id', FIELD_ID],
-        ['in', 'asset_id', [ASSET_ID]],
-      ]),
-      expect.arrayContaining([
-        ['eq', 'field_id', OTHER_FIELD_ID],
-        ['in', 'asset_id', [otherAssetId]],
-      ]),
-    ]));
+    expect(valueQueries).toHaveLength(1);
+    expect(valueQueries[0]?.filters).toContainEqual([
+      'or',
+      '',
+      `and(asset_id.eq.${ASSET_ID},field_id.eq.${FIELD_ID}),` +
+        `and(asset_id.eq.${otherAssetId},field_id.eq.${OTHER_FIELD_ID})`,
+    ]);
   });
 
-  it('resolves target rows returned after the Supabase default page', async () => {
-    const fillerLibrary = {
-      id: OTHER_LIBRARY_ID,
-      project_id: PROJECT_ID,
-      name: 'Filler',
-    };
-    const fillerAsset = {
-      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
-      library_id: OTHER_LIBRARY_ID,
-      name: 'Filler',
-    };
-    const fillerField = {
-      id: OTHER_FIELD_ID,
-      library_id: OTHER_LIBRARY_ID,
-      label: 'Filler',
-      order_index: 1,
-    };
-    const fillerValue = {
-      asset_id: fillerAsset.id,
-      field_id: fillerField.id,
-      value_json: 'Filler',
-    };
-    const { client, calls } = makeClient({
-      libraries: [
-        ...new Array(1_000).fill(fillerLibrary),
-        { id: LIBRARY_ID, project_id: PROJECT_ID, name: 'Characters' },
-      ],
-      library_assets: [
-        ...new Array(1_000).fill(fillerAsset),
-        { id: ASSET_ID, library_id: LIBRARY_ID, name: 'Ada' },
-      ],
-      library_field_definitions: [
-        ...new Array(1_000).fill(fillerField),
-        { id: FIELD_ID, library_id: LIBRARY_ID, label: 'Status', order_index: 2 },
-      ],
-      library_asset_values: [
-        ...new Array(1_000).fill(fillerValue),
-        { asset_id: ASSET_ID, field_id: FIELD_ID, value_json: 'Active' },
-      ],
+  it('batches more than 100 exact value pairs without one query per field', async () => {
+    const fixtures = Array.from({ length: 101 }, (_, index) => {
+      const libraryId = indexedUuid('10000000', index);
+      const assetId = indexedUuid('20000000', index);
+      const fieldId = indexedUuid('30000000', index);
+      return {
+        target: tableTarget({ libraryId, assetId, displayFieldId: fieldId }),
+        library: { id: libraryId, project_id: PROJECT_ID, name: `Library ${index}` },
+        asset: { id: assetId, library_id: libraryId, name: `Asset ${index}` },
+        field: {
+          id: fieldId,
+          library_id: libraryId,
+          label: `Field ${index}`,
+          order_index: index,
+        },
+        value: { asset_id: assetId, field_id: fieldId, value_json: `Value ${index}` },
+      };
+    });
+    const { client, calls, queries } = makeClient({
+      libraries: fixtures.map((fixture) => fixture.library),
+      library_assets: fixtures.map((fixture) => fixture.asset),
+      library_field_definitions: fixtures.map((fixture) => fixture.field),
+      library_asset_values: fixtures.map((fixture) => fixture.value),
     });
 
-    const resolved = await resolveResourceReferences(client, PROJECT_ID, [tableTarget()]);
+    const resolved = await resolveResourceReferences(
+      client,
+      PROJECT_ID,
+      fixtures.map((fixture) => fixture.target)
+    );
 
-    expect(resolved.get(`table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`))
-      .toMatchObject({ status: 'available', label: 'Active' });
+    expect(resolved.size).toBe(101);
+    expect([...resolved.values()]).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ status: 'available', label: 'Value 100' }),
+      ])
+    );
+    const valueQueries = queries.filter(
+      (query) => query.table === 'library_asset_values'
+    );
+    expect(valueQueries).toHaveLength(2);
+    expect(valueQueries.map((query) => {
+      const filter = query.filters.find(([operation]) => operation === 'or')?.[2];
+      return Array.from(String(filter).matchAll(/and\(/g)).length;
+    })).toEqual([100, 1]);
     for (const table of [
       'libraries',
       'library_assets',
@@ -276,7 +307,7 @@ describe('resolveResourceReferences', () => {
         calledTable === table && operation === 'range'
       )).toEqual([
         [table, 'range', { from: 0, to: 999 }],
-        [table, 'range', { from: 1000, to: 1999 }],
+        [table, 'range', { from: 0, to: 999 }],
       ]);
     }
   });
@@ -505,11 +536,17 @@ describe('resource reference picker loaders', () => {
   });
 
   it('returns table and document picker sources beyond the default page cap', async () => {
-    const tableSource = { id: LIBRARY_ID, project_id: PROJECT_ID, name: 'Characters' };
-    const documentSource = { id: DOCUMENT_ID, project_id: PROJECT_ID, name: 'Outline' };
     const { client, calls } = makeClient({
-      libraries: new Array(1_001).fill(tableSource),
-      documents: new Array(1_001).fill(documentSource),
+      libraries: Array.from({ length: 1_001 }, (_, index) => ({
+        id: indexedUuid('40000000', index),
+        project_id: PROJECT_ID,
+        name: `Library ${index}`,
+      })),
+      documents: Array.from({ length: 1_001 }, (_, index) => ({
+        id: indexedUuid('50000000', index),
+        project_id: PROJECT_ID,
+        name: `Document ${index}`,
+      })),
     });
 
     await expect(listTableReferenceSources(client, PROJECT_ID))
@@ -522,6 +559,22 @@ describe('resource reference picker loaders', () => {
       ['documents', 'range', { from: 0, to: 999 }],
       ['documents', 'range', { from: 1000, to: 1999 }],
     ]);
+  });
+
+  it('propagates an error from the second picker source page', async () => {
+    const rows = Array.from({ length: 1_001 }, (_, index) => ({
+      id: indexedUuid('40000000', index),
+      project_id: PROJECT_ID,
+      name: `Library ${index}`,
+    }));
+    const { client } = makeClient(
+      { libraries: rows },
+      {},
+      { libraries: { 1_000: { message: 'page two failed' } } }
+    );
+
+    await expect(listTableReferenceSources(client, PROJECT_ID))
+      .rejects.toEqual({ message: 'page two failed' });
   });
 
   it('returns ordered fields and row value records for a table', async () => {
@@ -613,44 +666,29 @@ describe('resource reference picker loaders', () => {
   });
 
   it('returns table fields, rows, and values beyond the default page cap', async () => {
-    const fillerAsset = {
-      id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+    const assets = Array.from({ length: 1_001 }, (_, index) => ({
+      id: indexedUuid('60000000', index),
       library_id: LIBRARY_ID,
-      name: 'Filler',
-      row_index: 1,
+      name: `Asset ${index}`,
+      row_index: index,
       created_at: '2026-07-17T01:00:00.000Z',
-    };
-    const fillerField = {
-      id: OTHER_FIELD_ID,
+    }));
+    const fields = Array.from({ length: 1_001 }, (_, index) => ({
+      id: indexedUuid('70000000', index),
       library_id: LIBRARY_ID,
-      label: 'Filler',
-      order_index: 1,
-    };
-    const fillerValue = {
-      asset_id: fillerAsset.id,
-      field_id: fillerField.id,
-      value_json: 'Filler',
-    };
+      label: `Field ${index}`,
+      order_index: index,
+    }));
+    const values = assets.map((asset, index) => ({
+      asset_id: asset.id,
+      field_id: fields[index]!.id,
+      value_json: `Value ${index}`,
+    }));
     const { client, calls } = makeClient({
       libraries: [{ id: LIBRARY_ID, project_id: PROJECT_ID, name: 'Characters' }],
-      library_field_definitions: [
-        ...new Array(1_000).fill(fillerField),
-        { id: FIELD_ID, library_id: LIBRARY_ID, label: 'Status', order_index: 2 },
-      ],
-      library_assets: [
-        ...new Array(1_000).fill(fillerAsset),
-        {
-          id: ASSET_ID,
-          library_id: LIBRARY_ID,
-          name: 'Ada',
-          row_index: 2,
-          created_at: '2026-07-17T02:00:00.000Z',
-        },
-      ],
-      library_asset_values: [
-        ...new Array(1_000).fill(fillerValue),
-        { asset_id: ASSET_ID, field_id: FIELD_ID, value_json: 'Active' },
-      ],
+      library_field_definitions: fields,
+      library_assets: assets,
+      library_asset_values: values,
     });
 
     const result = await listTableReferenceRows(client, PROJECT_ID, LIBRARY_ID);
@@ -658,15 +696,11 @@ describe('resource reference picker loaders', () => {
     expect(result.fields).toHaveLength(1_001);
     expect(result.rows).toHaveLength(1_001);
     expect(result.rows.at(-1)).toEqual({
-      id: ASSET_ID,
-      name: 'Ada',
-      values: { [FIELD_ID]: 'Active' },
+      id: assets.at(-1)!.id,
+      name: 'Asset 1000',
+      values: { [fields.at(-1)!.id]: 'Value 1000' },
     });
-    for (const table of [
-      'library_field_definitions',
-      'library_assets',
-      'library_asset_values',
-    ]) {
+    for (const table of ['library_field_definitions', 'library_assets']) {
       expect(calls.filter(([calledTable, operation]) =>
         calledTable === table && operation === 'range'
       )).toEqual([
@@ -674,6 +708,9 @@ describe('resource reference picker loaders', () => {
         [table, 'range', { from: 1000, to: 1999 }],
       ]);
     }
+    expect(calls.filter(([table, operation]) =>
+      table === 'library_asset_values' && operation === 'range'
+    )).toHaveLength(11);
   });
 
   it('rejects a cross-project table before loading its rows or values', async () => {

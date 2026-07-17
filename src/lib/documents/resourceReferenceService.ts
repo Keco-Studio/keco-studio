@@ -125,29 +125,35 @@ async function fetchRequestedValues(
   client: SupabaseClient,
   targets: readonly Extract<ResourceReferenceTarget, { kind: 'table-row' }>[]
 ): Promise<ValueRow[]> {
-  const assetIdsByField = new Map<string, Set<string>>();
+  const pairs = new Map<string, { assetId: string; fieldId: string }>();
   for (const target of targets) {
-    const assetIds = assetIdsByField.get(target.displayFieldId) ?? new Set<string>();
-    assetIds.add(target.assetId);
-    assetIdsByField.set(target.displayFieldId, assetIds);
+    pairs.set(`${target.assetId}:${target.displayFieldId}`, {
+      assetId: target.assetId,
+      fieldId: target.displayFieldId,
+    });
   }
 
-  const reads: Array<Promise<ValueRow[]>> = [];
-  for (const [fieldId, assetIds] of assetIdsByField) {
-    reads.push(
-      fetchPagedBatches<ValueRow>([...assetIds], (assetBatch, from, to) =>
+  const rows: ValueRow[] = [];
+  for (const batch of batches([...pairs.values()])) {
+    const exactPairFilter = batch
+      .map(
+        ({ assetId, fieldId }) =>
+          `and(asset_id.eq.${assetId},field_id.eq.${fieldId})`
+      )
+      .join(',');
+    rows.push(
+      ...(await fetchAllPaged<ValueRow>((from, to) =>
         client
           .from('library_asset_values')
           .select('asset_id, field_id, value_json')
-          .eq('field_id', fieldId)
-          .in('asset_id', assetBatch)
+          .or(exactPairFilter)
           .order('asset_id', { ascending: true })
           .order('field_id', { ascending: true })
           .range(from, to) as unknown as PromiseLike<PagedResult<ValueRow>>
-      )
+      ))
     );
   }
-  return (await Promise.all(reads)).flat();
+  return rows;
 }
 
 function sameSemanticTarget(
