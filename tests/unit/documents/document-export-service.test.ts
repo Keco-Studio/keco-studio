@@ -164,6 +164,33 @@ describe('document export service', () => {
     expect(markdown.trim()).toBe('See [Reference unavailable].');
   });
 
+  it('keeps an outer Markdown link valid when its label contains a reference', async () => {
+    resolveResourceReferences.mockResolvedValue(new Map([
+      [
+        `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+        {
+          key: `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+          status: 'available',
+          label: 'Current value',
+          contextLabel: 'Characters / Ada / Status',
+          href: `/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}?field=${FIELD_ID}`,
+        },
+      ],
+    ]));
+
+    const markdown = await resolveReferencesForPlainMarkdown(
+      {} as SupabaseClient,
+      PROJECT_ID,
+      `[before ${REFERENCE} after](https://example.com "Outer title")`
+    );
+
+    expect(markdown.trim()).toBe(
+      '[before Current value after](https://example.com "Outer title")'
+    );
+    expect(markdown).not.toContain(`/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}`);
+    expect(markdown).not.toContain('ResourceReference');
+  });
+
   afterAll(() => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = originalSupabaseUrl;
     process.env.NODE_ENV = originalNodeEnv;

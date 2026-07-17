@@ -46,7 +46,8 @@ function collectReferenceTargets(
 
 function transformNode(
   node: SanctionedMdxAstNode,
-  resolved: Awaited<ReturnType<typeof resolveResourceReferences>>
+  resolved: Awaited<ReturnType<typeof resolveResourceReferences>>,
+  insideLinkLabel = false
 ): MutableAstNode[] {
   if (
     (node.type === 'mdxJsxTextElement' || node.type === 'mdxJsxFlowElement') &&
@@ -62,6 +63,9 @@ function transformNode(
     const target = parseResourceReferenceAttributes(fixedAttributes(node.attributes));
     const reference = target ? resolved.get(resourceReferenceKey(target)) : undefined;
     if (reference?.status === 'available' && reference.href) {
+      if (insideLinkLabel) {
+        return [{ type: 'text', value: reference.label }];
+      }
       return [{
         type: 'link',
         url: reference.href,
@@ -77,10 +81,16 @@ function transformNode(
   }
 
   const { children, ...rest } = node;
+  const childInsideLinkLabel =
+    insideLinkLabel || node.type === 'link' || node.type === 'linkReference';
   return [{
     ...rest,
     ...(children
-      ? { children: children.flatMap((child) => transformNode(child, resolved)) }
+      ? {
+          children: children.flatMap((child) =>
+            transformNode(child, resolved, childInsideLinkLabel)
+          ),
+        }
       : {}),
   }];
 }
