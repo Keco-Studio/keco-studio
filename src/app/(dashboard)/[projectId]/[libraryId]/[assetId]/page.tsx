@@ -28,7 +28,7 @@ import type { CollaboratorRole } from '@/lib/types/collaboration';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
 import {
   parseReferencedFieldSearch,
-  useReferencedField,
+  useReferencedAssetField,
 } from '@/components/documents/useReferencedDocumentBlock';
 
 type FieldDef = {
@@ -122,11 +122,17 @@ export default function AssetPage() {
   const referenceSearch = `?${searchParams.toString()}`;
   const referencedFieldId = parseReferencedFieldSearch(referenceSearch);
 
-  useReferencedField({
+  const activateReferencedFieldTab = useCallback((fieldId: string) => {
+    const referencedField = fieldDefs.find((field) => field.id === fieldId);
+    if (referencedField) setActiveSection(referencedField.section);
+  }, [fieldDefs]);
+
+  useReferencedAssetField({
     rootRef: fieldsRootRef,
     ready: !loading && !error && (isNewAsset || asset?.id === assetId),
-    search: referenceSearch,
+    fieldId: referencedFieldId,
     highlightClassName: styles.referencedFieldHighlight,
+    activateFieldsTab: activateReferencedFieldTab,
   });
   
   // Track whether the user is actively typing in a text field (string/int/float/date).
@@ -245,12 +251,6 @@ export default function AssetPage() {
       current && sectionKeys.includes(current) ? current : sectionKeys[0] ?? null
     );
   }, [sections]);
-
-  useEffect(() => {
-    if (!referencedFieldId) return;
-    const referencedField = fieldDefs.find((field) => field.id === referencedFieldId);
-    if (referencedField) setActiveSection(referencedField.section);
-  }, [fieldDefs, referencedFieldId]);
 
   // Find the first column field (field with smallest order_index)
   const firstColumnField = useMemo(() => {

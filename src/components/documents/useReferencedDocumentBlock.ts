@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { isUuid } from '@/lib/utils/uuid';
 import { showErrorToast } from '@/lib/utils/toast';
 
@@ -53,8 +53,14 @@ function hasEditableCaret(element: Element | null): boolean {
     : false;
 }
 
-function focusExistingControl(target: HTMLElement) {
-  if (hasEditableCaret(target.ownerDocument.activeElement)) return;
+function focusExistingControl(
+  target: HTMLElement,
+  preserveEditableFocus: boolean
+) {
+  if (
+    preserveEditableFocus &&
+    hasEditableCaret(target.ownerDocument.activeElement)
+  ) return;
   const control = matches(target, FOCUSABLE_CONTROL_SELECTOR)
     ? target
     : target.querySelector<HTMLElement>(FOCUSABLE_CONTROL_SELECTOR);
@@ -72,6 +78,7 @@ export type ReferencedElementNavigationOptions = {
   referenceId: string;
   highlightClassName: string;
   focusControl?: boolean;
+  preserveEditableFocus?: boolean;
   onUnavailable: (message: string) => void;
 };
 
@@ -81,6 +88,7 @@ export function navigateToReferencedElement({
   referenceId,
   highlightClassName,
   focusControl = false,
+  preserveEditableFocus = false,
   onUnavailable,
 }: ReferencedElementNavigationOptions): () => void {
   const selector = `[${attributeName}="${escapeAttributeValue(referenceId)}"]`;
@@ -105,7 +113,7 @@ export function navigateToReferencedElement({
     settled = true;
     stopWaiting();
     target.scrollIntoView({ block: 'center' });
-    if (focusControl) focusExistingControl(target);
+    if (focusControl) focusExistingControl(target, preserveEditableFocus);
     target.classList.add(highlightClassName);
     highlightedTarget = target;
     highlightTimeout = setTimeout(() => {
@@ -152,6 +160,8 @@ function useReferenceNavigation({
   referenceId,
   highlightClassName,
   focusControl,
+  preserveEditableFocus = false,
+  beforeNavigate,
 }: {
   rootRef: RefObject<HTMLElement | null>;
   ready: boolean;
@@ -159,6 +169,8 @@ function useReferenceNavigation({
   referenceId: string | null;
   highlightClassName: string;
   focusControl: boolean;
+  preserveEditableFocus?: boolean;
+  beforeNavigate?: () => void;
 }) {
   const activeRef = useRef<ActiveNavigation | null>(null);
 
@@ -174,6 +186,7 @@ function useReferenceNavigation({
     let active = activeRef.current;
     if (!active || active.key !== key) {
       active?.cleanup();
+      beforeNavigate?.();
       active = {
         key,
         generation: 0,
@@ -183,6 +196,7 @@ function useReferenceNavigation({
           referenceId,
           highlightClassName,
           focusControl,
+          preserveEditableFocus,
           onUnavailable: showErrorToast,
         }),
       };
@@ -204,8 +218,10 @@ function useReferenceNavigation({
     };
   }, [
     attributeName,
+    beforeNavigate,
     focusControl,
     highlightClassName,
+    preserveEditableFocus,
     ready,
     referenceId,
     rootRef,
@@ -243,26 +259,34 @@ export function useReferencedDocumentBlock({
     referenceId: blockId,
     highlightClassName,
     focusControl: true,
+    preserveEditableFocus: true,
   });
 }
 
-export function useReferencedField({
+export function useReferencedAssetField({
   rootRef,
   ready,
-  search,
+  fieldId,
   highlightClassName,
+  activateFieldsTab,
 }: {
   rootRef: RefObject<HTMLElement | null>;
   ready: boolean;
-  search: string;
+  fieldId: string | null;
   highlightClassName: string;
+  activateFieldsTab: (fieldId: string) => void;
 }) {
+  const activateReferencedFieldTab = useCallback(() => {
+    if (fieldId) activateFieldsTab(fieldId);
+  }, [activateFieldsTab, fieldId]);
+
   useReferenceNavigation({
     rootRef,
     ready,
     attributeName: 'data-field-id',
-    referenceId: parseReferencedFieldSearch(search),
+    referenceId: fieldId,
     highlightClassName,
     focusControl: true,
+    beforeNavigate: activateReferencedFieldTab,
   });
 }
