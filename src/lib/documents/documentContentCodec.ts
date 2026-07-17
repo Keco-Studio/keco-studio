@@ -200,21 +200,25 @@ export function mergeYjsState(
 async function markdownToYjsState(markdown: string): Promise<string> {
   documentContentCodec.validate(markdown);
   const headless = await createHeadlessDocumentEditor();
+  // The headless Realm exposes no supported public destroy lifecycle.
   headless.clear();
   const doc = new Y.Doc();
-  const provider = createCodecProvider(doc);
-  const binding = createCodecBinding(headless.editor, provider, doc);
+  let provider: CodecProvider | null = null;
+  let binding: Binding | null = null;
+  let unregister: (() => void) | null = null;
   let syncError: unknown = null;
-  const unregister = registerLexicalToYjsSync(
-    headless,
-    binding,
-    provider,
-    (error) => {
-      syncError = error;
-    }
-  );
 
   try {
+    provider = createCodecProvider(doc);
+    binding = createCodecBinding(headless.editor, provider, doc);
+    unregister = registerLexicalToYjsSync(
+      headless,
+      binding,
+      provider,
+      (error) => {
+        syncError = error;
+      }
+    );
     if (markdown.trim().length === 0) {
       headless.appendEmptyParagraph();
     } else {
@@ -230,9 +234,9 @@ async function markdownToYjsState(markdown: string): Promise<string> {
         : 'Document content could not be encoded'
     );
   } finally {
-    unregister();
-    binding.root.destroy(binding);
-    provider.destroy();
+    unregister?.();
+    if (binding) binding.root.destroy(binding);
+    provider?.destroy();
     doc.destroy();
   }
 }
@@ -242,27 +246,44 @@ async function normalizeYjsState(
   updateTailBase64: readonly string[]
 ): Promise<NormalizedDocumentContent> {
   const headless = await createHeadlessDocumentEditor();
+  // The headless Realm exposes no supported public destroy lifecycle.
   headless.clear();
   const doc = new Y.Doc();
-  const provider = createCodecProvider(doc);
-  const binding = createCodecBinding(headless.editor, provider, doc);
-  const sharedRoot = binding.root.getSharedType();
+  let provider: CodecProvider | null = null;
+  let binding: Binding | null = null;
+  let sharedRoot: ReturnType<Binding['root']['getSharedType']> | null = null;
+  let onYjsChange:
+    | ((
+        events: Array<{ delta: unknown }>,
+        transaction: { origin: unknown }
+      ) => void)
+    | null = null;
   let syncError: unknown = null;
   let unregisterLexicalSync: (() => void) | null = null;
 
-  const onYjsChange = (
-    events: Array<{ delta: unknown }>,
-    transaction: { origin: unknown }
-  ) => {
-    if (transaction.origin === binding) return;
-    events.forEach((event) => void event.delta);
-    runLexicalYjsSync(() =>
-      syncYjsChangesToLexical(binding, provider, events as never, false)
-    );
-  };
-
-  sharedRoot.observeDeep(onYjsChange as never);
   try {
+    provider = createCodecProvider(doc);
+    binding = createCodecBinding(headless.editor, provider, doc);
+    const activeBinding = binding;
+    const activeProvider = provider;
+    sharedRoot = binding.root.getSharedType();
+    onYjsChange = (
+      events: Array<{ delta: unknown }>,
+      transaction: { origin: unknown }
+    ) => {
+      if (transaction.origin === activeBinding) return;
+      events.forEach((event) => void event.delta);
+      runLexicalYjsSync(() =>
+        syncYjsChangesToLexical(
+          activeBinding,
+          activeProvider,
+          events as never,
+          false
+        )
+      );
+    };
+    sharedRoot.observeDeep(onYjsChange as never);
+
     const merged = mergeYjsState(snapshotBase64, updateTailBase64);
     const mergedUpdate = decodeBase64(merged);
     validateMergedYjsUpdate(mergedUpdate);
@@ -300,9 +321,11 @@ async function normalizeYjsState(
     );
   } finally {
     unregisterLexicalSync?.();
-    sharedRoot.unobserveDeep(onYjsChange as never);
-    binding.root.destroy(binding);
-    provider.destroy();
+    if (sharedRoot && onYjsChange) {
+      sharedRoot.unobserveDeep(onYjsChange as never);
+    }
+    if (binding) binding.root.destroy(binding);
+    provider?.destroy();
     doc.destroy();
   }
 }

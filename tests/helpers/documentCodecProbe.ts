@@ -27,6 +27,10 @@ type ProbeInput =
   | { mode: 'merge'; markdown: string }
   | { mode: 'normalize-blocks'; markdown: string }
   | { mode: 'capture-delete-only' }
+  | {
+      mode: 'cleanup';
+      target: 'markdown-listener' | 'normalize-observer';
+    }
   | { mode: 'crafted-invalid-jsx'; component: 'Callout' | 'Unknown' }
   | { mode: 'invalid'; markdown: string; state: string };
 
@@ -182,6 +186,107 @@ async function anchorFreeYjsState(markdown: string): Promise<string> {
     provider.destroy();
     doc.destroy();
   }
+}
+
+async function inspectSetupCleanup(
+  target: 'markdown-listener' | 'normalize-observer'
+) {
+  const sampleHeadless = await createHeadlessDocumentEditor();
+  const sampleDoc = new Y.Doc();
+  const sampleProvider = createProbeProvider(sampleDoc);
+  const sampleBinding = createDocumentLexicalYjsBinding(
+    sampleHeadless.editor,
+    sampleProvider,
+    'cleanup-probe',
+    sampleDoc,
+    new Map([['cleanup-probe', sampleDoc]])
+  );
+  const bindingRootPrototype = Object.getPrototypeOf(sampleBinding.root) as {
+    destroy(binding: Binding): void;
+  };
+  const editorPrototype = Object.getPrototypeOf(sampleHeadless.editor) as {
+    registerUpdateListener: typeof sampleHeadless.editor.registerUpdateListener;
+  };
+  sampleBinding.root.destroy(sampleBinding);
+  sampleProvider.destroy();
+  sampleDoc.destroy();
+
+  const originalDocDestroy = Y.Doc.prototype.destroy;
+  const originalAwarenessDestroy = Awareness.prototype.destroy;
+  const originalBindingDestroy = bindingRootPrototype.destroy;
+  const originalRegisterUpdateListener = editorPrototype.registerUpdateListener;
+  const originalObserveDeep = Y.XmlText.prototype.observeDeep;
+  const originalUnobserveDeep = Y.XmlText.prototype.unobserveDeep;
+  let docDestroyCount = 0;
+  let awarenessDestroyCount = 0;
+  let bindingDestroyCount = 0;
+  let unobserveDeepCount = 0;
+
+  let realmSetupRegistrationCount = 0;
+  editorPrototype.registerUpdateListener = function (listener) {
+    realmSetupRegistrationCount += 1;
+    return originalRegisterUpdateListener.call(this, listener);
+  };
+  await createHeadlessDocumentEditor();
+  editorPrototype.registerUpdateListener = originalRegisterUpdateListener;
+
+  Y.Doc.prototype.destroy = function () {
+    docDestroyCount += 1;
+    return originalDocDestroy.call(this);
+  };
+  Awareness.prototype.destroy = function () {
+    awarenessDestroyCount += 1;
+    return originalAwarenessDestroy.call(this);
+  };
+  bindingRootPrototype.destroy = function (binding) {
+    bindingDestroyCount += 1;
+    return originalBindingDestroy.call(this, binding);
+  };
+  if (target === 'markdown-listener') {
+    let registrationCount = 0;
+    editorPrototype.registerUpdateListener = function (listener) {
+      registrationCount += 1;
+      if (registrationCount > realmSetupRegistrationCount) {
+        throw new Error('cleanup probe listener setup failure');
+      }
+      return originalRegisterUpdateListener.call(this, listener);
+    };
+  } else {
+    Y.XmlText.prototype.observeDeep = function (listener) {
+      originalObserveDeep.call(this, listener);
+      throw new Error('cleanup probe observer setup failure');
+    };
+    Y.XmlText.prototype.unobserveDeep = function (listener) {
+      unobserveDeepCount += 1;
+      return originalUnobserveDeep.call(this, listener);
+    };
+  }
+
+  let errorName = '';
+  try {
+    if (target === 'markdown-listener') {
+      await documentContentCodec.markdownToYjsState('# Cleanup');
+    } else {
+      await documentContentCodec.normalizeYjsState(null, []);
+    }
+  } catch (error) {
+    errorName = error instanceof Error ? error.name : 'UnknownError';
+  } finally {
+    Y.Doc.prototype.destroy = originalDocDestroy;
+    Awareness.prototype.destroy = originalAwarenessDestroy;
+    bindingRootPrototype.destroy = originalBindingDestroy;
+    editorPrototype.registerUpdateListener = originalRegisterUpdateListener;
+    Y.XmlText.prototype.observeDeep = originalObserveDeep;
+    Y.XmlText.prototype.unobserveDeep = originalUnobserveDeep;
+  }
+
+  return {
+    errorName,
+    docDestroyCount,
+    awarenessDestroyCount,
+    bindingDestroyCount,
+    unobserveDeepCount,
+  };
 }
 
 function craftedInvalidJsxState(component: 'Callout' | 'Unknown'): string {
@@ -399,6 +504,10 @@ async function main() {
     replica.destroy();
     doc.destroy();
     return result;
+  }
+
+  if (input.mode === 'cleanup') {
+    return inspectSetupCleanup(input.target);
   }
 
   if (input.mode === 'crafted-invalid-jsx') {

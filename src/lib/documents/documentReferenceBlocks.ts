@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { documentContentCodec } from './documentContentCodec';
 import type { DocumentReferenceBlock } from './documentBlockIdentity';
 import {
-  appendDocumentYjsUpdates,
+  compactDocumentState,
   readDocumentTransportState,
 } from './documentStateGateway';
 import {
@@ -31,17 +31,26 @@ export async function ensureDocumentReferenceBlocks(
         return { projectId: state.projectId, blocks: normalized.blocks };
       }
 
-      await appendDocumentYjsUpdates(client, {
+      const compacted = await compactDocumentState(client, {
         documentId,
-        epoch: state.token.epoch,
-        updates: [
-          {
-            id: globalThis.crypto.randomUUID(),
-            updateBase64: normalized.normalizationUpdateBase64,
-          },
-        ],
+        expected: state.token,
       });
-      return { projectId: state.projectId, blocks: normalized.blocks };
+      if (compacted.yjsStateBase64 === null) {
+        throw new DocumentCollaborationUnavailableError(
+          'Compacted document collaboration state is unavailable'
+        );
+      }
+      const committed = await documentContentCodec.normalizeYjsState(
+        compacted.yjsStateBase64,
+        []
+      );
+      if (committed.normalizationUpdateBase64 !== null) {
+        throw new DocumentStateConflictError(
+          'Compacted document state is not normalized',
+          compacted.token
+        );
+      }
+      return { projectId: compacted.projectId, blocks: committed.blocks };
     } catch (error) {
       if (!(error instanceof DocumentStateConflictError) || attempt === 1) {
         throw error;

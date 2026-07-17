@@ -331,6 +331,28 @@ describe('document content codec', () => {
     expect(result.stateVectorsEqual).toBe(true);
   });
 
+  it.each([
+    ['markdown-listener', 0],
+    ['normalize-observer', 1],
+  ] as const)(
+    'cleans Yjs resources when %s setup throws',
+    (target, expectedUnobserveCount) => {
+      const result = runCodecProbe({ mode: 'cleanup', target }) as {
+        errorName: string;
+        docDestroyCount: number;
+        awarenessDestroyCount: number;
+        bindingDestroyCount: number;
+        unobserveDeepCount: number;
+      };
+
+      expect(result.errorName).toBe('DocumentContentValidationError');
+      expect(result.docDestroyCount).toBe(1);
+      expect(result.awarenessDestroyCount).toBe(2);
+      expect(result.bindingDestroyCount).toBe(1);
+      expect(result.unobserveDeepCount).toBe(expectedUnobserveCount);
+    }
+  );
+
   it('rejects malformed Markdown and malformed Yjs state with typed validation errors', async () => {
     const result = runCodecProbe({ mode: 'invalid', markdown: '\u0000', state: 'AQID' });
     expect(result.validateError).toBe('DocumentContentValidationError');
