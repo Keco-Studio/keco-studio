@@ -11,13 +11,14 @@ import {
   DocumentStateConflictError,
   type AuthoritativeDocumentState,
   type AuthoritativeDocumentTransportState,
+  type DocumentEpochReason,
   type ReplaceDocumentStateInput,
   type DocumentStateToken,
   type DurableYjsUpdate,
 } from './documentStateTypes';
 
 const DOCUMENT_STATE_COLUMNS =
-  'id, project_id, content, yjs_state, collab_epoch, collab_revision, updated_at';
+  'id, project_id, content, yjs_state, collab_epoch, collab_revision, collab_epoch_reason, updated_at';
 const DOCUMENT_UPDATE_COLUMNS = 'id, update_data, created_at';
 const MAX_STABLE_READ_ATTEMPTS = 3;
 
@@ -28,6 +29,7 @@ type DocumentStateRow = {
   yjs_state: string | null;
   collab_epoch: number;
   collab_revision: number;
+  collab_epoch_reason: string;
   updated_at: string;
 };
 
@@ -92,10 +94,17 @@ function firstRpcRow(data: unknown): DocumentStateRpcRow {
   return row as DocumentStateRpcRow;
 }
 
+function parseDocumentEpochReason(value: unknown): DocumentEpochReason {
+  return value === 'normalization' || value === 'restore' || value === 'agent'
+    ? value
+    : 'initialize';
+}
+
 function stateFromRpc(
   documentId: string,
   projectId: string,
-  row: DocumentStateRpcRow
+  row: DocumentStateRpcRow,
+  epochReason: DocumentEpochReason
 ): AuthoritativeDocumentState {
   return {
     documentId,
@@ -108,6 +117,7 @@ function stateFromRpc(
       epoch: Number(row.collab_epoch),
       revision: Number(row.collab_revision),
     },
+    epochReason,
     updatedAt: row.updated_at,
   };
 }
@@ -194,6 +204,7 @@ async function readAuthoritativeTransportState(
         epoch: Number(head.collab_epoch),
         revision: Number(head.collab_revision),
       },
+      epochReason: parseDocumentEpochReason(head.collab_epoch_reason),
       updatedAt: head.updated_at,
     },
     legacyMarkdown: head.content,
@@ -253,7 +264,8 @@ export async function initializeDocumentState(
   return stateFromRpc(
     documentId,
     projectId,
-    firstRpcRow(data)
+    firstRpcRow(data),
+    'initialize'
   );
 }
 
@@ -321,7 +333,8 @@ export async function compactDocumentState(
   return stateFromRpc(
     input.documentId,
     head.project_id,
-    firstRpcRow(data)
+    firstRpcRow(data),
+    parseDocumentEpochReason(head.collab_epoch_reason)
   );
 }
 
@@ -358,7 +371,8 @@ export async function normalizeDocumentState(
   return stateFromRpc(
     input.documentId,
     head.project_id,
-    firstRpcRow(data)
+    firstRpcRow(data),
+    'normalization'
   );
 }
 
@@ -445,7 +459,8 @@ export async function replaceDocumentState(
   return stateFromRpc(
     input.documentId,
     head.project_id,
-    firstRpcRow(data)
+    firstRpcRow(data),
+    input.reason
   );
 }
 

@@ -1406,7 +1406,10 @@ export class DocumentCollaborationSession implements Provider {
   }
 
   private replaceActiveDocument(state: AuthoritativeDocumentTransportState): void {
-    const epochRebase = this.capturePendingEpochRebase();
+    const epochRebase =
+      state.epochReason === 'normalization'
+        ? this.capturePendingEpochRebase()
+        : null;
     this.setStatus('hydrating');
     this.clearPendingWork();
     this.pendingEpochRebase = epochRebase?.slice() ?? null;

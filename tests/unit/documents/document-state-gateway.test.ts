@@ -61,6 +61,7 @@ function makeSupabase(options: {
       yjs_state: 'snapshot',
       collab_epoch: 2,
       collab_revision: 4,
+      collab_epoch_reason: 'normalization',
       updated_at: '2026-07-14T12:00:00.000Z',
     },
     error: null,
@@ -225,14 +226,20 @@ describe('documentStateGateway.read', () => {
   });
 
   it('returns transport state without materializing collaborative Markdown', async () => {
-    const { client } = makeSupabase();
+    const { client, calls } = makeSupabase();
 
     const state = await readDocumentTransportState(client, DOCUMENT_ID);
 
     expect(state).toMatchObject({
       documentId: DOCUMENT_ID,
       mode: 'collaborative',
+      epochReason: 'normalization',
       updateTail: [{ id: UPDATE_A }, { id: UPDATE_B }],
+    });
+    expect(calls).toContainEqual({
+      kind: 'document-select',
+      value:
+        'id, project_id, content, yjs_state, collab_epoch, collab_revision, collab_epoch_reason, updated_at',
     });
     expect(state).not.toHaveProperty('markdown');
     expect(yjsStateToMarkdown).not.toHaveBeenCalled();
@@ -338,6 +345,8 @@ describe('documentStateGateway mutations', () => {
     });
     const state = await initializeDocumentState(client, DOCUMENT_ID, '# Initial');
 
+    expect(state.epochReason).toBe('initialize');
+
     expect(markdownToYjsState).toHaveBeenCalledWith('# Initial');
     expect(calls).toContainEqual({
       kind: 'rpc:initialize_document_collab_state',
@@ -425,6 +434,7 @@ describe('documentStateGateway mutations', () => {
       },
     });
     expect(state.token).toEqual({ epoch: 2, revision: 5 });
+    expect(state.epochReason).toBe('normalization');
   });
 
   it('normalizes through an exact-tail epoch-fenced RPC', async () => {
@@ -466,6 +476,7 @@ describe('documentStateGateway mutations', () => {
     expect(state).toMatchObject({
       yjsStateBase64: 'normalized-full-state',
       markdown: '# Normalized',
+      epochReason: 'normalization',
       token: { epoch: 3, revision: 5 },
     });
   });
@@ -583,6 +594,7 @@ describe('documentStateGateway mutations', () => {
     expect(state).toMatchObject({
       markdown: '# Restored',
       yjsStateBase64: 'restored-state',
+      epochReason: 'restore',
       updateTail: [],
       token: { epoch: 3, revision: 5 },
     });

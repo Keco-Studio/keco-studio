@@ -38,6 +38,7 @@ function collaborativeState(): AuthoritativeDocumentState {
     yjsStateBase64: encodedRoot(),
     updateTail: [],
     token: { epoch: 2, revision: 4 },
+    epochReason: 'initialize',
     updatedAt: '2026-07-14T12:00:00.000Z',
   };
 }
@@ -79,6 +80,7 @@ function sharedBlockState(): {
     ...initial,
     yjsStateBase64: encodeBase64(Y.encodeStateAsUpdate(winner)),
     token: { epoch: 3, revision: 5 },
+    epochReason: 'normalization' as const,
     updatedAt: '2026-07-17T01:00:00.000Z',
   };
   base.destroy();
@@ -92,6 +94,41 @@ function documentBlock(doc: Y.Doc): Y.XmlText {
     throw new Error('Expected shared document block');
   }
   return embedded;
+}
+
+function replacementBlockState(
+  initial: AuthoritativeDocumentState,
+  text: string,
+  epochReason: 'restore' | 'agent'
+): AuthoritativeDocumentState & { epochReason: 'restore' | 'agent' } {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, decodeBase64(initial.yjsStateBase64!));
+  const block = documentBlock(doc);
+  const nodeState = block.getAttribute('__state');
+  if (!(nodeState instanceof Y.Map)) {
+    throw new Error('Expected replacement block node state');
+  }
+  nodeState.set('kecoBlockId', `${epochReason}-winner`);
+  block.delete(0, block.length);
+  block.insert(0, text);
+  const state = {
+    ...initial,
+    yjsStateBase64: encodeBase64(Y.encodeStateAsUpdate(doc)),
+    token: { epoch: 3, revision: 5 },
+    updatedAt: '2026-07-17T02:00:00.000Z',
+    epochReason,
+  };
+  doc.destroy();
+  return state;
+}
+
+function documentBlockTexts(doc: Y.Doc): string[] {
+  return doc
+    .get('root', Y.XmlText)
+    .toDelta()
+    .flatMap(({ insert }) =>
+      insert instanceof Y.XmlText ? [insert.toString()] : []
+    );
 }
 
 function invalidCalloutState(): string {
@@ -2009,6 +2046,45 @@ describe('DocumentCollaborationSession', () => {
     );
     expect(rebasedBlock.toString()).toBe('Seed local reset edit');
   });
+
+  it.each(['restore', 'agent'] as const)(
+    'discards pending old-epoch edits after a durable %s replacement',
+    async (reason) => {
+      const { initial } = sharedBlockState();
+      const replacement = replacementBlockState(
+        initial,
+        `${reason} replacement`,
+        reason
+      );
+      const harness = makeHarness({ state: initial });
+      harness.gateway.read
+        .mockResolvedValueOnce(initial)
+        .mockResolvedValueOnce(replacement);
+      await connectReady(harness.session);
+
+      const localBlock = documentBlock(harness.session.doc);
+      localBlock.insert(localBlock.length, ' stale local edit');
+
+      if (reason === 'restore') {
+        await harness.session.refresh();
+      } else {
+        await harness.channel.emit('document-state-reset', {
+          v: 1,
+          documentId: DOCUMENT_ID,
+          epoch: 3,
+          revision: 5,
+          reason,
+          updatedAt: replacement.updatedAt,
+        });
+      }
+      harness.session.attachBinding();
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(documentBlockTexts(harness.session.doc)).toEqual([
+        `${reason} replacement`,
+      ]);
+    }
+  );
 
   it('single-flights concurrent higher-epoch resets and freezes immediately', async () => {
     let resolveRead!: (state: AuthoritativeDocumentState) => void;

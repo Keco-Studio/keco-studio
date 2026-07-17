@@ -3,6 +3,12 @@ export type DocumentStateToken = {
   revision: number;
 };
 
+export type DocumentEpochReason =
+  | 'initialize'
+  | 'normalization'
+  | 'restore'
+  | 'agent';
+
 export type DurableYjsUpdate = {
   id: string;
   updateBase64: string;
@@ -26,6 +32,7 @@ export type AuthoritativeDocumentTransportState = {
   yjsStateBase64: string | null;
   updateTail: DurableYjsUpdate[];
   token: DocumentStateToken;
+  epochReason: DocumentEpochReason;
   updatedAt: string;
 };
 
