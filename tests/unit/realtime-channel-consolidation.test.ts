@@ -55,12 +55,18 @@ describe('realtime channel consolidation (issue #216)', () => {
     );
 
     expect(sidebarRealtime.match(/\.channel\(/g)).toHaveLength(2);
-    expect(sidebarRealtime.match(/'postgres_changes'/g)).toHaveLength(2);
+    expect(sidebarRealtime.match(/'postgres_changes'/g)).toHaveLength(4);
+    expect(
+      sidebarRealtime.match(
+        /table: '(libraries|folders|predefine_properties)'/g
+      )
+    ).toHaveLength(3);
     expect(sidebarRealtime).not.toContain('.channel(`libraries:project:');
     expect(sidebarRealtime).not.toContain('.channel(`predefine:project:');
-    expect(sidebarRealtime).toContain("payload.table === 'libraries'");
-    expect(sidebarRealtime).toContain("payload.table !== 'folders'");
-    expect(sidebarRealtime).toContain("payload.table === 'predefine_properties'");
+    expect(sidebarRealtime).not.toContain('payload.table');
+    expect(sidebarRealtime).toContain("table: 'libraries'");
+    expect(sidebarRealtime).toContain("table: 'folders'");
+    expect(sidebarRealtime).toContain("table: 'predefine_properties'");
   });
 
   it('drops the unused snapshot GIN index in a forward migration', () => {
