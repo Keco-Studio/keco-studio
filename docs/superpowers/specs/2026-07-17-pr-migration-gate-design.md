@@ -17,9 +17,12 @@ drift makes the migration job fail before the Vercel deployment job, even for UI
 
 ## Decision
 
-For pull requests, run the migration job only when the PR diff contains a file under
-`supabase/migrations/`. When no migration file changed, emit `has-migrations=false`; the
-migration job is skipped and the existing deploy job may proceed.
+For pull requests, compare `HEAD` with `github.event.pull_request.base.sha` and run the
+migration job only when that diff contains a file under `supabase/migrations/`. Using the
+event's base commit is required because a PR may target `master` or `release/**`, whose
+contents can differ from `main`. When no migration file changed, emit
+`has-migrations=false`; the migration job is skipped and the existing deploy job may
+proceed.
 
 Pushes to `main`, `master`, and `release/**` retain the existing always-run behavior through
 the migration job's branch condition. Pull requests containing a migration change retain
@@ -37,15 +40,22 @@ history drift.
 ## Implementation
 
 Remove the fallback that marks `has-migrations=true` solely because the migration directory
-is non-empty. Keep the existing base-branch diff and set `has-migrations=false` when that
-diff contains no migration path.
+is non-empty. Extract migration path detection into
+`scripts/detect-migration-changes.sh`, using Git's pathspec support rather than a grep
+pipeline. Git errors remain blocking.
 
-Add a regression assertion to `tests/unit/ci-workflow.test.ts` proving that:
+The deploy job requires the migration detector job to succeed. This distinguishes an
+intentional migration skip from a downstream skip caused by detector failure.
+
+Add workflow wiring assertions and temporary-repository behavior tests proving that:
 
 - unchanged migration directories do not opt a PR into database migration;
-- changed migration files still set `has-migrations=true`;
+- added, modified, deleted, and renamed migration files are detected;
+- UI-only PRs based on a diverged release branch use the release base commit rather than
+  `main`;
 - main/master/release branches still appear in the migration job's always-run condition;
 - migration failures remain blocking.
+- migration detection failures prevent deployment.
 
 ## Non-Goals
 

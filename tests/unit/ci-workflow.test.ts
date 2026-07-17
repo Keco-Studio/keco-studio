@@ -12,6 +12,41 @@ const playwrightWorkflow = readFileSync(
   path.join(repoRoot, '.github/workflows/playwright.yml'),
   'utf8'
 );
+
+function getWorkflowJob(
+  source: string,
+  jobName: string,
+  nextJobName?: string
+): string {
+  const startMarker = `\n  ${jobName}:\n`;
+  const start = source.indexOf(startMarker);
+  if (start === -1) {
+    throw new Error(`Workflow job not found: ${jobName}`);
+  }
+
+  if (!nextJobName) {
+    return source.slice(start);
+  }
+
+  const end = source.indexOf(`\n  ${nextJobName}:\n`, start + startMarker.length);
+  if (end === -1) {
+    throw new Error(`Workflow job not found: ${nextJobName}`);
+  }
+
+  return source.slice(start, end);
+}
+
+const checkMigrationsJob = getWorkflowJob(
+  deployWorkflow,
+  'check-migrations',
+  'migrate-database'
+);
+const migrateDatabaseJob = getWorkflowJob(
+  deployWorkflow,
+  'migrate-database',
+  'deploy'
+);
+const deployJob = getWorkflowJob(deployWorkflow, 'deploy');
 const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8')) as {
   scripts: Record<string, string>;
 };
@@ -65,19 +100,34 @@ describe('CI workflow gates', () => {
   });
 
   it('does not deploy migrations for a PR with no migration diff', () => {
-    expect(deployWorkflow).toContain(
-      'MIGRATION_FILES=$(git diff --name-only "$BASE_BRANCH" HEAD | grep "^supabase/migrations/" || true)'
+    expect(checkMigrationsJob).toContain(
+      'BASE_COMMIT="${{ github.event.pull_request.base.sha }}"'
     );
-    expect(deployWorkflow).toContain('echo "has-migrations=true" >> $GITHUB_OUTPUT');
-    expect(deployWorkflow).toContain('echo "has-migrations=false" >> $GITHUB_OUTPUT');
-    expect(deployWorkflow).not.toContain(
+    expect(checkMigrationsJob).toContain(
+      'MIGRATION_FILES=$(bash scripts/detect-migration-changes.sh "$BASE_COMMIT")'
+    );
+    expect(checkMigrationsJob).not.toContain(
+      'git diff --name-only "$BASE_BRANCH" HEAD | grep "^supabase/migrations/" || true'
+    );
+    expect(checkMigrationsJob).toContain(
+      'echo "has-migrations=true" >> $GITHUB_OUTPUT'
+    );
+    expect(checkMigrationsJob).toContain(
+      'echo "has-migrations=false" >> $GITHUB_OUTPUT'
+    );
+    expect(checkMigrationsJob).not.toContain(
       'Migration files detected (no changes, but unapplied migrations may exist)'
     );
-    expect(deployWorkflow).toContain("github.ref == 'refs/heads/main'");
-    expect(deployWorkflow).toContain("github.ref == 'refs/heads/master'");
-    expect(deployWorkflow).toContain("startsWith(github.ref, 'refs/heads/release/')");
-    expect(deployWorkflow).toContain('supabase db push --include-all');
-    expect(deployWorkflow).toContain('continue-on-error: false');
-    expect(deployWorkflow).toContain("needs.migrate-database.result == 'skipped'");
+    expect(migrateDatabaseJob).toContain("github.ref == 'refs/heads/main'");
+    expect(migrateDatabaseJob).toContain("github.ref == 'refs/heads/master'");
+    expect(migrateDatabaseJob).toContain(
+      "startsWith(github.ref, 'refs/heads/release/')"
+    );
+    expect(migrateDatabaseJob).toContain('supabase db push --include-all');
+    expect(migrateDatabaseJob).toContain('continue-on-error: false');
+    expect(deployJob).toContain(
+      "needs.check-migrations.result == 'success'"
+    );
+    expect(deployJob).toContain("needs.migrate-database.result == 'skipped'");
   });
 });
