@@ -23,6 +23,10 @@ payload.
 - Copying cells does not automatically prepend project property names.
 - If the copied matrix already contains a column-name row, that row is preserved as part
   of the pasted table.
+- Pasting creates a native document table. Users with document edit permission can edit
+  its cells normally; viewers remain read-only.
+- The pasted table is an independent snapshot. Later edits in either the source library
+  table or the document table do not update the other side.
 - The system clipboard receives both `text/plain` TSV and `text/html` table representations.
 - Plain-text TSV remains unchanged so spreadsheet and text-editor workflows keep working.
 - Browsers without `ClipboardItem` or `navigator.clipboard.write` fall back to the existing
@@ -62,6 +66,8 @@ selected project cells
 ```
 
 Consumers that do not accept HTML continue to consume the TSV representation.
+The clipboard payload contains values only and carries no source-row identifiers or live
+binding metadata.
 
 ## Testing
 
@@ -85,3 +91,5 @@ verification gate.
 - Changing project-table-to-project-table paste semantics.
 - Adding custom clipboard MIME types.
 - Intercepting all tab-separated pastes inside the document editor.
+- One-way refresh, live references, or bidirectional synchronization between source and
+  pasted tables.
