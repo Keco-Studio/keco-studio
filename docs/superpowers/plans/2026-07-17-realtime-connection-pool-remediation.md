@@ -375,9 +375,13 @@ With one project page open, run:
 psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -c "select subscription_id, count(*) as bindings, string_agg(entity::text, ', ' order by entity::text) as tables from realtime.subscription group by subscription_id order by bindings desc, subscription_id"
 ```
 
-Expected: the Sidebar project subscription has three entities
-(`folders, libraries, predefine_properties`) and the Sidebar user subscription
-has one (`projects`); there is no six-table schema-wide subscription.
+Expected: each explicit Postgres Changes binding has its own `subscription_id`
+and one row. The three Sidebar project bindings therefore appear as three
+independent one-row groups for `folders`, `libraries`, and
+`predefine_properties`; the Sidebar user binding appears as a fourth independent
+one-row group for `projects`. A collaborator binding may appear as another
+independent one-row group. Every grouped count is `1`, and there is no grouped
+six-table schema-wide subscription.
 
 - [ ] **Step 8: Commit the browser regression gate**
 
@@ -440,7 +444,10 @@ Realtime error.
 
 Confirm from the diff and runtime evidence:
 
-- Sidebar has two channels and four Postgres subscription rows.
+- Sidebar has two channels and four Postgres subscription rows: independent
+  one-row bindings for `folders`, `libraries`, `predefine_properties`, and
+  `projects`, each with its own `subscription_id` rather than a shared project
+  subscription ID.
 - Project navigation does not replace the user channel.
 - `db_pool` is 10; the live `realtime_connect` count is 0 while lazy or 10 after
   the browser workflows initialize it.
