@@ -2263,6 +2263,36 @@ describe('DocumentCollaborationSession', () => {
     expect(state.token).toEqual({ epoch: 3, revision: 5 });
   });
 
+  it('preserves exact stored block and reference identities through version restore', async () => {
+    const restoredMarkdown = '# <BlockAnchor id="55555555-5555-4555-8555-555555555555" />Restored heading\n\n<BlockAnchor id="66666666-6666-4666-8666-666666666666" />See <ResourceReference kind="document-block" documentId="11111111-1111-4111-8111-111111111111" blockId="77777777-7777-4777-8777-777777777777" blockType="paragraph" fallbackLabel="Original paragraph" />.';
+    const restoredState: AuthoritativeDocumentState = {
+      ...collaborativeState(),
+      markdown: restoredMarkdown,
+      yjsStateBase64: encodedRoot(restoredMarkdown),
+      token: { epoch: 3, revision: 5 },
+      epochReason: 'restore',
+      updatedAt: '2026-07-17T04:00:00.000Z',
+    };
+    const harness = makeHarness({
+      replace: async () => restoredState,
+    });
+    await connectReady(harness.session);
+
+    const state = await harness.session.restoreVersion(VERSION_ID);
+
+    expect(state.markdown).toBe(restoredMarkdown);
+    expect(state.markdown.match(/<BlockAnchor id="[^"]+" \/>/g)).toEqual([
+      '<BlockAnchor id="55555555-5555-4555-8555-555555555555" />',
+      '<BlockAnchor id="66666666-6666-4666-8666-666666666666" />',
+    ]);
+    expect(state.markdown).toContain(
+      '<ResourceReference kind="document-block" documentId="11111111-1111-4111-8111-111111111111" blockId="77777777-7777-4777-8777-777777777777" blockType="paragraph" fallbackLabel="Original paragraph" />'
+    );
+    expect(harness.onStateReplaced).toHaveBeenCalledWith(
+      expect.objectContaining({ markdown: restoredMarkdown })
+    );
+  });
+
   it('rejects viewer restore before flushing or calling the gateway', async () => {
     const harness = makeHarness({ role: 'viewer' });
     await connectReady(harness.session);

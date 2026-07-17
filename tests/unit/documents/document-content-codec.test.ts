@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, expect, it } from '@jest/globals';
+import { applyDocumentEditOperation } from '@/lib/agent/document-edit-operations';
 
 type ProbeResult = Record<string, unknown>;
 
@@ -87,6 +88,31 @@ Nested **Markdown**.
 </Callout>`;
 
 describe('document content codec', () => {
+  it('normalizes fresh block identities after an Agent replace_all operation', () => {
+    const oldHeadingId = '11111111-1111-4111-8111-111111111111';
+    const oldParagraphId = '22222222-2222-4222-8222-222222222222';
+    const reference = '<ResourceReference kind="document-block" documentId="33333333-3333-4333-8333-333333333333" blockId="44444444-4444-4444-8444-444444444444" blockType="paragraph" fallbackLabel="Original" />';
+    const current = `# <BlockAnchor id="${oldHeadingId}" />Old heading\n\n<BlockAnchor id="${oldParagraphId}" />Old body ${reference}`;
+    const replacement = applyDocumentEditOperation(current, {
+      type: 'replace_all',
+      markdown: '# New heading\n\nNew body',
+    });
+
+    const { markdown } = runCodecProbe({
+      mode: 'roundtrip',
+      markdown: replacement,
+    }) as { markdown: string };
+    const ids = blockAnchorIds(markdown);
+
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+    expect(ids).not.toContain(oldHeadingId);
+    expect(ids).not.toContain(oldParagraphId);
+    expect(markdown).not.toContain('ResourceReference');
+    expect(withoutBlockAnchors(markdown)).toContain('# New heading');
+    expect(withoutBlockAnchors(markdown)).toContain('New body');
+  });
+
   it('assigns distinct block anchors and preserves them on the next round trip', () => {
     const { markdown: first } = runCodecProbe({
       mode: 'roundtrip',
