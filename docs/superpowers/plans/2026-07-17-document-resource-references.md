@@ -210,6 +210,10 @@ git commit -m "feat: persist stable document block identities"
 - Modify: `src/lib/documents/documentContentCodec.ts`
 - Modify: `src/lib/documents/documentStateGateway.ts`
 - Create: `src/lib/documents/documentReferenceBlocks.ts`
+- Modify: `src/lib/documents/documentCollaborationProtocol.ts`
+- Modify: `src/lib/documents/documentCollaborationSession.ts`
+- Modify: `src/lib/documents/documentStateResetBroadcaster.ts`
+- Create: `supabase/migrations/20260717000000_document_block_normalization.sql`
 - Modify: `tests/helpers/documentCodecProbe.ts`
 - Test: `tests/unit/documents/document-reference-blocks.test.ts`
 
@@ -235,7 +239,7 @@ normalizeYjsState(
 
 Hydrate the bound headless editor, capture `Y.encodeStateVector(doc)`, run explicit block normalization, wait for Lexical/Yjs sync, then encode the delta and full state. Treat the canonical empty Yjs update as `null`. Make `yjsStateToMarkdown` delegate to this method.
 
-- [ ] **Step 3: Persist normalized state during compaction**
+- [ ] **Step 3: Persist normalized state through an epoch-fenced RPC**
 
 Replace the pre-normalized `merged` arguments in `compactDocumentState` with:
 
@@ -246,7 +250,7 @@ const normalized = await documentContentCodec.normalizeYjsState(
 );
 ```
 
-Pass `normalized.yjsStateBase64` and `normalized.markdown` to `compact_document_collab_state`.
+Pass `normalized.yjsStateBase64` and `normalized.markdown` to a caller-scoped normalization RPC. Under a document-row lock, the RPC must validate the expected epoch and revision plus exact current update-tail IDs, validate the snapshot payload, write the normalized state and Markdown, increment the collaboration epoch and revision, delete the old-epoch tail, and return the committed state. This fences pending updates from editors hydrated against the old epoch.
 
 - [ ] **Step 4: Add caller-scoped atomic ensure/list behavior**
 
@@ -259,7 +263,7 @@ export async function ensureDocumentReferenceBlocks(
 ): Promise<{ projectId: string; blocks: DocumentReferenceBlock[] }>;
 ```
 
-Read transport state and normalize it. When no normalization update is needed, return the current blocks without writing. Otherwise persist the normalized full Yjs state and matching Markdown through `compactDocumentState` using the complete current token. Decode the RPC-committed state before returning blocks so two same-token normalizers cannot return competing random IDs: the winner commits, the loser receives `DocumentStateConflictError`, rereads the winning state once, and returns only committed IDs. Reject uninitialized legacy state instead of adding an LWW write path. Do not use epoch-only append for first normalization because it cannot serialize concurrent ID assignment.
+Read transport state and normalize it. When no normalization update is needed, return the current blocks without writing. Otherwise persist the normalized full Yjs state and matching Markdown through the epoch-fenced normalization RPC. Broadcast the returned epoch/revision/state with reset reason `normalization`, then decode the RPC-committed state before returning blocks. If another normalizer wins, retry the whole read/normalize/commit flow once on `DocumentStateConflictError` and return only the winner's committed IDs. Reject uninitialized legacy state instead of adding an LWW write path. Old-epoch editor appends must fail with `PT409` and reload/rebase through the existing collaboration-session path.
 
 - [ ] **Step 5: Run tests**
 

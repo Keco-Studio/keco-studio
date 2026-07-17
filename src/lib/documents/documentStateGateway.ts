@@ -325,6 +325,43 @@ export async function compactDocumentState(
   );
 }
 
+export async function normalizeDocumentState(
+  client: SupabaseClient,
+  input: CompactDocumentStateInput
+): Promise<AuthoritativeDocumentState> {
+  assertDocumentId(input.documentId);
+  const { head, tail } = await readRawDocumentState(client, input.documentId);
+  const current = {
+    epoch: Number(head.collab_epoch),
+    revision: Number(head.collab_revision),
+  };
+  if (
+    current.epoch !== input.expected.epoch ||
+    current.revision !== input.expected.revision
+  ) {
+    throw new DocumentStateConflictError('Document state changed', current);
+  }
+
+  const normalized = await documentContentCodec.normalizeYjsState(
+    head.yjs_state,
+    tail.map((row) => row.update_data)
+  );
+  const { data, error } = await client.rpc('normalize_document_collab_state', {
+    p_document_id: input.documentId,
+    p_expected_epoch: input.expected.epoch,
+    p_expected_revision: input.expected.revision,
+    p_expected_update_ids: tail.map((row) => row.id),
+    p_yjs_state: normalized.yjsStateBase64,
+    p_markdown: normalized.markdown,
+  });
+  if (error) throwMutationError(error, current);
+  return stateFromRpc(
+    input.documentId,
+    head.project_id,
+    firstRpcRow(data)
+  );
+}
+
 export async function replaceDocumentState(
   client: SupabaseClient,
   input: ReplaceDocumentStateInput
@@ -418,5 +455,6 @@ export const documentStateGateway = {
   initialize: initializeDocumentState,
   appendUpdates: appendDocumentYjsUpdates,
   compact: compactDocumentState,
+  normalize: normalizeDocumentState,
   replace: replaceDocumentState,
 };

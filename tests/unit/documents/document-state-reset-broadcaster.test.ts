@@ -59,4 +59,52 @@ describe('document state reset broadcaster', () => {
     expect(unsubscribe).toHaveBeenCalledTimes(1);
     expect(removeChannel).toHaveBeenCalledWith(channel);
   });
+
+  it('sends a normalization reset with the committed token', async () => {
+    const send = jest.fn(async () => ({ status: 'ok' }));
+    const channel = {
+      subscribe(callback: (status: string) => void) {
+        callback('SUBSCRIBED');
+        return channel;
+      },
+      send,
+      unsubscribe: jest.fn(async () => 'ok'),
+    } as unknown as RealtimeChannel;
+    const client = {
+      auth: {
+        getSession: jest.fn(async () => ({
+          data: { session: { access_token: 'caller-token' } },
+          error: null,
+        })),
+      },
+      realtime: { setAuth: jest.fn(async () => undefined) },
+      channel: jest.fn(() => channel),
+      removeChannel: jest.fn(async () => 'ok'),
+    } as unknown as SupabaseClient;
+    const state = {
+      documentId: DOCUMENT_ID,
+      projectId: PROJECT_ID,
+      mode: 'collaborative' as const,
+      markdown: '# Normalized',
+      yjsStateBase64: 'normalized-state',
+      updateTail: [],
+      token: { epoch: 4, revision: 8 },
+      updatedAt: '2026-07-17T01:00:00.000Z',
+    };
+
+    await broadcastDocumentStateReset(client, state, 'normalization');
+
+    expect(send).toHaveBeenCalledWith({
+      type: 'broadcast',
+      event: 'document-state-reset',
+      payload: {
+        v: 1,
+        documentId: DOCUMENT_ID,
+        epoch: 4,
+        revision: 8,
+        reason: 'normalization',
+        updatedAt: '2026-07-17T01:00:00.000Z',
+      },
+    });
+  });
 });

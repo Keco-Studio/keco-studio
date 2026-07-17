@@ -1313,6 +1313,36 @@ describe('DocumentCollaborationSession', () => {
     );
   });
 
+  it('reloads the winning epoch when a pending old-epoch append conflicts', async () => {
+    const winner = {
+      ...collaborativeState(),
+      yjsStateBase64: mapUpdate('normalized', 'winner-a'),
+      token: { epoch: 3, revision: 5 },
+      updatedAt: '2026-07-17T01:00:00.000Z',
+    };
+    const harness = makeHarness({
+      append: async () => {
+        throw new DocumentStateConflictError('epoch changed', winner.token);
+      },
+    });
+    await connectReady(harness.session);
+    harness.gateway.readTransport.mockResolvedValue(winner);
+
+    harness.session.doc.getMap('local').set('block-id', 'loser-b');
+    await jest.advanceTimersByTimeAsync(75);
+    await Promise.resolve();
+
+    expect(harness.gateway.readTransport).toHaveBeenCalledWith(
+      expect.anything(),
+      DOCUMENT_ID
+    );
+    expect(harness.session.token).toEqual({ epoch: 3, revision: 5 });
+    harness.session.attachBinding();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(harness.session.doc.getMap('peer').get('normalized')).toBe('winner-a');
+    expect(harness.session.doc.getMap('local').get('block-id')).toBeUndefined();
+  });
+
   it('fails closed without appending when the current semantic state is invalid', async () => {
     const state = {
       ...collaborativeState(),
@@ -1868,6 +1898,35 @@ describe('DocumentCollaborationSession', () => {
     });
     expect(harness.gateway.read).toHaveBeenCalledTimes(2);
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('reloads the committed state after a normalization reset', async () => {
+    const replacement = {
+      ...collaborativeState(),
+      yjsStateBase64: mapUpdate('normalized', 'winner'),
+      token: { epoch: 3, revision: 5 },
+      updatedAt: '2026-07-17T01:00:00.000Z',
+    };
+    const harness = makeHarness();
+    harness.gateway.read
+      .mockResolvedValueOnce(collaborativeState())
+      .mockResolvedValueOnce(replacement);
+    await connectReady(harness.session);
+
+    await harness.channel.emit('document-state-reset', {
+      v: 1,
+      documentId: DOCUMENT_ID,
+      epoch: 3,
+      revision: 5,
+      reason: 'normalization',
+      updatedAt: replacement.updatedAt,
+    });
+
+    expect(harness.gateway.read).toHaveBeenCalledTimes(2);
+    harness.session.attachBinding();
+    await jest.advanceTimersByTimeAsync(0);
+    expect(harness.session.token).toEqual({ epoch: 3, revision: 5 });
+    expect(harness.session.doc.getMap('peer').get('normalized')).toBe('winner');
   });
 
   it('single-flights concurrent higher-epoch resets and freezes immediately', async () => {

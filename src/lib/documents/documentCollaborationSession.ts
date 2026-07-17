@@ -994,6 +994,26 @@ export class DocumentCollaborationSession implements Provider {
             // Durable catch-up delivers an update when live broadcast is unavailable.
           }
         } catch (error) {
+          if (error instanceof DocumentStateConflictError) {
+            try {
+              const winner = await this.gateway.readTransport(
+                this.supabase,
+                this.documentId
+              );
+              if (winner.token.epoch > pendingEpoch) {
+                this.replaceActiveDocument(winner);
+                return;
+              }
+            } catch (reloadError) {
+              this.failClosed(
+                reloadError instanceof Error
+                  ? reloadError.message
+                  : 'Document conflict reload failed',
+                'degraded'
+              );
+              throw reloadError;
+            }
+          }
           this.failClosed(
             error instanceof Error ? error.message : 'Document update could not be saved',
             'degraded'

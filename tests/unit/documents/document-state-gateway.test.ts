@@ -25,6 +25,7 @@ import {
   appendDocumentYjsUpdates,
   compactDocumentState,
   initializeDocumentState,
+  normalizeDocumentState,
   readDocumentState,
   readDocumentTransportState,
   replaceDocumentState,
@@ -425,6 +426,68 @@ describe('documentStateGateway mutations', () => {
     });
     expect(state.token).toEqual({ epoch: 2, revision: 5 });
   });
+
+  it('normalizes through an exact-tail epoch-fenced RPC', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: {
+        data: [
+          {
+            collab_epoch: 3,
+            collab_revision: 5,
+            yjs_state: 'normalized-full-state',
+            content: '# Normalized',
+            updated_at: '2026-07-17T01:00:00.000Z',
+          },
+        ],
+        error: null,
+      },
+    });
+
+    const state = await normalizeDocumentState(client, {
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+    });
+
+    expect(normalizeYjsState).toHaveBeenCalledWith('snapshot', [
+      'tail-a',
+      'tail-b',
+    ]);
+    expect(calls).toContainEqual({
+      kind: 'rpc:normalize_document_collab_state',
+      value: {
+        p_document_id: DOCUMENT_ID,
+        p_expected_epoch: 2,
+        p_expected_revision: 4,
+        p_expected_update_ids: [UPDATE_A, UPDATE_B],
+        p_yjs_state: 'normalized-full-state',
+        p_markdown: '# Normalized',
+      },
+    });
+    expect(state).toMatchObject({
+      yjsStateBase64: 'normalized-full-state',
+      markdown: '# Normalized',
+      token: { epoch: 3, revision: 5 },
+    });
+  });
+
+  it.each([
+    ['PT409', DocumentStateConflictError],
+    ['42501', DocumentReadOnlyError],
+  ] as const)(
+    'maps normalization RPC %s failures to the document error contract',
+    async (code, ErrorType) => {
+      const { client } = makeSupabase({
+        rpc: { data: null, error: { code, message: 'normalization failed' } },
+      });
+
+      await expect(
+        normalizeDocumentState(client, {
+          documentId: DOCUMENT_ID,
+          expected: { epoch: 2, revision: 4 },
+        })
+      ).rejects.toBeInstanceOf(ErrorType);
+    }
+  );
 
   it('maps compaction RPC conflicts with the current token after expected CAS', async () => {
     const { client, calls } = makeSupabase({

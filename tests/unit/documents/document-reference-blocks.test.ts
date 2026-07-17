@@ -2,7 +2,8 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 
 const normalizeYjsState = jest.fn();
 const readDocumentTransportState = jest.fn();
-const compactDocumentState = jest.fn();
+const normalizeDocumentState = jest.fn();
+const broadcastDocumentStateReset = jest.fn();
 
 jest.mock('@/lib/documents/documentContentCodec', () => ({
   documentContentCodec: { normalizeYjsState },
@@ -10,7 +11,11 @@ jest.mock('@/lib/documents/documentContentCodec', () => ({
 
 jest.mock('@/lib/documents/documentStateGateway', () => ({
   readDocumentTransportState,
-  compactDocumentState,
+  normalizeDocumentState,
+}));
+
+jest.mock('@/lib/documents/documentStateResetBroadcaster', () => ({
+  broadcastDocumentStateReset,
 }));
 
 import { ensureDocumentReferenceBlocks } from '@/lib/documents/documentReferenceBlocks';
@@ -78,6 +83,7 @@ function normalized(
 describe('ensureDocumentReferenceBlocks', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    broadcastDocumentStateReset.mockResolvedValue(undefined);
   });
 
   it('rejects a document whose collaborative Yjs state is not initialized', async () => {
@@ -89,10 +95,10 @@ describe('ensureDocumentReferenceBlocks', () => {
       ensureDocumentReferenceBlocks(client, DOCUMENT_ID)
     ).rejects.toBeInstanceOf(DocumentCollaborationUnavailableError);
     expect(normalizeYjsState).not.toHaveBeenCalled();
-    expect(compactDocumentState).not.toHaveBeenCalled();
+    expect(normalizeDocumentState).not.toHaveBeenCalled();
   });
 
-  it('returns canonical blocks without compacting a no-op normalization', async () => {
+  it('returns canonical blocks without committing a no-op normalization', async () => {
     readDocumentTransportState.mockResolvedValue(transportState());
     normalizeYjsState.mockResolvedValue(normalized(null));
 
@@ -100,10 +106,11 @@ describe('ensureDocumentReferenceBlocks', () => {
       ensureDocumentReferenceBlocks(client, DOCUMENT_ID)
     ).resolves.toEqual({ projectId: PROJECT_ID, blocks });
     expect(normalizeYjsState).toHaveBeenCalledWith('snapshot', ['tail']);
-    expect(compactDocumentState).not.toHaveBeenCalled();
+    expect(normalizeDocumentState).not.toHaveBeenCalled();
+    expect(broadcastDocumentStateReset).not.toHaveBeenCalled();
   });
 
-  it('returns blocks decoded from the exact state committed by compaction', async () => {
+  it('returns blocks decoded from the exact epoch-fenced committed state', async () => {
     const transientBlocks = blocksWithId(
       '55555555-5555-4555-8555-555555555555'
     );
@@ -114,28 +121,35 @@ describe('ensureDocumentReferenceBlocks', () => {
     normalizeYjsState
       .mockResolvedValueOnce(normalized('normalization-delta', transientBlocks))
       .mockResolvedValueOnce(normalized(null, committedBlocks, 'committed-state'));
-    compactDocumentState.mockResolvedValue({
+    const committedState = {
       ...transportState({ epoch: 7 }),
       markdown: '# Committed',
       yjsStateBase64: 'committed-state',
       updateTail: [],
-      token: { epoch: 7, revision: 5 },
-    });
+      token: { epoch: 8, revision: 5 },
+    };
+    normalizeDocumentState.mockResolvedValue(committedState);
 
     await expect(
       ensureDocumentReferenceBlocks(client, DOCUMENT_ID)
     ).resolves.toEqual({ projectId: PROJECT_ID, blocks: committedBlocks });
-    expect(compactDocumentState).toHaveBeenCalledWith(client, {
+    expect(normalizeDocumentState).toHaveBeenCalledWith(client, {
       documentId: DOCUMENT_ID,
       expected: { epoch: 7, revision: 4 },
     });
     expect(normalizeYjsState).toHaveBeenNthCalledWith(2, 'committed-state', []);
+    expect(broadcastDocumentStateReset).toHaveBeenCalledWith(
+      client,
+      committedState,
+      'normalization'
+    );
   });
 
   it('returns only the winning IDs when same-token normalizers race', async () => {
     const candidateA = blocksWithId('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     const candidateB = blocksWithId('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');
     const winnerBlocks = candidateA;
+    let epoch = 2;
     let revision = 4;
     let storedState = 'snapshot';
     let initialNormalizations = 0;
@@ -149,7 +163,7 @@ describe('ensureDocumentReferenceBlocks', () => {
       updateTail: storedState === 'snapshot'
         ? transportState().updateTail
         : [],
-      token: { epoch: 2, revision },
+      token: { epoch, revision },
     }));
     normalizeYjsState.mockImplementation(
       async (snapshot: string) => {
@@ -169,14 +183,21 @@ describe('ensureDocumentReferenceBlocks', () => {
         });
       }
     );
-    compactDocumentState.mockImplementation(
-      async (_client: SupabaseClient, input: { expected: { revision: number } }) => {
-        if (input.expected.revision !== revision) {
+    normalizeDocumentState.mockImplementation(
+      async (
+        _client: SupabaseClient,
+        input: { expected: { epoch: number; revision: number } }
+      ) => {
+        if (
+          input.expected.epoch !== epoch ||
+          input.expected.revision !== revision
+        ) {
           throw new DocumentStateConflictError('changed', {
-            epoch: 2,
+            epoch,
             revision,
           });
         }
+        epoch += 1;
         revision += 1;
         storedState = 'winner-state';
         return {
@@ -184,7 +205,7 @@ describe('ensureDocumentReferenceBlocks', () => {
           markdown: '# Winner',
           yjsStateBase64: storedState,
           updateTail: [],
-          token: { epoch: 2, revision },
+          token: { epoch, revision },
         };
       }
     );
@@ -203,14 +224,20 @@ describe('ensureDocumentReferenceBlocks', () => {
       projectId: PROJECT_ID,
       blocks: candidateB,
     });
-    expect(compactDocumentState).toHaveBeenCalledTimes(2);
+    expect(normalizeDocumentState).toHaveBeenCalledTimes(2);
+    expect(broadcastDocumentStateReset).toHaveBeenCalledTimes(1);
+    expect(broadcastDocumentStateReset).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ token: { epoch: 3, revision: 5 } }),
+      'normalization'
+    );
   });
 
   it('propagates a second typed conflict after the single retry', async () => {
     readDocumentTransportState.mockResolvedValue(transportState());
     normalizeYjsState.mockResolvedValue(normalized('delta'));
     const secondConflict = new DocumentStateConflictError('changed again');
-    compactDocumentState
+    normalizeDocumentState
       .mockRejectedValueOnce(new DocumentStateConflictError('changed'))
       .mockRejectedValueOnce(secondConflict);
 
@@ -218,6 +245,6 @@ describe('ensureDocumentReferenceBlocks', () => {
       ensureDocumentReferenceBlocks(client, DOCUMENT_ID)
     ).rejects.toBe(secondConflict);
     expect(readDocumentTransportState).toHaveBeenCalledTimes(2);
-    expect(compactDocumentState).toHaveBeenCalledTimes(2);
+    expect(normalizeDocumentState).toHaveBeenCalledTimes(2);
   });
 });

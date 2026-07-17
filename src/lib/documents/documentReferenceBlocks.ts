@@ -2,9 +2,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { documentContentCodec } from './documentContentCodec';
 import type { DocumentReferenceBlock } from './documentBlockIdentity';
 import {
-  compactDocumentState,
+  normalizeDocumentState,
   readDocumentTransportState,
 } from './documentStateGateway';
+import { broadcastDocumentStateReset } from './documentStateResetBroadcaster';
 import {
   DocumentCollaborationUnavailableError,
   DocumentStateConflictError,
@@ -31,26 +32,31 @@ export async function ensureDocumentReferenceBlocks(
         return { projectId: state.projectId, blocks: normalized.blocks };
       }
 
-      const compacted = await compactDocumentState(client, {
+      const committedState = await normalizeDocumentState(client, {
         documentId,
         expected: state.token,
       });
-      if (compacted.yjsStateBase64 === null) {
+      if (committedState.yjsStateBase64 === null) {
         throw new DocumentCollaborationUnavailableError(
-          'Compacted document collaboration state is unavailable'
+          'Committed document collaboration state is unavailable'
         );
       }
       const committed = await documentContentCodec.normalizeYjsState(
-        compacted.yjsStateBase64,
+        committedState.yjsStateBase64,
         []
       );
       if (committed.normalizationUpdateBase64 !== null) {
         throw new DocumentStateConflictError(
-          'Compacted document state is not normalized',
-          compacted.token
+          'Committed document state is not normalized',
+          committedState.token
         );
       }
-      return { projectId: compacted.projectId, blocks: committed.blocks };
+      await broadcastDocumentStateReset(
+        client,
+        committedState,
+        'normalization'
+      );
+      return { projectId: committedState.projectId, blocks: committed.blocks };
     } catch (error) {
       if (!(error instanceof DocumentStateConflictError) || attempt === 1) {
         throw error;
