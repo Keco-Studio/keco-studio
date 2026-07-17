@@ -16,6 +16,9 @@ function unavailableClient(): SupabaseClient {
     const builder = {
       select: () => builder,
       in: () => builder,
+      eq: () => builder,
+      order: () => builder,
+      range: async () => ({ data: [] as [], error: null }),
       then<TResult1 = { data: []; error: null }, TResult2 = never>(
         onfulfilled?: ((value: { data: []; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
         onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null

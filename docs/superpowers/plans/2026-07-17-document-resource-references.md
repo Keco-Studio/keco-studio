@@ -319,7 +319,7 @@ Export:
 
 ```ts
 listTableReferenceSources(client, projectId);
-listTableReferenceRows(client, libraryId);
+listTableReferenceRows(client, projectId, libraryId);
 listDocumentReferenceSources(client, projectId, excludeDocumentId);
 listDocumentReferenceBlocks(client, projectId, documentId);
 ```

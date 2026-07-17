@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { fetchAllPaged } from '@/lib/services/pagination';
 import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 import { DocumentAccessError } from './documentStateTypes';
 import type { DocumentReferenceBlock } from './documentBlockIdentity';
@@ -55,6 +56,7 @@ type AssetRow = {
   library_id: string;
   name: string;
   row_index?: number | null;
+  created_at?: string | null;
 };
 
 type FieldRow = {
@@ -76,6 +78,13 @@ type DocumentRow = {
   name: string;
 };
 
+const FILTER_BATCH_SIZE = 100;
+
+type PagedResult<T> = {
+  data: T[] | null;
+  error: { message: string } | null;
+};
+
 function unavailableReference(key: string): ResolvedResourceReference {
   return {
     key,
@@ -88,12 +97,78 @@ function indexById<T extends { id: string }>(rows: readonly T[]): Map<string, T>
   return new Map(rows.map((row) => [row.id, row]));
 }
 
-function resultRows<T>(result: {
-  data: unknown;
-  error: { message?: string } | null;
-}): T[] {
-  if (result.error) throw result.error;
-  return (result.data ?? []) as T[];
+function batches<T>(values: readonly T[]): T[][] {
+  const result: T[][] = [];
+  for (let start = 0; start < values.length; start += FILTER_BATCH_SIZE) {
+    result.push(values.slice(start, start + FILTER_BATCH_SIZE));
+  }
+  return result;
+}
+
+async function fetchPagedBatches<T>(
+  values: readonly string[],
+  fetchPage: (
+    batch: readonly string[],
+    from: number,
+    to: number
+  ) => PromiseLike<PagedResult<T>>
+): Promise<T[]> {
+  const pages = await Promise.all(
+    batches(values).map((batch) =>
+      fetchAllPaged<T>((from, to) => fetchPage(batch, from, to))
+    )
+  );
+  return pages.flat();
+}
+
+async function fetchRequestedValues(
+  client: SupabaseClient,
+  targets: readonly Extract<ResourceReferenceTarget, { kind: 'table-row' }>[]
+): Promise<ValueRow[]> {
+  const assetIdsByField = new Map<string, Set<string>>();
+  for (const target of targets) {
+    const assetIds = assetIdsByField.get(target.displayFieldId) ?? new Set<string>();
+    assetIds.add(target.assetId);
+    assetIdsByField.set(target.displayFieldId, assetIds);
+  }
+
+  const reads: Array<Promise<ValueRow[]>> = [];
+  for (const [fieldId, assetIds] of assetIdsByField) {
+    reads.push(
+      fetchPagedBatches<ValueRow>([...assetIds], (assetBatch, from, to) =>
+        client
+          .from('library_asset_values')
+          .select('asset_id, field_id, value_json')
+          .eq('field_id', fieldId)
+          .in('asset_id', assetBatch)
+          .order('asset_id', { ascending: true })
+          .order('field_id', { ascending: true })
+          .range(from, to) as unknown as PromiseLike<PagedResult<ValueRow>>
+      )
+    );
+  }
+  return (await Promise.all(reads)).flat();
+}
+
+function sameSemanticTarget(
+  left: ResourceReferenceTarget,
+  right: ResourceReferenceTarget
+): boolean {
+  if (left.kind !== right.kind) return false;
+  if (left.kind === 'table-row' && right.kind === 'table-row') {
+    return (
+      left.libraryId === right.libraryId &&
+      left.assetId === right.assetId &&
+      left.displayFieldId === right.displayFieldId
+    );
+  }
+  return (
+    left.kind === 'document-block' &&
+    right.kind === 'document-block' &&
+    left.documentId === right.documentId &&
+    left.blockId === right.blockId &&
+    left.blockType === right.blockType
+  );
 }
 
 async function resolveTableReferences(
@@ -107,30 +182,38 @@ async function resolveTableReferences(
   const libraryIds = [...new Set(targets.map((target) => target.libraryId))];
   const assetIds = [...new Set(targets.map((target) => target.assetId))];
   const fieldIds = [...new Set(targets.map((target) => target.displayFieldId))];
-  const [libraryResult, assetResult, fieldResult, valueResult] = await Promise.all([
-    client
-      .from('libraries')
-      .select('id, project_id, name')
-      .in('id', libraryIds),
-    client
-      .from('library_assets')
-      .select('id, library_id, name')
-      .in('id', assetIds),
-    client
-      .from('library_field_definitions')
-      .select('id, library_id, label, order_index')
-      .in('id', fieldIds),
-    client
-      .from('library_asset_values')
-      .select('asset_id, field_id, value_json')
-      .in('asset_id', assetIds)
-      .in('field_id', fieldIds),
+  const [libraryRows, assetRows, fieldRows, valueRows] = await Promise.all([
+    fetchPagedBatches<LibraryRow>(libraryIds, (batch, from, to) =>
+      client
+        .from('libraries')
+        .select('id, project_id, name')
+        .in('id', batch)
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PagedResult<LibraryRow>>
+    ),
+    fetchPagedBatches<AssetRow>(assetIds, (batch, from, to) =>
+      client
+        .from('library_assets')
+        .select('id, library_id, name')
+        .in('id', batch)
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PagedResult<AssetRow>>
+    ),
+    fetchPagedBatches<FieldRow>(fieldIds, (batch, from, to) =>
+      client
+        .from('library_field_definitions')
+        .select('id, library_id, label, order_index')
+        .in('id', batch)
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PagedResult<FieldRow>>
+    ),
+    fetchRequestedValues(client, targets),
   ]);
-  const libraries = indexById(resultRows<LibraryRow>(libraryResult));
-  const assets = indexById(resultRows<AssetRow>(assetResult));
-  const fields = indexById(resultRows<FieldRow>(fieldResult));
+  const libraries = indexById(libraryRows);
+  const assets = indexById(assetRows);
+  const fields = indexById(fieldRows);
   const values = new Map(
-    resultRows<ValueRow>(valueResult).map((row) => [
+    valueRows.map((row) => [
       `${row.asset_id}:${row.field_id}`,
       row.value_json,
     ])
@@ -174,11 +257,17 @@ async function resolveDocumentReferences(
   if (targets.length === 0) return;
 
   const documentIds = [...new Set(targets.map((target) => target.documentId))];
-  const documentResult = await client
-    .from('documents')
-    .select('id, project_id, name')
-    .in('id', documentIds);
-  const documents = indexById(resultRows<DocumentRow>(documentResult));
+  const documentRows = await fetchPagedBatches<DocumentRow>(
+    documentIds,
+    (batch, from, to) =>
+      client
+        .from('documents')
+        .select('id, project_id, name')
+        .in('id', batch)
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PagedResult<DocumentRow>>
+  );
+  const documents = indexById(documentRows);
   const targetsByDocument = new Map<string, typeof targets>();
   for (const documentId of documentIds) {
     targetsByDocument.set(
@@ -229,15 +318,23 @@ export async function resolveResourceReferences(
   targets: readonly ResourceReferenceTarget[]
 ): Promise<Map<string, ResolvedResourceReference>> {
   const uniqueTargets = new Map<string, ResourceReferenceTarget>();
+  const conflictingKeys = new Set<string>();
   for (const target of targets) {
     const key = resourceReferenceKey(target);
-    if (!uniqueTargets.has(key)) uniqueTargets.set(key, target);
+    const existing = uniqueTargets.get(key);
+    if (!existing) {
+      uniqueTargets.set(key, target);
+    } else if (!sameSemanticTarget(existing, target)) {
+      conflictingKeys.add(key);
+    }
   }
   const resolved = new Map<string, ResolvedResourceReference>();
   for (const key of uniqueTargets.keys()) {
     resolved.set(key, unavailableReference(key));
   }
-  const deduplicated = [...uniqueTargets.values()];
+  const deduplicated = [...uniqueTargets.values()].filter(
+    (target) => !conflictingKeys.has(resourceReferenceKey(target))
+  );
 
   await Promise.all([
     resolveTableReferences(
@@ -266,13 +363,16 @@ export async function listTableReferenceSources(
   client: SupabaseClient,
   projectId: string
 ): Promise<TableReferenceSource[]> {
-  const result = await client
-    .from('libraries')
-    .select('id, project_id, name')
-    .eq('project_id', projectId)
-    .order('name', { ascending: true })
-    .order('id', { ascending: true });
-  return resultRows<LibraryRow>(result).map((row) => ({
+  const rows = await fetchAllPaged<LibraryRow>((from, to) =>
+    client
+      .from('libraries')
+      .select('id, project_id, name')
+      .eq('project_id', projectId)
+      .order('name', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to) as unknown as PromiseLike<PagedResult<LibraryRow>>
+  );
+  return rows.map((row) => ({
     id: row.id,
     projectId: row.project_id,
     name: row.name,
@@ -281,43 +381,66 @@ export async function listTableReferenceSources(
 
 export async function listTableReferenceRows(
   client: SupabaseClient,
+  projectId: string,
   libraryId: string
 ): Promise<TableReferenceRows> {
-  const [fieldResult, assetResult] = await Promise.all([
+  const libraries = await fetchAllPaged<LibraryRow>((from, to) =>
     client
-      .from('library_field_definitions')
-      .select('id, library_id, label, order_index')
-      .eq('library_id', libraryId)
-      .order('order_index', { ascending: true })
-      .order('id', { ascending: true }),
-    client
-      .from('library_assets')
-      .select('id, library_id, name, row_index')
-      .eq('library_id', libraryId)
-      .order('row_index', { ascending: true })
-      .order('id', { ascending: true }),
+      .from('libraries')
+      .select('id, project_id, name')
+      .eq('id', libraryId)
+      .order('id', { ascending: true })
+      .range(from, to) as unknown as PromiseLike<PagedResult<LibraryRow>>
+  );
+  const library = libraries.find((row) => row.id === libraryId);
+  if (!library || library.project_id !== projectId) {
+    throw new Error('Library does not belong to the current project');
+  }
+
+  const [fieldRows, assetRows] = await Promise.all([
+    fetchAllPaged<FieldRow>((from, to) =>
+      client
+        .from('library_field_definitions')
+        .select('id, library_id, label, order_index')
+        .eq('library_id', libraryId)
+        .order('order_index', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PagedResult<FieldRow>>
+    ),
+    fetchAllPaged<AssetRow>((from, to) =>
+      client
+        .from('library_assets')
+        .select('id, library_id, name, row_index, created_at')
+        .eq('library_id', libraryId)
+        .order('row_index', { ascending: true })
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PagedResult<AssetRow>>
+    ),
   ]);
-  const fieldRows = resultRows<FieldRow>(fieldResult)
+  const orderedFields = fieldRows
     .filter((field) => field.library_id === libraryId)
     .sort((left, right) =>
       left.order_index - right.order_index || left.id.localeCompare(right.id)
     );
-  const assetRows = resultRows<AssetRow>(assetResult)
+  const orderedAssets = assetRows
     .filter((asset) => asset.library_id === libraryId)
-    .sort((left, right) =>
-      (left.row_index ?? Number.POSITIVE_INFINITY) -
-        (right.row_index ?? Number.POSITIVE_INFINITY) ||
-      left.id.localeCompare(right.id)
-    );
-  const valueResult = assetRows.length === 0
-    ? { data: [], error: null }
-    : await client
+    .sort(compareAssetRows);
+  const assetIds = [...new Set(orderedAssets.map((asset) => asset.id))];
+  const valueRows = await fetchPagedBatches<ValueRow>(
+    assetIds,
+    (batch, from, to) =>
+      client
         .from('library_asset_values')
         .select('asset_id, field_id, value_json')
-        .in('asset_id', assetRows.map((asset) => asset.id));
+        .in('asset_id', batch)
+        .order('asset_id', { ascending: true })
+        .order('field_id', { ascending: true })
+        .range(from, to) as unknown as PromiseLike<PagedResult<ValueRow>>
+  );
   const valuesByAsset = new Map<string, Record<string, unknown>>();
-  const fieldIds = new Set(fieldRows.map((field) => field.id));
-  for (const value of resultRows<ValueRow>(valueResult)) {
+  const fieldIds = new Set(orderedFields.map((field) => field.id));
+  for (const value of valueRows) {
     if (!fieldIds.has(value.field_id)) continue;
     const values = valuesByAsset.get(value.asset_id) ?? {};
     values[value.field_id] = value.value_json;
@@ -325,12 +448,12 @@ export async function listTableReferenceRows(
   }
 
   return {
-    fields: fieldRows.map((field) => ({
+    fields: orderedFields.map((field) => ({
       id: field.id,
       label: field.label,
       orderIndex: field.order_index,
     })),
-    rows: assetRows.map((asset) => ({
+    rows: orderedAssets.map((asset) => ({
       id: asset.id,
       name: asset.name,
       values: valuesByAsset.get(asset.id) ?? {},
@@ -343,14 +466,17 @@ export async function listDocumentReferenceSources(
   projectId: string,
   excludeDocumentId: string
 ): Promise<DocumentReferenceSource[]> {
-  const result = await client
-    .from('documents')
-    .select('id, project_id, name')
-    .eq('project_id', projectId)
-    .neq('id', excludeDocumentId)
-    .order('name', { ascending: true })
-    .order('id', { ascending: true });
-  return resultRows<DocumentRow>(result).map((row) => ({
+  const rows = await fetchAllPaged<DocumentRow>((from, to) =>
+    client
+      .from('documents')
+      .select('id, project_id, name')
+      .eq('project_id', projectId)
+      .neq('id', excludeDocumentId)
+      .order('name', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, to) as unknown as PromiseLike<PagedResult<DocumentRow>>
+  );
+  return rows.map((row) => ({
     id: row.id,
     projectId: row.project_id,
     name: row.name,
@@ -362,6 +488,18 @@ export async function listDocumentReferenceBlocks(
   projectId: string,
   documentId: string
 ): Promise<DocumentReferenceBlock[]> {
+  const documents = await fetchAllPaged<DocumentRow>((from, to) =>
+    client
+      .from('documents')
+      .select('id, project_id, name')
+      .eq('id', documentId)
+      .order('id', { ascending: true })
+      .range(from, to) as unknown as PromiseLike<PagedResult<DocumentRow>>
+  );
+  const document = documents.find((row) => row.id === documentId);
+  if (!document || document.project_id !== projectId) {
+    throw new Error('Document does not belong to the current project');
+  }
   const { ensureDocumentReferenceBlocks } = await import(
     './documentReferenceBlocks'
   );
@@ -370,4 +508,20 @@ export async function listDocumentReferenceBlocks(
     throw new Error('Document does not belong to the current project');
   }
   return result.blocks;
+}
+
+function compareAssetRows(left: AssetRow, right: AssetRow): number {
+  if (typeof left.row_index === 'number' && typeof right.row_index === 'number') {
+    if (left.row_index !== right.row_index) {
+      return left.row_index - right.row_index;
+    }
+  } else if (typeof left.row_index === 'number') {
+    return -1;
+  } else if (typeof right.row_index === 'number') {
+    return 1;
+  }
+  const createdAtDifference = (left.created_at ?? '\uffff').localeCompare(
+    right.created_at ?? '\uffff'
+  );
+  return createdAtDifference || left.id.localeCompare(right.id);
 }
