@@ -26,6 +26,7 @@ type ProbeInput =
   | { mode: 'lexical'; markdown: string }
   | { mode: 'merge'; markdown: string }
   | { mode: 'normalize-blocks'; markdown: string }
+  | { mode: 'capture-delete-only' }
   | { mode: 'crafted-invalid-jsx'; component: 'Callout' | 'Unknown' }
   | { mode: 'invalid'; markdown: string; state: string };
 
@@ -75,6 +76,46 @@ function createProbeProvider(doc: Y.Doc): Provider & { destroy(): void } {
     off: () => undefined,
     destroy: () => awareness.destroy(),
   };
+}
+
+type YjsDeleteRange = {
+  client: number;
+  clock: number;
+  length: number;
+};
+
+function yjsDeleteRanges(updateBase64: string): YjsDeleteRange[] {
+  const { ds } = Y.decodeUpdate(decodeBase64(updateBase64));
+  return Array.from(ds.clients.entries()).flatMap(([client, items]) =>
+    items.map((item) => ({
+      client,
+      clock: item.clock,
+      length: item.len,
+    }))
+  );
+}
+
+function rangesOverlap(left: YjsDeleteRange, right: YjsDeleteRange): boolean {
+  return (
+    left.client === right.client &&
+    Math.max(left.clock, right.clock) <
+      Math.min(left.clock + left.length, right.clock + right.length)
+  );
+}
+
+async function captureYjsUpdateDuring(
+  doc: Y.Doc,
+  operation: () => void | Promise<void>
+): Promise<Uint8Array | null> {
+  const updates: Uint8Array[] = [];
+  const onUpdate = (update: Uint8Array) => updates.push(update);
+  doc.on('update', onUpdate);
+  try {
+    await operation();
+  } finally {
+    doc.off('update', onUpdate);
+  }
+  return updates.length === 0 ? null : Y.mergeUpdates(updates);
 }
 
 async function anchorFreeYjsState(markdown: string): Promise<string> {
@@ -298,34 +339,66 @@ async function main() {
   }
 
   if (input.mode === 'normalize-blocks') {
-    const legacyState = await anchorFreeYjsState(input.markdown);
+    const anchorFreeState = await anchorFreeYjsState(input.markdown);
+    const legacyDoc = new Y.Doc();
+    Y.applyUpdate(legacyDoc, decodeBase64(anchorFreeState));
+    const deletionHistory = legacyDoc.getText('codec-deletion-history');
+    deletionHistory.insert(0, 'deleted');
+    deletionHistory.delete(0, deletionHistory.length);
+    const legacyState = encodeBase64(Y.encodeStateAsUpdate(legacyDoc));
+    legacyDoc.destroy();
+    const historicalDeleteRanges = yjsDeleteRanges(legacyState);
     const first = await documentContentCodec.normalizeYjsState(legacyState, []);
     const second = await documentContentCodec.normalizeYjsState(
       first.yjsStateBase64,
       []
     );
-    const editedDoc = new Y.Doc();
-    Y.applyUpdate(editedDoc, decodeBase64(first.yjsStateBase64));
-    const deletionHistory = editedDoc.getText('codec-deletion-history');
-    deletionHistory.insert(0, 'deleted');
-    deletionHistory.delete(0, deletionHistory.length);
-    const canonicalStateWithDeletionHistory = encodeBase64(
-      Y.encodeStateAsUpdate(editedDoc)
-    );
-    editedDoc.destroy();
-    const afterDeletionHistory = await documentContentCodec.normalizeYjsState(
-      canonicalStateWithDeletionHistory,
-      []
-    );
+    const normalizationDeleteRanges =
+      first.normalizationUpdateBase64 === null
+        ? []
+        : yjsDeleteRanges(first.normalizationUpdateBase64);
     return {
       first,
       second,
-      afterDeletionHistory,
+      historicalDeleteRanges,
+      repeatedHistoricalDeleteRanges: normalizationDeleteRanges.filter(
+        (normalizationRange) =>
+          historicalDeleteRanges.some((historicalRange) =>
+            rangesOverlap(normalizationRange, historicalRange)
+          )
+      ),
       deltaAppliedState:
         first.normalizationUpdateBase64 === null
           ? null
           : mergeYjsState(legacyState, [first.normalizationUpdateBase64]),
     };
+  }
+
+  if (input.mode === 'capture-delete-only') {
+    const doc = new Y.Doc();
+    const text = doc.getText('delete-only');
+    text.insert(0, 'deleted');
+    const beforeDelete = encodeBase64(Y.encodeStateAsUpdate(doc));
+    const captured = await captureYjsUpdateDuring(doc, () => {
+      text.delete(0, text.length);
+    });
+    const capturedBase64 = captured === null ? null : encodeBase64(captured);
+    const replica = new Y.Doc();
+    Y.applyUpdate(replica, decodeBase64(beforeDelete));
+    if (captured) Y.applyUpdate(replica, captured);
+    const result = {
+      capturedBase64,
+      structCount: captured === null ? null : Y.decodeUpdate(captured).structs.length,
+      deleteRanges:
+        capturedBase64 === null ? [] : yjsDeleteRanges(capturedBase64),
+      replicaText: replica.getText('delete-only').toString(),
+      stateVectorsEqual:
+        encodeBase64(Y.encodeStateVector(replica)) ===
+        encodeBase64(Y.encodeStateVector(doc)),
+    };
+    replica.destroy();
+    doc.destroy();
+    return result;
   }
 
   if (input.mode === 'crafted-invalid-jsx') {

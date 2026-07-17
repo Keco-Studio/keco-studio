@@ -426,6 +426,42 @@ describe('documentStateGateway mutations', () => {
     expect(state.token).toEqual({ epoch: 2, revision: 5 });
   });
 
+  it('maps compaction RPC conflicts with the current token after expected CAS', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: { data: null, error: { code: 'PT409', message: 'changed' } },
+    });
+
+    await expect(
+      compactDocumentState(client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 4 },
+      })
+    ).rejects.toMatchObject({
+      name: 'DocumentStateConflictError',
+      token: { epoch: 2, revision: 4 },
+    });
+    expect(calls).toContainEqual({
+      kind: 'rpc:compact_document_collab_state',
+      value: expect.objectContaining({
+        p_expected_epoch: 2,
+        p_expected_revision: 4,
+      }),
+    });
+  });
+
+  it('maps compaction RPC permission failures to DocumentReadOnlyError', async () => {
+    const { client } = makeSupabase({
+      rpc: { data: null, error: { code: '42501', message: 'denied' } },
+    });
+
+    await expect(
+      compactDocumentState(client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 4 },
+      })
+    ).rejects.toBeInstanceOf(DocumentReadOnlyError);
+  });
+
   it('rejects compaction when the caller token is already stale locally', async () => {
     const { client, calls } = makeSupabase();
     await expect(

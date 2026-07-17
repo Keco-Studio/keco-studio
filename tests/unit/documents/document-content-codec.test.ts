@@ -270,10 +270,16 @@ describe('document content codec', () => {
           nearestHeading?: string;
         }>;
       };
-      afterDeletionHistory: {
-        normalizationUpdateBase64: string | null;
-        blocks: Array<{ blockId: string }>;
-      };
+      historicalDeleteRanges: Array<{
+        client: number;
+        clock: number;
+        length: number;
+      }>;
+      repeatedHistoricalDeleteRanges: Array<{
+        client: number;
+        clock: number;
+        length: number;
+      }>;
       deltaAppliedState: string;
     };
 
@@ -302,11 +308,27 @@ describe('document content codec', () => {
     expect(result.second.blocks).toEqual(result.first.blocks);
     expect(result.second.markdown).toBe(result.first.markdown);
     expect(result.second.yjsStateBase64).toBe(result.first.yjsStateBase64);
-    expect(result.afterDeletionHistory.normalizationUpdateBase64).toBeNull();
-    expect(result.afterDeletionHistory.blocks).toEqual(result.first.blocks);
+    expect(result.historicalDeleteRanges.length).toBeGreaterThan(0);
+    expect(result.repeatedHistoricalDeleteRanges).toEqual([]);
     expect(blockAnchorIds(result.first.markdown)).toEqual(
       result.first.blocks.map(({ blockId }) => blockId)
     );
+  });
+
+  it('preserves a captured delete-only Yjs update', () => {
+    const result = runCodecProbe({ mode: 'capture-delete-only' }) as {
+      capturedBase64: string | null;
+      structCount: number | null;
+      deleteRanges: Array<unknown>;
+      replicaText: string;
+      stateVectorsEqual: boolean;
+    };
+
+    expect(result.capturedBase64).toEqual(expect.any(String));
+    expect(result.structCount).toBe(0);
+    expect(result.deleteRanges.length).toBeGreaterThan(0);
+    expect(result.replicaText).toBe('');
+    expect(result.stateVectorsEqual).toBe(true);
   });
 
   it('rejects malformed Markdown and malformed Yjs state with typed validation errors', async () => {

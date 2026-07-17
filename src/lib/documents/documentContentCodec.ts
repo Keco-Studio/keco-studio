@@ -156,9 +156,19 @@ function registerLexicalToYjsSync(
   );
 }
 
-function hasNewYjsStructs(update: Uint8Array): boolean {
-  // State-vector deltas repeat existing delete sets; normalization writes structs.
-  return Y.decodeUpdate(update).structs.length > 0;
+async function captureYjsUpdateDuring(
+  doc: Y.Doc,
+  operation: () => void | Promise<void>
+): Promise<Uint8Array | null> {
+  const updates: Uint8Array[] = [];
+  const onUpdate = (update: Uint8Array) => updates.push(update);
+  doc.on('update', onUpdate);
+  try {
+    await operation();
+  } finally {
+    doc.off('update', onUpdate);
+  }
+  return updates.length === 0 ? null : Y.mergeUpdates(updates);
 }
 
 export function mergeYjsState(
@@ -259,7 +269,6 @@ async function normalizeYjsState(
     Y.applyUpdate(doc, mergedUpdate, 'codec-hydration');
     await waitForLexicalCommit();
 
-    const originalStateVector = Y.encodeStateVector(doc);
     unregisterLexicalSync = registerLexicalToYjsSync(
       headless,
       binding,
@@ -268,19 +277,19 @@ async function normalizeYjsState(
         syncError = error;
       }
     );
-    headless.normalizeBlockIds();
-    await waitForLexicalCommit();
-    if (syncError) throw syncError;
+    const normalizationUpdate = await captureYjsUpdateDuring(doc, async () => {
+      headless.normalizeBlockIds();
+      await waitForLexicalCommit();
+      if (syncError) throw syncError;
+    });
 
     const markdown = headless.getMarkdown();
     validateSanctionedMdx(markdown);
-    const normalizationUpdate = Y.encodeStateAsUpdate(doc, originalStateVector);
     return {
       yjsStateBase64: encodeBase64(Y.encodeStateAsUpdate(doc)),
       markdown,
-      normalizationUpdateBase64: hasNewYjsStructs(normalizationUpdate)
-        ? encodeBase64(normalizationUpdate)
-        : null,
+      normalizationUpdateBase64:
+        normalizationUpdate === null ? null : encodeBase64(normalizationUpdate),
       blocks: headless.listReferenceBlocks(),
     };
   } catch (error) {
