@@ -21,7 +21,11 @@ describe('MDXEditor route-level lazy loading', () => {
 
     expect(packageImports).toEqual([
       'src/components/documents/MdxDocumentEditor.tsx',
+      'src/components/documents/ResourceReferenceEditor.tsx',
+      'src/components/documents/ResourceReferenceInsertButton.tsx',
+      'src/components/documents/documentBlockIdentityPlugin.ts',
       'src/components/documents/documentCollaborationPlugin.ts',
+      'src/lib/documents/documentBlockIdentity.ts',
       'src/lib/documents/headlessDocumentNodes.ts',
     ]);
 

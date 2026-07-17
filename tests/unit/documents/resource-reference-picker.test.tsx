@@ -243,6 +243,7 @@ describe('ResourceReferencePickerModal', () => {
     const { documentLike, container } = createNullContainer();
     Object.assign(globalThis, {
       IS_REACT_ACT_ENVIRONMENT: true,
+      navigator: { userAgent: 'Node.js Jest' },
       window: documentLike.defaultView,
       document: documentLike,
     });
@@ -586,6 +587,7 @@ describe('document editor reference controls', () => {
     const { documentLike, container } = createNullContainer();
     Object.assign(globalThis, {
       IS_REACT_ACT_ENVIRONMENT: true,
+      navigator: { userAgent: 'Node.js Jest' },
       window: documentLike.defaultView,
       document: documentLike,
     });

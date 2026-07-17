@@ -154,6 +154,7 @@ describe('ResourceReferenceResultList', () => {
     ({ documentLike, container } = createDom());
     Object.assign(globalThis, {
       IS_REACT_ACT_ENVIRONMENT: true,
+      navigator: { userAgent: 'Node.js Jest' },
       window: documentLike.defaultView,
       document: documentLike,
     });
