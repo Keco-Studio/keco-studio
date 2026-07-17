@@ -218,7 +218,7 @@ Expected: FAIL because `ClipboardItemConstructor` and `writeLibraryClipboard` ar
 Append to `libraryRichClipboard.ts`:
 
 ```ts
-type ClipboardWriter = Pick<Clipboard, 'write' | 'writeText'>;
+type ClipboardWriter = Partial<Pick<Clipboard, 'write' | 'writeText'>>;
 
 export type ClipboardItemConstructor = new (
   items: Record<string, Blob>,
@@ -263,6 +263,38 @@ export async function writeLibraryClipboard(
 }
 ```
 
+Review amendment: the writer suite also covers these compatibility branches in the same
+test file:
+
+```ts
+it('uses writeText when the clipboard has no rich write method', async () => {
+  const writeText = jest.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+  await writeLibraryClipboard(payload, { clipboard: { writeText } });
+  expect(writeText).toHaveBeenCalledWith(payload.plainText);
+});
+
+it('rejects only after both rich and plain-text writes fail', async () => {
+  const write = jest.fn<(items: ClipboardItem[]) => Promise<void>>()
+    .mockRejectedValue(new Error('rich denied'));
+  const writeText = jest.fn<(text: string) => Promise<void>>()
+    .mockRejectedValue(new Error('plain denied'));
+  await expect(writeLibraryClipboard(payload, {
+    clipboard: { write, writeText },
+    ClipboardItem: FakeClipboardItem as unknown as ClipboardItemConstructor,
+  })).rejects.toThrow('plain denied');
+});
+
+it('resolves when no clipboard write API is available', async () => {
+  await expect(writeLibraryClipboard(payload, {
+    clipboard: {},
+    ClipboardItem: undefined,
+  })).resolves.toBeUndefined();
+});
+```
+
+In these examples, `payload` is `{ plainText: 'Alice\t10', html: '<table></table>' }`
+and `FakeClipboardItem` is the test double defined by the rich-write cases above.
+
 - [ ] **Step 8: Run focused tests and type checking**
 
 Run:
@@ -272,7 +304,7 @@ npx jest tests/unit/library-rich-clipboard.test.ts --runInBand
 npm run typecheck
 ```
 
-Expected: 6 tests PASS and TypeScript exits 0.
+Expected: 9 tests PASS and TypeScript exits 0.
 
 - [ ] **Step 9: Commit Task 1**
 
@@ -376,7 +408,7 @@ Run:
 npx jest tests/unit/library-rich-clipboard.test.ts tests/unit/library-rich-clipboard-wiring.test.ts --runInBand
 ```
 
-Expected: 2 suites and 7 tests PASS.
+Expected: 2 suites and 10 tests PASS.
 
 - [ ] **Step 7: Run regression verification**
 
