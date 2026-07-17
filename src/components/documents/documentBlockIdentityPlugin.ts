@@ -49,7 +49,9 @@ export const documentBlockIdentityPlugin =
       const wasAssigning = realm.getValue(assignMissingDocumentBlockIds$);
       realm.pub(assignMissingDocumentBlockIds$, assignMissingIds);
       if (assignMissingIds && !wasAssigning) {
-        realm.getValue(rootEditor$)?.update(() => normalizeDocumentBlockIds());
+        realm
+          .getValue(rootEditor$)
+          ?.update(() => normalizeDocumentBlockIds(), { discrete: true });
       }
     },
   });

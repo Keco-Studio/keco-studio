@@ -1,9 +1,10 @@
 import { once } from 'node:events';
 import {
+  syncLexicalUpdateToYjs,
   syncYjsChangesToLexical,
   type Provider,
 } from '@lexical/yjs';
-import { $getRoot } from 'lexical';
+import { $getRoot, $isElementNode } from 'lexical';
 import { Awareness } from 'y-protocols/awareness';
 import * as Y from 'yjs';
 import {
@@ -22,6 +23,7 @@ type ProbeInput =
   | { mode: 'structure'; markdown: string }
   | { mode: 'decorators'; markdown: string }
   | { mode: 'lexical'; markdown: string }
+  | { mode: 'empty-paragraph'; markdown: string }
   | { mode: 'merge'; markdown: string }
   | { mode: 'crafted-invalid-jsx'; component: 'Callout' | 'Unknown' }
   | { mode: 'invalid'; markdown: string; state: string };
@@ -167,6 +169,78 @@ async function inspectDecoratorBinding(markdown: string) {
   }
 }
 
+async function emptyParagraphRoundTrip(markdown: string) {
+  const originalWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    if (
+      args.length === 1 &&
+      args[0] === 'Invalid access: Add Yjs type to a document before reading data.'
+    ) {
+      return;
+    }
+    originalWarn(...args);
+  };
+  const headless = await createHeadlessDocumentEditor();
+  headless.clear();
+  const doc = new Y.Doc();
+  const provider = createProbeProvider(doc);
+  const binding = createDocumentLexicalYjsBinding(
+    headless.editor,
+    provider,
+    'empty-paragraph-probe',
+    doc,
+    new Map([['empty-paragraph-probe', doc]])
+  );
+  const unregister = headless.editor.registerUpdateListener(
+    ({
+      prevEditorState,
+      editorState,
+      dirtyElements,
+      dirtyLeaves,
+      normalizedNodes,
+      tags,
+    }) =>
+      syncLexicalUpdateToYjs(
+        binding,
+        provider,
+        prevEditorState,
+        editorState,
+        dirtyElements,
+        dirtyLeaves,
+        normalizedNodes,
+        tags
+      )
+  );
+
+  try {
+    await headless.setMarkdown(markdown);
+    headless.editor.update(
+      () => {
+        const paragraph = $getRoot().getFirstChildOrThrow();
+        if (!$isElementNode(paragraph)) {
+          throw new Error('Expected an emptyable paragraph');
+        }
+        paragraph.clear();
+      },
+      { discrete: true }
+    );
+    const snapshot = encodeBase64(Y.encodeStateAsUpdate(doc));
+    const first = await documentContentCodec.yjsStateToMarkdown(snapshot, []);
+    const secondSnapshot = await documentContentCodec.markdownToYjsState(first);
+    const second = await documentContentCodec.yjsStateToMarkdown(
+      secondSnapshot,
+      []
+    );
+    return { first, second };
+  } finally {
+    console.warn = originalWarn;
+    unregister();
+    binding.root.destroy(binding);
+    provider.destroy();
+    doc.destroy();
+  }
+}
+
 async function main() {
   const input = await readInput();
   if (input.mode === 'roundtrip') {
@@ -200,6 +274,10 @@ async function main() {
       markdown: headless.getMarkdown(),
       nodes: headless.editor.getEditorState().toJSON().root.children,
     };
+  }
+
+  if (input.mode === 'empty-paragraph') {
+    return emptyParagraphRoundTrip(input.markdown);
   }
 
   if (input.mode === 'merge') {

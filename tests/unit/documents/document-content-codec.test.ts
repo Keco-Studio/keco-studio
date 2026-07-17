@@ -127,6 +127,19 @@ describe('document content codec', () => {
     expect(blockAnchorIds(markdown)).toEqual([blockId]);
   });
 
+  it('round-trips an identified empty paragraph in valid MDX text context', () => {
+    const blockId = '44444444-4444-4444-8444-444444444444';
+    const source = `<BlockAnchor id="${blockId}" />&#x20;`;
+    const { first, second } = runCodecProbe({
+      mode: 'empty-paragraph',
+      markdown: source,
+    }) as { first: string; second: string };
+
+    expect(first).toContain('&#x20;');
+    expect(blockAnchorIds(first)).toEqual([blockId]);
+    expect(blockAnchorIds(second)).toEqual([blockId]);
+  });
+
   it('round-trips every Phase 1 Markdown node through Lexical Yjs state', async () => {
     const { markdown: restored } = runCodecProbe({
       mode: 'roundtrip',

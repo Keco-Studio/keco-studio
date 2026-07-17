@@ -26,6 +26,7 @@ import type { MdxJsxTextElement } from 'mdast-util-mdx-jsx';
 import { isUuid } from '@/lib/utils/uuid';
 
 const BLOCK_ANCHOR_NAME = 'BlockAnchor';
+const EMPTY_PARAGRAPH_SENTINEL = ' ';
 const PARAGRAPH_FLATTENING_PARENT_TYPES = new Set(['listitem', 'admonition']);
 
 export const documentBlockIdState = createState('kecoBlockId', {
@@ -69,6 +70,7 @@ export function normalizeDocumentBlockIds(): void {
       continue;
     }
     if (
+      current.length === 0 &&
       index === blocks.length - 1 &&
       $isParagraphNode(node) &&
       displayText(node).length === 0
@@ -196,7 +198,15 @@ function leadingBlockAnchor(
   );
   const idAttribute = attributes.find((attribute) => attribute.name === 'id');
   const blockId = typeof idAttribute?.value === 'string' ? idAttribute.value : '';
-  return isUuid(blockId) ? { blockId, children } : null;
+  if (!isUuid(blockId)) return null;
+  const contentChildren =
+    node.type === 'paragraph' &&
+    children.length === 1 &&
+    children[0]?.type === 'text' &&
+    children[0].value === EMPTY_PARAGRAPH_SENTINEL
+      ? []
+      : children;
+  return { blockId, children: contentChildren };
 }
 
 function blockAnchor(blockId: string): MdxJsxTextElement {
@@ -283,7 +293,12 @@ export const documentParagraphExportVisitor: LexicalExportVisitor<
     }
     const paragraph: Paragraph = {
       type: 'paragraph',
-      children: [blockAnchor(blockId)],
+      children: [
+        blockAnchor(blockId),
+        ...(lexicalNode.getChildrenSize() === 0
+          ? [{ type: 'text' as const, value: EMPTY_PARAGRAPH_SENTINEL }]
+          : []),
+      ],
     };
     actions.appendToParent(mdastParent, paragraph);
     actions.registerReferredComponent(BLOCK_ANCHOR_NAME);

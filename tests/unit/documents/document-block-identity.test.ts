@@ -1,5 +1,3 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import {
   $createHeadingNode,
   $isHeadingNode,
@@ -15,6 +13,7 @@ import {
   $isParagraphNode,
   $isRangeSelection,
   $isTextNode,
+  $setState,
   createEditor,
   type LexicalEditor,
 } from 'lexical';
@@ -54,17 +53,105 @@ function blocks(editor: LexicalEditor) {
 }
 
 describe('document block identity', () => {
-  it('updates missing-ID assignment when editor permissions change', () => {
-    const plugin = fs.readFileSync(
-      path.join(
-        process.cwd(),
-        'src/components/documents/documentBlockIdentityPlugin.ts'
-      ),
-      'utf8'
+  it('starts assigning IDs through the plugin update lifecycle without remounting', async () => {
+    const addExportVisitor$ = Symbol('addExportVisitor');
+    const addImportVisitor$ = Symbol('addImportVisitor');
+    const createRootEditorSubscription$ = Symbol('rootSubscription');
+    const rootEditor$ = Symbol('rootEditor');
+
+    jest.doMock('@mdxeditor/gurx', () => ({
+      Cell: () => Symbol('cell'),
+    }));
+    jest.doMock('@mdxeditor/editor', () => ({
+      addExportVisitor$,
+      addImportVisitor$,
+      createRootEditorSubscription$,
+      rootEditor$,
+      realmPlugin:
+        (definition: {
+          init?: (realm: unknown, params?: unknown) => void;
+          update?: (realm: unknown, params?: unknown) => void;
+        }) =>
+        (params?: unknown) => ({
+          init: (realm: unknown) => definition.init?.(realm, params),
+          update: (realm: unknown) => definition.update?.(realm, params),
+        }),
+    }));
+
+    const { documentBlockIdentityPlugin } = await import(
+      '@/components/documents/documentBlockIdentityPlugin'
+    );
+    const editor = createEditor({ nodes: [HeadingNode] });
+    const values = new Map<unknown, unknown>([[rootEditor$, editor]]);
+    let subscribeToRoot: ((editor: LexicalEditor) => () => void) | undefined;
+    const realm = {
+      getValue: (ref: unknown) => values.get(ref),
+      pub: (ref: unknown, value: unknown) => {
+        values.set(ref, value);
+        if (ref === createRootEditorSubscription$) {
+          subscribeToRoot = value as typeof subscribeToRoot;
+        }
+      },
+      pubIn: () => undefined,
+    };
+
+    documentBlockIdentityPlugin({ assignMissingIds: false }).init?.(
+      realm as never
+    );
+    expect(subscribeToRoot).toEqual(expect.any(Function));
+    const unregister = subscribeToRoot?.(editor);
+    editor.update(
+      () => {
+        $getRoot().append(
+          $createParagraphNode().append($createTextNode('Read only draft'))
+        );
+      },
+      { discrete: true }
+    );
+    expect(blocks(editor)).toEqual([]);
+
+    documentBlockIdentityPlugin({ assignMissingIds: true }).update?.(
+      realm as never
+    );
+    expect(blocks(editor)).toHaveLength(1);
+    expect(blocks(editor)[0]).toMatchObject({
+      blockType: 'paragraph',
+      text: 'Read only draft',
+    });
+    expect(
+      editor.getEditorState().read(() => $getRoot().getTextContent())
+    ).toBe('Read only draft');
+
+    unregister?.();
+    jest.dontMock('@mdxeditor/gurx');
+    jest.dontMock('@mdxeditor/editor');
+  });
+
+  it('repairs a duplicate ID on the final empty paragraph', () => {
+    const duplicateId = '33333333-3333-4333-8333-333333333333';
+    const editor = createEditor({ nodes: [HeadingNode] });
+    editor.update(
+      () => {
+        const first = $createParagraphNode().append($createTextNode('First'));
+        const empty = $createParagraphNode();
+        $setState(first, documentBlockIdState, duplicateId);
+        $setState(empty, documentBlockIdState, duplicateId);
+        $getRoot().append(first, empty);
+        normalizeDocumentBlockIds();
+      },
+      { discrete: true }
     );
 
-    expect(plugin).toContain('assignMissingDocumentBlockIds$');
-    expect(plugin).toMatch(/update\(realm, params\)/);
+    const [firstId, emptyId] = editor.getEditorState().read(() =>
+      $getRoot().getChildren().map((node) =>
+        $getState(node, documentBlockIdState)
+      )
+    );
+    expect(firstId).toBe(duplicateId);
+    expect(emptyId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+    expect(emptyId).not.toBe(duplicateId);
   });
 
   it('lists top-level blocks with collapsed text and nearest headings', async () => {
