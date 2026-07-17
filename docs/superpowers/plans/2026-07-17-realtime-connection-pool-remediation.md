@@ -4,7 +4,7 @@
 
 **Goal:** Eliminate Sidebar `IncreaseConnectionPool` failures while preserving all private Realtime behavior and Sidebar refresh workflows.
 
-**Architecture:** Restore three explicit Postgres Changes bindings inside the existing private project channel and keep the user projects channel stable across project navigation. Add a guarded local-only tool that sets the Realtime tenant `db_pool` to 10 and verifies the live pool, then make the two-browser E2E gates fail on the target Realtime errors.
+**Architecture:** Restore three explicit Postgres Changes bindings inside the existing private project channel and keep the user projects channel stable across project navigation. Add a guarded local-only tool that sets the Realtime tenant `db_pool` to 10, accepts a lazy pool, and replaces only stale positive live pools, then make the two-browser E2E gates fail on the target Realtime errors.
 
 **Tech Stack:** React 19 hooks, Supabase JS/Realtime 2.87.1, local Supabase Realtime v2.68.4, TypeScript/tsx, Jest 30, Playwright 1.57, GitHub Actions, Docker/PostgreSQL.
 
@@ -133,6 +133,8 @@ git commit -m "fix: narrow sidebar realtime subscriptions"
 - Modify: `.github/workflows/ci.yml`
 - Modify: `.github/workflows/playwright.yml`
 - Modify: `README.md`
+- Modify: `docs/superpowers/specs/2026-07-17-realtime-connection-pool-remediation-design.md`
+- Modify: `docs/superpowers/plans/2026-07-17-realtime-connection-pool-remediation.md`
 
 **Interfaces:**
 - Produces from `scripts/lib/localRealtimePool.ts`: `configureLocalRealtimePool(deps: PoolConfiguratorDependencies): Promise<{ restarted: boolean }>`.
@@ -145,19 +147,20 @@ git commit -m "fix: narrow sidebar realtime subscriptions"
 Import only `scripts/lib/localRealtimePool.ts`, then inject a command runner and wait function. Cover these cases with recorded Docker arguments:
 
 ```ts
-it('updates and restarts when db_pool is missing', async () => {
+it('updates without terminating when db_pool is missing and the pool is lazy', async () => {
   const result = await configureLocalRealtimePool({ run, wait, checkOnly: false });
-  expect(result).toEqual({ restarted: true });
-  expect(commands).toContainEqual(['restart', 'supabase_realtime_keco-studio']);
+  expect(result).toEqual({ restarted: false });
+  expect(sql).not.toContainEqual(expect.stringContaining('pg_terminate_backend'));
 });
 
-it('does not restart when stored and live pool sizes are ten', async () => {
+it('is idempotent when stored and live pool sizes are ten', async () => {
   const result = await configureLocalRealtimePool({ run, wait, checkOnly: false });
   expect(result).toEqual({ restarted: false });
 });
 
-it('restarts when the stored value is ten but the live pool is stale', async () => {
-  expect((await configureLocalRealtimePool({ run, wait })).restarted).toBe(true);
+it('terminates only realtime_connect backends when a positive pool is stale', async () => {
+  await configureLocalRealtimePool({ run, wait });
+  expect(sql).toContainEqual(expect.stringContaining('pg_terminate_backend'));
 });
 
 it('refuses containers with a different Supabase project label', async () => {
@@ -196,11 +199,17 @@ For both containers, require a running state and the exact
 
 ```ts
 [
-  'exec', DB_CONTAINER,
-  'psql', '-U', 'postgres', '-d', 'postgres',
+  'exec', '-e', 'PGPASSWORD=postgres', DB_CONTAINER,
+  'psql', '-U', 'supabase_admin', '-d', 'postgres',
   '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-c', sql,
 ]
 ```
+
+The fixed local password is injected only into the `docker exec` process. The
+current Supabase image owns `_realtime.extensions` with `supabase_admin`; its
+`postgres` role is neither a superuser nor a member of `supabase_admin`, so it
+cannot perform the narrowly scoped update. The tool never grants or alters
+roles and never accepts remote credentials.
 
 The SQL runs in one transaction, verifies local tenant/extension cardinality,
 and uses:
@@ -209,10 +218,14 @@ and uses:
 settings = jsonb_set(settings, '{db_pool}', '10'::jsonb, true)
 ```
 
-After apply, restart when the value changed or the live
-`pg_stat_activity.application_name = 'realtime_connect'` count is not 10. Poll
-until the container is healthy, stored value is 10, and live connection count is
-10. `--check` performs all guards and verification but never updates or restarts.
+After apply, accept live
+`pg_stat_activity.application_name = 'realtime_connect'` counts of zero (the
+pool is lazy and has not started) or ten. For any other positive count, execute
+guarded `pg_terminate_backend(pid)` only for `realtime_connect` backends, then
+poll until the stored value is ten and the live count is zero or ten. Never
+restart the Realtime container because its self-host startup seed can overwrite
+the setting. `--check` performs all guards and verification but never updates,
+terminates a backend, or restarts a container.
 
 - [ ] **Step 4: Run the pool unit tests and verify GREEN**
 
@@ -220,8 +233,9 @@ until the container is healthy, stored value is 10, and live connection count is
 npm run test:unit -- --runInBand tests/unit/configure-local-realtime-pool.test.ts
 ```
 
-Expected: PASS with apply, idempotency, interrupted-apply recovery, check-only,
-container guard, and timeout cases covered.
+Expected: PASS with apply, lazy-zero idempotency, initialized-ten idempotency,
+stale-positive termination, check-only, container guard, SQL-error redaction,
+and timeout cases covered.
 
 - [ ] **Step 5: Wire package scripts, CI, and developer setup**
 
@@ -253,7 +267,9 @@ npm run supabase:realtime-pool
 npm run supabase:realtime-pool:check
 ```
 
-Expected: first run restarts if needed; second reports no restart; check exits 0.
+Expected: the first run restores the stored value after any startup seed and
+terminates only a stale positive live pool if present; the second is idempotent;
+check exits 0.
 
 Then verify without printing extension settings:
 
@@ -262,12 +278,14 @@ psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -c "select settings
 psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -c "select count(*) from pg_stat_activity where application_name='realtime_connect'"
 ```
 
-Expected: both values are `10`.
+Expected: the stored value is `10`; the live count is `0` before lazy pool
+initialization or `10` after Realtime clients create it. The browser regression
+step supplies the final initialized-live evidence.
 
 - [ ] **Step 7: Commit the local pool tooling**
 
 ```bash
-git add scripts/lib/localRealtimePool.ts scripts/configure-local-realtime-pool.ts tests/unit/configure-local-realtime-pool.test.ts package.json .github/workflows/ci.yml .github/workflows/playwright.yml README.md
+git add scripts/lib/localRealtimePool.ts scripts/configure-local-realtime-pool.ts tests/unit/configure-local-realtime-pool.test.ts package.json .github/workflows/ci.yml .github/workflows/playwright.yml README.md docs/superpowers/specs/2026-07-17-realtime-connection-pool-remediation-design.md docs/superpowers/plans/2026-07-17-realtime-connection-pool-remediation.md
 git commit -m "fix: size local realtime authorization pool"
 ```
 
@@ -386,7 +404,8 @@ npm run test:unit -- --runInBand src/components/layout/hooks/useSidebarRealtime.
 npm run supabase:realtime-pool:check
 ```
 
-Expected: all focused tests pass and the live pool check exits 0.
+Expected: all focused tests pass and the pool check accepts stored `db_pool=10`
+with either a lazy zero or initialized ten live connections.
 
 - [ ] **Step 2: Run static and compile checks**
 
@@ -423,7 +442,8 @@ Confirm from the diff and runtime evidence:
 
 - Sidebar has two channels and four Postgres subscription rows.
 - Project navigation does not replace the user channel.
-- `db_pool` and live `realtime_connect` count are both 10.
+- `db_pool` is 10; the live `realtime_connect` count is 0 while lazy or 10 after
+  the browser workflows initialize it.
 - Private flags and RLS migrations are unchanged.
 - Library/folder/property/document invalidations remain wired.
 - `next-env.d.ts` was not staged or reverted.

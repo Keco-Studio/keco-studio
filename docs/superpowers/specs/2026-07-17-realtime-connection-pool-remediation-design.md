@@ -99,17 +99,27 @@ the project channel.
 
 Add an idempotent local setup script that:
 
-1. verifies it is targeting the local `realtime-dev` tenant;
+1. verifies both containers belong to the local project and it is targeting the
+   local `realtime-dev` tenant;
 2. updates only the `db_pool` key in the `postgres_cdc_rls` extension settings
-   to `10`;
-3. verifies the stored value;
-4. restarts the local Realtime container only when necessary so the tenant pool
-   is recreated with the new size;
+   to `10` after Realtime startup or reset seeding completes;
+3. treats a live `realtime_connect` count of zero as a valid lazy pool and ten
+   as a fully initialized pool;
+4. when the live count is another positive value, terminates only those
+   `realtime_connect` PostgreSQL backends so Realtime or the active client can
+   recreate the pool from the stored value;
 5. avoids printing credentials or encrypted extension settings.
 
 Supabase CLI does not expose this setting in `config.toml`, so adding an
 unsupported configuration key is explicitly forbidden. CI workflows that start
-or recover local Supabase invoke the setup script after the service is running.
+or recover local Supabase invoke the setup script after the service and seed are
+running. Developers repeat the command after `supabase start` and every
+`supabase db reset` because the self-host seed can replace the extension row.
+
+The script does not restart the Realtime container: observed local Realtime
+startup runs `Seeding selfhosted Realtime`, which can overwrite `db_pool` after
+the update. The targeted backend termination avoids that ordering race and does
+not interrupt an uninitialized lazy pool.
 
 Hosted Supabase pool sizing remains an operational project setting and is not
 changed by repository migrations.
@@ -147,8 +157,9 @@ single connection. The trade-off is up to nine additional local PostgreSQL
 connections and a small memory increase. The local database allows 100
 connections, leaving sufficient headroom for this development and CI workload.
 
-Restarting Realtime adds a few seconds to environment setup only. It does not
-affect response time after startup.
+Most setup runs do not interrupt Realtime at all. If an initialized pool has a
+stale positive size, its targeted PostgreSQL backends are disconnected and the
+active client recreates them with the stored size.
 
 ## Testing
 
@@ -170,8 +181,9 @@ document payload handling.
 
 Test the pool setup script's guarded SQL and idempotency. After applying it to
 local Supabase, verify that the `postgres_cdc_rls` extension has `db_pool = 10`
-and that `pg_stat_activity` can create the expected `realtime_connect` pool under
-concurrent private joins.
+and that `pg_stat_activity` reports either a lazy zero count before the first
+private join or the expected ten `realtime_connect` connections under concurrent
+private joins.
 
 ### Browser Regression
 
