@@ -20,9 +20,17 @@ import {
   validateSanctionedMdx,
   validateSanctionedMdxAstNode,
 } from './sanctionedMdx';
+import type { DocumentReferenceBlock } from './documentBlockIdentity';
 
 export type ValidatedDocumentContent = {
   markdown: string;
+};
+
+export type NormalizedDocumentContent = {
+  yjsStateBase64: string;
+  markdown: string;
+  normalizationUpdateBase64: string | null;
+  blocks: DocumentReferenceBlock[];
 };
 
 export interface DocumentContentCodec {
@@ -32,6 +40,10 @@ export interface DocumentContentCodec {
     snapshotBase64: string | null,
     updateTailBase64: readonly string[]
   ): Promise<string>;
+  normalizeYjsState(
+    snapshotBase64: string | null,
+    updateTailBase64: readonly string[]
+  ): Promise<NormalizedDocumentContent>;
   mergeYjsState(
     snapshotBase64: string | null,
     updateTailBase64: readonly string[]
@@ -99,6 +111,56 @@ function validateSerializedMdxNodes(value: unknown): void {
   }
 }
 
+function validateMergedYjsUpdate(update: Uint8Array): void {
+  const stagingDoc = new Y.Doc();
+  try {
+    Y.applyUpdate(stagingDoc, update, 'codec-validation');
+    validateSerializedMdxNodes(stagingDoc.get('root', Y.XmlText));
+  } finally {
+    stagingDoc.destroy();
+  }
+}
+
+function registerLexicalToYjsSync(
+  headless: Awaited<ReturnType<typeof createHeadlessDocumentEditor>>,
+  binding: Binding,
+  provider: Provider,
+  onError: (error: unknown) => void
+): () => void {
+  return headless.editor.registerUpdateListener(
+    ({
+      prevEditorState,
+      editorState,
+      dirtyElements,
+      dirtyLeaves,
+      normalizedNodes,
+      tags,
+    }) => {
+      try {
+        runLexicalYjsSync(() =>
+          syncLexicalUpdateToYjs(
+            binding,
+            provider,
+            prevEditorState,
+            editorState,
+            dirtyElements,
+            dirtyLeaves,
+            normalizedNodes,
+            tags
+          )
+        );
+      } catch (error) {
+        onError(error);
+      }
+    }
+  );
+}
+
+function hasNewYjsStructs(update: Uint8Array): boolean {
+  // State-vector deltas repeat existing delete sets; normalization writes structs.
+  return Y.decodeUpdate(update).structs.length > 0;
+}
+
 export function mergeYjsState(
   snapshotBase64: string | null,
   updateTailBase64: readonly string[]
@@ -133,32 +195,12 @@ async function markdownToYjsState(markdown: string): Promise<string> {
   const provider = createCodecProvider(doc);
   const binding = createCodecBinding(headless.editor, provider, doc);
   let syncError: unknown = null;
-
-  const unregister = headless.editor.registerUpdateListener(
-    ({
-      prevEditorState,
-      editorState,
-      dirtyElements,
-      dirtyLeaves,
-      normalizedNodes,
-      tags,
-    }) => {
-      try {
-        runLexicalYjsSync(() =>
-          syncLexicalUpdateToYjs(
-            binding,
-            provider,
-            prevEditorState,
-            editorState,
-            dirtyElements,
-            dirtyLeaves,
-            normalizedNodes,
-            tags
-          )
-        );
-      } catch (error) {
-        syncError = error;
-      }
+  const unregister = registerLexicalToYjsSync(
+    headless,
+    binding,
+    provider,
+    (error) => {
+      syncError = error;
     }
   );
 
@@ -179,21 +221,24 @@ async function markdownToYjsState(markdown: string): Promise<string> {
     );
   } finally {
     unregister();
+    binding.root.destroy(binding);
     provider.destroy();
     doc.destroy();
   }
 }
 
-async function yjsStateToMarkdown(
+async function normalizeYjsState(
   snapshotBase64: string | null,
   updateTailBase64: readonly string[]
-): Promise<string> {
+): Promise<NormalizedDocumentContent> {
   const headless = await createHeadlessDocumentEditor();
   headless.clear();
   const doc = new Y.Doc();
   const provider = createCodecProvider(doc);
   const binding = createCodecBinding(headless.editor, provider, doc);
   const sharedRoot = binding.root.getSharedType();
+  let syncError: unknown = null;
+  let unregisterLexicalSync: (() => void) | null = null;
 
   const onYjsChange = (
     events: Array<{ delta: unknown }>,
@@ -210,18 +255,34 @@ async function yjsStateToMarkdown(
   try {
     const merged = mergeYjsState(snapshotBase64, updateTailBase64);
     const mergedUpdate = decodeBase64(merged);
-    const stagingDoc = new Y.Doc();
-    try {
-      Y.applyUpdate(stagingDoc, mergedUpdate, 'codec-validation');
-      validateSerializedMdxNodes(stagingDoc.get('root', Y.XmlText));
-    } finally {
-      stagingDoc.destroy();
-    }
+    validateMergedYjsUpdate(mergedUpdate);
     Y.applyUpdate(doc, mergedUpdate, 'codec-hydration');
     await waitForLexicalCommit();
+
+    const originalStateVector = Y.encodeStateVector(doc);
+    unregisterLexicalSync = registerLexicalToYjsSync(
+      headless,
+      binding,
+      provider,
+      (error) => {
+        syncError = error;
+      }
+    );
+    headless.normalizeBlockIds();
+    await waitForLexicalCommit();
+    if (syncError) throw syncError;
+
     const markdown = headless.getMarkdown();
     validateSanctionedMdx(markdown);
-    return markdown;
+    const normalizationUpdate = Y.encodeStateAsUpdate(doc, originalStateVector);
+    return {
+      yjsStateBase64: encodeBase64(Y.encodeStateAsUpdate(doc)),
+      markdown,
+      normalizationUpdateBase64: hasNewYjsStructs(normalizationUpdate)
+        ? encodeBase64(normalizationUpdate)
+        : null,
+      blocks: headless.listReferenceBlocks(),
+    };
   } catch (error) {
     throw new DocumentContentValidationError(
       error instanceof Error
@@ -229,10 +290,19 @@ async function yjsStateToMarkdown(
         : 'Document content could not be decoded'
     );
   } finally {
+    unregisterLexicalSync?.();
     sharedRoot.unobserveDeep(onYjsChange as never);
+    binding.root.destroy(binding);
     provider.destroy();
     doc.destroy();
   }
+}
+
+async function yjsStateToMarkdown(
+  snapshotBase64: string | null,
+  updateTailBase64: readonly string[]
+): Promise<string> {
+  return (await normalizeYjsState(snapshotBase64, updateTailBase64)).markdown;
 }
 
 export const documentContentCodec: DocumentContentCodec = {
@@ -242,5 +312,6 @@ export const documentContentCodec: DocumentContentCodec = {
   },
   markdownToYjsState,
   yjsStateToMarkdown,
+  normalizeYjsState,
   mergeYjsState,
 };

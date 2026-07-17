@@ -241,6 +241,74 @@ describe('document content codec', () => {
     expect(withoutBlockAnchors(result.markdown as string)).toContain('# Shared');
   });
 
+  it('returns one minimal durable block-id update for legacy Yjs state', () => {
+    const result = runCodecProbe({
+      mode: 'normalize-blocks',
+      markdown: '# Legacy heading\n\nLegacy paragraph',
+    }) as {
+      first: {
+        yjsStateBase64: string;
+        markdown: string;
+        normalizationUpdateBase64: string | null;
+        blocks: Array<{
+          blockId: string;
+          blockType: string;
+          text: string;
+          headingLevel?: number;
+          nearestHeading?: string;
+        }>;
+      };
+      second: {
+        yjsStateBase64: string;
+        markdown: string;
+        normalizationUpdateBase64: string | null;
+        blocks: Array<{
+          blockId: string;
+          blockType: string;
+          text: string;
+          headingLevel?: number;
+          nearestHeading?: string;
+        }>;
+      };
+      afterDeletionHistory: {
+        normalizationUpdateBase64: string | null;
+        blocks: Array<{ blockId: string }>;
+      };
+      deltaAppliedState: string;
+    };
+
+    expect(result.first.normalizationUpdateBase64).toEqual(expect.any(String));
+    expect(result.first.normalizationUpdateBase64).not.toBe('');
+    expect(result.first.blocks).toEqual([
+      {
+        blockId: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        ),
+        blockType: 'heading',
+        text: 'Legacy heading',
+        headingLevel: 1,
+      },
+      {
+        blockId: expect.stringMatching(
+          /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+        ),
+        blockType: 'paragraph',
+        text: 'Legacy paragraph',
+        nearestHeading: 'Legacy heading',
+      },
+    ]);
+    expect(result.deltaAppliedState).toBe(result.first.yjsStateBase64);
+    expect(result.second.normalizationUpdateBase64).toBeNull();
+    expect(result.second.blocks).toEqual(result.first.blocks);
+    expect(result.second.markdown).toBe(result.first.markdown);
+    expect(result.second.yjsStateBase64).toBe(result.first.yjsStateBase64);
+    expect(result.afterDeletionHistory.normalizationUpdateBase64).toBeNull();
+    expect(result.afterDeletionHistory.blocks).toEqual(result.first.blocks);
+    expect(blockAnchorIds(result.first.markdown)).toEqual(
+      result.first.blocks.map(({ blockId }) => blockId)
+    );
+  });
+
   it('rejects malformed Markdown and malformed Yjs state with typed validation errors', async () => {
     const result = runCodecProbe({ mode: 'invalid', markdown: '\u0000', state: 'AQID' });
     expect(result.validateError).toBe('DocumentContentValidationError');

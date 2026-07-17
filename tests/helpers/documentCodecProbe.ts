@@ -1,6 +1,8 @@
 import { once } from 'node:events';
 import {
+  syncLexicalUpdateToYjs,
   syncYjsChangesToLexical,
+  type Binding,
   type Provider,
 } from '@lexical/yjs';
 import { $getRoot } from 'lexical';
@@ -23,6 +25,7 @@ type ProbeInput =
   | { mode: 'decorators'; markdown: string }
   | { mode: 'lexical'; markdown: string }
   | { mode: 'merge'; markdown: string }
+  | { mode: 'normalize-blocks'; markdown: string }
   | { mode: 'crafted-invalid-jsx'; component: 'Callout' | 'Unknown' }
   | { mode: 'invalid'; markdown: string; state: string };
 
@@ -72,6 +75,72 @@ function createProbeProvider(doc: Y.Doc): Provider & { destroy(): void } {
     off: () => undefined,
     destroy: () => awareness.destroy(),
   };
+}
+
+async function anchorFreeYjsState(markdown: string): Promise<string> {
+  const headless = await createHeadlessDocumentEditor();
+  headless.clear();
+  const doc = new Y.Doc();
+  const provider = createProbeProvider(doc);
+  const binding = createDocumentLexicalYjsBinding(
+    headless.editor,
+    provider,
+    'document',
+    doc,
+    new Map([['document', doc]])
+  );
+  let syncError: unknown = null;
+  const unregister = headless.editor.registerUpdateListener(
+    ({
+      prevEditorState,
+      editorState,
+      dirtyElements,
+      dirtyLeaves,
+      normalizedNodes,
+      tags,
+    }) => {
+      try {
+        const originalWarn = console.warn;
+        console.warn = (...args: unknown[]) => {
+          if (
+            args.length === 1 &&
+            args[0] ===
+              'Invalid access: Add Yjs type to a document before reading data.'
+          ) {
+            return;
+          }
+          originalWarn(...args);
+        };
+        try {
+          syncLexicalUpdateToYjs(
+            binding as Binding,
+            provider,
+            prevEditorState,
+            editorState,
+            dirtyElements,
+            dirtyLeaves,
+            normalizedNodes,
+            tags
+          );
+        } finally {
+          console.warn = originalWarn;
+        }
+      } catch (error) {
+        syncError = error;
+      }
+    }
+  );
+
+  try {
+    await headless.setMarkdown(markdown);
+    if (syncError) throw syncError;
+    return encodeBase64(Y.encodeStateAsUpdate(doc));
+  } finally {
+    unregister();
+    binding.root.destroy(binding);
+    provider.destroy();
+    doc.destroy();
+  }
 }
 
 function craftedInvalidJsxState(component: 'Callout' | 'Unknown'): string {
@@ -226,6 +295,37 @@ async function main() {
     clientA.destroy();
     clientB.destroy();
     return result;
+  }
+
+  if (input.mode === 'normalize-blocks') {
+    const legacyState = await anchorFreeYjsState(input.markdown);
+    const first = await documentContentCodec.normalizeYjsState(legacyState, []);
+    const second = await documentContentCodec.normalizeYjsState(
+      first.yjsStateBase64,
+      []
+    );
+    const editedDoc = new Y.Doc();
+    Y.applyUpdate(editedDoc, decodeBase64(first.yjsStateBase64));
+    const deletionHistory = editedDoc.getText('codec-deletion-history');
+    deletionHistory.insert(0, 'deleted');
+    deletionHistory.delete(0, deletionHistory.length);
+    const canonicalStateWithDeletionHistory = encodeBase64(
+      Y.encodeStateAsUpdate(editedDoc)
+    );
+    editedDoc.destroy();
+    const afterDeletionHistory = await documentContentCodec.normalizeYjsState(
+      canonicalStateWithDeletionHistory,
+      []
+    );
+    return {
+      first,
+      second,
+      afterDeletionHistory,
+      deltaAppliedState:
+        first.normalizationUpdateBase64 === null
+          ? null
+          : mergeYjsState(legacyState, [first.normalizationUpdateBase64]),
+    };
   }
 
   if (input.mode === 'crafted-invalid-jsx') {

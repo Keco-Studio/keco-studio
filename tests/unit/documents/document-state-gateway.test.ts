@@ -3,12 +3,19 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 const markdownToYjsState = jest.fn(async (markdown: string) => `state:${markdown}`);
 const yjsStateToMarkdown = jest.fn(async () => '# Derived');
 const mergeYjsState = jest.fn(() => 'merged-state');
+const normalizeYjsState = jest.fn(async () => ({
+  yjsStateBase64: 'normalized-full-state',
+  markdown: '# Normalized',
+  normalizationUpdateBase64: 'normalization-delta',
+  blocks: [],
+}));
 
 jest.mock('@/lib/documents/documentContentCodec', () => ({
   documentContentCodec: {
     validate: jest.fn((markdown: string) => ({ markdown })),
     markdownToYjsState,
     yjsStateToMarkdown,
+    normalizeYjsState,
     mergeYjsState,
   },
   mergeYjsState,
@@ -394,15 +401,17 @@ describe('documentStateGateway mutations', () => {
     ).rejects.toBeInstanceOf(DocumentStateConflictError);
   });
 
-  it('compacts exactly the head and tail read under the expected token', async () => {
+  it('compacts the normalized full state and Markdown under the expected token', async () => {
     const { client, calls } = makeSupabase();
     const state = await compactDocumentState(client, {
       documentId: DOCUMENT_ID,
       expected: { epoch: 2, revision: 4 },
     });
 
-    expect(mergeYjsState).toHaveBeenCalledWith('snapshot', ['tail-a', 'tail-b']);
-    expect(yjsStateToMarkdown).toHaveBeenCalledWith('merged-state', []);
+    expect(normalizeYjsState).toHaveBeenCalledWith('snapshot', [
+      'tail-a',
+      'tail-b',
+    ]);
     expect(calls).toContainEqual({
       kind: 'rpc:compact_document_collab_state',
       value: {
@@ -410,8 +419,8 @@ describe('documentStateGateway mutations', () => {
         p_expected_epoch: 2,
         p_expected_revision: 4,
         p_included_update_ids: [UPDATE_A, UPDATE_B],
-        p_yjs_state: 'merged-state',
-        p_markdown: '# Derived',
+        p_yjs_state: 'normalized-full-state',
+        p_markdown: '# Normalized',
       },
     });
     expect(state.token).toEqual({ epoch: 2, revision: 5 });

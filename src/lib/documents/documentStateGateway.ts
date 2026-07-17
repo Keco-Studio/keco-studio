@@ -304,16 +304,18 @@ export async function compactDocumentState(
   }
 
   const updateTail = tail.map((row) => row.update_data);
-  const merged = mergeYjsState(head.yjs_state, updateTail);
-  const markdown = await documentContentCodec.yjsStateToMarkdown(merged, []);
+  const normalized = await documentContentCodec.normalizeYjsState(
+    head.yjs_state,
+    updateTail
+  );
   const includedUpdateIds = tail.map((row) => row.id);
   const { data, error } = await client.rpc('compact_document_collab_state', {
     p_document_id: input.documentId,
     p_expected_epoch: input.expected.epoch,
     p_expected_revision: input.expected.revision,
     p_included_update_ids: includedUpdateIds,
-    p_yjs_state: merged,
-    p_markdown: markdown,
+    p_yjs_state: normalized.yjsStateBase64,
+    p_markdown: normalized.markdown,
   });
   if (error) throwMutationError(error, current);
   return stateFromRpc(
