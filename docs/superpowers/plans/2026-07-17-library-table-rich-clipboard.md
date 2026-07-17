@@ -269,31 +269,41 @@ test file:
 ```ts
 it('uses writeText when the clipboard has no rich write method', async () => {
   const writeText = jest.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
-  await writeLibraryClipboard(payload, { clipboard: { writeText } });
-  expect(writeText).toHaveBeenCalledWith(payload.plainText);
+  await writeLibraryClipboard(
+    { plainText: 'Alice\t10', html: '<table></table>' },
+    { clipboard: { writeText } },
+  );
+  expect(writeText).toHaveBeenCalledWith('Alice\t10');
 });
 
 it('rejects only after both rich and plain-text writes fail', async () => {
+  class FakeClipboardItem {
+    constructor(public readonly data: Record<string, Blob>) {}
+  }
   const write = jest.fn<(items: ClipboardItem[]) => Promise<void>>()
     .mockRejectedValue(new Error('rich denied'));
   const writeText = jest.fn<(text: string) => Promise<void>>()
     .mockRejectedValue(new Error('plain denied'));
-  await expect(writeLibraryClipboard(payload, {
-    clipboard: { write, writeText },
-    ClipboardItem: FakeClipboardItem as unknown as ClipboardItemConstructor,
-  })).rejects.toThrow('plain denied');
+  await expect(
+    writeLibraryClipboard(
+      { plainText: 'Alice\t10', html: '<table></table>' },
+      {
+        clipboard: { write, writeText },
+        ClipboardItem: FakeClipboardItem as unknown as ClipboardItemConstructor,
+      },
+    ),
+  ).rejects.toThrow('plain denied');
 });
 
 it('resolves when no clipboard write API is available', async () => {
-  await expect(writeLibraryClipboard(payload, {
-    clipboard: {},
-    ClipboardItem: undefined,
-  })).resolves.toBeUndefined();
+  await expect(
+    writeLibraryClipboard(
+      { plainText: 'Alice\t10', html: '<table></table>' },
+      { clipboard: {}, ClipboardItem: undefined },
+    ),
+  ).resolves.toBeUndefined();
 });
 ```
-
-In these examples, `payload` is `{ plainText: 'Alice\t10', html: '<table></table>' }`
-and `FakeClipboardItem` is the test double defined by the rich-write cases above.
 
 - [ ] **Step 8: Run focused tests and type checking**
 
