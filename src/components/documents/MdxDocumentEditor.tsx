@@ -12,7 +12,6 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
   type ChangeEvent,
   type ComponentType,
   type MouseEvent,
@@ -49,7 +48,6 @@ import {
   currentSelection$,
   iconComponentFor$,
   insertImage$,
-  insertJsx$,
   openLinkEditDialog$,
   useCellValue,
   usePublisher,
@@ -79,14 +77,11 @@ import {
 } from './SanctionedMdxPropertyEditor';
 import {
   ResourceReferenceEditor,
-  type ResourceReferenceReplacementHandler,
 } from './ResourceReferenceEditor';
 import { ResourceReferenceProvider } from './ResourceReferenceProvider';
 import { ResourceReferencePickerModal } from './ResourceReferencePickerModal';
-import {
-  resourceReferenceAttributes,
-  type ResourceReferenceTarget,
-} from '@/lib/documents/resourceReferenceTypes';
+import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
+import { useResourceReferencePickerController } from './useResourceReferencePickerController';
 
 export type { MDXEditorMethods } from '@mdxeditor/editor';
 
@@ -106,11 +101,6 @@ export type MdxDocumentEditorProps = {
     cursorColor: string;
   };
   editorRef?: Ref<MDXEditorMethods | null>;
-};
-
-type ReferencePickerState = {
-  initialTarget?: ResourceReferenceTarget;
-  apply: (target: ResourceReferenceTarget) => void;
 };
 
 function publishEditorRef(
@@ -252,34 +242,6 @@ function SingleFileImageButton() {
   );
 }
 
-function InsertReferenceButton({
-  onOpen,
-}: {
-  onOpen: (apply: (target: ResourceReferenceTarget) => void) => void;
-}) {
-  const iconComponentFor = useCellValue(iconComponentFor$);
-  const insertJsx = usePublisher(insertJsx$);
-
-  return (
-    <ButtonWithTooltip
-      type="button"
-      title="Insert reference"
-      onMouseDown={(event) => event.preventDefault()}
-      onClick={() => {
-        onOpen((target) => {
-          insertJsx({
-            kind: 'text',
-            name: 'ResourceReference',
-            props: resourceReferenceAttributes(target),
-          });
-        });
-      }}
-    >
-      {iconComponentFor('link')}
-    </ButtonWithTooltip>
-  );
-}
-
 function handleLinkDoubleClick(event: MouseEvent<HTMLDivElement>) {
   const target = event.target instanceof Element ? event.target : null;
   const link = target?.closest<HTMLAnchorElement>('a[href]');
@@ -305,7 +267,6 @@ export default function MdxDocumentEditor({
   editorRef,
 }: MdxDocumentEditorProps) {
   const editorMethodsRef = useRef<MDXEditorMethods | null>(null);
-  const [referencePicker, setReferencePicker] = useState<ReferencePickerState | null>(null);
   const collaborationSession = collaboration?.session;
   const collaborationUsername = collaboration?.username;
   const collaborationCursorColor = collaboration?.cursorColor;
@@ -316,27 +277,8 @@ export default function MdxDocumentEditor({
   const restoreEditorFocus = useCallback(() => {
     setTimeout(() => editorMethodsRef.current?.focus(), 0);
   }, []);
-  const openReferenceInsertion = useCallback(
-    (apply: (target: ResourceReferenceTarget) => void) => {
-      setReferencePicker({ apply });
-    },
-    []
-  );
-  const onReplaceResourceReference = useCallback<ResourceReferenceReplacementHandler>(
-    (target, replaceTarget) => {
-      setReferencePicker({ initialTarget: target, apply: replaceTarget });
-    },
-    []
-  );
-  const cancelReferencePicker = useCallback(() => {
-    setReferencePicker(null);
-    restoreEditorFocus();
-  }, [restoreEditorFocus]);
-  const confirmReferencePicker = useCallback((target: ResourceReferenceTarget) => {
-    referencePicker?.apply(target);
-    setReferencePicker(null);
-    restoreEditorFocus();
-  }, [referencePicker, restoreEditorFocus]);
+  const referencePicker = useResourceReferencePickerController(restoreEditorFocus);
+  const onReplaceResourceReference = referencePicker.openReplacement;
   const plugins = useMemo(() => {
     const ResourceReference = (props: JsxEditorProps) => (
       <ResourceReferenceEditor
@@ -416,7 +358,10 @@ export default function MdxDocumentEditor({
               <Separator />
               <SelectedTextLinkButton />
               <SingleFileImageButton />
-              <InsertReferenceButton onOpen={openReferenceInsertion} />
+              <ResourceReferenceInsertButton
+                readOnly={readOnly}
+                onOpen={referencePicker.openInsertion}
+              />
               <Separator />
               <InsertTable />
               <InsertThematicBreak />
@@ -434,7 +379,7 @@ export default function MdxDocumentEditor({
     collaborationUsername,
     imageUploadHandler,
     onReplaceResourceReference,
-    openReferenceInsertion,
+    referencePicker.openInsertion,
     readOnly,
     showToolbar,
   ]);
@@ -453,12 +398,12 @@ export default function MdxDocumentEditor({
           className={styles.editor}
         />
         <ResourceReferencePickerModal
-          open={referencePicker !== null}
+          open={referencePicker.open}
           projectId={projectId}
           documentId={documentId}
-          initialTarget={referencePicker?.initialTarget}
-          onCancel={cancelReferencePicker}
-          onConfirm={confirmReferencePicker}
+          initialTarget={referencePicker.initialTarget}
+          onCancel={referencePicker.cancel}
+          onConfirm={referencePicker.confirm}
         />
       </ResourceReferenceProvider>
     </div>

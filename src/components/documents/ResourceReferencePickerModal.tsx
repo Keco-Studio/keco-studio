@@ -70,15 +70,51 @@ export function ResourceReferencePickerModal({
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [documentSearch, setDocumentSearch] = useState('');
-  const [loadingSources, setLoadingSources] = useState(false);
-  const [loadingTargets, setLoadingTargets] = useState(false);
+  const [loadingTableSources, setLoadingTableSources] = useState(false);
+  const [loadingDocumentSources, setLoadingDocumentSources] = useState(false);
+  const [loadingRows, setLoadingRows] = useState(false);
+  const [loadingBlocks, setLoadingBlocks] = useState(false);
   const [validating, setValidating] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const tableRequest = useRef(0);
-  const documentRequest = useRef(0);
+  const [tableSourcesError, setTableSourcesError] = useState<string | null>(null);
+  const [documentSourcesError, setDocumentSourcesError] = useState<string | null>(null);
+  const [rowsError, setRowsError] = useState<string | null>(null);
+  const [blocksError, setBlocksError] = useState<string | null>(null);
+  const [validationError, setValidationError] = useState<string | null>(null);
+  const tableSourcesRequest = useRef(0);
+  const documentSourcesRequest = useRef(0);
+  const rowsRequest = useRef(0);
+  const blocksRequest = useRef(0);
+  const validationRequest = useRef(0);
+  const activeValidation = useRef<number | null>(null);
+  const openGeneration = useRef(0);
+
+  const invalidateValidation = useCallback(() => {
+    validationRequest.current += 1;
+    activeValidation.current = null;
+    setValidating(false);
+  }, []);
 
   useEffect(() => {
-    if (!open) return;
+    openGeneration.current += 1;
+    tableSourcesRequest.current += 1;
+    documentSourcesRequest.current += 1;
+    rowsRequest.current += 1;
+    blocksRequest.current += 1;
+    invalidateValidation();
+    setLoadingTableSources(false);
+    setLoadingDocumentSources(false);
+    setLoadingRows(false);
+    setLoadingBlocks(false);
+    setTableSourcesError(null);
+    setDocumentSourcesError(null);
+    setRowsError(null);
+    setBlocksError(null);
+    setValidationError(null);
+    if (!open) {
+      setTableRows(EMPTY_TABLE_ROWS);
+      setDocumentBlocks([]);
+      return;
+    }
     const kind: ReferenceKind = initialTarget?.kind === 'document-block'
       ? 'document'
       : 'table';
@@ -94,88 +130,95 @@ export function ResourceReferencePickerModal({
     setDocumentSearch('');
     setTableRows(EMPTY_TABLE_ROWS);
     setDocumentBlocks([]);
-    setError(null);
-  }, [initialTarget, open]);
+  }, [initialTarget, invalidateValidation, open]);
+
+  useEffect(() => () => {
+    openGeneration.current += 1;
+    validationRequest.current += 1;
+    activeValidation.current = null;
+  }, []);
 
   useEffect(() => {
     if (!open || activeKind !== 'table') return;
-    let current = true;
-    setLoadingSources(true);
-    setError(null);
+    const request = ++tableSourcesRequest.current;
+    setLoadingTableSources(true);
+    setTableSourcesError(null);
     void listTableReferenceSources(supabase, projectId)
       .then((sources) => {
-        if (current) setTableSources(sources);
+        if (request === tableSourcesRequest.current) setTableSources(sources);
       })
       .catch(() => {
-        if (current) setError(LOAD_ERROR);
+        if (request === tableSourcesRequest.current) setTableSourcesError(LOAD_ERROR);
       })
       .finally(() => {
-        if (current) setLoadingSources(false);
+        if (request === tableSourcesRequest.current) setLoadingTableSources(false);
       });
-    return () => { current = false; };
   }, [activeKind, open, projectId, supabase]);
 
   useEffect(() => {
     if (!open || activeKind !== 'document') return;
-    let current = true;
-    setLoadingSources(true);
-    setError(null);
+    const request = ++documentSourcesRequest.current;
+    setLoadingDocumentSources(true);
+    setDocumentSourcesError(null);
     void listDocumentReferenceSources(supabase, projectId, documentId)
       .then((sources) => {
-        if (current) setDocumentSources(sources);
+        if (request === documentSourcesRequest.current) setDocumentSources(sources);
       })
       .catch(() => {
-        if (current) setError(LOAD_ERROR);
+        if (request === documentSourcesRequest.current) setDocumentSourcesError(LOAD_ERROR);
       })
       .finally(() => {
-        if (current) setLoadingSources(false);
+        if (request === documentSourcesRequest.current) setLoadingDocumentSources(false);
       });
-    return () => { current = false; };
   }, [activeKind, documentId, open, projectId, supabase]);
 
   useEffect(() => {
-    const request = ++tableRequest.current;
+    const request = ++rowsRequest.current;
     if (!open || !selectedLibraryId) {
       setTableRows(EMPTY_TABLE_ROWS);
+      setLoadingRows(false);
+      setRowsError(null);
       return;
     }
-    setLoadingTargets(true);
-    setError(null);
+    setLoadingRows(true);
+    setRowsError(null);
     void listTableReferenceRows(supabase, projectId, selectedLibraryId)
       .then((result) => {
-        if (request === tableRequest.current) setTableRows(result);
+        if (request === rowsRequest.current) setTableRows(result);
       })
       .catch(() => {
-        if (request === tableRequest.current) {
+        if (request === rowsRequest.current) {
           setTableRows(EMPTY_TABLE_ROWS);
-          setError(LOAD_ERROR);
+          setRowsError(LOAD_ERROR);
         }
       })
       .finally(() => {
-        if (request === tableRequest.current) setLoadingTargets(false);
+        if (request === rowsRequest.current) setLoadingRows(false);
       });
   }, [open, projectId, selectedLibraryId, supabase]);
 
   useEffect(() => {
-    const request = ++documentRequest.current;
+    const request = ++blocksRequest.current;
     if (!open || !selectedDocumentId) {
       setDocumentBlocks([]);
+      setLoadingBlocks(false);
+      setBlocksError(null);
       return;
     }
-    setLoadingTargets(true);
-    setError(null);
+    setLoadingBlocks(true);
+    setBlocksError(null);
     void listDocumentReferenceBlocks(supabase, projectId, selectedDocumentId)
       .then((blocks) => {
-        if (request === documentRequest.current) setDocumentBlocks(blocks);
+        if (request === blocksRequest.current) setDocumentBlocks(blocks);
       })
       .catch(() => {
-        if (request === documentRequest.current) {
+        if (request === blocksRequest.current) {
           setDocumentBlocks([]);
-          setError(LOAD_ERROR);
+          setBlocksError(LOAD_ERROR);
         }
       })
       .finally(() => {
-        if (request === documentRequest.current) setLoadingTargets(false);
+        if (request === blocksRequest.current) setLoadingBlocks(false);
       });
   }, [open, projectId, selectedDocumentId, supabase]);
 
@@ -212,6 +255,20 @@ export function ResourceReferencePickerModal({
     selectedLibraryId,
     selectedRow,
   ]);
+  const targetSignature = target ? JSON.stringify(target) : null;
+  const targetSignatureRef = useRef<string | null>(targetSignature);
+
+  useEffect(() => {
+    targetSignatureRef.current = targetSignature;
+  }, [targetSignature]);
+
+  const loadingSources = activeKind === 'table'
+    ? loadingTableSources
+    : loadingDocumentSources;
+  const loadingTargets = activeKind === 'table' ? loadingRows : loadingBlocks;
+  const visibleError = validationError ?? (activeKind === 'table'
+    ? rowsError ?? tableSourcesError
+    : blocksError ?? documentSourcesError);
 
   const filteredRows = useMemo(() => {
     const query = searchable(tableSearch);
@@ -233,37 +290,84 @@ export function ResourceReferencePickerModal({
   }, [documentBlocks, documentSearch]);
 
   const changeLibrary = useCallback((libraryId: string) => {
+    invalidateValidation();
     setSelectedLibraryId(libraryId);
     setSelectedAssetId(null);
     setSelectedFieldId(null);
     setTableRows(EMPTY_TABLE_ROWS);
-    setError(null);
-  }, []);
+    setRowsError(null);
+    setValidationError(null);
+  }, [invalidateValidation]);
 
   const changeDocument = useCallback((nextDocumentId: string) => {
+    invalidateValidation();
     setSelectedDocumentId(nextDocumentId);
     setSelectedBlockId(null);
     setDocumentBlocks([]);
-    setError(null);
-  }, []);
+    setBlocksError(null);
+    setValidationError(null);
+  }, [invalidateValidation]);
+
+  const selectAsset = useCallback((assetId: string) => {
+    invalidateValidation();
+    setSelectedAssetId(assetId);
+    setValidationError(null);
+  }, [invalidateValidation]);
+
+  const selectField = useCallback((fieldId: string) => {
+    invalidateValidation();
+    setSelectedFieldId(fieldId);
+    setValidationError(null);
+  }, [invalidateValidation]);
+
+  const selectBlock = useCallback((blockId: string) => {
+    invalidateValidation();
+    setSelectedBlockId(blockId);
+    setValidationError(null);
+  }, [invalidateValidation]);
 
   const confirm = useCallback(async () => {
-    if (!target || validating) return;
+    if (!open || !target || !targetSignature || activeValidation.current !== null) return;
+    const request = ++validationRequest.current;
+    const generation = openGeneration.current;
+    activeValidation.current = request;
     setValidating(true);
-    setError(null);
+    setValidationError(null);
     try {
       const resolved = await resolveResourceReferences(supabase, projectId, [target]);
+      if (
+        request !== validationRequest.current ||
+        generation !== openGeneration.current ||
+        targetSignature !== targetSignatureRef.current
+      ) {
+        return;
+      }
       if (resolved.get(resourceReferenceKey(target))?.status !== 'available') {
-        setError(UNAVAILABLE_ERROR);
+        setValidationError(UNAVAILABLE_ERROR);
         return;
       }
       onConfirm(target);
     } catch {
-      setError(UNAVAILABLE_ERROR);
+      if (
+        request === validationRequest.current &&
+        generation === openGeneration.current &&
+        targetSignature === targetSignatureRef.current
+      ) {
+        setValidationError(UNAVAILABLE_ERROR);
+      }
     } finally {
-      setValidating(false);
+      if (request === validationRequest.current) {
+        activeValidation.current = null;
+        setValidating(false);
+      }
     }
-  }, [onConfirm, projectId, supabase, target, validating]);
+  }, [onConfirm, open, projectId, supabase, target, targetSignature]);
+
+  const cancel = useCallback(() => {
+    openGeneration.current += 1;
+    invalidateValidation();
+    onCancel();
+  }, [invalidateValidation, onCancel]);
 
   const tablePanel = (
     <div className={styles.panel}>
@@ -291,24 +395,30 @@ export function ResourceReferencePickerModal({
           value={selectedFieldId ?? undefined}
           disabled={!selectedAssetId}
           options={tableRows.fields.map((field) => ({ label: field.label, value: field.id }))}
-          onChange={setSelectedFieldId}
+          onChange={selectField}
         />
       </div>
-      <Spin spinning={loadingTargets}>
+      <Spin aria-label="Loading table rows" spinning={loadingRows}>
         <List
           aria-label="Table rows"
+          role="listbox"
+          aria-multiselectable={false}
+          aria-activedescendant={
+            selectedAssetId ? `table-reference-row-${selectedAssetId}` : undefined
+          }
           className={styles.resultList}
           dataSource={filteredRows}
           locale={{ emptyText: selectedLibraryId ? 'No matching rows' : 'Choose a table' }}
           renderItem={(row) => (
             <List.Item
+              id={`table-reference-row-${row.id}`}
               className={row.id === selectedAssetId ? styles.selectedRow : styles.resultRow}
               role="option"
               tabIndex={0}
               aria-label={`Row: ${row.name}`}
               aria-selected={row.id === selectedAssetId}
-              onClick={() => setSelectedAssetId(row.id)}
-              onKeyDown={(event) => keyboardSelect(event, () => setSelectedAssetId(row.id))}
+              onClick={() => selectAsset(row.id)}
+              onKeyDown={(event) => keyboardSelect(event, () => selectAsset(row.id))}
             >
               <List.Item.Meta
                 title={row.name}
@@ -342,21 +452,27 @@ export function ResourceReferencePickerModal({
         value={documentSearch}
         onChange={(event) => setDocumentSearch(event.target.value)}
       />
-      <Spin spinning={loadingTargets}>
+      <Spin aria-label="Loading document blocks" spinning={loadingBlocks}>
         <List
           aria-label="Document blocks"
+          role="listbox"
+          aria-multiselectable={false}
+          aria-activedescendant={
+            selectedBlockId ? `document-reference-block-${selectedBlockId}` : undefined
+          }
           className={styles.resultList}
           dataSource={filteredBlocks}
           locale={{ emptyText: selectedDocumentId ? 'No matching content' : 'Choose a document' }}
           renderItem={(block) => (
             <List.Item
+              id={`document-reference-block-${block.blockId}`}
               className={block.blockId === selectedBlockId ? styles.selectedRow : styles.resultRow}
               role="option"
               tabIndex={0}
               aria-label={`${block.blockType === 'heading' ? 'Heading' : 'Paragraph'}: ${block.text}`}
               aria-selected={block.blockId === selectedBlockId}
-              onClick={() => setSelectedBlockId(block.blockId)}
-              onKeyDown={(event) => keyboardSelect(event, () => setSelectedBlockId(block.blockId))}
+              onClick={() => selectBlock(block.blockId)}
+              onKeyDown={(event) => keyboardSelect(event, () => selectBlock(block.blockId))}
             >
               <List.Item.Meta
                 title={block.text}
@@ -380,18 +496,21 @@ export function ResourceReferencePickerModal({
       okText={initialTarget ? 'Replace' : 'Insert'}
       cancelText="Cancel"
       confirmLoading={validating}
-      okButtonProps={{ disabled: !target || loadingSources || loadingTargets }}
-      onCancel={onCancel}
+      okButtonProps={{ disabled: !target || loadingSources || loadingTargets || validating }}
+      onCancel={cancel}
       onOk={confirm}
       destroyOnHidden
     >
-      {error && <Alert className={styles.alert} type="error" showIcon message={error} />}
-      <Spin spinning={loadingSources}>
+      {visibleError && (
+        <Alert className={styles.alert} type="error" showIcon message={visibleError} />
+      )}
+      <Spin aria-label="Loading reference sources" spinning={loadingSources}>
         <Tabs
           activeKey={activeKind}
           onChange={(key) => {
+            invalidateValidation();
             setActiveKind(key as ReferenceKind);
-            setError(null);
+            setValidationError(null);
           }}
           items={[
             { key: 'table', label: 'Table', children: tablePanel },

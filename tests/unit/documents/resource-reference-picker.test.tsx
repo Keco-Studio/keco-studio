@@ -1,5 +1,5 @@
 import type { ReactElement, ReactNode } from 'react';
-import { act } from 'react';
+import { act, useEffect } from 'react';
 import type { Root } from 'react-dom/client';
 import {
   resourceReferenceKey,
@@ -25,6 +25,8 @@ const listDocumentReferenceSources = jest.fn();
 const listDocumentReferenceBlocks = jest.fn();
 const resolveResourceReferences = jest.fn();
 const supabase = { from: jest.fn() };
+const insertJsx = jest.fn();
+let toolbarButtonProps: AnyProps | undefined;
 
 type AnyProps = Record<string, any>;
 const ui: {
@@ -46,6 +48,16 @@ const ui: {
 };
 
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => supabase }));
+jest.mock('@mdxeditor/editor', () => ({
+  ButtonWithTooltip: (props: AnyProps) => {
+    toolbarButtonProps = props;
+    return null;
+  },
+  iconComponentFor$: {},
+  insertJsx$: {},
+  useCellValue: () => () => null,
+  usePublisher: () => insertJsx,
+}));
 jest.mock('@/components/documents/ResourceReferencePickerModal.module.css', () => ({
   __esModule: true,
   default: new Proxy({}, { get: (_target, property) => String(property) }),
@@ -99,6 +111,11 @@ jest.mock('antd', () => {
 });
 
 import { ResourceReferencePickerModal } from '@/components/documents/ResourceReferencePickerModal';
+import { ResourceReferenceInsertButton } from '@/components/documents/ResourceReferenceInsertButton';
+import {
+  useResourceReferencePickerController,
+  type ResourceReferencePickerController,
+} from '@/components/documents/useResourceReferencePickerController';
 
 function createNullContainer() {
   const documentLike: any = {
@@ -187,6 +204,10 @@ function available(target: ResourceReferenceTarget) {
   ]);
 }
 
+function latestSpin(label: string) {
+  return ui.spins.filter((spin) => spin['aria-label'] === label).at(-1);
+}
+
 describe('ResourceReferencePickerModal', () => {
   let root: Root;
   let originalWindow: typeof globalThis.window | undefined;
@@ -231,6 +252,8 @@ describe('ResourceReferencePickerModal', () => {
     resolveResourceReferences.mockReset().mockImplementation(
       async (_client, _projectId, targets: ResourceReferenceTarget[]) => available(targets[0])
     );
+    insertJsx.mockReset();
+    toolbarButtonProps = undefined;
     await act(async () => root.render(null));
   });
 
@@ -244,10 +267,14 @@ describe('ResourceReferencePickerModal', () => {
   });
 
   async function renderPicker(initialTarget?: ResourceReferenceTarget) {
+    await renderPickerState(true, initialTarget);
+  }
+
+  async function renderPickerState(open: boolean, initialTarget?: ResourceReferenceTarget) {
     await act(async () => {
       root.render(
         <ResourceReferencePickerModal
-          open
+          open={open}
           projectId={PROJECT_ID}
           documentId={OPEN_DOCUMENT_ID}
           initialTarget={initialTarget}
@@ -257,6 +284,13 @@ describe('ResourceReferencePickerModal', () => {
       );
     });
     await settle();
+  }
+
+  async function selectTableTarget(libraryId = LIBRARY_A, assetIndex = 0) {
+    await act(async () => ui.selects.get('Table')?.onChange(libraryId));
+    await waitFor(() => (ui.rows.get('Table rows')?.length ?? 0) > assetIndex);
+    await act(async () => ui.rows.get('Table rows')?.[assetIndex].props.onClick());
+    await act(async () => ui.selects.get('Display field')?.onChange(FIELD_STATUS));
   }
 
   it('selects a searchable table row and field, resets dependencies, and ignores stale row loads', async () => {
@@ -420,20 +454,229 @@ describe('ResourceReferencePickerModal', () => {
     await act(async () => ui.modal?.onCancel());
     expect(onCancel).toHaveBeenCalledTimes(1);
   });
-});
 
-describe('MdxDocumentEditor reference wiring', () => {
-  it('preserves selection on mousedown, inserts sanctioned JSX, restores focus, and hides controls read-only', () => {
-    const source = require('node:fs').readFileSync(
-      require('node:path').join(process.cwd(), 'src/components/documents/MdxDocumentEditor.tsx'),
-      'utf8'
+  it('invalidates a deferred confirmation across cancel and a new open', async () => {
+    let resolveOldValidation!: (value: Map<string, unknown>) => void;
+    listTableReferenceRows.mockResolvedValue({
+      fields: [{ id: FIELD_STATUS, label: 'Status', orderIndex: 0 }],
+      rows: [
+        { id: ASSET_A, name: 'Ada', values: { [FIELD_STATUS]: 'Active' } },
+        { id: ASSET_B, name: 'Byron', values: { [FIELD_STATUS]: 'Pending' } },
+      ],
+    });
+    resolveResourceReferences
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOldValidation = resolve; }))
+      .mockImplementation(async (_client, _projectId, targets) => available(targets[0]));
+
+    await renderPicker();
+    await selectTableTarget(LIBRARY_A, 0);
+    await act(async () => { void ui.modal?.onOk(); });
+    await act(async () => ui.modal?.onCancel());
+    await renderPickerState(false);
+    await renderPicker();
+    await selectTableTarget(LIBRARY_A, 1);
+
+    await act(async () => resolveOldValidation(available({
+      kind: 'table-row',
+      libraryId: LIBRARY_A,
+      assetId: ASSET_A,
+      displayFieldId: FIELD_STATUS,
+      fallbackLabel: 'Active',
+    })));
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    await act(async () => ui.modal?.onOk());
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(onConfirm.mock.calls[0][0]).toMatchObject({ assetId: ASSET_B });
+  });
+
+  it('clears an invalidated row load when closed and reopened', async () => {
+    let resolveRows!: (value: unknown) => void;
+    listTableReferenceRows.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveRows = resolve; })
+    ).mockResolvedValue({
+      fields: [{ id: FIELD_STATUS, label: 'Status', orderIndex: 0 }],
+      rows: [{ id: ASSET_B, name: 'Byron', values: { [FIELD_STATUS]: 'Pending' } }],
+    });
+
+    await renderPicker();
+    await act(async () => ui.selects.get('Table')?.onChange(LIBRARY_A));
+    await waitFor(() => ui.spins.some(
+      (spin) => spin['aria-label'] === 'Loading table rows' && spin.spinning
+    ));
+    await renderPickerState(false);
+    ui.spins.length = 0;
+    await renderPicker();
+    expect(latestSpin('Loading table rows')?.spinning)
+      .toBe(false);
+
+    await selectTableTarget(LIBRARY_B);
+    expect(ui.modal?.okButtonProps.disabled).toBe(false);
+    await act(async () => resolveRows({ fields: [], rows: [] }));
+  });
+
+  it('isolates inactive table work from active document loading and errors', async () => {
+    let rejectRows!: (error: Error) => void;
+    let resolveBlocks!: (value: unknown) => void;
+    listTableReferenceRows.mockImplementation(
+      () => new Promise((_resolve, reject) => { rejectRows = reject; })
+    );
+    listDocumentReferenceBlocks.mockImplementation(
+      () => new Promise((resolve) => { resolveBlocks = resolve; })
     );
 
-    expect(source).toContain('title="Insert reference"');
-    expect(source).toMatch(/onMouseDown=\{\(event\) => event\.preventDefault\(\)\}/);
-    expect(source).toContain('usePublisher(insertJsx$)');
-    expect(source).toMatch(/insertJsx\(\{[\s\S]*kind: 'text',[\s\S]*name: 'ResourceReference',[\s\S]*resourceReferenceAttributes\(target\)/);
-    expect(source).toContain('editorMethodsRef.current?.focus');
-    expect(source).toMatch(/if \(showToolbar && !readOnly\)/);
+    await renderPicker();
+    await act(async () => ui.selects.get('Table')?.onChange(LIBRARY_A));
+    await act(async () => ui.tabs?.onChange('document'));
+    await waitFor(() => ui.selects.get('Document') !== undefined);
+    await act(async () => ui.selects.get('Document')?.onChange(DOCUMENT_A));
+    await waitFor(() => ui.spins.some(
+      (spin) => spin['aria-label'] === 'Loading document blocks' && spin.spinning
+    ));
+
+    await act(async () => rejectRows(new Error('stale table failure')));
+    expect(latestSpin('Loading document blocks')?.spinning).toBe(true);
+    expect(ui.alerts.at(-1)?.message).not.toBe('References could not be loaded. Try again.');
+
+    await act(async () => resolveBlocks([]));
+    expect(latestSpin('Loading document blocks')?.spinning).toBe(false);
+  });
+
+  it('exposes single-select listbox ownership for row and block options', async () => {
+    listTableReferenceRows.mockResolvedValue({
+      fields: [{ id: FIELD_STATUS, label: 'Status', orderIndex: 0 }],
+      rows: [{ id: ASSET_A, name: 'Ada', values: { [FIELD_STATUS]: 'Active' } }],
+    });
+    await renderPicker();
+    await act(async () => ui.selects.get('Table')?.onChange(LIBRARY_A));
+    await waitFor(() => ui.rows.get('Table rows')?.length === 1);
+    await act(async () => ui.rows.get('Table rows')?.[0].props.onClick());
+
+    expect(ui.lists.get('Table rows')).toMatchObject({
+      role: 'listbox',
+      'aria-multiselectable': false,
+      'aria-activedescendant': `table-reference-row-${ASSET_A}`,
+    });
+    expect(ui.rows.get('Table rows')?.[0].props).toMatchObject({
+      id: `table-reference-row-${ASSET_A}`,
+      role: 'option',
+      'aria-selected': true,
+    });
+  });
+});
+
+describe('document editor reference controls', () => {
+  let root: Root;
+  let originalWindow: typeof globalThis.window | undefined;
+  let originalDocument: typeof globalThis.document | undefined;
+  let controller: ResourceReferencePickerController;
+  const restoreFocus = jest.fn();
+
+  function captureController(next: ResourceReferencePickerController) {
+    controller = next;
+  }
+
+  function ControllerHarness() {
+    const current = useResourceReferencePickerController(restoreFocus);
+    useEffect(() => captureController(current), [current]);
+    return null;
+  }
+
+  beforeAll(async () => {
+    originalWindow = globalThis.window;
+    originalDocument = globalThis.document;
+    const { documentLike, container } = createNullContainer();
+    Object.assign(globalThis, {
+      IS_REACT_ACT_ENVIRONMENT: true,
+      window: documentLike.defaultView,
+      document: documentLike,
+    });
+    const { createRoot } = await import('react-dom/client');
+    root = createRoot(container as never);
+  });
+
+  beforeEach(async () => {
+    restoreFocus.mockReset();
+    insertJsx.mockReset();
+    toolbarButtonProps = undefined;
+    await act(async () => root.render(<ControllerHarness />));
+  });
+
+  afterAll(async () => {
+    await act(async () => root.unmount());
+    if (originalWindow === undefined) delete (globalThis as { window?: unknown }).window;
+    else globalThis.window = originalWindow;
+    if (originalDocument === undefined) delete (globalThis as { document?: unknown }).document;
+    else globalThis.document = originalDocument;
+    delete (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT;
+  });
+
+  it('preserves the toolbar selection, inserts sanctioned JSX, and hides the read-only trigger', async () => {
+    const onOpen = jest.fn();
+    await act(async () => root.render(
+      <ResourceReferenceInsertButton readOnly={false} onOpen={onOpen} />
+    ));
+    const preventDefault = jest.fn();
+    toolbarButtonProps?.onMouseDown({ preventDefault });
+    toolbarButtonProps?.onClick();
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledTimes(1);
+
+    const target: ResourceReferenceTarget = {
+      kind: 'table-row',
+      libraryId: LIBRARY_A,
+      assetId: ASSET_A,
+      displayFieldId: FIELD_STATUS,
+      fallbackLabel: 'Active',
+    };
+    onOpen.mock.calls[0][0](target);
+    expect(insertJsx).toHaveBeenCalledWith({
+      kind: 'text',
+      name: 'ResourceReference',
+      props: target,
+    });
+
+    toolbarButtonProps = undefined;
+    await act(async () => root.render(
+      <ResourceReferenceInsertButton readOnly onOpen={onOpen} />
+    ));
+    expect(toolbarButtonProps).toBeUndefined();
+  });
+
+  it('uses one controller for insertion, replacement, cancel, and focus restoration', async () => {
+    const insert = jest.fn();
+    await act(async () => controller.openInsertion(insert));
+    expect(controller.open).toBe(true);
+    expect(controller.initialTarget).toBeUndefined();
+    const tableTarget: ResourceReferenceTarget = {
+      kind: 'table-row',
+      libraryId: LIBRARY_A,
+      assetId: ASSET_A,
+      displayFieldId: FIELD_STATUS,
+      fallbackLabel: 'Active',
+    };
+    await act(async () => controller.confirm(tableTarget));
+    expect(insert).toHaveBeenCalledWith(tableTarget);
+    expect(restoreFocus).toHaveBeenCalledTimes(1);
+
+    const replace = jest.fn();
+    await act(async () => controller.openReplacement(tableTarget, replace));
+    expect(controller.open).toBe(true);
+    expect(controller.initialTarget).toEqual(tableTarget);
+    const documentTarget: ResourceReferenceTarget = {
+      kind: 'document-block',
+      documentId: DOCUMENT_A,
+      blockId: PARAGRAPH_BLOCK,
+      blockType: 'paragraph',
+      fallbackLabel: 'The city closes its gates',
+    };
+    await act(async () => controller.confirm(documentTarget));
+    expect(replace).toHaveBeenCalledWith(documentTarget);
+    expect(restoreFocus).toHaveBeenCalledTimes(2);
+
+    await act(async () => controller.openInsertion(insert));
+    await act(async () => controller.cancel());
+    expect(controller.open).toBe(false);
+    expect(restoreFocus).toHaveBeenCalledTimes(3);
   });
 });
