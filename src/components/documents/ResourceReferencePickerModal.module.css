@@ -1,0 +1,104 @@
+.modal :global(.ant-modal-content) {
+  padding: 18px 20px 16px;
+  border-radius: 8px;
+}
+
+.modal :global(.ant-modal-header) {
+  margin-bottom: 8px;
+}
+
+.modal :global(.ant-tabs-nav) {
+  margin-bottom: 12px;
+}
+
+.modal :global(.ant-tabs-tab) {
+  padding: 7px 0;
+}
+
+.panel {
+  display: grid;
+  gap: 10px;
+  min-height: 330px;
+}
+
+.sourceSelect {
+  width: 100%;
+}
+
+.rowToolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(150px, 0.55fr);
+  gap: 8px;
+}
+
+.resultList {
+  height: 246px;
+  overflow-y: auto;
+  border: 1px solid var(--ant-color-border-secondary, #f0f0f0);
+  border-radius: 6px;
+}
+
+.resultRow,
+.selectedRow {
+  min-height: 52px;
+  padding: 7px 10px !important;
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.resultRow:hover {
+  background: var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02));
+}
+
+.selectedRow {
+  background: var(--ant-color-primary-bg, #e6f4ff);
+  box-shadow: inset 3px 0 0 var(--ant-color-primary, #1677ff);
+}
+
+.resultRow:focus-visible,
+.selectedRow:focus-visible {
+  outline: 2px solid var(--ant-color-primary-border, #91caff);
+  outline-offset: -2px;
+}
+
+.resultList :global(.ant-list-item-meta) {
+  min-width: 0;
+  align-items: center;
+}
+
+.resultList :global(.ant-list-item-meta-title),
+.resultList :global(.ant-list-item-meta-description) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resultList :global(.ant-list-item-meta-title) {
+  margin-bottom: 1px;
+  font-size: 13px;
+}
+
+.resultList :global(.ant-list-item-meta-description) {
+  font-size: 12px;
+}
+
+.alert {
+  margin-bottom: 8px;
+}
+
+@media (max-width: 560px) {
+  .modal {
+    max-width: calc(100vw - 24px);
+  }
+
+  .rowToolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .resultRow,
+  .selectedRow {
+    transition: none;
+  }
+}
