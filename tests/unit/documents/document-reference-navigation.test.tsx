@@ -547,6 +547,39 @@ describe('reference navigation hooks', () => {
     expect(target.scrollIntoView).toHaveBeenCalledTimes(1);
     expect(control.focus).toHaveBeenCalledTimes(1);
     expect(target.classList.contains('referencedFieldHighlight')).toBe(true);
+
+    await act(async () => root.render(
+      <StrictMode>
+        <AssetHarness
+          navigationRoot={navigationRoot}
+          ready
+          fieldId={FIELD_A}
+          fieldTabActive={false}
+          activateFieldsTab={activateFieldsTab}
+        />
+      </StrictMode>
+    ));
+    await flushMicrotasks();
+
+    expect(activateFieldsTab).toHaveBeenCalledTimes(1);
+    expect(target.classList.contains('referencedFieldHighlight')).toBe(false);
+    expect(observers.every((observer) => !observer.connected)).toBe(true);
+
+    await act(async () => root.render(
+      <StrictMode>
+        <AssetHarness
+          navigationRoot={navigationRoot}
+          ready
+          fieldId={FIELD_B}
+          fieldTabActive={false}
+          activateFieldsTab={activateFieldsTab}
+        />
+      </StrictMode>
+    ));
+    await flushMicrotasks();
+
+    expect(activateFieldsTab).toHaveBeenCalledTimes(2);
+    expect(activateFieldsTab).toHaveBeenLastCalledWith(FIELD_B);
   });
 });
 
