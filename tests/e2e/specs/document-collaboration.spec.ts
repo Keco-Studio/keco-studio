@@ -12,6 +12,7 @@ import {
 } from '@supabase/supabase-js';
 import { LoginPage, type UserCredentials } from '../pages/login.page';
 import { users } from '../fixures/users';
+import { captureRealtimeErrors } from '../utils/realtime-errors';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -204,9 +205,14 @@ async function loginAndOpen(
   browser: Browser,
   credentials: UserCredentials,
   fixture: CollaborationFixture
-): Promise<{ context: BrowserContext; page: Page }> {
+): Promise<{
+  context: BrowserContext;
+  page: Page;
+  realtimeErrors: readonly string[];
+}> {
   const context = await browser.newContext();
   const page = await context.newPage();
+  const realtimeErrors = captureRealtimeErrors(page, credentials.email);
   const login = new LoginPage(page);
   await login.goto();
   await login.login(credentials);
@@ -214,7 +220,7 @@ async function loginAndOpen(
   await page.goto(`/${fixture.projectId}/doc/${fixture.documentId}`, {
     waitUntil: 'domcontentloaded',
   });
-  return { context, page };
+  return { context, page, realtimeErrors };
 }
 
 async function appendText(
@@ -933,6 +939,12 @@ test.describe.serial('Document realtime collaboration', () => {
         await navigationClick?.catch(() => undefined);
         await owner.page.unroute(appendPattern).catch(() => undefined);
       }
+
+      expect([
+        ...owner.realtimeErrors,
+        ...editor.realtimeErrors,
+        ...viewer.realtimeErrors,
+      ]).toEqual([]);
     } finally {
       await Promise.all(contexts.map((context) => context.close()));
     }

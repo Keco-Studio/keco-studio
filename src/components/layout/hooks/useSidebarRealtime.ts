@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
@@ -64,6 +64,10 @@ export function useSidebarRealtime({
   currentProjectId,
   router,
 }: UseSidebarRealtimeParams) {
+  const currentProjectIdRef = useRef(currentProjectId);
+  // eslint-disable-next-line react-hooks/refs -- subscription callbacks need the latest rendered project.
+  currentProjectIdRef.current = currentProjectId;
+
   useEffect(() => {
     if (!userId) return;
 
@@ -98,7 +102,7 @@ export function useSidebarRealtime({
             queryClient.setQueryData<Project[]>(['projects'], (old) =>
               old ? old.filter((p) => p.id !== payload.old.id) : []
             );
-            if (currentProjectId === payload.old.id) {
+            if (currentProjectIdRef.current === payload.old.id) {
               router.push('/projects');
             }
           }
@@ -116,7 +120,7 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(projectsChannel);
     };
-  }, [userId, supabase, queryClient, currentProjectId, router]);
+  }, [userId, supabase, queryClient, router]);
 
   useEffect(() => {
     if (!currentProjectId || !userId) return;
@@ -133,31 +137,27 @@ export function useSidebarRealtime({
         {
           event: '*',
           schema: 'public',
+          table: 'libraries',
+          filter: `project_id=eq.${currentProjectId}`,
         },
         async (payload) => {
-          if (payload.table === 'libraries') {
-            const projectId =
-              stringField(payload.new, 'project_id') ??
-              stringField(payload.old, 'project_id');
-            if (projectId !== currentProjectId) return;
-            await invalidateSidebarLibraryChange(
-              queryClient,
-              currentProjectId,
-              payload.new,
-              payload.old
-            );
-            return;
-          }
-
-          if (payload.table === 'predefine_properties') {
-            await invalidateLibraryData(queryClient, {
-              projectId: currentProjectId,
-              refetchActiveFoldersLibraries: true,
-            });
-            return;
-          }
-
-          if (payload.table !== 'folders') return;
+          await invalidateSidebarLibraryChange(
+            queryClient,
+            currentProjectId,
+            payload.new,
+            payload.old
+          );
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'folders',
+          filter: `project_id=eq.${currentProjectId}`,
+        },
+        async (payload) => {
           const projectId =
             stringField(payload.new, 'project_id') ??
             stringField(payload.old, 'project_id');
@@ -175,6 +175,20 @@ export function useSidebarRealtime({
           if (payload.new && 'id' in payload.new) {
             await invalidateFolderData(queryClient, { folderId: payload.new.id });
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'predefine_properties',
+        },
+        async () => {
+          await invalidateLibraryData(queryClient, {
+            projectId: currentProjectId,
+            refetchActiveFoldersLibraries: true,
+          });
         }
       )
       // Documents are broadcast-only (not in the realtime publication, GitHub

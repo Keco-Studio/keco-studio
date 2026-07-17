@@ -1,6 +1,7 @@
 import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { LoginPage } from '../pages/login.page';
+import { captureRealtimeErrors } from '../utils/realtime-errors';
 import {
   addProjectCollaborator,
   createProjectFixture,
@@ -50,16 +51,21 @@ async function openLibrary(
   user: TemporaryUser,
   projectId: string,
   libraryId: string
-): Promise<{ context: BrowserContext; page: Page }> {
+): Promise<{
+  context: BrowserContext;
+  page: Page;
+  realtimeErrors: readonly string[];
+}> {
   const context = await browser.newContext();
   const page = await context.newPage();
+  const realtimeErrors = captureRealtimeErrors(page, user.email);
   const loginPage = new LoginPage(page);
   await loginPage.goto();
   await loginPage.login(user);
   await loginPage.expectLoginSuccess();
   await page.goto(`/${projectId}/${libraryId}`);
   await expect(page.locator('tbody tr[data-row-id]').first()).toBeVisible({ timeout: 30000 });
-  return { context, page };
+  return { context, page, realtimeErrors };
 }
 
 test.describe('Concurrent library editing', () => {
@@ -229,6 +235,11 @@ test.describe('Concurrent library editing', () => {
           timeout: 30000,
         });
       });
+
+      expect([
+        ...ownerSession.realtimeErrors,
+        ...editorSession.realtimeErrors,
+      ]).toEqual([]);
     } finally {
       await Promise.all([ownerSession.context.close(), editorSession.context.close()]);
     }

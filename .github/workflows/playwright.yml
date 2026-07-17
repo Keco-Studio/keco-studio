@@ -164,6 +164,9 @@ jobs:
           echo "Waiting for Supabase API after reset... (attempt $i/15)"
           sleep 2
         done
+
+    - name: Configure local Realtime pool
+      run: npm run supabase:realtime-pool
     
     # Set Supabase environment variables from local instance
     # CRITICAL: These must be set before Playwright starts webServer
