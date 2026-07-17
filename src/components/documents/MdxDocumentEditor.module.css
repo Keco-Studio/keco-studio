@@ -26,6 +26,19 @@
   outline: none;
 }
 
+.referencedDocumentBlock {
+  outline: 2px solid var(--ant-color-primary-border, #91caff);
+  outline-offset: 3px;
+  background-color: var(--ant-color-primary-bg, #e6f4ff);
+  transition: outline-color 160ms ease, background-color 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .referencedDocumentBlock {
+    transition: none;
+  }
+}
+
 .hiddenFileInput {
   display: none;
 }

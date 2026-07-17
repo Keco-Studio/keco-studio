@@ -82,6 +82,7 @@ import { ResourceReferenceProvider } from './ResourceReferenceProvider';
 import { ResourceReferencePickerModal } from './ResourceReferencePickerModal';
 import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
 import { useResourceReferencePickerController } from './useResourceReferencePickerController';
+import { useReferencedDocumentBlock } from './useReferencedDocumentBlock';
 
 export type { MDXEditorMethods } from '@mdxeditor/editor';
 
@@ -101,6 +102,7 @@ export type MdxDocumentEditorProps = {
     cursorColor: string;
   };
   editorRef?: Ref<MDXEditorMethods | null>;
+  referenceNavigationReady?: boolean;
 };
 
 function publishEditorRef(
@@ -265,8 +267,10 @@ export default function MdxDocumentEditor({
   imageUploadHandler,
   collaboration,
   editorRef,
+  referenceNavigationReady = false,
 }: MdxDocumentEditorProps) {
   const editorMethodsRef = useRef<MDXEditorMethods | null>(null);
+  const editorFrameRef = useRef<HTMLDivElement>(null);
   const collaborationSession = collaboration?.session;
   const collaborationUsername = collaboration?.username;
   const collaborationCursorColor = collaboration?.cursorColor;
@@ -278,6 +282,11 @@ export default function MdxDocumentEditor({
     setTimeout(() => editorMethodsRef.current?.focus(), 0);
   }, []);
   const referencePicker = useResourceReferencePickerController(restoreEditorFocus);
+  useReferencedDocumentBlock({
+    rootRef: editorFrameRef,
+    ready: referenceNavigationReady,
+    highlightClassName: styles.referencedDocumentBlock,
+  });
   const onReplaceResourceReference = referencePicker.openReplacement;
   const plugins = useMemo(() => {
     const ResourceReference = (props: JsxEditorProps) => (
@@ -385,7 +394,11 @@ export default function MdxDocumentEditor({
   ]);
 
   return (
-    <div className={styles.editorFrame} onDoubleClick={handleLinkDoubleClick}>
+    <div
+      ref={editorFrameRef}
+      className={styles.editorFrame}
+      onDoubleClick={handleLinkDoubleClick}
+    >
       <ResourceReferenceProvider key={documentId} projectId={projectId}>
         <MDXEditor
           ref={setEditorMethodsRef}
