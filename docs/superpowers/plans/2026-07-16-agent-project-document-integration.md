@@ -83,18 +83,18 @@ it('prefers an explicit id over name and current context', async () => {
 
 it('returns safe candidates instead of guessing between duplicate names', async () => {
   listDocuments.mockResolvedValue([
-    doc(DOC_A, '班会总结', FOLDER_A),
-    doc(DOC_B, '班会总结', FOLDER_B),
+    doc(DOC_A, 'Class meeting notes', FOLDER_A),
+    doc(DOC_B, 'Class meeting notes', FOLDER_B),
   ]);
   await expect(resolveDocumentForTool(supabase, PROJECT_ID, {
-    documentName: '班会总结',
+    documentName: 'Class meeting notes',
   }, {})).resolves.toEqual({
     ok: false,
     code: 'AMBIGUOUS',
-    error: 'Multiple documents named "班会总结" exist in this project.',
+    error: 'Multiple documents named "Class meeting notes" exist in this project.',
     candidates: expect.arrayContaining([
-      expect.objectContaining({ id: DOC_A, name: '班会总结', folderName: '教学资料' }),
-      expect.objectContaining({ id: DOC_B, name: '班会总结', folderName: '归档' }),
+      expect.objectContaining({ id: DOC_A, name: 'Class meeting notes', folderName: 'Teaching materials' }),
+      expect.objectContaining({ id: DOC_B, name: 'Class meeting notes', folderName: 'Archive' }),
     ]),
   });
 });
@@ -262,12 +262,12 @@ expect(secondRequest).not.toHaveProperty('projectId');
 Extend `selection-context-message.test.ts`:
 
 ```ts
-const augmented = augmentUserMessageForLlm('总结这篇文档', {
+const augmented = augmentUserMessageForLlm('Summarize this document', {
   ...toolContext,
   currentDocumentId: DOCUMENT_ID,
-  currentDocumentName: '主题班会总结',
+  currentDocumentName: 'Theme class meeting notes',
 });
-expect(augmented).toContain('current document "主题班会总结"');
+expect(augmented).toContain('current document "Theme class meeting notes"');
 expect(augmented).toContain('default target, not a locked scope');
 ```
 
