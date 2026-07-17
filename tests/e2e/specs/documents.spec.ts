@@ -31,7 +31,8 @@ test.describe('Document authoring', () => {
     const documentName = `Design Notes ${Date.now()}`;
     const bodyText = 'Autosaved world-building notes.';
     const linkText = 'world-building';
-    const linkUrl = 'https://example.com/';
+    const linkUrl = 'example.com';
+    const openedLinkUrl = 'https://example.com/';
 
     await test.step('Create a project', async () => {
       await projectPage.createProject(project);
@@ -97,17 +98,25 @@ test.describe('Document authoring', () => {
       });
       await expect(createLinkButton).toBeEnabled();
       await createLinkButton.click();
+      await expect(page.locator('input[name="url"]')).toHaveValue('');
       await page.locator('input[name="url"]').fill(linkUrl);
       await expect(page.locator('input[name="title"]')).toHaveCount(0);
       await expect(page.locator('input[name="text"]')).toHaveCount(0);
       await page.getByRole('button', { name: 'Set URL' }).click();
 
-      const link = editor.locator(`a[href="${linkUrl}"]`, { hasText: linkText });
+      const link = editor.getByRole('link', { name: linkText });
       await expect(link).toBeVisible();
+      await expect(link).toHaveAttribute('href', openedLinkUrl);
+      await link.click();
+      await page.getByRole('button', { name: 'Edit link URL' }).click();
+      await expect(page.locator('input[name="url"]')).toHaveValue(openedLinkUrl);
+      await expect(page.locator('input[name="text"]')).toHaveCount(0);
+      await page.getByRole('button', { name: 'Cancel change' }).click();
+
       const popupPromise = page.waitForEvent('popup');
       await link.dblclick();
       const popup = await popupPromise;
-      expect(popup.url()).toBe(linkUrl);
+      expect(popup.url()).toBe(openedLinkUrl);
       await popup.close();
     });
 
@@ -134,7 +143,10 @@ test.describe('Document authoring', () => {
       const editor = page.locator('[contenteditable="true"]').first();
       await expect(editor).toBeVisible({ timeout: 30000 });
       await expect(editor).toContainText(bodyText, { timeout: 20000 });
-      await expect(editor.locator(`a[href="${linkUrl}"]`, { hasText: linkText })).toBeVisible();
+      await expect(editor.getByRole('link', { name: linkText })).toHaveAttribute(
+        'href',
+        openedLinkUrl
+      );
       await expect(editor.locator('img')).toBeVisible({ timeout: 20000 });
     });
 

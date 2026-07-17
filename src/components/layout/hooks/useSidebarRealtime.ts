@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
@@ -64,6 +64,10 @@ export function useSidebarRealtime({
   currentProjectId,
   router,
 }: UseSidebarRealtimeParams) {
+  const currentProjectIdRef = useRef(currentProjectId);
+  // eslint-disable-next-line react-hooks/refs -- subscription callbacks need the latest rendered project.
+  currentProjectIdRef.current = currentProjectId;
+
   useEffect(() => {
     if (!userId) return;
 
@@ -98,7 +102,7 @@ export function useSidebarRealtime({
             queryClient.setQueryData<Project[]>(['projects'], (old) =>
               old ? old.filter((p) => p.id !== payload.old.id) : []
             );
-            if (currentProjectId === payload.old.id) {
+            if (currentProjectIdRef.current === payload.old.id) {
               router.push('/projects');
             }
           }
@@ -116,13 +120,18 @@ export function useSidebarRealtime({
     return () => {
       supabase.removeChannel(projectsChannel);
     };
-  }, [userId, supabase, queryClient, currentProjectId, router]);
+  }, [userId, supabase, queryClient, router]);
 
   useEffect(() => {
     if (!currentProjectId || !userId) return;
 
-    const librariesChannel = supabase
-      .channel(`libraries:project:${currentProjectId}`)
+    let unregisterProjectChannel = () => {};
+    const projectChannel = supabase
+      // Single source of truth for the topic string, shared with the broadcast
+      // sender (documentBroadcast.projectSidebarTopic).
+      .channel(projectSidebarTopic(currentProjectId), {
+        config: { private: true },
+      })
       .on(
         'postgres_changes',
         {
@@ -140,29 +149,6 @@ export function useSidebarRealtime({
           );
         }
       )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) {
-          console.error('[Sidebar] Libraries channel ERROR:', err);
-        } else if (status === 'TIMED_OUT') {
-          console.warn('[Sidebar] Libraries channel TIMED OUT');
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(librariesChannel);
-    };
-  }, [currentProjectId, userId, supabase, queryClient]);
-
-  useEffect(() => {
-    if (!currentProjectId || !userId) return;
-
-    let unregisterProjectChannel = () => {};
-    const foldersChannel = supabase
-      // Single source of truth for the topic string, shared with the broadcast
-      // sender (documentBroadcast.projectSidebarTopic).
-      .channel(projectSidebarTopic(currentProjectId), {
-        config: { private: true },
-      })
       .on(
         'postgres_changes',
         {
@@ -172,6 +158,10 @@ export function useSidebarRealtime({
           filter: `project_id=eq.${currentProjectId}`,
         },
         async (payload) => {
+          const projectId =
+            stringField(payload.new, 'project_id') ??
+            stringField(payload.old, 'project_id');
+          if (projectId !== currentProjectId) return;
           const folderId =
             (payload.new && 'id' in payload.new ? payload.new.id : null) ||
             (payload.old && 'id' in payload.old ? payload.old.id : null);
@@ -187,9 +177,23 @@ export function useSidebarRealtime({
           }
         }
       )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'predefine_properties',
+        },
+        async () => {
+          await invalidateLibraryData(queryClient, {
+            projectId: currentProjectId,
+            refetchActiveFoldersLibraries: true,
+          });
+        }
+      )
       // Documents are broadcast-only (not in the realtime publication, GitHub
-      // #208). Piggyback their change notifications on this existing channel so
-      // the sidebar refreshes without adding a sixth channel (GitHub #216).
+      // #208). Project-scoped sidebar changes share this channel to avoid
+      // exhausting the Realtime tenant connection pool during concurrent joins.
       .on(
         'broadcast',
         { event: DOCUMENT_UPDATED_EVENT },
@@ -214,50 +218,18 @@ export function useSidebarRealtime({
           unregisterProjectChannel();
           unregisterProjectChannel = registerProjectDocumentChannel(
             currentProjectId,
-            foldersChannel
+            projectChannel
           );
         } else if (status === 'CHANNEL_ERROR' && err) {
-          console.error('[Sidebar] Folders channel ERROR:', err);
+          console.error('[Sidebar] Project channel ERROR:', err);
         } else if (status === 'TIMED_OUT') {
-          console.warn('[Sidebar] Folders channel TIMED OUT');
+          console.warn('[Sidebar] Project channel TIMED OUT');
         }
       });
 
     return () => {
       unregisterProjectChannel();
-      supabase.removeChannel(foldersChannel);
-    };
-  }, [currentProjectId, userId, supabase, queryClient]);
-
-  useEffect(() => {
-    if (!currentProjectId || !userId) return;
-
-    const predefineChannel = supabase
-      .channel(`predefine:project:${currentProjectId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'predefine_properties',
-        },
-        async (payload) => {
-          await invalidateLibraryData(queryClient, {
-            projectId: currentProjectId,
-            refetchActiveFoldersLibraries: true,
-          });
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' && err) {
-          console.error('[Sidebar] Predefine channel ERROR:', err);
-        } else if (status === 'TIMED_OUT') {
-          console.warn('[Sidebar] Predefine channel TIMED OUT');
-        }
-      });
-
-    return () => {
-      supabase.removeChannel(predefineChannel);
+      supabase.removeChannel(projectChannel);
     };
   }, [currentProjectId, userId, supabase, queryClient]);
 }

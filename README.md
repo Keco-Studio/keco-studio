@@ -120,9 +120,11 @@ npm install
 
 ```bash
 supabase start
+npm run supabase:realtime-pool
 ```
 
 On first run, Docker images will be pulled automatically. This may take several minutes.
+The pool command is local-only and requires Docker; it configures this project's local Realtime container.
 
 After startup, the terminal will output:
 
@@ -150,7 +152,10 @@ To reset the database and reapply migrations manually:
 
 ```bash
 supabase db reset
+npm run supabase:realtime-pool
 ```
+
+Run the local-only pool command after every reset so the Docker Realtime service uses the expected authorization pool size.
 
 ---
 

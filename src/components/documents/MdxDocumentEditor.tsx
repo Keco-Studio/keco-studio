@@ -10,6 +10,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   type ChangeEvent,
@@ -48,6 +49,7 @@ import {
   currentSelection$,
   iconComponentFor$,
   insertImage$,
+  linkDialogState$,
   openLinkEditDialog$,
   useCellValue,
   usePublisher,
@@ -60,6 +62,7 @@ import {
 import '@mdxeditor/editor/style.css';
 import { EditorView } from '@codemirror/view';
 import { $getSelection, $isRangeSelection } from 'lexical';
+import { LinkNode } from '@lexical/link';
 import type { DocumentCollaborationSession } from '@/lib/documents/documentCollaborationSession';
 import {
   documentCollaborationPlugin,
@@ -181,10 +184,31 @@ function SyncedCodeMirrorEditor(props: CodeBlockEditorProps) {
   );
 }
 
+function UrlOnlyLinkDialogState() {
+  const state = useCellValue(linkDialogState$);
+  const setState = usePublisher(linkDialogState$);
+
+  useLayoutEffect(() => {
+    if (state.type !== 'edit' || !state.withAnchorText) return;
+    setState({ ...state, withAnchorText: false });
+  }, [setState, state]);
+
+  return null;
+}
+
 function SelectedTextLinkButton() {
   const selection = useCellValue(currentSelection$);
+  const activeEditor = useCellValue(activeEditor$);
   const iconComponentFor = useCellValue(iconComponentFor$);
   const openLinkDialog = usePublisher(openLinkEditDialog$);
+
+  useEffect(() => {
+    if (!activeEditor) return;
+    return activeEditor.registerNodeTransform(LinkNode, (node) => {
+      const href = normalizeLinkValue(node.getURL());
+      if (href && href !== node.getURL()) node.setURL(href);
+    });
+  }, [activeEditor]);
 
   return (
     <ButtonWithTooltip
@@ -244,16 +268,39 @@ function SingleFileImageButton() {
   );
 }
 
+function normalizeLinkValue(rawHref: string): string | null {
+  const value = rawHref.trim();
+  if (!value) return null;
+  if (/^\/(?!\/)/.test(value)) return value;
+
+  let href = value;
+  if (href.startsWith('//')) {
+    href = `https:${href}`;
+  } else if (!/^[a-z][a-z\d+.-]*:/i.test(href)) {
+    href = `https://${href}`;
+  }
+
+  try {
+    const url = new URL(href);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 function handleLinkDoubleClick(event: MouseEvent<HTMLDivElement>) {
   const target = event.target instanceof Element ? event.target : null;
   const link = target?.closest<HTMLAnchorElement>('a[href]');
   if (!link) return;
 
-  const href = link.href;
-  const protocol = new URL(href, window.location.href).protocol;
-  if (protocol !== 'http:' && protocol !== 'https:') return;
-
   event.preventDefault();
+  const linkValue = normalizeLinkValue(link.getAttribute('href') ?? '');
+  if (!linkValue) return;
+  const href = linkValue.startsWith('/')
+    ? new URL(linkValue, window.location.origin).href
+    : linkValue;
+
+  event.stopPropagation();
   window.open(href, '_blank', 'noopener,noreferrer');
 }
 
@@ -365,6 +412,7 @@ export default function MdxDocumentEditor({
               <Separator />
               <ListsToggle />
               <Separator />
+              <UrlOnlyLinkDialogState />
               <SelectedTextLinkButton />
               <SingleFileImageButton />
               <ResourceReferenceInsertButton

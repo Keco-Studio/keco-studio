@@ -200,6 +200,80 @@ function extractUncompressedPdfText(bytes: Buffer): string {
   return [...literalStrings, ...hexStrings].join(' ');
 }
 
+function expectPdfUnicodeMappings(bytes: Buffer, expectedText: string): void {
+  const source = bytes.toString('latin1');
+  const unicodeMaps = (
+    source.match(/begin(?:bfchar|bfrange)[\s\S]*?end(?:bfchar|bfrange)/g) ?? []
+  ).join('\n');
+
+  expect(source).toContain('/Subtype /Type0');
+  expect(source).toContain('/ToUnicode');
+  expect(source).toMatch(/\/FontFile[23]?\b/);
+  for (const character of new Set([...expectedText])) {
+    if (character.codePointAt(0)! <= 0xff) continue;
+    const utf16Be = Buffer.from(character, 'utf16le').swap16().toString('hex');
+    expect(unicodeMaps).toContain(`<${utf16Be}>`);
+  }
+}
+
+async function extractPdfTextWithPdfJs(bytes: Buffer): Promise<{
+  pageCount: number;
+  text: string;
+  operatorCount: number;
+  glyphWarnings: string[];
+}> {
+  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
+  const loadingTask = pdfjs.getDocument({ data: new Uint8Array(bytes) });
+  const document = await loadingTask.promise;
+  try {
+    const pages: string[] = [];
+    const glyphWarnings: string[] = [];
+    let operatorCount = 0;
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const originalWarn = console.warn;
+      console.warn = (...args: unknown[]) => {
+        const message = args.map(String).join(' ');
+        if (!message.includes('standardFontDataUrl')) glyphWarnings.push(message);
+        originalWarn(...args);
+      };
+      try {
+        const operatorList = await page.getOperatorList();
+        operatorCount += operatorList.fnArray.length;
+        const content = await page.getTextContent();
+        pages.push(
+          content.items
+            .map((item) =>
+              'str' in item ? `${item.str}${item.hasEOL ? '\n' : ' '}` : ''
+            )
+            .join('')
+            .trim()
+        );
+      } finally {
+        console.warn = originalWarn;
+      }
+    }
+    return {
+      pageCount: document.numPages,
+      text: pages.join('\n'),
+      operatorCount,
+      glyphWarnings,
+    };
+  } finally {
+    await loadingTask.destroy();
+  }
+}
+
+function expectTextInOrder(actual: string, expected: readonly string[]): void {
+  const normalized = normalizeExtractedPdfText(actual);
+  let previousIndex = -1;
+  for (const segment of expected) {
+    const index = normalized.indexOf(normalizeExtractedPdfText(segment));
+    expect(index).toBeGreaterThan(previousIndex);
+    previousIndex = index;
+  }
+}
+
 function normalizeExtractedPdfText(value: string): string {
   return value.replace(/[\s\u0000]+/g, '');
 }
@@ -333,10 +407,14 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
     const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     const initialMarker = `ROOT-${suffix}`;
     const editedMarker = `${initialMarker}-EDITED`;
+    const chinesePdfText = '\u4e2d\u6587 PDF \u5bfc\u51fa\u9a8c\u8bc1\uff1a\u4f60\u597d\u4e16\u754c';
+    const chinesePdfHeading = `\u4e2d\u6587 Phase 2 Markdown ${suffix}`;
     const markdown = [
-      `# Phase 2 Markdown ${suffix}`,
+      `# ${chinesePdfHeading}`,
       '',
       'Localized acceptance content',
+      '',
+      chinesePdfText,
       '',
       '<Callout type="info" title="Tip &amp; explanation">',
       '',
@@ -383,6 +461,9 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
       await expect(owner.page.locator('[data-component="Details"]')).toContainText(
         `Details localized text ${suffix}`
       );
+      await expect(owner.page.locator('[contenteditable="true"]').first()).toContainText(
+        chinesePdfText
+      );
       await expect(owner.page.locator('table')).toContainText('Import');
       await expect(
         owner.page.getByRole('link', { name: 'Safe link' })
@@ -405,6 +486,25 @@ test.describe.serial('Phase 2C-2F browser acceptance', () => {
 
       const pdf = await downloadFromEditor(owner.page, 'Download PDF');
       expect(pdf.subarray(0, 5).toString('ascii')).toBe('%PDF-');
+      expect(pdf.length).toBeLessThan(1_000_000);
+      expectPdfUnicodeMappings(pdf, chinesePdfText);
+      const parsedPdf = await extractPdfTextWithPdfJs(pdf);
+      expect(parsedPdf.pageCount).toBeGreaterThanOrEqual(1);
+      expect(parsedPdf.operatorCount).toBeGreaterThan(0);
+      expect(parsedPdf.glyphWarnings).toEqual([]);
+      expectTextInOrder(parsedPdf.text, [
+        chinesePdfHeading,
+        'Localized acceptance content',
+        chinesePdfText,
+        'Tip & explanation',
+        `Callout localized text ${suffix}`,
+        'View more',
+        `Details localized text ${suffix}`,
+        'Item | Status',
+        'Import | Complete',
+        'Safe link',
+        editedMarker,
+      ]);
       expect(normalizeExtractedPdfText(extractUncompressedPdfText(pdf))).toContain(
         normalizeExtractedPdfText(editedMarker)
       );

@@ -93,6 +93,9 @@ jobs:
         # Increase the timeout (default is 1 hour)
         timeout-minutes: 90
 
+      - name: Configure local Realtime pool
+        run: npm run supabase:realtime-pool
+
       - name: Lint project
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
