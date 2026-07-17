@@ -581,6 +581,48 @@ describe('reference navigation hooks', () => {
     expect(activateFieldsTab).toHaveBeenCalledTimes(2);
     expect(activateFieldsTab).toHaveBeenLastCalledWith(FIELD_B);
   });
+
+  it('treats fields first seen in the active tab as handled', async () => {
+    const navigationRoot = createNavigationRoot(documentLike);
+    navigationRoot.insertTarget(
+      'data-field-id',
+      FIELD_A,
+      createElement(documentLike, 'input')
+    );
+    navigationRoot.insertTarget(
+      'data-field-id',
+      FIELD_B,
+      createElement(documentLike, 'input')
+    );
+    const activateFieldsTab = jest.fn();
+
+    const renderField = async (fieldId: string, fieldTabActive: boolean) => {
+      await act(async () => root.render(
+        <StrictMode>
+          <AssetHarness
+            navigationRoot={navigationRoot}
+            ready
+            fieldId={fieldId}
+            fieldTabActive={fieldTabActive}
+            activateFieldsTab={activateFieldsTab}
+          />
+        </StrictMode>
+      ));
+      await flushMicrotasks();
+    };
+
+    await renderField(FIELD_A, true);
+    await renderField(FIELD_A, false);
+    expect(activateFieldsTab).not.toHaveBeenCalled();
+
+    await renderField(FIELD_B, true);
+    await renderField(FIELD_B, false);
+    expect(activateFieldsTab).not.toHaveBeenCalled();
+
+    await renderField(FIELD_MISSING, false);
+    expect(activateFieldsTab).toHaveBeenCalledTimes(1);
+    expect(activateFieldsTab).toHaveBeenCalledWith(FIELD_MISSING);
+  });
 });
 
 describe('navigation wiring and visual contract', () => {

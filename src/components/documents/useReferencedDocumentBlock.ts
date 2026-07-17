@@ -281,7 +281,10 @@ export function useReferencedAssetField({
       activationRequestRef.current = null;
       return;
     }
-    if (fieldTabActive) return;
+    if (fieldTabActive) {
+      activationRequestRef.current = fieldId;
+      return;
+    }
     if (activationRequestRef.current === fieldId) return;
     activationRequestRef.current = fieldId;
     activateFieldsTab(fieldId);
