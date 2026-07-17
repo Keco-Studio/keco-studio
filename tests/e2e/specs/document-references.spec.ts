@@ -159,7 +159,8 @@ test.describe.serial('Document references smoke', () => {
 
     const normalization = page.waitForResponse(
       (response) =>
-        response.url().includes('/rpc/append_document_yjs_updates') && response.ok()
+        response.url().includes('/rpc/initialize_document_collab_state') &&
+        response.ok()
     );
     await page.goto(`/${projectId}/doc/${fixture.sourceDocumentId}`, {
       waitUntil: 'domcontentloaded',
