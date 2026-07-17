@@ -3,7 +3,7 @@ import { resolveVisualNovelPresentation } from './visualNovelPresentation';
 
 describe('visual novel Type presentation', () => {
   it.each([
-    ['1', { kind: 'dialogue', color: 'blue', alignment: 'left' }],
+    ['1', { kind: 'dialogue', color: 'blue', alignment: 'right' }],
     ['2', { kind: 'dialogue', color: 'pink', alignment: 'left' }],
     ['3', { kind: 'dialogue', color: 'gray', alignment: 'left' }],
     ['4', { kind: 'plain', color: null, alignment: 'left' }],
@@ -12,16 +12,16 @@ describe('visual novel Type presentation', () => {
     expect(resolveVisualNovelPresentation(type, 'Speaker')).toEqual(expected);
   });
 
-  it('does not move Type 1 dialogue when the speaker changes', () => {
-    expect(resolveVisualNovelPresentation('1', 'Orb of Light').alignment).toBe('left');
-    expect(resolveVisualNovelPresentation('1', 'Old Man').alignment).toBe('left');
+  it('keeps Type 1 dialogue on the right regardless of speaker', () => {
+    expect(resolveVisualNovelPresentation('1', 'Orb of Light').alignment).toBe('right');
+    expect(resolveVisualNovelPresentation('1', 'Old Man').alignment).toBe('right');
   });
 
   it('keeps legacy rows without Type readable', () => {
     expect(resolveVisualNovelPresentation(undefined, 'Guide')).toEqual({
       kind: 'dialogue',
       color: 'blue',
-      alignment: 'left',
+      alignment: 'right',
     });
     expect(resolveVisualNovelPresentation(undefined, '')).toEqual({
       kind: 'dialogue',

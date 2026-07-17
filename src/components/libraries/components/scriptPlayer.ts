@@ -61,7 +61,30 @@ export function createScriptPlayerState(
     done: rows.length === 0,
     automaticTrail: [],
   };
-  return rows.length > 0 ? nextPosition(state, rows, columns) : state;
+  return rows.length > 0 ? runUntilStop(state, rows, columns) : state;
+}
+
+/**
+ * Advance repeatedly until the story reaches a stopping point: a choice,
+ * the end, or an error/warning. This reveals every line in the current
+ * segment at once instead of one line per click.
+ */
+export function runUntilStop(
+  state: ScriptPlayerState,
+  rows: AssetRow[],
+  columns: ScriptPlayerColumns
+): ScriptPlayerState {
+  let current = state;
+  const maxSteps = rows.length * 4 + 16;
+  for (let step = 0; step < maxSteps; step += 1) {
+    if (current.atChoice || current.done || current.error || current.warning) {
+      return current;
+    }
+    const next = nextPosition(current, rows, columns);
+    if (next === current) return current;
+    current = next;
+  }
+  return current;
 }
 
 export function buildBranchIndex(
@@ -216,7 +239,7 @@ function chooseBranch(
     };
   }
 
-  return nextPosition({
+  return runUntilStop({
     ...state,
     currentIndex: targetIndex,
     variables,

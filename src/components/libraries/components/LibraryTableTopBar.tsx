@@ -77,7 +77,7 @@ export function LibraryTableTopBar({
 
   return (
     <div className={styles.tableTopBar}>
-      {hasSections ? (
+      {hasSections && scriptViewMode !== 'script' ? (
         <SectionTabs
           groups={groups}
           activeSectionId={activeSectionId}

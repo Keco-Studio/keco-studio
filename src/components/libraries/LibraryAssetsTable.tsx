@@ -981,7 +981,11 @@ export function LibraryAssetsTable({
 
   return (
     <>
-      <div className={styles.tableShell}>
+      <div
+        className={`${styles.tableShell}${
+          scriptViewMode === 'script' && hasScriptColumns ? ` ${styles.tableShellScript}` : ''
+        }`}
+      >
         <LibraryTableTopBar
           hasSections={hasSections}
           groups={groups}
