@@ -191,6 +191,30 @@ describe('document export service', () => {
     expect(markdown).not.toContain('ResourceReference');
   });
 
+  it('escapes unavailable fallback syntax inside an outer Markdown link label', async () => {
+    resolveResourceReferences.mockResolvedValue(new Map([
+      [
+        `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+        {
+          key: `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+          status: 'unavailable',
+          label: 'Reference unavailable',
+        },
+      ],
+    ]));
+
+    const markdown = await resolveReferencesForPlainMarkdown(
+      {} as SupabaseClient,
+      PROJECT_ID,
+      `[before ${REFERENCE} after](https://example.com "Outer title")`
+    );
+
+    expect(markdown.trim()).toBe(
+      '[before \\[Reference unavailable\\] after](https://example.com "Outer title")'
+    );
+    expect(markdown).not.toContain('ResourceReference');
+  });
+
   afterAll(() => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = originalSupabaseUrl;
     process.env.NODE_ENV = originalNodeEnv;

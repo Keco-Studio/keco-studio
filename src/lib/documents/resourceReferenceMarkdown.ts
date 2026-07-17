@@ -73,11 +73,13 @@ function transformNode(
         children: [{ type: 'text', value: reference.label }],
       }];
     }
-    return [{
-      type: 'text',
-      value: '[Reference unavailable]',
-      data: { exactPlainText: true },
-    }];
+    return insideLinkLabel
+      ? [{ type: 'text', value: '[Reference unavailable]' }]
+      : [{
+          type: 'text',
+          value: '[Reference unavailable]',
+          data: { exactPlainText: true },
+        }];
   }
 
   const { children, ...rest } = node;
