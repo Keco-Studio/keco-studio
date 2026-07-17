@@ -43,33 +43,29 @@ jobs:
             echo "  supabase/migrations directory does not exist"
           fi
 
-          # Determine the base branch
-          if [[ "${{ github.ref }}" == "refs/heads/main" ]] || [[ "${{ github.ref }}" == "refs/heads/master" ]]; then
-            BASE_BRANCH="origin/main"
-            # If main does not exist, try master
-            if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
-              BASE_BRANCH="origin/master"
-            fi
-          elif [[ "${{ github.ref }}" =~ ^refs/heads/release ]]; then
-            # Compare release branches against main
-            BASE_BRANCH="origin/main"
-            if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
-              BASE_BRANCH="origin/master"
-            fi
+          # Pull requests must be compared with their actual target commit.
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            BASE_COMMIT="${{ github.event.pull_request.base.sha }}"
+            IS_PULL_REQUEST=true
           else
-            # PRs and other cases: compare against main
-            BASE_BRANCH="origin/main"
-            if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
-              BASE_BRANCH="origin/master"
+            BASE_COMMIT="origin/main"
+            IS_PULL_REQUEST=false
+            if ! git rev-parse --verify "$BASE_COMMIT^{commit}" >/dev/null 2>&1; then
+              BASE_COMMIT="origin/master"
             fi
           fi
 
-          echo "Base branch: $BASE_BRANCH"
+          echo "Base commit: $BASE_COMMIT"
 
-          # Check migration file changes on the current branch relative to the base branch
-          # If the base branch does not exist (first push), check whether any migration files exist
-          if ! git rev-parse --verify "$BASE_BRANCH" >/dev/null 2>&1; then
-            echo "⚠️ Base branch does not exist, checking for migration files..."
+          # A PR base SHA should always be available after a full-history checkout.
+          if ! git rev-parse --verify "$BASE_COMMIT^{commit}" >/dev/null 2>&1; then
+            if [ "$IS_PULL_REQUEST" = true ]; then
+              echo "::error::Pull request base commit is unavailable: $BASE_COMMIT"
+              exit 1
+            fi
+
+            # Preserve first-push behavior when neither main nor master exists.
+            echo "⚠️ Base commit does not exist, checking for migration files..."
             if [ -d "supabase/migrations" ] && [ "$(ls -A supabase/migrations/*.sql 2>/dev/null)" ]; then
               echo "has-migrations=true" >> $GITHUB_OUTPUT
               echo "✅ Migration files detected (first push)"
@@ -78,29 +74,18 @@ jobs:
               echo "ℹ️ No migration files"
             fi
           else
-            # Fetch the base branch commit
-            git fetch origin ${BASE_BRANCH#origin/}:${BASE_BRANCH#origin/} 2>/dev/null || true
-
-            # Diff the current branch against the base branch
-            MIGRATION_FILES=$(git diff --name-only "$BASE_BRANCH" HEAD | grep "^supabase/migrations/" || true)
+            MIGRATION_FILES=$(bash scripts/detect-migration-changes.sh "$BASE_COMMIT")
 
             if [ -n "$MIGRATION_FILES" ]; then
               echo "has-migrations=true" >> $GITHUB_OUTPUT
-              echo "✅ Migration file changes detected (relative to $BASE_BRANCH)"
+              echo "✅ Migration file changes detected (relative to $BASE_COMMIT)"
               echo "Changed migration files:"
               echo "$MIGRATION_FILES" | while read -r file; do
                 echo "  - $file"
               done
             else
-              # Even with no file changes, check whether migration files exist,
-              # since earlier migrations may not have been applied successfully
-              if [ -d "supabase/migrations" ] && [ "$(ls -A supabase/migrations/*.sql 2>/dev/null)" ]; then
-                echo "has-migrations=true" >> $GITHUB_OUTPUT
-                echo "✅ Migration files detected (no changes, but unapplied migrations may exist)"
-              else
-                echo "has-migrations=false" >> $GITHUB_OUTPUT
-                echo "ℹ️ No migration file changes (relative to $BASE_BRANCH)"
-              fi
+              echo "has-migrations=false" >> $GITHUB_OUTPUT
+              echo "No migration file changes (relative to $BASE_COMMIT)"
             fi
           fi
 
@@ -215,7 +200,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     needs: [check-migrations, migrate-database]
-    if: (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') && always() && (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')
+    if: |
+      (github.repository == 'Keco-Studio/keco-studio' || github.repository == 'xzy1124/keco-studio') &&
+      always() &&
+      needs.check-migrations.result == 'success' &&
+      (needs.migrate-database.result == 'success' || needs.migrate-database.result == 'skipped')
     name: Deploy to Vercel
 
     steps:
