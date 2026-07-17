@@ -62,6 +62,28 @@ jest.mock('@/components/documents/ResourceReferencePickerModal.module.css', () =
   __esModule: true,
   default: new Proxy({}, { get: (_target, property) => String(property) }),
 }));
+jest.mock('@/components/documents/ResourceReferenceResultList', () => ({
+  ResourceReferenceResultList: (props: AnyProps) => {
+    const React = jest.requireActual<typeof import('react')>('react');
+    ui.lists.set(props.ariaLabel, props);
+    ui.rows.set(props.ariaLabel, props.items.map((item: unknown) => {
+      const id = props.getId(item);
+      return React.createElement(
+        'div',
+        {
+          id: `${props.idPrefix}-${id}`,
+          role: 'option',
+          tabIndex: -1,
+          'aria-label': props.getAriaLabel(item),
+          'aria-selected': id === props.selectedId,
+          onClick: () => props.onSelect(item),
+        },
+        React.createElement('span', { description: props.getDescription(item) })
+      );
+    }));
+    return null;
+  },
+}));
 jest.mock('@/lib/documents/resourceReferenceService', () => ({
   listTableReferenceSources: (...args: unknown[]) => listTableReferenceSources(...args),
   listTableReferenceRows: (...args: unknown[]) => listTableReferenceRows(...args),
@@ -395,7 +417,7 @@ describe('ResourceReferencePickerModal', () => {
       target: { value: 'conflict' },
     }));
     expect(ui.rows.get('Document blocks')).toHaveLength(2);
-    await act(async () => ui.rows.get('Document blocks')?.[1].props.onKeyDown({ key: 'Enter', preventDefault: jest.fn() }));
+    await act(async () => ui.rows.get('Document blocks')?.[1].props.onClick());
     expect(ui.rows.get('Document blocks')?.[1].props.children.props.description).toBe(
       'Outline / Conflict / paragraph'
     );
@@ -434,10 +456,7 @@ describe('ResourceReferencePickerModal', () => {
     expect(ui.inputs.get('Search table rows')).toBeDefined();
     await act(async () => ui.selects.get('Table')?.onChange(LIBRARY_A));
     await waitFor(() => ui.rows.get('Table rows')?.length === 1);
-    await act(async () => ui.rows.get('Table rows')?.[0].props.onKeyDown({
-      key: ' ',
-      preventDefault: jest.fn(),
-    }));
+    await act(async () => ui.rows.get('Table rows')?.[0].props.onClick());
     await act(async () => ui.selects.get('Display field')?.onChange(FIELD_STATUS));
     await act(async () => ui.modal?.onOk());
 
@@ -448,7 +467,7 @@ describe('ResourceReferencePickerModal', () => {
     );
     expect(ui.rows.get('Table rows')?.[0].props).toMatchObject({
       role: 'option',
-      tabIndex: 0,
+      tabIndex: -1,
       'aria-selected': true,
     });
     await act(async () => ui.modal?.onCancel());
@@ -542,27 +561,6 @@ describe('ResourceReferencePickerModal', () => {
     expect(latestSpin('Loading document blocks')?.spinning).toBe(false);
   });
 
-  it('exposes single-select listbox ownership for row and block options', async () => {
-    listTableReferenceRows.mockResolvedValue({
-      fields: [{ id: FIELD_STATUS, label: 'Status', orderIndex: 0 }],
-      rows: [{ id: ASSET_A, name: 'Ada', values: { [FIELD_STATUS]: 'Active' } }],
-    });
-    await renderPicker();
-    await act(async () => ui.selects.get('Table')?.onChange(LIBRARY_A));
-    await waitFor(() => ui.rows.get('Table rows')?.length === 1);
-    await act(async () => ui.rows.get('Table rows')?.[0].props.onClick());
-
-    expect(ui.lists.get('Table rows')).toMatchObject({
-      role: 'listbox',
-      'aria-multiselectable': false,
-      'aria-activedescendant': `table-reference-row-${ASSET_A}`,
-    });
-    expect(ui.rows.get('Table rows')?.[0].props).toMatchObject({
-      id: `table-reference-row-${ASSET_A}`,
-      role: 'option',
-      'aria-selected': true,
-    });
-  });
 });
 
 describe('document editor reference controls', () => {

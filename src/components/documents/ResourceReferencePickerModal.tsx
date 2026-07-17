@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Input, List, Modal, Select, Spin, Tabs } from 'antd';
+import { Alert, Input, Modal, Select, Spin, Tabs } from 'antd';
 import { useSupabase } from '@/lib/SupabaseContext';
 import {
   listDocumentReferenceBlocks,
@@ -20,6 +20,7 @@ import {
 import type { DocumentReferenceBlock } from '@/lib/documents/documentBlockIdentity';
 import { cellDisplayString } from '@/lib/utils/assetEmptiness';
 import styles from './ResourceReferencePickerModal.module.css';
+import { ResourceReferenceResultList } from './ResourceReferenceResultList';
 
 type ReferenceKind = 'table' | 'document';
 
@@ -38,12 +39,6 @@ const UNAVAILABLE_ERROR = 'The selected reference is no longer available.';
 
 function searchable(value: string): string {
   return value.trim().toLocaleLowerCase();
-}
-
-function keyboardSelect(event: React.KeyboardEvent, select: () => void) {
-  if (event.key !== 'Enter' && event.key !== ' ') return;
-  event.preventDefault();
-  select();
 }
 
 export function ResourceReferencePickerModal({
@@ -399,35 +394,19 @@ export function ResourceReferencePickerModal({
         />
       </div>
       <Spin aria-label="Loading table rows" spinning={loadingRows}>
-        <List
-          aria-label="Table rows"
-          role="listbox"
-          aria-multiselectable={false}
-          aria-activedescendant={
-            selectedAssetId ? `table-reference-row-${selectedAssetId}` : undefined
-          }
-          className={styles.resultList}
-          dataSource={filteredRows}
-          locale={{ emptyText: selectedLibraryId ? 'No matching rows' : 'Choose a table' }}
-          renderItem={(row) => (
-            <List.Item
-              id={`table-reference-row-${row.id}`}
-              className={row.id === selectedAssetId ? styles.selectedRow : styles.resultRow}
-              role="option"
-              tabIndex={0}
-              aria-label={`Row: ${row.name}`}
-              aria-selected={row.id === selectedAssetId}
-              onClick={() => selectAsset(row.id)}
-              onKeyDown={(event) => keyboardSelect(event, () => selectAsset(row.id))}
-            >
-              <List.Item.Meta
-                title={row.name}
-                description={`${selectedLibrary?.name ?? 'Table'} / ${row.name}${
-                  selectedField ? ` / ${selectedField.label}` : ''
-                }`}
-              />
-            </List.Item>
-          )}
+        <ResourceReferenceResultList
+          ariaLabel="Table rows"
+          idPrefix="table-reference-row"
+          items={filteredRows}
+          selectedId={selectedAssetId}
+          emptyText={selectedLibraryId ? 'No matching rows' : 'Choose a table'}
+          getId={(row) => row.id}
+          getTitle={(row) => row.name}
+          getDescription={(row) => `${selectedLibrary?.name ?? 'Table'} / ${row.name}${
+            selectedField ? ` / ${selectedField.label}` : ''
+          }`}
+          getAriaLabel={(row) => `Row: ${row.name}`}
+          onSelect={(row) => selectAsset(row.id)}
         />
       </Spin>
     </div>
@@ -453,35 +432,21 @@ export function ResourceReferencePickerModal({
         onChange={(event) => setDocumentSearch(event.target.value)}
       />
       <Spin aria-label="Loading document blocks" spinning={loadingBlocks}>
-        <List
-          aria-label="Document blocks"
-          role="listbox"
-          aria-multiselectable={false}
-          aria-activedescendant={
-            selectedBlockId ? `document-reference-block-${selectedBlockId}` : undefined
-          }
-          className={styles.resultList}
-          dataSource={filteredBlocks}
-          locale={{ emptyText: selectedDocumentId ? 'No matching content' : 'Choose a document' }}
-          renderItem={(block) => (
-            <List.Item
-              id={`document-reference-block-${block.blockId}`}
-              className={block.blockId === selectedBlockId ? styles.selectedRow : styles.resultRow}
-              role="option"
-              tabIndex={0}
-              aria-label={`${block.blockType === 'heading' ? 'Heading' : 'Paragraph'}: ${block.text}`}
-              aria-selected={block.blockId === selectedBlockId}
-              onClick={() => selectBlock(block.blockId)}
-              onKeyDown={(event) => keyboardSelect(event, () => selectBlock(block.blockId))}
-            >
-              <List.Item.Meta
-                title={block.text}
-                description={`${selectedDocument?.name ?? 'Document'} / ${
-                  block.nearestHeading ?? block.text
-                } / ${block.blockType}`}
-              />
-            </List.Item>
-          )}
+        <ResourceReferenceResultList
+          ariaLabel="Document blocks"
+          idPrefix="document-reference-block"
+          items={filteredBlocks}
+          selectedId={selectedBlockId}
+          emptyText={selectedDocumentId ? 'No matching content' : 'Choose a document'}
+          getId={(block) => block.blockId}
+          getTitle={(block) => block.text}
+          getDescription={(block) => `${selectedDocument?.name ?? 'Document'} / ${
+            block.nearestHeading ?? block.text
+          } / ${block.blockType}`}
+          getAriaLabel={(block) => `${
+            block.blockType === 'heading' ? 'Heading' : 'Paragraph'
+          }: ${block.text}`}
+          onSelect={(block) => selectBlock(block.blockId)}
         />
       </Spin>
     </div>
