@@ -19,7 +19,6 @@ import {
   type ResolvedResourceReference,
 } from '@/lib/documents/resourceReferenceService';
 import {
-  resourceReferenceAttributes,
   resourceReferenceKey,
   type ResourceReferenceTarget,
 } from '@/lib/documents/resourceReferenceTypes';
@@ -31,6 +30,7 @@ type Registration = {
 };
 
 type ResourceReferenceContextValue = {
+  hasError: boolean;
   isLoading: boolean;
   register: (target: ResourceReferenceTarget) => () => void;
   resolved: ReadonlyMap<string, ResolvedResourceReference> | undefined;
@@ -39,7 +39,10 @@ type ResourceReferenceContextValue = {
 const ResourceReferenceContext = createContext<ResourceReferenceContextValue | null>(null);
 
 function registrationKey(target: ResourceReferenceTarget): string {
-  return JSON.stringify(resourceReferenceAttributes(target));
+  const stableKey = resourceReferenceKey(target);
+  return target.kind === 'document-block'
+    ? `${stableKey}:${target.blockType}`
+    : stableKey;
 }
 
 export function ResourceReferenceProvider({
@@ -63,7 +66,10 @@ export function ResourceReferenceProvider({
     setRegistrations((current) => {
       const next = new Map(current);
       const existing = next.get(id);
-      next.set(id, { target, count: (existing?.count ?? 0) + 1 });
+      next.set(id, {
+        target: existing?.target ?? target,
+        count: (existing?.count ?? 0) + 1,
+      });
       return next;
     });
 
@@ -90,7 +96,7 @@ export function ResourceReferenceProvider({
     [registrations]
   );
   const keys = useMemo(
-    () => [...new Set(targets.map(resourceReferenceKey))].sort(),
+    () => targets.map(registrationKey).sort(),
     [targets]
   );
   const referencedDocumentIds = useMemo(
@@ -178,11 +184,12 @@ export function ResourceReferenceProvider({
 
   const value = useMemo<ResourceReferenceContextValue>(
     () => ({
+      hasError: query.isError,
       isLoading: query.isPending || query.isFetching,
       register,
       resolved: query.data,
     }),
-    [query.data, query.isFetching, query.isPending, register]
+    [query.data, query.isError, query.isFetching, query.isPending, register]
   );
 
   return (
@@ -193,6 +200,7 @@ export function ResourceReferenceProvider({
 }
 
 export function useResourceReference(target: ResourceReferenceTarget | null): {
+  hasError: boolean;
   isLoading: boolean;
   resolved: ResolvedResourceReference | undefined;
 } {
@@ -211,6 +219,7 @@ export function useResourceReference(target: ResourceReferenceTarget | null): {
   }, [context.register, id]);
 
   return {
+    hasError: context.hasError,
     isLoading: Boolean(target) && !context.resolved?.get(key) && context.isLoading,
     resolved: key ? context.resolved?.get(key) : undefined,
   };

@@ -22,8 +22,10 @@ const DOCUMENT_TARGET: ResourceReferenceTarget = {
 let referenceResult: {
   resolved: ResolvedResourceReference | undefined;
   isLoading: boolean;
+  hasError: boolean;
 };
 let buttonToInvoke: string | null = null;
+const nextLink = jest.fn();
 const updateMdastNode = jest.fn();
 const removeMdastNode = jest.fn();
 
@@ -39,6 +41,14 @@ jest.mock('@/components/documents/ResourceReferenceProvider', () => ({
 jest.mock('@mdxeditor/editor', () => ({
   useMdastNodeUpdater: () => updateMdastNode,
   useLexicalNodeRemove: () => removeMdastNode,
+}));
+
+jest.mock('next/link', () => ({
+  __esModule: true,
+  default: ({ children, href, ...props }: { children: ReactNode; href: string }) => {
+    nextLink(href);
+    return <a href={href} {...props}>{children}</a>;
+  },
 }));
 
 jest.mock('@ant-design/icons', () => ({
@@ -109,8 +119,9 @@ function renderReference(
 
 describe('ResourceReferenceEditor', () => {
   beforeEach(() => {
-    referenceResult = { resolved: undefined, isLoading: true };
+    referenceResult = { resolved: undefined, isLoading: true, hasError: false };
     buttonToInvoke = null;
+    nextLink.mockReset();
     updateMdastNode.mockReset();
     removeMdastNode.mockReset();
   });
@@ -130,6 +141,7 @@ describe('ResourceReferenceEditor', () => {
   ] as const)('renders an available internal reference with context and icon', (target, icon) => {
     referenceResult = {
       isLoading: false,
+      hasError: false,
       resolved: {
         key: 'resolved-key',
         status: 'available',
@@ -145,11 +157,13 @@ describe('ResourceReferenceEditor', () => {
     expect(markup).toContain('href="/project/');
     expect(markup).toContain(`aria-label="${referenceResult.resolved!.contextLabel}: ${target.fallbackLabel}"`);
     expect(markup).toContain(`data-tooltip="${referenceResult.resolved!.contextLabel}: ${target.fallbackLabel}"`);
+    expect(nextLink).toHaveBeenCalledWith(referenceResult.resolved!.href);
   });
 
   it('renders the exact unavailable warning without a link', () => {
     referenceResult = {
       isLoading: false,
+      hasError: false,
       resolved: {
         key: 'missing',
         status: 'unavailable',
@@ -175,6 +189,22 @@ describe('ResourceReferenceEditor', () => {
 
     expect(markup).toContain('>Reference unavailable<');
     expect(markup).not.toContain('href=');
+  });
+
+  it('keeps the neutral fallback label on an initial resolver error', () => {
+    referenceResult = {
+      resolved: undefined,
+      isLoading: false,
+      hasError: true,
+    };
+
+    const markup = renderReference(TABLE_TARGET, { readOnly: true });
+
+    expect(markup).toContain('Ada Lovelace');
+    expect(markup).toContain('resourceReferenceLoading');
+    expect(markup).not.toContain('Reference unavailable');
+    expect(markup).not.toContain('href=');
+    expect(markup).not.toContain('deleted or is no longer accessible');
   });
 
   it('omits replacement and removal controls for viewers', () => {

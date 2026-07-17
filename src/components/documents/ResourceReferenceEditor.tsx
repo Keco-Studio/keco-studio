@@ -9,6 +9,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import { Button, Tooltip } from 'antd';
+import Link from 'next/link';
 import {
   useLexicalNodeRemove,
   useMdastNodeUpdater,
@@ -64,7 +65,7 @@ export function ResourceReferenceEditor({
     () => parseResourceReferenceAttributes(fixedAttributes(mdastNode)),
     [mdastNode]
   );
-  const { isLoading, resolved } = useResourceReference(target);
+  const { hasError, isLoading, resolved } = useResourceReference(target);
   const updateMdastNode = useMdastNodeUpdater();
   const removeMdastNode = useLexicalNodeRemove();
   const replaceTarget = useCallback(
@@ -93,17 +94,17 @@ export function ResourceReferenceEditor({
       : resolved.label;
     reference = (
       <Tooltip title={accessibleLabel}>
-        <a
+        <Link
           className={styles.resourceReference}
           href={resolved.href}
           aria-label={accessibleLabel}
         >
           {target.kind === 'table-row' ? <TableOutlined /> : <FileTextOutlined />}
           <span>{resolved.label}</span>
-        </a>
+        </Link>
       </Tooltip>
     );
-  } else if (!resolved && isLoading) {
+  } else if (!resolved && (isLoading || hasError)) {
     reference = (
       <span
         className={`${styles.resourceReference} ${styles.resourceReferenceLoading}`}
@@ -126,7 +127,11 @@ export function ResourceReferenceEditor({
   }
 
   return (
-    <span className={styles.resourceReferenceContainer}>
+    <span
+      className={`${styles.resourceReferenceContainer} ${
+        readOnly ? '' : styles.resourceReferenceEditable
+      }`}
+    >
       {reference}
       {!readOnly && (
         <span className={styles.resourceReferenceActions}>

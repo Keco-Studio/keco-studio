@@ -28,6 +28,10 @@ const DOCUMENT_TARGET: ResourceReferenceTarget = {
   blockType: 'paragraph',
   fallbackLabel: 'City gates',
 };
+const HEADING_VARIANT: ResourceReferenceTarget = {
+  ...DOCUMENT_TARGET,
+  blockType: 'heading',
+};
 
 type DocumentUpdate = { projectId: string; documentId: string };
 type ChannelHarness = {
@@ -258,6 +262,39 @@ describe('ResourceReferenceProvider', () => {
     expect(supabase.removeChannel).toHaveBeenCalledTimes(1);
   });
 
+  it('deduplicates identical resolution targets even when fallback labels differ', async () => {
+    await renderProvider(
+      <>
+        <Probe target={TABLE_TARGET} />
+        <Probe target={{ ...TABLE_TARGET, fallbackLabel: 'Grace' }} />
+      </>
+    );
+    await waitFor(() => resolveReferences.mock.calls.length === 1);
+
+    expect(resolveReferences.mock.calls[0][2]).toEqual([TABLE_TARGET]);
+  });
+
+  it('reruns resolution when conflicting document block variants are added or removed', async () => {
+    await renderProvider(<Probe target={DOCUMENT_TARGET} />);
+    await waitFor(() => resolveReferences.mock.calls.length === 1);
+
+    await renderProvider(
+      <>
+        <Probe target={HEADING_VARIANT} />
+        <Probe target={DOCUMENT_TARGET} />
+      </>
+    );
+    await waitFor(() => resolveReferences.mock.calls.length === 2);
+    expect(resolveReferences.mock.calls[1][2]).toEqual([
+      HEADING_VARIANT,
+      DOCUMENT_TARGET,
+    ]);
+
+    await renderProvider(<Probe target={DOCUMENT_TARGET} />);
+    await waitFor(() => resolveReferences.mock.calls.length === 3);
+    expect(resolveReferences.mock.calls[2][2]).toEqual([DOCUMENT_TARGET]);
+  });
+
   it('retains resolved data during a targeted document refetch without a loading flash', async () => {
     let state: ReferenceState | undefined;
     await renderProvider(<Probe target={DOCUMENT_TARGET} onState={(next) => { state = next; }} />);
@@ -277,6 +314,38 @@ describe('ResourceReferenceProvider', () => {
 
     await act(async () => resolveRefetch(resolvedMap([DOCUMENT_TARGET], 'updated')));
     await waitFor(() => state?.resolved?.label === 'City gates updated');
+  });
+
+  it('exposes an initial query error without confirming the target unavailable', async () => {
+    let state: ReferenceState | undefined;
+    resolveReferences.mockRejectedValueOnce(new Error('temporary outage'));
+
+    await renderProvider(<Probe target={DOCUMENT_TARGET} onState={(next) => { state = next; }} />);
+    await waitFor(() => Boolean(state && 'hasError' in state && state.hasError));
+
+    expect(state).toMatchObject({
+      hasError: true,
+      isLoading: false,
+      resolved: undefined,
+    });
+  });
+
+  it('preserves resolved data when a refetch fails', async () => {
+    let state: ReferenceState | undefined;
+    await renderProvider(<Probe target={DOCUMENT_TARGET} onState={(next) => { state = next; }} />);
+    await waitFor(() => state?.resolved?.label === 'City gates resolved');
+    resolveReferences.mockRejectedValueOnce(new Error('temporary outage'));
+
+    await act(async () => {
+      documentListener?.({ projectId: PROJECT_ID, documentId: DOCUMENT_TARGET.documentId });
+    });
+    await waitFor(() => Boolean(state && 'hasError' in state && state.hasError));
+
+    expect(state).toMatchObject({
+      hasError: true,
+      isLoading: false,
+      resolved: expect.objectContaining({ label: 'City gates resolved' }),
+    });
   });
 
   it('invalidates document references only for the currently referenced document', async () => {
