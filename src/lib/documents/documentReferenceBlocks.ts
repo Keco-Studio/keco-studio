@@ -55,7 +55,7 @@ export async function ensureDocumentReferenceBlocks(
         client,
         committedState,
         'normalization'
-      );
+      ).catch(() => undefined);
       return { projectId: committedState.projectId, blocks: committed.blocks };
     } catch (error) {
       if (!(error instanceof DocumentStateConflictError) || attempt === 1) {

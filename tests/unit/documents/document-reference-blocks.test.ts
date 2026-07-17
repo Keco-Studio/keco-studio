@@ -145,6 +145,36 @@ describe('ensureDocumentReferenceBlocks', () => {
     );
   });
 
+  it('returns committed blocks when the normalization reset broadcast fails', async () => {
+    const committedBlocks = blocksWithId(
+      '66666666-6666-4666-8666-666666666666'
+    );
+    readDocumentTransportState.mockResolvedValue(transportState({ epoch: 7 }));
+    normalizeYjsState
+      .mockResolvedValueOnce(normalized('normalization-delta'))
+      .mockResolvedValueOnce(normalized(null, committedBlocks, 'committed-state'));
+    const committedState = {
+      ...transportState({ epoch: 7 }),
+      markdown: '# Committed',
+      yjsStateBase64: 'committed-state',
+      updateTail: [],
+      token: { epoch: 8, revision: 5 },
+    };
+    normalizeDocumentState.mockResolvedValue(committedState);
+    broadcastDocumentStateReset.mockRejectedValue(
+      new Error('realtime unavailable')
+    );
+
+    await expect(
+      ensureDocumentReferenceBlocks(client, DOCUMENT_ID)
+    ).resolves.toEqual({ projectId: PROJECT_ID, blocks: committedBlocks });
+    expect(broadcastDocumentStateReset).toHaveBeenCalledWith(
+      client,
+      committedState,
+      'normalization'
+    );
+  });
+
   it('returns only the winning IDs when same-token normalizers race', async () => {
     const candidateA = blocksWithId('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     const candidateB = blocksWithId('bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb');

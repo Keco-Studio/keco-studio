@@ -50,6 +50,50 @@ function mapUpdate(key: string, value: string): string {
   return encoded;
 }
 
+function sharedBlockState(): {
+  initial: AuthoritativeDocumentState;
+  winner: AuthoritativeDocumentState;
+} {
+  const base = new Y.Doc();
+  const block = new Y.XmlText();
+  block.setAttribute('__type', 'paragraph');
+  block.setAttribute('__state', new Y.Map());
+  block.insert(0, 'Seed');
+  base.get('root', Y.XmlText).insertEmbed(0, block);
+  const baseUpdate = Y.encodeStateAsUpdate(base);
+
+  const winner = new Y.Doc();
+  Y.applyUpdate(winner, baseUpdate);
+  const winnerBlock = documentBlock(winner);
+  const winnerNodeState = winnerBlock.getAttribute('__state');
+  if (!(winnerNodeState instanceof Y.Map)) {
+    throw new Error('Expected shared block node state');
+  }
+  winnerNodeState.set('kecoBlockId', 'winner-a');
+
+  const initial = {
+    ...collaborativeState(),
+    yjsStateBase64: encodeBase64(baseUpdate),
+  };
+  const normalized = {
+    ...initial,
+    yjsStateBase64: encodeBase64(Y.encodeStateAsUpdate(winner)),
+    token: { epoch: 3, revision: 5 },
+    updatedAt: '2026-07-17T01:00:00.000Z',
+  };
+  base.destroy();
+  winner.destroy();
+  return { initial, winner: normalized };
+}
+
+function documentBlock(doc: Y.Doc): Y.XmlText {
+  const embedded = doc.get('root', Y.XmlText).toDelta()[0]?.insert;
+  if (!(embedded instanceof Y.XmlText)) {
+    throw new Error('Expected shared document block');
+  }
+  return embedded;
+}
+
 function invalidCalloutState(): string {
   const doc = new Y.Doc();
   const jsx = new Y.XmlElement();
@@ -1313,22 +1357,29 @@ describe('DocumentCollaborationSession', () => {
     );
   });
 
-  it('reloads the winning epoch when a pending old-epoch append conflicts', async () => {
-    const winner = {
-      ...collaborativeState(),
-      yjsStateBase64: mapUpdate('normalized', 'winner-a'),
-      token: { epoch: 3, revision: 5 },
-      updatedAt: '2026-07-17T01:00:00.000Z',
-    };
+  it('rebases user edits without a losing block ID when an old-epoch append conflicts', async () => {
+    const { initial, winner } = sharedBlockState();
+    let appendAttempt = 0;
     const harness = makeHarness({
-      append: async () => {
-        throw new DocumentStateConflictError('epoch changed', winner.token);
+      state: initial,
+      append: async (_client, input) => {
+        appendAttempt += 1;
+        if (appendAttempt === 1) {
+          throw new DocumentStateConflictError('epoch changed', winner.token);
+        }
+        return { acceptedIds: input.updates.map((update) => update.id) };
       },
     });
     await connectReady(harness.session);
     harness.gateway.readTransport.mockResolvedValue(winner);
 
-    harness.session.doc.getMap('local').set('block-id', 'loser-b');
+    const localBlock = documentBlock(harness.session.doc);
+    const localNodeState = localBlock.getAttribute('__state');
+    if (!(localNodeState instanceof Y.Map)) {
+      throw new Error('Expected local block node state');
+    }
+    localNodeState.set('kecoBlockId', 'loser-b');
+    localBlock.insert(localBlock.length, ' local user edit');
     await jest.advanceTimersByTimeAsync(75);
     await Promise.resolve();
 
@@ -1339,8 +1390,30 @@ describe('DocumentCollaborationSession', () => {
     expect(harness.session.token).toEqual({ epoch: 3, revision: 5 });
     harness.session.attachBinding();
     await jest.advanceTimersByTimeAsync(0);
-    expect(harness.session.doc.getMap('peer').get('normalized')).toBe('winner-a');
-    expect(harness.session.doc.getMap('local').get('block-id')).toBeUndefined();
+    const rebasedBlock = documentBlock(harness.session.doc);
+    const rebasedNodeState = rebasedBlock.getAttribute('__state');
+    expect(rebasedNodeState).toBeInstanceOf(Y.Map);
+    expect((rebasedNodeState as Y.Map<unknown>).get('kecoBlockId')).toBe(
+      'winner-a'
+    );
+    expect(rebasedBlock.toString()).toBe('Seed local user edit');
+
+    await jest.advanceTimersByTimeAsync(75);
+    const rebasedAppend = harness.gateway.appendUpdates.mock.calls[1]?.[1];
+    expect(rebasedAppend).toMatchObject({ epoch: 3 });
+    const persisted = new Y.Doc();
+    Y.applyUpdate(persisted, decodeBase64(winner.yjsStateBase64!));
+    Y.applyUpdate(
+      persisted,
+      decodeBase64(rebasedAppend?.updates[0]?.updateBase64 ?? '')
+    );
+    const persistedBlock = documentBlock(persisted);
+    const persistedNodeState = persistedBlock.getAttribute('__state');
+    expect((persistedNodeState as Y.Map<unknown>).get('kecoBlockId')).toBe(
+      'winner-a'
+    );
+    expect(persistedBlock.toString()).toBe('Seed local user edit');
+    persisted.destroy();
   });
 
   it('fails closed without appending when the current semantic state is invalid', async () => {
@@ -1900,18 +1973,21 @@ describe('DocumentCollaborationSession', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('reloads the committed state after a normalization reset', async () => {
-    const replacement = {
-      ...collaborativeState(),
-      yjsStateBase64: mapUpdate('normalized', 'winner'),
-      token: { epoch: 3, revision: 5 },
-      updatedAt: '2026-07-17T01:00:00.000Z',
-    };
-    const harness = makeHarness();
+  it('rebases pending user edits after a normalization reset', async () => {
+    const { initial, winner } = sharedBlockState();
+    const harness = makeHarness({ state: initial });
     harness.gateway.read
-      .mockResolvedValueOnce(collaborativeState())
-      .mockResolvedValueOnce(replacement);
+      .mockResolvedValueOnce(initial)
+      .mockResolvedValueOnce(winner);
     await connectReady(harness.session);
+
+    const localBlock = documentBlock(harness.session.doc);
+    const localNodeState = localBlock.getAttribute('__state');
+    if (!(localNodeState instanceof Y.Map)) {
+      throw new Error('Expected local block node state');
+    }
+    localNodeState.set('kecoBlockId', 'loser-b');
+    localBlock.insert(localBlock.length, ' local reset edit');
 
     await harness.channel.emit('document-state-reset', {
       v: 1,
@@ -1919,14 +1995,19 @@ describe('DocumentCollaborationSession', () => {
       epoch: 3,
       revision: 5,
       reason: 'normalization',
-      updatedAt: replacement.updatedAt,
+      updatedAt: winner.updatedAt,
     });
 
     expect(harness.gateway.read).toHaveBeenCalledTimes(2);
     harness.session.attachBinding();
     await jest.advanceTimersByTimeAsync(0);
     expect(harness.session.token).toEqual({ epoch: 3, revision: 5 });
-    expect(harness.session.doc.getMap('peer').get('normalized')).toBe('winner');
+    const rebasedBlock = documentBlock(harness.session.doc);
+    const rebasedNodeState = rebasedBlock.getAttribute('__state');
+    expect((rebasedNodeState as Y.Map<unknown>).get('kecoBlockId')).toBe(
+      'winner-a'
+    );
+    expect(rebasedBlock.toString()).toBe('Seed local reset edit');
   });
 
   it('single-flights concurrent higher-epoch resets and freezes immediately', async () => {
