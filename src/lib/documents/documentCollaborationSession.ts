@@ -1407,7 +1407,8 @@ export class DocumentCollaborationSession implements Provider {
 
   private replaceActiveDocument(state: AuthoritativeDocumentTransportState): void {
     const epochRebase =
-      state.epochReason === 'normalization'
+      state.epochReason === 'normalization' &&
+      state.token.epoch === this.currentToken.epoch + 1
         ? this.capturePendingEpochRebase()
         : null;
     this.setStatus('hydrating');

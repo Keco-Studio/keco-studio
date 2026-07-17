@@ -2086,6 +2086,42 @@ describe('DocumentCollaborationSession', () => {
     }
   );
 
+  it.each(['restore', 'agent'] as const)(
+    'does not rebase epoch-2 edits across a missed epoch-3 %s and epoch-4 normalization',
+    async (reason) => {
+      const { initial } = sharedBlockState();
+      const replacement = replacementBlockState(
+        initial,
+        `${reason} replacement`,
+        reason
+      );
+      const latest = {
+        ...replacement,
+        token: { epoch: 4, revision: 6 },
+        epochReason: 'normalization' as const,
+        updatedAt: '2026-07-17T03:00:00.000Z',
+      };
+      const harness = makeHarness({ state: initial });
+      harness.gateway.read
+        .mockResolvedValueOnce(initial)
+        .mockResolvedValueOnce(latest);
+      await connectReady(harness.session);
+
+      const localBlock = documentBlock(harness.session.doc);
+      localBlock.insert(localBlock.length, ' stale skipped-epoch edit');
+
+      await harness.session.refresh();
+      harness.session.attachBinding();
+      await jest.advanceTimersByTimeAsync(0);
+
+      expect(documentBlockTexts(harness.session.doc)).toEqual([
+        `${reason} replacement`,
+      ]);
+      await jest.advanceTimersByTimeAsync(75);
+      expect(harness.gateway.appendUpdates).not.toHaveBeenCalled();
+    }
+  );
+
   it('single-flights concurrent higher-epoch resets and freezes immediately', async () => {
     let resolveRead!: (state: AuthoritativeDocumentState) => void;
     const pendingRead = new Promise<AuthoritativeDocumentState>((resolve) => {

@@ -398,3 +398,27 @@ begin
     where d.id = p_document_id;
 end;
 $$;
+
+revoke all on function public.normalize_document_collab_state(
+  uuid, bigint, bigint, uuid[], text, text
+) from public, anon, authenticated;
+grant execute on function public.normalize_document_collab_state(
+  uuid, bigint, bigint, uuid[], text, text
+) to authenticated;
+
+revoke all on function public.restore_document_version(
+  uuid, uuid, uuid, uuid, bigint, bigint, uuid[], text, text
+) from public;
+grant execute on function public.restore_document_version(
+  uuid, uuid, uuid, uuid, bigint, bigint, uuid[], text, text
+) to authenticated;
+
+revoke all on function public.replace_document_with_markdown(
+  uuid, uuid, uuid, bigint, bigint, uuid[], text, text, text, text
+) from public;
+revoke all on function public.replace_document_with_markdown(
+  uuid, uuid, uuid, bigint, bigint, uuid[], text, text, text, text
+) from anon, authenticated;
+grant execute on function public.replace_document_with_markdown(
+  uuid, uuid, uuid, bigint, bigint, uuid[], text, text, text, text
+) to service_role;
