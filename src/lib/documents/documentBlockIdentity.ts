@@ -63,7 +63,7 @@ function displayText(node: DocumentBlockNode): string {
 export function normalizeDocumentBlockIds(): void {
   const blocks = documentBlocks();
   const seen = new Set<string>();
-  for (const [index, node] of blocks.entries()) {
+  for (const node of blocks) {
     const current = $getState(node, documentBlockIdState);
     if (isUuid(current) && !seen.has(current)) {
       seen.add(current);
@@ -71,7 +71,7 @@ export function normalizeDocumentBlockIds(): void {
     }
     if (
       current.length === 0 &&
-      index === blocks.length - 1 &&
+      node.getNextSibling() === null &&
       $isParagraphNode(node) &&
       displayText(node).length === 0
     ) {
@@ -90,8 +90,12 @@ const DOCUMENT_BLOCK_SELECTOR =
 
 function clearDocumentBlockDom(root: HTMLElement | null): void {
   root?.querySelectorAll<HTMLElement>(DOCUMENT_BLOCK_SELECTOR).forEach((element) => {
-    delete element.dataset.documentBlockId;
-    delete element.dataset.documentBlockType;
+    if (element.dataset.documentBlockId !== undefined) {
+      delete element.dataset.documentBlockId;
+    }
+    if (element.dataset.documentBlockType !== undefined) {
+      delete element.dataset.documentBlockType;
+    }
   });
 }
 
@@ -104,14 +108,23 @@ function reconcileDocumentBlockDom(editor: LexicalEditor): void {
       currentElements.add(element);
       const blockId = $getState(node, documentBlockIdState);
       if (!isUuid(blockId)) {
-        delete element.dataset.documentBlockId;
-        delete element.dataset.documentBlockType;
+        if (element.dataset.documentBlockId !== undefined) {
+          delete element.dataset.documentBlockId;
+        }
+        if (element.dataset.documentBlockType !== undefined) {
+          delete element.dataset.documentBlockType;
+        }
         continue;
       }
-      element.dataset.documentBlockId = blockId;
-      element.dataset.documentBlockType = $isHeadingNode(node)
+      const blockType = $isHeadingNode(node)
         ? 'heading'
         : 'paragraph';
+      if (element.dataset.documentBlockId !== blockId) {
+        element.dataset.documentBlockId = blockId;
+      }
+      if (element.dataset.documentBlockType !== blockType) {
+        element.dataset.documentBlockType = blockType;
+      }
     }
   });
 
@@ -120,21 +133,52 @@ function reconcileDocumentBlockDom(editor: LexicalEditor): void {
     ?.querySelectorAll<HTMLElement>(DOCUMENT_BLOCK_SELECTOR)
     .forEach((element) => {
       if (currentElements.has(element)) return;
-      delete element.dataset.documentBlockId;
-      delete element.dataset.documentBlockType;
+      if (element.dataset.documentBlockId !== undefined) {
+        delete element.dataset.documentBlockId;
+      }
+      if (element.dataset.documentBlockType !== undefined) {
+        delete element.dataset.documentBlockType;
+      }
     });
 }
 
 export function registerDocumentBlockIdentity(
   editor: LexicalEditor,
-  shouldAssignMissingIds: () => boolean
+  shouldAssignMissingIds: () => boolean,
+  normalizeBlockIds: () => void = normalizeDocumentBlockIds
 ): () => void {
+  let disposed = false;
+  let normalizationScheduled = false;
+  let normalizing = false;
+
+  const scheduleNormalization = () => {
+    if (
+      disposed ||
+      normalizing ||
+      normalizationScheduled ||
+      !shouldAssignMissingIds()
+    ) {
+      return;
+    }
+    normalizationScheduled = true;
+    queueMicrotask(() => {
+      normalizationScheduled = false;
+      if (disposed || !shouldAssignMissingIds()) return;
+      normalizing = true;
+      try {
+        editor.update(normalizeBlockIds, { discrete: true });
+      } finally {
+        normalizing = false;
+      }
+    });
+  };
+
   const normalize = (node: DocumentBlockNode) => {
     if (!shouldAssignMissingIds() || !isTopLevelDocumentBlock(node)) return;
     if (!isUuid($getState(node, documentBlockIdState))) {
       $setState(node, documentBlockIdState, crypto.randomUUID());
     }
-    normalizeDocumentBlockIds();
+    scheduleNormalization();
   };
   const unregister = mergeRegister(
     editor.registerUpdateListener(() => reconcileDocumentBlockDom(editor)),
@@ -147,6 +191,7 @@ export function registerDocumentBlockIdentity(
   );
 
   return () => {
+    disposed = true;
     unregister();
     clearDocumentBlockDom(editor.getRootElement());
   };

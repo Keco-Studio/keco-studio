@@ -1,7 +1,9 @@
 import {
   $createHeadingNode,
+  $createQuoteNode,
   $isHeadingNode,
   HeadingNode,
+  QuoteNode,
 } from '@lexical/rich-text';
 import {
   $copyNode,
@@ -154,6 +156,60 @@ describe('document block identity', () => {
     expect(emptyId).not.toBe(duplicateId);
   });
 
+  it('normalizes duplicates once when registering a multi-block editor', async () => {
+    const duplicateId = '55555555-5555-4555-8555-555555555555';
+    const editor = createEditor({ nodes: [HeadingNode] });
+    editor.update(
+      () => {
+        for (let index = 0; index < 12; index += 1) {
+          const paragraph = $createParagraphNode().append(
+            $createTextNode(`Paragraph ${index}`)
+          );
+          $setState(paragraph, documentBlockIdState, duplicateId);
+          $getRoot().append(paragraph);
+        }
+      },
+      { discrete: true }
+    );
+    const normalizeOnce = jest.fn(() => normalizeDocumentBlockIds());
+
+    const unregister = registerDocumentBlockIdentity(
+      editor,
+      () => true,
+      normalizeOnce
+    );
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+    expect(normalizeOnce).toHaveBeenCalledTimes(1);
+    const ids = blocks(editor).map(({ blockId }) => blockId);
+    expect(new Set(ids).size).toBe(12);
+    unregister();
+  });
+
+  it('assigns an empty paragraph followed by a non-reference root node', () => {
+    const editor = createEditor({ nodes: [HeadingNode, QuoteNode] });
+    editor.update(
+      () => {
+        $getRoot().append(
+          $createParagraphNode(),
+          $createQuoteNode().append($createTextNode('Quote'))
+        );
+        normalizeDocumentBlockIds();
+      },
+      { discrete: true }
+    );
+
+    expect(
+      editor.getEditorState().read(() => {
+        const paragraph = $getRoot().getFirstChild();
+        if (!$isParagraphNode(paragraph)) throw new Error('Expected paragraph');
+        return $getState(paragraph, documentBlockIdState);
+      })
+    ).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    );
+  });
+
   it('lists top-level blocks with collapsed text and nearest headings', async () => {
     const editor = normalizedEditor(
       { type: 'heading', text: '  Chapter' },
@@ -293,6 +349,74 @@ describe('document block identity', () => {
     expect(newElement.dataset).toEqual({});
   });
 
+  it('does not rewrite unchanged DOM marker attributes on an update', () => {
+    const editor = normalizedEditor({ type: 'paragraph', text: 'Stable' });
+    const paragraphKey = editor.getEditorState().read(() =>
+      $getRoot().getFirstChildOrThrow().getKey()
+    );
+    let blockId: string | undefined;
+    let blockType: string | undefined;
+    let blockIdWrites = 0;
+    let blockTypeWrites = 0;
+    const dataset = {} as DOMStringMap;
+    Object.defineProperties(dataset, {
+      documentBlockId: {
+        configurable: true,
+        enumerable: true,
+        get: () => blockId,
+        set: (value: string) => {
+          blockId = value;
+          blockIdWrites += 1;
+        },
+      },
+      documentBlockType: {
+        configurable: true,
+        enumerable: true,
+        get: () => blockType,
+        set: (value: string) => {
+          blockType = value;
+          blockTypeWrites += 1;
+        },
+      },
+    });
+    const element = { dataset } as HTMLElement;
+    const root = {
+      querySelectorAll: () => [element],
+    } as unknown as HTMLElement;
+    let currentRoot: HTMLElement | null = null;
+    let rootListener:
+      | ((nextRoot: HTMLElement | null, previousRoot: HTMLElement | null) => void)
+      | undefined;
+    let updateListener: (() => void) | undefined;
+
+    jest.spyOn(editor, 'getRootElement').mockImplementation(() => currentRoot);
+    jest.spyOn(editor, 'getElementByKey').mockImplementation((key) =>
+      currentRoot && key === paragraphKey ? element : null
+    );
+    jest.spyOn(editor, 'registerRootListener').mockImplementation((listener) => {
+      rootListener = listener;
+      listener(currentRoot, null);
+      return () => undefined;
+    });
+    jest.spyOn(editor, 'registerUpdateListener').mockImplementation((listener) => {
+      updateListener = () => listener({} as never);
+      return () => undefined;
+    });
+
+    const unregister = registerDocumentBlockIdentity(editor, () => false);
+    currentRoot = root;
+    rootListener?.(root, null);
+    expect(blockIdWrites).toBe(1);
+    expect(blockTypeWrites).toBe(1);
+
+    blockIdWrites = 0;
+    blockTypeWrites = 0;
+    updateListener?.();
+    expect(blockIdWrites).toBe(0);
+    expect(blockTypeWrites).toBe(0);
+    unregister();
+  });
+
   it('preserves IDs when text changes or a whole block moves', async () => {
     const editor = normalizedEditor(
       { type: 'heading', text: 'Heading' },
@@ -358,7 +482,7 @@ describe('document block identity', () => {
     expect(trailing.blockId).not.toBe(originalId);
   });
 
-  it('keeps the destination ID and removes the source ID when merging', async () => {
+  it('keeps the destination ID when backspace merges the source block', async () => {
     const editor = normalizedEditor(
       { type: 'paragraph', text: 'Destination' },
       { type: 'paragraph', text: 'Source' }
@@ -367,12 +491,16 @@ describe('document block identity', () => {
 
     editor.update(
       () => {
-        const [destination, source] = $getRoot().getChildren();
-        if (!$isParagraphNode(destination) || !$isParagraphNode(source)) {
+        const source = $getRoot().getChildren()[1];
+        if (!$isParagraphNode(source)) {
           throw new Error('Expected paragraph blocks');
         }
-        destination.append($createTextNode(' '), ...source.getChildren());
-        source.remove();
+        const sourceText = source.getFirstChild();
+        if (!$isTextNode(sourceText)) throw new Error('Expected source text');
+        sourceText.select(0, 0);
+        const selection = $getSelection();
+        if (!$isRangeSelection(selection)) throw new Error('Expected selection');
+        selection.deleteCharacter(true);
         normalizeDocumentBlockIds();
       },
       { discrete: true }
@@ -380,7 +508,7 @@ describe('document block identity', () => {
 
     const merged = blocks(editor);
     expect(merged[0]).toMatchObject({
-      text: 'Destination Source',
+      text: 'DestinationSource',
       blockId: destinationBefore.blockId,
     });
     expect(merged.map(({ blockId }) => blockId)).not.toContain(sourceBefore.blockId);
