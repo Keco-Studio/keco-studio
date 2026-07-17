@@ -122,19 +122,6 @@ export default function AssetPage() {
   const referenceSearch = `?${searchParams.toString()}`;
   const referencedFieldId = parseReferencedFieldSearch(referenceSearch);
 
-  const activateReferencedFieldTab = useCallback((fieldId: string) => {
-    const referencedField = fieldDefs.find((field) => field.id === fieldId);
-    if (referencedField) setActiveSection(referencedField.section);
-  }, [fieldDefs]);
-
-  useReferencedAssetField({
-    rootRef: fieldsRootRef,
-    ready: !loading && !error && (isNewAsset || asset?.id === assetId),
-    fieldId: referencedFieldId,
-    highlightClassName: styles.referencedFieldHighlight,
-    activateFieldsTab: activateReferencedFieldTab,
-  });
-  
   // Track whether the user is actively typing in a text field (string/int/float/date).
   // When true, auto-save is suppressed so collaborators only see final values on blur,
   // matching the table cell editing behavior.
@@ -244,6 +231,26 @@ export default function AssetPage() {
     
     return map;
   }, [fieldDefs]);
+
+  const effectiveActiveSection = activeSection ?? Object.keys(sections)[0] ?? null;
+  const referencedFieldSection = referencedFieldId
+    ? fieldDefs.find((field) => field.id === referencedFieldId)?.section ?? null
+    : null;
+  const referencedFieldTabActive = referencedFieldSection === null ||
+    effectiveActiveSection === referencedFieldSection;
+  const activateReferencedFieldTab = useCallback((fieldId: string) => {
+    const referencedField = fieldDefs.find((field) => field.id === fieldId);
+    if (referencedField) setActiveSection(referencedField.section);
+  }, [fieldDefs]);
+
+  useReferencedAssetField({
+    rootRef: fieldsRootRef,
+    ready: !loading && !error && (isNewAsset || asset?.id === assetId),
+    fieldId: referencedFieldId,
+    fieldTabActive: referencedFieldTabActive,
+    highlightClassName: styles.referencedFieldHighlight,
+    activateFieldsTab: activateReferencedFieldTab,
+  });
 
   useEffect(() => {
     const sectionKeys = Object.keys(sections);

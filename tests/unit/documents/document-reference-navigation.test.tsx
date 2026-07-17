@@ -194,11 +194,13 @@ function AssetHarness({
   navigationRoot,
   ready,
   fieldId,
+  fieldTabActive,
   activateFieldsTab,
 }: {
   navigationRoot: NavigationRoot;
   ready: boolean;
   fieldId: string | null;
+  fieldTabActive: boolean;
   activateFieldsTab: (fieldId: string) => void;
 }) {
   const rootRef = useRef<HTMLElement | null>(navigationRoot as never);
@@ -206,6 +208,7 @@ function AssetHarness({
     rootRef,
     ready,
     fieldId,
+    fieldTabActive,
     highlightClassName: 'referencedFieldHighlight',
     activateFieldsTab,
   });
@@ -397,15 +400,15 @@ describe('reference navigation hooks', () => {
           navigationRoot={navigationRoot}
           ready
           fieldId={FIELD_A}
+          fieldTabActive
           activateFieldsTab={activateFieldsTab}
         />
       </StrictMode>
     ));
     await flushMicrotasks();
 
-    expect(activateFieldsTab).toHaveBeenCalledTimes(1);
-    expect(events[0]).toBe(`activate:${FIELD_A}`);
-    expect(events[1]).toContain('query:[data-field-id=');
+    expect(activateFieldsTab).not.toHaveBeenCalled();
+    expect(events[0]).toContain('query:[data-field-id=');
     const controlA = createElement(documentLike, 'input');
     const targetA = navigationRoot.insertTarget('data-field-id', FIELD_A, controlA);
     expect(targetA.scrollIntoView).toHaveBeenCalledWith({ block: 'center' });
@@ -418,6 +421,7 @@ describe('reference navigation hooks', () => {
           navigationRoot={navigationRoot}
           ready
           fieldId={FIELD_B}
+          fieldTabActive={false}
           activateFieldsTab={activateFieldsTab}
         />
       </StrictMode>
@@ -425,6 +429,20 @@ describe('reference navigation hooks', () => {
     await flushMicrotasks();
     expect(targetA.classList.contains('referencedFieldHighlight')).toBe(false);
     expect(activateFieldsTab).toHaveBeenLastCalledWith(FIELD_B);
+    expect(observers.every((observer) => !observer.connected)).toBe(true);
+
+    await act(async () => root.render(
+      <StrictMode>
+        <AssetHarness
+          navigationRoot={navigationRoot}
+          ready
+          fieldId={FIELD_B}
+          fieldTabActive
+          activateFieldsTab={activateFieldsTab}
+        />
+      </StrictMode>
+    ));
+    await flushMicrotasks();
 
     const controlB = createElement(documentLike, 'input');
     const targetB = navigationRoot.insertTarget('data-field-id', FIELD_B, controlB);
@@ -438,6 +456,7 @@ describe('reference navigation hooks', () => {
           navigationRoot={navigationRoot}
           ready
           fieldId={null}
+          fieldTabActive
           activateFieldsTab={activateFieldsTab}
         />
       </StrictMode>
@@ -452,6 +471,7 @@ describe('reference navigation hooks', () => {
           navigationRoot={navigationRoot}
           ready
           fieldId={FIELD_MISSING}
+          fieldTabActive
           activateFieldsTab={activateFieldsTab}
         />
       </StrictMode>
@@ -468,6 +488,7 @@ describe('reference navigation hooks', () => {
           navigationRoot={navigationRoot}
           ready
           fieldId={FIELD_UNMOUNTED}
+          fieldTabActive
           activateFieldsTab={activateFieldsTab}
         />
       </StrictMode>
@@ -480,6 +501,52 @@ describe('reference navigation hooks', () => {
     expect(observers.every((observer) => !observer.connected)).toBe(true);
     jest.advanceTimersByTime(5_000);
     expect(mockShowErrorToast).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not navigate a retained hidden field until its tab is active', async () => {
+    const events: string[] = [];
+    const navigationRoot = createNavigationRoot(documentLike, events);
+    const control = createElement(documentLike, 'input');
+    const target = navigationRoot.insertTarget('data-field-id', FIELD_A, control);
+    const activateFieldsTab = jest.fn((fieldId: string) => {
+      events.push(`activate:${fieldId}`);
+    });
+
+    await act(async () => root.render(
+      <StrictMode>
+        <AssetHarness
+          navigationRoot={navigationRoot}
+          ready
+          fieldId={FIELD_A}
+          fieldTabActive={false}
+          activateFieldsTab={activateFieldsTab}
+        />
+      </StrictMode>
+    ));
+    await flushMicrotasks();
+
+    expect(activateFieldsTab).toHaveBeenCalledTimes(1);
+    expect(events).toEqual([`activate:${FIELD_A}`]);
+    expect(target.scrollIntoView).not.toHaveBeenCalled();
+    expect(control.focus).not.toHaveBeenCalled();
+    expect(target.classList.contains('referencedFieldHighlight')).toBe(false);
+
+    await act(async () => root.render(
+      <StrictMode>
+        <AssetHarness
+          navigationRoot={navigationRoot}
+          ready
+          fieldId={FIELD_A}
+          fieldTabActive
+          activateFieldsTab={activateFieldsTab}
+        />
+      </StrictMode>
+    ));
+    await flushMicrotasks();
+
+    expect(target.scrollIntoView).toHaveBeenCalledTimes(1);
+    expect(control.focus).toHaveBeenCalledTimes(1);
+    expect(target.classList.contains('referencedFieldHighlight')).toBe(true);
   });
 });
 

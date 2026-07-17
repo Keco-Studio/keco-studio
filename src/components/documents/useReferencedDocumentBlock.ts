@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { isUuid } from '@/lib/utils/uuid';
 import { showErrorToast } from '@/lib/utils/toast';
 
@@ -161,7 +161,6 @@ function useReferenceNavigation({
   highlightClassName,
   focusControl,
   preserveEditableFocus = false,
-  beforeNavigate,
 }: {
   rootRef: RefObject<HTMLElement | null>;
   ready: boolean;
@@ -170,7 +169,6 @@ function useReferenceNavigation({
   highlightClassName: string;
   focusControl: boolean;
   preserveEditableFocus?: boolean;
-  beforeNavigate?: () => void;
 }) {
   const activeRef = useRef<ActiveNavigation | null>(null);
 
@@ -186,7 +184,6 @@ function useReferenceNavigation({
     let active = activeRef.current;
     if (!active || active.key !== key) {
       active?.cleanup();
-      beforeNavigate?.();
       active = {
         key,
         generation: 0,
@@ -218,7 +215,6 @@ function useReferenceNavigation({
     };
   }, [
     attributeName,
-    beforeNavigate,
     focusControl,
     highlightClassName,
     preserveEditableFocus,
@@ -267,26 +263,39 @@ export function useReferencedAssetField({
   rootRef,
   ready,
   fieldId,
+  fieldTabActive,
   highlightClassName,
   activateFieldsTab,
 }: {
   rootRef: RefObject<HTMLElement | null>;
   ready: boolean;
   fieldId: string | null;
+  fieldTabActive: boolean;
   highlightClassName: string;
   activateFieldsTab: (fieldId: string) => void;
 }) {
-  const activateReferencedFieldTab = useCallback(() => {
-    if (fieldId) activateFieldsTab(fieldId);
-  }, [activateFieldsTab, fieldId]);
+  const activationRequestRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!ready || !fieldId) {
+      activationRequestRef.current = null;
+      return;
+    }
+    if (fieldTabActive) {
+      activationRequestRef.current = null;
+      return;
+    }
+    if (activationRequestRef.current === fieldId) return;
+    activationRequestRef.current = fieldId;
+    activateFieldsTab(fieldId);
+  }, [activateFieldsTab, fieldId, fieldTabActive, ready]);
 
   useReferenceNavigation({
     rootRef,
-    ready,
+    ready: ready && fieldTabActive,
     attributeName: 'data-field-id',
     referenceId: fieldId,
     highlightClassName,
     focusControl: true,
-    beforeNavigate: activateReferencedFieldTab,
   });
 }
