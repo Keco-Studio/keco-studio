@@ -123,7 +123,9 @@ test.describe('Agent chat', () => {
     await expect(page).toHaveURL(`/${projectId}/doc/${secondDocumentId}`);
     await expect(agent.panel).toBeVisible();
     await agent.send('Second document turn');
-    await expect(page.getByTestId('agent-message-assistant')).toContainText('Reply 2');
+    await expect(
+      page.getByTestId('agent-message-assistant').filter({ hasText: 'Reply 2' })
+    ).toBeVisible();
 
     expect(bodies[1]).toMatchObject({
       conversationId,
