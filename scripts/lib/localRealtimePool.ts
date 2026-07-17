@@ -8,6 +8,14 @@ const POLL_ATTEMPTS = 30;
 const POLL_INTERVAL_MS = 1_000;
 const INSPECT_FORMAT =
   '{{.State.Running}}|{{index .Config.Labels "com.supabase.cli.project"}}';
+const SQL_GUARD_ERRORS = {
+  LOCAL_REALTIME_GUARD_TENANT: 'Expected exactly one local Realtime tenant',
+  LOCAL_REALTIME_GUARD_EXTENSION:
+    'Expected exactly one local postgres_cdc_rls extension',
+  LOCAL_REALTIME_GUARD_SETTINGS_OBJECT:
+    'Local Realtime extension settings must be an object',
+  LOCAL_REALTIME_GUARD_DB_POOL_NUMERIC: 'Local Realtime db_pool must be numeric',
+} as const;
 
 export type PoolConfiguratorDependencies = {
   run: (dockerArguments: readonly string[]) => Promise<string>;
@@ -37,7 +45,7 @@ BEGIN
   WHERE external_id = '${TENANT_ID}';
 
   IF tenant_count <> 1 THEN
-    RAISE EXCEPTION 'Expected exactly one local Realtime tenant';
+    RAISE EXCEPTION 'LOCAL_REALTIME_GUARD_TENANT';
   END IF;
 
   SELECT count(*) INTO extension_count
@@ -46,7 +54,7 @@ BEGIN
     AND type = 'postgres_cdc_rls';
 
   IF extension_count <> 1 THEN
-    RAISE EXCEPTION 'Expected exactly one local postgres_cdc_rls extension';
+    RAISE EXCEPTION 'LOCAL_REALTIME_GUARD_EXTENSION';
   END IF;
 
   IF EXISTS (
@@ -56,7 +64,7 @@ BEGIN
       AND type = 'postgres_cdc_rls'
       AND jsonb_typeof(settings) IS DISTINCT FROM 'object'
   ) THEN
-    RAISE EXCEPTION 'Local Realtime extension settings must be an object';
+    RAISE EXCEPTION 'LOCAL_REALTIME_GUARD_SETTINGS_OBJECT';
   END IF;
 
   IF EXISTS (
@@ -67,7 +75,7 @@ BEGIN
       AND settings ? 'db_pool'
       AND jsonb_typeof(settings->'db_pool') <> 'number'
   ) THEN
-    RAISE EXCEPTION 'Local Realtime db_pool must be numeric';
+    RAISE EXCEPTION 'LOCAL_REALTIME_GUARD_DB_POOL_NUMERIC';
   END IF;
 END
 $guard$;
@@ -128,15 +136,40 @@ COMMIT;
 const terminateStalePoolSql = `
 BEGIN;
 ${validationSql}
-WITH terminated AS (
-  SELECT pg_terminate_backend(pid) AS terminated
+WITH activity_snapshot AS MATERIALIZED (
+  SELECT pid
   FROM pg_stat_activity
   WHERE application_name = 'realtime_connect'
     AND pid <> pg_backend_pid()
+), pool_state AS MATERIALIZED (
+  SELECT
+    settings->>'db_pool' AS stored_pool,
+    (
+      SELECT count(*)
+      FROM activity_snapshot
+    ) AS live_pool
+  FROM _realtime.extensions
+  WHERE tenant_external_id = '${TENANT_ID}'
+    AND type = 'postgres_cdc_rls'
+), stale_pids AS MATERIALIZED (
+  SELECT activity.pid
+  FROM activity_snapshot AS activity
+  CROSS JOIN pool_state
+  WHERE pool_state.stored_pool = '${POOL_SIZE}'
+    AND pool_state.live_pool > 0
+    AND pool_state.live_pool <> ${POOL_SIZE}
+), terminated AS MATERIALIZED (
+  SELECT pg_terminate_backend(pid) AS terminated
+  FROM stale_pids
+), termination_result AS (
+  SELECT count(*) FILTER (WHERE terminated) AS terminated_count
+  FROM terminated
 )
-SELECT count(*)
-FROM terminated
-WHERE terminated;
+SELECT CASE
+  WHEN terminated_count > 0 THEN 'terminated'
+  ELSE 'skipped'
+END
+FROM termination_result;
 COMMIT;
 `;
 
@@ -227,10 +260,28 @@ async function executeSql(
       '-c',
       sql,
     ]);
-  } catch {
-    throw new Error('Failed to query local Realtime pool');
+  } catch (error) {
+    throw new Error(getSafeSqlErrorMessage(error));
   }
   return output;
+}
+
+function getSafeSqlErrorMessage(error: unknown): string {
+  const errorText = [
+    error instanceof Error ? error.message : '',
+    typeof error === 'object' && error !== null && 'stderr' in error
+      ? String(error.stderr)
+      : '',
+  ].join('\n');
+
+  for (const [code, message] of Object.entries(SQL_GUARD_ERRORS)) {
+    const diagnostic = new RegExp(`ERROR:\\s+${code}(?:\\s|;|$)`, 'i');
+    if (diagnostic.test(errorText)) {
+      return message;
+    }
+  }
+
+  return 'Failed to query local Realtime pool';
 }
 
 function poolIsReady(pool: PoolState): boolean {
