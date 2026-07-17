@@ -248,7 +248,7 @@ const normalized = await documentContentCodec.normalizeYjsState(
 
 Pass `normalized.yjsStateBase64` and `normalized.markdown` to `compact_document_collab_state`.
 
-- [ ] **Step 4: Add caller-scoped ensure/list behavior**
+- [ ] **Step 4: Add caller-scoped atomic ensure/list behavior**
 
 Implement:
 
@@ -259,7 +259,7 @@ export async function ensureDocumentReferenceBlocks(
 ): Promise<{ projectId: string; blocks: DocumentReferenceBlock[] }>;
 ```
 
-Read transport state, normalize it, and append `normalizationUpdateBase64` through `appendDocumentYjsUpdates` using the current epoch and a random update UUID. Retry once on `DocumentStateConflictError`. Reject uninitialized legacy state instead of adding an LWW write path.
+Read transport state and normalize it. When no normalization update is needed, return the current blocks without writing. Otherwise persist the normalized full Yjs state and matching Markdown through `compactDocumentState` using the complete current token. Decode the RPC-committed state before returning blocks so two same-token normalizers cannot return competing random IDs: the winner commits, the loser receives `DocumentStateConflictError`, rereads the winning state once, and returns only committed IDs. Reject uninitialized legacy state instead of adding an LWW write path. Do not use epoch-only append for first normalization because it cannot serialize concurrent ID assignment.
 
 - [ ] **Step 5: Run tests**
 
