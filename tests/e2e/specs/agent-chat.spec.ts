@@ -116,7 +116,10 @@ test.describe('Agent chat', () => {
       message: 'First document turn',
     });
 
-    await page.locator(`[data-node-key="document-${secondDocumentId}"]`).click();
+    // Ant Design Tree does not expose data-node-key; document rows use title=name.
+    const secondDocument = page.locator('aside').locator('[title="Agent Current Document Two"]');
+    await expect(secondDocument).toBeVisible({ timeout: 20000 });
+    await secondDocument.click();
     await expect(page).toHaveURL(`/${projectId}/doc/${secondDocumentId}`);
     await expect(agent.panel).toBeVisible();
     await agent.send('Second document turn');
