@@ -34,7 +34,7 @@ export function serializeLibraryClipboardMatrix(
   };
 }
 
-type ClipboardWriter = Pick<Clipboard, 'write' | 'writeText'>;
+type ClipboardWriter = Partial<Pick<Clipboard, 'write' | 'writeText'>>;
 
 export type ClipboardItemConstructor = new (
   items: Record<string, Blob>,

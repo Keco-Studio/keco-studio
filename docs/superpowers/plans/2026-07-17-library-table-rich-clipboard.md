@@ -12,6 +12,8 @@
 
 - The copied selection remains the sole source of rows and columns; do not automatically prepend project property names.
 - If the matrix already contains a column-name row, preserve it as the first table row.
+- MDXEditor/GFM treats the first selected row as the document table header without
+  synthesizing project property names or changing its values.
 - Pasting creates a native editable document table for editors and remains read-only for viewers through existing document permissions.
 - The pasted table is an independent snapshot with no source identifiers, refresh behavior, live reference, or bidirectional synchronization.
 - Preserve the exact current null-to-empty TSV representation and session-storage signature.
@@ -396,3 +398,56 @@ git add src/components/libraries/hooks/useClipboardOperations.ts tests/unit/libr
 git commit -m "fix: preserve tables copied into documents"
 ```
 
+---
+
+### Task 3: Browser-to-Document Integration Regression
+
+**Files:**
+- Create: `tests/e2e/specs/library-table-document-copy.spec.ts`
+
+**Interfaces:**
+- Consumes: the real library table selection/copy UI, browser Clipboard API, document
+  route, MDXEditor table importer, and durable Yjs document persistence.
+- Produces: end-to-end proof that copied cells become an editable independent document
+  table whose first selected row is the GFM header.
+
+- [ ] **Step 1: Create an isolated browser fixture**
+
+Use `getE2EAdminClient`, `createTemporaryUser`, and `createProjectFixture` to create one
+owner, project, two-field library, two assets with a 2x2 value matrix, and an empty
+document. Use `Source title` and `Source points` as property labels while the first asset
+contains `Name` and `Score`, proving property labels are not automatically copied.
+
+- [ ] **Step 2: Exercise the real copy and paste path**
+
+Grant Chromium `clipboard-read` and `clipboard-write` permissions for
+`http://localhost:3000`. Log in, select both source rows through their rendered checkboxes,
+press `Control+c`, and assert the clipboard exposes both `text/plain` and `text/html`.
+Navigate to the document, press `Control+v` in the real contenteditable, and assert a
+native table renders `Name`/`Score` as `<th>` and `Alice`/`10` as `<td>`.
+
+- [ ] **Step 3: Prove editing, persistence, and snapshot independence**
+
+Select the `Alice` cell contents with a DOM Range, type `Alicia in document`, await the
+durable `append_document_yjs_updates` response, reload, and assert the edited document
+table persists. Query `library_asset_values` with the admin client and assert the source
+value remains `Alice`.
+
+- [ ] **Step 4: Run the focused browser test**
+
+```bash
+npx playwright test tests/e2e/specs/library-table-document-copy.spec.ts --project=chromium --workers=1
+```
+
+Expected: 1 test PASS with an isolated fixture cleaned in `afterAll`.
+
+- [ ] **Step 5: Run final regression verification and commit**
+
+```bash
+npm run typecheck
+npx eslint tests/e2e/specs/library-table-document-copy.spec.ts
+npm run test:unit -- --runInBand
+git diff --check
+git add docs/superpowers/specs/2026-07-17-library-table-rich-clipboard-design.md docs/superpowers/plans/2026-07-17-library-table-rich-clipboard.md tests/e2e/specs/library-table-document-copy.spec.ts
+git commit -m "test: cover table copy into documents"
+```

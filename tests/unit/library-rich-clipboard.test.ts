@@ -92,4 +92,46 @@ describe('library rich clipboard', () => {
     expect(write).not.toHaveBeenCalled();
     expect(writeText).toHaveBeenCalledWith('Alice\t10');
   });
+
+  it('uses writeText when the clipboard has no rich write method', async () => {
+    const writeText = jest.fn<(text: string) => Promise<void>>().mockResolvedValue(undefined);
+
+    await writeLibraryClipboard(
+      { plainText: 'Alice\t10', html: '<table></table>' },
+      { clipboard: { writeText } },
+    );
+
+    expect(writeText).toHaveBeenCalledWith('Alice\t10');
+  });
+
+  it('rejects only after both rich and plain-text writes fail', async () => {
+    class FakeClipboardItem {
+      constructor(public readonly data: Record<string, Blob>) {}
+    }
+    const write = jest.fn<(items: ClipboardItem[]) => Promise<void>>()
+      .mockRejectedValue(new Error('rich denied'));
+    const writeText = jest.fn<(text: string) => Promise<void>>()
+      .mockRejectedValue(new Error('plain denied'));
+
+    await expect(
+      writeLibraryClipboard(
+        { plainText: 'Alice\t10', html: '<table></table>' },
+        {
+          clipboard: { write, writeText },
+          ClipboardItem: FakeClipboardItem as unknown as ClipboardItemConstructor,
+        },
+      ),
+    ).rejects.toThrow('plain denied');
+    expect(write).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith('Alice\t10');
+  });
+
+  it('resolves when no clipboard write API is available', async () => {
+    await expect(
+      writeLibraryClipboard(
+        { plainText: 'Alice\t10', html: '<table></table>' },
+        { clipboard: {}, ClipboardItem: undefined },
+      ),
+    ).resolves.toBeUndefined();
+  });
 });

@@ -23,6 +23,9 @@ payload.
 - Copying cells does not automatically prepend project property names.
 - If the copied matrix already contains a column-name row, that row is preserved as part
   of the pasted table.
+- MDXEditor stores native tables as GFM tables, so the first selected row becomes the
+  document table header. This changes the first row's table semantics but does not add,
+  remove, or replace any selected values.
 - Pasting creates a native document table. Users with document edit permission can edit
   its cells normally; viewers remain read-only.
 - The pasted table is an independent snapshot. Later edits in either the source library
@@ -42,8 +45,9 @@ the existing two-dimensional cell matrix and returns:
 - an HTML `<table>` containing one `<tr>` per matrix row and one `<td>` per cell.
 
 HTML text is escaped for `&`, `<`, `>`, double quotes, and single quotes before insertion.
-The helper does not interpret the first row or generate `<th>` elements because the source
-selection does not implicitly include column headers.
+The helper does not generate `<th>` elements or synthesize project property names. It emits
+the selected values as `<td>` cells; MDXEditor's native table importer normalizes row zero
+to the required GFM header when the table enters the document model.
 
 Add a clipboard writer that creates one `ClipboardItem` with `text/plain` and `text/html`
 blobs when the rich Clipboard API is available. If rich writing is unavailable or rejects,
@@ -80,6 +84,11 @@ Unit tests will prove that:
 - rich clipboard writing supplies both MIME types;
 - unsupported or rejected rich clipboard writes fall back to `writeText`;
 - copy and cut are both wired through the shared rich clipboard path.
+
+A Chromium Playwright workflow will create an isolated project table and document, copy a
+two-row cell selection through the browser clipboard, paste it into MDXEditor, and prove
+that the first row is a native table header. It will edit a document cell, wait for durable
+save, reload, and verify both the document edit and the unchanged source-library value.
 
 Focused unit tests, type checking, and linting of the changed files form the implementation
 verification gate.
