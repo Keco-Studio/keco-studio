@@ -25,6 +25,12 @@ import {
   type SanctionedMdxEditorProps,
 } from './sanctionedMdxDescriptors';
 import type { ComponentType } from 'react';
+import { documentBlockIdentityPlugin } from '@/components/documents/documentBlockIdentityPlugin';
+import {
+  listDocumentReferenceBlocks,
+  normalizeDocumentBlockIds,
+  type DocumentReferenceBlock,
+} from './documentBlockIdentity';
 
 const corePlugin = (
   mdxEditorRuntime as unknown as {
@@ -42,6 +48,8 @@ export type HeadlessDocumentEditor = {
   appendEmptyParagraph(): void;
   getMarkdown(): string;
   setMarkdown(markdown: string): Promise<void>;
+  normalizeBlockIds(): void;
+  listReferenceBlocks(): DocumentReferenceBlock[];
 };
 
 function documentPlugins(): RealmPlugin[] {
@@ -54,6 +62,7 @@ function documentPlugins(): RealmPlugin[] {
       onChange: () => undefined,
       suppressSharedHistory: true,
     }),
+    documentBlockIdentityPlugin({ assignMissingIds: false }),
     headingsPlugin(),
     listsPlugin(),
     quotePlugin(),
@@ -118,6 +127,14 @@ export async function createHeadlessDocumentEditor(): Promise<HeadlessDocumentEd
       );
     },
     getMarkdown: () => realm.getValue(markdown$),
+    normalizeBlockIds() {
+      editor.update(() => normalizeDocumentBlockIds(), { discrete: true });
+    },
+    listReferenceBlocks() {
+      return editor
+        .getEditorState()
+        .read(() => listDocumentReferenceBlocks());
+    },
     async setMarkdown(markdown: string) {
       realm.pub(setMarkdown$, markdown);
       await waitForLexicalCommit();

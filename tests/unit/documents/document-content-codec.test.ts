@@ -4,6 +4,17 @@ import { describe, expect, it } from '@jest/globals';
 
 type ProbeResult = Record<string, unknown>;
 
+const BLOCK_ANCHOR_PATTERN =
+  /<BlockAnchor id="([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})" \/>/gi;
+
+function blockAnchorIds(markdown: string): string[] {
+  return Array.from(markdown.matchAll(BLOCK_ANCHOR_PATTERN), (match) => match[1]);
+}
+
+function withoutBlockAnchors(markdown: string): string {
+  return markdown.replace(BLOCK_ANCHOR_PATTERN, '');
+}
+
 function runCodecProbe(input: Record<string, unknown>): ProbeResult {
   const result = spawnSync(
     process.execPath,
@@ -76,31 +87,72 @@ Nested **Markdown**.
 </Callout>`;
 
 describe('document content codec', () => {
+  it('assigns distinct block anchors and preserves them on the next round trip', () => {
+    const { markdown: first } = runCodecProbe({
+      mode: 'roundtrip',
+      markdown: '# Heading\n\nParagraph',
+    }) as { markdown: string };
+    const firstIds = blockAnchorIds(first);
+
+    expect(firstIds).toHaveLength(2);
+    expect(new Set(firstIds).size).toBe(2);
+
+    const { markdown: second } = runCodecProbe({
+      mode: 'roundtrip',
+      markdown: first,
+    }) as { markdown: string };
+    expect(blockAnchorIds(second)).toEqual(firstIds);
+  });
+
+  it('keeps the first duplicate block anchor and regenerates the later one', () => {
+    const duplicateId = '11111111-1111-4111-8111-111111111111';
+    const { markdown } = runCodecProbe({
+      mode: 'roundtrip',
+      markdown: `# <BlockAnchor id="${duplicateId}" />Heading\n\n<BlockAnchor id="${duplicateId}" />Paragraph`,
+    }) as { markdown: string };
+    const ids = blockAnchorIds(markdown);
+
+    expect(ids).toHaveLength(2);
+    expect(ids[0]).toBe(duplicateId);
+    expect(ids[1]).not.toBe(duplicateId);
+  });
+
+  it('preserves the identity of an explicitly anchored empty heading', () => {
+    const blockId = '22222222-2222-4222-8222-222222222222';
+    const { markdown } = runCodecProbe({
+      mode: 'roundtrip',
+      markdown: `# <BlockAnchor id="${blockId}" />`,
+    }) as { markdown: string };
+
+    expect(blockAnchorIds(markdown)).toEqual([blockId]);
+  });
+
   it('round-trips every Phase 1 Markdown node through Lexical Yjs state', async () => {
     const { markdown: restored } = runCodecProbe({
       mode: 'roundtrip',
       markdown: phaseOneMarkdown,
     }) as { markdown: string };
+    const semanticMarkdown = withoutBlockAnchors(restored);
 
-    expect(restored).toContain('# Heading');
-    expect(restored).toContain('**bold**');
-    expect(restored).toContain('*italic*');
-    expect(restored).toContain('<u>underline</u>');
-    expect(restored).toContain('`inline code`');
-    expect(restored).toMatch(/1\. ordered[\s\S]+2\. list/);
-    expect(restored).toMatch(/[*-] bullet/);
-    expect(restored).toContain('[x] checked');
-    expect(restored).toContain('[ ] unchecked');
-    expect(restored).toContain('> quoted text');
-    expect(restored).toContain('[Keco](https://example.com)');
-    expect(restored).toContain(
+    expect(semanticMarkdown).toContain('# Heading');
+    expect(semanticMarkdown).toContain('**bold**');
+    expect(semanticMarkdown).toContain('*italic*');
+    expect(semanticMarkdown).toContain('<u>underline</u>');
+    expect(semanticMarkdown).toContain('`inline code`');
+    expect(semanticMarkdown).toMatch(/1\. ordered[\s\S]+2\. list/);
+    expect(semanticMarkdown).toMatch(/[*-] bullet/);
+    expect(semanticMarkdown).toContain('[x] checked');
+    expect(semanticMarkdown).toContain('[ ] unchecked');
+    expect(semanticMarkdown).toContain('> quoted text');
+    expect(semanticMarkdown).toContain('[Keco](https://example.com)');
+    expect(semanticMarkdown).toContain(
       '![alt text](https://example.com/image.png "title")'
     );
-    expect(restored).toMatch(/(?:---|\*\*\*)/);
-    expect(restored).toContain('```ts');
-    expect(restored).toContain('const value = 1');
-    expect(restored).toMatch(/\| Name\s+\| Value\s+\|/);
-    expect(restored).toMatch(/\| One\s+\|\s+1\s+\|/);
+    expect(semanticMarkdown).toMatch(/(?:---|\*\*\*)/);
+    expect(semanticMarkdown).toContain('```ts');
+    expect(semanticMarkdown).toContain('const value = 1');
+    expect(semanticMarkdown).toMatch(/\| Name\s+\| Value\s+\|/);
+    expect(semanticMarkdown).toMatch(/\| One\s+\|\s+1\s+\|/);
   });
 
   it.each(['', 'plain text', '# Heading only', '> Quote only']) (
@@ -109,7 +161,7 @@ describe('document content codec', () => {
       const { markdown: restored } = runCodecProbe({ mode: 'roundtrip', markdown }) as {
         markdown: string;
       };
-      expect(restored.trim()).toBe(markdown.trim());
+      expect(withoutBlockAnchors(restored).trim()).toBe(markdown.trim());
     }
   );
 
@@ -166,7 +218,7 @@ describe('document content codec', () => {
   it('merges a snapshot and deduplicated concurrent tail updates deterministically', async () => {
     const result = runCodecProbe({ mode: 'merge', markdown: '# Shared' });
     expect(result.equal).toBe(true);
-    expect(result.markdown).toContain('# Shared');
+    expect(withoutBlockAnchors(result.markdown as string)).toContain('# Shared');
   });
 
   it('rejects malformed Markdown and malformed Yjs state with typed validation errors', async () => {

@@ -168,6 +168,7 @@ async function markdownToYjsState(markdown: string): Promise<string> {
     } else {
       await headless.setMarkdown(markdown);
     }
+    headless.normalizeBlockIds();
     if (syncError) throw syncError;
     return encodeBase64(Y.encodeStateAsUpdate(doc));
   } catch (error) {

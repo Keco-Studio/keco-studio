@@ -63,6 +63,7 @@ import type { DocumentCollaborationSession } from '@/lib/documents/documentColla
 import {
   documentCollaborationPlugin,
 } from './documentCollaborationPlugin';
+import { documentBlockIdentityPlugin } from './documentBlockIdentityPlugin';
 import styles from './MdxDocumentEditor.module.css';
 import {
   createSanctionedMdxDescriptors,
@@ -279,6 +280,7 @@ export default function MdxDocumentEditor({
         jsxComponentDescriptors:
           sanctionedMdxDescriptors as unknown as JsxComponentDescriptor[],
       }),
+      documentBlockIdentityPlugin({ assignMissingIds: !readOnly }),
     ];
 
     if (
@@ -327,6 +329,7 @@ export default function MdxDocumentEditor({
     collaborationSession,
     collaborationUsername,
     imageUploadHandler,
+    readOnly,
     showToolbar,
   ]);
 
