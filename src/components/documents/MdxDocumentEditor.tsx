@@ -398,7 +398,11 @@ export default function MdxDocumentEditor({
       );
     }
 
-    if (showToolbar && !readOnly) {
+    // Keep toolbarPlugin present whenever showToolbar is set, even while
+    // collaboration.readOnly is true during connecting/syncing. MDXEditor does
+    // not reliably hot-swap plugins after mount; gating on !readOnly drops the
+    // toolbar for the session and breaks link/reference e2e controls.
+    if (showToolbar) {
       stablePlugins.push(
         toolbarPlugin({
           toolbarContents: () => (
