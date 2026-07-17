@@ -19,6 +19,10 @@ describe('sanctioned MDX editor wiring', () => {
     expect(editor).toContain('SanctionedMdxPropertyEditor');
     expect(editor).toContain('PropertyEditor={BoundSanctionedMdxPropertyEditor}');
     expect(editor).toContain('styles.sanctionedMdx');
+    expect(editor).toContain("descriptor.name === 'BlockAnchor'");
+    expect(editor).toContain("descriptor.name === 'ResourceReference'");
+    expect(editor).toContain('<ResourceReferenceEditor');
+    expect(editor).toContain('<ResourceReferenceProvider key={documentId} projectId={projectId}>');
   });
 
   it('derives descriptors from the shared registry without redeclaring props', () => {

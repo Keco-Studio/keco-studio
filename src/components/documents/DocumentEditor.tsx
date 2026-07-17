@@ -236,6 +236,8 @@ function DocumentEditorSession({
           {collaboration.isLegacyView ? (
             <MdxDocumentEditor
               key={editorKey}
+              projectId={projectId}
+              documentId={document.id}
               markdown={document.content ?? ''}
               readOnly
               showToolbar={false}
@@ -245,6 +247,8 @@ function DocumentEditorSession({
           ) : collaboration.canBind && collaboration.session ? (
             <MdxDocumentEditor
               key={`${document.id}:${collaboration.token.epoch}:collaborative`}
+              projectId={projectId}
+              documentId={document.id}
               markdown=""
               readOnly={collaboration.readOnly}
               showToolbar={permissions.role !== 'viewer'}
