@@ -21,7 +21,10 @@ export const GET = withAuth(async function GET(
 ) {
   const { documentId } = await params;
   const format = request.nextUrl.searchParams.get('format') ?? 'docx';
-  if (!isUuid(documentId) || (format !== 'docx' && format !== 'pdf')) {
+  if (
+    !isUuid(documentId) ||
+    (format !== 'docx' && format !== 'pdf' && format !== 'mdx')
+  ) {
     return NextResponse.json({ error: 'Invalid export request' }, { status: 400 });
   }
 

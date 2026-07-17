@@ -74,6 +74,17 @@ describe('document collaboration protocol', () => {
           updatedAt: '2026-07-14T12:00:00.000Z',
         },
       ],
+      [
+        'document-state-reset',
+        {
+          v: 1,
+          documentId,
+          epoch: 4,
+          revision: 8,
+          reason: 'normalization',
+          updatedAt: '2026-07-17T01:00:00.000Z',
+        },
+      ],
     ] as const;
 
     for (const [event, payload] of cases) {

@@ -50,7 +50,7 @@ Add rejection cases for invalid UUIDs, expression properties, event handlers, ch
 Run:
 
 ```bash
-npm test -- src/lib/documents/sanctionedMdx.test.ts --runInBand
+npm run test:unit -- src/lib/documents/sanctionedMdx.test.ts --runInBand
 ```
 
 Expected: FAIL because both component names are unsupported.
@@ -100,7 +100,7 @@ Update `createSanctionedMdxDescriptors` to use each entry's actual `kind` and `h
 - [ ] **Step 5: Run focused tests**
 
 ```bash
-npm test -- src/lib/documents/sanctionedMdx.test.ts tests/unit/documents/sanctioned-mdx-editor-wiring.test.ts --runInBand
+npm run test:unit -- src/lib/documents/sanctionedMdx.test.ts tests/unit/documents/sanctioned-mdx-editor-wiring.test.ts --runInBand
 ```
 
 Expected: PASS.
@@ -131,7 +131,7 @@ Add editor-level cases for text edits, moving a whole block, splitting, merging,
 - [ ] **Step 2: Verify failure**
 
 ```bash
-npm test -- tests/unit/documents/document-block-identity.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/document-block-identity.test.ts --runInBand
 ```
 
 Expected: FAIL because no block identity plugin exists.
@@ -192,7 +192,7 @@ Add the plugin before collaboration in `MdxDocumentEditor`. Add it to `headlessD
 - [ ] **Step 7: Run regression tests**
 
 ```bash
-npm test -- tests/unit/documents/document-block-identity.test.ts tests/unit/documents/document-content-codec.test.ts tests/unit/documents/document-collaboration-session.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/document-block-identity.test.ts tests/unit/documents/document-content-codec.test.ts tests/unit/documents/document-collaboration-session.test.ts --runInBand
 ```
 
 Expected: PASS.
@@ -210,6 +210,10 @@ git commit -m "feat: persist stable document block identities"
 - Modify: `src/lib/documents/documentContentCodec.ts`
 - Modify: `src/lib/documents/documentStateGateway.ts`
 - Create: `src/lib/documents/documentReferenceBlocks.ts`
+- Modify: `src/lib/documents/documentCollaborationProtocol.ts`
+- Modify: `src/lib/documents/documentCollaborationSession.ts`
+- Modify: `src/lib/documents/documentStateResetBroadcaster.ts`
+- Create: `supabase/migrations/20260717000000_document_block_normalization.sql`
 - Modify: `tests/helpers/documentCodecProbe.ts`
 - Test: `tests/unit/documents/document-reference-blocks.test.ts`
 
@@ -235,7 +239,7 @@ normalizeYjsState(
 
 Hydrate the bound headless editor, capture `Y.encodeStateVector(doc)`, run explicit block normalization, wait for Lexical/Yjs sync, then encode the delta and full state. Treat the canonical empty Yjs update as `null`. Make `yjsStateToMarkdown` delegate to this method.
 
-- [ ] **Step 3: Persist normalized state during compaction**
+- [ ] **Step 3: Persist normalized state through an epoch-fenced RPC**
 
 Replace the pre-normalized `merged` arguments in `compactDocumentState` with:
 
@@ -246,9 +250,9 @@ const normalized = await documentContentCodec.normalizeYjsState(
 );
 ```
 
-Pass `normalized.yjsStateBase64` and `normalized.markdown` to `compact_document_collab_state`.
+Pass `normalized.yjsStateBase64` and `normalized.markdown` to a caller-scoped normalization RPC. Under a document-row lock, the RPC must validate the expected epoch and revision plus exact current update-tail IDs, validate the snapshot payload, write the normalized state and Markdown, increment the collaboration epoch and revision, delete the old-epoch tail, and return the committed state. This fences pending updates from editors hydrated against the old epoch.
 
-- [ ] **Step 4: Add caller-scoped ensure/list behavior**
+- [ ] **Step 4: Add caller-scoped atomic ensure/list behavior**
 
 Implement:
 
@@ -259,12 +263,12 @@ export async function ensureDocumentReferenceBlocks(
 ): Promise<{ projectId: string; blocks: DocumentReferenceBlock[] }>;
 ```
 
-Read transport state, normalize it, and append `normalizationUpdateBase64` through `appendDocumentYjsUpdates` using the current epoch and a random update UUID. Retry once on `DocumentStateConflictError`. Reject uninitialized legacy state instead of adding an LWW write path.
+Read transport state and normalize it. When no normalization update is needed, return the current blocks without writing. Otherwise persist the normalized full Yjs state and matching Markdown through the epoch-fenced normalization RPC. Broadcast the returned epoch/revision/state with reset reason `normalization`, then decode the RPC-committed state before returning blocks. If another normalizer wins, retry the whole read/normalize/commit flow once on `DocumentStateConflictError` and return only the winner's committed IDs. Reject uninitialized legacy state instead of adding an LWW write path. Old-epoch editor appends must fail with `PT409` and reload/rebase through the existing collaboration-session path.
 
 - [ ] **Step 5: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/document-content-codec.test.ts tests/unit/documents/document-reference-blocks.test.ts tests/unit/documents/document-state-gateway.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/document-content-codec.test.ts tests/unit/documents/document-reference-blocks.test.ts tests/unit/documents/document-state-gateway.test.ts --runInBand
 ```
 
 Expected: PASS and normalization is idempotent.
@@ -315,7 +319,7 @@ Export:
 
 ```ts
 listTableReferenceSources(client, projectId);
-listTableReferenceRows(client, libraryId);
+listTableReferenceRows(client, projectId, libraryId);
 listDocumentReferenceSources(client, projectId, excludeDocumentId);
 listDocumentReferenceBlocks(client, projectId, documentId);
 ```
@@ -325,7 +329,7 @@ The block loader calls `ensureDocumentReferenceBlocks` and rejects a project mis
 - [ ] **Step 4: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/resource-reference-service.test.ts tests/unit/database/document-resource-references.rls.behavior.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/resource-reference-service.test.ts tests/unit/database/document-resource-references.rls.behavior.test.ts --runInBand
 ```
 
 Expected: PASS for owner/admin/editor/viewer reads; outsider and cross-project targets return the same unavailable result.
@@ -384,7 +388,7 @@ Keep `Callout`/`Details` on `GenericJsxEditor`, render `BlockAnchor` as `null`, 
 - [ ] **Step 5: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/resource-reference-editor.test.tsx tests/unit/documents/sanctioned-mdx-editor-wiring.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/resource-reference-editor.test.tsx tests/unit/documents/sanctioned-mdx-editor-wiring.test.ts --runInBand
 ```
 
 Expected: PASS.
@@ -431,7 +435,7 @@ Before insertion or replacement, resolve the selected target once more. If it be
 - [ ] **Step 4: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/resource-reference-picker.test.tsx tests/unit/documents/resource-reference-editor.test.tsx --runInBand
+npm run test:unit -- tests/unit/documents/resource-reference-picker.test.tsx tests/unit/documents/resource-reference-editor.test.tsx --runInBand
 ```
 
 Expected: PASS.
@@ -469,7 +473,7 @@ Read `field` with `useSearchParams`. Add `data-field-id={f.id}` to every field r
 - [ ] **Step 4: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/document-reference-navigation.test.tsx --runInBand
+npm run test:unit -- tests/unit/documents/document-reference-navigation.test.tsx --runInBand
 ```
 
 Expected: PASS.
@@ -524,7 +528,7 @@ Add Agent edit-operation tests proving `replace_text`, insert, append, and delet
 - [ ] **Step 4: Run tests**
 
 ```bash
-npm test -- tests/unit/documents/document-export-service.test.ts tests/unit/documents/document-export-route.test.ts tests/unit/agent/document-tools.test.ts tests/unit/agent/document-edit-operations.test.ts tests/unit/documents/document-version-service.test.ts --runInBand
+npm run test:unit -- tests/unit/documents/document-export-service.test.ts tests/unit/documents/document-export-route.test.ts tests/unit/agent/document-tools.test.ts tests/unit/agent/document-edit-operations.test.ts tests/unit/documents/document-version-service.test.ts --runInBand
 ```
 
 Expected: PASS.
@@ -579,7 +583,7 @@ git commit -m "test: cover document resource references end to end"
 - [ ] **Step 1: Run document unit tests**
 
 ```bash
-npm test -- tests/unit/documents src/lib/documents/sanctionedMdx.test.ts --runInBand
+npm run test:unit -- tests/unit/documents src/lib/documents/sanctionedMdx.test.ts --runInBand
 ```
 
 Expected: PASS.
@@ -587,7 +591,7 @@ Expected: PASS.
 - [ ] **Step 2: Run Agent regressions**
 
 ```bash
-npm test -- tests/unit/agent/document-tools.test.ts tests/unit/agent/project-document-chunking.test.ts --runInBand
+npm run test:unit -- tests/unit/agent/document-tools.test.ts tests/unit/agent/project-document-chunking.test.ts --runInBand
 ```
 
 Expected: PASS.

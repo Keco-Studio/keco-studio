@@ -73,6 +73,21 @@ describe('document export route and UI wiring', () => {
     expect(exportDocument).toHaveBeenCalledWith(authedSupabase, DOCUMENT_ID, 'docx');
   });
 
+  it('serves MDX with explicit download headers', async () => {
+    exportDocument.mockResolvedValue({
+      bytes: Buffer.from('# MDX'),
+      mediaType: 'text/markdown; charset=utf-8',
+      fileName: 'semantic notes.mdx',
+    });
+
+    const response = await get('mdx');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('text/markdown; charset=utf-8');
+    expect(response.headers.get('content-disposition')).toContain("filename*=UTF-8''semantic%20notes.mdx");
+    expect(exportDocument).toHaveBeenCalledWith(authedSupabase, DOCUMENT_ID, 'mdx');
+  });
+
   it('returns 400 for unsupported formats and invalid content', async () => {
     expect((await get('html')).status).toBe(400);
     expect((await get('docx', 'not-a-uuid')).status).toBe(400);
@@ -102,10 +117,12 @@ describe('document export route and UI wiring', () => {
     expect(JSON.stringify(errorSpy.mock.calls)).not.toContain('private details');
   });
 
-  it('offers DOCX and PDF from one compact download menu', () => {
+  it('offers DOCX, PDF, and MDX from one compact download menu', () => {
     expect(editor).toContain('DownloadOutlined');
     expect(editor).toContain("key: 'docx'");
     expect(editor).toContain("key: 'pdf'");
+    expect(editor).toContain("key: 'mdx'");
+    expect(editor).toContain('Download MDX');
     expect(editor).toContain('data-testid="document-export"');
     expect(nextConfig).toContain("'@mdxeditor/editor'");
   });

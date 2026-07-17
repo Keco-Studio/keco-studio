@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ConfigProvider, Tabs, Switch, Tooltip, Select } from 'antd';
 import { useQueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
@@ -26,6 +26,10 @@ import { ConnectionStatusIndicator } from '@/components/collaboration/Connection
 import { AssetHeader } from '@/components/asset/AssetHeader';
 import type { CollaboratorRole } from '@/lib/types/collaboration';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
+import {
+  parseReferencedFieldSearch,
+  useReferencedAssetField,
+} from '@/components/documents/useReferencedDocumentBlock';
 
 type FieldDef = {
   id: string;
@@ -68,6 +72,7 @@ export default function AssetPage() {
   const params = useParams();
   const supabase = useSupabase();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { userProfile, isAuthenticated, isLoading: authLoading } = useAuth();
   const projectId = params.projectId as string;
@@ -103,6 +108,7 @@ export default function AssetPage() {
   const [fieldValidationErrors, setFieldValidationErrors] = useState<Record<string, string>>({});
   const [mode, setMode] = useState<AssetMode>(isNewAsset ? 'create' : 'edit');
   const [navigating, setNavigating] = useState(false);
+  const [activeSection, setActiveSection] = useState<string | null>(null);
   
   // Auto-save related state
   const autoSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -112,7 +118,10 @@ export default function AssetPage() {
   const previousValuesRef = useRef<Record<string, any>>({});
   const broadcastCellUpdateRef = useRef<((assetId: string, propertyKey: string, newValue: any, oldValue?: any) => Promise<void>) | null>(null);
   const assetRef = useRef<AssetRow | null>(null);
-  
+  const fieldsRootRef = useRef<HTMLDivElement>(null);
+  const referenceSearch = `?${searchParams.toString()}`;
+  const referencedFieldId = parseReferencedFieldSearch(referenceSearch);
+
   // Track whether the user is actively typing in a text field (string/int/float/date).
   // When true, auto-save is suppressed so collaborators only see final values on blur,
   // matching the table cell editing behavior.
@@ -222,6 +231,33 @@ export default function AssetPage() {
     
     return map;
   }, [fieldDefs]);
+
+  const effectiveActiveSection = activeSection ?? Object.keys(sections)[0] ?? null;
+  const referencedFieldSection = referencedFieldId
+    ? fieldDefs.find((field) => field.id === referencedFieldId)?.section ?? null
+    : null;
+  const referencedFieldTabActive = referencedFieldSection === null ||
+    effectiveActiveSection === referencedFieldSection;
+  const activateReferencedFieldTab = useCallback((fieldId: string) => {
+    const referencedField = fieldDefs.find((field) => field.id === fieldId);
+    if (referencedField) setActiveSection(referencedField.section);
+  }, [fieldDefs]);
+
+  useReferencedAssetField({
+    rootRef: fieldsRootRef,
+    ready: !loading && !error && (isNewAsset || asset?.id === assetId),
+    fieldId: referencedFieldId,
+    fieldTabActive: referencedFieldTabActive,
+    highlightClassName: styles.referencedFieldHighlight,
+    activateFieldsTab: activateReferencedFieldTab,
+  });
+
+  useEffect(() => {
+    const sectionKeys = Object.keys(sections);
+    setActiveSection((current) =>
+      current && sectionKeys.includes(current) ? current : sectionKeys[0] ?? null
+    );
+  }, [sections]);
 
   // Find the first column field (field with smallest order_index)
   const firstColumnField = useMemo(() => {
@@ -863,7 +899,7 @@ export default function AssetPage() {
           )}
 
           <div className={styles.formContainer}>
-          <div className={styles.fieldsContainer}>
+          <div ref={fieldsRootRef} className={styles.fieldsContainer}>
               {sectionKeys.length === 0 && (
                 <div className={styles.emptyState}>
                   <Image
@@ -894,7 +930,8 @@ export default function AssetPage() {
               {sectionKeys.length > 0 && (
                 <div className={styles.tabsContainer}>
                   <Tabs
-                    defaultActiveKey={sectionKeys[0]}
+                    activeKey={activeSection ?? sectionKeys[0]}
+                    onChange={setActiveSection}
                     items={sectionKeys.map((sectionName) => {
                       const fields = sections[sectionName] || [];
                       return {
@@ -916,7 +953,7 @@ export default function AssetPage() {
                       const isRealtimeEdited = realtimeEditedFields.has(f.id);
 
                       return (
-                                    <div key={f.id} className={styles.fieldRow}>
+                                    <div key={f.id} className={styles.fieldRow} data-field-id={f.id}>
                                       <div className={styles.dragHandle}>
                                         <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
                                       </div>
@@ -986,7 +1023,7 @@ export default function AssetPage() {
                       const isRealtimeEdited = realtimeEditedFields.has(f.id);
 
                       return (
-                                    <div key={f.id} className={styles.fieldRow}>
+                                    <div key={f.id} className={styles.fieldRow} data-field-id={f.id}>
                                       <div className={styles.dragHandle}>
                                         <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
                                       </div>
@@ -1059,7 +1096,7 @@ export default function AssetPage() {
                                   const isRealtimeEdited = realtimeEditedFields.has(f.id);
 
                                   return (
-                                    <div key={f.id} className={styles.fieldRow}>
+                                    <div key={f.id} className={styles.fieldRow} data-field-id={f.id}>
                                       <div className={styles.dragHandle}>
                                         <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
                                       </div>
@@ -1115,7 +1152,7 @@ export default function AssetPage() {
                                   const isRealtimeEdited = realtimeEditedFields.has(f.id);
 
                                   return (
-                                    <div key={f.id} className={styles.fieldRow}>
+                                    <div key={f.id} className={styles.fieldRow} data-field-id={f.id}>
                                       <div className={styles.dragHandle}>
                                         <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
                                       </div>
@@ -1174,7 +1211,7 @@ export default function AssetPage() {
                     const isRealtimeEdited = realtimeEditedFields.has(f.id);
 
                     return (
-                                  <div key={f.id} className={styles.fieldRow}>
+                                  <div key={f.id} className={styles.fieldRow} data-field-id={f.id}>
                                     <div className={styles.dragHandle}>
                                       <Image src={predefineDragIcon} alt="Drag" width={16} height={16} className="icon-16" />
                                     </div>

@@ -3,6 +3,7 @@ import { readDocumentSlice, type DocumentReadRequest } from '../document-read';
 import { resolveDocumentForTool, type DocumentSelector } from '../document-resolver';
 import { MAX_TOOL_CONTENT_CHARS } from '../tool-result-for-llm';
 import type { AgentTool, ToolContext, ToolResult } from '../types';
+import { resolveReferencesForPlainMarkdown } from '@/lib/documents/resourceReferenceMarkdown';
 
 const ParamsSchema = z
   .object({
@@ -92,6 +93,11 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     if (state.projectId !== ctx.projectId) {
       return { success: false, error: 'Document not found in this project.' };
     }
+    const visibleMarkdown = await resolveReferencesForPlainMarkdown(
+      ctx.supabase,
+      ctx.projectId,
+      state.markdown
+    );
 
     const requestedMode = parsed.data.mode ?? 'full';
     const buildResult = (
@@ -111,7 +117,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       },
     });
     const requestedResult = buildResult(
-      readDocumentSlice(state.markdown, requestFromParams(parsed.data))
+      readDocumentSlice(visibleMarkdown, requestFromParams(parsed.data))
     );
     const serializedResultLength = JSON.stringify(requestedResult).length;
 
@@ -119,7 +125,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       return requestedResult;
     }
 
-    return buildResult(readDocumentSlice(state.markdown, { mode: 'outline' }), {
+    return buildResult(readDocumentSlice(visibleMarkdown, { mode: 'outline' }), {
       requestedMode: 'full' as const,
       fallbackReason: `The full document is too large for a safe model read (${serializedResultLength} serialized characters; maximum ${MAX_TOOL_CONTENT_CHARS}).`,
       _llmNote: 'The full document was not returned. Call read_document with mode "heading" or "lines" to read the needed bounded section. Do not replace the full document from this outline.',

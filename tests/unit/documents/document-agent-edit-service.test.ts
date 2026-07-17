@@ -38,6 +38,7 @@ describe('document Agent edit server command', () => {
       yjsStateBase64: 'head-state',
       updateTail: [{ id: UPDATE_ID, updateBase64: 'tail-a' }],
       token: { epoch: 2, revision: 4 },
+      epochReason: 'initialize',
       updatedAt: '2026-07-15T00:00:00.000Z',
     });
     mergeYjsState.mockReturnValue('merged-state');
@@ -56,7 +57,7 @@ describe('document Agent edit server command', () => {
   });
 
   it('derives encoded states server-side and uses only the exact approved tail', async () => {
-    await replaceDocumentAsAgent({
+    const state = await replaceDocumentAsAgent({
       actorUserId: USER_ID,
       projectId: PROJECT_ID,
       documentId: DOCUMENT_ID,
@@ -64,6 +65,8 @@ describe('document Agent edit server command', () => {
       expectedUpdateIds: [UPDATE_ID],
       markdown: '# Proposed',
     });
+
+    expect(state.epochReason).toBe('agent');
 
     expect(rpc).toHaveBeenCalledWith('replace_document_with_markdown', {
       p_document_id: DOCUMENT_ID,

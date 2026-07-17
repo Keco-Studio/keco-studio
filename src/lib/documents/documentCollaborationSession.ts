@@ -22,6 +22,10 @@ import {
   DocumentReadOnlyError,
   DocumentStateConflictError,
 } from './documentStateTypes';
+import {
+  captureDocumentYjsBlockIds,
+  restoreDocumentYjsBlockIds,
+} from './documentYjsBlockIdentity';
 import { validateSanctionedMdxAstNode } from './sanctionedMdx';
 
 export type DocumentCollaborationRole = 'admin' | 'editor' | 'viewer';
@@ -182,6 +186,7 @@ export class DocumentCollaborationSession implements Provider {
   private appliedUpdateIds = new Set<string>();
   private localUpdates: Uint8Array[] = [];
   private pendingDurable: PendingDurableUpdate | null = null;
+  private pendingEpochRebase: Uint8Array | null = null;
   private persistPromise: Promise<void> | null = null;
   private batchTimer: ReturnType<typeof setTimeout> | null = null;
   private compactTimer: ReturnType<typeof setTimeout> | null = null;
@@ -237,15 +242,19 @@ export class DocumentCollaborationSession implements Provider {
     ) {
       return;
     }
-    this.localUpdates.push(update.slice());
+    this.queueLocalUpdate(update);
     for (const listener of this.providerListeners.update) listener(update);
+  };
+
+  private queueLocalUpdate(update: Uint8Array): void {
+    this.localUpdates.push(update.slice());
     if (!this.batchTimer) {
       this.batchTimer = setTimeout(() => {
         this.batchTimer = null;
         void this.persistPendingUpdates().catch(() => undefined);
       }, this.batchWindowMs);
     }
-  };
+  }
 
   private readonly onAwarenessUpdate = (
     changes: { added: number[]; updated: number[]; removed: number[] },
@@ -876,8 +885,23 @@ export class DocumentCollaborationSession implements Provider {
       Y.applyUpdate(this.durableDoc, bytes, 'durable-hydrate');
       Y.applyUpdate(this.doc, bytes, 'hydrate');
     }
+    const epochRebase = this.pendingEpochRebase;
+    this.pendingEpochRebase = null;
+    let rebasedUpdate: Uint8Array | null = null;
+    if (epochRebase) {
+      const committedBlockIds = captureDocumentYjsBlockIds(this.doc);
+      Y.applyUpdate(this.doc, epochRebase, 'epoch-rebase');
+      this.doc.transact(() => {
+        restoreDocumentYjsBlockIds(committedBlockIds);
+      }, 'epoch-rebase');
+      rebasedUpdate = Y.encodeStateAsUpdate(
+        this.doc,
+        Y.encodeStateVector(this.durableDoc)
+      );
+    }
     this.hydrated = true;
     this.installLocalListeners();
+    if (rebasedUpdate) this.queueLocalUpdate(rebasedUpdate);
     const buffered = this.bufferedEvents;
     this.bufferedEvents = [];
     for (const item of buffered) void this.receive(item.event, item.payload);
@@ -994,6 +1018,26 @@ export class DocumentCollaborationSession implements Provider {
             // Durable catch-up delivers an update when live broadcast is unavailable.
           }
         } catch (error) {
+          if (error instanceof DocumentStateConflictError) {
+            try {
+              const winner = await this.gateway.readTransport(
+                this.supabase,
+                this.documentId
+              );
+              if (winner.token.epoch > pendingEpoch) {
+                this.replaceActiveDocument(winner);
+                return;
+              }
+            } catch (reloadError) {
+              this.failClosed(
+                reloadError instanceof Error
+                  ? reloadError.message
+                  : 'Document conflict reload failed',
+                'degraded'
+              );
+              throw reloadError;
+            }
+          }
           this.failClosed(
             error instanceof Error ? error.message : 'Document update could not be saved',
             'degraded'
@@ -1352,9 +1396,24 @@ export class DocumentCollaborationSession implements Provider {
     }
   }
 
+  private capturePendingEpochRebase(): Uint8Array | null {
+    if (this.pendingEpochRebase) return this.pendingEpochRebase.slice();
+    if (this.localUpdates.length === 0 && !this.pendingDurable) return null;
+    return Y.encodeStateAsUpdate(
+      this.doc,
+      Y.encodeStateVector(this.durableDoc)
+    );
+  }
+
   private replaceActiveDocument(state: AuthoritativeDocumentTransportState): void {
+    const epochRebase =
+      state.epochReason === 'normalization' &&
+      state.token.epoch === this.currentToken.epoch + 1
+        ? this.capturePendingEpochRebase()
+        : null;
     this.setStatus('hydrating');
     this.clearPendingWork();
+    this.pendingEpochRebase = epochRebase?.slice() ?? null;
     this.hydrationGeneration += 1;
     this.hydrationPromise = null;
     const previousDoc = this.activeDoc;
@@ -1400,6 +1459,7 @@ export class DocumentCollaborationSession implements Provider {
     this.reconnectTimer = null;
     this.localUpdates = [];
     this.pendingDurable = null;
+    this.pendingEpochRebase = null;
     this.persistPromise = null;
     this.bufferedEvents = [];
   }

@@ -4,6 +4,22 @@ import {
 } from '@/lib/agent/document-edit-operations';
 
 describe('document edit operations', () => {
+  const anchor = '<BlockAnchor id="11111111-1111-4111-8111-111111111111" />';
+  const reference = '<ResourceReference kind="document-block" documentId="22222222-2222-4222-8222-222222222222" blockId="33333333-3333-4333-8333-333333333333" blockType="paragraph" fallbackLabel="Original" />';
+
+  it.each([
+    ['replace_text', { type: 'replace_text', target: 'Body', replacement: 'Updated' }],
+    ['insert_before', { type: 'insert_before', anchor: 'Body', content: 'Before' }],
+    ['insert_after', { type: 'insert_after', anchor: 'Body', content: 'After' }],
+    ['append', { type: 'append', content: 'Appendix' }],
+    ['delete_text', { type: 'delete_text', target: 'Body' }],
+  ] as const)('preserves untouched identity and reference nodes for %s', (_name, operation) => {
+    const result = applyDocumentEditOperation(`# ${anchor}Heading\n\nBody ${reference}`, operation);
+
+    expect(result).toContain(anchor);
+    expect(result).toContain(reference);
+  });
+
   it('replaces the entire document and normalizes CRLF without trimming', () => {
     expect(
       applyDocumentEditOperation('ignored\r\nbody', {

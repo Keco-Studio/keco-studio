@@ -14,6 +14,7 @@ const broadcastDocumentStateReset = jest.fn();
 const resolveDocumentForTool = jest.fn();
 const listResolvedProjectDocuments = jest.fn();
 const reindexProjectDocumentAsActor = jest.fn();
+const resolveReferencesForPlainMarkdown = jest.fn();
 
 jest.mock('@/lib/documents/documentStateGateway', () => ({
   documentStateGateway: { read, initialize, replace },
@@ -31,6 +32,10 @@ jest.mock('@/lib/documents/documentStateResetBroadcaster', () => ({
 jest.mock('@/lib/agent/document-resolver', () => ({
   resolveDocumentForTool,
   listResolvedProjectDocuments,
+}));
+jest.mock('@/lib/documents/resourceReferenceMarkdown', () => ({
+  resolveReferencesForPlainMarkdown: (...args: unknown[]) =>
+    resolveReferencesForPlainMarkdown(...args),
 }));
 
 import { createDocumentTool } from '@/lib/agent/tools/create-document';
@@ -119,6 +124,7 @@ describe('Agent document tools', () => {
     resolveDocumentForTool.mockResolvedValue(resolvedDocument());
     listResolvedProjectDocuments.mockResolvedValue([]);
     reindexProjectDocumentAsActor.mockResolvedValue({ documentId: DOCUMENT_ID, chunks: 1 });
+    resolveReferencesForPlainMarkdown.mockImplementation(async (_client, _projectId, markdown) => markdown);
   });
 
   it.each([
@@ -350,6 +356,24 @@ describe('Agent document tools', () => {
       success: true,
       data: { mode: params.mode, markdown, totalLines: 4, ...metadata },
     });
+  });
+
+  it.each([
+    ['full', {}, '# Heading\n\nCurrent value'],
+    ['outline', { mode: 'outline' }, '# Heading'],
+    ['heading', { mode: 'heading', heading: 'Heading' }, '# Heading\n\nCurrent value'],
+    ['lines', { mode: 'lines', startLine: 2, endLine: 3 }, '\nCurrent value'],
+  ])('resolves references before %s slicing', async (_mode, params, expected) => {
+    const raw = '# <BlockAnchor id="eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee" />Heading\n\n<ResourceReference kind="table-row" libraryId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" assetId="cccccccc-cccc-4ccc-8ccc-cccccccccccc" displayFieldId="dddddddd-dddd-4ddd-8ddd-dddddddddddd" fallbackLabel="Old" />';
+    read.mockResolvedValue(state(raw));
+    resolveReferencesForPlainMarkdown.mockResolvedValue('# Heading\n\nCurrent value');
+
+    const result = await readDocument.execute(params, ctx);
+
+    expect(result).toMatchObject({ success: true, data: { markdown: expected } });
+    expect(resolveReferencesForPlainMarkdown).toHaveBeenCalledWith(ctx.supabase, PROJECT_ID, raw);
+    expect(JSON.stringify(result)).not.toContain('BlockAnchor');
+    expect(JSON.stringify(result)).not.toContain('ResourceReference');
   });
 
   it('falls back to an outline instead of returning an oversized full body', async () => {

@@ -287,6 +287,17 @@ describe('documentVersionService', () => {
     expect(preview.markdown).toBe('# Release 1');
   });
 
+  it('returns stored block and reference identities exactly in version previews', async () => {
+    const markdown = '# <BlockAnchor id="55555555-5555-4555-8555-555555555555" />Heading\n\nSee <ResourceReference kind="document-block" documentId="11111111-1111-4111-8111-111111111111" blockId="66666666-6666-4666-8666-666666666666" blockType="paragraph" fallbackLabel="Original" />.';
+    const { client } = makeClient({
+      preview: { data: versionRow({ snapshot_content: markdown }), error: null },
+    });
+
+    await expect(getDocumentVersionPreview(client, DOCUMENT_ID, VERSION_ID)).resolves.toMatchObject({
+      markdown,
+    });
+  });
+
   it('rejects invalid or hidden version ids without leaking access details', async () => {
     const invalid = makeClient();
     await expect(

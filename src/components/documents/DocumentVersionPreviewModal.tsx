@@ -18,6 +18,8 @@ const rejectImageUpload = async () => {
 };
 
 type DocumentVersionPreviewModalProps = {
+  projectId: string;
+  documentId: string;
   open: boolean;
   loading: boolean;
   error: Error | null;
@@ -26,6 +28,8 @@ type DocumentVersionPreviewModalProps = {
 };
 
 export function DocumentVersionPreviewModal({
+  projectId,
+  documentId,
   open,
   loading,
   error,
@@ -45,6 +49,8 @@ export function DocumentVersionPreviewModal({
       {error && <div role="alert">{error.message}</div>}
       {version && !loading && !error && (
         <MdxDocumentEditor
+          projectId={projectId}
+          documentId={documentId}
           markdown={version.markdown}
           readOnly
           showToolbar={false}

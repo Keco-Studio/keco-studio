@@ -6,7 +6,8 @@ const SUBSCRIBE_TIMEOUT_MS = 2_000;
 
 export async function broadcastDocumentStateReset(
   client: SupabaseClient,
-  state: AuthoritativeDocumentState
+  state: AuthoritativeDocumentState,
+  reason: 'agent' | 'normalization' = 'agent'
 ): Promise<void> {
   const { data, error } = await client.auth.getSession();
   if (error || !data.session?.access_token) {
@@ -42,7 +43,7 @@ export async function broadcastDocumentStateReset(
         documentId: state.documentId,
         epoch: state.token.epoch,
         revision: state.token.revision,
-        reason: 'agent',
+        reason,
         updatedAt: state.updatedAt,
       },
     });

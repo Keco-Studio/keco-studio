@@ -7,12 +7,25 @@ import {
   renderDocumentExportModel,
   sanitizeExportFileName,
 } from '../../../src/lib/documents/documentExportService';
+import { resolveReferencesForPlainMarkdown } from '../../../src/lib/documents/resourceReferenceMarkdown';
 
 const readDocumentState = jest.fn();
+const resolveResourceReferences = jest.fn();
 
 jest.mock('../../../src/lib/documents/documentStateGateway', () => ({
   documentStateGateway: { read: (...args: unknown[]) => readDocumentState(...args) },
 }));
+jest.mock('../../../src/lib/documents/resourceReferenceService', () => ({
+  resolveResourceReferences: (...args: unknown[]) => resolveResourceReferences(...args),
+}));
+
+const PROJECT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const LIBRARY_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const ASSET_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+const FIELD_ID = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+const BLOCK_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+const REFERENCE = `<ResourceReference kind="table-row" libraryId="${LIBRARY_ID}" assetId="${ASSET_ID}" displayFieldId="${FIELD_ID}" fallbackLabel="Old label" />`;
+const ANCHOR = `<BlockAnchor id="${BLOCK_ID}" />`;
 
 const PNG_1X1 = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -95,7 +108,111 @@ describe('document export service', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://project.supabase.co';
     process.env.NODE_ENV = 'test';
     readDocumentState.mockReset();
+    resolveResourceReferences.mockReset().mockResolvedValue(new Map());
     jest.restoreAllMocks();
+  });
+
+  it('resolves references once into readable links and removes block anchors', async () => {
+    resolveResourceReferences.mockResolvedValue(new Map([
+      [
+        `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+        {
+          key: `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+          status: 'available',
+          label: 'Current value',
+          contextLabel: 'Characters / Ada / Status',
+          href: `/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}?field=${FIELD_ID}`,
+        },
+      ],
+    ]));
+
+    const markdown = await resolveReferencesForPlainMarkdown(
+      {} as SupabaseClient,
+      PROJECT_ID,
+      `# ${ANCHOR}Heading\n\nBefore ${REFERENCE} after.`
+    );
+
+    expect(resolveResourceReferences).toHaveBeenCalledTimes(1);
+    expect(markdown).toContain('# Heading');
+    expect(markdown).toContain(
+      `[Current value](/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}?field=${FIELD_ID} "Characters / Ada / Status")`
+    );
+    expect(markdown).toContain('Before ');
+    expect(markdown).toContain(' after.');
+    expect(markdown).not.toContain('BlockAnchor');
+    expect(markdown).not.toContain('ResourceReference');
+  });
+
+  it('renders unavailable references as exact readable fallback text', async () => {
+    resolveResourceReferences.mockResolvedValue(new Map([
+      [
+        `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+        {
+          key: `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+          status: 'unavailable',
+          label: 'Reference unavailable',
+        },
+      ],
+    ]));
+
+    const markdown = await resolveReferencesForPlainMarkdown(
+      {} as SupabaseClient,
+      PROJECT_ID,
+      `See ${REFERENCE}.`
+    );
+
+    expect(markdown.trim()).toBe('See [Reference unavailable].');
+  });
+
+  it('keeps an outer Markdown link valid when its label contains a reference', async () => {
+    resolveResourceReferences.mockResolvedValue(new Map([
+      [
+        `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+        {
+          key: `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+          status: 'available',
+          label: 'Current value',
+          contextLabel: 'Characters / Ada / Status',
+          href: `/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}?field=${FIELD_ID}`,
+        },
+      ],
+    ]));
+
+    const markdown = await resolveReferencesForPlainMarkdown(
+      {} as SupabaseClient,
+      PROJECT_ID,
+      `[before ${REFERENCE} after](https://example.com "Outer title")`
+    );
+
+    expect(markdown.trim()).toBe(
+      '[before Current value after](https://example.com "Outer title")'
+    );
+    expect(markdown).not.toContain(`/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}`);
+    expect(markdown).not.toContain('ResourceReference');
+  });
+
+  it('escapes unavailable fallback syntax inside an outer Markdown link label', async () => {
+    resolveResourceReferences.mockResolvedValue(new Map([
+      [
+        `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+        {
+          key: `table-row:${LIBRARY_ID}:${ASSET_ID}:${FIELD_ID}`,
+          status: 'unavailable',
+          label: 'Reference unavailable',
+        },
+      ],
+    ]));
+
+    const markdown = await resolveReferencesForPlainMarkdown(
+      {} as SupabaseClient,
+      PROJECT_ID,
+      `[before ${REFERENCE} after](https://example.com "Outer title")`
+    );
+
+    expect(markdown.trim()).toBe(
+      '[before \\[Reference unavailable\\] after](https://example.com "Outer title")'
+    );
+    expect(markdown).not.toContain('ResourceReference');
   });
 
   afterAll(() => {
@@ -575,7 +692,7 @@ const n = 1
   });
 
   it('reads the latest logical state before rendering an export', async () => {
-    readDocumentState.mockResolvedValue({ markdown: '# Latest tail content' });
+    readDocumentState.mockResolvedValue({ markdown: '# Latest tail content', projectId: PROJECT_ID });
 
     const exported = await exportDocument(metadataClient('Tail / notes'), 'document-id', 'docx');
     const html = (await mammoth.convertToHtml({ buffer: exported.bytes })).value;
@@ -583,6 +700,18 @@ const n = 1
     expect(readDocumentState).toHaveBeenCalledWith(expect.anything(), 'document-id');
     expect(html).toContain('Latest tail content');
     expect(exported.fileName).toBe('Tail - notes.docx');
+  });
+
+  it('returns validated authoritative MDX unchanged without resolving references', async () => {
+    const markdown = `# ${ANCHOR}Heading\n\nSee ${REFERENCE}.`;
+    readDocumentState.mockResolvedValue({ markdown, projectId: PROJECT_ID });
+
+    const exported = await exportDocument(metadataClient('Semantic notes'), 'document-id', 'mdx');
+
+    expect(exported.bytes.toString('utf8')).toBe(markdown);
+    expect(exported.mediaType).toBe('text/markdown; charset=utf-8');
+    expect(exported.fileName).toBe('Semantic notes.mdx');
+    expect(resolveResourceReferences).not.toHaveBeenCalled();
   });
 
   it('rejects unsafe MDX before building an export model', () => {

@@ -8,6 +8,7 @@
  */
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -63,6 +64,7 @@ import type { DocumentCollaborationSession } from '@/lib/documents/documentColla
 import {
   documentCollaborationPlugin,
 } from './documentCollaborationPlugin';
+import { documentBlockIdentityPlugin } from './documentBlockIdentityPlugin';
 import styles from './MdxDocumentEditor.module.css';
 import {
   createSanctionedMdxDescriptors,
@@ -73,10 +75,20 @@ import {
   SanctionedMdxPropertyEditor,
   type SanctionedMdxPropertyEditorControlProps,
 } from './SanctionedMdxPropertyEditor';
+import {
+  ResourceReferenceEditor,
+} from './ResourceReferenceEditor';
+import { ResourceReferenceProvider } from './ResourceReferenceProvider';
+import { ResourceReferencePickerModal } from './ResourceReferencePickerModal';
+import { ResourceReferenceInsertButton } from './ResourceReferenceInsertButton';
+import { useResourceReferencePickerController } from './useResourceReferencePickerController';
+import { useReferencedDocumentBlock } from './useReferencedDocumentBlock';
 
 export type { MDXEditorMethods } from '@mdxeditor/editor';
 
 export type MdxDocumentEditorProps = {
+  projectId: string;
+  documentId: string;
   markdown: string;
   readOnly: boolean;
   showToolbar: boolean;
@@ -90,7 +102,16 @@ export type MdxDocumentEditorProps = {
     cursorColor: string;
   };
   editorRef?: Ref<MDXEditorMethods | null>;
+  referenceNavigationReady?: boolean;
 };
+
+function publishEditorRef(
+  ref: Ref<MDXEditorMethods | null> | undefined,
+  methods: MDXEditorMethods | null
+) {
+  if (typeof ref === 'function') ref(methods);
+  else if (ref) Object.assign(ref, { current: methods });
+}
 
 const CODE_BLOCK_LANGUAGES = {
   '': 'Plain text',
@@ -129,10 +150,6 @@ function SanctionedMdxEditor(props: JsxEditorProps) {
     </div>
   );
 }
-
-const sanctionedMdxDescriptors = createSanctionedMdxDescriptors(
-  SanctionedMdxEditor as unknown as ComponentType<SanctionedMdxEditorProps>
-);
 
 function SyncedCodeMirrorEditor(props: CodeBlockEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -241,6 +258,8 @@ function handleLinkDoubleClick(event: MouseEvent<HTMLDivElement>) {
 }
 
 export default function MdxDocumentEditor({
+  projectId,
+  documentId,
   markdown,
   readOnly,
   showToolbar,
@@ -248,11 +267,47 @@ export default function MdxDocumentEditor({
   imageUploadHandler,
   collaboration,
   editorRef,
+  referenceNavigationReady = false,
 }: MdxDocumentEditorProps) {
+  const editorMethodsRef = useRef<MDXEditorMethods | null>(null);
+  const editorFrameRef = useRef<HTMLDivElement>(null);
   const collaborationSession = collaboration?.session;
   const collaborationUsername = collaboration?.username;
   const collaborationCursorColor = collaboration?.cursorColor;
+  const setEditorMethodsRef = useCallback((methods: MDXEditorMethods | null) => {
+    editorMethodsRef.current = methods;
+    publishEditorRef(editorRef, methods);
+  }, [editorRef]);
+  const restoreEditorFocus = useCallback(() => {
+    setTimeout(() => editorMethodsRef.current?.focus(), 0);
+  }, []);
+  const referencePicker = useResourceReferencePickerController(restoreEditorFocus);
+  useReferencedDocumentBlock({
+    rootRef: editorFrameRef,
+    ready: referenceNavigationReady,
+    highlightClassName: styles.referencedDocumentBlock,
+  });
+  const onReplaceResourceReference = referencePicker.openReplacement;
   const plugins = useMemo(() => {
+    const ResourceReference = (props: JsxEditorProps) => (
+      <ResourceReferenceEditor
+        {...props}
+        readOnly={readOnly}
+        onReplace={onReplaceResourceReference}
+      />
+    );
+    const jsxComponentDescriptors = createSanctionedMdxDescriptors(
+      SanctionedMdxEditor as unknown as ComponentType<SanctionedMdxEditorProps>
+    ).map((descriptor) =>
+      descriptor.name === 'BlockAnchor'
+        ? { ...descriptor, Editor: () => null }
+        : descriptor.name === 'ResourceReference'
+          ? {
+              ...descriptor,
+              Editor: ResourceReference as unknown as ComponentType<SanctionedMdxEditorProps>,
+            }
+          : descriptor
+    );
     const stablePlugins = [
       headingsPlugin(),
       listsPlugin(),
@@ -277,8 +332,9 @@ export default function MdxDocumentEditor({
       markdownShortcutPlugin(),
       jsxPlugin({
         jsxComponentDescriptors:
-          sanctionedMdxDescriptors as unknown as JsxComponentDescriptor[],
+          jsxComponentDescriptors as unknown as JsxComponentDescriptor[],
       }),
+      documentBlockIdentityPlugin({ assignMissingIds: !readOnly }),
     ];
 
     if (
@@ -295,7 +351,7 @@ export default function MdxDocumentEditor({
       );
     }
 
-    if (showToolbar) {
+    if (showToolbar && !readOnly) {
       stablePlugins.push(
         toolbarPlugin({
           toolbarContents: () => (
@@ -311,6 +367,10 @@ export default function MdxDocumentEditor({
               <Separator />
               <SelectedTextLinkButton />
               <SingleFileImageButton />
+              <ResourceReferenceInsertButton
+                readOnly={readOnly}
+                onOpen={referencePicker.openInsertion}
+              />
               <Separator />
               <InsertTable />
               <InsertThematicBreak />
@@ -327,21 +387,38 @@ export default function MdxDocumentEditor({
     collaborationSession,
     collaborationUsername,
     imageUploadHandler,
+    onReplaceResourceReference,
+    referencePicker.openInsertion,
+    readOnly,
     showToolbar,
   ]);
 
   return (
-    <div className={styles.editorFrame} onDoubleClick={handleLinkDoubleClick}>
-      <MDXEditor
-        ref={editorRef}
-        markdown={markdown}
-        readOnly={readOnly}
-        onChange={onChange}
-        plugins={plugins}
-        suppressSharedHistory={Boolean(collaboration)}
-        contentEditableClassName={styles.contentEditable}
-        className={styles.editor}
-      />
+    <div
+      ref={editorFrameRef}
+      className={styles.editorFrame}
+      onDoubleClick={handleLinkDoubleClick}
+    >
+      <ResourceReferenceProvider key={documentId} projectId={projectId}>
+        <MDXEditor
+          ref={setEditorMethodsRef}
+          markdown={markdown}
+          readOnly={readOnly}
+          onChange={onChange}
+          plugins={plugins}
+          suppressSharedHistory={Boolean(collaboration)}
+          contentEditableClassName={styles.contentEditable}
+          className={styles.editor}
+        />
+        <ResourceReferencePickerModal
+          open={referencePicker.open}
+          projectId={projectId}
+          documentId={documentId}
+          initialTarget={referencePicker.initialTarget}
+          onCancel={referencePicker.cancel}
+          onConfirm={referencePicker.confirm}
+        />
+      </ResourceReferenceProvider>
     </div>
   );
 }
