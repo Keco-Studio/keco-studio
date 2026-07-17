@@ -8,6 +8,10 @@ import {
   persistLibraryClipboard,
   readLibraryClipboard,
 } from './libraryClipboardStorage';
+import {
+  serializeLibraryClipboardMatrix,
+  writeLibraryClipboard,
+} from './libraryRichClipboard';
 import type { TableIndexes } from '../utils/tableIndexes';
 
 type CellKey = `${string}-${string}`; // Format: "rowId-propertyKey"
@@ -343,17 +347,12 @@ export function useClipboardOperations({
       clipboardArray.push(rowData);
     });
     
-    // Copy to clipboard (as tab-separated values for Excel-like behavior)
-    const clipboardText = clipboardArray
-      .map(row => row.map(cell => cell === null ? '' : String(cell)).join('\t'))
-      .join('\n');
-    
-    // Try to copy to system clipboard
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(clipboardText).catch(err => {
-        console.error('Failed to copy to clipboard:', err);
-      });
-    }
+    const clipboardPayload = serializeLibraryClipboardMatrix(clipboardArray);
+    const clipboardText = clipboardPayload.plainText;
+
+    void writeLibraryClipboard(clipboardPayload).catch((error) => {
+      console.error('Failed to copy to clipboard:', error);
+    });
 
     const propertyDataTypes = sortedPropertyKeys.map((k) =>
       tableIndexes.propertyByKey.get(k)?.dataType,
@@ -639,16 +638,12 @@ export function useClipboardOperations({
       clipboardArray.push(rowData);
     });
     
-    // Copy to clipboard
-    const clipboardText = clipboardArray
-      .map(row => row.map(cell => cell === null ? '' : String(cell)).join('\t'))
-      .join('\n');
-    
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(clipboardText).catch(err => {
-        console.error('Failed to copy to clipboard:', err);
-      });
-    }
+    const clipboardPayload = serializeLibraryClipboardMatrix(clipboardArray);
+    const clipboardText = clipboardPayload.plainText;
+
+    void writeLibraryClipboard(clipboardPayload).catch((error) => {
+      console.error('Failed to copy to clipboard:', error);
+    });
 
     const copyPropertyDataTypes = sortedPropertyKeys.map((k) =>
       tableIndexes.propertyByKey.get(k)?.dataType,
