@@ -32,8 +32,14 @@ async function insertTableReference(page: Page): Promise<void> {
   const dialog = page.getByRole('dialog', { name: 'Insert reference' });
   await expect(dialog).toBeVisible();
 
-  await dialog.getByRole('combobox', { name: 'Table', exact: true }).click();
-  await page.getByRole('option', { name: TABLE_NAME, exact: true }).click();
+  // Dev-mode Fast Refresh re-renders the page mid-test, so the antd Select
+  // dropdown option keeps re-animating and never becomes click-stable. Drive
+  // the searchable combobox by keyboard instead: typing filters to the target
+  // and Enter commits it internally, independent of dropdown visual jitter.
+  const tableSelect = dialog.getByRole('combobox', { name: 'Table', exact: true });
+  await tableSelect.click();
+  await tableSelect.fill(TABLE_NAME);
+  await tableSelect.press('Enter');
   await dialog.getByRole('option', { name: `Row: ${ROW_NAME}` }).click();
   await dialog.getByRole('combobox', { name: 'Display field', exact: true }).click();
   await page.getByRole('option', { name: FIELD_NAME, exact: true }).click();
@@ -47,8 +53,10 @@ async function insertDocumentReference(page: Page): Promise<void> {
   await expect(dialog).toBeVisible();
 
   await dialog.getByRole('tab', { name: 'Document' }).click();
-  await dialog.getByRole('combobox', { name: 'Document', exact: true }).click();
-  await page.getByRole('option', { name: SOURCE_DOCUMENT_NAME, exact: true }).click();
+  const documentSelect = dialog.getByRole('combobox', { name: 'Document', exact: true });
+  await documentSelect.click();
+  await documentSelect.fill(SOURCE_DOCUMENT_NAME);
+  await documentSelect.press('Enter');
   await dialog
     .getByRole('option', { name: `Paragraph: ${SOURCE_PARAGRAPH}` })
     .click();
