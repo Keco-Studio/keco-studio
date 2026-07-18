@@ -140,6 +140,12 @@ describe('sanctioned MDX validation', () => {
     )).not.toThrow();
   });
 
+  it('accepts a standalone resource reference serialized as a flow element', () => {
+    expect(() => validateSanctionedMdx(
+      '<ResourceReference kind="document-block" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="The city closes its gates" />'
+    )).not.toThrow();
+  });
+
   it.each([
     '# <BlockAnchor id="not-a-uuid" />Heading',
     'See <ResourceReference kind="table-row" libraryId="not-a-uuid" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.',

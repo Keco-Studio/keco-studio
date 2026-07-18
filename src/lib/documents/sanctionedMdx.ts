@@ -272,11 +272,14 @@ function validateJsxNode(node: AstNode): void {
   }
   const name = node.name as SanctionedComponentName;
   const rule = SANCTIONED_MDX_REGISTRY[name];
-  // A BlockAnchor marks the start of the block it anchors. Depending on that
-  // block, it round-trips through Markdown either as an inline (text) element
-  // leading a paragraph/heading or as a standalone flow element, so accept
-  // both positions. This mirrors resourceReferenceMarkdown's tolerance.
-  if (rule.kind !== nodeKind && name !== 'BlockAnchor') {
+  // Void inline components (BlockAnchor, ResourceReference) can be authored as a
+  // standalone block, so they round-trip through Markdown as either an inline
+  // (text) element or a flow element. Accept both for those, but still reject a
+  // block component (e.g. Callout/Details) used inline. This mirrors
+  // resourceReferenceMarkdown's tolerance for text/flow JSX elements.
+  const inlineVoidUsedAsFlow =
+    rule.kind === 'text' && !rule.hasChildren && nodeKind === 'flow';
+  if (rule.kind !== nodeKind && !inlineVoidUsedAsFlow) {
     invalid(`${name} is not supported as a ${nodeKind} component`);
   }
   const attributes = validateAttributes(node, name);
