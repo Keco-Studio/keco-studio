@@ -197,13 +197,6 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
     setPlayerState(createInitialPlayerState());
   }, [createInitialPlayerState]);
 
-  const advance = useCallback(() => {
-    setPlayerState((state) => {
-      if (state.atChoice || state.done || state.warning || state.error) return state;
-      return nextPosition(state, filteredRows, playerColumns);
-    });
-  }, [filteredRows, playerColumns]);
-
   const restart = useCallback(() => {
     setPlayerState(createInitialPlayerState());
     resetNearestScrollContainer(rootRef.current);
@@ -212,18 +205,6 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
   const chooseOption = useCallback((choice: number) => {
     setPlayerState((state) => nextPosition(state, filteredRows, playerColumns, choice));
   }, [filteredRows, playerColumns]);
-
-  const handleContainerClick = useCallback((event: React.MouseEvent<HTMLDivElement>) => {
-    if ((event.target as HTMLElement).closest('button')) return;
-    advance();
-  }, [advance]);
-
-  const handleKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'Enter' && event.key !== ' ') return;
-    if ((event.target as HTMLElement).tagName.toLowerCase() === 'button') return;
-    event.preventDefault();
-    advance();
-  }, [advance]);
 
   if (!filteredRows.length) {
     return <div className={styles.emptyState}>No script data</div>;
@@ -235,9 +216,6 @@ export function VisualNovelScriptView({ rows, scriptColumns }: VisualNovelScript
     <div
       ref={rootRef}
       className={styles.container}
-      onClick={handleContainerClick}
-      onKeyDown={handleKeyDown}
-      tabIndex={0}
     >
       <div className={styles.playerToolbar}>
         <button type="button" className={styles.restartButton} onClick={restart}>
@@ -336,7 +314,7 @@ function renderScriptLine(
   if (presentation.kind === 'fullscreen') {
     return renderFullscreenText(rowId, content);
   }
-  return renderDialog(rowId, nameVal, content, presentation.color);
+  return renderDialog(rowId, nameVal, content, presentation.color, presentation.alignment);
 }
 
 function renderDialog(
@@ -344,12 +322,13 @@ function renderDialog(
   nameVal: string | undefined | null,
   content: string,
   dialogColor: VisualNovelDialogColor,
+  alignment: 'left' | 'right',
 ) {
   const speakerName = resolveSpeakerName(nameVal);
   const avatarLetter = getAvatarLetter(speakerName);
 
   return (
-    <div key={rowId} className={`${styles.dialogRow} ${styles.left}`}>
+    <div key={rowId} className={`${styles.dialogRow} ${styles[alignment]}`}>
       <div>
         <div className={styles.speakerHeader}>
           <div className={`${styles.avatar} ${styles[dialogColor]}`}>

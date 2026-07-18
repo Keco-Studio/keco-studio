@@ -160,7 +160,7 @@ async function executeUpdateAsset(params: unknown, ctx: ToolContext): Promise<To
         libraryName: library.name,
         name: name ?? assetRow.name,
       },
-      invalidateCache: [library.id],
+      invalidations: [{ type: 'library', id: library.id }],
     };
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to update asset.' };

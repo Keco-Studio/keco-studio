@@ -1,7 +1,7 @@
 export type VisualNovelDialogColor = 'blue' | 'pink' | 'gray';
 
 export type VisualNovelPresentation =
-  | { kind: 'dialogue'; color: VisualNovelDialogColor; alignment: 'left' }
+  | { kind: 'dialogue'; color: VisualNovelDialogColor; alignment: 'left' | 'right' }
   | { kind: 'plain'; color: null; alignment: 'left' }
   | { kind: 'fullscreen'; color: null; alignment: 'center' };
 
@@ -11,7 +11,7 @@ export function resolveVisualNovelPresentation(
 ): VisualNovelPresentation {
   switch (String(typeValue ?? '').trim()) {
     case '1':
-      return { kind: 'dialogue', color: 'blue', alignment: 'left' };
+      return { kind: 'dialogue', color: 'blue', alignment: 'right' };
     case '2':
       return { kind: 'dialogue', color: 'pink', alignment: 'left' };
     case '3':
@@ -22,10 +22,11 @@ export function resolveVisualNovelPresentation(
       return { kind: 'fullscreen', color: null, alignment: 'center' };
     default: {
       const name = String(nameValue ?? '').trim();
+      const isProtagonist = name && name !== 'Speaker';
       return {
         kind: 'dialogue',
-        color: name && name !== 'Speaker' ? 'blue' : 'gray',
-        alignment: 'left',
+        color: isProtagonist ? 'blue' : 'gray',
+        alignment: isProtagonist ? 'right' : 'left',
       };
     }
   }

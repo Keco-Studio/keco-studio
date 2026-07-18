@@ -6,6 +6,69 @@ import type { ChatItem } from '@/components/agent/types';
 jest.mock('@/components/agent/ChatPanel.module.css', () => ({}));
 
 describe('Agent document edit confirmation UI', () => {
+  it('shows the document bound to a rename confirmation', () => {
+    const item: ChatItem = {
+      id: 'confirmation-rename',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-rename',
+        tool: 'rename_document',
+        args: {
+          documentId: '11111111-1111-4111-8111-111111111111',
+          newName: 'Updated Guide',
+        },
+        confirmationMode: 'pre_execute',
+        preview: {
+          documentId: '11111111-1111-4111-8111-111111111111',
+          name: 'Guide',
+          folderName: 'Lore',
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Confirm: Rename document');
+    expect(markup).toContain('Bound document');
+    expect(markup).toContain('Guide / Lore');
+  });
+
+  it('renders permanent document deletion through the generic confirmation card', () => {
+    const item: ChatItem = {
+      id: 'confirmation-delete',
+      role: 'confirmation',
+      confirmation: {
+        actionId: 'action-delete',
+        tool: 'delete_document',
+        args: { documentName: 'Guide', folderName: 'Lore' },
+        confirmationMode: 'post_preview',
+        preview: {
+          type: 'document_delete',
+          documentId: '11111111-1111-4111-8111-111111111111',
+          projectId: '22222222-2222-4222-8222-222222222222',
+          name: 'Guide',
+          folderName: 'Lore',
+          updatedAt: '2026-07-15T00:00:00.000Z',
+        },
+      },
+    };
+
+    const markup = renderToStaticMarkup(
+      <ChatMessage item={item} streaming={false} onDecision={jest.fn()} />
+    );
+
+    expect(markup).toContain('Confirm: Delete document permanently');
+    expect(markup).toContain('Guide');
+    expect(markup).toContain('Lore');
+    expect(markup).toContain('permanently deleted');
+    expect(markup).toContain('irreversible');
+    expect(markup).toContain('cannot be undone');
+    expect(markup).not.toContain('Import preview:');
+    expect(markup).not.toContain('Import Directly');
+  });
+
   it('renders the exact document proposal in ConfirmationCard instead of ScriptPreviewCard', () => {
     const baseMarkdown = '# Original\n\nKeep this context.';
     const proposedMarkdown = '# Exact proposal\n\nOnly this preview contains this text.';
@@ -16,12 +79,21 @@ describe('Agent document edit confirmation UI', () => {
         actionId: 'action-1',
         tool: 'propose_document_edit',
         args: {
-          documentId: '11111111-1111-4111-8111-111111111111',
-          markdown: proposedMarkdown,
+          documentName: 'Guide',
+          folderName: 'Lore',
+          operation: {
+            type: 'replace_text',
+            target: 'Keep this context.',
+            replacement: 'Only this preview contains this text.',
+          },
         },
         confirmationMode: 'post_preview',
         preview: {
           type: 'document_edit',
+          documentName: 'Guide',
+          folderName: 'Lore',
+          operationType: 'replace_text',
+          operationSummary: 'Replace one exact text occurrence (18 characters) with 37 characters.',
           baseMarkdown,
           proposedMarkdown,
         },
@@ -37,7 +109,12 @@ describe('Agent document edit confirmation UI', () => {
     expect(markup.match(/Only this preview contains this text\./g)).toHaveLength(2);
     expect(markup).toContain('Document changes');
     expect(markup).toContain('Proposed Markdown');
+    expect(markup).toContain('Guide');
+    expect(markup).toContain('Lore');
+    expect(markup).toContain('Replace one exact text occurrence');
+    expect(markup).toContain('&quot;type&quot;: &quot;replace_text&quot;');
     expect(markup).toContain('[shown in document diff]');
+    expect(markup.match(/Keep this context\./g)).toHaveLength(1);
     expect(markup).not.toContain('Import preview:');
     expect(markup).not.toContain('Import Directly');
   });
@@ -119,10 +196,17 @@ describe('Agent document edit confirmation UI', () => {
       confirmation: {
         actionId: 'action-accessible',
         tool: 'propose_document_edit',
-        args: { documentId: '11111111-1111-4111-8111-111111111111', markdown: 'New line' },
+        args: {
+          documentId: '11111111-1111-4111-8111-111111111111',
+          operation: { type: 'replace_all', markdown: 'New line' },
+        },
         confirmationMode: 'post_preview',
         preview: {
           type: 'document_edit',
+          documentName: 'Guide',
+          folderName: null,
+          operationType: 'replace_all',
+          operationSummary: 'Replace entire document (8 characters).',
           baseMarkdown: 'Old line',
           proposedMarkdown: 'New line',
         },

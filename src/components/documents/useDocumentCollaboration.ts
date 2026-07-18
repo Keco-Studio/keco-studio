@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import type {
@@ -13,6 +13,82 @@ import { colorForUserId } from '@/lib/documents/cursorColor';
 import { broadcastProjectDocumentUpdate } from '@/lib/documents/projectDocumentChannel';
 import { registerDocumentFlushHandler } from '@/lib/documents/documentFlushRegistry';
 import { queryKeys } from '@/lib/utils/queryKeys';
+
+const AGENT_PROJECT_DOCUMENT_REINDEX_DEBOUNCE_MS = 5000;
+const AGENT_PROJECT_DOCUMENT_REINDEX_ATTEMPTS = 2;
+
+type DocumentReindexRequest = {
+  projectId: string;
+  documentId: string;
+  accessToken: string;
+};
+
+type PendingDocumentReindex = Omit<DocumentReindexRequest, 'accessToken'>;
+
+async function readReindexFailureMessage(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { error?: unknown };
+    if (typeof payload.error === 'string' && payload.error.trim()) {
+      return payload.error.trim();
+    }
+  } catch {
+    // Response body may be empty or non-JSON.
+  }
+  return `HTTP ${response.status}`;
+}
+
+export async function requestDocumentReindex(
+  input: DocumentReindexRequest,
+  fetcher: typeof fetch = fetch
+): Promise<boolean> {
+  let lastFailure = 'unknown failure';
+  for (let attempt = 1; attempt <= AGENT_PROJECT_DOCUMENT_REINDEX_ATTEMPTS; attempt += 1) {
+    try {
+      const response = await fetcher('/api/agent-chat/reindex/document', {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${input.accessToken}`,
+        },
+        body: JSON.stringify({
+          projectId: input.projectId,
+          documentId: input.documentId,
+        }),
+      });
+      if (response.ok) return true;
+      lastFailure = await readReindexFailureMessage(response);
+      // Provider RPM/TPM limits are transient; retrying immediately usually hits cooldown.
+      if (response.status === 429) {
+        console.warn('embedding.index.project_document_deferred', {
+          projectId: input.projectId,
+          documentId: input.documentId,
+          error: lastFailure,
+        });
+        return false;
+      }
+    } catch (error) {
+      lastFailure = error instanceof Error ? error.message : String(error);
+    }
+
+    if (attempt < AGENT_PROJECT_DOCUMENT_REINDEX_ATTEMPTS) {
+      console.warn('embedding.index.project_document_retry', {
+        projectId: input.projectId,
+        documentId: input.documentId,
+        attempt,
+        error: lastFailure,
+      });
+    }
+  }
+
+  console.error('embedding.index.project_document_failed', {
+    projectId: input.projectId,
+    documentId: input.documentId,
+    attempts: AGENT_PROJECT_DOCUMENT_REINDEX_ATTEMPTS,
+    error: lastFailure,
+  });
+  return false;
+}
 
 type CollaborationPresentation = {
   label: string;
@@ -149,6 +225,10 @@ export function useDocumentCollaboration({
   userName,
 }: UseDocumentCollaborationOptions) {
   const [generation, setGeneration] = useState(0);
+  const reindexTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDocumentReindexRef = useRef<PendingDocumentReindex | null>(null);
+  const accessTokenRef = useRef(accessToken);
+  accessTokenRef.current = accessToken;
   const queryClient = useQueryClient();
   const requestKey = `${projectId}:${documentId}:${userId}:${role}:${generation}`;
   const cursorColor = useMemo(() => colorForUserId(userId), [userId]);
@@ -163,6 +243,31 @@ export function useDocumentCollaboration({
     loadFailure?.requestKey === requestKey ? loadFailure : null;
   const status = currentLoadFailure ? 'error' : current?.view.status ?? 'idle';
   const presentation = getDocumentCollaborationPresentation(status, role);
+  const flushScheduledDocumentReindex = useCallback(() => {
+    if (reindexTimerRef.current) {
+      clearTimeout(reindexTimerRef.current);
+      reindexTimerRef.current = null;
+    }
+    const pending = pendingDocumentReindexRef.current;
+    pendingDocumentReindexRef.current = null;
+    if (!pending) return;
+    void requestDocumentReindex({
+      ...pending,
+      accessToken: accessTokenRef.current,
+    });
+  }, []);
+  const scheduleDocumentReindex = useCallback(() => {
+    if (role === 'viewer') return;
+    if (reindexTimerRef.current) clearTimeout(reindexTimerRef.current);
+    pendingDocumentReindexRef.current = { projectId, documentId };
+    reindexTimerRef.current = setTimeout(() => {
+      flushScheduledDocumentReindex();
+    }, AGENT_PROJECT_DOCUMENT_REINDEX_DEBOUNCE_MS);
+  }, [documentId, flushScheduledDocumentReindex, projectId, role]);
+
+  useEffect(() => () => {
+    flushScheduledDocumentReindex();
+  }, [documentId, flushScheduledDocumentReindex, projectId, role]);
 
   useEffect(() => {
     let mounted = true;
@@ -179,6 +284,7 @@ export function useDocumentCollaboration({
         const onDurableStateChanged = async (
           state: { updatedAt: string }
         ) => {
+          scheduleDocumentReindex();
           await queryClient.invalidateQueries({
             queryKey: queryKeys.documentVersions(documentId),
           });
@@ -220,6 +326,7 @@ export function useDocumentCollaboration({
             authSession?.user.id === userId &&
             authSession.access_token
           ) {
+            accessTokenRef.current = authSession.access_token;
             void session
               .updateAccessToken(authSession.access_token)
               .catch(() => undefined);
@@ -253,6 +360,7 @@ export function useDocumentCollaboration({
     queryClient,
     requestKey,
     role,
+    scheduleDocumentReindex,
     supabase,
     userId,
     userName,
@@ -280,8 +388,11 @@ export function useDocumentCollaboration({
 
   useEffect(() => {
     if (!session) return;
-    return registerDocumentFlushHandler(() => session.flush());
-  }, [session]);
+    return registerDocumentFlushHandler(async () => {
+      await session.flush();
+      scheduleDocumentReindex();
+    });
+  }, [scheduleDocumentReindex, session]);
 
   useEffect(() => {
     if (!session) return;
@@ -290,7 +401,7 @@ export function useDocumentCollaboration({
     };
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'hidden') {
-        void session.flush().catch(() => undefined);
+        void session.flush().then(scheduleDocumentReindex).catch(() => undefined);
       } else if (document.visibilityState === 'visible') {
         recover();
       }
@@ -310,7 +421,7 @@ export function useDocumentCollaboration({
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('beforeunload', guardPendingUnload);
     };
-  }, [session]);
+  }, [scheduleDocumentReindex, session]);
 
   const retry = useCallback(async () => {
     if (status === 'error') {

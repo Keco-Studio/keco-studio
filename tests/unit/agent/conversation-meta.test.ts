@@ -77,12 +77,48 @@ describe('needsConfirmation', () => {
     expect(needsConfirmation(validatedWrite, { autoExecute: false })).toBe(false);
   });
 
-  it('requires confirmation for post_preview and meta write tools even when autoExecute is true', () => {
+  it('lets mode-driven post-preview confirmation follow autoExecute', () => {
+    const post = mockTool({
+      confirmationMode: 'post_preview',
+      confirmationPolicy: 'mode',
+    });
+    expect(needsConfirmation(post, { autoExecute: true })).toBe(false);
+    expect(needsConfirmation(post, { autoExecute: false })).toBe(true);
+  });
+
+  it('requires always-confirm post-preview writes even when autoExecute is true', () => {
+    const post = mockTool({
+      confirmationMode: 'post_preview',
+      confirmationPolicy: 'always',
+    });
+    expect(needsConfirmation(post, { autoExecute: true })).toBe(true);
+  });
+
+  it('lets always-confirm policy take precedence over confirmationRequired false', () => {
+    const irreversible = mockTool({
+      confirmationMode: 'post_preview',
+      confirmationPolicy: 'always',
+      confirmationRequired: false,
+    });
+    expect(needsConfirmation(irreversible, { autoExecute: true })).toBe(true);
+  });
+
+  it('requires confirmation for legacy post-preview writes in auto mode', () => {
     const post = mockTool({ confirmationMode: 'post_preview' });
+    expect(needsConfirmation(post, { autoExecute: true })).toBe(true);
+  });
+
+  it('requires confirmation for meta writes even when autoExecute is true', () => {
     const metaTool = mockTool({ confirmationMode: 'meta' });
-    const auto = { autoExecute: true as const };
-    expect(needsConfirmation(post, auto)).toBe(true);
-    expect(needsConfirmation(metaTool, auto)).toBe(true);
+    expect(needsConfirmation(metaTool, { autoExecute: true })).toBe(true);
+  });
+
+  it('lets meta mode take precedence over confirmationRequired false', () => {
+    const metaTool = mockTool({
+      confirmationMode: 'meta',
+      confirmationRequired: false,
+    });
+    expect(needsConfirmation(metaTool, { autoExecute: true })).toBe(true);
   });
 
   it('skips confirmation for pre_execute write tools when autoExecute is true', () => {

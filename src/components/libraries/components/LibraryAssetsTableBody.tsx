@@ -23,6 +23,11 @@ import tableAssetDetailIcon from '@/assets/images/ProjectDescIcon.svg';
 import styles from '../LibraryAssetsTable.module.css';
 import type { TableIndexes } from '../utils/tableIndexes';
 import type { TableCellScrollTarget } from '../hooks/useLibraryTableFindReplaceWiring';
+import { showErrorToast } from '@/lib/utils/toast';
+
+const REFERENCED_ROW_HIGHLIGHT_MS = 2_000;
+const REFERENCED_ROW_TIMEOUT_MS = 5_000;
+const REFERENCED_ROW_UNAVAILABLE = 'Referenced content is unavailable';
 
 type EditingUser = {
   userId: string;
@@ -71,6 +76,8 @@ type LibraryAssetsTableBodyProps = {
   fillPreviewMap: Map<string, number>;
   searchHighlightedCellKeys: ReadonlySet<string>;
   scrollTargetCell: TableCellScrollTarget | null;
+  referencedAssetId: string | null;
+  referencedNavigationReady: boolean;
   editingCell: { rowId: string; propertyKey: string } | null;
   editingCellRef: React.MutableRefObject<HTMLSpanElement | null>;
   editingCellInitialValueRef: React.MutableRefObject<string>;
@@ -174,6 +181,8 @@ export function LibraryAssetsTableBody({
   fillPreviewMap,
   searchHighlightedCellKeys,
   scrollTargetCell,
+  referencedAssetId,
+  referencedNavigationReady,
   editingCell,
   editingCellRef,
   editingCellInitialValueRef,
@@ -249,7 +258,19 @@ export function LibraryAssetsTableBody({
       : -1,
     [displayRows, scrollTargetCell?.assetId]
   );
+  const referencedRowIndex = useMemo(
+    () =>
+      referencedAssetId
+        ? displayRows.findIndex((row) => row.id === referencedAssetId)
+        : -1,
+    [displayRows, referencedAssetId]
+  );
   const isScrollTargetMounted = virtualRows.some((row) => row.index === scrollTargetIndex);
+  const isReferencedRowMounted = virtualRows.some((row) => row.index === referencedRowIndex);
+  const [highlightedReferencedAssetId, setHighlightedReferencedAssetId] = useState<string | null>(
+    null
+  );
+  const referencedScrollRequestRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!scrollElement || scrollTargetIndex < 0) return;
@@ -266,6 +287,51 @@ export function LibraryAssetsTableBody({
     });
     return () => window.cancelAnimationFrame(frame);
   }, [isScrollTargetMounted, scrollTargetCell]);
+
+  useEffect(() => {
+    if (!referencedAssetId || !referencedNavigationReady || !scrollElement) {
+      referencedScrollRequestRef.current = null;
+      return;
+    }
+    if (referencedRowIndex < 0) return;
+    if (referencedScrollRequestRef.current === referencedAssetId) return;
+    referencedScrollRequestRef.current = referencedAssetId;
+    rowVirtualizer.scrollToIndex(referencedRowIndex, { align: 'center' });
+  }, [
+    referencedAssetId,
+    referencedNavigationReady,
+    referencedRowIndex,
+    rowVirtualizer,
+    scrollElement,
+  ]);
+
+  useEffect(() => {
+    if (!referencedAssetId || !referencedNavigationReady || referencedRowIndex < 0) {
+      return;
+    }
+    if (!isReferencedRowMounted) return;
+    setHighlightedReferencedAssetId(referencedAssetId);
+    const timeout = window.setTimeout(() => {
+      setHighlightedReferencedAssetId((current) =>
+        current === referencedAssetId ? null : current
+      );
+    }, REFERENCED_ROW_HIGHLIGHT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [
+    isReferencedRowMounted,
+    referencedAssetId,
+    referencedNavigationReady,
+    referencedRowIndex,
+  ]);
+
+  useEffect(() => {
+    if (!referencedAssetId || !referencedNavigationReady) return;
+    if (referencedRowIndex >= 0) return;
+    const timeout = window.setTimeout(() => {
+      showErrorToast(REFERENCED_ROW_UNAVAILABLE);
+    }, REFERENCED_ROW_TIMEOUT_MS);
+    return () => window.clearTimeout(timeout);
+  }, [referencedAssetId, referencedNavigationReady, referencedRowIndex]);
 
   const firstVirtualRow = virtualRows[0];
   const lastVirtualRow = virtualRows[virtualRows.length - 1];
@@ -293,6 +359,7 @@ export function LibraryAssetsTableBody({
         if (!row) return null;
         const isRowHovered = hoveredRowId === row.id;
         const isRowSelected = selectedRowIds.has(row.id);
+        const isReferencedRow = highlightedReferencedAssetId === row.id;
         const actualRowIndex = tableIndexes.rowIndexById.get(row.id) ?? -1;
 
         return (
@@ -301,7 +368,7 @@ export function LibraryAssetsTableBody({
             data-index={virtualRow.index}
             key={row.id}
             data-row-id={row.id}
-            className={`${styles.row} ${isRowSelected ? styles.rowSelected : ''} ${hasCustomRowHeight(row.id) ? styles.rowCustomHeight : ''}`}
+            className={`${styles.row} ${isRowSelected ? styles.rowSelected : ''} ${isReferencedRow ? styles.referencedRowHighlight : ''} ${hasCustomRowHeight(row.id) ? styles.rowCustomHeight : ''}`}
             style={getRowHeightStyle(row.id)}
             onContextMenu={(event) => {
               onRowContextMenu(event, row);
@@ -482,7 +549,7 @@ export function LibraryAssetsTableBody({
                             onViewAssetDetail(row, event);
                           }}
                           onDoubleClick={(event) => event.stopPropagation()}
-                          title="View asset details (Ctrl/Cmd+Click for new tab)"
+                          title="View asset details"
                         >
                           <Image src={assetTableIcon} alt="View" width={20} height={20} className="icon-20" />
                         </button>

@@ -4,6 +4,7 @@
  */
 
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
+export type { AgentInvalidation } from '@/lib/agent/types';
 
 export type ChatItemRole = 'user' | 'assistant' | 'tool' | 'error' | 'confirmation';
 
@@ -61,6 +62,7 @@ export interface ChatItem {
 export interface SendContext {
   userId?: string;
   projectId: string;
+  currentDocumentId?: string;
   currentFolderId?: string;
   currentFolderName?: string;
   currentLibraryId?: string;

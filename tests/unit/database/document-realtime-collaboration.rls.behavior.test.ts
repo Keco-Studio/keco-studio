@@ -62,6 +62,22 @@ describeDb('document collaboration durability RLS (live database)', () => {
     });
   }
 
+  async function normalize(
+    actor: RlsUser,
+    documentId: string,
+    expected: { epoch: number; revision: number; updateIds?: string[] },
+    state = 'BwgJ'
+  ) {
+    return actor.client.rpc('normalize_document_collab_state', {
+      p_document_id: documentId,
+      p_expected_epoch: expected.epoch,
+      p_expected_revision: expected.revision,
+      p_expected_update_ids: expected.updateIds ?? [],
+      p_yjs_state: state,
+      p_markdown: '# Normalized',
+    });
+  }
+
   it('allows project members to read state and the durable update tail', async () => {
     const documentId = await seedDocument();
     expect((await initialize(fx.owner, documentId)).error).toBeNull();
@@ -311,6 +327,107 @@ describeDb('document collaboration durability RLS (live database)', () => {
       }
     );
     expect(staleRevisionError).not.toBeNull();
+  });
+
+  it('allows writers but denies viewers and outsiders from epoch-fenced normalization', async () => {
+    for (const actor of [fx.owner, fx.admin, fx.editor]) {
+      const documentId = await seedDocument();
+      const initialized = await initialize(fx.owner, documentId);
+      expect(initialized.error).toBeNull();
+      const revision = Number(
+        (initialized.data as Array<{ collab_revision: number }>)[0]?.collab_revision
+      );
+      const result = await normalize(actor, documentId, { epoch: 0, revision });
+      expect(result.error).toBeNull();
+      expect(result.data).toEqual([
+        expect.objectContaining({ collab_epoch: 1, collab_revision: revision + 1 }),
+      ]);
+    }
+
+    const documentId = await seedDocument();
+    const initialized = await initialize(fx.owner, documentId);
+    const revision = Number(
+      (initialized.data as Array<{ collab_revision: number }>)[0]?.collab_revision
+    );
+    expect((await normalize(fx.viewer, documentId, { epoch: 0, revision })).error?.code)
+      .toBe('42501');
+    expect((await normalize(fx.outsider, documentId, { epoch: 0, revision })).error?.code)
+      .toBe('42501');
+  });
+
+  it('rejects tail drift and fences pending old-epoch updates from the committed state', async () => {
+    const documentId = await seedDocument();
+    const initialized = await initialize(fx.owner, documentId);
+    const revision = Number(
+      (initialized.data as Array<{ collab_revision: number }>)[0]?.collab_revision
+    );
+    const updateId = randomUUID();
+    expect(
+      (await append(fx.editor, documentId, 0, [
+        { id: updateId, updateBase64: 'AQI=' },
+      ])).error
+    ).toBeNull();
+
+    expect(
+      (await normalize(fx.owner, documentId, { epoch: 0, revision })).error?.code
+    ).toBe('PT409');
+    expect(
+      (
+        await normalize(
+          fx.owner,
+          documentId,
+          { epoch: 0, revision, updateIds: [updateId] },
+          'BwgJ'
+        )
+      ).error
+    ).toBeNull();
+
+    const staleAppend = await append(fx.editor, documentId, 0, [
+      { id: randomUUID(), updateBase64: 'CgsM' },
+    ]);
+    expect(staleAppend.error?.code).toBe('PT409');
+    const stored = await fx.svc
+      .from('documents')
+      .select('yjs_state, collab_epoch, collab_revision')
+      .eq('id', documentId)
+      .single();
+    expect(stored.data).toMatchObject({
+      yjs_state: 'BwgJ',
+      collab_epoch: 1,
+      collab_revision: revision + 1,
+    });
+    const tail = await fx.svc
+      .from('document_yjs_updates')
+      .select('id')
+      .eq('document_id', documentId);
+    expect(tail.data).toEqual([]);
+  });
+
+  it('allows only one same-token normalizer to publish its winner state', async () => {
+    const documentId = await seedDocument();
+    const initialized = await initialize(fx.owner, documentId);
+    const revision = Number(
+      (initialized.data as Array<{ collab_revision: number }>)[0]?.collab_revision
+    );
+
+    const candidates = await Promise.all([
+      normalize(fx.owner, documentId, { epoch: 0, revision }, 'BwgJ'),
+      normalize(fx.editor, documentId, { epoch: 0, revision }, 'CgsM'),
+    ]);
+    expect(candidates.filter((candidate) => candidate.error === null)).toHaveLength(1);
+    expect(candidates.filter((candidate) => candidate.error?.code === 'PT409'))
+      .toHaveLength(1);
+
+    const stored = await fx.svc
+      .from('documents')
+      .select('yjs_state, collab_epoch, collab_revision')
+      .eq('id', documentId)
+      .single();
+    expect(['BwgJ', 'CgsM']).toContain(stored.data?.yjs_state);
+    expect(stored.data).toMatchObject({
+      collab_epoch: 1,
+      collab_revision: revision + 1,
+    });
   });
 
   it('hides another project state and tail from every unrelated role', async () => {

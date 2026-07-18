@@ -94,12 +94,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     profileFetchInProgress.current = true;
     currentUserId.current = userId;
 
+    const loadProfile = async () =>
+      supabase.from('profiles').select('*').eq('id', userId).single();
+
     try {
-      const { data: profile, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      let { data: profile, error } = await loadProfile();
+
+      // PGRST303 = JWT iat is ahead of PostgREST's clock (common after WSL/Docker
+      // sleep/resume drift). Refresh once so Auth re-issues a token with a current iat.
+      if (error?.code === 'PGRST303') {
+        const { error: refreshError } = await supabase.auth.refreshSession();
+        if (!refreshError) {
+          ({ data: profile, error } = await loadProfile());
+        }
+      }
 
       if (error) {
         // If profile doesn't exist, try to create it automatically
@@ -130,7 +138,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           currentUserId.current = null;
         } else {
           // Only log non-PGRST116 errors (PGRST116 = no rows returned, which is expected for new users).
-          console.error(`Failed to fetch profile: ${formatSupabaseLikeError(error)}`);
+          if (error.code === 'PGRST303') {
+            console.warn(
+              `Failed to fetch profile (clock skew / stale JWT): ${formatSupabaseLikeError(error)}. ` +
+                'Sign out and sign back in, or sync Windows/WSL time if this persists.'
+            );
+          } else {
+            console.error(`Failed to fetch profile: ${formatSupabaseLikeError(error)}`);
+          }
           // Reset currentUserId to allow retry
           currentUserId.current = null;
         }

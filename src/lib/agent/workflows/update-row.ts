@@ -195,7 +195,7 @@ async function executeImport(
         libraryId: preview.libraryId,
         libraryName: preview.libraryName,
       },
-      invalidateCache: [preview.libraryId],
+      invalidations: [{ type: 'library', id: preview.libraryId }],
     };
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to update row.' };

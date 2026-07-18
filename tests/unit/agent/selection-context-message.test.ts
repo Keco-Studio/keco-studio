@@ -43,6 +43,19 @@ const selection: AgentSelectionContext = {
 };
 
 describe('augmentUserMessageForLlm with selected table data', () => {
+  it('describes the current document as an overridable default target', () => {
+    const augmented = augmentUserMessageForLlm('Update this', {
+      ...toolContext,
+      currentDocumentId: 'doc-1',
+      currentDocumentName: 'Design Guide',
+    });
+
+    expect(augmented).toContain('current document "Design Guide" (id: doc-1)');
+    expect(augmented).toContain('default target, not a locked scope');
+    expect(augmented).toContain('explicitly named same-project document overrides it');
+    expect(stripContextAugmentation(augmented)).toBe('Update this');
+  });
+
   it('injects selection context before the raw message for this turn', () => {
     const augmented = augmentUserMessageForLlm('Help me edit this', toolContext, selection);
     expect(augmented).toContain('[User is viewing: active library "Characters"');

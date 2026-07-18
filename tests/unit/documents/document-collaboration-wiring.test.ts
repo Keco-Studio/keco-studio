@@ -224,6 +224,108 @@ describe('document collaboration React boundary', () => {
     expect(queryKeys).toContain('documentVersions: (id: string)');
   });
 
+  it('debounces authenticated reindex after durable editor saves and cleans up on unmount', () => {
+    const source = readFileSync(hookPath, 'utf8');
+    expect(source).toContain('/api/agent-chat/reindex/document');
+    expect(source).toContain("role === 'viewer'");
+    expect(source).toContain("authorization: `Bearer ${input.accessToken}`");
+    expect(source).toContain('accessToken: accessTokenRef.current');
+    expect(source).toContain('accessTokenRef.current = authSession.access_token');
+    expect(source).toContain('AGENT_PROJECT_DOCUMENT_REINDEX_DEBOUNCE_MS');
+    expect(source).toContain('clearTimeout');
+    expect(source).toContain('pendingDocumentReindexRef.current');
+    expect(source).toContain('flushScheduledDocumentReindex');
+    expect(source).toMatch(
+      /useEffect\(\(\) => \(\) => \{[\s\S]+flushScheduledDocumentReindex\(\);[\s\S]+\}, \[documentId, flushScheduledDocumentReindex, projectId, role\]\);/
+    );
+    expect(source).toMatch(/onCompacted:\s*onDurableStateChanged/);
+  });
+
+  it('retries failed document reindex responses with keepalive enabled', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const collaborationModule = await import('@/components/documents/useDocumentCollaboration');
+    const requestDocumentReindex = (
+      collaborationModule as typeof collaborationModule & {
+        requestDocumentReindex?: (
+          input: { projectId: string; documentId: string; accessToken: string },
+          fetcher: typeof fetch
+        ) => Promise<boolean>;
+      }
+    ).requestDocumentReindex;
+    expect(typeof requestDocumentReindex).toBe('function');
+    if (!requestDocumentReindex) return;
+
+    const fetcher = jest
+      .fn()
+      .mockResolvedValueOnce(new Response(null, { status: 503 }))
+      .mockResolvedValueOnce(new Response(null, { status: 200 }));
+
+    await expect(requestDocumentReindex({
+      projectId: 'project-old',
+      documentId: 'document-old',
+      accessToken: 'latest-token',
+    }, fetcher)).resolves.toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher).toHaveBeenLastCalledWith(
+      '/api/agent-chat/reindex/document',
+      expect.objectContaining({
+        keepalive: true,
+        headers: expect.objectContaining({ authorization: 'Bearer latest-token' }),
+        body: JSON.stringify({ projectId: 'project-old', documentId: 'document-old' }),
+      })
+    );
+    expect(warn).toHaveBeenCalledWith(
+      'embedding.index.project_document_retry',
+      expect.objectContaining({ documentId: 'document-old', attempt: 1 })
+    );
+    warn.mockRestore();
+  });
+
+  it('treats embedding rate limits as soft failures without console.error', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const collaborationModule = await import('@/components/documents/useDocumentCollaboration');
+    const requestDocumentReindex = (
+      collaborationModule as typeof collaborationModule & {
+        requestDocumentReindex?: (
+          input: { projectId: string; documentId: string; accessToken: string },
+          fetcher: typeof fetch
+        ) => Promise<boolean>;
+      }
+    ).requestDocumentReindex;
+    expect(typeof requestDocumentReindex).toBe('function');
+    if (!requestDocumentReindex) return;
+
+    const fetcher = jest.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'rate limit exceeded(RPM)' }), {
+        status: 429,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+
+    await expect(
+      requestDocumentReindex(
+        {
+          projectId: 'project-old',
+          documentId: 'document-old',
+          accessToken: 'latest-token',
+        },
+        fetcher
+      )
+    ).resolves.toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      'embedding.index.project_document_deferred',
+      expect.objectContaining({
+        documentId: 'document-old',
+        error: 'rate limit exceeded(RPM)',
+      })
+    );
+    expect(error).not.toHaveBeenCalled();
+    warn.mockRestore();
+    error.mockRestore();
+  });
+
   it('uses the authorized private project sidebar channel', () => {
     const source = readFileSync(sidebarRealtimePath, 'utf8');
     expect(source).toContain('projectSidebarTopic(currentProjectId), {');

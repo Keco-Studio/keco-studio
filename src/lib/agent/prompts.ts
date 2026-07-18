@@ -9,6 +9,8 @@ export interface SystemPromptContext {
   projectId: string;
   currentFolderId?: string;
   currentFolderName?: string;
+  currentDocumentId?: string;
+  currentDocumentName?: string;
   currentLibraryId?: string;
   currentLibraryName?: string;
   currentSectionName?: string;
@@ -101,12 +103,19 @@ RULES:
     ("characters similar to…", "settings we discussed before", "battle system description in the document") rather than
     exact row/column operations. For precise table reads/writes, still use
     query_assets and other structured tools. Retrieved context in the system
-    prompt is a preview — call semantic_search for exhaustive lookup.
+    prompt is a preview across chat, libraries, design documents, and living project documents —
+    call semantic_search for exhaustive lookup.
+27. DOCUMENT TARGETS: The current document is the default target only. If the user
+    explicitly names a different same-project document, that document overrides the
+    current one. Use list_documents or list_project_structure to discover document IDs.
+    Never guess among duplicate document names; ask the user to disambiguate. Call
+    read_document before editing document content.
 
 CURRENT CONTEXT:
 - Project: ${ctx.projectName ?? '(unknown)'}
 - Project ID: ${ctx.projectId}
 - Current folder: ${ctx.currentFolderName ? `${ctx.currentFolderName} (${ctx.currentFolderId})` : ctx.currentFolderId ?? '(none)'}
+- Current document: ${ctx.currentDocumentName ? `${ctx.currentDocumentName} (id: ${ctx.currentDocumentId})` : ctx.currentDocumentId ? `(id: ${ctx.currentDocumentId})` : '(none)'}
 - Active library: ${ctx.currentLibraryName ? `${ctx.currentLibraryName}${ctx.currentLibraryId ? ` (id: ${ctx.currentLibraryId})` : ''}` : '(none — ask user which library)'}
 - Active section tab: ${ctx.currentSectionName ?? '(none)'}
 - User role: ${ctx.userRole}`;

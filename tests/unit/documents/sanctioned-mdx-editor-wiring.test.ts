@@ -19,6 +19,10 @@ describe('sanctioned MDX editor wiring', () => {
     expect(editor).toContain('SanctionedMdxPropertyEditor');
     expect(editor).toContain('PropertyEditor={BoundSanctionedMdxPropertyEditor}');
     expect(editor).toContain('styles.sanctionedMdx');
+    expect(editor).toContain("descriptor.name === 'BlockAnchor'");
+    expect(editor).toContain("descriptor.name === 'ResourceReference'");
+    expect(editor).toContain('<ResourceReferenceEditor');
+    expect(editor).toContain('<ResourceReferenceProvider key={documentId} projectId={projectId}>');
   });
 
   it('derives descriptors from the shared registry without redeclaring props', () => {
@@ -33,5 +37,46 @@ describe('sanctioned MDX editor wiring', () => {
 
     expect(headless).toContain('createSanctionedMdxDescriptors');
     expect(headless).toContain('GenericJsxEditor');
+  });
+
+  it('specializes only inert anchors and live resource references', () => {
+    const editor = source('src/components/documents/MdxDocumentEditor.tsx');
+
+    expect(editor).toMatch(
+      /descriptor\.name === 'BlockAnchor'[\s\S]*Editor: \(\) => null/
+    );
+    expect(editor).toMatch(
+      /descriptor\.name === 'ResourceReference'[\s\S]*Editor: ResourceReference/
+    );
+    expect(editor).toMatch(
+      /function SanctionedMdxEditor[\s\S]*<GenericJsxEditor/
+    );
+    expect(editor).not.toContain("descriptor.name === 'Callout'");
+    expect(editor).not.toContain("descriptor.name === 'Details'");
+    expect(editor).toMatch(
+      /<ResourceReferenceEditor[\s\S]*readOnly=\{readOnly\}/
+    );
+    expect(editor).not.toContain('onReplaceResourceReference');
+    expect(editor).not.toContain('openReplacement');
+  });
+
+  it('passes project, document, and viewer context through live and preview editors', () => {
+    const documentEditor = source('src/components/documents/DocumentEditor.tsx');
+    const preview = source('src/components/documents/DocumentVersionPreviewModal.tsx');
+    const sidebar = source('src/components/documents/DocumentVersionSidebar.tsx');
+    const liveEditorCalls = documentEditor.match(/<MdxDocumentEditor\s[\s\S]*?\/>/g);
+
+    expect(liveEditorCalls).toHaveLength(2);
+    liveEditorCalls?.forEach((call) => {
+      expect(call).toContain('projectId={projectId}');
+      expect(call).toContain('documentId={document.id}');
+    });
+    expect(documentEditor).toContain('readOnly={collaboration.readOnly}');
+    expect(preview).toContain('projectId={projectId}');
+    expect(preview).toContain('documentId={documentId}');
+    expect(preview).toMatch(/<MdxDocumentEditor[\s\S]*readOnly/);
+    expect(sidebar).toMatch(
+      /<DocumentVersionPreviewModal[\s\S]*projectId=\{projectId\}[\s\S]*documentId=\{documentId\}/
+    );
   });
 });

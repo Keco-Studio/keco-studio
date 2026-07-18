@@ -428,7 +428,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     if (currentAssetId) {
       nextBreadcrumbs.push({
         label: assetName || 'Asset',
-        path: `/${currentProjectId}/${currentLibraryId}/${currentAssetId}`,
+        path: `/${currentProjectId}/${currentLibraryId}?asset=${currentAssetId}`,
       });
     }
 
@@ -461,6 +461,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   }), [
     breadcrumbs,
     currentAssetId,
+    currentDocumentId,
     currentFolderId,
     currentLibraryId,
     currentProjectId,

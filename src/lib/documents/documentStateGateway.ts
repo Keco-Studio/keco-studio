@@ -11,13 +11,14 @@ import {
   DocumentStateConflictError,
   type AuthoritativeDocumentState,
   type AuthoritativeDocumentTransportState,
+  type DocumentEpochReason,
   type ReplaceDocumentStateInput,
   type DocumentStateToken,
   type DurableYjsUpdate,
 } from './documentStateTypes';
 
 const DOCUMENT_STATE_COLUMNS =
-  'id, project_id, content, yjs_state, collab_epoch, collab_revision, updated_at';
+  'id, project_id, content, yjs_state, collab_epoch, collab_revision, collab_epoch_reason, updated_at';
 const DOCUMENT_UPDATE_COLUMNS = 'id, update_data, created_at';
 const MAX_STABLE_READ_ATTEMPTS = 3;
 
@@ -28,6 +29,7 @@ type DocumentStateRow = {
   yjs_state: string | null;
   collab_epoch: number;
   collab_revision: number;
+  collab_epoch_reason: string;
   updated_at: string;
 };
 
@@ -92,10 +94,17 @@ function firstRpcRow(data: unknown): DocumentStateRpcRow {
   return row as DocumentStateRpcRow;
 }
 
+function parseDocumentEpochReason(value: unknown): DocumentEpochReason {
+  return value === 'normalization' || value === 'restore' || value === 'agent'
+    ? value
+    : 'initialize';
+}
+
 function stateFromRpc(
   documentId: string,
   projectId: string,
-  row: DocumentStateRpcRow
+  row: DocumentStateRpcRow,
+  epochReason: DocumentEpochReason
 ): AuthoritativeDocumentState {
   return {
     documentId,
@@ -108,6 +117,7 @@ function stateFromRpc(
       epoch: Number(row.collab_epoch),
       revision: Number(row.collab_revision),
     },
+    epochReason,
     updatedAt: row.updated_at,
   };
 }
@@ -194,6 +204,7 @@ async function readAuthoritativeTransportState(
         epoch: Number(head.collab_epoch),
         revision: Number(head.collab_revision),
       },
+      epochReason: parseDocumentEpochReason(head.collab_epoch_reason),
       updatedAt: head.updated_at,
     },
     legacyMarkdown: head.content,
@@ -253,7 +264,8 @@ export async function initializeDocumentState(
   return stateFromRpc(
     documentId,
     projectId,
-    firstRpcRow(data)
+    firstRpcRow(data),
+    'initialize'
   );
 }
 
@@ -304,22 +316,63 @@ export async function compactDocumentState(
   }
 
   const updateTail = tail.map((row) => row.update_data);
-  const merged = mergeYjsState(head.yjs_state, updateTail);
-  const markdown = await documentContentCodec.yjsStateToMarkdown(merged, []);
+  const normalized = await documentContentCodec.normalizeYjsState(
+    head.yjs_state,
+    updateTail
+  );
   const includedUpdateIds = tail.map((row) => row.id);
   const { data, error } = await client.rpc('compact_document_collab_state', {
     p_document_id: input.documentId,
     p_expected_epoch: input.expected.epoch,
     p_expected_revision: input.expected.revision,
     p_included_update_ids: includedUpdateIds,
-    p_yjs_state: merged,
-    p_markdown: markdown,
+    p_yjs_state: normalized.yjsStateBase64,
+    p_markdown: normalized.markdown,
   });
   if (error) throwMutationError(error, current);
   return stateFromRpc(
     input.documentId,
     head.project_id,
-    firstRpcRow(data)
+    firstRpcRow(data),
+    parseDocumentEpochReason(head.collab_epoch_reason)
+  );
+}
+
+export async function normalizeDocumentState(
+  client: SupabaseClient,
+  input: CompactDocumentStateInput
+): Promise<AuthoritativeDocumentState> {
+  assertDocumentId(input.documentId);
+  const { head, tail } = await readRawDocumentState(client, input.documentId);
+  const current = {
+    epoch: Number(head.collab_epoch),
+    revision: Number(head.collab_revision),
+  };
+  if (
+    current.epoch !== input.expected.epoch ||
+    current.revision !== input.expected.revision
+  ) {
+    throw new DocumentStateConflictError('Document state changed', current);
+  }
+
+  const normalized = await documentContentCodec.normalizeYjsState(
+    head.yjs_state,
+    tail.map((row) => row.update_data)
+  );
+  const { data, error } = await client.rpc('normalize_document_collab_state', {
+    p_document_id: input.documentId,
+    p_expected_epoch: input.expected.epoch,
+    p_expected_revision: input.expected.revision,
+    p_expected_update_ids: tail.map((row) => row.id),
+    p_yjs_state: normalized.yjsStateBase64,
+    p_markdown: normalized.markdown,
+  });
+  if (error) throwMutationError(error, current);
+  return stateFromRpc(
+    input.documentId,
+    head.project_id,
+    firstRpcRow(data),
+    'normalization'
   );
 }
 
@@ -406,7 +459,8 @@ export async function replaceDocumentState(
   return stateFromRpc(
     input.documentId,
     head.project_id,
-    firstRpcRow(data)
+    firstRpcRow(data),
+    input.reason
   );
 }
 
@@ -416,5 +470,6 @@ export const documentStateGateway = {
   initialize: initializeDocumentState,
   appendUpdates: appendDocumentYjsUpdates,
   compact: compactDocumentState,
+  normalize: normalizeDocumentState,
   replace: replaceDocumentState,
 };

@@ -51,7 +51,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       success: true,
       displayHint: 'text',
       data: { assetId, libraryId: library.id, libraryName: library.name, name: assetRow.name },
-      invalidateCache: [library.id],
+      invalidations: [{ type: 'library', id: library.id }],
     };
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to delete asset.' };

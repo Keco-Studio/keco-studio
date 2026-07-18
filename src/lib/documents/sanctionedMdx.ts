@@ -1,4 +1,6 @@
+import { isUuid } from '@/lib/utils/uuid';
 import { DocumentContentValidationError } from './documentStateTypes';
+import { parseResourceReferenceAttributes } from './resourceReferenceTypes';
 import {
   parseSanctionedMdxAst,
   type SanctionedMdxAstNode,
@@ -11,8 +13,8 @@ type SanctionedMdxPropertyRule = {
 };
 
 type SanctionedMdxComponentRule = {
-  kind: 'flow';
-  hasChildren: true;
+  kind: 'flow' | 'text';
+  hasChildren: boolean;
   props: readonly SanctionedMdxPropertyRule[];
 };
 
@@ -33,6 +35,33 @@ export const SANCTIONED_MDX_REGISTRY = {
     kind: 'flow',
     hasChildren: true,
     props: [{ name: 'summary', required: true }],
+  },
+  BlockAnchor: {
+    kind: 'text',
+    hasChildren: false,
+    props: [{ name: 'id', required: true }],
+  },
+  ResourceReference: {
+    kind: 'text',
+    hasChildren: false,
+    props: [
+      {
+        name: 'kind',
+        required: true,
+        allowedValues: ['table-row', 'document-block'],
+      },
+      { name: 'libraryId', required: false },
+      { name: 'assetId', required: false },
+      { name: 'displayFieldId', required: false },
+      { name: 'documentId', required: false },
+      { name: 'blockId', required: false },
+      {
+        name: 'blockType',
+        required: false,
+        allowedValues: ['heading', 'paragraph'],
+      },
+      { name: 'fallbackLabel', required: true },
+    ],
   },
 } as const satisfies Record<string, SanctionedMdxComponentRule>;
 
@@ -140,7 +169,7 @@ function validateUrl(destination: string, kind: 'Link' | 'Image'): void {
 function validateAttributes(
   node: AstNode,
   name: SanctionedComponentName
-): void {
+): Record<string, string> {
   const attributes = new Map<string, string>();
   for (const attribute of node.attributes ?? []) {
     if (
@@ -183,6 +212,7 @@ function validateAttributes(
       invalid(`${name} ${property.name} is not supported`);
     }
   }
+  return Object.fromEntries(attributes);
 }
 
 export function validateSanctionedMdxPropertyEdit(
@@ -214,30 +244,59 @@ export function validateSanctionedMdxPropertyEdit(
     }
     validated[property.name] = value;
   }
+  if (
+    componentName === 'ResourceReference' &&
+    !parseResourceReferenceAttributes(validated)
+  ) {
+    return null;
+  }
+  if (componentName === 'BlockAnchor' && !isUuid(validated.id)) return null;
   return validated;
 }
 
 function validateJsxNode(node: AstNode): void {
-  if (node.type === 'mdxJsxTextElement') {
-    if (node.name !== 'u') {
-      invalid(`Unsupported inline MDX component: ${node.name ?? 'fragment'}`);
-    }
+  const nodeKind = node.type === 'mdxJsxTextElement' ? 'text' : 'flow';
+  if (nodeKind === 'text' && node.name === 'u') {
     if ((node.attributes ?? []).length > 0) {
       invalid('Underline markup does not accept properties');
     }
     return;
   }
 
-  if (node.type !== 'mdxJsxFlowElement') return;
   if (
     !SANCTIONED_COMPONENT_NAMES.includes(node.name as SanctionedComponentName)
   ) {
-    invalid(`Unsupported MDX component: ${node.name ?? 'fragment'}`);
+    invalid(
+      `Unsupported ${nodeKind === 'text' ? 'inline ' : ''}MDX component: ${node.name ?? 'fragment'}`
+    );
   }
   const name = node.name as SanctionedComponentName;
-  validateAttributes(node, name);
-  if (childrenOf(node).length === 0) {
+  const rule = SANCTIONED_MDX_REGISTRY[name];
+  // Void inline components (BlockAnchor, ResourceReference) can be authored as a
+  // standalone block, so they round-trip through Markdown as either an inline
+  // (text) element or a flow element. Accept both for those, but still reject a
+  // block component (e.g. Callout/Details) used inline. This mirrors
+  // resourceReferenceMarkdown's tolerance for text/flow JSX elements.
+  const inlineVoidUsedAsFlow =
+    rule.kind === 'text' && !rule.hasChildren && nodeKind === 'flow';
+  if (rule.kind !== nodeKind && !inlineVoidUsedAsFlow) {
+    invalid(`${name} is not supported as a ${nodeKind} component`);
+  }
+  const attributes = validateAttributes(node, name);
+  if (name === 'BlockAnchor' && !isUuid(attributes.id)) {
+    invalid('BlockAnchor id must be a UUID');
+  }
+  if (
+    name === 'ResourceReference' &&
+    !parseResourceReferenceAttributes(attributes)
+  ) {
+    invalid('ResourceReference properties are invalid');
+  }
+  if (rule.hasChildren && childrenOf(node).length === 0) {
     invalid(`${name} must contain Markdown children`);
+  }
+  if (!rule.hasChildren && childrenOf(node).length > 0) {
+    invalid(`${name} must not contain Markdown children`);
   }
 }
 

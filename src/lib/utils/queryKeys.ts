@@ -118,6 +118,9 @@ export const queryKeys = {
   documentVersion: (documentId: string, versionId: string) =>
     ['document', documentId, 'version', versionId] as const,
 
+  resourceReferences: (projectId: string, keys: readonly string[]) =>
+    ['project', projectId, 'resource-references', ...keys] as const,
+
   // ========== Collaboration ==========
   
   /**
@@ -142,7 +145,6 @@ export type ProjectKey = ReturnType<typeof queryKeys.project>;
 export type LibraryKey = ReturnType<typeof queryKeys.library>;
 export type FolderKey = ReturnType<typeof queryKeys.folder>;
 export type AssetKey = ReturnType<typeof queryKeys.asset>;
-
 
 
 

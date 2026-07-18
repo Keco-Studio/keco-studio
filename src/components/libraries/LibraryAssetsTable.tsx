@@ -20,6 +20,8 @@ import { useCellSelection, type CellKey } from './hooks/useCellSelection';
 import { useUserRole } from './hooks/useUserRole';
 import { useRowSync } from './hooks/useRowSync';
 import { useRowStore } from '@/lib/contexts/RowStoreContext';
+import { useLibraryData } from '@/lib/contexts/LibraryDataContext';
+import { parseReferencedAssetSearch } from '@/components/documents/useReferencedDocumentBlock';
 import { persistActiveSection } from '@/lib/agent/page-context';
 import { useAssetHover } from './hooks/useAssetHover';
 import { useRowOperations } from './hooks/useRowOperations';
@@ -316,6 +318,10 @@ export function LibraryAssetsTable({
   const focusSectionIdFromQuery = searchParams.get('focusSectionId');
   const focusAssetIdFromQuery = searchParams.get('focusAssetId');
   const focusFieldIdFromQuery = searchParams.get('focusFieldId');
+  const referencedAssetIdFromQuery = parseReferencedAssetSearch(
+    `?${searchParams.toString()}`
+  );
+  const { isLoading: libraryAssetsLoading } = useLibraryData();
   const supabase = useSupabase();
   const {
     hoveredAssetId,
@@ -853,16 +859,10 @@ export function LibraryAssetsTable({
     formulaPanelClassName: styles.formulaPanel,
   });
 
-  // Handle view asset detail: Ctrl/Cmd = new tab; else open right-side drawer
+  // Open the in-table detail drawer (full-page asset route redirects to the library).
   const handleViewAssetDetail = (row: AssetRow, e: React.MouseEvent) => {
-    const projectId = params.projectId as string;
-    const libraryId = params.libraryId as string;
-
-    if (e.ctrlKey || e.metaKey) {
-      window.open(`/${projectId}/${libraryId}/${row.id}`, '_blank');
-    } else {
-      setDetailDrawerRowId(row.id);
-    }
+    e.stopPropagation();
+    setDetailDrawerRowId(row.id);
   };
 
   // Add global click listener to clear focus state and selection
@@ -981,7 +981,11 @@ export function LibraryAssetsTable({
 
   return (
     <>
-      <div className={styles.tableShell}>
+      <div
+        className={`${styles.tableShell}${
+          scriptViewMode === 'script' && hasScriptColumns ? ` ${styles.tableShellScript}` : ''
+        }`}
+      >
         <LibraryTableTopBar
           hasSections={hasSections}
           groups={groups}
@@ -1075,6 +1079,8 @@ export function LibraryAssetsTable({
               fillPreviewMap={fillPreviewMap}
               searchHighlightedCellKeys={searchHighlightedCellKeys}
               scrollTargetCell={scrollTargetCell}
+              referencedAssetId={referencedAssetIdFromQuery}
+              referencedNavigationReady={!libraryAssetsLoading}
               editingCell={editingCell}
               editingCellRef={editingCellRef}
               editingCellInitialValueRef={editingCellInitialValueRef}

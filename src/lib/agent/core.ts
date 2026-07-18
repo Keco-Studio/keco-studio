@@ -44,8 +44,7 @@ import { inlineLocalImages } from './image-inlining';
 import {
   savePendingAction,
   loadPendingAction,
-  markPendingAction,
-  deletePendingAction,
+  consumePendingAction,
 } from './confirmation';
 import {
   needsConfirmation,
@@ -73,6 +72,24 @@ const MAX_ITERATIONS = 50;
 
 /** Cap how much of the raw argument string we echo back to the model on a parse failure. */
 const MAX_RAW_ARGS_IN_ERROR = 200;
+
+function publicToolResult(result: ToolResult): ToolResult {
+  const { internalData: _internalData, ...publicResult } = result;
+  return publicResult;
+}
+
+function cacheInvalidatedEvent(
+  invalidations: NonNullable<ToolResult['invalidations']>
+): Extract<SSEEvent, { type: 'cache_invalidated' }> {
+  const paths = invalidations.flatMap((invalidation) =>
+    invalidation.type === 'library' ? [invalidation.id] : []
+  );
+  return {
+    type: 'cache_invalidated',
+    invalidations,
+    ...(paths.length > 0 ? { paths } : {}),
+  };
+}
 
 interface ParsedArgs {
   args: Record<string, unknown>;
@@ -159,6 +176,8 @@ async function buildSystemMessage(
       projectId: ctx.projectId,
       currentFolderId: ctx.currentFolderId,
       currentFolderName,
+      currentDocumentId: ctx.currentDocumentId,
+      currentDocumentName: ctx.currentDocumentName,
       currentLibraryId: ctx.currentLibraryId,
       currentLibraryName,
       currentSectionName: ctx.currentSectionName,
@@ -467,6 +486,50 @@ async function* continueLoop(
     if (needsConfirmation(tool, meta)) {
       // pre_execute / meta -> pause BEFORE execution.
       if (tool.confirmationMode === 'pre_execute' || tool.confirmationMode === 'meta') {
+        let confirmationArgs: unknown = parsedArgs;
+        let confirmationPreview: unknown;
+        if (tool.prepareConfirmation) {
+          throwIfAborted(signal);
+          const preparation = await tool.prepareConfirmation(parsedArgs, ctx);
+          if (preparation.success === false) {
+            const preparationResult: ToolResult = {
+              success: false,
+              error: preparation.error,
+              data: preparation.data,
+              displayHint: preparation.displayHint,
+            };
+            trace?.recordToolCall({
+              tool: tool.name,
+              args: parsedArgs,
+              success: false,
+              error: preparation.error,
+              phase: 'execute',
+            });
+            messages.push(assistantMessage);
+            messages.push({
+              role: 'tool',
+              tool_call_id: call.id,
+              content: JSON.stringify(preparationResult),
+            });
+            await persistMessage(ctx, conversationId, assistantMessage);
+            await saveMessage(ctx.supabase, conversationId, {
+              role: 'tool',
+              tool_call_id: call.id,
+              content: JSON.stringify(preparationResult),
+            });
+            yield {
+              type: 'tool_result',
+              tool: tool.name,
+              data: preparation.data,
+              displayHint: preparation.displayHint,
+              success: false,
+              error: preparation.error,
+            };
+            continue;
+          }
+          confirmationArgs = preparation.args;
+          confirmationPreview = preparation.preview;
+        }
         const actionId = crypto.randomUUID();
         // Persist assistant text (tool_calls deferred until resume) for display continuity.
         if (assistantContent) {
@@ -476,7 +539,7 @@ async function* continueLoop(
           id: actionId,
           conversationId,
           toolName: tool.name,
-          args: parsedArgs,
+          args: confirmationArgs,
           confirmationMode: tool.confirmationMode,
           suspendedState: {
             messages: [...messages],
@@ -485,7 +548,7 @@ async function* continueLoop(
             nextIteration: iterations,
             tokenUsageTotal: usedTokenTotal,
           },
-        });
+        }, ctx.userId);
         trace?.recordConfirmation({
           actionId,
           tool: tool.name,
@@ -496,8 +559,9 @@ async function* continueLoop(
           type: 'confirmation_request',
           actionId,
           tool: tool.name,
-          args: parsedArgs,
+          args: confirmationArgs,
           confirmationMode: tool.confirmationMode,
+          ...(confirmationPreview === undefined ? {} : { preview: confirmationPreview }),
         };
         yield { type: 'done' };
         return;
@@ -520,9 +584,10 @@ async function* continueLoop(
         yield { type: 'tool_call_end' };
         if (!result.success) {
           messages.push(assistantMessage);
-          messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+          const publicResult = publicToolResult(result);
+          messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
           await persistMessage(ctx, conversationId, assistantMessage);
-          await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+          await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
           yield { type: 'tool_result', tool: tool.name, data: result.data, displayHint: result.displayHint };
           continue;
         }
@@ -544,7 +609,7 @@ async function* continueLoop(
             nextIteration: iterations,
             tokenUsageTotal: usedTokenTotal,
           },
-        });
+        }, ctx.userId);
         trace?.recordConfirmation({
           actionId,
           tool: tool.name,
@@ -602,13 +667,14 @@ async function* continueLoop(
         success: finalResult.success,
         error: finalResult.error,
       };
-      if (finalResult.invalidateCache && finalResult.invalidateCache.length > 0) {
-        yield { type: 'cache_invalidated', paths: finalResult.invalidateCache };
+      if (finalResult.invalidations && finalResult.invalidations.length > 0) {
+        yield cacheInvalidatedEvent(finalResult.invalidations);
       }
       messages.push(assistantMessage);
-      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(finalResult) });
+      const publicResult = publicToolResult(finalResult);
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
       await persistMessage(ctx, conversationId, assistantMessage);
-      await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(finalResult) });
+      await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
       continue;
     }
 
@@ -631,14 +697,15 @@ async function* continueLoop(
       success: result.success,
       error: result.error,
     };
-    if (result.invalidateCache && result.invalidateCache.length > 0) {
-      yield { type: 'cache_invalidated', paths: result.invalidateCache };
+    if (result.invalidations && result.invalidations.length > 0) {
+      yield cacheInvalidatedEvent(result.invalidations);
     }
 
     messages.push(assistantMessage);
-    messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+    const publicResult = publicToolResult(result);
+    messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
     await persistMessage(ctx, conversationId, assistantMessage);
-    await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
+    await saveMessage(ctx.supabase, conversationId, { role: 'tool', tool_call_id: call.id, content: JSON.stringify(publicResult) });
   }
 
   yield { type: 'error', message: 'Agent reached maximum iterations.' };
@@ -715,8 +782,19 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
     ...toolContext,
     accessCache: createAccessVerificationCache(),
   };
-  const pending = await loadPendingAction(turnContext.supabase, input.actionId);
+  const pending = await loadPendingAction(turnContext.supabase, input.actionId, turnContext.userId);
   if (!pending) {
+    yield { type: 'error', message: 'This action has expired or was already handled.' };
+    yield { type: 'done' };
+    return;
+  }
+  const consumed = await consumePendingAction(
+    turnContext.supabase,
+    input.actionId,
+    turnContext.userId,
+    input.decision === 'approve' ? 'approved' : 'rejected'
+  );
+  if (!consumed) {
     yield { type: 'error', message: 'This action has expired or was already handled.' };
     yield { type: 'done' };
     return;
@@ -811,25 +889,21 @@ export async function* resumeAgentTurn(input: ResumeInput): AsyncGenerator<SSEEv
       success: result.success,
       error: result.error,
     };
-    if (result.invalidateCache && result.invalidateCache.length > 0) {
-      yield { type: 'cache_invalidated', paths: result.invalidateCache };
+    if (result.invalidations && result.invalidations.length > 0) {
+      yield cacheInvalidatedEvent(result.invalidations);
     }
-
     // Persist assistant+tool_calls only after we have the tool result, so a
     // failed execution never leaves orphan tool_calls in the DB.
     const assistantMessage: ChatMessage = { role: 'assistant', content: '', tool_calls: [pendingToolCall] };
     const toolMessage: ChatMessage = {
       role: 'tool',
       tool_call_id: pendingToolCall.id,
-      content: JSON.stringify(result),
+      content: JSON.stringify(publicToolResult(result)),
     };
     messages.push(assistantMessage);
     messages.push(toolMessage);
     await persistMessage(turnContext, conversationId, assistantMessage);
     await saveMessage(turnContext.supabase, conversationId, toolMessage);
-
-    await markPendingAction(turnContext.supabase, input.actionId, input.decision === 'approve' ? 'approved' : 'rejected');
-    await deletePendingAction(turnContext.supabase, input.actionId);
 
     // Continue the loop so the LLM can summarize the result.
     const resumeIteration = pending.suspendedState.nextIteration ?? 0;

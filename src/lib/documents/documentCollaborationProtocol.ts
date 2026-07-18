@@ -111,7 +111,7 @@ const eventSchemas = {
   }).strict(),
   'document-state-reset': baseEventSchema.extend({
     revision: z.number().int().nonnegative(),
-    reason: z.enum(['initialize', 'restore', 'agent']),
+    reason: z.enum(['initialize', 'restore', 'agent', 'normalization']),
     updatedAt: z.string().datetime({ offset: true }),
   }).strict(),
 } as const;

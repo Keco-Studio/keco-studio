@@ -22,19 +22,27 @@ import { createFolder } from './create-folder';
 import { deleteLibrary } from './delete-library';
 import { renameLibrary } from './rename-library';
 import { listProjectStructure } from './list-project-structure';
+import { listDocumentsTool } from './list-documents';
 import { semanticSearch } from './semantic-search';
 import { createDocumentTool } from './create-document';
 import { readDocument } from './read-document';
 import { proposeDocumentEdit } from './propose-document-edit';
+import { renameDocument } from './rename-document';
+import { moveDocumentTool } from './move-document';
+import { deleteDocumentTool } from './delete-document';
 import { allSkills } from '../workflows';
 
 const tools: AgentTool[] = [
   listProjectStructure,
+  listDocumentsTool,
   queryAssets,
   semanticSearch,
   createDocumentTool,
   readDocument,
   proposeDocumentEdit,
+  renameDocument,
+  moveDocumentTool,
+  deleteDocumentTool,
   queryScriptLines,
   addField,
   createAsset,

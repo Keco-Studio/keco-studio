@@ -1,12 +1,55 @@
 import { validateSanctionedMdx } from './sanctionedMdx';
 import { createSanctionedMdxDescriptors } from './sanctionedMdxDescriptors';
 import { DocumentContentValidationError } from './documentStateTypes';
+import {
+  parseResourceReferenceAttributes,
+  resourceReferenceAttributes,
+  resourceReferenceKey,
+  type ResourceReferenceTarget,
+} from './resourceReferenceTypes';
+
+const REFERENCE_TARGETS: ResourceReferenceTarget[] = [
+  {
+    kind: 'table-row',
+    libraryId: '11111111-1111-4111-8111-111111111111',
+    assetId: '22222222-2222-4222-8222-222222222222',
+    displayFieldId: '33333333-3333-4333-8333-333333333333',
+    fallbackLabel: 'Ada',
+  },
+  {
+    kind: 'document-block',
+    documentId: '44444444-4444-4444-8444-444444444444',
+    blockId: '55555555-5555-4555-8555-555555555555',
+    blockType: 'paragraph',
+    fallbackLabel: 'The city closes its gates',
+  },
+];
+
+describe('resource reference targets', () => {
+  it.each([
+    [
+      REFERENCE_TARGETS[0],
+      'table-row:11111111-1111-4111-8111-111111111111:22222222-2222-4222-8222-222222222222:33333333-3333-4333-8333-333333333333',
+    ],
+    [
+      REFERENCE_TARGETS[1],
+      'document-block:44444444-4444-4444-8444-444444444444:55555555-5555-4555-8555-555555555555',
+    ],
+  ])('round-trips attributes with a stable key', (target, expectedKey) => {
+    const attributes = resourceReferenceAttributes(target);
+
+    expect(parseResourceReferenceAttributes(attributes)).toEqual(target);
+    expect(resourceReferenceKey(target)).toBe(expectedKey);
+  });
+});
 
 describe('sanctioned MDX validation', () => {
   it('derives editor property metadata and validation from the sanctioned registry', () => {
     const Editor = () => null;
     const descriptors = createSanctionedMdxDescriptors(Editor) as Array<{
       name: string;
+      kind: 'flow' | 'text';
+      hasChildren: boolean;
       props: Array<{
         name: string;
         required?: boolean;
@@ -19,6 +62,10 @@ describe('sanctioned MDX validation', () => {
     }>;
     const callout = descriptors.find(({ name }) => name === 'Callout')!;
     const details = descriptors.find(({ name }) => name === 'Details')!;
+    const blockAnchor = descriptors.find(({ name }) => name === 'BlockAnchor')!;
+    const resourceReference = descriptors.find(
+      ({ name }) => name === 'ResourceReference'
+    )!;
 
     expect(callout.props).toEqual([
       {
@@ -32,6 +79,25 @@ describe('sanctioned MDX validation', () => {
     expect(details.props).toEqual([
       { name: 'summary', type: 'string', required: true },
     ]);
+    expect(blockAnchor).toMatchObject({
+      kind: 'text',
+      hasChildren: false,
+      props: [{ name: 'id', type: 'string', required: true }],
+    });
+    expect(resourceReference).toMatchObject({
+      kind: 'text',
+      hasChildren: false,
+      props: [
+        { name: 'kind', type: 'string', required: true },
+        { name: 'libraryId', type: 'string', required: false },
+        { name: 'assetId', type: 'string', required: false },
+        { name: 'displayFieldId', type: 'string', required: false },
+        { name: 'documentId', type: 'string', required: false },
+        { name: 'blockId', type: 'string', required: false },
+        { name: 'blockType', type: 'string', required: false },
+        { name: 'fallbackLabel', type: 'string', required: true },
+      ],
+    });
     expect(callout.validateProperties?.(
       { type: 'danger', title: 'Changed' },
       { type: 'note', title: 'Original' }
@@ -60,6 +126,39 @@ describe('sanctioned MDX validation', () => {
     expect(() => validateSanctionedMdx(
       '<Details summary="More">\n\n<Callout type="note">\n\nText with <u>underlining</u>.\n\n</Callout>\n\n</Details>'
     )).not.toThrow();
+  });
+
+  it('accepts document block anchors and resource references', () => {
+    expect(() => validateSanctionedMdx(
+      '# <BlockAnchor id="66666666-6666-4666-8666-666666666666" />Heading\n\nSee <ResourceReference kind="table-row" libraryId="11111111-1111-4111-8111-111111111111" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.\n\nSee <ResourceReference kind="document-block" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="The city closes its gates" />.'
+    )).not.toThrow();
+  });
+
+  it('accepts a standalone block anchor serialized as a flow element', () => {
+    expect(() => validateSanctionedMdx(
+      '<BlockAnchor id="66666666-6666-4666-8666-666666666666" />\n\nAnchored paragraph.'
+    )).not.toThrow();
+  });
+
+  it('accepts a standalone resource reference serialized as a flow element', () => {
+    expect(() => validateSanctionedMdx(
+      '<ResourceReference kind="document-block" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="The city closes its gates" />'
+    )).not.toThrow();
+  });
+
+  it.each([
+    '# <BlockAnchor id="not-a-uuid" />Heading',
+    'See <ResourceReference kind="table-row" libraryId="not-a-uuid" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.',
+    'See <ResourceReference kind="table-row" libraryId="11111111-1111-4111-8111-111111111111" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel={label} />.',
+    'See <ResourceReference kind="table-row" libraryId="11111111-1111-4111-8111-111111111111" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" onClick="run" />.',
+    'See <ResourceReference kind="table-row" libraryId="11111111-1111-4111-8111-111111111111" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada">child</ResourceReference>.',
+    'See <ResourceReference kind="table-row" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="The city closes its gates" />.',
+    'See <ResourceReference kind="document-block" libraryId="11111111-1111-4111-8111-111111111111" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.',
+    'See <ResourceReference kind="document-block" documentId="44444444-4444-4444-8444-444444444444" blockId="55555555-5555-4555-8555-555555555555" blockType="paragraph" fallbackLabel="   " />.',
+  ])('rejects invalid document resource metadata: %s', (content) => {
+    expect(() => validateSanctionedMdx(content)).toThrow(
+      DocumentContentValidationError
+    );
   });
 
   it.each([

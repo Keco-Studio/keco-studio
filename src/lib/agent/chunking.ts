@@ -9,6 +9,7 @@ import {
   AGENT_CHAT_TURN_GROUP_MIN_MESSAGES,
   AGENT_CHAT_TURN_GROUP_GAP_MINUTES,
   AGENT_LIBRARY_ROW_MIN_CHARS,
+  AGENT_PROJECT_DOCUMENT_CHUNK_MAX_CHARS,
 } from './embedding-config';
 import type { LibrarySchemaData } from './library-schema-builder';
 
@@ -31,6 +32,18 @@ export interface DesignDocChunk {
   chunkIndex: number;
   content: string;
   chunkHeading?: string;
+}
+
+export interface ProjectDocumentChunk {
+  chunkIndex: number;
+  content: string;
+  heading?: string;
+  startLine: number;
+  endLine: number;
+}
+
+export interface ProjectDocumentChunkOptions {
+  maxChars?: number;
 }
 
 export interface TurnGroupOptions {
@@ -215,6 +228,90 @@ export function chunkDesignDocument(
     chunks.push({ chunkIndex: chunkIndex++, content: buffer.trim() });
   }
 
+  return chunks;
+}
+
+/** Split living Markdown documents at ATX headings while retaining source lines. */
+export function chunkProjectDocument(
+  text: string,
+  options: ProjectDocumentChunkOptions = {}
+): ProjectDocumentChunk[] {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const chunks: ProjectDocumentChunk[] = [];
+  const maxChars = Math.max(
+    1,
+    Math.floor(options.maxChars ?? AGENT_PROJECT_DOCUMENT_CHUNK_MAX_CHARS)
+  );
+  let start = 0;
+  let heading: string | undefined;
+  let fence: { marker: '`' | '~'; length: number } | null = null;
+
+  const flush = (endExclusive: number) => {
+    let buffer: Array<{ text: string; line: number }> = [];
+    let bufferChars = 0;
+    const emit = () => {
+      while (buffer.length > 0 && !buffer[0].text.trim()) buffer.shift();
+      while (buffer.length > 0 && !buffer[buffer.length - 1].text.trim()) buffer.pop();
+      if (buffer.length === 0) return;
+      chunks.push({
+        chunkIndex: chunks.length,
+        content: buffer.map((item) => item.text).join('\n'),
+        ...(heading ? { heading } : {}),
+        startLine: buffer[0].line,
+        endLine: buffer[buffer.length - 1].line,
+      });
+      buffer = [];
+      bufferChars = 0;
+    };
+
+    for (let index = start; index < endExclusive; index += 1) {
+      const line = lines[index];
+      if (line.length > maxChars) {
+        emit();
+        for (let offset = 0; offset < line.length; offset += maxChars) {
+          const content = line.slice(offset, offset + maxChars);
+          chunks.push({
+            chunkIndex: chunks.length,
+            content,
+            ...(heading ? { heading } : {}),
+            startLine: index + 1,
+            endLine: index + 1,
+          });
+        }
+        continue;
+      }
+
+      const candidateLength = buffer.length === 0
+        ? line.length
+        : bufferChars + 1 + line.length;
+      if (buffer.length > 0 && candidateLength > maxChars) emit();
+      buffer.push({ text: line, line: index + 1 });
+      bufferChars = buffer.length === 1 ? line.length : bufferChars + 1 + line.length;
+    }
+    emit();
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (fence) {
+      const closing = new RegExp(`^ {0,3}\\${fence.marker}{${fence.length},}[ \\t]*$`);
+      if (closing.test(lines[index])) fence = null;
+      continue;
+    }
+    const fenceStart = /^ {0,3}(`{3,}|~{3,})/.exec(lines[index]);
+    if (fenceStart) {
+      fence = {
+        marker: fenceStart[1][0] as '`' | '~',
+        length: fenceStart[1].length,
+      };
+      continue;
+    }
+    const match = /^ {0,3}(#{1,6})(?:[ \t]+(.*)|[ \t]*)$/.exec(lines[index]);
+    if (!match) continue;
+    flush(index);
+    start = index;
+    heading = (match[2] ?? '').replace(/[ \t]+#+[ \t]*$/, '').trim() || undefined;
+  }
+  flush(lines.length);
   return chunks;
 }
 

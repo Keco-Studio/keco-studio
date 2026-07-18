@@ -1,7 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { DownloadOutlined, HistoryOutlined } from '@ant-design/icons';
 import { Dropdown } from 'antd';
@@ -17,7 +16,10 @@ import {
 } from './useDocumentPermissions';
 import { useDocumentCollaboration } from './useDocumentCollaboration';
 import { DocumentVersionSidebar } from './DocumentVersionSidebar';
-import type { MdxDocumentEditorProps } from './MdxDocumentEditor';
+import type {
+  MDXEditorMethods,
+  MdxDocumentEditorProps,
+} from './MdxDocumentEditor';
 import styles from './DocumentEditor.module.css';
 
 const MdxDocumentEditor = dynamic<MdxDocumentEditorProps>(
@@ -95,6 +97,7 @@ function DocumentEditorSession({
 }) {
   const supabase = useSupabase();
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [referenceNavigationReady, setReferenceNavigationReady] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
   const collaboration = useDocumentCollaboration({
     supabase,
@@ -115,9 +118,14 @@ function DocumentEditorSession({
     [permissions.userId, supabase]
   );
   const ignoreMarkdownChange = useCallback(() => undefined, []);
+  const handleEditorRef = useCallback((methods: MDXEditorMethods | null) => {
+    const ready = methods !== null;
+    setReferenceNavigationReady((current) => current === ready ? current : ready);
+  }, []);
   const exportItems = [
     { key: 'docx', label: 'Download DOCX' },
     { key: 'pdf', label: 'Download PDF' },
+    { key: 'mdx', label: 'Download MDX' },
   ];
   const handleExport = useCallback(
     async ({ key }: { key: string }) => {
@@ -243,20 +251,28 @@ function DocumentEditorSession({
           {collaboration.isLegacyView ? (
             <MdxDocumentEditor
               key={editorKey}
+              projectId={projectId}
+              documentId={document.id}
               markdown={document.content ?? ''}
               readOnly
               showToolbar={false}
               onChange={ignoreMarkdownChange}
               imageUploadHandler={imageUploadHandler}
+              editorRef={handleEditorRef}
+              referenceNavigationReady={referenceNavigationReady}
             />
           ) : collaboration.canBind && collaboration.session ? (
             <MdxDocumentEditor
               key={`${document.id}:${collaboration.token.epoch}:collaborative`}
+              projectId={projectId}
+              documentId={document.id}
               markdown=""
               readOnly={collaboration.readOnly}
               showToolbar={permissions.role !== 'viewer'}
               onChange={ignoreMarkdownChange}
               imageUploadHandler={imageUploadHandler}
+              editorRef={handleEditorRef}
+              referenceNavigationReady={referenceNavigationReady}
               collaboration={{
                 session: collaboration.session,
                 username: permissions.userName,

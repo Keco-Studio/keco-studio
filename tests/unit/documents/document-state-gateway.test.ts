@@ -3,12 +3,19 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 const markdownToYjsState = jest.fn(async (markdown: string) => `state:${markdown}`);
 const yjsStateToMarkdown = jest.fn(async () => '# Derived');
 const mergeYjsState = jest.fn(() => 'merged-state');
+const normalizeYjsState = jest.fn(async () => ({
+  yjsStateBase64: 'normalized-full-state',
+  markdown: '# Normalized',
+  normalizationUpdateBase64: 'normalization-delta',
+  blocks: [],
+}));
 
 jest.mock('@/lib/documents/documentContentCodec', () => ({
   documentContentCodec: {
     validate: jest.fn((markdown: string) => ({ markdown })),
     markdownToYjsState,
     yjsStateToMarkdown,
+    normalizeYjsState,
     mergeYjsState,
   },
   mergeYjsState,
@@ -18,6 +25,7 @@ import {
   appendDocumentYjsUpdates,
   compactDocumentState,
   initializeDocumentState,
+  normalizeDocumentState,
   readDocumentState,
   readDocumentTransportState,
   replaceDocumentState,
@@ -53,6 +61,7 @@ function makeSupabase(options: {
       yjs_state: 'snapshot',
       collab_epoch: 2,
       collab_revision: 4,
+      collab_epoch_reason: 'normalization',
       updated_at: '2026-07-14T12:00:00.000Z',
     },
     error: null,
@@ -217,14 +226,20 @@ describe('documentStateGateway.read', () => {
   });
 
   it('returns transport state without materializing collaborative Markdown', async () => {
-    const { client } = makeSupabase();
+    const { client, calls } = makeSupabase();
 
     const state = await readDocumentTransportState(client, DOCUMENT_ID);
 
     expect(state).toMatchObject({
       documentId: DOCUMENT_ID,
       mode: 'collaborative',
+      epochReason: 'normalization',
       updateTail: [{ id: UPDATE_A }, { id: UPDATE_B }],
+    });
+    expect(calls).toContainEqual({
+      kind: 'document-select',
+      value:
+        'id, project_id, content, yjs_state, collab_epoch, collab_revision, collab_epoch_reason, updated_at',
     });
     expect(state).not.toHaveProperty('markdown');
     expect(yjsStateToMarkdown).not.toHaveBeenCalled();
@@ -330,6 +345,8 @@ describe('documentStateGateway mutations', () => {
     });
     const state = await initializeDocumentState(client, DOCUMENT_ID, '# Initial');
 
+    expect(state.epochReason).toBe('initialize');
+
     expect(markdownToYjsState).toHaveBeenCalledWith('# Initial');
     expect(calls).toContainEqual({
       kind: 'rpc:initialize_document_collab_state',
@@ -394,15 +411,17 @@ describe('documentStateGateway mutations', () => {
     ).rejects.toBeInstanceOf(DocumentStateConflictError);
   });
 
-  it('compacts exactly the head and tail read under the expected token', async () => {
+  it('compacts the normalized full state and Markdown under the expected token', async () => {
     const { client, calls } = makeSupabase();
     const state = await compactDocumentState(client, {
       documentId: DOCUMENT_ID,
       expected: { epoch: 2, revision: 4 },
     });
 
-    expect(mergeYjsState).toHaveBeenCalledWith('snapshot', ['tail-a', 'tail-b']);
-    expect(yjsStateToMarkdown).toHaveBeenCalledWith('merged-state', []);
+    expect(normalizeYjsState).toHaveBeenCalledWith('snapshot', [
+      'tail-a',
+      'tail-b',
+    ]);
     expect(calls).toContainEqual({
       kind: 'rpc:compact_document_collab_state',
       value: {
@@ -410,11 +429,111 @@ describe('documentStateGateway mutations', () => {
         p_expected_epoch: 2,
         p_expected_revision: 4,
         p_included_update_ids: [UPDATE_A, UPDATE_B],
-        p_yjs_state: 'merged-state',
-        p_markdown: '# Derived',
+        p_yjs_state: 'normalized-full-state',
+        p_markdown: '# Normalized',
       },
     });
     expect(state.token).toEqual({ epoch: 2, revision: 5 });
+    expect(state.epochReason).toBe('normalization');
+  });
+
+  it('normalizes through an exact-tail epoch-fenced RPC', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: {
+        data: [
+          {
+            collab_epoch: 3,
+            collab_revision: 5,
+            yjs_state: 'normalized-full-state',
+            content: '# Normalized',
+            updated_at: '2026-07-17T01:00:00.000Z',
+          },
+        ],
+        error: null,
+      },
+    });
+
+    const state = await normalizeDocumentState(client, {
+      documentId: DOCUMENT_ID,
+      expected: { epoch: 2, revision: 4 },
+    });
+
+    expect(normalizeYjsState).toHaveBeenCalledWith('snapshot', [
+      'tail-a',
+      'tail-b',
+    ]);
+    expect(calls).toContainEqual({
+      kind: 'rpc:normalize_document_collab_state',
+      value: {
+        p_document_id: DOCUMENT_ID,
+        p_expected_epoch: 2,
+        p_expected_revision: 4,
+        p_expected_update_ids: [UPDATE_A, UPDATE_B],
+        p_yjs_state: 'normalized-full-state',
+        p_markdown: '# Normalized',
+      },
+    });
+    expect(state).toMatchObject({
+      yjsStateBase64: 'normalized-full-state',
+      markdown: '# Normalized',
+      epochReason: 'normalization',
+      token: { epoch: 3, revision: 5 },
+    });
+  });
+
+  it.each([
+    ['PT409', DocumentStateConflictError],
+    ['42501', DocumentReadOnlyError],
+  ] as const)(
+    'maps normalization RPC %s failures to the document error contract',
+    async (code, ErrorType) => {
+      const { client } = makeSupabase({
+        rpc: { data: null, error: { code, message: 'normalization failed' } },
+      });
+
+      await expect(
+        normalizeDocumentState(client, {
+          documentId: DOCUMENT_ID,
+          expected: { epoch: 2, revision: 4 },
+        })
+      ).rejects.toBeInstanceOf(ErrorType);
+    }
+  );
+
+  it('maps compaction RPC conflicts with the current token after expected CAS', async () => {
+    const { client, calls } = makeSupabase({
+      rpc: { data: null, error: { code: 'PT409', message: 'changed' } },
+    });
+
+    await expect(
+      compactDocumentState(client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 4 },
+      })
+    ).rejects.toMatchObject({
+      name: 'DocumentStateConflictError',
+      token: { epoch: 2, revision: 4 },
+    });
+    expect(calls).toContainEqual({
+      kind: 'rpc:compact_document_collab_state',
+      value: expect.objectContaining({
+        p_expected_epoch: 2,
+        p_expected_revision: 4,
+      }),
+    });
+  });
+
+  it('maps compaction RPC permission failures to DocumentReadOnlyError', async () => {
+    const { client } = makeSupabase({
+      rpc: { data: null, error: { code: '42501', message: 'denied' } },
+    });
+
+    await expect(
+      compactDocumentState(client, {
+        documentId: DOCUMENT_ID,
+        expected: { epoch: 2, revision: 4 },
+      })
+    ).rejects.toBeInstanceOf(DocumentReadOnlyError);
   });
 
   it('rejects compaction when the caller token is already stale locally', async () => {
@@ -475,6 +594,7 @@ describe('documentStateGateway mutations', () => {
     expect(state).toMatchObject({
       markdown: '# Restored',
       yjsStateBase64: 'restored-state',
+      epochReason: 'restore',
       updateTail: [],
       token: { epoch: 3, revision: 5 },
     });

@@ -23,6 +23,10 @@ describe('document Lexical Yjs adapter contract', () => {
     expect(editor).toContain('useMemo(');
     expect(editor).toContain('showToolbar');
     expect(editor).not.toContain('if (!readOnly)');
+    expect(editor).not.toContain('showToolbar && !readOnly');
+    expect(editor).toMatch(/if \(showToolbar\) \{[\s\S]*toolbarPlugin\(/);
+    // readOnly must not gate plugin registration — MDXEditor only inits plugins once.
+    expect(editor).not.toMatch(/readOnly[\s\S]{0,40}toolbarPlugin/);
   });
 
   it('creates the binding only from a committed Lexical composer effect', () => {

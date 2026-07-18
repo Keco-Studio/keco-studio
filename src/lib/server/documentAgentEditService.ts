@@ -100,6 +100,7 @@ export async function replaceDocumentAsAgent(
     yjsStateBase64: row.yjs_state,
     updateTail: [],
     token: { epoch: Number(row.collab_epoch), revision: Number(row.collab_revision) },
+    epochReason: 'agent',
     updatedAt: row.updated_at,
   };
 }

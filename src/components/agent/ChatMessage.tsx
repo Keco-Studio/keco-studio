@@ -77,7 +77,10 @@ export function ChatMessage({ item, streaming, onDecision }: Props) {
             />
           );
         }
-        if (item.confirmation.tool === 'propose_document_edit') {
+        if (
+          item.confirmation.tool === 'propose_document_edit' ||
+          preview?.type === 'document_delete'
+        ) {
           return <ConfirmationCard confirmation={item.confirmation} disabled={streaming} onDecision={onDecision} />;
         }
         return <ScriptPreviewCard confirmation={item.confirmation} disabled={streaming} onDecision={onDecision} />;

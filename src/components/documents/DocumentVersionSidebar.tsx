@@ -164,6 +164,8 @@ export function DocumentVersionSidebar({
         onCreated={() => queryClient.invalidateQueries({ queryKey: queryKeys.documentVersions(documentId) })}
       />
       <DocumentVersionPreviewModal
+        projectId={projectId}
+        documentId={documentId}
         open={Boolean(previewId)}
         loading={previewQuery.isLoading}
         error={previewQuery.error instanceof Error ? previewQuery.error : null}

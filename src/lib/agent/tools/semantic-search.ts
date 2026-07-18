@@ -9,7 +9,7 @@ import type { AgentTool, ToolContext, ToolResult } from '../types';
 
 const ParamsSchema = z.object({
   query: z.string().min(1),
-  scope: z.enum(['chat', 'library', 'design_document', 'all']).optional(),
+  scope: z.enum(['chat', 'library', 'design_document', 'project_document', 'all']).optional(),
   libraryName: z.string().min(1).optional(),
   limit: z.number().int().positive().max(20).optional(),
 });
@@ -55,7 +55,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
 export const semanticSearch: AgentTool = {
   name: 'semantic_search',
   description:
-    'Semantic (meaning-based) search over chat history, library cells, and design documents. Use when the user asks about concepts, prior discussions, or document topics rather than exact row/column operations.',
+    'Semantic (meaning-based) search over chat history, libraries, design documents, and living project documents. Use when the user asks about concepts, prior discussions, or document topics rather than exact row/column operations.',
   category: 'read',
   confirmationMode: 'pre_execute',
   parameters: {
@@ -67,7 +67,7 @@ export const semanticSearch: AgentTool = {
       },
       scope: {
         type: 'string',
-        enum: ['chat', 'library', 'design_document', 'all'],
+        enum: ['chat', 'library', 'design_document', 'project_document', 'all'],
         description: 'Limit search to a source category. Default: all.',
       },
       libraryName: {

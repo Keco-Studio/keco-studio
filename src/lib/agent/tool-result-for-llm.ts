@@ -7,7 +7,7 @@ import { sanitizeMessagesForLlm } from './conversation-store';
 import type { ChatMessage, ToolCall, ToolResult } from './types';
 
 const MAX_QUERY_ASSET_ROWS = 30;
-const MAX_TOOL_CONTENT_CHARS = 16_000;
+export const MAX_TOOL_CONTENT_CHARS = 16_000;
 
 /**
  * Max non-system messages kept in the LLM context. Older turns are dropped to
@@ -33,7 +33,17 @@ type QueryAssetsData = {
 type ReadDocumentData = {
   documentId?: string;
   projectId?: string;
+  name?: string;
+  folderName?: string | null;
+  mode?: 'full' | 'outline' | 'heading' | 'lines';
+  requestedMode?: 'full' | 'outline' | 'heading' | 'lines';
   markdown?: string;
+  startLine?: number;
+  endLine?: number;
+  totalLines?: number;
+  complete?: boolean;
+  fallbackReason?: string;
+  _llmNote?: string;
   token?: unknown;
 };
 
@@ -76,7 +86,8 @@ function compactReadDocumentPayload(result: ToolResult): ToolResult {
   const totalCharacters = data.markdown.length;
 
   const build = (visibleCharacters: number): ToolResult => {
-    const note = `This document was truncated for LLM context. You can see ${visibleCharacters} of ${totalCharacters} characters. Do not propose a full-document replacement from this partial content because unseen content would be lost. Tell the user the read is partial and ask them to narrow the operation.`;
+    const truncationNote = `This document was truncated for LLM context. You can see ${visibleCharacters} of ${totalCharacters} characters. Do not propose a full-document replacement from this partial content because unseen content would be lost. Tell the user the read is partial and ask them to narrow the operation.`;
+    const note = data._llmNote ? `${data._llmNote} ${truncationNote}` : truncationNote;
     return {
       success: result.success,
       error: result.error,
@@ -84,8 +95,17 @@ function compactReadDocumentPayload(result: ToolResult): ToolResult {
       data: {
         documentId: data.documentId,
         projectId: data.projectId,
+        name: data.name,
+        folderName: data.folderName,
+        mode: data.mode,
+        requestedMode: data.requestedMode,
         token: data.token,
         markdown: data.markdown!.slice(0, visibleCharacters),
+        startLine: data.startLine,
+        endLine: data.endLine,
+        totalLines: data.totalLines,
+        complete: false,
+        fallbackReason: data.fallbackReason,
         totalCharacters,
         visibleCharacters,
         truncated: true,
@@ -144,7 +164,17 @@ export function compactToolContentForLlm(content: string, toolName?: string): st
     return `${content.slice(0, MAX_TOOL_CONTENT_CHARS)}...[truncated for LLM context]`;
   }
 
-  if (toolName === 'read_document' && content.length <= MAX_TOOL_CONTENT_CHARS) return content;
+  const hadInternalData = Object.prototype.hasOwnProperty.call(parsed, 'internalData');
+  const { internalData: _internalData, ...publicResult } = parsed;
+  parsed = publicResult;
+
+  if (
+    toolName === 'read_document' &&
+    content.length <= MAX_TOOL_CONTENT_CHARS &&
+    !hadInternalData
+  ) {
+    return content;
+  }
 
   const compact = compactToolResult(parsed, toolName);
   let serialized = JSON.stringify(compact);

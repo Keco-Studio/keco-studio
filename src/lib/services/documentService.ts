@@ -21,6 +21,7 @@ import {
   getCurrentUserId,
   AuthorizationError,
 } from './authorizationService';
+import { DocumentStateConflictError } from '@/lib/documents/documentStateTypes';
 
 export type DocumentRecord = {
   id: string;
@@ -42,6 +43,7 @@ export type DocumentSummary = Pick<
 const DOCUMENT_RECORD_COLUMNS =
   'id, project_id, folder_id, name, content, created_by, created_at, updated_at';
 const DOCUMENT_SUMMARY_COLUMNS = 'id, project_id, folder_id, name, created_at, updated_at';
+const DOCUMENT_LIST_PAGE_SIZE = 1000;
 
 /**
  * Thrown when a document does not exist OR the caller cannot read it (RLS makes
@@ -116,17 +118,29 @@ export async function listDocuments(
 
   await verifyProjectAccess(supabase, projectId);
 
-  const { data, error } = await supabase
-    .from('documents')
-    .select(DOCUMENT_SUMMARY_COLUMNS)
-    .eq('project_id', projectId)
-    .order('created_at', { ascending: true });
+  const documents: DocumentSummary[] = [];
+  let from = 0;
 
-  if (error) {
-    throw error;
+  while (true) {
+    const { data, error } = await supabase
+      .from('documents')
+      .select(DOCUMENT_SUMMARY_COLUMNS)
+      .eq('project_id', projectId)
+      .order('created_at', { ascending: true })
+      .order('id', { ascending: true })
+      .range(from, from + DOCUMENT_LIST_PAGE_SIZE - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    const page = (data ?? []) as DocumentSummary[];
+    documents.push(...page);
+    if (page.length < DOCUMENT_LIST_PAGE_SIZE) break;
+    from += DOCUMENT_LIST_PAGE_SIZE;
   }
 
-  return (data ?? []) as DocumentSummary[];
+  return documents;
 }
 
 /**
@@ -286,5 +300,53 @@ export async function deleteDocument(
 
   if (error) {
     throw error;
+  }
+}
+
+export type DeleteDocumentExpectedSnapshot = {
+  documentId: string;
+  projectId: string;
+  name: string;
+  folderId: string | null;
+  updatedAt: string;
+  expected: { epoch: number; revision: number };
+  expectedUpdateIds: readonly string[];
+};
+
+export async function deleteDocumentIfUnchanged(
+  supabase: SupabaseClient,
+  snapshot: DeleteDocumentExpectedSnapshot
+): Promise<void> {
+  if (
+    !isUuid(snapshot.documentId) ||
+    !isUuid(snapshot.projectId) ||
+    (snapshot.folderId !== null && !isUuid(snapshot.folderId)) ||
+    !snapshot.expectedUpdateIds.every(isUuid) ||
+    !Number.isInteger(snapshot.expected.epoch) ||
+    snapshot.expected.epoch < 0 ||
+    !Number.isInteger(snapshot.expected.revision) ||
+    snapshot.expected.revision < 0
+  ) {
+    throw new Error('Invalid atomic document deletion snapshot');
+  }
+
+  const { data, error } = await supabase.rpc('delete_document_if_unchanged', {
+    p_document_id: snapshot.documentId,
+    p_project_id: snapshot.projectId,
+    p_expected_name: snapshot.name,
+    p_expected_folder_id: snapshot.folderId,
+    p_expected_updated_at: snapshot.updatedAt,
+    p_expected_epoch: snapshot.expected.epoch,
+    p_expected_revision: snapshot.expected.revision,
+    p_expected_update_ids: [...snapshot.expectedUpdateIds],
+  });
+  if (error) {
+    if (error.code === 'PT409') {
+      throw new DocumentStateConflictError(error.message, snapshot.expected);
+    }
+    throw error;
+  }
+  if (data !== snapshot.documentId) {
+    throw new AuthorizationError('Document not found');
   }
 }

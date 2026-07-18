@@ -118,12 +118,13 @@ describeDb('Agent document tools caller RLS (live database)', () => {
       });
 
       const proposedMarkdown = `# ${label} confirmed edit\n\nConfirmed document content`;
-      const preview = await proposeDocumentEdit.execute(
-        { documentId: id, markdown: proposedMarkdown },
-        ctx
-      );
+      const params = {
+        documentId: id,
+        operation: { type: 'replace_all' as const, markdown: proposedMarkdown },
+      };
+      const preview = await proposeDocumentEdit.execute(params, ctx);
       expect(preview).toMatchObject({ success: true });
-      const applied = await proposeDocumentEdit.executeImport!(preview, {}, ctx);
+      const applied = await proposeDocumentEdit.executeImport!(preview, params, ctx);
       expect(applied).toMatchObject({
         success: true,
         data: { documentId: id, token: { epoch: 1 } },
@@ -175,13 +176,14 @@ describeDb('Agent document tools caller RLS (live database)', () => {
       )
     ).resolves.toMatchObject({ success: false });
 
-    const preview = await proposeDocumentEdit.execute(
-      { documentId: id, markdown: '# Viewer must not edit' },
-      viewerCtx
-    );
+    const params = {
+      documentId: id,
+      operation: { type: 'replace_all' as const, markdown: '# Viewer must not edit' },
+    };
+    const preview = await proposeDocumentEdit.execute(params, viewerCtx);
     expect(preview).toMatchObject({ success: true });
     await expect(
-      proposeDocumentEdit.executeImport!(preview, {}, viewerCtx)
+      proposeDocumentEdit.executeImport!(preview, params, viewerCtx)
     ).resolves.toMatchObject({ success: false });
 
     const [{ count: createdCount }, { data: stored }, { count: versionCount }] =
@@ -204,10 +206,11 @@ describeDb('Agent document tools caller RLS (live database)', () => {
   it('hides documents from outsiders and cross-project actors and rejects their edits', async () => {
     const id = await createThroughAgent(fx.editor, 'editor', 'isolated');
     const ownerCtx = context(fx.owner, fx.projectId, 'admin');
-    const approvedPreview = await proposeDocumentEdit.execute(
-      { documentId: id, markdown: '# Hidden edit payload' },
-      ownerCtx
-    );
+    const approvedParams = {
+      documentId: id,
+      operation: { type: 'replace_all' as const, markdown: '# Hidden edit payload' },
+    };
+    const approvedPreview = await proposeDocumentEdit.execute(approvedParams, ownerCtx);
     expect(approvedPreview).toMatchObject({ success: true });
 
     for (const deniedCtx of [
@@ -219,12 +222,12 @@ describeDb('Agent document tools caller RLS (live database)', () => {
       ).resolves.toMatchObject({ success: false });
       await expect(
         proposeDocumentEdit.execute(
-          { documentId: id, markdown: '# Unauthorized proposal' },
+          { documentId: id, operation: { type: 'replace_all', markdown: '# Unauthorized proposal' } },
           deniedCtx
         )
       ).resolves.toMatchObject({ success: false });
       await expect(
-        proposeDocumentEdit.executeImport!(approvedPreview, {}, deniedCtx)
+        proposeDocumentEdit.executeImport!(approvedPreview, approvedParams, deniedCtx)
       ).resolves.toMatchObject({ success: false });
     }
 
@@ -242,22 +245,24 @@ describeDb('Agent document tools caller RLS (live database)', () => {
     const editorCtx = context(fx.editor, fx.projectId, 'editor');
     const ownerCtx = context(fx.owner, fx.projectId, 'admin');
 
-    const stalePreview = await proposeDocumentEdit.execute(
-      { documentId: id, markdown: '# Stale editor replacement' },
-      editorCtx
-    );
-    const newerPreview = await proposeDocumentEdit.execute(
-      { documentId: id, markdown: '# Newer owner replacement' },
-      ownerCtx
-    );
+    const staleParams = {
+      documentId: id,
+      operation: { type: 'replace_all' as const, markdown: '# Stale editor replacement' },
+    };
+    const newerParams = {
+      documentId: id,
+      operation: { type: 'replace_all' as const, markdown: '# Newer owner replacement' },
+    };
+    const stalePreview = await proposeDocumentEdit.execute(staleParams, editorCtx);
+    const newerPreview = await proposeDocumentEdit.execute(newerParams, ownerCtx);
     expect(stalePreview).toMatchObject({ success: true });
     expect(newerPreview).toMatchObject({ success: true });
 
     await expect(
-      proposeDocumentEdit.executeImport!(newerPreview, {}, ownerCtx)
+      proposeDocumentEdit.executeImport!(newerPreview, newerParams, ownerCtx)
     ).resolves.toMatchObject({ success: true });
     await expect(
-      proposeDocumentEdit.executeImport!(stalePreview, {}, editorCtx)
+      proposeDocumentEdit.executeImport!(stalePreview, staleParams, editorCtx)
     ).resolves.toMatchObject({
       success: false,
       error: expect.stringContaining('changed after this edit was proposed'),

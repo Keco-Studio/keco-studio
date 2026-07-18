@@ -76,6 +76,43 @@
   overflow: visible;
 }
 
+/* Script dialogue view: no outer card frame — fill the right content area */
+.tableShellScript {
+  margin-top: 0;
+  margin-bottom: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+}
+
+.tableShellScript .tableTopBar {
+  border-bottom: 1px solid #e2e8f0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  background: transparent;
+}
+
+.tableShellScript .tableTopBarSpacer,
+.tableShellScript .tableTopBarFindWrap,
+.tableShellScript .viewToggleGroup,
+.tableShellScript .tableTopBar .sectionTabs {
+  background: transparent;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.tableShellScript .tableContainer {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  overflow: visible;
+  background: transparent;
+}
+
+.tableShellScript .scriptViewContainer {
+  max-height: none;
+  min-height: calc(100vh - 160px);
+}
+
 .tableTopBar {
   display: flex;
   align-items: stretch;
@@ -1272,6 +1309,19 @@ td.cellCopy.copyBorderRight:hover {
 
 .rowSelected:hover {
   background: #0000000D !important;
+}
+
+.referencedRowHighlight {
+  outline: 2px solid var(--ant-color-primary-border, #91caff);
+  outline-offset: -2px;
+  background-color: var(--ant-color-primary-bg, #e6f4ff) !important;
+  transition: outline-color 160ms ease, background-color 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .referencedRowHighlight {
+    transition: none;
+  }
 }
 
 .searchCellHit {

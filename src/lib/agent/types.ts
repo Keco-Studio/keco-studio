@@ -33,6 +33,8 @@ export interface ToolContext {
   conversationId: string;
   currentFolderId?: string;
   currentFolderName?: string;
+  currentDocumentId?: string;
+  currentDocumentName?: string;
   currentLibraryId?: string;
   currentLibraryName?: string;
   currentSectionName?: string;
@@ -47,14 +49,35 @@ export interface ToolContext {
   };
 }
 
+export type AgentInvalidation =
+  | { type: 'library'; id: string }
+  | { type: 'documents'; projectId: string; documentId?: string };
+
 export interface ToolResult {
   success: boolean;
   data?: unknown;
+  /** Server-only data persisted in suspended state; never emit to UI, LLM, or tool-result events. */
+  internalData?: unknown;
   error?: string;
   displayHint?: DisplayHint;
-  /** Library ids whose cached data should be refreshed by the frontend after a write. */
-  invalidateCache?: string[];
+  /** Structured caches the frontend should refresh after a successful write. */
+  invalidations?: AgentInvalidation[];
 }
+
+export type ConfirmationPreparation =
+  | {
+      success: true;
+      /** Canonical arguments persisted for approval and later execution. */
+      args: unknown;
+      /** Optional public context shown with the confirmation request. */
+      preview?: unknown;
+    }
+  | {
+      success: false;
+      error: string;
+      data?: unknown;
+      displayHint?: DisplayHint;
+    };
 
 export interface AgentTool {
   name: string;
@@ -62,9 +85,16 @@ export interface AgentTool {
   parameters: JSONSchema;
   category: 'read' | 'write';
   confirmationMode: ConfirmationMode;
+  /** Whether confirmation follows conversation mode or is mandatory. */
+  confirmationPolicy?: 'mode' | 'always';
   /** False when the tool's validated operation is itself the user-requested action. */
   confirmationRequired?: boolean;
   requiredPermission?: 'editor' | 'admin';
+  /** Resolve and seal approval-critical arguments before a pre-execute pause. */
+  prepareConfirmation?: (
+    params: unknown,
+    ctx: ToolContext
+  ) => Promise<ConfirmationPreparation>;
   execute: (params: unknown, ctx: ToolContext) => Promise<ToolResult>;
   executeStream?: (
     params: unknown,
@@ -186,7 +216,7 @@ export type SSEEvent =
   | { type: 'tool_progress'; tool: string; progress: ImportProgressEvent }
   | { type: 'tool_result'; tool: string; data: unknown; displayHint?: DisplayHint; success?: boolean; error?: string }
   | { type: 'confirmation_request'; actionId: string; tool: string; args: unknown; confirmationMode: ConfirmationMode; preview?: unknown }
-  | { type: 'cache_invalidated'; paths: string[] }
+  | { type: 'cache_invalidated'; invalidations: AgentInvalidation[]; paths?: string[] }
   | { type: 'done' }
   | { type: 'error'; message: string };
 

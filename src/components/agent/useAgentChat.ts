@@ -2,10 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getActiveSectionName } from '@/lib/agent/page-context';
 import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
+import { queryKeys } from '@/lib/utils/queryKeys';
 import {
   clearLastConversation,
   setLastConversation,
@@ -16,7 +17,7 @@ import { mapHistoryMessagesToChatItems } from './historyMessageMapper';
 import { deriveUserDisplay } from './userMessageDisplay';
 import { peekDesignHandoff } from '@/lib/design-upload-handoff';
 import type { StreamActivity } from './streamActivity';
-import type { ChatItem, SendContext, SendOptions } from './types';
+import type { AgentInvalidation, ChatItem, SendContext, SendOptions } from './types';
 import type { ConversationScope } from '@/lib/agent/types';
 
 let idCounter = 0;
@@ -38,6 +39,51 @@ const isAbortError = (e: unknown): boolean => {
 interface ParsedSSE {
   type: string;
   [key: string]: unknown;
+}
+
+export function parseAgentInvalidations(event: ParsedSSE): AgentInvalidation[] {
+  if (Array.isArray(event.invalidations)) {
+    return event.invalidations as AgentInvalidation[];
+  }
+  if (!Array.isArray(event.paths)) return [];
+  return event.paths
+    .filter((path): path is string => typeof path === 'string')
+    .map((id) => ({ type: 'library' as const, id }));
+}
+
+export async function invalidateAgentCaches(
+  queryClient: QueryClient,
+  router: { refresh: () => void },
+  invalidations: AgentInvalidation[]
+): Promise<void> {
+  for (const invalidation of invalidations) {
+    if (invalidation.type === 'library') {
+      await invalidateLibraryAssetsData(queryClient, {
+        libraryId: invalidation.id,
+        includeSchema: true,
+        refetchActiveAssets: true,
+      });
+      continue;
+    }
+
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.documents(invalidation.projectId),
+    });
+    if (invalidation.documentId) {
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.document(invalidation.documentId),
+        exact: true,
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.documentState(invalidation.documentId),
+      });
+      await queryClient.invalidateQueries({
+        queryKey: queryKeys.documentVersions(invalidation.documentId),
+      });
+    }
+  }
+
+  if (invalidations.length > 0) router.refresh();
 }
 
 /**
@@ -89,15 +135,8 @@ export function useAgentChat(ctx: SendContext) {
   }, []);
 
   const invalidateCaches = useCallback(
-    async (paths: string[]) => {
-      for (const libraryId of paths) {
-        await invalidateLibraryAssetsData(queryClient, {
-          libraryId,
-          includeSchema: true,
-          refetchActiveAssets: true,
-        });
-      }
-      router.refresh();
+    async (invalidations: AgentInvalidation[]) => {
+      await invalidateAgentCaches(queryClient, router, invalidations);
     },
     [queryClient, router]
   );
@@ -275,8 +314,7 @@ export function useAgentChat(ctx: SendContext) {
             break;
           }
           case 'cache_invalidated': {
-            const paths = Array.isArray(event.paths) ? (event.paths as string[]) : [];
-            void invalidateCaches(paths);
+            void invalidateCaches(parseAgentInvalidations(event));
             break;
           }
           case 'error': {
@@ -358,6 +396,7 @@ export function useAgentChat(ctx: SendContext) {
         const requestBody = isNew
           ? {
               projectId: ctx.projectId,
+              currentDocumentId: ctx.currentDocumentId,
               message,
               imageUrls: opts?.imageUrls,
               selectionContext: opts?.selectionContext,
@@ -370,6 +409,7 @@ export function useAgentChat(ctx: SendContext) {
             }
           : {
               conversationId: conversationIdRef.current,
+              currentDocumentId: ctx.currentDocumentId,
               message,
               imageUrls: opts?.imageUrls,
               selectionContext: opts?.selectionContext,
@@ -475,6 +515,7 @@ export function useAgentChat(ctx: SendContext) {
           body: JSON.stringify({
             actionId,
             decision,
+            currentDocumentId: ctx.currentDocumentId,
             currentFolderId: ctx.currentFolderId,
             currentFolderName: ctx.currentFolderName,
             currentLibraryId: ctx.currentLibraryId,

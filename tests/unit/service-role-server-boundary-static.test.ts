@@ -32,6 +32,7 @@ describe('service role server boundary', () => {
     );
 
     expect(serviceRoleFiles.map(({ file }) => file)).toEqual([
+      'src/lib/server/agentConfirmationSigning.ts',
       'src/lib/server/supabaseServiceRole.ts',
     ]);
 

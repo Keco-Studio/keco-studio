@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { DocumentStateConflictError } from '../../../src/lib/documents/documentStateTypes';
 
 // Authorization is exercised by its own suites; here we stub it so the tests
 // focus on documentService's own validation (ids, folder-project integrity,
@@ -22,7 +23,9 @@ jest.mock('../../../src/lib/services/authorizationService', () => {
 import {
   getDocument,
   createDocument,
+  listDocuments,
   moveDocument,
+  deleteDocumentIfUnchanged,
   DocumentNotFoundError,
 } from '../../../src/lib/services/documentService';
 
@@ -78,6 +81,63 @@ function makeSupabase(cfg: {
   };
   return { from } as unknown as SupabaseClient;
 }
+
+describe('documentService.listDocuments', () => {
+  it('fetches deterministic, non-overlapping pages until the first short page', async () => {
+    const pages = [1000, 1000, 2].map((length, pageIndex) =>
+      Array.from({ length }, (_, rowIndex) => {
+        const ordinal = pageIndex * 1000 + rowIndex;
+        return {
+          id: `doc-${ordinal.toString().padStart(4, '0')}`,
+          project_id: PROJECT_A,
+          folder_id: null,
+          name: `Document ${ordinal}`,
+          created_at: '2026-07-16T00:00:00.000Z',
+          updated_at: '2026-07-16T00:00:00.000Z',
+        };
+      })
+    );
+    const orderCalls: Array<[string, { ascending: boolean }]> = [];
+    const rangeCalls: Array<[number, number]> = [];
+    const builder = {
+      select: jest.fn(),
+      eq: jest.fn(),
+      order: jest.fn((column: string, options: { ascending: boolean }) => {
+        orderCalls.push([column, options]);
+        return builder;
+      }),
+      range: jest.fn(async (from: number, to: number) => {
+        rangeCalls.push([from, to]);
+        const page = pages[rangeCalls.length - 1] ?? [];
+        return { data: page, error: null };
+      }),
+    };
+    builder.select.mockReturnValue(builder);
+    builder.eq.mockReturnValue(builder);
+    const supabase = {
+      from: jest.fn(() => builder),
+    } as unknown as SupabaseClient;
+
+    const result = await listDocuments(supabase, PROJECT_A);
+
+    expect(rangeCalls).toEqual([
+      [0, 999],
+      [1000, 1999],
+      [2000, 2999],
+    ]);
+    expect(orderCalls).toEqual([
+      ['created_at', { ascending: true }],
+      ['id', { ascending: true }],
+      ['created_at', { ascending: true }],
+      ['id', { ascending: true }],
+      ['created_at', { ascending: true }],
+      ['id', { ascending: true }],
+    ]);
+    expect(result).toHaveLength(2002);
+    expect(result.map((row) => row.id)).toEqual(pages.flat().map((row) => row.id));
+    expect(new Set(result.map((row) => row.id)).size).toBe(2002);
+  });
+});
 
 describe('documentService.getDocument', () => {
   it('throws DocumentNotFoundError when the row is missing or hidden by RLS', async () => {
@@ -143,5 +203,65 @@ describe('documentService cross-project folder integrity', () => {
     await expect(
       moveDocument(supabase, DOC, { folderId: FOLDER })
     ).rejects.toThrow(/does not belong to the project/);
+  });
+});
+
+describe('documentService atomic document deletion', () => {
+  const snapshot = {
+    documentId: DOC,
+    projectId: PROJECT_A,
+    name: 'Guide',
+    folderId: FOLDER,
+    updatedAt: '2026-07-16T00:00:00.000Z',
+    expected: { epoch: 2, revision: 4 },
+    expectedUpdateIds: ['55555555-5555-4555-8555-555555555555'],
+  };
+
+  it('exposes a focused unchanged-snapshot delete operation', () => {
+    expect(typeof deleteDocumentIfUnchanged).toBe('function');
+  });
+
+  it('passes the exact metadata and collaboration snapshot to one atomic RPC', async () => {
+    const rpc = jest.fn().mockResolvedValue({ data: DOC, error: null });
+    const supabase = { rpc } as unknown as SupabaseClient;
+
+    await expect(deleteDocumentIfUnchanged(supabase, snapshot)).resolves.toBeUndefined();
+    expect(rpc).toHaveBeenCalledWith('delete_document_if_unchanged', {
+      p_document_id: DOC,
+      p_project_id: PROJECT_A,
+      p_expected_name: 'Guide',
+      p_expected_folder_id: FOLDER,
+      p_expected_updated_at: '2026-07-16T00:00:00.000Z',
+      p_expected_epoch: 2,
+      p_expected_revision: 4,
+      p_expected_update_ids: ['55555555-5555-4555-8555-555555555555'],
+    });
+  });
+
+  it('maps metadata mutation at the atomic boundary to a state conflict', async () => {
+    const supabase = {
+      rpc: jest.fn().mockResolvedValue({
+        data: null,
+        error: { code: 'PT409', message: 'Document metadata changed' },
+      }),
+    } as unknown as SupabaseClient;
+
+    await expect(deleteDocumentIfUnchanged(supabase, snapshot)).rejects.toBeInstanceOf(
+      DocumentStateConflictError
+    );
+  });
+
+  it('maps an appended update tail at the atomic boundary to a state conflict', async () => {
+    const supabase = {
+      rpc: jest.fn().mockResolvedValue({
+        data: null,
+        error: { code: 'PT409', message: 'Document update tail changed' },
+      }),
+    } as unknown as SupabaseClient;
+
+    await expect(deleteDocumentIfUnchanged(supabase, snapshot)).rejects.toMatchObject({
+      name: 'DocumentStateConflictError',
+      message: 'Document update tail changed',
+    });
   });
 });
