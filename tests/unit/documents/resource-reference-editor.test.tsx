@@ -24,10 +24,7 @@ let referenceResult: {
   isLoading: boolean;
   hasError: boolean;
 };
-let buttonToInvoke: string | null = null;
 const nextLink = jest.fn();
-const updateMdastNode = jest.fn();
-const removeMdastNode = jest.fn();
 
 jest.mock('@/components/documents/MdxDocumentEditor.module.css', () => ({
   __esModule: true,
@@ -36,11 +33,6 @@ jest.mock('@/components/documents/MdxDocumentEditor.module.css', () => ({
 
 jest.mock('@/components/documents/ResourceReferenceProvider', () => ({
   useResourceReference: () => referenceResult,
-}));
-
-jest.mock('@mdxeditor/editor', () => ({
-  useMdastNodeUpdater: () => updateMdastNode,
-  useLexicalNodeRemove: () => removeMdastNode,
 }));
 
 jest.mock('next/link', () => ({
@@ -52,34 +44,12 @@ jest.mock('next/link', () => ({
 }));
 
 jest.mock('@ant-design/icons', () => ({
-  DeleteOutlined: () => <svg data-icon="delete" />,
   FileTextOutlined: () => <svg data-icon="file-text" />,
-  RetweetOutlined: () => <svg data-icon="retweet" />,
   TableOutlined: () => <svg data-icon="table" />,
   WarningOutlined: () => <svg data-icon="warning" />,
 }));
 
 jest.mock('antd', () => ({
-  Button: ({
-    children,
-    icon,
-    onClick,
-    danger: _danger,
-    size: _size,
-    type: _type,
-    ...props
-  }: {
-    children: ReactNode;
-    icon?: ReactNode;
-    onClick?: () => void;
-    danger?: boolean;
-    size?: string;
-    type?: string;
-    'aria-label'?: string;
-  }) => {
-    if (props['aria-label'] === buttonToInvoke) onClick?.();
-    return <button {...props}>{icon}{children}</button>;
-  },
   Tooltip: ({ children, title }: { children: ReactNode; title: ReactNode }) => (
     <span data-tooltip={String(title)}>{children}</span>
   ),
@@ -104,7 +74,6 @@ function renderReference(
   target: ResourceReferenceTarget,
   options: {
     readOnly?: boolean;
-    onReplace?: Parameters<typeof ResourceReferenceEditor>[0]['onReplace'];
   } = {}
 ) {
   return renderToStaticMarkup(
@@ -112,7 +81,6 @@ function renderReference(
       mdastNode={mdastNode(target) as never}
       descriptor={{} as never}
       readOnly={options.readOnly ?? false}
-      onReplace={options.onReplace}
     />
   );
 }
@@ -120,10 +88,7 @@ function renderReference(
 describe('ResourceReferenceEditor', () => {
   beforeEach(() => {
     referenceResult = { resolved: undefined, isLoading: true, hasError: false };
-    buttonToInvoke = null;
     nextLink.mockReset();
-    updateMdastNode.mockReset();
-    removeMdastNode.mockReset();
   });
 
   it('keeps the fallback label in the fixed inline surface while loading', () => {
@@ -136,9 +101,19 @@ describe('ResourceReferenceEditor', () => {
   });
 
   it.each([
-    [TABLE_TARGET, 'table'],
-    [DOCUMENT_TARGET, 'file-text'],
-  ] as const)('renders an available internal reference with context and icon', (target, icon) => {
+    {
+      kind: 'table-row' as const,
+      target: TABLE_TARGET,
+      icon: 'table',
+      contextLabel: 'Characters / Ada / Status',
+    },
+    {
+      kind: 'document-block' as const,
+      target: DOCUMENT_TARGET,
+      icon: 'file-text',
+      contextLabel: 'World bible / Opening',
+    },
+  ])('shows only the field value for an available $kind reference', ({ target, icon, contextLabel }) => {
     referenceResult = {
       isLoading: false,
       hasError: false,
@@ -146,17 +121,20 @@ describe('ResourceReferenceEditor', () => {
         key: 'resolved-key',
         status: 'available',
         label: target.fallbackLabel,
-        contextLabel: target.kind === 'table-row' ? 'Characters / Status' : 'World outline / Conflict',
-        href: target.kind === 'table-row' ? '/project/lib/library/asset/asset' : '/project/doc/document#block-id',
+        contextLabel,
+        href: `/project/lib/${target.kind === 'table-row' ? target.assetId : target.blockId}`,
       },
     };
 
     const markup = renderReference(target, { readOnly: true });
+    const accessibleLabel = `${contextLabel}: ${target.fallbackLabel}`;
 
     expect(markup).toContain(`data-icon="${icon}"`);
     expect(markup).toContain('href="/project/');
-    expect(markup).toContain(`aria-label="${referenceResult.resolved!.contextLabel}: ${target.fallbackLabel}"`);
-    expect(markup).toContain(`data-tooltip="${referenceResult.resolved!.contextLabel}: ${target.fallbackLabel}"`);
+    expect(markup).toContain(`>${target.fallbackLabel}<`);
+    expect(markup).not.toContain(`>${accessibleLabel}<`);
+    expect(markup).toContain(`aria-label="${accessibleLabel}"`);
+    expect(markup).toContain(`data-tooltip="${accessibleLabel}"`);
     expect(nextLink).toHaveBeenCalledWith(referenceResult.resolved!.href);
   });
 
@@ -207,40 +185,23 @@ describe('ResourceReferenceEditor', () => {
     expect(markup).not.toContain('deleted or is no longer accessible');
   });
 
-  it('omits replacement and removal controls for viewers', () => {
-    const markup = renderReference(TABLE_TARGET, { readOnly: true });
-
-    expect(markup).not.toContain('aria-label="Replace reference"');
-    expect(markup).not.toContain('aria-label="Remove reference"');
-  });
-
-  it('renders named icon-only controls and removes the MDAST node', () => {
-    buttonToInvoke = 'Remove reference';
+  it('omits replace and remove controls', () => {
+    referenceResult = {
+      isLoading: false,
+      hasError: false,
+      resolved: {
+        key: 'resolved-key',
+        status: 'available',
+        label: TABLE_TARGET.fallbackLabel,
+        contextLabel: 'Characters / Ada / Status',
+        href: '/project/lib/asset',
+      },
+    };
 
     const markup = renderReference(TABLE_TARGET);
 
-    expect(markup).toContain('aria-label="Replace reference"');
-    expect(markup).toContain('data-tooltip="Replace reference"');
-    expect(markup).toContain('aria-label="Remove reference"');
-    expect(markup).toContain('data-tooltip="Remove reference"');
-    expect(removeMdastNode).toHaveBeenCalledTimes(1);
-  });
-
-  it('exposes a narrow replacement trigger that updates fixed attributes', () => {
-    buttonToInvoke = 'Replace reference';
-    const onReplace = jest.fn((_target, replaceTarget) => {
-      replaceTarget(DOCUMENT_TARGET);
-    });
-
-    renderReference(TABLE_TARGET, { onReplace });
-
-    expect(onReplace).toHaveBeenCalledWith(TABLE_TARGET, expect.any(Function));
-    expect(updateMdastNode).toHaveBeenCalledWith({
-      attributes: Object.entries(DOCUMENT_TARGET).map(([name, value]) => ({
-        type: 'mdxJsxAttribute',
-        name,
-        value,
-      })),
-    });
+    expect(markup).not.toContain('aria-label="Replace reference"');
+    expect(markup).not.toContain('aria-label="Remove reference"');
+    expect(markup).not.toContain('resourceReferenceActions');
   });
 });

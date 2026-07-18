@@ -1,3 +1,5 @@
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { LoginPage } from '../pages/login.page';
@@ -26,6 +28,52 @@ const SOURCE_DOCUMENT_NAME = 'Reference smoke source';
 const SOURCE_HEADING = 'Reference smoke heading';
 const SOURCE_PARAGRAPH = 'Reference smoke paragraph';
 const REFERENCING_DOCUMENT_NAME = 'Reference smoke links';
+
+async function readDurableDocumentMarkdown(
+  admin: SupabaseClient,
+  documentId: string
+): Promise<string> {
+  const { data: document, error: documentError } = await admin
+    .from('documents')
+    .select('yjs_state, collab_epoch')
+    .eq('id', documentId)
+    .single();
+  if (documentError || !document) {
+    throw documentError ?? new Error('Document state was not found');
+  }
+
+  const { data: updates, error: updatesError } = await admin
+    .from('document_yjs_updates')
+    .select('update_data')
+    .eq('document_id', documentId)
+    .eq('epoch', document.collab_epoch)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
+  if (updatesError) throw updatesError;
+
+  const probe = spawnSync(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      path.join(process.cwd(), 'tests/helpers/documentCodecProbe.ts'),
+    ],
+    {
+      cwd: process.cwd(),
+      encoding: 'utf8',
+      env: { ...process.env, DOCUMENT_CODEC_COMMONJS: '1' },
+      input: JSON.stringify({
+        mode: 'state',
+        snapshot: document.yjs_state,
+        updates: (updates ?? []).map((update) => update.update_data),
+      }),
+    }
+  );
+  if (probe.status !== 0) {
+    throw new Error(probe.stderr || 'Document codec probe failed');
+  }
+  return (JSON.parse(probe.stdout) as { markdown: string }).markdown;
+}
 
 async function insertTableReference(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Insert reference' }).click();
@@ -192,23 +240,13 @@ test.describe.serial('Document references smoke', () => {
     await expect(editor).toBeVisible();
     await editor.click();
 
-    const tableAppend = page.waitForResponse(
-      (response) =>
-        response.url().includes('/rpc/append_document_yjs_updates') && response.ok()
-    );
     await insertTableReference(page);
-    await tableAppend;
     await expect(page.getByRole('link', { name: `${TABLE_NAME} / ${ROW_NAME} / ${FIELD_NAME}: ${TABLE_LABEL}` }))
       .toHaveText(TABLE_LABEL);
 
     await editor.click();
     await editor.press('End');
-    const documentAppend = page.waitForResponse(
-      (response) =>
-        response.url().includes('/rpc/append_document_yjs_updates') && response.ok()
-    );
     await insertDocumentReference(page);
-    await documentAppend;
 
     const tableReference = page.getByRole('link', {
       name: `${TABLE_NAME} / ${ROW_NAME} / ${FIELD_NAME}: ${TABLE_LABEL}`,
@@ -218,16 +256,30 @@ test.describe.serial('Document references smoke', () => {
     });
     await expect(documentReference).toHaveText(SOURCE_PARAGRAPH);
 
+    await expect.poll(async () => {
+      const markdown = await readDurableDocumentMarkdown(
+        admin,
+        fixture.referencingDocumentId
+      );
+      return {
+        tableReference: markdown.includes(fixture.assetId),
+        documentReference: markdown.includes(sourceBlockId!),
+      };
+    }, {
+      timeout: 30_000,
+      intervals: [200, 500, 1_000],
+    }).toEqual({ tableReference: true, documentReference: true });
+
     await page.reload({ waitUntil: 'domcontentloaded' });
     await expect(tableReference).toHaveText(TABLE_LABEL, { timeout: 30_000 });
     await expect(documentReference).toHaveText(SOURCE_PARAGRAPH, { timeout: 30_000 });
 
     await tableReference.click();
     await expect.poll(() => new URL(page.url()).pathname, { timeout: 30_000 })
-      .toBe(`/${projectId}/${fixture.libraryId}/${fixture.assetId}`);
-    expect(new URL(page.url()).searchParams.get('field')).toBe(fixture.displayFieldId);
-    const targetField = page.locator(`[data-field-id="${fixture.displayFieldId}"]`);
-    await expect(targetField).toHaveClass(/referencedFieldHighlight/, { timeout: 30_000 });
+      .toBe(`/${projectId}/${fixture.libraryId}`);
+    expect(new URL(page.url()).searchParams.get('asset')).toBe(fixture.assetId);
+    const targetRow = page.locator(`tr[data-row-id="${fixture.assetId}"]`);
+    await expect(targetRow).toHaveClass(/referencedRowHighlight/, { timeout: 30_000 });
 
     await page.goto(`/${projectId}/doc/${fixture.referencingDocumentId}`, {
       waitUntil: 'domcontentloaded',

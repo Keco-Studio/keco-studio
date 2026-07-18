@@ -1311,6 +1311,19 @@ td.cellCopy.copyBorderRight:hover {
   background: #0000000D !important;
 }
 
+.referencedRowHighlight {
+  outline: 2px solid var(--ant-color-primary-border, #91caff);
+  outline-offset: -2px;
+  background-color: var(--ant-color-primary-bg, #e6f4ff) !important;
+  transition: outline-color 160ms ease, background-color 160ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .referencedRowHighlight {
+    transition: none;
+  }
+}
+
 .searchCellHit {
   background: #fff6cc !important;
 }

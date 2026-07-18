@@ -31,6 +31,11 @@ export function parseReferencedFieldSearch(search: string): string | null {
   return isUuid(fieldId) ? fieldId : null;
 }
 
+export function parseReferencedAssetSearch(search: string): string | null {
+  const assetId = new URLSearchParams(search).get('asset');
+  return isUuid(assetId) ? assetId : null;
+}
+
 function escapeAttributeValue(value: string): string {
   const css = globalThis.CSS;
   if (css && typeof css.escape === 'function') return css.escape(value);

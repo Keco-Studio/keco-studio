@@ -25,6 +25,18 @@ type DocumentReindexRequest = {
 
 type PendingDocumentReindex = Omit<DocumentReindexRequest, 'accessToken'>;
 
+async function readReindexFailureMessage(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { error?: unknown };
+    if (typeof payload.error === 'string' && payload.error.trim()) {
+      return payload.error.trim();
+    }
+  } catch {
+    // Response body may be empty or non-JSON.
+  }
+  return `HTTP ${response.status}`;
+}
+
 export async function requestDocumentReindex(
   input: DocumentReindexRequest,
   fetcher: typeof fetch = fetch
@@ -45,7 +57,16 @@ export async function requestDocumentReindex(
         }),
       });
       if (response.ok) return true;
-      lastFailure = `HTTP ${response.status}`;
+      lastFailure = await readReindexFailureMessage(response);
+      // Provider RPM/TPM limits are transient; retrying immediately usually hits cooldown.
+      if (response.status === 429) {
+        console.warn('embedding.index.project_document_deferred', {
+          projectId: input.projectId,
+          documentId: input.documentId,
+          error: lastFailure,
+        });
+        return false;
+      }
     } catch (error) {
       lastFailure = error instanceof Error ? error.message : String(error);
     }

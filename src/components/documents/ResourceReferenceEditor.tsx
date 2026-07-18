@@ -1,36 +1,20 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { useMemo } from 'react';
 import {
-  DeleteOutlined,
   FileTextOutlined,
-  RetweetOutlined,
   TableOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
-import { Button, Tooltip } from 'antd';
+import { Tooltip } from 'antd';
 import Link from 'next/link';
-import {
-  useLexicalNodeRemove,
-  useMdastNodeUpdater,
-  type JsxEditorProps,
-} from '@mdxeditor/editor';
-import {
-  parseResourceReferenceAttributes,
-  resourceReferenceAttributes,
-  type ResourceReferenceTarget,
-} from '@/lib/documents/resourceReferenceTypes';
+import type { JsxEditorProps } from '@mdxeditor/editor';
+import { parseResourceReferenceAttributes } from '@/lib/documents/resourceReferenceTypes';
 import { useResourceReference } from './ResourceReferenceProvider';
 import styles from './MdxDocumentEditor.module.css';
 
-export type ResourceReferenceReplacementHandler = (
-  target: ResourceReferenceTarget,
-  replaceTarget: (nextTarget: ResourceReferenceTarget) => void
-) => void;
-
 export type ResourceReferenceEditorProps = JsxEditorProps & {
   readOnly: boolean;
-  onReplace?: ResourceReferenceReplacementHandler;
 };
 
 function fixedAttributes(mdastNode: JsxEditorProps['mdastNode']): Record<string, string> {
@@ -48,35 +32,22 @@ function fixedAttributes(mdastNode: JsxEditorProps['mdastNode']): Record<string,
   return attributes;
 }
 
-function mdastAttributes(target: ResourceReferenceTarget) {
-  return Object.entries(resourceReferenceAttributes(target)).map(([name, value]) => ({
-    type: 'mdxJsxAttribute' as const,
-    name,
-    value,
-  }));
+function accessibleReferenceLabel(
+  label: string,
+  contextLabel: string | undefined
+): string {
+  return contextLabel ? `${contextLabel}: ${label}` : label;
 }
 
 export function ResourceReferenceEditor({
   mdastNode,
-  readOnly,
-  onReplace,
+  readOnly: _readOnly,
 }: ResourceReferenceEditorProps) {
   const target = useMemo(
     () => parseResourceReferenceAttributes(fixedAttributes(mdastNode)),
     [mdastNode]
   );
   const { hasError, isLoading, resolved } = useResourceReference(target);
-  const updateMdastNode = useMdastNodeUpdater();
-  const removeMdastNode = useLexicalNodeRemove();
-  const replaceTarget = useCallback(
-    (nextTarget: ResourceReferenceTarget) => {
-      updateMdastNode({ attributes: mdastAttributes(nextTarget) });
-    },
-    [updateMdastNode]
-  );
-  const requestReplacement = useCallback(() => {
-    if (target && onReplace) onReplace(target, replaceTarget);
-  }, [onReplace, replaceTarget, target]);
 
   let reference: React.ReactNode;
   if (!target) {
@@ -89,9 +60,7 @@ export function ResourceReferenceEditor({
       </Tooltip>
     );
   } else if (resolved?.status === 'available' && resolved.href) {
-    const accessibleLabel = resolved.contextLabel
-      ? `${resolved.contextLabel}: ${resolved.label}`
-      : resolved.label;
+    const accessibleLabel = accessibleReferenceLabel(resolved.label, resolved.contextLabel);
     reference = (
       <Tooltip title={accessibleLabel}>
         <Link
@@ -126,39 +95,5 @@ export function ResourceReferenceEditor({
     );
   }
 
-  return (
-    <span
-      className={`${styles.resourceReferenceContainer} ${
-        readOnly ? '' : styles.resourceReferenceEditable
-      }`}
-    >
-      {reference}
-      {!readOnly && (
-        <span className={styles.resourceReferenceActions}>
-          <Tooltip title="Replace reference">
-            <Button
-              type="text"
-              size="small"
-              className={styles.resourceReferenceAction}
-              aria-label="Replace reference"
-              disabled={!target || !onReplace}
-              icon={<RetweetOutlined />}
-              onClick={requestReplacement}
-            />
-          </Tooltip>
-          <Tooltip title="Remove reference">
-            <Button
-              type="text"
-              size="small"
-              danger
-              className={styles.resourceReferenceAction}
-              aria-label="Remove reference"
-              icon={<DeleteOutlined />}
-              onClick={removeMdastNode}
-            />
-          </Tooltip>
-        </span>
-      )}
-    </span>
-  );
+  return <span className={styles.resourceReferenceContainer}>{reference}</span>;
 }

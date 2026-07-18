@@ -369,6 +369,7 @@ export function ResourceReferencePickerModal({
       <Select
         aria-label="Table"
         className={styles.sourceSelect}
+        popupClassName={styles.sourceSelectPopup}
         placeholder="Choose a table"
         showSearch
         optionFilterProp="label"
@@ -419,6 +420,7 @@ export function ResourceReferencePickerModal({
       <Select
         aria-label="Document"
         className={styles.sourceSelect}
+        popupClassName={styles.sourceSelectPopup}
         placeholder="Choose a document"
         showSearch
         optionFilterProp="label"
@@ -457,7 +459,7 @@ export function ResourceReferencePickerModal({
   return (
     <Modal
       open={open}
-      title={initialTarget ? 'Replace reference' : 'Insert reference'}
+      title="Insert reference"
       className={styles.modal}
       width={560}
       okText={initialTarget ? 'Replace' : 'Insert'}

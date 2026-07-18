@@ -53,9 +53,9 @@ jest.mock('@mdxeditor/editor', () => ({
     toolbarButtonProps = props;
     return null;
   },
-  iconComponentFor$: {},
+  activeEditor$: {},
   insertJsx$: {},
-  useCellValue: () => () => null,
+  useCellValue: () => null,
   usePublisher: () => insertJsx,
 }));
 jest.mock('@/components/documents/ResourceReferencePickerModal.module.css', () => ({
@@ -95,6 +95,9 @@ jest.mock('@ant-design/icons', () => ({
   FileTextOutlined: () => null,
   LinkOutlined: () => null,
   TableOutlined: () => null,
+  PaperClipOutlined: function PaperClipOutlined() {
+    return null;
+  },
 }));
 jest.mock('antd', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -597,6 +600,9 @@ describe('document editor reference controls', () => {
 
   beforeEach(async () => {
     restoreFocus.mockReset();
+    restoreFocus.mockImplementation((after?: () => void) => {
+      after?.();
+    });
     insertJsx.mockReset();
     toolbarButtonProps = undefined;
     await act(async () => root.render(<ControllerHarness />));
@@ -616,6 +622,9 @@ describe('document editor reference controls', () => {
     await act(async () => root.render(
       <ResourceReferenceInsertButton readOnly={false} onOpen={onOpen} />
     ));
+    expect(toolbarButtonProps?.title).toBe('Insert reference');
+    expect(toolbarButtonProps?.['aria-label']).toBe('Insert reference');
+    expect(toolbarButtonProps?.children?.type?.name).toBe('PaperClipOutlined');
     const preventDefault = jest.fn();
     toolbarButtonProps?.onMouseDown({ preventDefault });
     toolbarButtonProps?.onClick();
@@ -643,11 +652,10 @@ describe('document editor reference controls', () => {
     expect(toolbarButtonProps).toBeUndefined();
   });
 
-  it('uses one controller for insertion, replacement, cancel, and focus restoration', async () => {
+  it('uses one controller for insertion, cancel, and focus restoration', async () => {
     const insert = jest.fn();
     await act(async () => controller.openInsertion(insert));
     expect(controller.open).toBe(true);
-    expect(controller.initialTarget).toBeUndefined();
     const tableTarget: ResourceReferenceTarget = {
       kind: 'table-row',
       libraryId: LIBRARY_A,
@@ -656,27 +664,17 @@ describe('document editor reference controls', () => {
       fallbackLabel: 'Active',
     };
     await act(async () => controller.confirm(tableTarget));
-    expect(insert).toHaveBeenCalledWith(tableTarget);
+    expect(controller.open).toBe(false);
     expect(restoreFocus).toHaveBeenCalledTimes(1);
-
-    const replace = jest.fn();
-    await act(async () => controller.openReplacement(tableTarget, replace));
-    expect(controller.open).toBe(true);
-    expect(controller.initialTarget).toEqual(tableTarget);
-    const documentTarget: ResourceReferenceTarget = {
-      kind: 'document-block',
-      documentId: DOCUMENT_A,
-      blockId: PARAGRAPH_BLOCK,
-      blockType: 'paragraph',
-      fallbackLabel: 'The city closes its gates',
-    };
-    await act(async () => controller.confirm(documentTarget));
-    expect(replace).toHaveBeenCalledWith(documentTarget);
-    expect(restoreFocus).toHaveBeenCalledTimes(2);
+    expect(insert).toHaveBeenCalledWith(tableTarget);
+    // MDXEditor only inserts when a RangeSelection exists after focus — apply after restore.
+    expect(restoreFocus.mock.invocationCallOrder[0]).toBeLessThan(
+      insert.mock.invocationCallOrder[0]
+    );
 
     await act(async () => controller.openInsertion(insert));
     await act(async () => controller.cancel());
     expect(controller.open).toBe(false);
-    expect(restoreFocus).toHaveBeenCalledTimes(3);
+    expect(restoreFocus).toHaveBeenCalledTimes(2);
   });
 });

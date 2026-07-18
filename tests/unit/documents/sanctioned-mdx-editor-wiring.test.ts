@@ -54,8 +54,10 @@ describe('sanctioned MDX editor wiring', () => {
     expect(editor).not.toContain("descriptor.name === 'Callout'");
     expect(editor).not.toContain("descriptor.name === 'Details'");
     expect(editor).toMatch(
-      /<ResourceReferenceEditor[\s\S]*readOnly=\{readOnly\}[\s\S]*onReplace=\{onReplaceResourceReference\}/
+      /<ResourceReferenceEditor[\s\S]*readOnly=\{readOnly\}/
     );
+    expect(editor).not.toContain('onReplaceResourceReference');
+    expect(editor).not.toContain('openReplacement');
   });
 
   it('passes project, document, and viewer context through live and preview editors', () => {

@@ -123,7 +123,7 @@ describe('document export service', () => {
           status: 'available',
           label: 'Current value',
           contextLabel: 'Characters / Ada / Status',
-          href: `/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}?field=${FIELD_ID}`,
+          href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
         },
       ],
     ]));
@@ -137,7 +137,7 @@ describe('document export service', () => {
     expect(resolveResourceReferences).toHaveBeenCalledTimes(1);
     expect(markdown).toContain('# Heading');
     expect(markdown).toContain(
-      `[Current value](/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}?field=${FIELD_ID} "Characters / Ada / Status")`
+      `[Current value](/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID} "Characters / Ada / Status")`
     );
     expect(markdown).toContain('Before ');
     expect(markdown).toContain(' after.');
@@ -175,7 +175,7 @@ describe('document export service', () => {
           status: 'available',
           label: 'Current value',
           contextLabel: 'Characters / Ada / Status',
-          href: `/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}?field=${FIELD_ID}`,
+          href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
         },
       ],
     ]));

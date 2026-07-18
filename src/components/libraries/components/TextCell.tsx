@@ -256,7 +256,7 @@ const TextCellComponent: React.FC<TextCellProps> = ({
                   // Prevent double click from bubbling to cell
                   e.stopPropagation();
                 }}
-                title={"View asset details (Ctrl/Cmd+Click for new tab)"}
+                title={"View asset details"}
               >
                 <Image src={assetTableIcon}
                   alt="View"

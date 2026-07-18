@@ -1,33 +1,32 @@
 'use client';
 
-import { useCallback, useState } from 'react';
-import type { ResourceReferenceReplacementHandler } from './ResourceReferenceEditor';
+import { useCallback, useRef, useState } from 'react';
 import type { ResourceReferenceTarget } from '@/lib/documents/resourceReferenceTypes';
+import {
+  confirmResourceReferenceSelection,
+  type RestoreEditorFocus,
+} from './resourceReferencePickerConfirm';
 
 type PendingReference = {
-  initialTarget?: ResourceReferenceTarget;
   apply: (target: ResourceReferenceTarget) => void;
 };
 
 export type ResourceReferencePickerController = {
   open: boolean;
-  initialTarget?: ResourceReferenceTarget;
   openInsertion: (apply: (target: ResourceReferenceTarget) => void) => void;
-  openReplacement: ResourceReferenceReplacementHandler;
   cancel: () => void;
   confirm: (target: ResourceReferenceTarget) => void;
 };
 
 export function useResourceReferencePickerController(
-  restoreFocus: () => void
+  restoreFocus: RestoreEditorFocus
 ): ResourceReferencePickerController {
   const [pending, setPending] = useState<PendingReference | null>(null);
+  const pendingRef = useRef<PendingReference | null>(null);
+  pendingRef.current = pending;
+
   const openInsertion = useCallback(
     (apply: (target: ResourceReferenceTarget) => void) => setPending({ apply }),
-    []
-  );
-  const openReplacement = useCallback<ResourceReferenceReplacementHandler>(
-    (initialTarget, apply) => setPending({ initialTarget, apply }),
     []
   );
   const cancel = useCallback(() => {
@@ -35,17 +34,14 @@ export function useResourceReferencePickerController(
     restoreFocus();
   }, [restoreFocus]);
   const confirm = useCallback((target: ResourceReferenceTarget) => {
-    if (!pending) return;
-    pending.apply(target);
+    const current = pendingRef.current;
     setPending(null);
-    restoreFocus();
-  }, [pending, restoreFocus]);
+    confirmResourceReferenceSelection(current, target, restoreFocus);
+  }, [restoreFocus]);
 
   return {
     open: pending !== null,
-    initialTarget: pending?.initialTarget,
     openInsertion,
-    openReplacement,
     cancel,
     confirm,
   };

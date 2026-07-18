@@ -59,39 +59,30 @@
 .resourceReferenceContainer {
   display: inline-flex;
   align-items: center;
-  min-width: 0;
   max-width: 100%;
-  height: 24px;
   vertical-align: middle;
 }
 
 .resourceReference {
   display: inline-flex;
-  flex: 1 1 auto;
   align-items: center;
   gap: 4px;
-  min-width: 0;
-  max-width: min(280px, 100%);
-  height: 24px;
-  padding: 0 7px;
+  max-width: 100%;
+  min-height: 24px;
+  padding: 1px 7px;
   color: var(--ant-color-text, rgba(0, 0, 0, 0.88));
   line-height: 22px;
   text-decoration: none;
-  white-space: nowrap;
   background: var(--ant-color-fill-quaternary, rgba(0, 0, 0, 0.02));
   border: 1px solid var(--ant-color-border, #d9d9d9);
   border-radius: 4px;
   transition: border-color 120ms ease, background-color 120ms ease;
 }
 
-.resourceReferenceEditable .resourceReference {
-  max-width: min(280px, calc(100% - 50px));
-}
-
 .resourceReference > span:last-child {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .resourceReference:hover {
@@ -100,8 +91,7 @@
   border-color: var(--ant-color-primary-border, #91caff);
 }
 
-.resourceReference:focus-visible,
-.resourceReferenceAction:focus-visible {
+.resourceReference:focus-visible {
   outline: 2px solid var(--ant-color-primary-border, #91caff);
   outline-offset: 1px;
 }
@@ -120,21 +110,6 @@
   color: var(--ant-color-warning-text, #d46b08);
   background: var(--ant-color-warning-bg, #fffbe6);
   border-color: var(--ant-color-warning-border, #ffe58f);
-}
-
-.resourceReferenceActions {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  height: 24px;
-  margin-left: 2px;
-}
-
-.resourceReferenceAction {
-  width: 24px !important;
-  min-width: 24px !important;
-  height: 24px !important;
-  padding: 0 !important;
 }
 
 @media (prefers-reduced-motion: reduce) {

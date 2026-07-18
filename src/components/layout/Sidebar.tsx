@@ -525,7 +525,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     await queryClient.invalidateQueries({ queryKey: ['project', projectId] });
     await queryClient.invalidateQueries({ queryKey: ['library', libraryId] });
     await queryClient.invalidateQueries({ queryKey: ['asset', assetId] });
-    await navigateWithFlush(`/${projectId}/${libraryId}/${assetId}`);
+    await navigateWithFlush(`/${projectId}/${libraryId}?asset=${assetId}`);
   };
 
   const handleAssetDelete = useCallback(async (
@@ -1164,7 +1164,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
               }}
               onAddNewAsset={() => {
                 if (currentIds.projectId && currentIds.libraryId) {
-                  router.push(`/${currentIds.projectId}/${currentIds.libraryId}/new`);
+                  router.push(`/${currentIds.projectId}/${currentIds.libraryId}`);
                 }
               }}
               onAssetClick={handleAssetClick}

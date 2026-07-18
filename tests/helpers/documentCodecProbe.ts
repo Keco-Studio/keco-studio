@@ -25,6 +25,7 @@ type ProbeInput =
   | { mode: 'decorators'; markdown: string }
   | { mode: 'lexical'; markdown: string }
   | { mode: 'merge'; markdown: string }
+  | { mode: 'state'; snapshot: string | null; updates: string[] }
   | { mode: 'normalize-blocks'; markdown: string }
   | { mode: 'capture-delete-only' }
   | {
@@ -402,6 +403,14 @@ async function main() {
     };
     doc.destroy();
     return result;
+  }
+
+  if (input.mode === 'state') {
+    const markdown = await documentContentCodec.yjsStateToMarkdown(
+      input.snapshot,
+      input.updates
+    );
+    return { markdown };
   }
 
   if (input.mode === 'decorators') {

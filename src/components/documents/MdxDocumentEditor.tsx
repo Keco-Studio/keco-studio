@@ -325,8 +325,15 @@ export default function MdxDocumentEditor({
     editorMethodsRef.current = methods;
     publishEditorRef(editorRef, methods);
   }, [editorRef]);
-  const restoreEditorFocus = useCallback(() => {
-    setTimeout(() => editorMethodsRef.current?.focus(), 0);
+  const restoreEditorFocus = useCallback((after?: () => void) => {
+    const editor = editorMethodsRef.current;
+    if (!editor) {
+      after?.();
+      return;
+    }
+    editor.focus(() => {
+      after?.();
+    });
   }, []);
   const referencePicker = useResourceReferencePickerController(restoreEditorFocus);
   useReferencedDocumentBlock({
@@ -334,13 +341,11 @@ export default function MdxDocumentEditor({
     ready: referenceNavigationReady,
     highlightClassName: styles.referencedDocumentBlock,
   });
-  const onReplaceResourceReference = referencePicker.openReplacement;
   const plugins = useMemo(() => {
     const ResourceReference = (props: JsxEditorProps) => (
       <ResourceReferenceEditor
         {...props}
         readOnly={readOnly}
-        onReplace={onReplaceResourceReference}
       />
     );
     const jsxComponentDescriptors = createSanctionedMdxDescriptors(
@@ -439,7 +444,6 @@ export default function MdxDocumentEditor({
     collaborationSession,
     collaborationUsername,
     imageUploadHandler,
-    onReplaceResourceReference,
     referencePicker.openInsertion,
     readOnly,
     showToolbar,
@@ -466,7 +470,6 @@ export default function MdxDocumentEditor({
           open={referencePicker.open}
           projectId={projectId}
           documentId={documentId}
-          initialTarget={referencePicker.initialTarget}
           onCancel={referencePicker.cancel}
           onConfirm={referencePicker.confirm}
         />

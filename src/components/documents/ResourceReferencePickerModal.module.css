@@ -25,6 +25,24 @@
   width: 100%;
 }
 
+.sourceSelect :global(.ant-select-selector) {
+  height: auto !important;
+  min-height: 32px;
+}
+
+.sourceSelect :global(.ant-select-selection-item) {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.4;
+}
+
+.sourceSelectPopup :global(.ant-select-item-option-content) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .rowToolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(150px, 0.55fr);
@@ -68,9 +86,9 @@
 
 .resultTitle,
 .resultDescription {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .resultTitle {

@@ -79,4 +79,24 @@ describe('document reindex route', () => {
     expect(resolveUserRole).toHaveBeenCalledWith({}, PROJECT_ID, ACTOR_ID);
     expect(reindexProjectDocumentAsActor).toHaveBeenCalledTimes(2);
   });
+
+  it('returns 429 when the embedding provider is rate limited', async () => {
+    reindexProjectDocumentAsActor.mockRejectedValueOnce(
+      new Error('rate limit exceeded(RPM)')
+    );
+    const response = await post({ projectId: PROJECT_ID, documentId: DOCUMENT_ID });
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({ error: 'rate limit exceeded(RPM)' });
+  });
+
+  it('returns 429 when embedding is in rate-limit cooldown', async () => {
+    reindexProjectDocumentAsActor.mockRejectedValueOnce(
+      new Error('Embedding API is in rate-limit cooldown.')
+    );
+    const response = await post({ projectId: PROJECT_ID, documentId: DOCUMENT_ID });
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({
+      error: 'Embedding API is in rate-limit cooldown.',
+    });
+  });
 });

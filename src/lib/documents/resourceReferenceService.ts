@@ -249,7 +249,7 @@ async function resolveTableReferences(
       status: 'available',
       label: display || '(empty)',
       contextLabel: `${library.name} / ${asset.name} / ${field.label}`,
-      href: `/${projectId}/${library.id}/${asset.id}?field=${field.id}`,
+      href: `/${projectId}/${library.id}?asset=${asset.id}`,
     });
   }
 }

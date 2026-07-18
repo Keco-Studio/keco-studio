@@ -281,6 +281,51 @@ describe('document collaboration React boundary', () => {
     warn.mockRestore();
   });
 
+  it('treats embedding rate limits as soft failures without console.error', async () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const error = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+    const collaborationModule = await import('@/components/documents/useDocumentCollaboration');
+    const requestDocumentReindex = (
+      collaborationModule as typeof collaborationModule & {
+        requestDocumentReindex?: (
+          input: { projectId: string; documentId: string; accessToken: string },
+          fetcher: typeof fetch
+        ) => Promise<boolean>;
+      }
+    ).requestDocumentReindex;
+    expect(typeof requestDocumentReindex).toBe('function');
+    if (!requestDocumentReindex) return;
+
+    const fetcher = jest.fn().mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: 'rate limit exceeded(RPM)' }), {
+        status: 429,
+        headers: { 'content-type': 'application/json' },
+      })
+    );
+
+    await expect(
+      requestDocumentReindex(
+        {
+          projectId: 'project-old',
+          documentId: 'document-old',
+          accessToken: 'latest-token',
+        },
+        fetcher
+      )
+    ).resolves.toBe(false);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(warn).toHaveBeenCalledWith(
+      'embedding.index.project_document_deferred',
+      expect.objectContaining({
+        documentId: 'document-old',
+        error: 'rate limit exceeded(RPM)',
+      })
+    );
+    expect(error).not.toHaveBeenCalled();
+    warn.mockRestore();
+    error.mockRestore();
+  });
+
   it('uses the authorized private project sidebar channel', () => {
     const source = readFileSync(sidebarRealtimePath, 'utf8');
     expect(source).toContain('projectSidebarTopic(currentProjectId), {');

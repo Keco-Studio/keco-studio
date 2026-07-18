@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { withAuth } from '@/lib/auth/route-auth';
 import { resolveUserRole } from '@/lib/agent/permissions';
+import { isRateLimitError } from '@/lib/agent/embedding-throttle';
 import {
   ProjectDocumentIndexAccessError,
   reindexProjectDocumentAsActor,
@@ -48,6 +49,12 @@ export const POST = withAuth(async function POST(
     const forbidden =
       error instanceof ProjectDocumentIndexAccessError ||
       /access|project mismatch|not readable/i.test(message);
-    return NextResponse.json({ error: message }, { status: forbidden ? 403 : 500 });
+    if (forbidden) {
+      return NextResponse.json({ error: message }, { status: 403 });
+    }
+    if (isRateLimitError(message) || /rate-limit cooldown/i.test(message)) {
+      return NextResponse.json({ error: message }, { status: 429 });
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 });

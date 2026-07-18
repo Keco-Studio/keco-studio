@@ -201,7 +201,7 @@ describe('resolveResourceReferences', () => {
         status: 'available',
         label: 'Active',
         contextLabel: 'Characters / Ada / Status',
-        href: `/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}?field=${FIELD_ID}`,
+        href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
       },
     ]);
     for (const table of [
@@ -332,7 +332,7 @@ describe('resolveResourceReferences', () => {
             status: 'available',
             label: '(empty)',
             contextLabel: 'Characters / Ada / Status',
-            href: `/${PROJECT_ID}/${LIBRARY_ID}/${ASSET_ID}?field=${FIELD_ID}`,
+            href: `/${PROJECT_ID}/${LIBRARY_ID}?asset=${ASSET_ID}`,
           },
         ],
       ]));

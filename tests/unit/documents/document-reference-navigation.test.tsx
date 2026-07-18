@@ -10,6 +10,7 @@ jest.mock('@/lib/utils/toast', () => ({
 }));
 
 import {
+  parseReferencedAssetSearch,
   parseReferencedDocumentBlockHash,
   parseReferencedFieldSearch,
   useReferencedAssetField,
@@ -226,12 +227,15 @@ describe('reference URL parsing', () => {
   it('accepts only exact UUID reference parameters without mutating the URL', () => {
     const hash = `#block-${BLOCK_A}`;
     const search = `?view=compact&field=${FIELD_A}&sort=name`;
+    const assetSearch = `?asset=${FIELD_A}&view=compact`;
 
     expect(parseReferencedDocumentBlockHash(hash)).toBe(BLOCK_A);
     expect(parseReferencedDocumentBlockHash(`#section-block-${BLOCK_A}`)).toBeNull();
     expect(parseReferencedDocumentBlockHash('#block-not-a-uuid')).toBeNull();
     expect(parseReferencedFieldSearch(search)).toBe(FIELD_A);
     expect(parseReferencedFieldSearch('?field=not-a-uuid&view=compact')).toBeNull();
+    expect(parseReferencedAssetSearch(assetSearch)).toBe(FIELD_A);
+    expect(parseReferencedAssetSearch('?asset=not-a-uuid')).toBeNull();
     expect(hash).toBe(`#block-${BLOCK_A}`);
     expect(search).toBe(`?view=compact&field=${FIELD_A}&sort=name`);
   });
@@ -640,25 +644,47 @@ describe('navigation wiring and visual contract', () => {
     join(root, 'src/app/(dashboard)/[projectId]/[libraryId]/[assetId]/page.tsx'),
     'utf8'
   );
+  const libraryTable = readFileSync(
+    join(root, 'src/components/libraries/LibraryAssetsTable.tsx'),
+    'utf8'
+  );
+  const libraryTableBody = readFileSync(
+    join(root, 'src/components/libraries/components/LibraryAssetsTableBody.tsx'),
+    'utf8'
+  );
   const cssFiles = [
     'src/components/documents/MdxDocumentEditor.module.css',
-    'src/app/(dashboard)/[projectId]/[libraryId]/[assetId]/page.module.css',
+    'src/components/libraries/LibraryAssetsTable.module.css',
   ].map((path) => readFileSync(join(root, path), 'utf8'));
 
-  it('connects the tested hooks to hydrated editor and asset field roots', () => {
+  it('connects document block navigation and redirects the asset page to the table', () => {
     expect(documentEditor).toContain('referenceNavigationReady');
     expect(documentEditor).toContain('editorRef=');
     expect(mdxEditor).toContain('useReferencedDocumentBlock');
     expect(mdxEditor).toContain('ref={editorFrameRef}');
-    expect(assetPage).toContain('useReferencedAssetField');
-    expect(assetPage).toContain('data-field-id={f.id}');
+    expect(assetPage).toContain('router.replace');
+    expect(assetPage).toContain('?asset=${assetId}');
+    expect(libraryTable).toContain('parseReferencedAssetSearch');
+    expect(libraryTableBody).toContain('referencedRowHighlight');
+  });
+
+  it('uses a distinct paperclip trigger for insert reference', () => {
+    const insertButton = readFileSync(
+      join(root, 'src/components/documents/ResourceReferenceInsertButton.tsx'),
+      'utf8'
+    );
+    expect(insertButton).toContain('PaperClipOutlined');
+    expect(insertButton).toContain('aria-label="Insert reference"');
+    expect(insertButton).not.toContain("iconComponentFor('link')");
   });
 
   it('keeps both highlights token-compatible, layout-stable, and reduced-motion-safe', () => {
     for (const css of cssFiles) {
       expect(css).toMatch(/var\(--ant-color-primary/);
       expect(css).toContain('@media (prefers-reduced-motion: reduce)');
-      expect(css).not.toMatch(/\.referenced(?:DocumentBlock|FieldHighlight)[^{]*\{[^}]*(?:padding|margin|border-width):/s);
+      expect(css).not.toMatch(
+        /\.referenced(?:DocumentBlock|RowHighlight)[^{]*\{[^}]*(?:padding|margin|border-width):/s
+      );
     }
   });
 });

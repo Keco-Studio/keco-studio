@@ -200,7 +200,7 @@ const BooleanCellComponent: React.FC<BooleanCellProps> = ({
               onViewAssetDetail(row, e);
             }}
             onDoubleClick={(e) => e.stopPropagation()}
-            title="View asset details (Ctrl/Cmd+Click for new tab)"
+            title="View asset details"
           >
             <Image src={assetTableIcon} alt="View" width={20} height={20} className="icon-20" />
           </button>
