@@ -272,7 +272,11 @@ function validateJsxNode(node: AstNode): void {
   }
   const name = node.name as SanctionedComponentName;
   const rule = SANCTIONED_MDX_REGISTRY[name];
-  if (rule.kind !== nodeKind) {
+  // A BlockAnchor marks the start of the block it anchors. Depending on that
+  // block, it round-trips through Markdown either as an inline (text) element
+  // leading a paragraph/heading or as a standalone flow element, so accept
+  // both positions. This mirrors resourceReferenceMarkdown's tolerance.
+  if (rule.kind !== nodeKind && name !== 'BlockAnchor') {
     invalid(`${name} is not supported as a ${nodeKind} component`);
   }
   const attributes = validateAttributes(node, name);

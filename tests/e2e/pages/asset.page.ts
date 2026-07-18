@@ -16,6 +16,9 @@ import type { AssetData, AssetFieldValue } from '../fixures/assets';
 export class AssetPage {
   readonly page: Page;
 
+  // Name of the most recently created asset, used by expectAssetCreated().
+  private lastCreatedAssetName: string | null = null;
+
   // Asset list elements
   readonly assetsHeading: Locator;
   readonly createAssetButton: Locator;
@@ -85,82 +88,104 @@ export class AssetPage {
   }
 
   /**
-   * Create a new asset from a predefined template
-   * @param templateName - Name of the template to use
+   * Create a new asset directly in the library assets table.
+   *
+   * The dedicated full-page asset form was removed; assets are now created as
+   * rows in the library table. This adds a new row, sets its name (the first
+   * column), and fills each requested field cell inline.
+   *
+   * @param _templateName - Legacy template name (unused; kept for call-site compatibility)
    * @param asset - Asset data including name and field values
    */
-  async createAsset(templateName: string, asset: AssetData): Promise<void> {
-    // Wait for page to be ready
+  async createAsset(_templateName: string, asset: AssetData): Promise<void> {
     await this.page.waitForLoadState('domcontentloaded');
 
-    // Extract projectId and libraryId from current URL pathname
-    // URL format: /[projectId]/[libraryId] or /[projectId]/[libraryId]/predefine or /[projectId]/[libraryId]/...
-    const currentUrl = this.page.url();
-    const urlObj = new URL(currentUrl);
-    const pathname = urlObj.pathname;
-    
-    // Extract projectId and libraryId from pathname
-    // pathname format: /[projectId]/[libraryId] or /[projectId]/[libraryId]/predefine
-    const pathMatch = pathname.match(/^\/([^/]+)\/([^/]+)(?:\/|$)/);
-    
-    if (!pathMatch || pathMatch.length < 3) {
-      throw new Error(`Unable to extract projectId and libraryId from URL pathname: ${pathname}`);
-    }
-    
-    const projectId = pathMatch[1];
-    const libraryId = pathMatch[2];
-    
-    // Navigate directly to the new asset page using relative path
-    const newAssetUrl = `/${projectId}/${libraryId}/new`;
-    await this.page.goto(newAssetUrl, { waitUntil: 'load', timeout: 15000 });
-    await this.page.waitForLoadState('load', { timeout: 10000 });
-    
-    // Wait for asset form area to appear first.
-    await expect(this.page.locator('div[class*="fieldsContainer"]').first()).toBeVisible({
-      timeout: 30000,
-    });
+    // The caller is expected to already be on the library table.
+    await expect(this.page.locator('table').first()).toBeVisible({ timeout: 30000 });
 
-    // The current UI may or may not have a dedicated "Name" field row.
-    // Try to fill name if present; otherwise continue and rely on top-level create flow.
-    const nameLabelRegex = /^name$/i;
-    const nameLabelSpan = this.page.locator('span').filter({ hasText: nameLabelRegex });
+    const existingIds = new Set(await this.rowIds());
 
-    const hasNameLabel = (await nameLabelSpan.count()) > 0;
+    // Add a new row. This persists an "Untitled" asset immediately and appends
+    // it to the end of the table.
+    const addRowButton = this.page.getByRole('button', { name: /add new asset/i }).first();
+    await expect(addRowButton).toBeVisible({ timeout: 15000 });
+    await addRowButton.click();
 
-    // Find the fieldRow containing this label
-    let nameFieldRow: Locator | null = null;
-    
-    // Strategy: Find all divs with fieldRow class and check which contains our label
-    const allFieldRows = this.page.locator('div[class*="fieldRow"]');
-    const allRowCount = await allFieldRows.count();
-    
-    for (let i = 0; i < allRowCount; i++) {
-      const row = allFieldRows.nth(i);
-      const hasLabel = await row.locator('span').filter({ hasText: nameLabelRegex }).count() > 0;
-      if (hasLabel) {
-        const hasInput = await row.locator('input, select').count() > 0;
-        if (hasInput) {
-          nameFieldRow = row;
-          break;
-        }
-      }
-    }
-    
-    if (hasNameLabel && nameFieldRow) {
-      const nameInput = nameFieldRow.locator('input, select').first();
-      await expect(nameInput).toBeVisible({ timeout: 30000 });
-      await nameInput.fill(asset.name);
-    }
+    // Wait for the persisted row (a real, non-temp id) to appear, so the row
+    // element is stable while we edit its cells.
+    let newRowId: string | null = null;
+    await expect
+      .poll(
+        async () => {
+          newRowId =
+            (await this.rowIds()).find(
+              (id) => !existingIds.has(id) && !id.startsWith('temp-')
+            ) ?? null;
+          return newRowId;
+        },
+        { timeout: 20000, message: 'New asset row did not persist' }
+      )
+      .toBeTruthy();
 
-    // Fill in additional fields based on template
+    const newRow = this.page.locator(`tr[data-row-id="${newRowId}"]`);
+
+    // Set the asset name (first property column).
+    const nameCell = newRow.locator('td[data-property-key]').first();
+    await this.editTextCell(nameCell, asset.name);
+
+    // Fill each field by matching its column header label.
     for (const field of asset.fields) {
-      await this.fillField(field.label, field.value);
+      const value = Array.isArray(field.value) ? field.value.join(', ') : field.value;
+      const columnIndex = await this.columnIndexByLabel(field.label);
+      const fieldCell = this.page
+        .locator(`tr[data-row-id="${newRowId}"] td[data-property-key]`)
+        .nth(columnIndex);
+      await this.editTextCell(fieldCell, value);
     }
 
-    // Submit the asset - the button is in TopBar with text "Create Asset"
-    await expect(this.submitButton).toBeVisible({ timeout: 10000 });
-    await this.submitButton.click();
-    await this.page.waitForLoadState('load', { timeout: 10000 });
+    this.lastCreatedAssetName = asset.name;
+  }
+
+  /**
+   * Return the data-row-id of every rendered asset row.
+   */
+  private async rowIds(): Promise<string[]> {
+    return this.page
+      .locator('tbody tr[data-row-id]')
+      .evaluateAll((rows) =>
+        rows
+          .map((row) => row.getAttribute('data-row-id'))
+          .filter((id): id is string => Boolean(id))
+      );
+  }
+
+  /**
+   * Resolve the zero-based column index for a header label. Index 0 is the
+   * first (name) property column.
+   */
+  private async columnIndexByLabel(label: string): Promise<number> {
+    const headers = this.page.locator('[data-property-header-id]');
+    const target = label.trim().toLowerCase();
+    const count = await headers.count();
+    for (let i = 0; i < count; i++) {
+      const text = (await headers.nth(i).innerText()).trim().toLowerCase();
+      if (text.includes(target)) return i;
+    }
+    throw new Error(`Could not find table column with label "${label}"`);
+  }
+
+  /**
+   * Edit a text/string table cell inline: double-click to enter edit mode,
+   * clear it, type the value, and commit with Enter.
+   */
+  private async editTextCell(cell: Locator, value: string): Promise<void> {
+    await cell.scrollIntoViewIfNeeded();
+    await cell.dblclick();
+    const editor = cell.locator('[contenteditable="true"]').first();
+    await expect(editor).toBeVisible({ timeout: 5000 });
+    await editor.fill('');
+    await editor.pressSequentially(value);
+    await editor.press('Enter');
   }
 
   /**
@@ -314,27 +339,29 @@ export class AssetPage {
   }
 
   /**
-   * Assert successful asset creation
+   * Assert successful asset creation by confirming the named row is present and
+   * persisted in the library table.
    */
   async expectAssetCreated(): Promise<void> {
-    // After clicking "Create Asset", page navigates to asset detail page
-    // Note: Success message may not always be visible in Playwright, so we skip it
-    // and verify creation by checking URL change and page load
-    
-    // Wait for navigation to complete (URL should change from /new to /[assetId])
-    // The URL pattern should be: /[projectId]/[libraryId]/[assetId] (not /new)
-    await this.page.waitForURL(
-      (url) => {
-        const pathname = new URL(url).pathname;
-        const parts = pathname.split('/').filter(Boolean);
-        // Should have 3 parts: projectId, libraryId, assetId (and assetId should not be 'new')
-        return parts.length === 3 && parts[2] !== 'new';
-      },
-      { timeout: 15000 }
-    );
-    
-    // Wait for page to stabilize
-    await this.page.waitForLoadState('load', { timeout: 10000 });
+    if (!this.lastCreatedAssetName) {
+      await this.page.waitForLoadState('load', { timeout: 10000 });
+      return;
+    }
+
+    const name = this.lastCreatedAssetName;
+    const nameCell = this.page
+      .locator('tbody tr[data-row-id] td[data-property-key]')
+      .filter({ hasText: name })
+      .first();
+    await expect(nameCell).toBeVisible({ timeout: 15000 });
+
+    // Ensure the row is backed by a persisted (non-temp) id.
+    await expect
+      .poll(async () => (await this.rowIds()).some((id) => !id.startsWith('temp-')), {
+        timeout: 15000,
+        message: 'Created asset row did not persist',
+      })
+      .toBe(true);
   }
 
   /**

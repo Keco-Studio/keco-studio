@@ -134,6 +134,12 @@ describe('sanctioned MDX validation', () => {
     )).not.toThrow();
   });
 
+  it('accepts a standalone block anchor serialized as a flow element', () => {
+    expect(() => validateSanctionedMdx(
+      '<BlockAnchor id="66666666-6666-4666-8666-666666666666" />\n\nAnchored paragraph.'
+    )).not.toThrow();
+  });
+
   it.each([
     '# <BlockAnchor id="not-a-uuid" />Heading',
     'See <ResourceReference kind="table-row" libraryId="not-a-uuid" assetId="22222222-2222-4222-8222-222222222222" displayFieldId="33333333-3333-4333-8333-333333333333" fallbackLabel="Ada" />.',
