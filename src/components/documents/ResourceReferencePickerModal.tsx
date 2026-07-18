@@ -387,6 +387,8 @@ export function ResourceReferencePickerModal({
         <Select
           aria-label="Display field"
           placeholder="Display field"
+          showSearch
+          optionFilterProp="label"
           value={selectedFieldId ?? undefined}
           disabled={!selectedAssetId}
           options={tableRows.fields.map((field) => ({ label: field.label, value: field.id }))}
