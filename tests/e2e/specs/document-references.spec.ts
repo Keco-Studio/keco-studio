@@ -32,10 +32,10 @@ async function insertTableReference(page: Page): Promise<void> {
   const dialog = page.getByRole('dialog', { name: 'Insert reference' });
   await expect(dialog).toBeVisible();
 
-  await dialog.getByLabel('Table').click();
+  await dialog.getByRole('combobox', { name: 'Table', exact: true }).click();
   await page.getByRole('option', { name: TABLE_NAME, exact: true }).click();
   await dialog.getByRole('option', { name: `Row: ${ROW_NAME}` }).click();
-  await dialog.getByLabel('Display field').click();
+  await dialog.getByRole('combobox', { name: 'Display field', exact: true }).click();
   await page.getByRole('option', { name: FIELD_NAME, exact: true }).click();
   await dialog.getByRole('button', { name: 'Insert', exact: true }).click();
   await expect(dialog).toBeHidden();
@@ -47,7 +47,7 @@ async function insertDocumentReference(page: Page): Promise<void> {
   await expect(dialog).toBeVisible();
 
   await dialog.getByRole('tab', { name: 'Document' }).click();
-  await dialog.getByLabel('Document').click();
+  await dialog.getByRole('combobox', { name: 'Document', exact: true }).click();
   await page.getByRole('option', { name: SOURCE_DOCUMENT_NAME, exact: true }).click();
   await dialog
     .getByRole('option', { name: `Paragraph: ${SOURCE_PARAGRAPH}` })
