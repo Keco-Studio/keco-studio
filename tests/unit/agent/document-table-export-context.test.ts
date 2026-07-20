@@ -104,7 +104,7 @@ describe('document table export conversation context', () => {
       },
     };
 
-    await setupLibrary.executeImport!(preview, {}, { ...ctx, documentExport });
+    const result = await setupLibrary.executeImport!(preview, {}, { ...ctx, documentExport });
 
     expect(createLibraryServer).toHaveBeenCalledWith(
       ctx.supabase,
@@ -114,6 +114,12 @@ describe('document table export conversation context', () => {
       undefined,
       documentExport
     );
+    expect(result.invalidations).toEqual([{
+      type: 'library',
+      id: 'library-id',
+      projectId: PROJECT_ID,
+      sourceDocumentId: DOCUMENT_ID,
+    }]);
   });
 
   it('prepares and creates an empty library in the current document folder', async () => {
@@ -137,7 +143,7 @@ describe('document table export conversation context', () => {
       },
     });
 
-    await createLibrary.execute({ name: 'Locations', folderName: 'LLM supplied folder' }, {
+    const result = await createLibrary.execute({ name: 'Locations', folderName: 'LLM supplied folder' }, {
       ...ctx,
       documentExport,
     });
@@ -151,6 +157,12 @@ describe('document table export conversation context', () => {
       undefined,
       documentExport
     );
+    expect(result.invalidations).toEqual([{
+      type: 'library',
+      id: 'library-id',
+      projectId: PROJECT_ID,
+      sourceDocumentId: DOCUMENT_ID,
+    }]);
   });
 
   it('does not expose source identifiers in either LLM tool schema', () => {

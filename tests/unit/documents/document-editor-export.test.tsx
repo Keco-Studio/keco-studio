@@ -3,12 +3,15 @@ import type { ReactElement, ReactNode } from 'react';
 const flush = jest.fn<Promise<void>, []>();
 const showErrorToast = jest.fn();
 const getSession = jest.fn();
-let permissionRole: 'editor' | 'viewer' = 'editor';
+const stateSetter = jest.fn();
+const saveDesignHandoff = jest.fn();
+const buildDesignMessage = jest.fn(() => 'built design message');
+let permissionRole: 'admin' | 'editor' | 'viewer' = 'editor';
 
 jest.mock('react', () => ({
   ...jest.requireActual<typeof import('react')>('react'),
   useCallback: <T,>(callback: T) => callback,
-  useState: <T,>(initial: T) => [initial, jest.fn()],
+  useState: <T,>(initial: T) => [initial, stateSetter],
 }));
 jest.mock('next/dynamic', () => () => () => null);
 jest.mock('@ant-design/icons', () => ({
@@ -34,6 +37,16 @@ jest.mock('@/lib/SupabaseContext', () => ({
 jest.mock('@/lib/services/documentImageUpload', () => ({ uploadImageFiles: jest.fn() }));
 jest.mock('@/lib/utils/toast', () => ({
   showErrorToast: (...args: unknown[]) => showErrorToast(...args),
+}));
+jest.mock('@/lib/design-message', () => ({
+  buildDesignMessage: (...args: unknown[]) => buildDesignMessage(...args),
+}));
+jest.mock('@/lib/design-upload-handoff', () => ({
+  DESIGN_UPLOAD_EVENT: 'design-upload:submitted',
+  saveDesignHandoff: (...args: unknown[]) => saveDesignHandoff(...args),
+}));
+jest.mock('@/components/libraries/ImportScriptModal', () => ({
+  ImportScriptModal: (props: unknown) => ({ type: 'ImportScriptModal', props }),
 }));
 jest.mock('@/components/documents/useDocumentPermissions', () => ({
   useDocumentPermissions: () => ({
@@ -88,10 +101,34 @@ function findExportHandler(node: ReactNode): ({ key }: { key: string }) => Promi
   throw new Error('Export menu not found');
 }
 
+function findExportMenuItems(node: ReactNode): Array<{ key: string; label: string }> {
+  if (!node || typeof node !== 'object') throw new Error('Export menu not found');
+  const element = node as ReactElement<{
+    children?: ReactNode;
+    menu?: { items?: Array<{ key: string; label: string }> };
+  }>;
+  if (element.props?.menu?.items) return element.props.menu.items;
+  const children = element.props?.children;
+  for (const child of Array.isArray(children) ? children : [children]) {
+    try {
+      return findExportMenuItems(child);
+    } catch {
+      // Keep searching sibling elements.
+    }
+  }
+  throw new Error('Export menu not found');
+}
+
 function exportHandler() {
   const editor = DocumentEditor({ projectId: 'project-id', documentId: 'document-id' });
   const session = (editor as ReactElement).type as (props: unknown) => ReactElement;
   return findExportHandler(session((editor as ReactElement).props));
+}
+
+function exportMenuItems() {
+  const editor = DocumentEditor({ projectId: 'project-id', documentId: 'document-id' });
+  const session = (editor as ReactElement).type as (props: unknown) => ReactElement;
+  return findExportMenuItems(session((editor as ReactElement).props));
 }
 
 describe('DocumentEditor export durability', () => {
@@ -100,6 +137,9 @@ describe('DocumentEditor export durability', () => {
   beforeEach(() => {
     permissionRole = 'editor';
     flush.mockReset();
+    stateSetter.mockReset();
+    saveDesignHandoff.mockReset();
+    buildDesignMessage.mockClear();
     showErrorToast.mockReset();
     getSession.mockReset();
     getSession.mockResolvedValue({
@@ -113,6 +153,7 @@ describe('DocumentEditor export durability', () => {
     Object.defineProperty(global, 'window', {
       configurable: true,
       value: {
+        dispatchEvent: jest.fn(),
         document: {
           createElement: () => ({ click: jest.fn(), href: '', download: '' }),
         },
@@ -197,5 +238,82 @@ describe('DocumentEditor export durability', () => {
 
     expect(fetch).not.toHaveBeenCalled();
     expect(showErrorToast).toHaveBeenCalledWith('Please sign in before exporting');
+  });
+
+  it('renders five ungrouped items in order for an admin', () => {
+    permissionRole = 'admin';
+    expect(exportMenuItems()).toEqual([
+      { key: 'docx', label: 'Download DOCX' },
+      { key: 'pdf', label: 'Download PDF' },
+      { key: 'mdx', label: 'Download MDX' },
+      { key: 'tables', label: 'Export as tables' },
+      { key: 'script', label: 'Export as script' },
+    ]);
+  });
+
+  it.each(['editor', 'viewer'] as const)('hides project-content exports for %s', (role) => {
+    permissionRole = role;
+    expect(exportMenuItems().map((item) => item.label)).toEqual([
+      'Download DOCX',
+      'Download PDF',
+      'Download MDX',
+    ]);
+  });
+
+  it('flushes and saves the frozen source for table export, then dispatches the upload event', async () => {
+    permissionRole = 'admin';
+    const source = {
+      documentId: 'document-id',
+      documentName: 'Export me',
+      projectId: 'project-id',
+      folderId: null,
+      markdown: '| Name | Value |',
+      token: { epoch: 4, revision: 9 },
+    };
+    (fetch as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
+
+    const exporting = exportHandler()({ key: 'tables' });
+    expect(flush).toHaveBeenCalledTimes(1);
+    await exporting;
+
+    expect(fetch).toHaveBeenCalledWith(
+      '/api/documents/document-id/export-source',
+      { headers: { Authorization: 'Bearer fresh-access-token' } }
+    );
+    expect(saveDesignHandoff).toHaveBeenCalledWith('project-id', {
+      message: 'built design message',
+      fileName: 'Export me',
+      documentId: 'document-id',
+      documentExport: { sourceDocumentId: 'document-id', exportType: 'table' },
+    });
+    expect(window.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: 'design-upload:submitted', detail: { projectId: 'project-id' } })
+    );
+    expect(buildDesignMessage).toHaveBeenCalledWith({
+      fileName: 'Export me',
+      documentText: '| Name | Value |',
+      documentId: 'document-id',
+      sourceKind: 'project-document',
+    });
+  });
+
+  it('flushes and stores the exact source snapshot for script export', async () => {
+    permissionRole = 'admin';
+    const source = {
+      documentId: 'document-id',
+      documentName: 'Export me',
+      projectId: 'project-id',
+      folderId: 'folder-id',
+      markdown: 'Scene: Start',
+      token: { epoch: 7, revision: 3 },
+    };
+    (fetch as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
+
+    await exportHandler()({ key: 'script' });
+
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(stateSetter).toHaveBeenCalledWith(source);
   });
 });

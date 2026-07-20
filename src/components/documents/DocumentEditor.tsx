@@ -10,6 +10,14 @@ import { getDocument, type DocumentRecord } from '@/lib/services/documentService
 import { uploadImageFiles } from '@/lib/services/documentImageUpload';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import { showErrorToast } from '@/lib/utils/toast';
+import { buildDesignMessage } from '@/lib/design-message';
+import {
+  DESIGN_UPLOAD_EVENT,
+  saveDesignHandoff,
+} from '@/lib/design-upload-handoff';
+import type { DocumentExportSource } from '@/lib/documents/documentExportSource';
+import { notifyDocumentDerivedLibraryCreated } from '@/lib/documents/documentDerivedLibraryEvents';
+import { ImportScriptModal } from '@/components/libraries/ImportScriptModal';
 import {
   useDocumentPermissions,
   type DocumentPermissionState,
@@ -86,6 +94,20 @@ type ReadyDocumentPermissions = DocumentPermissionState & {
   userName: string;
 };
 
+function isDocumentExportSource(value: unknown): value is DocumentExportSource {
+  if (!value || typeof value !== 'object') return false;
+  const source = value as Partial<DocumentExportSource>;
+  return (
+    typeof source.documentId === 'string' &&
+    typeof source.documentName === 'string' &&
+    typeof source.projectId === 'string' &&
+    (source.folderId === null || typeof source.folderId === 'string') &&
+    typeof source.markdown === 'string' &&
+    typeof source.token?.epoch === 'number' &&
+    typeof source.token?.revision === 'number'
+  );
+}
+
 function DocumentEditorSession({
   document,
   projectId,
@@ -99,6 +121,7 @@ function DocumentEditorSession({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [referenceNavigationReady, setReferenceNavigationReady] = useState(false);
   const [exportingFormat, setExportingFormat] = useState<string | null>(null);
+  const [scriptSource, setScriptSource] = useState<DocumentExportSource | null>(null);
   const collaboration = useDocumentCollaboration({
     supabase,
     documentId: document.id,
@@ -122,16 +145,75 @@ function DocumentEditorSession({
     const ready = methods !== null;
     setReferenceNavigationReady((current) => current === ready ? current : ready);
   }, []);
+  const loadExportSource = useCallback(async (): Promise<DocumentExportSource> => {
+    if (permissions.role !== 'viewer') {
+      await collaboration.session?.flush();
+    }
+    const {
+      data: { session },
+      error: sessionError,
+    } = await supabase.auth.getSession();
+    if (sessionError || !session?.access_token) {
+      throw new Error('Please sign in before exporting');
+    }
+    const response = await fetch(
+      `/api/documents/${document.id}/export-source`,
+      { headers: { Authorization: `Bearer ${session.access_token}` } }
+    );
+    if (!response.ok) throw new Error('Document export source failed');
+    const payload = await response.json() as { source?: unknown };
+    if (
+      !isDocumentExportSource(payload.source) ||
+      payload.source.documentId !== document.id ||
+      payload.source.projectId !== projectId
+    ) {
+      throw new Error('Document export source failed');
+    }
+    return payload.source;
+  }, [collaboration.session, document.id, permissions.role, supabase]);
   const exportItems = [
     { key: 'docx', label: 'Download DOCX' },
     { key: 'pdf', label: 'Download PDF' },
     { key: 'mdx', label: 'Download MDX' },
+    ...(permissions.role === 'admin'
+      ? [
+          { key: 'tables', label: 'Export as tables' },
+          { key: 'script', label: 'Export as script' },
+        ]
+      : []),
   ];
   const handleExport = useCallback(
     async ({ key }: { key: string }) => {
       if (exportingFormat) return;
       setExportingFormat(key);
       try {
+        if (key === 'tables' || key === 'script') {
+          if (permissions.role !== 'admin') return;
+          const source = await loadExportSource();
+          if (key === 'tables') {
+            const message = buildDesignMessage({
+              fileName: source.documentName,
+              documentText: source.markdown,
+              documentId: source.documentId,
+              sourceKind: 'project-document',
+            });
+            saveDesignHandoff(projectId, {
+              message,
+              fileName: source.documentName,
+              documentId: source.documentId,
+              documentExport: {
+                sourceDocumentId: source.documentId,
+                exportType: 'table',
+              },
+            });
+            window.dispatchEvent(
+              new CustomEvent(DESIGN_UPLOAD_EVENT, { detail: { projectId } })
+            );
+          } else {
+            setScriptSource(source);
+          }
+          return;
+        }
         if (permissions.role !== 'viewer') {
           await collaboration.session?.flush();
         }
@@ -165,6 +247,8 @@ function DocumentEditorSession({
       document.id,
       document.name,
       exportingFormat,
+      loadExportSource,
+      projectId,
       permissions.role,
       supabase,
     ]
@@ -292,6 +376,23 @@ function DocumentEditorSession({
           onClose={() => setHistoryOpen(false)}
         />
       </div>
+      <ImportScriptModal
+        open={Boolean(scriptSource)}
+        projectId={projectId}
+        folderId={scriptSource?.folderId ?? null}
+        documentSource={scriptSource ?? undefined}
+        onClose={() => setScriptSource(null)}
+        onImported={(libraryId) => {
+          if (scriptSource) {
+            notifyDocumentDerivedLibraryCreated({
+              projectId,
+              documentId: scriptSource.documentId,
+              libraryId,
+            });
+          }
+          setScriptSource(null);
+        }}
+      />
     </div>
   );
 }

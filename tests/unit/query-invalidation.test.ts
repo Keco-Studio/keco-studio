@@ -9,6 +9,13 @@ import {
   sidebarAssetsKey,
   shouldInvalidateEntityListAfterUpdate,
 } from '@/lib/queryInvalidation';
+const notifyDocumentDerivedLibraryCreated = jest.fn();
+jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: () => ({}) }));
+jest.mock('next/navigation', () => ({ useRouter: () => ({ refresh: jest.fn() }) }));
+jest.mock('@/lib/documents/documentDerivedLibraryEvents', () => ({
+  notifyDocumentDerivedLibraryCreated: (...args: unknown[]) => notifyDocumentDerivedLibraryCreated(...args),
+}));
+import { invalidateAgentCaches } from '@/components/agent/useAgentChat';
 import { queryKeys } from '@/lib/utils/queryKeys';
 
 const createClient = () => ({
@@ -140,5 +147,25 @@ describe('query invalidation helpers', () => {
     expect(shouldInvalidateEntityListAfterUpdate(queryKeys.libraryAssets('library-1'), 'asset', 'library-1')).toBe(true);
     expect(shouldInvalidateEntityListAfterUpdate(sidebarAssetsKey('library-1'), 'asset', 'library-1')).toBe(true);
     expect(shouldInvalidateEntityListAfterUpdate(queryKeys.folderLibraries('folder-1'), 'folder')).toBe(false);
+  });
+
+  it('refreshes project library collections and emits the typed event for document-derived libraries', async () => {
+    const client = createClient();
+
+    await invalidateAgentCaches(client as never, { refresh: jest.fn() }, [{
+      type: 'library',
+      id: 'library-1',
+      projectId: 'project-1',
+      sourceDocumentId: 'document-1',
+    } as never]);
+
+    expect(client.invalidateQueries).toHaveBeenCalledWith({
+      queryKey: queryKeys.projectLibraries('project-1'),
+    });
+    expect(notifyDocumentDerivedLibraryCreated).toHaveBeenCalledWith({
+      projectId: 'project-1',
+      documentId: 'document-1',
+      libraryId: 'library-1',
+    });
   });
 });

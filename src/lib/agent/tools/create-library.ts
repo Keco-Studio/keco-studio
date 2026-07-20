@@ -130,7 +130,16 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         folderName: resolvedFolderName,
         sourceDocumentName,
       },
-      invalidations: [{ type: 'library', id: libraryId }],
+      invalidations: [{
+        type: 'library',
+        id: libraryId,
+        ...(ctx.documentExport
+          ? {
+              projectId: ctx.projectId,
+              sourceDocumentId: ctx.documentExport.sourceDocumentId,
+            }
+          : {}),
+      }],
     };
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to create library.' };

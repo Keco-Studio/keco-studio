@@ -286,7 +286,16 @@ async function executeImport(
       totalFields: preview.totalFields,
       writeGuide,
     },
-    invalidations: [{ type: 'library', id: libraryId }],
+    invalidations: [{
+      type: 'library',
+      id: libraryId,
+      ...(ctx.documentExport
+        ? {
+            projectId: ctx.projectId,
+            sourceDocumentId: ctx.documentExport.sourceDocumentId,
+          }
+        : {}),
+    }],
   };
 }
 

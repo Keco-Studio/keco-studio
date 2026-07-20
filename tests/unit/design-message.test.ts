@@ -57,6 +57,19 @@ describe('buildDesignMessage', () => {
     expect(msg).toContain('do not call setup_library');
     expect(msg).toContain('table quality would be poor');
   });
+
+  it('describes a project document without claiming it was uploaded and keeps parsing stable', () => {
+    const msg = buildDesignMessage({
+      fileName: 'Project notes',
+      documentText: '| Name | Value |\n| --- | --- |\n| A | 1 |',
+      documentId: 'document-id',
+      sourceKind: 'project-document',
+    });
+
+    expect(msg).toContain('The user selected the project document "Project notes".');
+    expect(msg).not.toContain('The user uploaded a design document');
+    expect(parseDesignMessage(msg)).toEqual({ fileName: 'Project notes' });
+  });
 });
 
 describe('parseDesignMessage', () => {

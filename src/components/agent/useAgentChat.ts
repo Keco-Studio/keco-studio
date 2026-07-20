@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { useSupabase } from '@/lib/SupabaseContext';
 import { getActiveSectionName } from '@/lib/agent/page-context';
-import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
+import { invalidateLibraryAssetsData, invalidateLibraryData } from '@/lib/queryInvalidation';
 import { queryKeys } from '@/lib/utils/queryKeys';
+import { notifyDocumentDerivedLibraryCreated } from '@/lib/documents/documentDerivedLibraryEvents';
 import {
   clearLastConversation,
   setLastConversation,
@@ -58,11 +59,22 @@ export async function invalidateAgentCaches(
 ): Promise<void> {
   for (const invalidation of invalidations) {
     if (invalidation.type === 'library') {
+      await invalidateLibraryData(queryClient, {
+        projectId: invalidation.projectId,
+        libraryId: invalidation.id,
+      });
       await invalidateLibraryAssetsData(queryClient, {
         libraryId: invalidation.id,
         includeSchema: true,
         refetchActiveAssets: true,
       });
+      if (invalidation.projectId && invalidation.sourceDocumentId) {
+        notifyDocumentDerivedLibraryCreated({
+          projectId: invalidation.projectId,
+          documentId: invalidation.sourceDocumentId,
+          libraryId: invalidation.id,
+        });
+      }
       continue;
     }
 

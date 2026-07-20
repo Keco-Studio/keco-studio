@@ -57,7 +57,12 @@ export interface ToolContext {
 }
 
 export type AgentInvalidation =
-  | { type: 'library'; id: string }
+  | {
+      type: 'library';
+      id: string;
+      projectId?: string;
+      sourceDocumentId?: string;
+    }
   | { type: 'documents'; projectId: string; documentId?: string };
 
 export interface ToolResult {
