@@ -1,6 +1,7 @@
 'use client';
 
 import { Sidebar } from './Sidebar';
+import { LeftNav } from './LeftNav';
 import { TopBar } from './TopBar';
 import { useAuth } from '@/lib/contexts/AuthContext';
 import AuthForm from '@/components/authform/AuthForm';
@@ -62,6 +63,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
   return (
     <div className={styles.dashboard}>
       <SimulationOriginWarmup />
+      <LeftNav />
       {!hideSidebarForSimulation ? (
         <Sidebar userProfile={userProfile} onAuthRequest={signOut} />
       ) : null}

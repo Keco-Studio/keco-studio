@@ -410,6 +410,7 @@ export default function MdxDocumentEditor({
     if (showToolbar) {
       stablePlugins.push(
         toolbarPlugin({
+          toolbarClassName: styles.stickyToolbar,
           toolbarContents: () => (
             <>
               <UndoRedo />
