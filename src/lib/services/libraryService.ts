@@ -9,6 +9,11 @@ import {
   verifyLibraryUpdatePermission,
   getUserProjectRole,
 } from './authorizationService';
+import {
+  resolveDerivedLibraryPlacement,
+  type DocumentExportType,
+  type DocumentLibrarySource,
+} from './documentDerivedLibraryService';
 
 export type Library = {
   id: string;
@@ -19,6 +24,8 @@ export type Library = {
   created_at: string;
   updated_at: string;
   updated_by: string | null;
+  source_document_id: string | null;
+  document_export_type: DocumentExportType | null;
   asset_count?: number; // Number of assets in this library
   updater?: {
     id: string;
@@ -46,6 +53,7 @@ type CreateLibraryInput = {
   name: string;
   description?: string;
   folderId?: string;
+  documentSource?: DocumentLibrarySource;
 };
 
 const trimOrNull = (value?: string | null) => {
@@ -102,9 +110,13 @@ export async function createLibrary(
   // verify creation permission (only admin can create)
   await verifyLibraryCreationPermission(supabase, projectId);
 
+  const placement = input.documentSource
+    ? await resolveDerivedLibraryPlacement(supabase, projectId, input.documentSource)
+    : null;
+
   // Validate folder_id if provided
   let folderId: string | null = null;
-  if (input.folderId) {
+  if (!placement && input.folderId) {
     if (!isUuid(input.folderId)) {
       throw new Error('Invalid folder ID format');
     }
@@ -127,9 +139,11 @@ export async function createLibrary(
     .from('libraries')
     .insert({
       project_id: projectId,
-      folder_id: folderId,
+      folder_id: placement?.folderId ?? folderId,
       name,
       description,
+      source_document_id: placement?.sourceDocumentId ?? null,
+      document_export_type: placement?.documentExportType ?? null,
     })
     .select('id')
     .single();
@@ -538,6 +552,10 @@ export async function moveLibraryToFolder(
   }
 
   await verifyLibraryUpdatePermission(supabase, libraryId);
+
+  if (library.source_document_id) {
+    throw new Error('Libraries generated from a document move with their source document');
+  }
 
   const targetFolderId = input.folderId;
   if (targetFolderId !== null && !isUuid(targetFolderId)) {

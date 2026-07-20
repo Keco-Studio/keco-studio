@@ -15,6 +15,9 @@ jest.mock('../../../src/lib/services/authorizationService', () => {
     __esModule: true,
     AuthorizationError,
     verifyProjectAccess: jest.fn(async () => undefined),
+    verifyLibraryAccess: jest.fn(async () => undefined),
+    verifyLibraryCreationPermission: jest.fn(async () => undefined),
+    verifyLibraryUpdatePermission: jest.fn(async () => undefined),
     getUserProjectRole: jest.fn(async () => ({ role: 'editor', isOwner: false })),
     getCurrentUserId: jest.fn(async () => 'user-1'),
   };
@@ -28,11 +31,16 @@ import {
   deleteDocumentIfUnchanged,
   DocumentNotFoundError,
 } from '../../../src/lib/services/documentService';
+import {
+  createLibrary,
+  moveLibraryToFolder,
+} from '../../../src/lib/services/libraryService';
 
 const PROJECT_A = '11111111-1111-4111-8111-111111111111';
 const PROJECT_B = '22222222-2222-4222-8222-222222222222';
 const FOLDER = '33333333-3333-4333-8333-333333333333';
 const DOC = '44444444-4444-4444-8444-444444444444';
+const LIBRARY_ID = '55555555-5555-4555-8555-555555555555';
 
 type Resp = { data: unknown; error: unknown };
 
@@ -263,5 +271,81 @@ describe('documentService atomic document deletion', () => {
       name: 'DocumentStateConflictError',
       message: 'Document update tail changed',
     });
+  });
+});
+
+describe('document-derived library ownership', () => {
+  it('creates a derived library in its source document folder with ownership metadata', async () => {
+    const insert = jest.fn((row: unknown) => ({
+      select: () => ({
+        single: async () => ({ data: { id: 'library-id' }, error: null }),
+      }),
+    }));
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table === 'documents') {
+          return {
+            select: () => ({
+              eq: () => ({
+                single: async () => ({
+                  data: { id: DOC, project_id: PROJECT_A, folder_id: FOLDER },
+                  error: null,
+                }),
+              }),
+            }),
+          };
+        }
+        if (table === 'libraries') return { insert };
+        throw new Error(`Unexpected table: ${table}`);
+      }),
+    } as unknown as SupabaseClient;
+
+    await expect(createLibrary(supabase, {
+      projectId: PROJECT_A,
+      name: 'Characters',
+      folderId: PROJECT_B,
+      documentSource: { sourceDocumentId: DOC, exportType: 'table' },
+    })).resolves.toBe('library-id');
+    expect(insert).toHaveBeenCalledWith({
+      project_id: PROJECT_A,
+      folder_id: FOLDER,
+      name: 'Characters',
+      description: null,
+      source_document_id: DOC,
+      document_export_type: 'table',
+    });
+  });
+
+  it('rejects independent moves of document-derived libraries before target checks', async () => {
+    const supabase = {
+      from: jest.fn((table: string) => {
+        if (table !== 'libraries') throw new Error(`Unexpected table: ${table}`);
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({
+                data: {
+                  id: LIBRARY_ID,
+                  project_id: PROJECT_A,
+                  folder_id: FOLDER,
+                  name: 'Characters',
+                  description: null,
+                  source_document_id: DOC,
+                  document_export_type: 'table',
+                },
+                error: null,
+              }),
+            }),
+          }),
+        };
+      }),
+    } as unknown as SupabaseClient;
+
+    await expect(
+      moveLibraryToFolder(supabase, LIBRARY_ID, { folderId: 'not-a-uuid' })
+    ).rejects.toThrow(
+      'Libraries generated from a document move with their source document'
+    );
+    expect(supabase.from).toHaveBeenCalledTimes(1);
   });
 });
