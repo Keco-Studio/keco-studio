@@ -188,17 +188,23 @@ test.describe.serial('Document-derived library lifecycle', () => {
   let fixture: LifecycleFixture;
   let tableLibrary: NamedFixture;
   let scriptLibrary: NamedFixture;
+  let ownerResource: TemporaryUser | undefined;
+  let editorResource: TemporaryUser | undefined;
+  let viewerResource: TemporaryUser | undefined;
+  let projectResourceId: string | undefined;
 
   test.beforeAll(async () => {
     admin = getE2EAdminClient();
-    const [owner, editor, viewer] = await Promise.all([
-      createTemporaryUser(admin, 'document-derived-owner'),
-      createTemporaryUser(admin, 'document-derived-editor'),
-      createTemporaryUser(admin, 'document-derived-viewer'),
-    ]);
+    const owner = await createTemporaryUser(admin, 'document-derived-owner');
+    ownerResource = owner;
+    const editor = await createTemporaryUser(admin, 'document-derived-editor');
+    editorResource = editor;
+    const viewer = await createTemporaryUser(admin, 'document-derived-viewer');
+    viewerResource = viewer;
     const projectId = await createProjectFixture(admin, owner.id, {
       addOwnerMembership: true,
     });
+    projectResourceId = projectId;
     await Promise.all([
       addProjectCollaborator(admin, projectId, editor.id, 'editor', owner.id),
       addProjectCollaborator(admin, projectId, viewer.id, 'viewer', owner.id),
@@ -233,13 +239,27 @@ test.describe.serial('Document-derived library lifecycle', () => {
   });
 
   test.afterAll(async () => {
-    if (!fixture) return;
-    if (fixture.projectId) await removeProjectFixture(admin, fixture.projectId);
-    await Promise.all([
-      deleteTemporaryUser(admin, fixture.owner),
-      deleteTemporaryUser(admin, fixture.editor),
-      deleteTemporaryUser(admin, fixture.viewer),
-    ]);
+    const cleanup = async (label: string, action: () => Promise<void>) => {
+      try {
+        await action();
+      } catch (error) {
+        // Cleanup must not mask the original beforeAll/test failure.
+        console.error(`Document-derived E2E cleanup failed for ${label}:`, error);
+      }
+    };
+
+    if (projectResourceId) {
+      await cleanup('project', () => removeProjectFixture(admin, projectResourceId!));
+    }
+    if (ownerResource) {
+      await cleanup('owner', () => deleteTemporaryUser(admin, ownerResource!));
+    }
+    if (editorResource) {
+      await cleanup('editor', () => deleteTemporaryUser(admin, editorResource!));
+    }
+    if (viewerResource) {
+      await cleanup('viewer', () => deleteTemporaryUser(admin, viewerResource!));
+    }
   });
 
   test('admin sees five items while editor and viewer see three', async ({ browser }) => {
@@ -401,6 +421,10 @@ test.describe.serial('Document-derived library lifecycle', () => {
     await expect(dialog).toBeHidden({ timeout: 30_000 });
 
     await expectTreeParent(page, fixture.folderDocument.name, fixture.destinationFolder.name);
+    await expect(sidebarTitle(page, fixture.folderDocument.name)).toHaveCount(1);
+    expect(await treeParentTitle(page, fixture.folderDocument.name)).not.toBe(
+      fixture.sourceFolder.name
+    );
     await expectTreeParent(page, tableLibrary.name, fixture.folderDocument.name);
     await expectTreeParent(page, scriptLibrary.name, fixture.folderDocument.name);
 
