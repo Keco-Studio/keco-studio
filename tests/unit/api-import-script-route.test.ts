@@ -188,6 +188,24 @@ describe('POST /api/import-script streaming protocol', () => {
     expect(mockedImport).not.toHaveBeenCalled();
   });
 
+  it.each([
+    'Project not found',
+    'collaborator query failed: database details',
+  ])('does not expose AuthorizationError details: %s', async (internalMessage) => {
+    const error = new Error(internalMessage);
+    error.name = 'AuthorizationError';
+    mockedGetDocumentExportSource.mockRejectedValue(error);
+
+    const response = await POST(request({ folderId: null, sourceDocumentId: documentId }));
+
+    expect(response.status).toBe(403);
+    const payload = await response.json();
+    expect(payload).toEqual({ error: 'Only admin users can export project content' });
+    expect(JSON.stringify(payload)).not.toContain(internalMessage);
+    expect(mockedResolve).not.toHaveBeenCalled();
+    expect(mockedImport).not.toHaveBeenCalled();
+  });
+
   it('still requires a UUID folder for ordinary imports', async () => {
     const response = await POST(request({ folderId: null }));
 

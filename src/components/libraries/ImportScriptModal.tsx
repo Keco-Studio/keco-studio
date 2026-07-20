@@ -45,6 +45,13 @@ function defaultLibraryNameFromFile(fileName: string): string {
   return base || 'Imported script';
 }
 
+function snapshotDocumentSource(source: DocumentExportSource): DocumentExportSource {
+  return {
+    ...source,
+    token: { ...source.token },
+  };
+}
+
 export function ImportScriptModal({
   open,
   projectId,
@@ -57,15 +64,14 @@ export function ImportScriptModal({
 }: ImportScriptModalProps) {
   const supabase = useSupabase();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const wasOpenRef = useRef(false);
   const [inputMode, setInputMode] = useState<InputMode>('file');
-  const [libraryName, setLibraryName] = useState(documentSource?.documentName ?? '');
+  const [libraryName, setLibraryName] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parsedFileText, setParsedFileText] = useState<string | null>(null);
   const [textInput, setTextInput] = useState('');
-  const [frozenDocumentText] = useState(documentSource?.markdown ?? '');
-  const [preview, setPreview] = useState<PreviewInfo | null>(() =>
-    frozenDocumentText.trim() ? previewScript(frozenDocumentText) : null
-  );
+  const [documentSnapshot, setDocumentSnapshot] = useState<DocumentExportSource | null>(null);
+  const [preview, setPreview] = useState<PreviewInfo | null>(null);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgressEvent | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -82,23 +88,33 @@ export function ImportScriptModal({
   }, [documentSource, open, initialText, initialLibraryName]);
 
   useEffect(() => {
+    const opening = open && !wasOpenRef.current;
+    wasOpenRef.current = open;
+
+    if (opening && documentSource) {
+      const snapshot = snapshotDocumentSource(documentSource);
+      setDocumentSnapshot(snapshot);
+      setLibraryName(snapshot.documentName);
+    }
+
     if (!open) {
-      setLibraryName(documentSource?.documentName ?? '');
+      setDocumentSnapshot(null);
+      setLibraryName('');
       setSelectedFile(null);
       setParsedFileText(null);
       setTextInput('');
-      setPreview(frozenDocumentText.trim() ? previewScript(frozenDocumentText) : null);
+      setPreview(null);
       setImportProgress(null);
       setInputMode('file');
     }
-  }, [documentSource, frozenDocumentText, open]);
+  }, [documentSource, open]);
 
   useEffect(() => {
-    const source = documentSource
-      ? frozenDocumentText
+    const source = documentSnapshot
+      ? documentSnapshot.markdown
       : inputMode === 'text' ? textInput : parsedFileText;
     setPreview(source?.trim() ? previewScript(source) : null);
-  }, [documentSource, frozenDocumentText, textInput, inputMode, parsedFileText]);
+  }, [documentSnapshot, textInput, inputMode, parsedFileText]);
 
   const handleFileChange = async (file: File | null) => {
     if (!file) {
@@ -152,13 +168,13 @@ export function ImportScriptModal({
     let fileContent = '';
     let fileName = 'input.txt';
 
-    if (documentSource) {
-      if (!frozenDocumentText.trim()) {
+    if (documentSnapshot) {
+      if (!documentSnapshot.markdown.trim()) {
         showErrorToast('Document is empty');
         return;
       }
-      fileContent = frozenDocumentText;
-      fileName = `${documentSource.documentName}.txt`;
+      fileContent = documentSnapshot.markdown;
+      fileName = `${documentSnapshot.documentName}.txt`;
     } else if (inputMode === 'file') {
       if (!selectedFile || !parsedFileText?.trim()) {
         showErrorToast('Please select a file with text content');
@@ -184,9 +200,11 @@ export function ImportScriptModal({
       }
 
       const formData = new FormData();
-      formData.append('projectId', projectId);
-      if (folderId) formData.append('folderId', folderId);
-      if (documentSource) formData.append('sourceDocumentId', documentSource.documentId);
+      formData.append('projectId', documentSnapshot?.projectId ?? projectId);
+      if (!documentSnapshot && folderId) formData.append('folderId', folderId);
+      if (documentSnapshot) {
+        formData.append('sourceDocumentId', documentSnapshot.documentId);
+      }
       formData.append('libraryName', trimmedName);
       formData.append('file', new File([fileContent], fileName, { type: 'text/plain' }));
 
@@ -217,8 +235,8 @@ export function ImportScriptModal({
     if (!importing && e.target === e.currentTarget) onClose();
   };
 
-  const canImport = documentSource
-    ? !!frozenDocumentText.trim() && !!libraryName.trim()
+  const canImport = documentSnapshot
+    ? !!documentSnapshot.markdown.trim() && !!libraryName.trim()
     : inputMode === 'file'
       ? !!parsedFileText?.trim() && !!libraryName.trim()
       : !!textInput.trim() && !!libraryName.trim();
@@ -257,14 +275,14 @@ export function ImportScriptModal({
             />
           </div>
 
-          {documentSource ? (
+          {documentSnapshot ? (
             <div className={styles.documentSource} data-testid="import-script-document-source">
               <span className={styles.documentSourceLabel}>Project document</span>
-              <strong>{documentSource.documentName}</strong>
+              <strong>{documentSnapshot.documentName}</strong>
             </div>
           ) : null}
 
-          {!documentSource && (
+          {!documentSnapshot && (
             <div className={styles.tabContainer}>
               <button
                 className={`${styles.tab} ${inputMode === 'file' ? styles.tabActive : ''}`}
@@ -285,7 +303,7 @@ export function ImportScriptModal({
             </div>
           )}
 
-          {!documentSource && (
+          {!documentSnapshot && (
             inputMode === 'file' ? (
               <div className={styles.fileContainer}>
                 <input

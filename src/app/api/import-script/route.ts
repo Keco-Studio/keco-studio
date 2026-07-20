@@ -162,7 +162,10 @@ function documentSourceErrorResponse(error: unknown) {
     message === 'Only admin users can export project content'
     || (error instanceof Error && error.name === 'AuthorizationError')
   ) {
-    return NextResponse.json({ error: message || 'Forbidden' }, { status: 403 });
+    return NextResponse.json(
+      { error: 'Only admin users can export project content' },
+      { status: 403 }
+    );
   }
   if (message === 'Document is empty') {
     return NextResponse.json({ error: message }, { status: 400 });
