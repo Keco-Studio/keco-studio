@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { withAuth } from '@/lib/auth/route-auth';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
+import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 
 export const maxDuration = 300;
@@ -27,13 +28,17 @@ export const POST = withAuth(async function POST(
 
   const projectId = String(formData.get('projectId') ?? '').trim();
   const folderId = String(formData.get('folderId') ?? '').trim();
+  const sourceDocumentId = String(formData.get('sourceDocumentId') ?? '').trim();
   const libraryName = String(formData.get('libraryName') ?? '').trim();
   const file = formData.get('file');
 
   if (!projectId || !isUuid(projectId)) {
     return NextResponse.json({ error: 'Invalid projectId' }, { status: 400 });
   }
-  if (!folderId || !isUuid(folderId)) {
+  if (sourceDocumentId && !isUuid(sourceDocumentId)) {
+    return NextResponse.json({ error: 'Invalid sourceDocumentId' }, { status: 400 });
+  }
+  if (!sourceDocumentId && (!folderId || !isUuid(folderId))) {
     return NextResponse.json({ error: 'Invalid folderId' }, { status: 400 });
   }
   if (!libraryName) {
@@ -49,6 +54,20 @@ export const POST = withAuth(async function POST(
   }
   if (file.size > MAX_FILE_BYTES) {
     return NextResponse.json({ error: 'File exceeds 10 MB limit' }, { status: 400 });
+  }
+
+  if (sourceDocumentId) {
+    try {
+      const source = await getDocumentExportSource(supabase, user.id, sourceDocumentId);
+      if (source.projectId !== projectId) {
+        return NextResponse.json(
+          { error: 'Source document not found in this project' },
+          { status: 404 }
+        );
+      }
+    } catch (error) {
+      return documentSourceErrorResponse(error);
+    }
   }
 
   const encoder = new TextEncoder();
@@ -95,10 +114,13 @@ export const POST = withAuth(async function POST(
           const result = await importStoryDocument(supabase, {
             userId: user.id,
             projectId,
-            folderId,
+            folderId: sourceDocumentId ? null : folderId,
             libraryName,
             document: resolved.document,
             fileName: file.name,
+            ...(sourceDocumentId
+              ? { documentSource: { sourceDocumentId, exportType: 'script' as const } }
+              : {}),
           });
           send({ type: 'result', result });
         } catch (error) {
@@ -133,6 +155,26 @@ export const POST = withAuth(async function POST(
     },
   });
 });
+
+function documentSourceErrorResponse(error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+  if (
+    message === 'Only admin users can export project content'
+    || (error instanceof Error && error.name === 'AuthorizationError')
+  ) {
+    return NextResponse.json({ error: message || 'Forbidden' }, { status: 403 });
+  }
+  if (message === 'Document is empty') {
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+  if (message === 'Document not found or not accessible') {
+    return NextResponse.json({ error: message }, { status: 404 });
+  }
+  console.error('[POST /api/import-script] Document source validation failed', {
+    name: error instanceof Error ? error.name : typeof error,
+  });
+  return NextResponse.json({ error: 'Failed to validate document source' }, { status: 500 });
+}
 
 function safeErrorMessage(error: unknown): string {
   const message = error instanceof Error

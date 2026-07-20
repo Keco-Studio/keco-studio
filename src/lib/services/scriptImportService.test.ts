@@ -36,6 +36,9 @@ function fakeSupabase(options: { failValueInsert?: boolean } = {}) {
           }
           return query;
         },
+        is() {
+          return query;
+        },
         limit() {
           if (table === 'libraries') {
             return Promise.resolve({ data: [], error: null });
@@ -52,6 +55,16 @@ function fakeSupabase(options: { failValueInsert?: boolean } = {}) {
           return query;
         },
         single() {
+          if (table === 'documents') {
+            return Promise.resolve({
+              data: {
+                id: '55555555-5555-4555-8555-555555555555',
+                project_id: '22222222-2222-4222-8222-222222222222',
+                folder_id: null,
+              },
+              error: null,
+            });
+          }
           if (table === 'folders') {
             return Promise.resolve({
               data: { id: '11111111-1111-4111-8111-111111111111', project_id: '22222222-2222-4222-8222-222222222222' },
@@ -166,6 +179,32 @@ describe('importScriptFromFile', () => {
     expect(fieldCall?.values).toHaveLength(buildStoryColumns(4).length);
     expect(buildStoryColumns(4).slice(17)).toEqual(['Option3', 'Option3_Next']);
     expect(result.rowCount).toBe(storyDocument.nodes.length);
+  });
+
+  it('persists a root document source on the imported script library', async () => {
+    const { supabase, insertCalls } = fakeSupabase();
+
+    await importStoryDocument(supabase, {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: null,
+      libraryName: 'Main Story',
+      document: storyDocument,
+      fileName: 'Main Story.txt',
+      documentSource: {
+        sourceDocumentId: '55555555-5555-4555-8555-555555555555',
+        exportType: 'script',
+      },
+    });
+
+    expect(insertCalls.find((call) => call.table === 'libraries')?.values).toEqual(
+      expect.objectContaining({
+        project_id: '22222222-2222-4222-8222-222222222222',
+        folder_id: null,
+        source_document_id: '55555555-5555-4555-8555-555555555555',
+        document_export_type: 'script',
+      })
+    );
   });
 
   it('removes a newly created library when a later value insert fails', async () => {

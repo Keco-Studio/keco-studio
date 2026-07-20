@@ -7,17 +7,21 @@ jest.mock('@supabase/supabase-js', () => ({ createClient: jest.fn() }));
 jest.mock('@/lib/createSupabaseServerClient', () => ({ createSupabaseServerClient: jest.fn() }));
 jest.mock('@/lib/services/scriptConversionService', () => ({ resolveStoryForImport: jest.fn() }));
 jest.mock('@/lib/services/scriptImportService', () => ({ importStoryDocument: jest.fn() }));
+jest.mock('@/lib/server/documentExportSourceService', () => ({ getDocumentExportSource: jest.fn() }));
 
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
+import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
 import { POST } from '@/app/api/import-script/route';
 
 const mockedCreateClient = createClient as jest.MockedFunction<typeof createClient>;
 const mockedResolve = resolveStoryForImport as jest.MockedFunction<typeof resolveStoryForImport>;
 const mockedImport = importStoryDocument as jest.MockedFunction<typeof importStoryDocument>;
+const mockedGetDocumentExportSource = getDocumentExportSource as jest.MockedFunction<typeof getDocumentExportSource>;
 
 const projectId = '22222222-2222-4222-8222-222222222222';
 const folderId = '11111111-1111-4111-8111-111111111111';
+const documentId = '55555555-5555-4555-8555-555555555555';
 const ref = { sourceId: 'modal', unitId: 'modal:0', start: 0, end: 5 };
 const document: StoryDocument = {
   version: 1,
@@ -25,12 +29,18 @@ const document: StoryDocument = {
   nodes: [{ label: 'Start', type: 'narration', content: 'Story', commands: [], options: [], sourceRefs: [ref] }],
 };
 
-function request(): NextRequest {
+function request(options: {
+  folderId?: string | null;
+  sourceDocumentId?: string;
+  projectId?: string;
+  fileContent?: string;
+} = {}): NextRequest {
   const form = new FormData();
-  form.append('projectId', projectId);
-  form.append('folderId', folderId);
+  form.append('projectId', options.projectId ?? projectId);
+  if (options.folderId !== null) form.append('folderId', options.folderId ?? folderId);
+  if (options.sourceDocumentId) form.append('sourceDocumentId', options.sourceDocumentId);
   form.append('libraryName', 'Story');
-  form.append('file', new File(['Story'], 'story.txt', { type: 'text/plain' }));
+  form.append('file', new File([options.fileContent ?? 'Story'], 'story.txt', { type: 'text/plain' }));
   return new NextRequest('https://example.test/api/import-script', {
     method: 'POST',
     headers: { Authorization: 'Bearer token' },
@@ -54,6 +64,14 @@ describe('POST /api/import-script streaming protocol', () => {
       return { document } as never;
     });
     mockedImport.mockResolvedValue({ libraryId: 'library-1', rowCount: 1, fieldCount: 11 });
+    mockedGetDocumentExportSource.mockResolvedValue({
+      documentId,
+      documentName: 'Server document',
+      projectId,
+      folderId: null,
+      markdown: 'Latest server markdown',
+      token: { epoch: 1, revision: 2 },
+    });
   });
 
   it('streams progress followed by one terminal result', async () => {
@@ -107,6 +125,85 @@ describe('POST /api/import-script streaming protocol', () => {
     const response = await POST(request());
     expect(await records(response)).toEqual([{ type: 'error', error: 'Semantic audit failed' }]);
     expect(mockedImport).not.toHaveBeenCalled();
+  });
+
+  it('allows a root document source and validates it before converting the frozen text', async () => {
+    const response = await POST(request({
+      folderId: null,
+      sourceDocumentId: documentId,
+      fileContent: 'Frozen modal markdown',
+    }));
+
+    expect(response.status).toBe(200);
+    expect((await records(response)).at(-1)).toEqual({
+      type: 'result',
+      result: { libraryId: 'library-1', rowCount: 1, fieldCount: 11 },
+    });
+    expect(mockedGetDocumentExportSource).toHaveBeenCalledWith(
+      expect.anything(),
+      'user-1',
+      documentId
+    );
+    expect(mockedGetDocumentExportSource.mock.invocationCallOrder[0]).toBeLessThan(
+      mockedResolve.mock.invocationCallOrder[0]
+    );
+    expect(mockedResolve).toHaveBeenCalledWith(
+      'Frozen modal markdown',
+      expect.any(Object)
+    );
+    expect(mockedImport).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      projectId,
+      folderId: null,
+      document,
+      documentSource: { sourceDocumentId: documentId, exportType: 'script' },
+    }));
+  });
+
+  it('rejects document exports from another project before conversion or writing', async () => {
+    mockedGetDocumentExportSource.mockResolvedValue({
+      documentId,
+      documentName: 'Other project document',
+      projectId: '66666666-6666-4666-8666-666666666666',
+      folderId: null,
+      markdown: 'Other project markdown',
+      token: { epoch: 1, revision: 1 },
+    });
+
+    const response = await POST(request({ folderId: null, sourceDocumentId: documentId }));
+
+    expect(response.status).not.toBe(200);
+    expect(mockedResolve).not.toHaveBeenCalled();
+    expect(mockedImport).not.toHaveBeenCalled();
+  });
+
+  it('rejects non-admin document exports before conversion or writing', async () => {
+    mockedGetDocumentExportSource.mockRejectedValue(
+      new Error('Only admin users can export project content')
+    );
+
+    const response = await POST(request({ folderId: null, sourceDocumentId: documentId }));
+
+    expect(response.status).toBe(403);
+    expect(mockedResolve).not.toHaveBeenCalled();
+    expect(mockedImport).not.toHaveBeenCalled();
+  });
+
+  it('still requires a UUID folder for ordinary imports', async () => {
+    const response = await POST(request({ folderId: null }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Invalid folderId' });
+    expect(mockedGetDocumentExportSource).not.toHaveBeenCalled();
+    expect(mockedResolve).not.toHaveBeenCalled();
+    expect(mockedImport).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid source document id before source lookup', async () => {
+    const response = await POST(request({ folderId: null, sourceDocumentId: 'not-a-uuid' }));
+
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: 'Invalid sourceDocumentId' });
+    expect(mockedGetDocumentExportSource).not.toHaveBeenCalled();
   });
 
   it('aborts conversion when the response consumer cancels the stream', async () => {

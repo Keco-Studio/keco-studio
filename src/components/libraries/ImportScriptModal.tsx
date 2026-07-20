@@ -7,15 +7,17 @@ import { useSupabase } from '@/lib/SupabaseContext';
 import { validateName } from '@/lib/utils/nameValidation';
 import { parseDocument, validateDesignFile } from '@/lib/document-parser';
 import { consumeImportStream } from '@/lib/import-script-stream';
+import type { DocumentExportSource } from '@/lib/documents/documentExportSource';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 import styles from './ImportScriptModal.module.css';
 
 type ImportScriptModalProps = {
   open: boolean;
   projectId: string;
-  folderId: string;
+  folderId: string | null;
   onClose: () => void;
   onImported?: (libraryId: string) => void;
+  documentSource?: DocumentExportSource;
   /** Pre-fill the text input (used by the agent "Edit in Import Modal" handoff). */
   initialText?: string;
   initialLibraryName?: string;
@@ -49,17 +51,21 @@ export function ImportScriptModal({
   folderId,
   onClose,
   onImported,
+  documentSource,
   initialText,
   initialLibraryName,
 }: ImportScriptModalProps) {
   const supabase = useSupabase();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [inputMode, setInputMode] = useState<InputMode>('file');
-  const [libraryName, setLibraryName] = useState('');
+  const [libraryName, setLibraryName] = useState(documentSource?.documentName ?? '');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parsedFileText, setParsedFileText] = useState<string | null>(null);
   const [textInput, setTextInput] = useState('');
-  const [preview, setPreview] = useState<PreviewInfo | null>(null);
+  const [frozenDocumentText] = useState(documentSource?.markdown ?? '');
+  const [preview, setPreview] = useState<PreviewInfo | null>(() =>
+    frozenDocumentText.trim() ? previewScript(frozenDocumentText) : null
+  );
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<ImportProgressEvent | null>(null);
   const [mounted, setMounted] = useState(false);
@@ -68,29 +74,31 @@ export function ImportScriptModal({
 
   // Pre-fill from the agent handoff when opened with initial content.
   useEffect(() => {
-    if (open && typeof initialText === 'string' && initialText.length > 0) {
+    if (!documentSource && open && typeof initialText === 'string' && initialText.length > 0) {
       setInputMode('text');
       setTextInput(initialText);
       if (initialLibraryName) setLibraryName(initialLibraryName);
     }
-  }, [open, initialText, initialLibraryName]);
+  }, [documentSource, open, initialText, initialLibraryName]);
 
   useEffect(() => {
     if (!open) {
-      setLibraryName('');
+      setLibraryName(documentSource?.documentName ?? '');
       setSelectedFile(null);
       setParsedFileText(null);
       setTextInput('');
-      setPreview(null);
+      setPreview(frozenDocumentText.trim() ? previewScript(frozenDocumentText) : null);
       setImportProgress(null);
       setInputMode('file');
     }
-  }, [open]);
+  }, [documentSource, frozenDocumentText, open]);
 
   useEffect(() => {
-    const source = inputMode === 'text' ? textInput : parsedFileText;
+    const source = documentSource
+      ? frozenDocumentText
+      : inputMode === 'text' ? textInput : parsedFileText;
     setPreview(source?.trim() ? previewScript(source) : null);
-  }, [textInput, inputMode, parsedFileText]);
+  }, [documentSource, frozenDocumentText, textInput, inputMode, parsedFileText]);
 
   const handleFileChange = async (file: File | null) => {
     if (!file) {
@@ -144,7 +152,14 @@ export function ImportScriptModal({
     let fileContent = '';
     let fileName = 'input.txt';
 
-    if (inputMode === 'file') {
+    if (documentSource) {
+      if (!frozenDocumentText.trim()) {
+        showErrorToast('Document is empty');
+        return;
+      }
+      fileContent = frozenDocumentText;
+      fileName = `${documentSource.documentName}.txt`;
+    } else if (inputMode === 'file') {
       if (!selectedFile || !parsedFileText?.trim()) {
         showErrorToast('Please select a file with text content');
         return;
@@ -170,7 +185,8 @@ export function ImportScriptModal({
 
       const formData = new FormData();
       formData.append('projectId', projectId);
-      formData.append('folderId', folderId);
+      if (folderId) formData.append('folderId', folderId);
+      if (documentSource) formData.append('sourceDocumentId', documentSource.documentId);
       formData.append('libraryName', trimmedName);
       formData.append('file', new File([fileContent], fileName, { type: 'text/plain' }));
 
@@ -201,9 +217,11 @@ export function ImportScriptModal({
     if (!importing && e.target === e.currentTarget) onClose();
   };
 
-  const canImport = inputMode === 'file'
-    ? !!parsedFileText?.trim() && !!libraryName.trim()
-    : !!textInput.trim() && !!libraryName.trim();
+  const canImport = documentSource
+    ? !!frozenDocumentText.trim() && !!libraryName.trim()
+    : inputMode === 'file'
+      ? !!parsedFileText?.trim() && !!libraryName.trim()
+      : !!textInput.trim() && !!libraryName.trim();
 
   if (!open) return null;
   if (!mounted) return null;
@@ -239,61 +257,72 @@ export function ImportScriptModal({
             />
           </div>
 
-          <div className={styles.tabContainer}>
-            <button
-              className={`${styles.tab} ${inputMode === 'file' ? styles.tabActive : ''}`}
-              data-testid="import-script-file-mode"
-              onClick={() => setInputMode('file')}
-              disabled={importing}
-            >
-              File upload
-            </button>
-            <button
-              className={`${styles.tab} ${inputMode === 'text' ? styles.tabActive : ''}`}
-              data-testid="import-script-text-mode"
-              onClick={() => setInputMode('text')}
-              disabled={importing}
-            >
-              Text input
-            </button>
-          </div>
+          {documentSource ? (
+            <div className={styles.documentSource} data-testid="import-script-document-source">
+              <span className={styles.documentSourceLabel}>Project document</span>
+              <strong>{documentSource.documentName}</strong>
+            </div>
+          ) : null}
 
-          {inputMode === 'file' ? (
-            <div className={styles.fileContainer}>
-              <input
-                ref={fileInputRef}
-                type="file"
-                data-testid="import-script-file"
-                accept=".txt,.md,.docx"
-                style={{ display: 'none' }}
-                onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
-                disabled={importing}
-              />
+          {!documentSource && (
+            <div className={styles.tabContainer}>
               <button
-                type="button"
-                className={styles.fileButton}
-                onClick={() => fileInputRef.current?.click()}
+                className={`${styles.tab} ${inputMode === 'file' ? styles.tabActive : ''}`}
+                data-testid="import-script-file-mode"
+                onClick={() => setInputMode('file')}
                 disabled={importing}
               >
-                {selectedFile ? 'Change file' : 'Select file'}
+                File upload
               </button>
-              {selectedFile && (
-                <p className={styles.fileName}>{selectedFile.name}</p>
-              )}
-              <p className={styles.fileHint}>.txt, .md, and .docx supported</p>
-            </div>
-          ) : (
-            <div className={styles.textContainer}>
-              <textarea
-                className={styles.textarea}
-                data-testid="import-script-text"
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                placeholder="Enter story text..."
+              <button
+                className={`${styles.tab} ${inputMode === 'text' ? styles.tabActive : ''}`}
+                data-testid="import-script-text-mode"
+                onClick={() => setInputMode('text')}
                 disabled={importing}
-                rows={10}
-              />
+              >
+                Text input
+              </button>
             </div>
+          )}
+
+          {!documentSource && (
+            inputMode === 'file' ? (
+              <div className={styles.fileContainer}>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  data-testid="import-script-file"
+                  accept=".txt,.md,.docx"
+                  style={{ display: 'none' }}
+                  onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+                  disabled={importing}
+                />
+                <button
+                  type="button"
+                  className={styles.fileButton}
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={importing}
+                >
+                  {selectedFile ? 'Change file' : 'Select file'}
+                </button>
+                {selectedFile && (
+                  <p className={styles.fileName}>{selectedFile.name}</p>
+                )}
+                <p className={styles.fileHint}>.txt, .md, and .docx supported</p>
+              </div>
+            ) : (
+              <div className={styles.textContainer}>
+                <textarea
+                  className={styles.textarea}
+                  data-testid="import-script-text"
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  placeholder="Enter story text..."
+                  disabled={importing}
+                  rows={10}
+                />
+              </div>
+            )
           )}
 
           {preview && (
