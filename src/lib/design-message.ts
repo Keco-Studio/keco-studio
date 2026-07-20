@@ -46,8 +46,9 @@ export function buildDesignMessage(params: BuildDesignMessageParams): string {
   );
   if (params.documentId) {
     parts.push(
-      `${sourceKind === 'project-document' ? 'The project document source' : 'The uploaded source'} is also stored as project document ${params.documentId}. ` +
-        'Use read_document when you need the latest logical document state.'
+      sourceKind === 'project-document'
+        ? `This request is bound to signed frozen snapshot ${params.documentId}; use the provided content exactly for this export. Later document edits do not change this snapshot.`
+        : `The uploaded source is also stored as project document ${params.documentId}. Use read_document when you need the latest logical document state.`
     );
   }
 

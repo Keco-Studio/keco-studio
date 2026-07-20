@@ -15,6 +15,7 @@ jest.mock('@/lib/services/authorizationService', () => ({
 }));
 
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
+import { verifyDocumentExportSnapshotToken } from '@/lib/server/documentExportSnapshotSigning';
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const DOCUMENT_ID = '22222222-2222-4222-8222-222222222222';
@@ -47,9 +48,8 @@ describe('getDocumentExportSource', () => {
   it('freezes the latest authoritative Markdown and document placement', async () => {
     const supabase = makeSupabase();
 
-    await expect(
-      getDocumentExportSource(supabase, 'admin-id', DOCUMENT_ID)
-    ).resolves.toEqual({
+    const source = await getDocumentExportSource(supabase, 'admin-id', DOCUMENT_ID);
+    expect(source).toMatchObject({
       documentId: DOCUMENT_ID,
       documentName: 'World Notes',
       projectId: PROJECT_ID,
@@ -57,6 +57,8 @@ describe('getDocumentExportSource', () => {
       markdown: '# Latest\nBody',
       token: { epoch: 2, revision: 7 },
     });
+    const { snapshotToken: _snapshotToken, ...unsignedSource } = source;
+    expect(verifyDocumentExportSnapshotToken(source.snapshotToken!)).toEqual(unsignedSource);
     expect(readDocumentState).toHaveBeenCalledWith(supabase, DOCUMENT_ID);
     expect(getUserProjectRole).toHaveBeenCalledWith(supabase, PROJECT_ID, 'admin-id');
   });

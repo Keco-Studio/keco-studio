@@ -82,16 +82,28 @@ test.describe('Design document upload', () => {
     await expect(page.getByTestId('design-upload-large-warning')).toBeVisible();
   });
 
-  for (const role of ['editor', 'viewer'] as const) {
-    test(`disables document submission for ${role}s`, async ({ page }) => {
-      await login(page, role === 'editor' ? editor : viewer);
-      await page.goto(`/${projectId}/design-upload`);
+  test('allows editors to select a design document', async ({ page }) => {
+    await login(page, editor);
+    await page.goto(`/${projectId}/design-upload`);
 
-      await expect(page.getByText('Only administrators can generate tables from a design document.')).toBeVisible({ timeout: 15000 });
-      await expect(page.getByTestId('design-upload-file-input')).toBeDisabled();
-      await expect(page.getByTestId('design-upload-submit')).toBeDisabled();
+    await expect(page.getByTestId('design-upload-permission-warning')).toHaveCount(0);
+    await expect(page.getByTestId('design-upload-file-input')).toBeEnabled();
+    await page.getByTestId('design-upload-file-input').setInputFiles({
+      name: 'editor-design.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Editor design'),
     });
-  }
+    await expect(page.getByTestId('design-upload-submit')).toBeEnabled();
+  });
+
+  test('keeps viewer submission disabled', async ({ page }) => {
+    await login(page, viewer);
+    await page.goto(`/${projectId}/design-upload`);
+
+    await expect(page.getByText('requires editor or admin permission')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByTestId('design-upload-file-input')).toBeDisabled();
+    await expect(page.getByTestId('design-upload-submit')).toBeDisabled();
+  });
 
   test('hands a valid text design back to the project', async ({ page }) => {
     await login(page, owner);

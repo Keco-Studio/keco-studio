@@ -16,6 +16,7 @@ export type UserRole = 'admin' | 'editor' | 'viewer';
 export interface DocumentTableExportContext {
   sourceDocumentId: string;
   exportType: 'table';
+  snapshotToken?: string;
 }
 
 /**

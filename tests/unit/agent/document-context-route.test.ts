@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 
+jest.mock('server-only', () => ({}));
+
 const AUTH_USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const BOUND_PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const MALICIOUS_PROJECT_ID = '99999999-9999-4999-8999-999999999999';
@@ -59,6 +61,7 @@ jest.mock('@/lib/agent/sse', () => ({
 
 import { POST as chatPost } from '@/app/api/agent-chat/route';
 import { POST as confirmPost } from '@/app/api/agent-chat/confirm/route';
+import { createDocumentExportSnapshotToken } from '@/lib/server/documentExportSnapshotSigning';
 
 const conversation = {
   id: 'conversation-id',
@@ -69,7 +72,19 @@ const conversation = {
   created_at: '2026-07-16T00:00:00.000Z',
   updated_at: '2026-07-16T00:00:00.000Z',
 };
-const documentExport = { sourceDocumentId: DOCUMENT_ID, exportType: 'table' as const };
+const snapshot = {
+  documentId: DOCUMENT_ID,
+  documentName: 'World Notes',
+  projectId: BOUND_PROJECT_ID,
+  folderId: null,
+  markdown: '# World',
+  token: { epoch: 1, revision: 1 },
+};
+const documentExport = {
+  sourceDocumentId: DOCUMENT_ID,
+  exportType: 'table' as const,
+  snapshotToken: createDocumentExportSnapshotToken(snapshot),
+};
 
 function request(path: string, body: Record<string, unknown>): NextRequest {
   return new NextRequest(`https://example.test${path}`, {
@@ -99,14 +114,7 @@ describe('agent chat route current-document project boundary', () => {
     jest.clearAllMocks();
     getOrCreateConversation.mockResolvedValue(conversation);
     resolveUserRole.mockResolvedValue('editor');
-    getDocumentExportSource.mockResolvedValue({
-      documentId: DOCUMENT_ID,
-      documentName: 'World Notes',
-      projectId: BOUND_PROJECT_ID,
-      folderId: null,
-      markdown: '# World',
-      token: { epoch: 1, revision: 1 },
-    });
+    getDocumentExportSource.mockResolvedValue({ ...snapshot, snapshotToken: documentExport.snapshotToken });
     resolveDocumentForTool.mockImplementation(
       async (_supabase: unknown, projectId: string, input: { documentId: string }) =>
         currentDocumentResult(projectId, input.documentId)
@@ -223,6 +231,14 @@ describe('agent chat route current-document project boundary', () => {
       folderId: null,
       markdown: '# Other',
       token: { epoch: 1, revision: 1 },
+      snapshotToken: createDocumentExportSnapshotToken({
+        documentId: DOCUMENT_ID,
+        documentName: 'Other project notes',
+        projectId: MALICIOUS_PROJECT_ID,
+        folderId: null,
+        markdown: '# Other',
+        token: { epoch: 1, revision: 1 },
+      }),
     });
 
     const response = await chatPost(
@@ -239,10 +255,58 @@ describe('agent chat route current-document project boundary', () => {
     expect(runAgentTurn).not.toHaveBeenCalled();
   });
 
+  it('rejects a tampered snapshot token before creating a conversation', async () => {
+    resolveUserRole.mockResolvedValue('admin');
+    const tampered = {
+      ...documentExport,
+      snapshotToken: `${documentExport.snapshotToken!.slice(0, -1)}0`,
+    };
+    const response = await chatPost(
+      request('/api/agent-chat', {
+        projectId: BOUND_PROJECT_ID,
+        message: 'Forged content',
+        documentExport: tampered,
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(400);
+    expect(getOrCreateConversation).not.toHaveBeenCalled();
+    expect(runAgentTurn).not.toHaveBeenCalled();
+  });
+
+  it('uses the signed snapshot instead of a client-supplied table message', async () => {
+    resolveUserRole.mockResolvedValue('admin');
+    getOrCreateConversation.mockImplementation(async (_supabase, params) => ({
+      ...conversation,
+      meta: { autoExecute: false, documentExport: params.documentExport },
+    }));
+    const response = await chatPost(
+      request('/api/agent-chat', {
+        projectId: BOUND_PROJECT_ID,
+        message: '[Document content]\nCLIENT FORGED',
+        documentExport,
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(200);
+    expect(runAgentTurn.mock.calls[0][0].userMessage).toContain('# World');
+    expect(runAgentTurn.mock.calls[0][0].userMessage).not.toContain('CLIENT FORGED');
+  });
+
   it('ignores a new request binding for an existing conversation', async () => {
     const persistedExport = {
       sourceDocumentId: OTHER_DOCUMENT_ID,
       exportType: 'table' as const,
+      snapshotToken: createDocumentExportSnapshotToken({
+        documentId: OTHER_DOCUMENT_ID,
+        documentName: 'Persisted',
+        projectId: BOUND_PROJECT_ID,
+        folderId: null,
+        markdown: '# Persisted',
+        token: { epoch: 1, revision: 1 },
+      }),
     };
     getOrCreateConversation.mockResolvedValue({
       ...conversation,

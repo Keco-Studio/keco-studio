@@ -103,6 +103,7 @@ function isDocumentExportSource(value: unknown): value is DocumentExportSource {
     typeof source.projectId === 'string' &&
     (source.folderId === null || typeof source.folderId === 'string') &&
     typeof source.markdown === 'string' &&
+    typeof source.snapshotToken === 'string' &&
     typeof source.token?.epoch === 'number' &&
     typeof source.token?.revision === 'number'
   );
@@ -204,6 +205,7 @@ function DocumentEditorSession({
               documentExport: {
                 sourceDocumentId: source.documentId,
                 exportType: 'table',
+                snapshotToken: source.snapshotToken,
               },
             });
             window.dispatchEvent(

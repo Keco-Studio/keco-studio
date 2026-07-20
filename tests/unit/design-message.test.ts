@@ -68,6 +68,8 @@ describe('buildDesignMessage', () => {
 
     expect(msg).toContain('The user selected the project document "Project notes".');
     expect(msg).not.toContain('The user uploaded a design document');
+    expect(msg).toContain('signed frozen snapshot');
+    expect(msg).not.toContain('Use read_document when you need the latest logical document state.');
     expect(parseDesignMessage(msg)).toEqual({ fileName: 'Project notes' });
   });
 });

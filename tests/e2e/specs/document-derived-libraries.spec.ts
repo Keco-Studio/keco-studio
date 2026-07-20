@@ -526,6 +526,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
               folderId: null,
               markdown: ROOT_SNAPSHOT_MARKDOWN,
               token: { epoch: 1, revision: 7 },
+              snapshotToken: 'test-snapshot-token',
             },
           }),
         });
@@ -572,6 +573,7 @@ test.describe.serial('Document-derived library lifecycle', () => {
     expect(importRequestBody).toContain(ROOT_SNAPSHOT_MARKDOWN.trim());
     expect(importRequestBody).not.toContain(ROOT_CHANGED_MARKDOWN.trim());
     expect(importRequestBody).toContain(fixture.rootDocument.id);
+    expect(importRequestBody).toContain('test-snapshot-token');
 
     const { data: library, error } = await admin
       .from('libraries')

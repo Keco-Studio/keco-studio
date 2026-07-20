@@ -3,6 +3,7 @@ import { withAuth } from '@/lib/auth/route-auth';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
+import { verifyDocumentExportSnapshotToken, type DocumentExportSnapshot } from '@/lib/server/documentExportSnapshotSigning';
 import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-plan/conversion';
 
 export const maxDuration = 300;
@@ -29,6 +30,7 @@ export const POST = withAuth(async function POST(
   const projectId = String(formData.get('projectId') ?? '').trim();
   const folderId = String(formData.get('folderId') ?? '').trim();
   const sourceDocumentId = String(formData.get('sourceDocumentId') ?? '').trim();
+  const snapshotToken = String(formData.get('snapshotToken') ?? '').trim();
   const libraryName = String(formData.get('libraryName') ?? '').trim();
   const file = formData.get('file');
 
@@ -37,6 +39,9 @@ export const POST = withAuth(async function POST(
   }
   if (sourceDocumentId && !isUuid(sourceDocumentId)) {
     return NextResponse.json({ error: 'Invalid sourceDocumentId' }, { status: 400 });
+  }
+  if (sourceDocumentId && !snapshotToken) {
+    return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
   }
   if (!sourceDocumentId && (!folderId || !isUuid(folderId))) {
     return NextResponse.json({ error: 'Invalid folderId' }, { status: 400 });
@@ -56,6 +61,7 @@ export const POST = withAuth(async function POST(
     return NextResponse.json({ error: 'File exceeds 10 MB limit' }, { status: 400 });
   }
 
+  let verifiedSource: DocumentExportSnapshot | undefined;
   if (sourceDocumentId) {
     try {
       const source = await getDocumentExportSource(supabase, user.id, sourceDocumentId);
@@ -65,7 +71,21 @@ export const POST = withAuth(async function POST(
           { status: 404 }
         );
       }
+      verifiedSource = verifyDocumentExportSnapshotToken(snapshotToken);
+      if (
+        verifiedSource.documentId !== sourceDocumentId ||
+        verifiedSource.projectId !== projectId
+      ) {
+        return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
+      }
     } catch (error) {
+      if (
+        error instanceof Error &&
+        (error.message === 'Invalid document export snapshot' ||
+          error.message === 'Invalid document export snapshot token')
+      ) {
+        return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
+      }
       return documentSourceErrorResponse(error);
     }
   }
@@ -95,7 +115,7 @@ export const POST = withAuth(async function POST(
       };
       void (async () => {
         try {
-          const fileContent = await file.text();
+          const fileContent = verifiedSource?.markdown ?? await file.text();
           const resolved = await resolveStoryForImport(fileContent, {
             sourceId: `modal:${crypto.randomUUID()}`,
             signal: conversionController.signal,

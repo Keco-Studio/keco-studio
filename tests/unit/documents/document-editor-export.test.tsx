@@ -332,6 +332,7 @@ describe('DocumentEditor export durability', () => {
       folderId: null,
       markdown: '| Name | Value |',
       token: { epoch: 4, revision: 9 },
+      snapshotToken: 'signed-snapshot-token',
     };
     (fetch as jest.Mock)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
@@ -348,7 +349,11 @@ describe('DocumentEditor export durability', () => {
       message: 'built design message',
       fileName: 'Export me',
       documentId: 'document-id',
-      documentExport: { sourceDocumentId: 'document-id', exportType: 'table' },
+      documentExport: {
+        sourceDocumentId: 'document-id',
+        exportType: 'table',
+        snapshotToken: 'signed-snapshot-token',
+      },
     });
     expect(window.dispatchEvent).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'design-upload:submitted', detail: { projectId: 'project-id' } })
@@ -370,6 +375,7 @@ describe('DocumentEditor export durability', () => {
       folderId: 'folder-id',
       markdown: 'Scene: Start',
       token: { epoch: 7, revision: 3 },
+      snapshotToken: 'signed-snapshot-token',
     };
     (fetch as jest.Mock)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
@@ -397,6 +403,7 @@ describe('DocumentEditor export durability', () => {
       folderId: null,
       markdown: '| Name | Value |',
       token: { epoch: 4, revision: 9 },
+      snapshotToken: 'signed-snapshot-token',
     };
     (fetch as jest.Mock)
       .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });

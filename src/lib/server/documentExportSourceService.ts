@@ -3,6 +3,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import type { DocumentExportSource } from '@/lib/documents/documentExportSource';
 import { documentStateGateway } from '@/lib/documents/documentStateGateway';
 import { getUserProjectRole } from '@/lib/services/authorizationService';
+import { createDocumentExportSnapshotToken } from './documentExportSnapshotSigning';
 
 export async function getDocumentExportSource(
   supabase: SupabaseClient,
@@ -27,12 +28,16 @@ export async function getDocumentExportSource(
     throw new Error('Document is empty');
   }
 
-  return {
+  const source = {
     documentId,
     documentName: data.name,
     projectId: state.projectId,
     folderId: data.folder_id ?? null,
     markdown: state.markdown,
     token: state.token,
+  };
+  return {
+    ...source,
+    snapshotToken: createDocumentExportSnapshotToken(source),
   };
 }

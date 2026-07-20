@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { NextRequest } from 'next/server';
+
+jest.mock('server-only', () => ({}));
 import { createClient } from '@supabase/supabase-js';
 import type { StoryDocument } from '@/lib/story-ir/schema';
 
@@ -13,6 +15,7 @@ import { resolveStoryForImport } from '@/lib/services/scriptConversionService';
 import { importStoryDocument } from '@/lib/services/scriptImportService';
 import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
 import { POST } from '@/app/api/import-script/route';
+import { createDocumentExportSnapshotToken } from '@/lib/server/documentExportSnapshotSigning';
 
 const mockedCreateClient = createClient as jest.MockedFunction<typeof createClient>;
 const mockedResolve = resolveStoryForImport as jest.MockedFunction<typeof resolveStoryForImport>;
@@ -34,11 +37,22 @@ function request(options: {
   sourceDocumentId?: string;
   projectId?: string;
   fileContent?: string;
+  snapshotToken?: string;
 } = {}): NextRequest {
   const form = new FormData();
   form.append('projectId', options.projectId ?? projectId);
   if (options.folderId !== null) form.append('folderId', options.folderId ?? folderId);
-  if (options.sourceDocumentId) form.append('sourceDocumentId', options.sourceDocumentId);
+  if (options.sourceDocumentId) {
+    form.append('sourceDocumentId', options.sourceDocumentId);
+    form.append('snapshotToken', options.snapshotToken ?? createDocumentExportSnapshotToken({
+      documentId: options.sourceDocumentId,
+      documentName: 'Server document',
+      projectId: options.projectId ?? projectId,
+      folderId: null,
+      markdown: 'Latest server markdown',
+      token: { epoch: 1, revision: 2 },
+    }));
+  }
   form.append('libraryName', 'Story');
   form.append('file', new File([options.fileContent ?? 'Story'], 'story.txt', { type: 'text/plain' }));
   return new NextRequest('https://example.test/api/import-script', {
@@ -71,6 +85,14 @@ describe('POST /api/import-script streaming protocol', () => {
       folderId: null,
       markdown: 'Latest server markdown',
       token: { epoch: 1, revision: 2 },
+      snapshotToken: createDocumentExportSnapshotToken({
+        documentId,
+        documentName: 'Server document',
+        projectId,
+        folderId: null,
+        markdown: 'Latest server markdown',
+        token: { epoch: 1, revision: 2 },
+      }),
     });
   });
 
@@ -148,7 +170,7 @@ describe('POST /api/import-script streaming protocol', () => {
       mockedResolve.mock.invocationCallOrder[0]
     );
     expect(mockedResolve).toHaveBeenCalledWith(
-      'Frozen modal markdown',
+      'Latest server markdown',
       expect.any(Object)
     );
     expect(mockedImport).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
@@ -172,6 +194,26 @@ describe('POST /api/import-script streaming protocol', () => {
     const response = await POST(request({ folderId: null, sourceDocumentId: documentId }));
 
     expect(response.status).not.toBe(200);
+    expect(mockedResolve).not.toHaveBeenCalled();
+    expect(mockedImport).not.toHaveBeenCalled();
+  });
+
+  it('rejects a tampered document snapshot before conversion or writing', async () => {
+    const valid = createDocumentExportSnapshotToken({
+      documentId,
+      documentName: 'Server document',
+      projectId,
+      folderId: null,
+      markdown: 'Latest server markdown',
+      token: { epoch: 1, revision: 2 },
+    });
+    const response = await POST(request({
+      folderId: null,
+      sourceDocumentId: documentId,
+      snapshotToken: `${valid.slice(0, -1)}0`,
+    }));
+
+    expect(response.status).toBe(400);
     expect(mockedResolve).not.toHaveBeenCalled();
     expect(mockedImport).not.toHaveBeenCalled();
   });

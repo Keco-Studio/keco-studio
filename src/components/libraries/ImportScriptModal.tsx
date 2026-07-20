@@ -204,6 +204,7 @@ export function ImportScriptModal({
       if (!documentSnapshot && folderId) formData.append('folderId', folderId);
       if (documentSnapshot) {
         formData.append('sourceDocumentId', documentSnapshot.documentId);
+        formData.append('snapshotToken', documentSnapshot.snapshotToken ?? '');
       }
       formData.append('libraryName', trimmedName);
       formData.append('file', new File([fileContent], fileName, { type: 'text/plain' }));

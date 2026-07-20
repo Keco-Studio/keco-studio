@@ -41,7 +41,7 @@ export default function DesignUploadPage() {
     };
   }, [projectId, supabase]);
 
-  const canGenerateTables = role === 'admin';
+  const canGenerateTables = role !== null && role !== 'viewer';
 
   const handleFileSelected = (next: File) => {
     const validation = validateDesignFile(next);
@@ -85,10 +85,6 @@ export default function DesignUploadPage() {
         fileName: file.name,
         imageUrls: imported.imageUrls,
         documentId: imported.document.id,
-        documentExport: {
-          sourceDocumentId: imported.document.id,
-          exportType: 'table',
-        },
       });
       window.dispatchEvent(
         new CustomEvent(DESIGN_UPLOAD_EVENT, { detail: { projectId } })
@@ -150,7 +146,7 @@ export default function DesignUploadPage() {
 
         {role !== null && !canGenerateTables && (
           <div className={styles.warning} data-testid="design-upload-permission-warning">
-            Only administrators can generate tables from a design document.
+            Your role is viewer; generating tables requires editor or admin permission.
           </div>
         )}
 

@@ -19,13 +19,12 @@ describe('design upload durable document wiring', () => {
 
   it('passes the durable document id into the agent handoff', () => {
     expect(page).toContain('documentId: imported.document.id');
-    expect(page).toContain('sourceDocumentId: imported.document.id');
-    expect(page).toContain("exportType: 'table'");
+    expect(page).not.toContain('documentExport');
   });
 
-  it('allows only administrators to generate tables', () => {
-    expect(page).toContain("const canGenerateTables = role === 'admin'");
-    expect(page).toContain('Only administrators can generate tables from a design document.');
+  it('allows editors and administrators while keeping viewers disabled', () => {
+    expect(page).toContain("const canGenerateTables = role !== null && role !== 'viewer'");
+    expect(page).toContain('requires editor or admin permission');
     expect(page).not.toContain("const isViewer = role === 'viewer'");
   });
 });
