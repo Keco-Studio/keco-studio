@@ -357,6 +357,11 @@ test.describe.serial('Document-derived library lifecycle', () => {
     });
     await expect(sidebarTitle(page, tableName)).toHaveCount(1, { timeout: 30_000 });
 
+    // The assistant panel overlays the document toolbar after a table export.
+    // Close it before opening the document export menu for the script flow.
+    await page.getByTestId('agent-panel').getByRole('button', { name: '✕' }).click();
+    await expect(page.getByTestId('agent-launcher')).toBeVisible();
+
     menu = await openExportMenu(page);
     await menu.getByText('Export as script', { exact: true }).click();
     const modal = page.getByTestId('import-script-modal');
