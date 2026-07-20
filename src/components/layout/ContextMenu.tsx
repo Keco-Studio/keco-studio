@@ -32,13 +32,6 @@ type ContextMenuProps = {
 export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProjectOwner, isDerivedLibrary, elementRef }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
-  const [mounted, setMounted] = useState(false);
-
-  // Ensure component is mounted before using portal
-  useEffect(() => {
-    setMounted(true);
-    return () => setMounted(false);
-  }, []);
 
   // Update position when element moves (e.g., on scroll)
   useEffect(() => {
@@ -539,8 +532,9 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
     );
   };
 
-  // Don't render until mounted (to avoid SSR issues with portal)
-  if (!mounted) {
+  // The server has no document/portal target. The client renders the portal
+  // immediately, avoiding a blank first render for context-menu consumers.
+  if (typeof document === 'undefined') {
     return null;
   }
 

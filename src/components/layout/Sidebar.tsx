@@ -35,12 +35,10 @@ import { Library, deleteLibrary, moveLibraryToFolder } from "@/lib/services/libr
 import { Folder, deleteFolder } from "@/lib/services/folderService";
 import {
   updateDocumentName,
-  moveDocument,
   type DocumentRecord,
   type DocumentSummary,
 } from "@/lib/services/documentService";
 import { broadcastProjectDocumentUpdate } from "@/lib/documents/projectDocumentChannel";
-import { DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT } from "@/lib/documents/documentDerivedLibraryEvents";
 import { flushOpenDocumentEditor } from "@/lib/documents/documentFlushRegistry";
 import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
 import { MoveDocumentModal } from "@/components/documents/MoveDocumentModal";
@@ -61,7 +59,11 @@ import { useSidebarAssets } from "./hooks/useSidebarAssets";
 import { useSidebarProjectRole } from "./hooks/useSidebarProjectRole";
 import { useSidebarWindowEvents } from "./hooks/useSidebarWindowEvents";
 import { useSidebarRealtime } from "./hooks/useSidebarRealtime";
-import { useSidebarContextMenuActions } from "./hooks/useSidebarContextMenuActions";
+import {
+  moveSidebarDocument,
+  useSidebarContextMenuActions,
+  useSidebarDocumentDerivedLibraryLifecycle,
+} from "./hooks/useSidebarContextMenuActions";
 import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
@@ -487,30 +489,13 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
   }, []);
 
-  useEffect(() => {
-    const handleDerivedLibraryCreated = (event: Event) => {
-      const detail = (event as CustomEvent<{
-        projectId: string;
-        sourceDocumentId?: string;
-        documentId?: string;
-      }>).detail;
-      if (!detail || detail.projectId !== currentIds.projectId) return;
-      const documentId = detail.sourceDocumentId ?? detail.documentId;
-      if (!documentId) return;
-      void invalidateLibraryData(queryClient, {
-        projectId: currentIds.projectId,
-        refetchActiveFoldersLibraries: true,
-      });
-      const sourceDocument = documents.find((document) => document.id === documentId);
-      expandFolder(sourceDocument?.folder_id);
-      setExpandedKeys((previous) => {
-        const documentKey = `document-${documentId}`;
-        return previous.includes(documentKey) ? previous : [...previous, documentKey];
-      });
-    };
-    window.addEventListener(DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT, handleDerivedLibraryCreated);
-    return () => window.removeEventListener(DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT, handleDerivedLibraryCreated);
-  }, [currentIds.projectId, documents, expandFolder, queryClient]);
+  useSidebarDocumentDerivedLibraryLifecycle({
+    currentProjectId: currentIds.projectId,
+    documents,
+    queryClient,
+    expandFolder,
+    setExpandedKeys,
+  });
 
   /**
    * Flush open document autosave before leaving the editor route. If the flush
@@ -844,20 +829,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (!movingDocumentId) return;
     setIsMovingDocument(true);
     try {
-      await moveDocument(supabase, movingDocumentId, { folderId });
-      if (currentIds.projectId) {
-        void broadcastProjectDocumentUpdate({
-          documentId: movingDocumentId,
-          projectId: currentIds.projectId,
-          action: 'move',
-        });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.documents(currentIds.projectId) });
-        await invalidateLibraryData(queryClient, {
-          projectId: currentIds.projectId,
-          refetchActiveFoldersLibraries: true,
-        });
-      }
-      expandFolder(folderId);
+      await moveSidebarDocument({
+        supabase,
+        documentId: movingDocumentId,
+        folderId,
+        projectId: currentIds.projectId,
+        queryClient,
+        expandFolder,
+      });
       showSuccessToast('Document moved successfully');
       setMovingDocumentId(null);
     } catch (err: unknown) {

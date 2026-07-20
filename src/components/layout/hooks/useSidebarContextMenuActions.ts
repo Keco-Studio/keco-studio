@@ -1,6 +1,12 @@
 'use client';
 
-import { useCallback } from 'react';
+import {
+  useCallback,
+  useEffect,
+  type Dispatch,
+  type Key,
+  type SetStateAction,
+} from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
@@ -8,7 +14,10 @@ import { ContextMenuAction } from '@/components/layout/ContextMenu';
 import type { SidebarContextMenuState } from './useSidebarContextMenu';
 import { deleteLibrary } from '@/lib/services/libraryService';
 import { deleteFolder } from '@/lib/services/folderService';
-import { deleteDocument } from '@/lib/services/documentService';
+import {
+  deleteDocument,
+  moveDocument,
+} from '@/lib/services/documentService';
 import { broadcastProjectDocumentUpdate } from '@/lib/documents/projectDocumentChannel';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import {
@@ -18,6 +27,94 @@ import {
 } from '@/lib/queryInvalidation';
 import type { Library } from '@/lib/services/libraryService';
 import type { SidebarAssetRow } from './useSidebarAssets';
+import type { DocumentSummary } from '@/lib/services/documentService';
+import {
+  DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT,
+  type DocumentDerivedLibraryCreatedDetail,
+} from '@/lib/documents/documentDerivedLibraryEvents';
+
+export async function moveSidebarDocument({
+  supabase,
+  documentId,
+  folderId,
+  projectId,
+  queryClient,
+  expandFolder,
+}: {
+  supabase: SupabaseClient;
+  documentId: string;
+  folderId: string | null;
+  projectId: string | null;
+  queryClient: QueryClient;
+  expandFolder: (folderId: string | null | undefined) => void;
+}) {
+  await moveDocument(supabase, documentId, { folderId });
+  if (projectId) {
+    void broadcastProjectDocumentUpdate({
+      documentId,
+      projectId,
+      action: 'move',
+    });
+    await queryClient.invalidateQueries({
+      queryKey: queryKeys.documents(projectId),
+    });
+    await invalidateLibraryData(queryClient, {
+      projectId,
+      refetchActiveFoldersLibraries: true,
+    });
+  }
+  expandFolder(folderId);
+}
+
+type UseSidebarDocumentDerivedLibraryLifecycleParams = {
+  currentProjectId: string | null;
+  documents: DocumentSummary[];
+  queryClient: QueryClient;
+  expandFolder: (folderId: string | null | undefined) => void;
+  setExpandedKeys: Dispatch<SetStateAction<Key[]>>;
+};
+
+export function useSidebarDocumentDerivedLibraryLifecycle({
+  currentProjectId,
+  documents,
+  queryClient,
+  expandFolder,
+  setExpandedKeys,
+}: UseSidebarDocumentDerivedLibraryLifecycleParams) {
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleDerivedLibraryCreated = (event: Event) => {
+      const detail = (event as CustomEvent<DocumentDerivedLibraryCreatedDetail>).detail;
+      if (!detail || detail.projectId !== currentProjectId) return;
+
+      void invalidateLibraryData(queryClient, {
+        projectId: currentProjectId,
+        refetchActiveFoldersLibraries: true,
+      });
+      const sourceDocument = documents.find(
+        (document) => document.id === detail.documentId
+      );
+      expandFolder(sourceDocument?.folder_id);
+      setExpandedKeys((previous) => {
+        const documentKey = `document-${detail.documentId}`;
+        return previous.includes(documentKey)
+          ? previous
+          : [...previous, documentKey];
+      });
+    };
+
+    window.addEventListener(
+      DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT,
+      handleDerivedLibraryCreated
+    );
+    return () =>
+      window.removeEventListener(
+        DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT,
+        handleDerivedLibraryCreated
+      );
+  }, [currentProjectId, documents, expandFolder, queryClient, setExpandedKeys]);
+}
 
 export type UseSidebarContextMenuActionsParams = {
   contextMenu: SidebarContextMenuState;
