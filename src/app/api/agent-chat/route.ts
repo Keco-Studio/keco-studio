@@ -9,7 +9,8 @@ import { sseResponse } from '@/lib/agent/sse';
 import { sanitizeImageUrls } from '@/lib/agent/image-url-validation';
 import { isAgentSelectionContext } from '@/lib/agent/selection-context';
 import { resolveCurrentDocumentContext } from '@/lib/agent/current-document-context';
-import type { ToolContext } from '@/lib/agent/types';
+import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
+import type { DocumentTableExportContext, ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
 export const maxDuration = 120;
@@ -36,6 +37,7 @@ export const POST = withAuth(async function POST(
     currentSectionName?: string;
     /** Default for newly created conversations (from user preference). */
     autoExecute?: unknown;
+    documentExport?: unknown;
   };
   try {
     body = await request.json();
@@ -69,6 +71,45 @@ export const POST = withAuth(async function POST(
     const initialAutoExecute =
       typeof body.autoExecute === 'boolean' ? body.autoExecute : false;
 
+    let documentExport: DocumentTableExportContext | undefined;
+    if (isNewConversation && body.documentExport !== undefined) {
+      const requested = body.documentExport as {
+        sourceDocumentId?: unknown;
+        exportType?: unknown;
+      };
+      const sourceDocumentId =
+        typeof requested?.sourceDocumentId === 'string'
+          ? requested.sourceDocumentId.trim()
+          : '';
+      if (requested?.exportType !== 'table' || !isUuid(sourceDocumentId)) {
+        return NextResponse.json({ error: 'Invalid documentExport' }, { status: 400 });
+      }
+
+      let source;
+      try {
+        source = await getDocumentExportSource(supabase, user.id, sourceDocumentId);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error.message === 'Only admin users can export project content' ||
+            error.name === 'AuthorizationError')
+        ) {
+          return NextResponse.json(
+            { error: 'Only admin users can export project content' },
+            { status: 403 }
+          );
+        }
+        throw error;
+      }
+      if (source.projectId !== bodyProjectId) {
+        return NextResponse.json(
+          { error: 'Source document not found in this project' },
+          { status: 400 }
+        );
+      }
+      documentExport = { sourceDocumentId, exportType: 'table' };
+    }
+
     // For a new conversation, snapshot the scope from live navigation.
     const scopeSnapshot = isNewConversation
       ? resolveScopeFromNavigation({
@@ -88,6 +129,7 @@ export const POST = withAuth(async function POST(
       projectId: bodyProjectId,
       initialAutoExecute,
       scope: scopeSnapshot,
+      ...(documentExport ? { documentExport } : {}),
     });
 
     // The conversation's own binding is authoritative from here on. For existing
@@ -116,6 +158,7 @@ export const POST = withAuth(async function POST(
       conversationId: conversation.id,
       supabase,
       userRole,
+      documentExport: boundMeta.documentExport,
       ...contextFields,
       ...currentDocumentContext,
     };

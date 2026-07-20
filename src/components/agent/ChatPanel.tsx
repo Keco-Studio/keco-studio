@@ -158,7 +158,10 @@ export function ChatPanel() {
     setOpen(true);
     setPendingSelectionContext(undefined);
     startNewConversation();
-    void send(handoff.message, { imageUrls: handoff.imageUrls });
+    void send(handoff.message, {
+      imageUrls: handoff.imageUrls,
+      documentExport: handoff.documentExport,
+    });
   }, [currentProjectId, startNewConversation, send]);
 
   useEffect(() => {

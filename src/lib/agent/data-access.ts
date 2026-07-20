@@ -25,6 +25,7 @@ import {
 import { sortAssetsForUiRow } from '@/lib/utils/assetEmptiness';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { ToolContext } from './types';
+import type { DocumentLibrarySource } from '@/lib/services/documentDerivedLibraryService';
 
 type AgentAccessContext = Pick<ToolContext, 'userId' | 'accessCache'>;
 
@@ -195,9 +196,54 @@ export async function createLibraryServer(
   projectId: string,
   name: string,
   folderId?: string,
-  description?: string
+  description?: string,
+  documentSource?: DocumentLibrarySource
 ): Promise<string> {
-  return createLibrary(supabase, { projectId, name, folderId, description });
+  return createLibrary(supabase, {
+    projectId,
+    name,
+    folderId,
+    description,
+    documentSource,
+  });
+}
+
+export interface DocumentLibrarySourceDisplay {
+  documentName: string;
+  folderId?: string;
+  folderName?: string;
+}
+
+/** Resolve mutable display placement without exposing source ids to the model. */
+export async function resolveDocumentLibrarySourceDisplay(
+  supabase: SupabaseClient,
+  projectId: string,
+  source: DocumentLibrarySource
+): Promise<DocumentLibrarySourceDisplay> {
+  const { data, error } = await supabase
+    .from('documents')
+    .select('id, name, project_id, folder_id')
+    .eq('id', source.sourceDocumentId)
+    .single();
+
+  if (error || !data || data.project_id !== projectId) {
+    throw new Error('Source document not found in this project');
+  }
+
+  if (!data.folder_id) {
+    return { documentName: data.name };
+  }
+
+  const folder = await getFolderRow(supabase, data.folder_id);
+  if (!folder || folder.project_id !== projectId) {
+    throw new Error('Source document folder not found in this project');
+  }
+
+  return {
+    documentName: data.name,
+    folderId: folder.id,
+    folderName: folder.name,
+  };
 }
 
 export async function createFolderServer(

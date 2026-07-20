@@ -48,6 +48,17 @@ describe('resolveConversationMeta', () => {
     });
   });
 
+  it('passes through a bound document table export verbatim', () => {
+    const documentExport = {
+      sourceDocumentId: '11111111-1111-4111-8111-111111111111',
+      exportType: 'table' as const,
+    };
+    expect(resolveConversationMeta({ autoExecute: false, documentExport })).toEqual({
+      autoExecute: false,
+      documentExport,
+    });
+  });
+
   it('omits scope for legacy rows without one', () => {
     expect(resolveConversationMeta({ autoExecute: false })).not.toHaveProperty('scope');
   });
@@ -62,6 +73,19 @@ describe('metaForSave', () => {
   it('merges scope when provided', () => {
     const scope = { level: 'folder' as const, projectId: 'p1', folderId: 'f1' };
     expect(metaForSave(true, scope)).toEqual({ autoExecute: true, scope });
+  });
+
+  it('merges a document table export binding when provided', () => {
+    const scope = { level: 'project' as const, projectId: 'p1' };
+    const documentExport = {
+      sourceDocumentId: '11111111-1111-4111-8111-111111111111',
+      exportType: 'table' as const,
+    };
+    expect(metaForSave(false, scope, documentExport)).toEqual({
+      autoExecute: false,
+      scope,
+      documentExport,
+    });
   });
 });
 

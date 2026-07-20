@@ -6,6 +6,7 @@ import type {
   AgentTool,
   ConversationMeta,
   ConversationScope,
+  DocumentTableExportContext,
   ToolContext,
   ToolResult,
 } from './types';
@@ -25,6 +26,7 @@ export function resolveConversationMeta(
       : false;
   const resolved: ConversationMeta = { autoExecute };
   if (raw?.scope) resolved.scope = raw.scope;
+  if (raw?.documentExport) resolved.documentExport = raw.documentExport;
   return resolved;
 }
 
@@ -65,10 +67,17 @@ export async function executePostPreviewTool(
 }
 
 /**
- * Build meta for persisting. Writes autoExecute always and the bound scope when
- * provided (at conversation creation). A mode change omits scope to leave the
- * existing binding untouched — callers must merge rather than overwrite meta.
+ * Build meta for persisting. Writes autoExecute always and immutable bindings
+ * when provided. Mode-change callers must merge rather than overwrite them.
  */
-export function metaForSave(autoExecute: boolean, scope?: ConversationScope): ConversationMeta {
-  return scope ? { autoExecute, scope } : { autoExecute };
+export function metaForSave(
+  autoExecute: boolean,
+  scope?: ConversationScope,
+  documentExport?: DocumentTableExportContext
+): ConversationMeta {
+  return {
+    autoExecute,
+    ...(scope ? { scope } : {}),
+    ...(documentExport ? { documentExport } : {}),
+  };
 }

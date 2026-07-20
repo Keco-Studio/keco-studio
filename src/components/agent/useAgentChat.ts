@@ -400,6 +400,7 @@ export function useAgentChat(ctx: SendContext) {
               message,
               imageUrls: opts?.imageUrls,
               selectionContext: opts?.selectionContext,
+              documentExport: opts?.documentExport,
               autoExecute,
               currentFolderId: ctx.currentFolderId,
               currentFolderName: ctx.currentFolderName,

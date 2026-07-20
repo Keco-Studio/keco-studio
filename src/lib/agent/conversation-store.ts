@@ -9,6 +9,7 @@ import type {
   ChatMessage,
   ConversationMeta,
   ConversationScope,
+  DocumentTableExportContext,
 } from './types';
 import { metaForSave, resolveConversationMeta } from './conversation-meta';
 import { getMessageText } from './content-parts';
@@ -66,6 +67,8 @@ export async function getOrCreateConversation(
     initialAutoExecute?: boolean;
     /** Scope snapshot for a newly created conversation (ignored for existing ones). */
     scope?: ConversationScope;
+    /** Validated document export binding for a newly created conversation only. */
+    documentExport?: DocumentTableExportContext;
   }
 ): Promise<ConversationRecord> {
   if (params.conversationId) {
@@ -94,7 +97,11 @@ export async function getOrCreateConversation(
     return normalizeConversation(data);
   }
 
-  const initialMeta = metaForSave(params.initialAutoExecute ?? true, params.scope);
+  const initialMeta = metaForSave(
+    params.initialAutoExecute ?? true,
+    params.scope,
+    params.documentExport
+  );
 
   const { data, error } = await supabase
     .from('agent_conversations')
@@ -275,19 +282,22 @@ export async function updateConversationMeta(
 ): Promise<ConversationMeta> {
   const resolved = resolveConversationMeta(meta);
 
-  // Preserve the frozen scope binding: a mode toggle must never wipe it. Read
-  // the existing scope when the incoming meta doesn't carry one.
+  // A mode toggle must never wipe immutable conversation bindings. Read any
+  // binding that the incoming meta does not carry from the persisted row.
   let scope = resolved.scope;
-  if (!scope) {
+  let documentExport = resolved.documentExport;
+  if (!scope || !documentExport) {
     const { data } = await supabase
       .from('agent_conversations')
       .select('meta')
       .eq('id', conversationId)
       .single();
-    scope = resolveConversationMeta((data?.meta ?? {}) as ConversationMeta).scope;
+    const persisted = resolveConversationMeta((data?.meta ?? {}) as ConversationMeta);
+    scope ??= persisted.scope;
+    documentExport ??= persisted.documentExport;
   }
 
-  const toSave = metaForSave(resolved.autoExecute !== false, scope);
+  const toSave = metaForSave(resolved.autoExecute !== false, scope, documentExport);
   const { error } = await supabase
     .from('agent_conversations')
     .update({ meta: toSave, updated_at: new Date().toISOString() })

@@ -4,6 +4,7 @@
  */
 
 import type { AgentSelectionContext } from '@/lib/agent/selection-context';
+import type { DocumentTableExportContext } from '@/lib/agent/types';
 export type { AgentInvalidation } from '@/lib/agent/types';
 
 export type ChatItemRole = 'user' | 'assistant' | 'tool' | 'error' | 'confirmation';
@@ -41,6 +42,7 @@ export interface ChatAttachment {
 export interface SendOptions {
   imageUrls?: string[];
   selectionContext?: AgentSelectionContext;
+  documentExport?: DocumentTableExportContext;
 }
 
 export interface ChatItem {

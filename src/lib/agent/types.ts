@@ -13,6 +13,11 @@ import type { StoryPlanProgressEvent as ImportProgressEvent } from '@/lib/story-
 
 export type UserRole = 'admin' | 'editor' | 'viewer';
 
+export interface DocumentTableExportContext {
+  sourceDocumentId: string;
+  exportType: 'table';
+}
+
 /**
  * How a tool's confirmation is handled by the ReAct loop.
  * - pre_execute:  Pause BEFORE execution, confirm args (create/update/delete_asset).
@@ -40,6 +45,8 @@ export interface ToolContext {
   currentSectionName?: string;
   supabase: SupabaseClient;
   userRole: UserRole;
+  /** Server-validated source binding for tables generated from a document. */
+  documentExport?: DocumentTableExportContext;
   /** Request-scoped authorization results; a new map is created for every turn. */
   accessCache?: AccessVerificationCache;
   /** Exact persisted user message for tools that must not trust LLM-copied content. */
@@ -142,6 +149,9 @@ export interface ConversationMeta {
 
   /** Frozen data range bound at conversation creation. Absent on legacy rows. */
   scope?: ConversationScope;
+
+  /** Immutable server-validated source for a document table-export conversation. */
+  documentExport?: DocumentTableExportContext;
 }
 
 /** A plain-text segment of a multimodal message. */

@@ -52,6 +52,7 @@ export const POST = withAuth(async function POST(
       return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 });
     }
 
+    const boundMeta = resolveConversationMeta(conversation.meta);
     const userRole = await resolveUserRole(supabase, conversation.project_id, user.id);
     const currentDocumentContext = await resolveCurrentDocumentContext(
       supabase,
@@ -70,6 +71,7 @@ export const POST = withAuth(async function POST(
       currentSectionName: body.currentSectionName,
       supabase,
       userRole,
+      documentExport: boundMeta.documentExport,
       ...currentDocumentContext,
     };
 
@@ -79,7 +81,7 @@ export const POST = withAuth(async function POST(
       decision,
       signal: abortController.signal,
       toolContext,
-      conversationMeta: resolveConversationMeta(conversation.meta),
+      conversationMeta: boundMeta,
     });
 
     const response = sseResponse(generator, { abortController });
