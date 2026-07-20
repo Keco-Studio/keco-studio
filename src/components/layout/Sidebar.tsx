@@ -40,6 +40,7 @@ import {
   type DocumentSummary,
 } from "@/lib/services/documentService";
 import { broadcastProjectDocumentUpdate } from "@/lib/documents/projectDocumentChannel";
+import { DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT } from "@/lib/documents/documentDerivedLibraryEvents";
 import { flushOpenDocumentEditor } from "@/lib/documents/documentFlushRegistry";
 import { NewDocumentModal } from "@/components/documents/NewDocumentModal";
 import { MoveDocumentModal } from "@/components/documents/MoveDocumentModal";
@@ -486,6 +487,31 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
   }, []);
 
+  useEffect(() => {
+    const handleDerivedLibraryCreated = (event: Event) => {
+      const detail = (event as CustomEvent<{
+        projectId: string;
+        sourceDocumentId?: string;
+        documentId?: string;
+      }>).detail;
+      if (!detail || detail.projectId !== currentIds.projectId) return;
+      const documentId = detail.sourceDocumentId ?? detail.documentId;
+      if (!documentId) return;
+      void invalidateLibraryData(queryClient, {
+        projectId: currentIds.projectId,
+        refetchActiveFoldersLibraries: true,
+      });
+      const sourceDocument = documents.find((document) => document.id === documentId);
+      expandFolder(sourceDocument?.folder_id);
+      setExpandedKeys((previous) => {
+        const documentKey = `document-${documentId}`;
+        return previous.includes(documentKey) ? previous : [...previous, documentKey];
+      });
+    };
+    window.addEventListener(DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT, handleDerivedLibraryCreated);
+    return () => window.removeEventListener(DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT, handleDerivedLibraryCreated);
+  }, [currentIds.projectId, documents, expandFolder, queryClient]);
+
   /**
    * Flush open document autosave before leaving the editor route. If the flush
    * fails we keep the user on the page (the editor shows the error) rather than
@@ -760,7 +786,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const openMoveLibrary = useCallback((libraryId: string) => {
     if (userRole !== 'admin') return;
     const lib = libraries.find((item) => item.id === libraryId);
-    if (!lib) return;
+    if (!lib || lib.source_document_id) return;
     setMovingLibraryId(libraryId);
     setTargetFolderId(lib.folder_id ?? null);
     setUseIndependentLibrary(false);
@@ -826,6 +852,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           action: 'move',
         });
         await queryClient.invalidateQueries({ queryKey: queryKeys.documents(currentIds.projectId) });
+        await invalidateLibraryData(queryClient, {
+          projectId: currentIds.projectId,
+          refetchActiveFoldersLibraries: true,
+        });
       }
       expandFolder(folderId);
       showSuccessToast('Document moved successfully');
@@ -1401,6 +1431,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           onAction={handleContextMenuAction}
           userRole={userRole}
           isProjectOwner={isProjectOwner}
+          isDerivedLibrary={
+            contextMenu.type === 'library' &&
+            Boolean(libraries.find((library) => library.id === contextMenu.id)?.source_document_id)
+          }
           elementRef={contextMenu.elementRef}
         />
       )}

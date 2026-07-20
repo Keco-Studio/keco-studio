@@ -25,10 +25,11 @@ type ContextMenuProps = {
   onAction?: (action: ContextMenuAction) => void;
   userRole?: 'admin' | 'editor' | 'viewer' | null;
   isProjectOwner?: boolean;
+  isDerivedLibrary?: boolean;
   elementRef?: HTMLElement | null;
 };
 
-export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProjectOwner, elementRef }: ContextMenuProps) {
+export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProjectOwner, isDerivedLibrary, elementRef }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ x, y });
   const [mounted, setMounted] = useState(false);
@@ -339,7 +340,7 @@ export function ContextMenu({ x, y, onClose, onAction, type, userRole, isProject
               Duplicate
             </button>
           )}
-          {canMoveLibrary() && (
+          {canMoveLibrary() && !isDerivedLibrary && (
             <button
               className={styles.menuItem}
               onClick={() => handleAction('move-to')}

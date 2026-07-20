@@ -150,6 +150,11 @@ export function useSidebarContextMenuActions({
             closeContextMenu();
             return;
           }
+          const library = libraries.find((item) => item.id === contextMenu.id);
+          if (library?.source_document_id) {
+            closeContextMenu();
+            return;
+          }
           openMoveLibrary(contextMenu.id);
           closeContextMenu();
           return;
@@ -268,9 +273,25 @@ export function useSidebarContextMenuActions({
           closeContextMenu();
           return;
         } else if (contextMenu.type === 'document') {
+          const derivedLibraries = libraries.filter(
+            (library) => library.source_document_id === contextMenu.id
+          );
+          const tableCount = derivedLibraries.filter(
+            (library) => library.document_export_type === 'table'
+          ).length;
+          const scriptCount = derivedLibraries.filter(
+            (library) => library.document_export_type === 'script'
+          ).length;
+          const cascadeParts = [
+            tableCount ? `${tableCount} table${tableCount === 1 ? '' : 's'}` : '',
+            scriptCount ? `${scriptCount} script${scriptCount === 1 ? '' : 's'}` : '',
+          ].filter(Boolean);
+          const cascadeCopy = cascadeParts.length
+            ? ` ${cascadeParts.join(' and ')} will also be deleted.`
+            : '';
           requestDeleteConfirm({
             title: 'Confirm deletion',
-            content: 'Delete this document?',
+            content: `Delete this document permanently?${cascadeCopy}`,
             onConfirm: () => {
               const documentId = contextMenu.id;
               return deleteDocument(supabase, documentId)
@@ -283,6 +304,10 @@ export function useSidebarContextMenuActions({
                     });
                     await queryClient.invalidateQueries({
                       queryKey: queryKeys.documents(currentIds.projectId),
+                    });
+                    await invalidateLibraryData(queryClient, {
+                      projectId: currentIds.projectId,
+                      refetchActiveFoldersLibraries: true,
                     });
                   }
                   if (currentIds.documentId === documentId && currentIds.projectId) {

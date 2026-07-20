@@ -233,6 +233,16 @@ export function SidebarTreeView({
     }
 
     if (key.startsWith('library-')) return null;
+    if (key.startsWith('document-')) {
+      return (
+        <Image
+          src={expanded ? folderExpandIcon : folderCollapseIcon}
+          alt={expanded ? 'Collapse' : 'Expand'}
+          width={expanded ? 14 : 8}
+          height={expanded ? 8 : 14}
+        />
+      );
+    }
     return null;
   };
 
