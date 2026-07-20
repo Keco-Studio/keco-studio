@@ -248,6 +248,7 @@ describe('agent chat route current-document project boundary', () => {
       ...conversation,
       meta: { autoExecute: false, documentExport: persistedExport },
     });
+    resolveUserRole.mockResolvedValue('admin');
 
     const response = await chatPost(
       request('/api/agent-chat', {
@@ -266,6 +267,27 @@ describe('agent chat route current-document project boundary', () => {
       expect.not.objectContaining({ documentExport: expect.anything() })
     );
     expect(runAgentTurn.mock.calls[0][0].toolContext.documentExport).toEqual(persistedExport);
+  });
+
+  it('rejects an existing bound conversation after the admin is downgraded to editor', async () => {
+    getOrCreateConversation.mockResolvedValue({
+      ...conversation,
+      meta: { autoExecute: false, documentExport },
+    });
+    resolveUserRole.mockResolvedValue('editor');
+
+    const response = await chatPost(
+      request('/api/agent-chat', {
+        conversationId: conversation.id,
+        projectId: BOUND_PROJECT_ID,
+        message: 'Continue generating tables',
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Forbidden' });
+    expect(runAgentTurn).not.toHaveBeenCalled();
   });
 });
 
@@ -286,6 +308,7 @@ describe('agent confirmation route current-document project boundary', () => {
       ...conversation,
       meta: { autoExecute: false, documentExport },
     });
+    resolveUserRole.mockResolvedValue('admin');
     const bodyExport = {
       sourceDocumentId: OTHER_DOCUMENT_ID,
       exportType: 'table',
@@ -308,6 +331,26 @@ describe('agent confirmation route current-document project boundary', () => {
       })
     );
     expect(resumeAgentTurn.mock.calls[0][0].toolContext.documentExport).not.toEqual(bodyExport);
+  });
+
+  it('rejects a bound confirmation after the admin is downgraded to editor', async () => {
+    getConversation.mockResolvedValue({
+      ...conversation,
+      meta: { autoExecute: false, documentExport },
+    });
+    resolveUserRole.mockResolvedValue('editor');
+
+    const response = await confirmPost(
+      request('/api/agent-chat/confirm', {
+        actionId: 'action-id',
+        decision: 'approve',
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Forbidden' });
+    expect(resumeAgentTurn).not.toHaveBeenCalled();
   });
 
   it('resolves the live document against the pending conversation project', async () => {

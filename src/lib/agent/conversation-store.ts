@@ -287,11 +287,16 @@ export async function updateConversationMeta(
   let scope = resolved.scope;
   let documentExport = resolved.documentExport;
   if (!scope || !documentExport) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('agent_conversations')
       .select('meta')
       .eq('id', conversationId)
       .single();
+    if (error || !data) {
+      throw new Error(
+        `Failed to preserve conversation meta: ${error?.message ?? 'conversation not found'}`
+      );
+    }
     const persisted = resolveConversationMeta((data?.meta ?? {}) as ConversationMeta);
     scope ??= persisted.scope;
     documentExport ??= persisted.documentExport;

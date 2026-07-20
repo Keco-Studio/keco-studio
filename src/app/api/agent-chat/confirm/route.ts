@@ -54,6 +54,9 @@ export const POST = withAuth(async function POST(
 
     const boundMeta = resolveConversationMeta(conversation.meta);
     const userRole = await resolveUserRole(supabase, conversation.project_id, user.id);
+    if (boundMeta.documentExport && userRole !== 'admin') {
+      throw new AgentAccessError('Only admin users can export project content');
+    }
     const currentDocumentContext = await resolveCurrentDocumentContext(
       supabase,
       conversation.project_id,
