@@ -35,6 +35,7 @@ import {
   DOCUMENT_DERIVED_LIBRARY_CREATED_EVENT,
   type DocumentDerivedLibraryCreatedDetail,
 } from '@/lib/documents/documentDerivedLibraryEvents';
+import { deleteDocument, moveDocument } from '@/lib/services/documentService';
 
 jest.mock('@/lib/services/documentService', () => ({
   deleteDocument: jest.fn().mockResolvedValue(undefined),
@@ -45,6 +46,10 @@ jest.mock('@/lib/documents/projectDocumentChannel', () => ({
 }));
 
 describe('document-derived sidebar tree', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
   it('groups derived libraries beneath their document and excludes them from roots', () => {
     const projectId = '11111111-1111-4111-8111-111111111111';
     const documentId = '22222222-2222-4222-8222-222222222222';
@@ -249,6 +254,7 @@ describe('document-derived sidebar tree', () => {
   it('guards stale derived-library move actions and executes document delete cascades', async () => {
     const openMoveLibrary = jest.fn();
     const closeContextMenu = jest.fn();
+    const deleteSupabase = {} as any;
     let deleteConfirmation: any;
     const deleteQueryClient = {
       invalidateQueries: jest.fn().mockResolvedValue(undefined),
@@ -287,7 +293,7 @@ describe('document-derived sidebar tree', () => {
         contextMenu: { x: 0, y: 0, type: 'document', id: 'doc', elementRef: null },
         closeContextMenu, router: { push: jest.fn() } as any,
         openEditProject: jest.fn(), openEditLibrary: jest.fn(), openDuplicateLibrary: jest.fn(), openExportLibrary: jest.fn(), openImportLibrary: jest.fn(), openImportScript: jest.fn(), openEditFolder: jest.fn(), openEditAsset: jest.fn(),
-        supabase: {} as any, queryClient: deleteQueryClient as any,
+        supabase: deleteSupabase, queryClient: deleteQueryClient as any,
         currentIds: { projectId: 'project', libraryId: null, folderId: null, assetId: null, documentId: null },
         libraries: [
           { id: 'derived', project_id: 'project', folder_id: null, name: 'Table', description: null, created_at: '', updated_at: '', updated_by: null, source_document_id: 'doc', document_export_type: 'table' },
@@ -302,6 +308,8 @@ describe('document-derived sidebar tree', () => {
     handleAction?.('delete');
     expect(requestDeleteConfirm).toHaveBeenCalledWith(expect.objectContaining({ content: 'Delete this document permanently? 2 tables and 1 script will also be deleted.' }));
     await deleteConfirmation?.onConfirm();
+    expect(deleteDocument).toHaveBeenCalledTimes(1);
+    expect(deleteDocument).toHaveBeenCalledWith(deleteSupabase, 'doc');
     expect(deleteQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['documents', 'project'] });
     expect(deleteQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['project', 'project', 'libraries'] });
     expect(deleteQueryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['folders-libraries', 'project'] });
@@ -309,19 +317,22 @@ describe('document-derived sidebar tree', () => {
   });
 
   it('moves documents through the production sidebar handler and refreshes dependent data', async () => {
+    const supabase = {} as any;
     const queryClient = {
       invalidateQueries: jest.fn().mockResolvedValue(undefined),
       refetchQueries: jest.fn().mockResolvedValue(undefined),
     };
     const expandFolder = jest.fn();
     await moveSidebarDocument({
-      supabase: {} as any,
+      supabase,
       documentId: 'doc',
       folderId: 'folder-2',
       projectId: 'project',
       queryClient: queryClient as any,
       expandFolder,
     });
+    expect(moveDocument).toHaveBeenCalledTimes(1);
+    expect(moveDocument).toHaveBeenCalledWith(supabase, 'doc', { folderId: 'folder-2' });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['documents', 'project'] });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['project', 'project', 'libraries'] });
     expect(queryClient.invalidateQueries).toHaveBeenCalledWith({ queryKey: ['folders-libraries', 'project'] });
