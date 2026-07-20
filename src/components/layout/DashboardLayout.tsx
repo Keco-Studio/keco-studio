@@ -29,6 +29,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
 
     if (prevAuthenticatedRef.current === null) {
       prevAuthenticatedRef.current = isAuthenticated;
+      if (!isAuthenticated) {
+        // Keep the form mounted for explicit login/register flows. An automatic
+        // sign-in after registration must not unmount it before its success message.
+        setShowAuthForm(true);
+      }
       return;
     }
 

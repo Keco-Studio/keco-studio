@@ -15,4 +15,8 @@ describe('dashboard auth gate', () => {
   it('starts with the auth form hidden so a restored session can render immediately', () => {
     expect(source).toContain('useState(false)');
   });
+
+  it('keeps the auth form mounted for an initially unauthenticated user', () => {
+    expect(source).toMatch(/if \(!isAuthenticated\) \{[\s\S]{0,200}setShowAuthForm\(true\);/);
+  });
 });
