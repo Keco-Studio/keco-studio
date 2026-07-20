@@ -41,7 +41,7 @@ export default function DesignUploadPage() {
     };
   }, [projectId, supabase]);
 
-  const isViewer = role === 'viewer';
+  const canGenerateTables = role !== null && role !== 'viewer';
 
   const handleFileSelected = (next: File) => {
     const validation = validateDesignFile(next);
@@ -53,7 +53,7 @@ export default function DesignUploadPage() {
   };
 
   const handleSubmit = async () => {
-    if (!file || submitting || isViewer) return;
+    if (!file || submitting || !canGenerateTables) return;
 
     const validation = validateDesignFile(file);
     if (!validation.ok) {
@@ -115,7 +115,7 @@ export default function DesignUploadPage() {
 
         <DocumentDropZone
           selectedFile={file}
-          disabled={submitting || isViewer}
+          disabled={submitting || !canGenerateTables}
           onFileSelected={handleFileSelected}
           onClear={() => setFile(null)}
         />
@@ -134,7 +134,7 @@ export default function DesignUploadPage() {
           className={styles.textarea}
           placeholder="e.g. Only create a characters table, or use English for all names."
           value={instructions}
-          disabled={submitting || isViewer}
+          disabled={submitting || !canGenerateTables}
           onChange={(e) => setInstructions(e.target.value)}
           rows={3}
         />
@@ -144,9 +144,9 @@ export default function DesignUploadPage() {
           understand your design.
         </div>
 
-        {isViewer && (
-          <div className={styles.warning} data-testid="design-upload-viewer-warning">
-            Your role is viewer; creating tables requires editor or admin permission.
+        {role !== null && !canGenerateTables && (
+          <div className={styles.warning} data-testid="design-upload-permission-warning">
+            Your role is viewer; generating tables requires editor or admin permission.
           </div>
         )}
 
@@ -164,7 +164,7 @@ export default function DesignUploadPage() {
             className={styles.primaryButton}
             data-testid="design-upload-submit"
             onClick={handleSubmit}
-            disabled={!file || submitting || isViewer}
+            disabled={!file || submitting || !canGenerateTables}
           >
             {submitting ? 'Processing...' : 'Start generating'}
           </button>

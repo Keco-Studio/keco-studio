@@ -1,6 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { AppRouterInstance } from 'next/dist/shared/lib/app-router-context.shared-runtime';
-import { invalidateLibraryAssetsData } from '@/lib/queryInvalidation';
+import {
+  invalidateLibraryAssetsData,
+  invalidateLibraryData,
+} from '@/lib/queryInvalidation';
 import { queryKeys } from '@/lib/utils/queryKeys';
 import {
   invalidateAgentCaches,
@@ -10,12 +13,14 @@ import type { AgentInvalidation } from '@/components/agent/types';
 
 jest.mock('@/lib/queryInvalidation', () => ({
   invalidateLibraryAssetsData: jest.fn().mockResolvedValue(undefined),
+  invalidateLibraryData: jest.fn().mockResolvedValue(undefined),
 }));
 jest.mock('@/lib/SupabaseContext', () => ({ useSupabase: jest.fn() }));
 jest.mock('next/navigation', () => ({ useRouter: jest.fn() }));
 jest.mock('@tanstack/react-query', () => ({ useQueryClient: jest.fn() }));
 
 const invalidateLibraryAssetsDataMock = jest.mocked(invalidateLibraryAssetsData);
+const invalidateLibraryDataMock = jest.mocked(invalidateLibraryData);
 
 describe('Agent document cache invalidation', () => {
   beforeEach(() => {
@@ -29,6 +34,10 @@ describe('Agent document cache invalidation', () => {
 
     await invalidateAgentCaches(queryClient, router, invalidations);
 
+    expect(invalidateLibraryDataMock).toHaveBeenCalledWith(queryClient, {
+      projectId: undefined,
+      libraryId: 'library-1',
+    });
     expect(invalidateLibraryAssetsDataMock).toHaveBeenCalledWith(queryClient, {
       libraryId: 'library-1',
       includeSchema: true,

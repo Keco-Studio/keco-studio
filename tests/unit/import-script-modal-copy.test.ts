@@ -43,4 +43,9 @@ describe('Import Script modal copy', () => {
       expect(styleSource).not.toContain(forbidden);
     }
   });
+
+  it('contains the fixed project document source copy', () => {
+    expect(componentSource).toContain('data-testid="import-script-document-source"');
+    expect(componentSource).toContain('Project document');
+  });
 });

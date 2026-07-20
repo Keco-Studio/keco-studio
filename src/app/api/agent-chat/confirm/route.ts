@@ -7,6 +7,7 @@ import { resolveConversationMeta } from '@/lib/agent/conversation-meta';
 import { loadPendingAction } from '@/lib/agent/confirmation';
 import { sseResponse } from '@/lib/agent/sse';
 import { resolveCurrentDocumentContext } from '@/lib/agent/current-document-context';
+import { verifyDocumentExportSnapshotToken } from '@/lib/server/documentExportSnapshotSigning';
 import type { ToolContext } from '@/lib/agent/types';
 
 export const maxDuration = 120;
@@ -52,7 +53,26 @@ export const POST = withAuth(async function POST(
       return NextResponse.json({ error: 'Conversation not found.' }, { status: 404 });
     }
 
+    const boundMeta = resolveConversationMeta(conversation.meta);
     const userRole = await resolveUserRole(supabase, conversation.project_id, user.id);
+    if (boundMeta.documentExport && userRole !== 'admin') {
+      throw new AgentAccessError('Only admin users can export project content');
+    }
+    if (boundMeta.documentExport) {
+      try {
+        const snapshot = verifyDocumentExportSnapshotToken(
+          boundMeta.documentExport.snapshotToken ?? ''
+        );
+        if (
+          snapshot.documentId !== boundMeta.documentExport.sourceDocumentId ||
+          snapshot.projectId !== conversation.project_id
+        ) {
+          return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
+        }
+      } catch {
+        return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
+      }
+    }
     const currentDocumentContext = await resolveCurrentDocumentContext(
       supabase,
       conversation.project_id,
@@ -70,6 +90,7 @@ export const POST = withAuth(async function POST(
       currentSectionName: body.currentSectionName,
       supabase,
       userRole,
+      documentExport: boundMeta.documentExport,
       ...currentDocumentContext,
     };
 
@@ -79,7 +100,7 @@ export const POST = withAuth(async function POST(
       decision,
       signal: abortController.signal,
       toolContext,
-      conversationMeta: resolveConversationMeta(conversation.meta),
+      conversationMeta: boundMeta,
     });
 
     const response = sseResponse(generator, { abortController });

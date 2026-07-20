@@ -5,7 +5,9 @@ import {
   executePostPreviewTool,
   metaForSave,
 } from '../../../src/lib/agent/conversation-meta';
+import { updateConversationMeta } from '../../../src/lib/agent/conversation-store';
 import type { AgentTool, ToolContext, ToolResult } from '../../../src/lib/agent/types';
+import type { SupabaseClient } from '@supabase/supabase-js';
 
 function mockTool(overrides: Partial<AgentTool>): AgentTool {
   return {
@@ -48,6 +50,17 @@ describe('resolveConversationMeta', () => {
     });
   });
 
+  it('passes through a bound document table export verbatim', () => {
+    const documentExport = {
+      sourceDocumentId: '11111111-1111-4111-8111-111111111111',
+      exportType: 'table' as const,
+    };
+    expect(resolveConversationMeta({ autoExecute: false, documentExport })).toEqual({
+      autoExecute: false,
+      documentExport,
+    });
+  });
+
   it('omits scope for legacy rows without one', () => {
     expect(resolveConversationMeta({ autoExecute: false })).not.toHaveProperty('scope');
   });
@@ -62,6 +75,89 @@ describe('metaForSave', () => {
   it('merges scope when provided', () => {
     const scope = { level: 'folder' as const, projectId: 'p1', folderId: 'f1' };
     expect(metaForSave(true, scope)).toEqual({ autoExecute: true, scope });
+  });
+
+  it('merges a document table export binding when provided', () => {
+    const scope = { level: 'project' as const, projectId: 'p1' };
+    const documentExport = {
+      sourceDocumentId: '11111111-1111-4111-8111-111111111111',
+      exportType: 'table' as const,
+    };
+    expect(metaForSave(false, scope, documentExport)).toEqual({
+      autoExecute: false,
+      scope,
+      documentExport,
+    });
+  });
+});
+
+describe('updateConversationMeta', () => {
+  const scope = { level: 'project' as const, projectId: 'project-id' };
+  const documentExport = {
+    sourceDocumentId: '11111111-1111-4111-8111-111111111111',
+    exportType: 'table' as const,
+  };
+
+  function makeSupabase(readResult: { data: unknown; error: unknown }) {
+    const readQuery: Record<string, jest.Mock> = {};
+    readQuery.select = jest.fn(() => readQuery);
+    readQuery.eq = jest.fn(() => readQuery);
+    readQuery.single = jest.fn().mockResolvedValue(readResult);
+
+    const updateQuery: Record<string, jest.Mock> = {};
+    updateQuery.update = jest.fn(() => updateQuery);
+    updateQuery.eq = jest.fn().mockResolvedValue({ error: null });
+
+    const from = jest
+      .fn()
+      .mockReturnValueOnce(readQuery)
+      .mockReturnValueOnce(updateQuery);
+    return {
+      supabase: { from } as unknown as SupabaseClient,
+      from,
+      update: updateQuery.update,
+    };
+  }
+
+  it('does not overwrite bindings when the preservation read fails', async () => {
+    const { supabase, from, update } = makeSupabase({
+      data: null,
+      error: { message: 'read failed' },
+    });
+
+    await expect(
+      updateConversationMeta(supabase, 'conversation-id', { autoExecute: true })
+    ).rejects.toThrow('Failed to preserve conversation meta: read failed');
+
+    expect(from).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('does not overwrite bindings when the persisted conversation is missing', async () => {
+    const { supabase, from, update } = makeSupabase({ data: null, error: null });
+
+    await expect(
+      updateConversationMeta(supabase, 'conversation-id', { autoExecute: false })
+    ).rejects.toThrow('Failed to preserve conversation meta: conversation not found');
+
+    expect(from).toHaveBeenCalledTimes(1);
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('preserves scope and document export when updating the mode', async () => {
+    const { supabase, update } = makeSupabase({
+      data: { meta: { autoExecute: false, scope, documentExport } },
+      error: null,
+    });
+
+    await expect(
+      updateConversationMeta(supabase, 'conversation-id', { autoExecute: true })
+    ).resolves.toEqual({ autoExecute: true, scope, documentExport });
+
+    expect(update).toHaveBeenCalledWith({
+      meta: { autoExecute: true, scope, documentExport },
+      updated_at: expect.any(String),
+    });
   });
 });
 

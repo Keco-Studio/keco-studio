@@ -35,7 +35,6 @@ import { Library, deleteLibrary, moveLibraryToFolder } from "@/lib/services/libr
 import { Folder, deleteFolder } from "@/lib/services/folderService";
 import {
   updateDocumentName,
-  moveDocument,
   type DocumentRecord,
   type DocumentSummary,
 } from "@/lib/services/documentService";
@@ -60,7 +59,11 @@ import { useSidebarAssets } from "./hooks/useSidebarAssets";
 import { useSidebarProjectRole } from "./hooks/useSidebarProjectRole";
 import { useSidebarWindowEvents } from "./hooks/useSidebarWindowEvents";
 import { useSidebarRealtime } from "./hooks/useSidebarRealtime";
-import { useSidebarContextMenuActions } from "./hooks/useSidebarContextMenuActions";
+import {
+  moveSidebarDocument,
+  useSidebarContextMenuActions,
+  useSidebarDocumentDerivedLibraryLifecycle,
+} from "./hooks/useSidebarContextMenuActions";
 import { DeleteConfirmDialog } from "./components/DeleteConfirmDialog";
 import { useUpdateEntityName } from '@/lib/hooks/useCacheMutations';
 import { validateName } from '@/lib/utils/nameValidation';
@@ -486,6 +489,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     setExpandedKeys((prev) => (prev.includes(folderKey) ? prev : [...prev, folderKey]));
   }, []);
 
+  useSidebarDocumentDerivedLibraryLifecycle({
+    currentProjectId: currentIds.projectId,
+    documents,
+    queryClient,
+    expandFolder,
+    setExpandedKeys,
+  });
+
   /**
    * Flush open document autosave before leaving the editor route. If the flush
    * fails we keep the user on the page (the editor shows the error) rather than
@@ -760,7 +771,7 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
   const openMoveLibrary = useCallback((libraryId: string) => {
     if (userRole !== 'admin') return;
     const lib = libraries.find((item) => item.id === libraryId);
-    if (!lib) return;
+    if (!lib || lib.source_document_id) return;
     setMovingLibraryId(libraryId);
     setTargetFolderId(lib.folder_id ?? null);
     setUseIndependentLibrary(false);
@@ -818,16 +829,14 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
     if (!movingDocumentId) return;
     setIsMovingDocument(true);
     try {
-      await moveDocument(supabase, movingDocumentId, { folderId });
-      if (currentIds.projectId) {
-        void broadcastProjectDocumentUpdate({
-          documentId: movingDocumentId,
-          projectId: currentIds.projectId,
-          action: 'move',
-        });
-        await queryClient.invalidateQueries({ queryKey: queryKeys.documents(currentIds.projectId) });
-      }
-      expandFolder(folderId);
+      await moveSidebarDocument({
+        supabase,
+        documentId: movingDocumentId,
+        folderId,
+        projectId: currentIds.projectId,
+        queryClient,
+        expandFolder,
+      });
       showSuccessToast('Document moved successfully');
       setMovingDocumentId(null);
     } catch (err: unknown) {
@@ -1401,6 +1410,10 @@ export function Sidebar({ userProfile, onAuthRequest }: SidebarProps) {
           onAction={handleContextMenuAction}
           userRole={userRole}
           isProjectOwner={isProjectOwner}
+          isDerivedLibrary={
+            contextMenu.type === 'library' &&
+            Boolean(libraries.find((library) => library.id === contextMenu.id)?.source_document_id)
+          }
           elementRef={contextMenu.elementRef}
         />
       )}

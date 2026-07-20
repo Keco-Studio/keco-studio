@@ -1,5 +1,7 @@
 import { NextRequest } from 'next/server';
 
+jest.mock('server-only', () => ({}));
+
 const AUTH_USER_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const BOUND_PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const MALICIOUS_PROJECT_ID = '99999999-9999-4999-8999-999999999999';
@@ -14,6 +16,7 @@ const getConversation = jest.fn();
 const loadPendingAction = jest.fn();
 const resolveUserRole = jest.fn();
 const resolveDocumentForTool = jest.fn();
+const getDocumentExportSource = jest.fn();
 const sseResponse = jest.fn(() => new Response(null));
 const withAuth = jest.fn(
   (handler: unknown) =>
@@ -49,12 +52,16 @@ jest.mock('@/lib/agent/permissions', () => ({
 jest.mock('@/lib/agent/document-resolver', () => ({
   resolveDocumentForTool: (...args: unknown[]) => resolveDocumentForTool(...args),
 }));
+jest.mock('@/lib/server/documentExportSourceService', () => ({
+  getDocumentExportSource: (...args: unknown[]) => getDocumentExportSource(...args),
+}));
 jest.mock('@/lib/agent/sse', () => ({
   sseResponse: (...args: unknown[]) => sseResponse(...args),
 }));
 
 import { POST as chatPost } from '@/app/api/agent-chat/route';
 import { POST as confirmPost } from '@/app/api/agent-chat/confirm/route';
+import { createDocumentExportSnapshotToken } from '@/lib/server/documentExportSnapshotSigning';
 
 const conversation = {
   id: 'conversation-id',
@@ -64,6 +71,19 @@ const conversation = {
   meta: { autoExecute: false },
   created_at: '2026-07-16T00:00:00.000Z',
   updated_at: '2026-07-16T00:00:00.000Z',
+};
+const snapshot = {
+  documentId: DOCUMENT_ID,
+  documentName: 'World Notes',
+  projectId: BOUND_PROJECT_ID,
+  folderId: null,
+  markdown: '# World',
+  token: { epoch: 1, revision: 1 },
+};
+const documentExport = {
+  sourceDocumentId: DOCUMENT_ID,
+  exportType: 'table' as const,
+  snapshotToken: createDocumentExportSnapshotToken(snapshot),
 };
 
 function request(path: string, body: Record<string, unknown>): NextRequest {
@@ -94,6 +114,7 @@ describe('agent chat route current-document project boundary', () => {
     jest.clearAllMocks();
     getOrCreateConversation.mockResolvedValue(conversation);
     resolveUserRole.mockResolvedValue('editor');
+    getDocumentExportSource.mockResolvedValue({ ...snapshot, snapshotToken: documentExport.snapshotToken });
     resolveDocumentForTool.mockImplementation(
       async (_supabase: unknown, projectId: string, input: { documentId: string }) =>
         currentDocumentResult(projectId, input.documentId)
@@ -148,6 +169,190 @@ describe('agent chat route current-document project boundary', () => {
     expect(toolContext).not.toHaveProperty('currentDocumentId');
     expect(toolContext).not.toHaveProperty('currentDocumentName');
   });
+
+  it('validates and persists a table export binding only for a new conversation', async () => {
+    resolveUserRole.mockResolvedValue('admin');
+    getOrCreateConversation.mockImplementation(async (_supabase, params) => ({
+      ...conversation,
+      meta: { autoExecute: false, documentExport: params.documentExport },
+    }));
+
+    const response = await chatPost(
+      request('/api/agent-chat', {
+        projectId: BOUND_PROJECT_ID,
+        message: 'Generate tables',
+        documentExport,
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(200);
+    expect(getDocumentExportSource).toHaveBeenCalledWith(
+      authedSupabase,
+      AUTH_USER_ID,
+      DOCUMENT_ID
+    );
+    expect(getOrCreateConversation).toHaveBeenCalledWith(
+      authedSupabase,
+      expect.objectContaining({ documentExport })
+    );
+    expect(runAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolContext: expect.objectContaining({ documentExport }),
+        conversationMeta: expect.objectContaining({ documentExport }),
+      })
+    );
+  });
+
+  it('rejects a document table export binding for an editor before creating a conversation', async () => {
+    getDocumentExportSource.mockRejectedValue(
+      new Error('Only admin users can export project content')
+    );
+
+    const response = await chatPost(
+      request('/api/agent-chat', {
+        projectId: BOUND_PROJECT_ID,
+        message: 'Generate tables',
+        documentExport,
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(403);
+    expect(getOrCreateConversation).not.toHaveBeenCalled();
+    expect(runAgentTurn).not.toHaveBeenCalled();
+  });
+
+  it('rejects a document source from another project before creating a conversation', async () => {
+    getDocumentExportSource.mockResolvedValue({
+      documentId: DOCUMENT_ID,
+      documentName: 'Other project notes',
+      projectId: MALICIOUS_PROJECT_ID,
+      folderId: null,
+      markdown: '# Other',
+      token: { epoch: 1, revision: 1 },
+      snapshotToken: createDocumentExportSnapshotToken({
+        documentId: DOCUMENT_ID,
+        documentName: 'Other project notes',
+        projectId: MALICIOUS_PROJECT_ID,
+        folderId: null,
+        markdown: '# Other',
+        token: { epoch: 1, revision: 1 },
+      }),
+    });
+
+    const response = await chatPost(
+      request('/api/agent-chat', {
+        projectId: BOUND_PROJECT_ID,
+        message: 'Generate tables',
+        documentExport,
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(400);
+    expect(getOrCreateConversation).not.toHaveBeenCalled();
+    expect(runAgentTurn).not.toHaveBeenCalled();
+  });
+
+  it('rejects a tampered snapshot token before creating a conversation', async () => {
+    resolveUserRole.mockResolvedValue('admin');
+    const tampered = {
+      ...documentExport,
+      snapshotToken: `${documentExport.snapshotToken!.slice(0, -1)}0`,
+    };
+    const response = await chatPost(
+      request('/api/agent-chat', {
+        projectId: BOUND_PROJECT_ID,
+        message: 'Forged content',
+        documentExport: tampered,
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(400);
+    expect(getOrCreateConversation).not.toHaveBeenCalled();
+    expect(runAgentTurn).not.toHaveBeenCalled();
+  });
+
+  it('uses the signed snapshot instead of a client-supplied table message', async () => {
+    resolveUserRole.mockResolvedValue('admin');
+    getOrCreateConversation.mockImplementation(async (_supabase, params) => ({
+      ...conversation,
+      meta: { autoExecute: false, documentExport: params.documentExport },
+    }));
+    const response = await chatPost(
+      request('/api/agent-chat', {
+        projectId: BOUND_PROJECT_ID,
+        message: '[Document content]\nCLIENT FORGED',
+        documentExport,
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(200);
+    expect(runAgentTurn.mock.calls[0][0].userMessage).toContain('# World');
+    expect(runAgentTurn.mock.calls[0][0].userMessage).not.toContain('CLIENT FORGED');
+  });
+
+  it('ignores a new request binding for an existing conversation', async () => {
+    const persistedExport = {
+      sourceDocumentId: OTHER_DOCUMENT_ID,
+      exportType: 'table' as const,
+      snapshotToken: createDocumentExportSnapshotToken({
+        documentId: OTHER_DOCUMENT_ID,
+        documentName: 'Persisted',
+        projectId: BOUND_PROJECT_ID,
+        folderId: null,
+        markdown: '# Persisted',
+        token: { epoch: 1, revision: 1 },
+      }),
+    };
+    getOrCreateConversation.mockResolvedValue({
+      ...conversation,
+      meta: { autoExecute: false, documentExport: persistedExport },
+    });
+    resolveUserRole.mockResolvedValue('admin');
+
+    const response = await chatPost(
+      request('/api/agent-chat', {
+        conversationId: conversation.id,
+        projectId: MALICIOUS_PROJECT_ID,
+        message: 'Continue',
+        documentExport,
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(200);
+    expect(getDocumentExportSource).not.toHaveBeenCalled();
+    expect(getOrCreateConversation).toHaveBeenCalledWith(
+      authedSupabase,
+      expect.not.objectContaining({ documentExport: expect.anything() })
+    );
+    expect(runAgentTurn.mock.calls[0][0].toolContext.documentExport).toEqual(persistedExport);
+  });
+
+  it('rejects an existing bound conversation after the admin is downgraded to editor', async () => {
+    getOrCreateConversation.mockResolvedValue({
+      ...conversation,
+      meta: { autoExecute: false, documentExport },
+    });
+    resolveUserRole.mockResolvedValue('editor');
+
+    const response = await chatPost(
+      request('/api/agent-chat', {
+        conversationId: conversation.id,
+        projectId: BOUND_PROJECT_ID,
+        message: 'Continue generating tables',
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Forbidden' });
+    expect(runAgentTurn).not.toHaveBeenCalled();
+  });
 });
 
 describe('agent confirmation route current-document project boundary', () => {
@@ -160,6 +365,56 @@ describe('agent confirmation route current-document project boundary', () => {
       async (_supabase: unknown, projectId: string, input: { documentId: string }) =>
         currentDocumentResult(projectId, input.documentId)
     );
+  });
+
+  it('reconstructs the export binding from conversation meta and ignores the request body', async () => {
+    getConversation.mockResolvedValue({
+      ...conversation,
+      meta: { autoExecute: false, documentExport },
+    });
+    resolveUserRole.mockResolvedValue('admin');
+    const bodyExport = {
+      sourceDocumentId: OTHER_DOCUMENT_ID,
+      exportType: 'table',
+    };
+
+    const response = await confirmPost(
+      request('/api/agent-chat/confirm', {
+        actionId: 'action-id',
+        decision: 'approve',
+        documentExport: bodyExport,
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(200);
+    expect(resumeAgentTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        toolContext: expect.objectContaining({ documentExport }),
+        conversationMeta: expect.objectContaining({ documentExport }),
+      })
+    );
+    expect(resumeAgentTurn.mock.calls[0][0].toolContext.documentExport).not.toEqual(bodyExport);
+  });
+
+  it('rejects a bound confirmation after the admin is downgraded to editor', async () => {
+    getConversation.mockResolvedValue({
+      ...conversation,
+      meta: { autoExecute: false, documentExport },
+    });
+    resolveUserRole.mockResolvedValue('editor');
+
+    const response = await confirmPost(
+      request('/api/agent-chat/confirm', {
+        actionId: 'action-id',
+        decision: 'approve',
+      }),
+      undefined
+    );
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({ error: 'Forbidden' });
+    expect(resumeAgentTurn).not.toHaveBeenCalled();
   });
 
   it('resolves the live document against the pending conversation project', async () => {

@@ -75,7 +75,15 @@ export function useSidebarTree(
     };
 
     const librariesByFolder = new Map<string, Library[]>();
+    const librariesByDocument = new Map<string, Library[]>();
     projectLibraries.forEach((lib) => {
+      if (lib.source_document_id) {
+        if (!librariesByDocument.has(lib.source_document_id)) {
+          librariesByDocument.set(lib.source_document_id, []);
+        }
+        librariesByDocument.get(lib.source_document_id)!.push(lib);
+        return;
+      }
       const folderId = lib.folder_id ? String(lib.folder_id) : '';
       if (!librariesByFolder.has(folderId)) {
         librariesByFolder.set(folderId, []);
@@ -92,10 +100,51 @@ export function useSidebarTree(
       documentsByFolder.get(folderId)!.push(doc);
     });
 
-    // Build a document leaf node. Documents sit next to libraries in the tree.
+    const buildLibraryNode = (lib: Library, isUnderFolder: boolean): DataNode => {
+      const libKey = `library-${lib.id}`;
+      return {
+        title: (
+          <div
+            className={`${styles.itemRow} ${styles.libraryRow} ${isUnderFolder ? '' : styles.rootLibraryRow}`}
+            data-library-under-folder={isUnderFolder ? true : undefined}
+            onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
+          >
+            <div className={styles.itemMain}>
+              <div className={styles.libraryIconContainer}>
+                <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
+              </div>
+              <span
+                className={styles.itemText}
+                style={{ fontWeight: isUnderFolder ? undefined : 500 }}
+                title={lib.name}
+                onDoubleClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (userRole === 'admin') setEditingKey(libKey);
+                }}
+              >
+                {truncateText(lib.name, computeMaxChars(15))}
+              </span>
+            </div>
+          </div>
+        ),
+        key: libKey,
+        isLeaf: true,
+        children: undefined,
+        _titleStr: lib.name,
+        _nodeType: 'library',
+        _isLibraryUnderFolder: isUnderFolder,
+      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' | 'document'; _isLibraryUnderFolder: boolean };
+    };
+
+    // Build a document node with any derived libraries nested beneath it.
     const buildDocumentNode = (doc: DocumentSummary, isUnderFolder: boolean): DataNode => {
       const docKey = `document-${doc.id}`;
       const canRename = userRole === 'admin' || userRole === 'editor';
+      const derivedLibraries = [...(librariesByDocument.get(doc.id) ?? [])].sort(
+        (a, b) => a.created_at.localeCompare(b.created_at) || a.id.localeCompare(b.id)
+      );
+      const children = derivedLibraries.map((library) => buildLibraryNode(library, true));
       return {
         title: (
           <div
@@ -122,8 +171,8 @@ export function useSidebarTree(
           </div>
         ),
         key: docKey,
-        isLeaf: true,
-        children: undefined,
+        isLeaf: children.length === 0,
+        children: children.length ? children : undefined,
         _titleStr: doc.name,
         _nodeType: 'document',
         _isLibraryUnderFolder: isUnderFolder,
@@ -133,40 +182,7 @@ export function useSidebarTree(
     const buildFolderNode = (folder: Folder): DataNode => {
       const folderLibraries = librariesByFolder.get(String(folder.id)) || [];
 
-      const children: DataNode[] = folderLibraries.map((lib) => {
-        const libKey = `library-${lib.id}`;
-        return {
-          title: (
-            <div
-              className={`${styles.itemRow} ${styles.libraryRow}`}
-              data-library-under-folder
-            >
-              <div className={styles.itemMain}>
-                <div className={styles.libraryIconContainer}>
-                  <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
-                </div>
-                <span
-                  className={styles.itemText}
-                  title={lib.name}
-                  onDoubleClick={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (userRole === 'admin') setEditingKey(libKey);
-                  }}
-                >
-                  {truncateText(lib.name, computeMaxChars(15))}
-                </span>
-              </div>
-            </div>
-          ),
-          key: libKey,
-          isLeaf: true,
-          children: undefined,
-          _titleStr: lib.name,
-          _nodeType: 'library',
-          _isLibraryUnderFolder: true,
-        } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' };
-      });
+      const children: DataNode[] = folderLibraries.map((lib) => buildLibraryNode(lib, true));
 
       const folderDocuments = documentsByFolder.get(String(folder.id)) || [];
       folderDocuments.forEach((doc) => {
@@ -238,41 +254,7 @@ export function useSidebarTree(
     });
 
     const rootLibraries = librariesByFolder.get('') || [];
-    rootLibraries.forEach((lib) => {
-      const libKey = `library-${lib.id}`;
-      result.push({
-        title: (
-          <div
-            className={`${styles.itemRow} ${styles.libraryRow} ${styles.rootLibraryRow}`}
-            onContextMenu={(e) => handleContextMenu(e, 'library', lib.id)}
-          >
-            <div className={styles.itemMain}>
-              <div className={styles.libraryIconContainer}>
-                <Image src={libraryBookIcon} alt="Library" width={24} height={24} className="icon-24" />
-              </div>
-              <span
-                className={styles.itemText}
-                style={{ fontWeight: 500 }}
-                title={lib.name}
-                onDoubleClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  if (userRole === 'admin') setEditingKey(libKey);
-                }}
-              >
-                {truncateText(lib.name, computeMaxChars(15))}
-              </span>
-            </div>
-          </div>
-        ),
-        key: libKey,
-        isLeaf: true,
-        children: undefined,
-        _titleStr: lib.name,
-        _nodeType: 'library',
-        _isLibraryUnderFolder: false,
-      } as DataNode & { _titleStr: string; _nodeType: 'library' | 'folder' | 'document' });
-    });
+    rootLibraries.forEach((lib) => result.push(buildLibraryNode(lib, false)));
 
     const rootDocuments = documentsByFolder.get('') || [];
     rootDocuments.forEach((doc) => {
