@@ -13,6 +13,9 @@ const rpc = jest.fn();
 const publishImportedDocument = jest.fn();
 
 jest.mock('@/lib/document-parser', () => ({
+  escapeLiteralMdxBraces: (
+    jest.requireActual('../../../src/lib/document-parser') as typeof import('../../../src/lib/document-parser')
+  ).escapeLiteralMdxBraces,
   parseDocument: (...args: unknown[]) => parseDocument(...args),
   validateDesignFile: (...args: unknown[]) => validateDesignFile(...args),
 }));
@@ -144,6 +147,35 @@ describe('document import service', () => {
     });
 
     expect(markdown).toContain('First line\n\nSecond line');
+  });
+
+  it('keeps literal braces in plain-text imports as text while preserving inline code', () => {
+    const markdown = buildImportedDocumentMarkdown({
+      fileName: 'notes.txt',
+      text: 'Payload: {"name":"Ada"}\nUse {HP} as the value.\nInline code: `{HP}`',
+      imageUrls: [],
+    });
+
+    expect(markdown).toContain('Payload: \\{"name":"Ada"\\}');
+    expect(markdown).toContain('Use \\{HP\\} as the value.');
+    expect(markdown).toContain('Inline code: `{HP}`');
+  });
+
+  it('keeps literal braces in Markdown imports without weakening component validation', () => {
+    const markdown = buildImportedDocumentMarkdown({
+      fileName: 'notes.md',
+      text: '# Notes\n\nJSON: {"name":"Ada"}',
+      imageUrls: [],
+    });
+
+    expect(markdown).toContain('JSON: \\{"name":"Ada"\\}');
+    expect(() =>
+      buildImportedDocumentMarkdown({
+        fileName: 'unsafe.md',
+        text: '<Callout type={kind}>Expression</Callout>',
+        imageUrls: [],
+      })
+    ).toThrow();
   });
 
   it('rejects empty and unsafe imported content before persistence', () => {

@@ -1,5 +1,6 @@
 import {
   convertDocumentHtmlToMarkdown,
+  escapeLiteralMdxBraces,
   parseDocument,
   validateDesignFile,
   filterExtractedImages,
@@ -194,6 +195,34 @@ describe('convertDocumentHtmlToMarkdown', () => {
     expect(markdown).toContain('[Project](/projects/123)');
     expect(markdown).toContain('Relative image');
     expect(markdown).not.toContain('](/relative.png)');
+  });
+});
+
+describe('escapeLiteralMdxBraces', () => {
+  it('escapes prose braces without changing code spans or fenced code', () => {
+    const source = [
+      'Payload: {"name":"Ada"}',
+      '',
+      'Inline `{HP}`.',
+      '',
+      '```json',
+      '{"name":"Ada"}',
+      '```',
+    ].join('\n');
+
+    expect(escapeLiteralMdxBraces(source)).toBe([
+      'Payload: \\{"name":"Ada"\\}',
+      '',
+      'Inline `{HP}`.',
+      '',
+      '```json',
+      '{"name":"Ada"}',
+      '```',
+    ].join('\n'));
+  });
+
+  it('does not double-escape already escaped braces', () => {
+    expect(escapeLiteralMdxBraces('Already \\{safe\\}.')).toBe('Already \\{safe\\}.');
   });
 });
 
