@@ -170,7 +170,7 @@ function DocumentEditorSession({
       throw new Error('Document export source failed');
     }
     return payload.source;
-  }, [collaboration.session, document.id, permissions.role, supabase]);
+  }, [collaboration.session, document.id, permissions.role, projectId, supabase]);
   const exportItems = [
     { key: 'docx', label: 'Download DOCX' },
     { key: 'pdf', label: 'Download PDF' },

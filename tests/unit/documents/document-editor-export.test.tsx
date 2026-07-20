@@ -6,12 +6,56 @@ const getSession = jest.fn();
 const stateSetter = jest.fn();
 const saveDesignHandoff = jest.fn();
 const buildDesignMessage = jest.fn(() => 'built design message');
+const mockCollaborationSession = { flush };
+const mockSupabase = { auth: { getSession } };
+let mockCallbackHookIndex = 0;
+let mockStateHookIndex = 0;
+const mockCallbackCache: Array<{ deps: unknown[]; callback: unknown }> = [];
+const mockStateValues: unknown[] = [];
+const mockImportScriptModal = (props: Record<string, unknown>) => {
+  return { type: 'ImportScriptModal', props };
+};
 let permissionRole: 'admin' | 'editor' | 'viewer' = 'editor';
+
+function depsEqual(left: unknown[], right: unknown[]) {
+  return left.length === right.length && left.every((value, index) => Object.is(value, right[index]));
+}
+
+function mockUseCallback<T>(callback: T, deps: unknown[] = []): T {
+  const index = mockCallbackHookIndex++;
+  const previous = mockCallbackCache[index];
+  if (previous && depsEqual(previous.deps, deps)) return previous.callback as T;
+  mockCallbackCache[index] = { deps, callback };
+  return callback;
+}
+
+function mockUseState<T>(initial: T): [T, (value: T | ((current: T) => T)) => void] {
+  const index = mockStateHookIndex++;
+  if (!(index in mockStateValues)) mockStateValues[index] = initial;
+  return [
+    mockStateValues[index] as T,
+    (value) => {
+      stateSetter(value);
+      mockStateValues[index] = typeof value === 'function'
+        ? (value as (current: T) => T)(mockStateValues[index] as T)
+        : value;
+    },
+  ];
+}
+
+function beginRender(clearState = false) {
+  mockCallbackHookIndex = 0;
+  mockStateHookIndex = 0;
+  if (clearState) {
+    mockCallbackCache.length = 0;
+    mockStateValues.length = 0;
+  }
+}
 
 jest.mock('react', () => ({
   ...jest.requireActual<typeof import('react')>('react'),
-  useCallback: <T,>(callback: T) => callback,
-  useState: <T,>(initial: T) => [initial, stateSetter],
+  useCallback: mockUseCallback,
+  useState: mockUseState,
 }));
 jest.mock('next/dynamic', () => () => () => null);
 jest.mock('@ant-design/icons', () => ({
@@ -32,7 +76,7 @@ jest.mock('@tanstack/react-query', () => ({
   }),
 }));
 jest.mock('@/lib/SupabaseContext', () => ({
-  useSupabase: () => ({ auth: { getSession } }),
+  useSupabase: () => mockSupabase,
 }));
 jest.mock('@/lib/services/documentImageUpload', () => ({ uploadImageFiles: jest.fn() }));
 jest.mock('@/lib/utils/toast', () => ({
@@ -46,7 +90,7 @@ jest.mock('@/lib/design-upload-handoff', () => ({
   saveDesignHandoff: (...args: unknown[]) => saveDesignHandoff(...args),
 }));
 jest.mock('@/components/libraries/ImportScriptModal', () => ({
-  ImportScriptModal: (props: unknown) => ({ type: 'ImportScriptModal', props }),
+  ImportScriptModal: mockImportScriptModal,
 }));
 jest.mock('@/components/documents/useDocumentPermissions', () => ({
   useDocumentPermissions: () => ({
@@ -60,7 +104,7 @@ jest.mock('@/components/documents/useDocumentPermissions', () => ({
 }));
 jest.mock('@/components/documents/useDocumentCollaboration', () => ({
   useDocumentCollaboration: () => ({
-    session: { flush },
+    session: mockCollaborationSession,
     token: { epoch: 1, revision: 1 },
     isLegacyView: false,
     canBind: true,
@@ -119,16 +163,34 @@ function findExportMenuItems(node: ReactNode): Array<{ key: string; label: strin
   throw new Error('Export menu not found');
 }
 
-function exportHandler() {
-  const editor = DocumentEditor({ projectId: 'project-id', documentId: 'document-id' });
+function findScriptModalProps(node: ReactNode): Record<string, unknown> {
+  if (!node || typeof node !== 'object') throw new Error('Script modal not found');
+  const element = node as ReactElement<{ children?: ReactNode }>;
+  if (element.type === mockImportScriptModal) return element.props as Record<string, unknown>;
+  const children = element.props?.children;
+  for (const child of Array.isArray(children) ? children : [children]) {
+    try {
+      return findScriptModalProps(child);
+    } catch {
+      // Keep searching sibling elements.
+    }
+  }
+  throw new Error('Script modal not found');
+}
+
+function renderSession(projectId = 'project-id') {
+  beginRender();
+  const editor = DocumentEditor({ projectId, documentId: 'document-id' });
   const session = (editor as ReactElement).type as (props: unknown) => ReactElement;
-  return findExportHandler(session((editor as ReactElement).props));
+  return session((editor as ReactElement).props);
+}
+
+function exportHandler(projectId = 'project-id') {
+  return findExportHandler(renderSession(projectId));
 }
 
 function exportMenuItems() {
-  const editor = DocumentEditor({ projectId: 'project-id', documentId: 'document-id' });
-  const session = (editor as ReactElement).type as (props: unknown) => ReactElement;
-  return findExportMenuItems(session((editor as ReactElement).props));
+  return findExportMenuItems(renderSession());
 }
 
 describe('DocumentEditor export durability', () => {
@@ -136,6 +198,7 @@ describe('DocumentEditor export durability', () => {
 
   beforeEach(() => {
     permissionRole = 'editor';
+    beginRender(true);
     flush.mockReset();
     stateSetter.mockReset();
     saveDesignHandoff.mockReset();
@@ -315,5 +378,34 @@ describe('DocumentEditor export durability', () => {
 
     expect(flush).toHaveBeenCalledTimes(1);
     expect(stateSetter).toHaveBeenCalledWith(source);
+
+    expect(findScriptModalProps(renderSession())).toMatchObject({
+      open: true,
+      folderId: 'folder-id',
+      documentSource: source,
+    });
+  });
+
+  it('uses the latest project binding when the editor project changes', async () => {
+    permissionRole = 'admin';
+    exportHandler('old-project');
+    const handler = exportHandler('new-project');
+    const source = {
+      documentId: 'document-id',
+      documentName: 'Export me',
+      projectId: 'new-project',
+      folderId: null,
+      markdown: '| Name | Value |',
+      token: { epoch: 4, revision: 9 },
+    };
+    (fetch as jest.Mock)
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ source }) });
+
+    await handler({ key: 'tables' });
+
+    expect(saveDesignHandoff).toHaveBeenCalledWith(
+      'new-project',
+      expect.objectContaining({ documentId: 'document-id' })
+    );
   });
 });
