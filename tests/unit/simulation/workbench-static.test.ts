@@ -32,6 +32,11 @@ describe('native simulation workbench presentation', () => {
     expect(source).toContain('aria-expanded');
     expect(source).toMatch(/<button[^>]+aria-label=.*[Cc]ollapse/s);
     expect(source).not.toMatch(/<(?:div|li|span)[^>]+onClick=/);
+
+    const css = read('SimulationWorkbench.module.css');
+    expect(css).toMatch(/\.sidebarCollapsed \.brandMark[^}]*display:\s*none/s);
+    expect(css).toMatch(/\.sidebarCollapsed \.sidebarBrand[^}]*justify-content:\s*center[^}]*padding:\s*0/s);
+    expect(css).toMatch(/\.sidebarCollapsed \.collapseButton[^}]*margin-left:\s*0/s);
   });
 
   it('exposes the workflow and a decorative Studio-native search icon', () => {

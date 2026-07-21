@@ -220,11 +220,21 @@
 }
 
 .sidebarCollapsed .brandText,
+.sidebarCollapsed .brandMark,
 .sidebarCollapsed .projectContext,
 .sidebarCollapsed .sidebarItemCopy,
 .sidebarCollapsed .sidebarBadge,
 .sidebarCollapsed .sidebarFooter {
   display: none;
+}
+
+.sidebarCollapsed .sidebarBrand {
+  justify-content: center;
+  padding: 0;
+}
+
+.sidebarCollapsed .collapseButton {
+  margin-left: 0;
 }
 
 .sidebarCollapsed .sidebarItem {
