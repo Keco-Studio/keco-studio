@@ -68,7 +68,16 @@ describe('simulation storage repository', () => {
     const expected = state();
 
     expect(repository.save('user: one', 'project: one', expected)).toEqual({ ok: true });
-    expect(repository.load('user: one', 'project: one')).toEqual({ ok: true, state: expected });
+    const loaded = repository.load('user: one', 'project: one');
+    expect(loaded).toEqual({ ok: true, state: expected });
+    expect(loaded.ok && Object.isFrozen(loaded.state)).toBe(true);
+    expect(loaded.ok && Object.isFrozen(loaded.state?.sessions[0].importedSnapshot?.catalog)).toBe(true);
+    expect(loaded.ok && Object.isFrozen(loaded.state?.sessions[0].importedSnapshot?.catalog.characters[0])).toBe(true);
+    expect(() => {
+      if (loaded.ok && loaded.state?.sessions[0].importedSnapshot) {
+        (loaded.state.sessions[0].importedSnapshot.catalog.characters[0] as { name: string }).name = 'Changed';
+      }
+    }).toThrow();
     const raw = storage.getItem(simulationStorageKey('user: one', 'project: one')) ?? '';
     const keys = (value: unknown): string[] => value && typeof value === 'object'
       ? Object.entries(value).flatMap(([key, child]) => [key, ...keys(child)])
@@ -85,11 +94,19 @@ describe('simulation storage repository', () => {
     delete (old.sessions as Array<Record<string, unknown>>)[0].lastScreen;
     storage.setItem(simulationStorageKey('user', 'project: one'), JSON.stringify(old));
 
-    expect(createSimulationStorageRepository(storage).load('user', 'project: one')).toEqual({
+    const loaded = createSimulationStorageRepository(storage).load('user', 'project: one');
+    expect(loaded).toEqual({
       ok: true,
       state: { ...state(), sessions: [{ ...state().sessions[0], lastScreen: 'characters' }] },
       migratedFrom: 0,
     });
+    expect(loaded.ok && Object.isFrozen(loaded.state)).toBe(true);
+    expect(loaded.ok && Object.isFrozen(loaded.state?.sessions[0].importedSnapshot?.fieldMappings.characters)).toBe(true);
+    expect(() => {
+      if (loaded.ok && loaded.state?.sessions[0].importedSnapshot) {
+        (loaded.state.sessions[0].importedSnapshot.fieldMappings.characters as { id?: string }).id = 'Changed';
+      }
+    }).toThrow();
   });
 
   it.each([

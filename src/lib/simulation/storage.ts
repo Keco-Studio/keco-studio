@@ -207,6 +207,14 @@ function failure(
   return { ok: false, error: { code, message } };
 }
 
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    Object.freeze(value);
+    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child);
+  }
+  return value;
+}
+
 export function createSimulationStorageRepository(storage: Storage | null | undefined): SimulationStorageRepository {
   return {
     load(userId, projectId) {
@@ -236,19 +244,20 @@ export function createSimulationStorageRepository(storage: Storage | null | unde
         if (!result.success || result.data.sessions.some((session) => (
           session.importedSnapshot !== null && session.importedSnapshot.sourceProjectId !== projectId
         ))) return failure('invalid_state', 'Stored simulation state is invalid.');
-        return { ok: true, state: result.data as SimulationStateV1 };
+        return { ok: true, state: deepFreeze(result.data as SimulationStateV1) };
       }
       const result = stateV0Schema.safeParse(parsed);
       if (!result.success || result.data.sessions.some((session) => (
         session.importedSnapshot !== null && session.importedSnapshot.sourceProjectId !== projectId
       ))) return failure('invalid_state', 'Stored simulation state is invalid.');
+      const migrated = {
+        version: 1,
+        activeSessionId: result.data.activeSessionId,
+        sessions: result.data.sessions.map((session) => ({ ...session, lastScreen: 'characters' as const })),
+      } as SimulationStateV1;
       return {
         ok: true,
-        state: {
-          version: 1,
-          activeSessionId: result.data.activeSessionId,
-          sessions: result.data.sessions.map((session) => ({ ...session, lastScreen: 'characters' })),
-        } as SimulationStateV1,
+        state: deepFreeze(migrated),
         migratedFrom: 0,
       };
     },

@@ -11,7 +11,8 @@ function snapshot(id = 'hero'): ImportedSimulationSnapshot {
       skills: [{ id: 'fire', name: 'Fire', el: 'Fire', mp: 1, power: 10, cd: 0, kind: 'dmg' }],
       basic: { id: 'basic', name: 'Strike', el: 'Physical', mp: 0, power: 1, cd: 0, kind: 'dmg' },
     },
-    levelRules: [{ level: 1, exp: 0, sp: 2 }], skillCostRules: [{ lv: 1, cost: 0 }],
+    levelRules: [{ level: 1, exp: 0, sp: 2 }, { level: 2, exp: 5, sp: 1 }],
+    skillCostRules: [{ lv: 1, cost: 0 }],
     sourceLibraryIds: { characters: 'c', skills: 's', level: 'l', skillc: 'sc' },
     fieldMappings: { characters: {}, skills: {}, level: {}, skillc: {} },
     importedAt: '2026-07-21T00:00:00.000Z',
@@ -83,6 +84,16 @@ describe('simulation session reducer', () => {
     expect(result.sessions[1]).toBe(original.sessions[1]);
   });
 
+  it.each([
+    [[{ uid: 'same', tmplId: 'hero', team: 'A' }, { uid: 'same', tmplId: 'hero', team: 'B' }]],
+    [[{ uid: 'unit', tmplId: 'missing', team: 'A' }]],
+  ] as const)('rejects roster updates with duplicate uids or templates outside the snapshot', (roster) => {
+    const original = state();
+    expect(simulationSessionReducer(original, {
+      type: 'ROSTER_UPDATED', sessionId: 'one', roster,
+    })).toBe(original);
+  });
+
   it('applies skill, progression and screen updates to one known session', () => {
     const original = state();
     const rostered = simulationSessionReducer(original, { type: 'ROSTER_UPDATED', sessionId: 'one', roster: [{ uid: 'u', tmplId: 'hero', team: 'A' }] });
@@ -94,6 +105,40 @@ describe('simulation session reducer', () => {
     const screened = simulationSessionReducer(progressed, { type: 'LAST_SCREEN_CHANGED', sessionId: 'one', lastScreen: 'battle' });
     expect(screened.sessions[0].lastScreen).toBe('battle');
     expect(screened.sessions[1]).toBe(original.sessions[1]);
+  });
+
+  it.each([
+    ['unknown roster uid', 'missing', ['fire'], { fire: 1 }],
+    ['duplicate loadout skill', 'u', ['fire', 'fire'], { fire: 1 }],
+    ['skill outside catalog', 'u', ['missing'], { missing: 1 }],
+    ['level outside loadout', 'u', ['fire'], { missing: 1 }],
+    ['zero skill level', 'u', ['fire'], { fire: 0 }],
+    ['fractional skill level', 'u', ['fire'], { fire: 1.5 }],
+  ] as const)('rejects invalid skill updates: %s', (_label, uid, loadout, skillLevels) => {
+    const original = simulationSessionReducer(state(), {
+      type: 'ROSTER_UPDATED', sessionId: 'one', roster: [{ uid: 'u', tmplId: 'hero', team: 'A' }],
+    });
+    expect(simulationSessionReducer(original, {
+      type: 'SKILL_UPDATED', sessionId: 'one', uid, loadout, skillLevels,
+    })).toBe(original);
+  });
+
+  it.each([
+    ['unknown roster uid', 'missing', 0, 1, 0],
+    ['negative exp', 'u', -1, 1, 0],
+    ['fractional exp', 'u', 0.5, 1, 0],
+    ['zero level', 'u', 0, 0, 0],
+    ['fractional level', 'u', 0, 1.5, 0],
+    ['level beyond snapshot rules', 'u', 0, 3, 0],
+    ['negative sp', 'u', 0, 1, -1],
+    ['fractional sp', 'u', 0, 1, 0.5],
+  ] as const)('rejects invalid progression updates: %s', (_label, uid, exp, lv, sp) => {
+    const original = simulationSessionReducer(state(), {
+      type: 'ROSTER_UPDATED', sessionId: 'one', roster: [{ uid: 'u', tmplId: 'hero', team: 'A' }],
+    });
+    expect(simulationSessionReducer(original, {
+      type: 'PROGRESSION_UPDATED', sessionId: 'one', uid, exp, lv, sp,
+    })).toBe(original);
   });
 
   it('does not mutate deeply frozen inputs and preserves untouched session references', () => {
