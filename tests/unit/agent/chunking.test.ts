@@ -8,6 +8,7 @@ import {
   stripDesignDocumentPrefix,
 } from '../../../src/lib/agent/chunking';
 import type { IndexableChatMessage } from '../../../src/lib/agent/chunking';
+import { buildDesignMessage } from '../../../src/lib/design-message';
 
 function msg(
   id: string,
@@ -98,15 +99,57 @@ describe('chunkDesignDocument', () => {
     const chunks = chunkDesignDocument('[Design document]\nHi', { minChars: 50 });
     expect(chunks).toHaveLength(0);
   });
+
+  it.each(['analyze', 'tables'] as const)(
+    'chunks only document payload from a production %s envelope',
+    (intent) => {
+      const body = `Payload for ${intent} indexing. `.repeat(5).trim();
+      const envelope = buildDesignMessage({
+        fileName: `${intent}.docx`,
+        documentText: body,
+        intent,
+        additionalInstructions: 'Keep this user instruction out of embeddings.',
+      });
+
+      const chunks = chunkDesignDocument(envelope, { minChars: 1 });
+      const indexedText = chunks.map((chunk) => chunk.content).join('\n');
+
+      expect(indexedText).toBe(body);
+      expect(indexedText).not.toContain('[Document intent]');
+      expect(indexedText).not.toContain('[User instructions]');
+      expect(indexedText).not.toContain('already parsed');
+      expect(indexedText).not.toContain('list_project_structure');
+    }
+  );
+
+  it('chunks only document payload from a full legacy envelope', () => {
+    const body = 'Legacy payload that is long enough to be retained in the embedding index.';
+    const envelope =
+      '[Design document]\n' +
+      'The user uploaded a design document "legacy.docx". First call ' +
+      'list_project_structure and list_field_types, then infer tables.\n\n' +
+      '[User instructions]\nImport only explicit tables.\n\n' +
+      `[Document content]\n${body}`;
+
+    const chunks = chunkDesignDocument(envelope, { minChars: 1 });
+    const indexedText = chunks.map((chunk) => chunk.content).join('\n');
+
+    expect(indexedText).toBe(body);
+    expect(indexedText).not.toContain('legacy.docx');
+    expect(indexedText).not.toContain('list_project_structure');
+    expect(indexedText).not.toContain('Import only explicit tables.');
+  });
 });
 
 describe('design document helpers', () => {
-  it('detects design document prefix', () => {
+  it('detects current and legacy design document prefixes', () => {
+    expect(isDesignDocumentMessage('[Document attachment]\nChapter 1')).toBe(true);
     expect(isDesignDocumentMessage('[Design document]\nChapter 1')).toBe(true);
     expect(isDesignDocumentMessage('Regular message')).toBe(false);
   });
 
-  it('strips prefix for chunking', () => {
+  it('strips current and legacy prefixes for chunking', () => {
+    expect(stripDesignDocumentPrefix('[Document attachment]\nBody')).toBe('Body');
     expect(stripDesignDocumentPrefix('[Design document]\nBody')).toBe('Body');
   });
 });

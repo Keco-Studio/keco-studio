@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from '@playwright/test';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { Document, Packer, Paragraph } from 'docx';
 import { AgentPage } from '../pages/agent.page';
 import { LoginPage } from '../pages/login.page';
 import {
@@ -87,6 +88,36 @@ test.describe('Agent chat', () => {
 
     await expect(page.getByTestId('agent-message-assistant')).toContainText(
       'Project status: ready for review.'
+    );
+  });
+
+  test('routes a DOCX chat attachment to analysis intent', async ({ page }) => {
+    const docx = await Packer.toBuffer(new Document({
+      sections: [{ children: [new Paragraph('Visible DOCX content')] }],
+    }));
+
+    await page.route('**/api/agent-chat', async (route) => {
+      const body = route.request().postDataJSON() as { message?: string };
+      expect(body.message).toContain('[Document attachment]');
+      expect(body.message).toContain('[Document intent]\nanalyze');
+      expect(body.message).toContain('[User instructions]\nWhat is in this file?');
+      expect(body.message).toContain('Visible DOCX content');
+      expect(body.message).not.toContain('First call list_project_structure and list_field_types');
+      await fulfillAgentStream(route, crypto.randomUUID(), [
+        { type: 'text_delta', content: 'The file contains visible DOCX content.' },
+      ]);
+    });
+
+    const agent = await openProject(page);
+    await agent.panel.locator('input[type="file"]').setInputFiles({
+      name: 'visible.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      buffer: docx,
+    });
+    await agent.send('What is in this file?');
+
+    await expect(page.getByTestId('agent-message-assistant')).toContainText(
+      'The file contains visible DOCX content.'
     );
   });
 

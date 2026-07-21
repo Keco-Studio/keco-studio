@@ -364,6 +364,7 @@ describe('DocumentEditor export durability', () => {
       documentText: '| Name | Value |',
       documentId: 'document-id',
       sourceKind: 'project-document',
+      intent: 'tables',
     });
   });
 

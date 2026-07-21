@@ -210,6 +210,7 @@ function DocumentEditorSession({
             const message = buildDesignMessage({
               fileName: source.documentName,
               documentText: source.markdown,
+              intent: 'tables',
               documentId: source.documentId,
               sourceKind: 'project-document',
             });

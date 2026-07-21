@@ -76,6 +76,7 @@ export default function DesignUploadPage() {
       const message = buildDesignMessage({
         fileName: file.name,
         documentText: imported.sourceText,
+        intent: 'tables',
         documentId: imported.document.id,
         additionalInstructions: instructions,
       });

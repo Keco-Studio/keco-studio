@@ -1,17 +1,54 @@
 import { buildDesignMessage, parseDesignMessage } from '../../src/lib/design-message';
 
 describe('buildDesignMessage', () => {
+  it('builds neutral analysis without table directives', () => {
+    const message = buildDesignMessage({
+      fileName: 'story.docx',
+      documentText: 'Visible body',
+      additionalInstructions: 'What is in this file?',
+      intent: 'analyze',
+    });
+    expect(message).toContain('[Document attachment]');
+    expect(message).toContain('[Document intent]\nanalyze');
+    expect(message).toContain('[User instructions]\nWhat is in this file?');
+    expect(message).toContain('[Document content]\nVisible body');
+    expect(message).toContain('already parsed');
+    expect(message).not.toContain('First call list_project_structure and list_field_types');
+  });
+
+  it('summarizes analysis attachments with no instructions', () => {
+    const message = buildDesignMessage({
+      fileName: 'story.docx',
+      documentText: 'Visible body',
+      intent: 'analyze',
+    });
+    expect(message).toContain('provide a concise summary of the document');
+  });
+
+  it('retains the workflow for table intent', () => {
+    const message = buildDesignMessage({
+      fileName: 'design.docx',
+      documentText: '| Name | Value |',
+      intent: 'tables',
+    });
+    expect(message).toContain('[Document intent]\ntables');
+    expect(message).toContain('First call list_project_structure and list_field_types');
+    expect(message).toContain('EXTRACTION mode');
+    expect(message).toContain('QUALITY GATE');
+  });
+
   it('includes the file name in the system instruction', () => {
     const msg = buildDesignMessage({
       fileName: 'worldview.md',
       documentText: 'A fantasy continent with three factions.',
+      intent: 'analyze',
     });
     expect(msg).toContain('worldview.md');
   });
 
   it('includes the full document text', () => {
     const documentText = 'A fantasy continent with three factions.';
-    const msg = buildDesignMessage({ fileName: 'a.txt', documentText });
+    const msg = buildDesignMessage({ fileName: 'a.txt', documentText, intent: 'analyze' });
     expect(msg).toContain(documentText);
   });
 
@@ -20,6 +57,7 @@ describe('buildDesignMessage', () => {
       fileName: 'a.txt',
       documentText: 'doc',
       additionalInstructions: 'Only create a characters table.',
+      intent: 'analyze',
     });
     expect(msg).toContain('Only create a characters table.');
   });
@@ -29,8 +67,9 @@ describe('buildDesignMessage', () => {
       fileName: 'a.txt',
       documentText: 'doc',
       additionalInstructions: '   ',
+      intent: 'analyze',
     });
-    const without = buildDesignMessage({ fileName: 'a.txt', documentText: 'doc' });
+    const without = buildDesignMessage({ fileName: 'a.txt', documentText: 'doc', intent: 'analyze' });
     expect(withBlank).toBe(without);
   });
 
@@ -39,6 +78,7 @@ describe('buildDesignMessage', () => {
       fileName: 'mixed.docx',
       documentText: 'Story paragraph\n\n| Name | Value |\n| --- | --- |\n| A | 1 |',
       additionalInstructions: 'Extract the tables from the document',
+      intent: 'tables',
     });
 
     expect(msg).toContain('EXTRACTION mode');
@@ -51,6 +91,7 @@ describe('buildDesignMessage', () => {
       fileName: 'random.txt',
       documentText: 'Dinner was delicious tonight, and it rained outside.',
       additionalInstructions: 'Generate a table',
+      intent: 'tables',
     });
 
     expect(msg).toContain('QUALITY GATE');
@@ -64,6 +105,7 @@ describe('buildDesignMessage', () => {
       documentText: '| Name | Value |\n| --- | --- |\n| A | 1 |',
       documentId: 'document-id',
       sourceKind: 'project-document',
+      intent: 'tables',
     });
 
     expect(msg).toContain('The user selected the project document "Project notes".');
@@ -75,6 +117,12 @@ describe('buildDesignMessage', () => {
 });
 
 describe('parseDesignMessage', () => {
+  it('parses a legacy design-document envelope', () => {
+    expect(parseDesignMessage(
+      '[Design document]\nThe user uploaded a design document "legacy.docx".\n\n' +
+      '[User instructions]\nSummarize it\n\n[Document content]\nSECRET',
+    )).toEqual({ fileName: 'legacy.docx', instructions: 'Summarize it' });
+  });
   it('returns null for a plain (non-design) message', () => {
     expect(parseDesignMessage('Hello, can you help me?')).toBeNull();
   });
@@ -84,6 +132,7 @@ describe('parseDesignMessage', () => {
       fileName: 'worldview.docx',
       documentText: 'A fantasy continent with three factions.',
       additionalInstructions: 'Only create a characters table.',
+      intent: 'analyze',
     });
     const parsed = parseDesignMessage(msg);
     expect(parsed?.fileName).toBe('worldview.docx');
@@ -94,6 +143,7 @@ describe('parseDesignMessage', () => {
     const msg = buildDesignMessage({
       fileName: 'a.txt',
       documentText: 'doc body',
+      intent: 'analyze',
     });
     const parsed = parseDesignMessage(msg);
     expect(parsed?.fileName).toBe('a.txt');
@@ -105,6 +155,7 @@ describe('parseDesignMessage', () => {
       fileName: 'a.txt',
       documentText: 'SECRET-DOC-BODY',
       additionalInstructions: 'do a thing',
+      intent: 'analyze',
     });
     const parsed = parseDesignMessage(msg);
     expect(parsed?.instructions).not.toContain('SECRET-DOC-BODY');
@@ -115,6 +166,7 @@ describe('parseDesignMessage', () => {
       fileName: 'a.txt',
       documentText: 'body',
       additionalInstructions: 'line one\nline two',
+      intent: 'analyze',
     });
     const parsed = parseDesignMessage(msg);
     expect(parsed?.instructions).toBe('line one\nline two');
