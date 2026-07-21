@@ -26,6 +26,7 @@ export type SanctionedMdxAstNode = {
   start?: number | null;
   lang?: string | null;
   alt?: string | null;
+  title?: string | null;
 };
 
 export function parseSanctionedMdxAst(markdown: string): SanctionedMdxAstNode {

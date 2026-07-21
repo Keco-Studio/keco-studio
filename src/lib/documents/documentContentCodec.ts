@@ -17,6 +17,7 @@ import {
   waitForLexicalCommit,
 } from './headlessDocumentNodes';
 import {
+  coerceSanctionedMdxImages,
   validateSanctionedMdx,
   validateSanctionedMdxAstNode,
 } from './sanctionedMdx';
@@ -304,7 +305,7 @@ async function normalizeYjsState(
       if (syncError) throw syncError;
     });
 
-    const markdown = headless.getMarkdown();
+    const markdown = coerceSanctionedMdxImages(headless.getMarkdown());
     validateSanctionedMdx(markdown);
     return {
       yjsStateBase64: encodeBase64(Y.encodeStateAsUpdate(doc)),
@@ -339,8 +340,9 @@ async function yjsStateToMarkdown(
 
 export const documentContentCodec: DocumentContentCodec = {
   validate(markdown) {
-    validateSanctionedMdx(markdown);
-    return { markdown };
+    const normalized = coerceSanctionedMdxImages(markdown);
+    validateSanctionedMdx(normalized);
+    return { markdown: normalized };
   },
   markdownToYjsState,
   yjsStateToMarkdown,

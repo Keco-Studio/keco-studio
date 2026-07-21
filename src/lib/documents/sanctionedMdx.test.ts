@@ -1,4 +1,4 @@
-import { validateSanctionedMdx } from './sanctionedMdx';
+import { validateSanctionedMdx, coerceSanctionedMdxImages } from './sanctionedMdx';
 import { createSanctionedMdxDescriptors } from './sanctionedMdxDescriptors';
 import { DocumentContentValidationError } from './documentStateTypes';
 import {
@@ -219,7 +219,23 @@ describe('sanctioned MDX validation', () => {
     '![secure reference image][asset]\n\n[asset]: https://example.com/image.png',
     '`<Unknown />`',
     '```tsx\n<Unknown expression={value} />\n```',
+    '<img src="https://example.com/image.png" alt="secure image" />',
+    '<img src="https://example.com/image.png" alt="resized" width="240" height="120" />',
   ])('accepts safe Markdown content: %s', (content) => {
     expect(() => validateSanctionedMdx(content)).not.toThrow();
+  });
+
+  it('coerces JSX img tags into Markdown images', () => {
+    const coerced = coerceSanctionedMdxImages(
+      '<img src="https://example.com/image.png" alt="Hero" width="100" height="50" />'
+    );
+    expect(coerced).toContain('![Hero](https://example.com/image.png)');
+    expect(coerced).not.toMatch(/<img\b/i);
+  });
+
+  it('rejects unsafe JSX img sources after coercion', () => {
+    expect(() =>
+      validateSanctionedMdx('<img src="javascript:alert(1)" alt="bad" />')
+    ).toThrow(DocumentContentValidationError);
   });
 });
