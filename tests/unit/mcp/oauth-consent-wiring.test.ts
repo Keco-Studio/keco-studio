@@ -15,5 +15,6 @@ it('uses the supported Supabase OAuth consent APIs', () => {
 it('blocks approval when the authorization details omit project resource binding', () => {
   expect(source).toContain('projectIdFromOAuthResource');
   expect(source).toContain('Project binding was not preserved by the authorization server.');
-  expect(source).toMatch(/disabled=\{[^}]*!projectId/);
+  expect(source).toContain('!currentVerifiedBinding');
+  expect(source).toContain("action === 'approve' && !binding");
 });

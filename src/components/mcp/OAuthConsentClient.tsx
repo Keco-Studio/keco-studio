@@ -9,23 +9,67 @@ import { projectIdFromOAuthResource } from '@/lib/mcp/oauthProjectBinding';
 import styles from './OAuthConsent.module.css';
 
 type BoundDetails = OAuthAuthorizationDetails & { resource?: string };
+type LoadedRequest = {
+  authorizationId: string;
+  details: BoundDetails;
+};
+type VerifiedBinding = LoadedRequest & {
+  projectId: string;
+  projectName: string;
+};
+type ConsentState = {
+  authorizationId: string;
+  request: LoadedRequest | null;
+  verifiedBinding: VerifiedBinding | null;
+  error: string;
+  busy: boolean;
+};
+
+function emptyConsentState(authorizationId: string): ConsentState {
+  return {
+    authorizationId,
+    request: null,
+    verifiedBinding: null,
+    error: '',
+    busy: false,
+  };
+}
+
+function verifiedBindingFor(
+  binding: VerifiedBinding | null,
+  authorizationId: string
+): VerifiedBinding | null {
+  if (!binding || binding.authorizationId !== authorizationId) return null;
+  return projectIdFromOAuthResource(binding.details.resource) === binding.projectId
+    ? binding
+    : null;
+}
 
 export function OAuthConsentClient() {
   const supabase = useSupabase();
   const router = useRouter();
   const search = useSearchParams();
   const authorizationId = search.get('authorization_id') ?? '';
-  const [details, setDetails] = useState<BoundDetails | null>(null);
-  const [projectName, setProjectName] = useState('');
-  const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
-  const projectId = projectIdFromOAuthResource(details?.resource);
+  const [state, setState] = useState<ConsentState>(emptyConsentState(authorizationId));
+  const currentState = state.authorizationId === authorizationId
+    ? state
+    : emptyConsentState(authorizationId);
+  const currentRequest = currentState.request;
+  const currentVerifiedBinding = verifiedBindingFor(
+    currentState.verifiedBinding,
+    authorizationId
+  );
 
   useEffect(() => {
     let active = true;
     void (async () => {
       if (!authorizationId) {
-        if (active) setError('Missing OAuth authorization ID.');
+        if (active) {
+          setState({
+            ...emptyConsentState(authorizationId),
+            error: 'Missing OAuth authorization ID.',
+          });
+        }
         return;
       }
 
@@ -37,29 +81,67 @@ export function OAuthConsentClient() {
         return;
       }
       if (result.error || !result.data) {
-        setError('Authorization request is unavailable or expired.');
+        setState({
+          ...emptyConsentState(authorizationId),
+          error: 'Authorization request is unavailable or expired.',
+        });
         return;
       }
 
       const next = result.data as BoundDetails;
-      setDetails(next);
+      if (next.authorization_id !== authorizationId) {
+        setState({
+          ...emptyConsentState(authorizationId),
+          error: 'Authorization request is unavailable or expired.',
+        });
+        return;
+      }
       const boundProjectId = projectIdFromOAuthResource(next.resource);
       if (!boundProjectId) {
-        setError('Project binding was not preserved by the authorization server.');
+        setState({
+          ...emptyConsentState(authorizationId),
+          error: 'Project binding was not preserved by the authorization server.',
+        });
         return;
       }
       if (next.redirect_url) {
-        setError('Existing OAuth consent bypassed the project-bound approval step.');
+        setState({
+          ...emptyConsentState(authorizationId),
+          error: 'Existing OAuth consent bypassed the project-bound approval step.',
+        });
         return;
       }
+      const request = { authorizationId, details: next };
+      setState({ ...emptyConsentState(authorizationId), request });
 
       try {
         const project = await getProject(supabase, boundProjectId);
         if (!active) return;
-        if (!project) setError('You do not have access to the bound project.');
-        else setProjectName(project.name);
+        if (!project || project.id !== boundProjectId) {
+          setState({
+            ...emptyConsentState(authorizationId),
+            request,
+            error: 'You do not have access to the bound project.',
+          });
+        } else {
+          setState({
+            ...emptyConsentState(authorizationId),
+            request,
+            verifiedBinding: {
+              ...request,
+              projectId: boundProjectId,
+              projectName: project.name,
+            },
+          });
+        }
       } catch {
-        if (active) setError('You do not have access to the bound project.');
+        if (active) {
+          setState({
+            ...emptyConsentState(authorizationId),
+            request,
+            error: 'You do not have access to the bound project.',
+          });
+        }
       }
     })();
 
@@ -67,14 +149,18 @@ export function OAuthConsentClient() {
   }, [authorizationId, router, supabase]);
 
   async function decide(action: 'approve' | 'deny') {
-    if (!authorizationId || (action === 'approve' && !projectId)) return;
-    setBusy(true);
+    const binding = verifiedBindingFor(currentState.verifiedBinding, authorizationId);
+    if (!authorizationId || (action === 'approve' && !binding)) return;
+    setState({ ...currentState, busy: true });
     const result = action === 'approve'
       ? await supabase.auth.oauth.approveAuthorization(authorizationId, { skipBrowserRedirect: true })
       : await supabase.auth.oauth.denyAuthorization(authorizationId, { skipBrowserRedirect: true });
     if (result.error || !result.data?.redirect_url) {
-      setError('Authorization decision could not be completed.');
-      setBusy(false);
+      setState({
+        ...currentState,
+        error: 'Authorization decision could not be completed.',
+        busy: false,
+      });
       return;
     }
     window.location.assign(result.data.redirect_url);
@@ -84,12 +170,12 @@ export function OAuthConsentClient() {
     <main className={styles.page}>
       <section className={styles.panel}>
         <h1>Authorize Keco MCP</h1>
-        {details && <p><strong>{details.client.name}</strong> requests access to <strong>{projectName || 'the bound project'}</strong>.</p>}
-        {details && <p>Requested scopes: {details.scope || 'default identity scopes'}</p>}
-        {error && <p role="alert" className={styles.error}>{error}</p>}
+        {currentRequest && <p><strong>{currentRequest.details.client.name}</strong> requests access to <strong>{currentVerifiedBinding?.projectName || 'the bound project'}</strong>.</p>}
+        {currentRequest && <p>Requested scopes: {currentRequest.details.scope || 'default identity scopes'}</p>}
+        {currentState.error && <p role="alert" className={styles.error}>{currentState.error}</p>}
         <div className={styles.actions}>
-          <button type="button" onClick={() => void decide('deny')} disabled={busy || !details}>Deny</button>
-          <button type="button" onClick={() => void decide('approve')} disabled={busy || !details || !projectId || Boolean(error)}>Approve</button>
+          <button type="button" onClick={() => void decide('deny')} disabled={currentState.busy || !currentRequest}>Deny</button>
+          <button type="button" onClick={() => void decide('approve')} disabled={currentState.busy || !currentVerifiedBinding || Boolean(currentState.error)}>Approve</button>
         </div>
       </section>
     </main>
