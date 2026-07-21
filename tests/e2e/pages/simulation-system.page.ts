@@ -50,18 +50,19 @@ export class SimulationSystemPage {
   }
 
   async configureTeamsAndSkills(): Promise<void> {
-    await this.page.getByRole('button', { name: '+ Add characters' }).click();
-    await this.page.getByText('Ignara', { exact: true }).click();
-    await this.page.getByText('Bramwell', { exact: true }).click();
+    await this.page.getByRole('button', { name: /Add characters/ }).click();
+    const picker = this.page.locator('input[placeholder="Search characters…"]').locator('..');
+    await picker.getByText('Ignara', { exact: true }).click();
+    await picker.getByText('Bramwell', { exact: true }).click();
     await this.page.keyboard.press('Escape');
-    await expect(this.page.getByText('A 1 vs B 1 — ready')).toBeVisible();
-    await this.page.getByRole('button', { name: /Confirm.*go to skill/ }).click();
+    await expect(this.page.getByText(/A 1 vs B 1/)).toBeVisible();
+    await this.page.getByRole('button', { name: /Confirm.*go to skill/i }).click();
 
     await expect(this.page.getByRole('heading', { name: 'Config skills' })).toBeVisible();
     await this.page.getByText('Fireball', { exact: true }).click();
     await this.page.getByText('Bramwell', { exact: true }).click();
     await this.page.getByText('Fireball', { exact: true }).click();
-    await expect(this.page.getByText('All fighters have skills — ready')).toBeVisible();
+    await expect(this.page.getByText(/All fighters have skills/)).toBeVisible();
     await this.page.getByRole('button', { name: /Continue to Progression/ }).click();
 
     await this.page.getByRole('button', { name: /Go to Battle/ }).click();
@@ -69,8 +70,11 @@ export class SimulationSystemPage {
 
   async startBattleAndExpectRestoration(): Promise<void> {
     await expect(this.page.getByRole('heading', { name: 'Battle', exact: true })).toBeVisible();
+    await expect(this.page.getByRole('button', { name: 'Start battle' })).toBeEnabled();
     await this.page.getByRole('button', { name: 'Start battle' }).click();
-    await expect(this.page.getByRole('button', { name: /Pause|Resume/ })).toBeVisible({ timeout: 30000 });
+    // Design presentation hides Pause/Resume; assert the Studio battle chrome instead.
+    await expect(this.page.getByRole('button', { name: 'Stop battle' })).toBeVisible({ timeout: 30000 });
+    await expect(this.page.getByText('Battle logs')).toBeVisible();
     await this.page.waitForTimeout(500);
     await this.page.reload();
     await expect(this.root).toBeVisible({ timeout: 30000 });
