@@ -71,6 +71,14 @@ export function stripDesignDocumentPrefix(text: string): string {
   const trimmed = text.trimStart();
   const prefix = findDesignDocumentPrefix(trimmed);
   if (!prefix) return text;
+
+  const contentBoundary = /\r?\n\[Document content\](?:\r?\n|$)/g;
+  contentBoundary.lastIndex = prefix.length;
+  const contentMatch = contentBoundary.exec(trimmed);
+  if (contentMatch) {
+    return trimmed.slice(contentMatch.index + contentMatch[0].length);
+  }
+
   return trimmed.slice(prefix.length).replace(/^\s*\n?/, '');
 }
 

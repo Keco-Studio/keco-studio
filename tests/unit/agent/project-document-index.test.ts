@@ -23,6 +23,7 @@ import {
   removeProjectDocumentIndex,
 } from '@/lib/server/documentEmbeddingIndexService';
 import { indexDesignDocumentFromMessage } from '@/lib/agent/embedding-index';
+import { buildDesignMessage } from '@/lib/design-message';
 
 const ACTOR_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -48,22 +49,25 @@ describe('design document message indexing', () => {
     embedTexts.mockResolvedValue([[0.1, 0.2]]);
   });
 
-  it.each([
-    ['current', '[Document attachment]'],
-    ['legacy', '[Design document]'],
-  ])('indexes %s envelopes without embedding the header', async (_label, header) => {
+  it('indexes a production-shaped current envelope without embedding metadata', async () => {
     const indexQuery = query();
     const supabase = {
       from: jest.fn(() => indexQuery),
     } as unknown as SupabaseClient;
     const body = 'Visible document content that is long enough to produce an embedding chunk.';
+    const messageText = buildDesignMessage({
+      fileName: 'notes.docx',
+      documentText: body,
+      intent: 'analyze',
+      additionalInstructions: 'Summarize the document.',
+    });
 
     await indexDesignDocumentFromMessage(supabase, {
       projectId: PROJECT_ID,
       userId: ACTOR_ID,
       conversationId: 'conversation-id',
       messageId: 'message-id',
-      messageText: `${header}\n${body}`,
+      messageText,
       messageCreatedAt: '2026-07-21T00:00:00.000Z',
     });
 
@@ -72,6 +76,25 @@ describe('design document message indexing', () => {
       [expect.objectContaining({ source_type: 'design_document', content: body })],
       { onConflict: 'source_type,source_id,chunk_index,content_hash' }
     );
+  });
+
+  it('continues to index a legacy header-plus-body message', async () => {
+    const indexQuery = query();
+    const supabase = {
+      from: jest.fn(() => indexQuery),
+    } as unknown as SupabaseClient;
+    const body = 'Legacy document content that is long enough to produce an embedding chunk.';
+
+    await indexDesignDocumentFromMessage(supabase, {
+      projectId: PROJECT_ID,
+      userId: ACTOR_ID,
+      conversationId: 'conversation-id',
+      messageId: 'message-id',
+      messageText: `[Design document]\n${body}`,
+      messageCreatedAt: '2026-07-21T00:00:00.000Z',
+    });
+
+    expect(embedTexts).toHaveBeenCalledWith([body]);
   });
 });
 
