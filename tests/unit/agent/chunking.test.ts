@@ -101,12 +101,14 @@ describe('chunkDesignDocument', () => {
 });
 
 describe('design document helpers', () => {
-  it('detects design document prefix', () => {
+  it('detects current and legacy design document prefixes', () => {
+    expect(isDesignDocumentMessage('[Document attachment]\nChapter 1')).toBe(true);
     expect(isDesignDocumentMessage('[Design document]\nChapter 1')).toBe(true);
     expect(isDesignDocumentMessage('Regular message')).toBe(false);
   });
 
-  it('strips prefix for chunking', () => {
+  it('strips current and legacy prefixes for chunking', () => {
+    expect(stripDesignDocumentPrefix('[Document attachment]\nBody')).toBe('Body');
     expect(stripDesignDocumentPrefix('[Design document]\nBody')).toBe('Body');
   });
 });
