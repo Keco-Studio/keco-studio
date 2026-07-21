@@ -18,7 +18,13 @@ export class SimulationSystemPage {
   async useDemoData(): Promise<void> {
     await this.page.getByLabel('Simulator name').fill('E2E combat simulator');
     await this.page.getByRole('button', { name: 'Use demo data' }).click();
-    await expect(this.page.getByRole('heading', { name: 'Configure characters' })).toBeVisible({ timeout: 30000 });
+    await expect(this.page.getByRole('button', { name: 'Continue to characters' })).toBeVisible({
+      timeout: 30000,
+    });
+    await this.page.getByRole('button', { name: 'Continue to characters' }).click();
+    await expect(this.page.getByRole('heading', { name: 'Configure characters' })).toBeVisible({
+      timeout: 30000,
+    });
   }
 
   async importLibraries(names: {
@@ -32,9 +38,15 @@ export class SimulationSystemPage {
     await this.page.getByLabel('Level curve', { exact: true }).selectOption({ label: names.level });
     await this.page.getByLabel('Skill cost curve', { exact: true }).selectOption({ label: names.skillCost });
     await this.page.getByLabel('Simulator name').fill('E2E combat simulator');
-    await expect(this.page.getByRole('button', { name: 'Import Studio data' })).toBeEnabled();
-    await this.page.getByRole('button', { name: 'Import Studio data' }).click();
-    await expect(this.page.getByRole('heading', { name: 'Configure characters' })).toBeVisible({ timeout: 30000 });
+    await expect(this.page.getByRole('button', { name: 'Import libraries' })).toBeEnabled();
+    await this.page.getByRole('button', { name: 'Import libraries' }).click();
+    await expect(this.page.getByRole('button', { name: 'Continue to characters' })).toBeVisible({
+      timeout: 30000,
+    });
+    await this.page.getByRole('button', { name: 'Continue to characters' }).click();
+    await expect(this.page.getByRole('heading', { name: 'Configure characters' })).toBeVisible({
+      timeout: 30000,
+    });
   }
 
   async configureTeamsAndSkills(): Promise<void> {
