@@ -1,6 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import type { AccessVerificationContext } from '@/lib/services/authorizationService';
+import {
+  createAccessVerificationCache,
+  getCurrentUserId,
+  type AccessVerificationContext,
+} from '@/lib/services/authorizationService';
 import { getLibraryAssetsWithProperties, getLibrarySchema } from '@/lib/services/libraryAssetsService';
 import { listLibraries } from '@/lib/services/libraryService';
 
@@ -36,11 +40,15 @@ export async function loadSimulationProjectSources(
     }
   }
 
+  const effectiveAccess = access ?? {
+    userId: await getCurrentUserId(supabase),
+    cache: createAccessVerificationCache(),
+  };
   const uniqueIds = [...new Set(ROLES.map((role) => libraryIds[role]))];
   const loaded = await Promise.all(uniqueIds.map(async (libraryId) => {
     const [schema, assets] = await Promise.all([
-      getLibrarySchema(supabase, libraryId, access),
-      getLibraryAssetsWithProperties(supabase, libraryId, access),
+      getLibrarySchema(supabase, libraryId, effectiveAccess),
+      getLibraryAssetsWithProperties(supabase, libraryId, effectiveAccess),
     ]);
     const library = librariesById.get(libraryId)!;
     const source = cloneAndDeepFreeze<StudioLibrarySource>({

@@ -4,6 +4,7 @@ import { BASIC } from '@/lib/simulation/data';
 import { importSimulationSnapshot } from '@/lib/simulation/importAdapter';
 import { loadSimulationProjectSources } from '@/lib/simulation/studioData';
 import type { SimulationImportError } from '@/lib/simulation/types';
+import { createAccessVerificationCache, getCurrentUserId } from '@/lib/services/authorizationService';
 import { getLibraryAssetsWithProperties, getLibrarySchema } from '@/lib/services/libraryAssetsService';
 import { listLibraries } from '@/lib/services/libraryService';
 import {
@@ -15,6 +16,10 @@ import {
 } from './fixtures';
 
 jest.mock('@/lib/services/libraryService', () => ({ listLibraries: jest.fn() }));
+jest.mock('@/lib/services/authorizationService', () => ({
+  createAccessVerificationCache: jest.fn(),
+  getCurrentUserId: jest.fn(),
+}));
 jest.mock('@/lib/services/libraryAssetsService', () => ({
   getLibrarySchema: jest.fn(),
   getLibraryAssetsWithProperties: jest.fn(),
@@ -254,6 +259,8 @@ describe('strict Studio simulation import adapter', () => {
 
 describe('Studio simulation source facade', () => {
   const listLibrariesMock = jest.mocked(listLibraries);
+  const createAccessCacheMock = jest.mocked(createAccessVerificationCache);
+  const getCurrentUserIdMock = jest.mocked(getCurrentUserId);
   const getSchemaMock = jest.mocked(getLibrarySchema);
   const getAssetsMock = jest.mocked(getLibraryAssetsWithProperties);
 
@@ -306,6 +313,8 @@ describe('Studio simulation source facade', () => {
     expect(getAssetsMock).toHaveBeenCalledTimes(3);
     expect(getSchemaMock.mock.calls.every((call) => call[2] === access)).toBe(true);
     expect(getAssetsMock.mock.calls.every((call) => call[2] === access)).toBe(true);
+    expect(getCurrentUserIdMock).not.toHaveBeenCalled();
+    expect(createAccessCacheMock).not.toHaveBeenCalled();
     expect(result.characters).toBe(result.skills);
     expect(result.level.libraryId).toBe(LIBRARY_IDS.level);
     expect(Object.isFrozen(result)).toBe(true);
@@ -318,5 +327,33 @@ describe('Studio simulation source facade', () => {
     expect(result.skills.assets[0].propertyValues[nameKey]).toBe('Hero');
     expect(sources.characters.assets[0].propertyValues[nameKey]).toBe('Hero');
     expect(Object.isFrozen(sources.characters.assets[0].propertyValues)).toBe(false);
+  });
+
+  it('creates one shared access context for the default three-argument call', async () => {
+    const sources = createValidSources();
+    const cache = new Map<string, Promise<void>>();
+    getCurrentUserIdMock.mockResolvedValue('default-simulation-user');
+    createAccessCacheMock.mockReturnValue(cache);
+    listLibrariesMock.mockResolvedValue(Object.values(LIBRARY_IDS).map((id) => ({
+      id,
+      project_id: PROJECT_ID,
+      folder_id: null,
+      name: `Library ${id}`,
+      description: null,
+      created_at: '',
+      updated_at: '',
+      updated_by: null,
+    })));
+    getSchemaMock.mockResolvedValue({ sections: [], properties: sources.characters.properties });
+    getAssetsMock.mockResolvedValue(sources.characters.assets);
+
+    await loadSimulationProjectSources({} as never, PROJECT_ID, LIBRARY_IDS);
+
+    expect(getCurrentUserIdMock).toHaveBeenCalledTimes(1);
+    expect(createAccessCacheMock).toHaveBeenCalledTimes(1);
+    const effectiveAccess = getSchemaMock.mock.calls[0][2];
+    expect(effectiveAccess).toEqual({ userId: 'default-simulation-user', cache });
+    expect(getSchemaMock.mock.calls.every((call) => call[2] === effectiveAccess)).toBe(true);
+    expect(getAssetsMock.mock.calls.every((call) => call[2] === effectiveAccess)).toBe(true);
   });
 });
