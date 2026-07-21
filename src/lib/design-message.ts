@@ -20,14 +20,19 @@ export interface BuildDesignMessageParams {
   documentText: string;
   documentId?: string;
   additionalInstructions?: string;
+  sourceKind?: 'upload' | 'project-document';
 }
 
 export function buildDesignMessage(params: BuildDesignMessageParams): string {
   const parts: string[] = [];
 
   parts.push(DOC_HEADER);
+  const sourceKind = params.sourceKind ?? 'upload';
+  const sourceDescription = sourceKind === 'project-document'
+    ? `The user selected the project document "${params.fileName}".`
+    : `The user uploaded a design document "${params.fileName}".`;
   parts.push(
-    `The user uploaded a design document "${params.fileName}". First call ` +
+    `${sourceDescription} First call ` +
       'list_project_structure and list_field_types, then analyze the content, infer ' +
       'which tables (libraries) are needed, design appropriate fields (columns) using ' +
       'only supported field types. EXTRACTION mode: when the document contains explicit ' +
@@ -41,8 +46,9 @@ export function buildDesignMessage(params: BuildDesignMessageParams): string {
   );
   if (params.documentId) {
     parts.push(
-      `The uploaded source is also stored as project document ${params.documentId}. ` +
-        'Use read_document when you need the latest logical document state.'
+      sourceKind === 'project-document'
+        ? `This request is bound to signed frozen snapshot ${params.documentId}; use the provided content exactly for this export. Later document edits do not change this snapshot.`
+        : `The uploaded source is also stored as project document ${params.documentId}. Use read_document when you need the latest logical document state.`
     );
   }
 
@@ -73,7 +79,7 @@ export interface ParsedDesignMessage {
 export function parseDesignMessage(message: string): ParsedDesignMessage | null {
   if (!message.startsWith(DOC_HEADER)) return null;
 
-  const fileMatch = message.match(/design document "([^"]+)"/);
+  const fileMatch = message.match(/(?:design|project) document "([^"]+)"/);
   const fileName = fileMatch?.[1] ?? 'document';
 
   let instructions: string | undefined;

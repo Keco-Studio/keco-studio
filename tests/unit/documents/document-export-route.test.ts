@@ -123,6 +123,10 @@ describe('document export route and UI wiring', () => {
     expect(editor).toContain("key: 'pdf'");
     expect(editor).toContain("key: 'mdx'");
     expect(editor).toContain('Download MDX');
+    expect(editor).toContain("key: 'tables'");
+    expect(editor).toContain('Export as tables');
+    expect(editor).toContain("key: 'script'");
+    expect(editor).toContain('Export as script');
     expect(editor).toContain('data-testid="document-export"');
     expect(nextConfig).toContain("'@mdxeditor/editor'");
   });

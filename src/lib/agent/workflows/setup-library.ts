@@ -23,6 +23,7 @@ import {
   getLibraryProperties,
   listProjectLibraries,
   findLibraryByName,
+  resolveDocumentLibrarySourceDisplay,
 } from '../data-access';
 import { buildLibraryWriteGuide } from '../library-schema-builder';
 import { scheduleLibrarySchemaReindex } from '../embedding-index';
@@ -70,6 +71,7 @@ interface SetupLibraryPreview {
   libraryName: string;
   folderId?: string;
   folderName?: string;
+  sourceDocumentName?: string;
   description?: string;
   sections: Record<string, ResolvedField[]>;
   totalFields: number;
@@ -106,7 +108,17 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
     // 1. Resolve folder (optional).
     let folderId: string | undefined;
     let resolvedFolderName: string | undefined;
-    if (folderName) {
+    let sourceDocumentName: string | undefined;
+    if (ctx.documentExport) {
+      const source = await resolveDocumentLibrarySourceDisplay(
+        ctx.supabase,
+        ctx.projectId,
+        ctx.documentExport
+      );
+      folderId = source.folderId;
+      resolvedFolderName = source.folderName;
+      sourceDocumentName = source.documentName;
+    } else if (folderName) {
       const { folder, available } = await findFolderByName(
         ctx.supabase,
         ctx.projectId,
@@ -189,6 +201,7 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       libraryName: libraryName.trim(),
       folderId,
       folderName: resolvedFolderName,
+      sourceDocumentName,
       description,
       sections,
       totalFields: resolvedFields.length,
@@ -217,7 +230,8 @@ async function executeImport(
       ctx.projectId,
       preview.libraryName,
       preview.folderId,
-      preview.description
+      preview.description,
+      ctx.documentExport
     );
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to create library.' };
@@ -272,7 +286,16 @@ async function executeImport(
       totalFields: preview.totalFields,
       writeGuide,
     },
-    invalidations: [{ type: 'library', id: libraryId }],
+    invalidations: [{
+      type: 'library',
+      id: libraryId,
+      ...(ctx.documentExport
+        ? {
+            projectId: ctx.projectId,
+            sourceDocumentId: ctx.documentExport.sourceDocumentId,
+          }
+        : {}),
+    }],
   };
 }
 

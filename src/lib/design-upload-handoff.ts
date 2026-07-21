@@ -7,6 +7,8 @@
  * is used instead of the URL because the document text can exceed URL limits.
  */
 
+import type { DocumentTableExportContext } from '@/lib/agent/types';
+
 const KEY_PREFIX = 'design-upload:';
 const KEY_SUFFIX = ':pending-message';
 
@@ -20,6 +22,7 @@ export interface DesignUploadHandoff {
   documentId?: string;
   /** Public image URLs (Supabase storage) extracted from the document, if any. */
   imageUrls?: string[];
+  documentExport?: DocumentTableExportContext;
   timestamp: number;
 }
 

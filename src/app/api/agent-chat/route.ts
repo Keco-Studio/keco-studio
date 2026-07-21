@@ -9,7 +9,10 @@ import { sseResponse } from '@/lib/agent/sse';
 import { sanitizeImageUrls } from '@/lib/agent/image-url-validation';
 import { isAgentSelectionContext } from '@/lib/agent/selection-context';
 import { resolveCurrentDocumentContext } from '@/lib/agent/current-document-context';
-import type { ToolContext } from '@/lib/agent/types';
+import { getDocumentExportSource } from '@/lib/server/documentExportSourceService';
+import { verifyDocumentExportSnapshotToken, type DocumentExportSnapshot } from '@/lib/server/documentExportSnapshotSigning';
+import { buildDesignMessage } from '@/lib/design-message';
+import type { DocumentTableExportContext, ToolContext } from '@/lib/agent/types';
 
 // Multi-step ReAct turns (query → create → confirm chains) can exceed 60s.
 export const maxDuration = 120;
@@ -36,6 +39,7 @@ export const POST = withAuth(async function POST(
     currentSectionName?: string;
     /** Default for newly created conversations (from user preference). */
     autoExecute?: unknown;
+    documentExport?: unknown;
   };
   try {
     body = await request.json();
@@ -43,8 +47,8 @@ export const POST = withAuth(async function POST(
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
   }
 
-  const message = String(body.message ?? '').trim();
-  if (!message) {
+  const clientMessage = String(body.message ?? '').trim();
+  if (!clientMessage) {
     return NextResponse.json({ error: 'Message is required' }, { status: 400 });
   }
 
@@ -69,6 +73,60 @@ export const POST = withAuth(async function POST(
     const initialAutoExecute =
       typeof body.autoExecute === 'boolean' ? body.autoExecute : false;
 
+    let documentExport: DocumentTableExportContext | undefined;
+    let documentSnapshot: DocumentExportSnapshot | undefined;
+    if (isNewConversation && body.documentExport !== undefined) {
+      const requested = body.documentExport as {
+        sourceDocumentId?: unknown;
+        exportType?: unknown;
+        snapshotToken?: unknown;
+      };
+      const sourceDocumentId =
+        typeof requested?.sourceDocumentId === 'string'
+          ? requested.sourceDocumentId.trim()
+          : '';
+      const snapshotToken =
+        typeof requested?.snapshotToken === 'string' ? requested.snapshotToken.trim() : '';
+      if (requested?.exportType !== 'table' || !isUuid(sourceDocumentId) || !snapshotToken) {
+        return NextResponse.json({ error: 'Invalid documentExport' }, { status: 400 });
+      }
+
+      let source;
+      try {
+        source = await getDocumentExportSource(supabase, user.id, sourceDocumentId);
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          (error.message === 'Only admin users can export project content' ||
+            error.name === 'AuthorizationError')
+        ) {
+          return NextResponse.json(
+            { error: 'Only admin users can export project content' },
+            { status: 403 }
+          );
+        }
+        throw error;
+      }
+      if (source.projectId !== bodyProjectId) {
+        return NextResponse.json(
+          { error: 'Source document not found in this project' },
+          { status: 400 }
+        );
+      }
+      try {
+        documentSnapshot = verifyDocumentExportSnapshotToken(snapshotToken);
+      } catch {
+        return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
+      }
+      if (
+        documentSnapshot.documentId !== sourceDocumentId ||
+        documentSnapshot.projectId !== bodyProjectId
+      ) {
+        return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
+      }
+      documentExport = { sourceDocumentId, exportType: 'table', snapshotToken };
+    }
+
     // For a new conversation, snapshot the scope from live navigation.
     const scopeSnapshot = isNewConversation
       ? resolveScopeFromNavigation({
@@ -88,6 +146,7 @@ export const POST = withAuth(async function POST(
       projectId: bodyProjectId,
       initialAutoExecute,
       scope: scopeSnapshot,
+      ...(documentExport ? { documentExport } : {}),
     });
 
     // The conversation's own binding is authoritative from here on. For existing
@@ -105,6 +164,22 @@ export const POST = withAuth(async function POST(
 
     const contextFields = contextFieldsFromScope(boundScope, conversation.project_id);
     const userRole = await resolveUserRole(supabase, contextFields.projectId, user.id);
+    if (boundMeta.documentExport && userRole !== 'admin') {
+      throw new AgentAccessError('Only admin users can export project content');
+    }
+    if (boundMeta.documentExport) {
+      try {
+        documentSnapshot = verifyDocumentExportSnapshotToken(boundMeta.documentExport.snapshotToken ?? '');
+      } catch {
+        return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
+      }
+      if (
+        documentSnapshot.documentId !== boundMeta.documentExport.sourceDocumentId ||
+        documentSnapshot.projectId !== conversation.project_id
+      ) {
+        return NextResponse.json({ error: 'Invalid document export snapshot' }, { status: 400 });
+      }
+    }
     const currentDocumentContext = await resolveCurrentDocumentContext(
       supabase,
       contextFields.projectId,
@@ -116,9 +191,19 @@ export const POST = withAuth(async function POST(
       conversationId: conversation.id,
       supabase,
       userRole,
+      documentExport: boundMeta.documentExport,
       ...contextFields,
       ...currentDocumentContext,
     };
+
+    const message = documentSnapshot
+      ? buildDesignMessage({
+          fileName: documentSnapshot.documentName,
+          documentText: documentSnapshot.markdown,
+          documentId: documentSnapshot.documentId,
+          sourceKind: 'project-document',
+        })
+      : clientMessage;
 
     const abortController = new AbortController();
     const generator = runAgentTurn({

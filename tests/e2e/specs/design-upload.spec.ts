@@ -18,6 +18,7 @@ test.describe('Design document upload', () => {
 
   let admin: SupabaseClient;
   let owner: TemporaryUser;
+  let editor: TemporaryUser;
   let viewer: TemporaryUser;
   let projectId: string;
 
@@ -31,14 +32,17 @@ test.describe('Design document upload', () => {
   test.beforeAll(async () => {
     admin = getE2EAdminClient();
     owner = await createTemporaryUser(admin, 'design-upload-owner');
+    editor = await createTemporaryUser(admin, 'design-upload-editor');
     viewer = await createTemporaryUser(admin, 'design-upload-viewer');
     projectId = await createProjectFixture(admin, owner.id);
+    await addProjectCollaborator(admin, projectId, editor.id, 'editor', owner.id);
     await addProjectCollaborator(admin, projectId, viewer.id, 'viewer', owner.id);
   });
 
   test.afterAll(async () => {
     if (projectId) await removeProjectFixture(admin, projectId);
     if (viewer) await deleteTemporaryUser(admin, viewer);
+    if (editor) await deleteTemporaryUser(admin, editor);
     if (owner) await deleteTemporaryUser(admin, owner);
   });
 
@@ -78,11 +82,25 @@ test.describe('Design document upload', () => {
     await expect(page.getByTestId('design-upload-large-warning')).toBeVisible();
   });
 
-  test('disables document submission for viewers', async ({ page }) => {
+  test('allows editors to select a design document', async ({ page }) => {
+    await login(page, editor);
+    await page.goto(`/${projectId}/design-upload`);
+
+    await expect(page.getByTestId('design-upload-permission-warning')).toHaveCount(0);
+    await expect(page.getByTestId('design-upload-file-input')).toBeEnabled();
+    await page.getByTestId('design-upload-file-input').setInputFiles({
+      name: 'editor-design.txt',
+      mimeType: 'text/plain',
+      buffer: Buffer.from('Editor design'),
+    });
+    await expect(page.getByTestId('design-upload-submit')).toBeEnabled();
+  });
+
+  test('keeps viewer submission disabled', async ({ page }) => {
     await login(page, viewer);
     await page.goto(`/${projectId}/design-upload`);
 
-    await expect(page.getByTestId('design-upload-viewer-warning')).toBeVisible({ timeout: 15000 });
+    await expect(page.getByText('requires editor or admin permission')).toBeVisible({ timeout: 15000 });
     await expect(page.getByTestId('design-upload-file-input')).toBeDisabled();
     await expect(page.getByTestId('design-upload-submit')).toBeDisabled();
   });

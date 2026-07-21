@@ -8,6 +8,10 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import {
   verifyLibraryCreationPermission,
 } from '@/lib/services/authorizationService';
+import {
+  resolveDerivedLibraryPlacement,
+  type DocumentLibrarySource,
+} from '@/lib/services/documentDerivedLibraryService';
 import { parseText, scriptLineToRow, SCRIPT_COLUMNS } from '@/lib/script-parser';
 import type { StoryDocument } from '@/lib/story-ir/schema';
 import { compileStoryTable } from '@/lib/story-ir/tableCompiler';
@@ -24,9 +28,10 @@ export type ImportScriptResult = {
 interface ImportTableParams {
   userId: string;
   projectId: string;
-  folderId: string;
+  folderId: string | null;
   libraryName: string;
   fileName: string;
+  documentSource?: DocumentLibrarySource;
 }
 
 export interface ImportStoryParams extends ImportTableParams {
@@ -78,22 +83,24 @@ async function importCompiledScript(
   columns: string[],
   rows: string[][]
 ): Promise<ImportScriptResult> {
-  const { userId, projectId, folderId, libraryName, fileName } = params;
+  const { userId, projectId, folderId, libraryName, fileName, documentSource } = params;
 
-  if (!isUuid(folderId)) {
+  if (!documentSource && (!folderId || !isUuid(folderId))) {
     throw new Error('Invalid folder ID');
   }
 
   await verifyLibraryCreationPermission(supabase, projectId, userId);
 
-  const { data: folder, error: folderError } = await supabase
-    .from('folders')
-    .select('id, project_id')
-    .eq('id', folderId)
-    .single();
+  if (!documentSource) {
+    const { data: folder, error: folderError } = await supabase
+      .from('folders')
+      .select('id, project_id')
+      .eq('id', folderId)
+      .single();
 
-  if (folderError || !folder || folder.project_id !== projectId) {
-    throw new Error('Folder not found or does not belong to the project');
+    if (folderError || !folder || folder.project_id !== projectId) {
+      throw new Error('Folder not found or does not belong to the project');
+    }
   }
 
   const trimmedName = libraryName.trim();
@@ -101,13 +108,23 @@ async function importCompiledScript(
     throw new Error('Library name is required');
   }
 
-  const { data: existingLibraries, error: nameCheckError } = await supabase
+  if (rows.length === 0) {
+    throw new Error('No valid content found in script');
+  }
+
+  const placement = documentSource
+    ? await resolveDerivedLibraryPlacement(supabase, projectId, documentSource)
+    : null;
+  const resolvedFolderId = placement ? placement.folderId : folderId;
+
+  const nameCheckQuery = supabase
     .from('libraries')
     .select('id')
     .eq('project_id', projectId)
-    .eq('folder_id', folderId)
-    .eq('name', trimmedName)
-    .limit(1);
+    .eq('name', trimmedName);
+  const { data: existingLibraries, error: nameCheckError } = resolvedFolderId
+    ? await nameCheckQuery.eq('folder_id', resolvedFolderId).limit(1)
+    : await nameCheckQuery.is('folder_id', null).limit(1);
 
   if (nameCheckError) {
     throw new Error(nameCheckError.message || 'Failed to check library name');
@@ -116,17 +133,15 @@ async function importCompiledScript(
     throw new Error(`Library name "${trimmedName}" already exists in this folder`);
   }
 
-  if (rows.length === 0) {
-    throw new Error('No valid content found in script');
-  }
-
   const { data: createdLibrary, error: createError } = await supabase
     .from('libraries')
     .insert({
       project_id: projectId,
-      folder_id: folderId,
+      folder_id: resolvedFolderId,
       name: trimmedName,
       description: `Imported from ${fileName}`,
+      source_document_id: placement?.sourceDocumentId ?? null,
+      document_export_type: placement?.documentExportType ?? null,
     })
     .select('id')
     .single();

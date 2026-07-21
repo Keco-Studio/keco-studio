@@ -15,9 +15,13 @@ type InsertCall = {
   values: unknown;
 };
 
-function fakeSupabase(options: { failValueInsert?: boolean } = {}) {
+function fakeSupabase(options: {
+  failValueInsert?: boolean;
+  documentFolderId?: string | null;
+} = {}) {
   const insertCalls: InsertCall[] = [];
   const deleteCalls: Array<{ table: string; column: string; value: string }> = [];
+  const isCalls: Array<{ table: string; column: string; value: unknown }> = [];
   let fieldIdCounter = 0;
   let assetIdCounter = 0;
 
@@ -36,6 +40,10 @@ function fakeSupabase(options: { failValueInsert?: boolean } = {}) {
           }
           return query;
         },
+        is(column: string, value: unknown) {
+          isCalls.push({ table, column, value });
+          return query;
+        },
         limit() {
           if (table === 'libraries') {
             return Promise.resolve({ data: [], error: null });
@@ -52,6 +60,16 @@ function fakeSupabase(options: { failValueInsert?: boolean } = {}) {
           return query;
         },
         single() {
+          if (table === 'documents') {
+            return Promise.resolve({
+              data: {
+                id: '55555555-5555-4555-8555-555555555555',
+                project_id: '22222222-2222-4222-8222-222222222222',
+                folder_id: options.documentFolderId ?? null,
+              },
+              error: null,
+            });
+          }
           if (table === 'folders') {
             return Promise.resolve({
               data: { id: '11111111-1111-4111-8111-111111111111', project_id: '22222222-2222-4222-8222-222222222222' },
@@ -102,7 +120,7 @@ function fakeSupabase(options: { failValueInsert?: boolean } = {}) {
     },
   } as unknown as SupabaseClient;
 
-  return { supabase, insertCalls, deleteCalls };
+  return { supabase, insertCalls, deleteCalls, isCalls };
 }
 
 const ref = { sourceId: 'src', unitId: 'src:0', start: 0, end: 1 };
@@ -166,6 +184,65 @@ describe('importScriptFromFile', () => {
     expect(fieldCall?.values).toHaveLength(buildStoryColumns(4).length);
     expect(buildStoryColumns(4).slice(17)).toEqual(['Option3', 'Option3_Next']);
     expect(result.rowCount).toBe(storyDocument.nodes.length);
+  });
+
+  it('persists a root document source on the imported script library', async () => {
+    const { supabase, insertCalls, isCalls } = fakeSupabase();
+
+    await importStoryDocument(supabase, {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: null,
+      libraryName: 'Main Story',
+      document: storyDocument,
+      fileName: 'Main Story.txt',
+      documentSource: {
+        sourceDocumentId: '55555555-5555-4555-8555-555555555555',
+        exportType: 'script',
+      },
+    });
+
+    expect(insertCalls.find((call) => call.table === 'libraries')?.values).toEqual(
+      expect.objectContaining({
+        project_id: '22222222-2222-4222-8222-222222222222',
+        folder_id: null,
+        source_document_id: '55555555-5555-4555-8555-555555555555',
+        document_export_type: 'script',
+      })
+    );
+    expect(isCalls).toContainEqual({
+      table: 'libraries',
+      column: 'folder_id',
+      value: null,
+    });
+  });
+
+  it('uses the document current folder instead of a conflicting client folder', async () => {
+    const currentFolderId = '66666666-6666-4666-8666-666666666666';
+    const clientFolderId = '77777777-7777-4777-8777-777777777777';
+    const { supabase, insertCalls } = fakeSupabase({ documentFolderId: currentFolderId });
+
+    await importStoryDocument(supabase, {
+      userId: '44444444-4444-4444-8444-444444444444',
+      projectId: '22222222-2222-4222-8222-222222222222',
+      folderId: clientFolderId,
+      libraryName: 'Folder Story',
+      document: storyDocument,
+      fileName: 'Folder Story.txt',
+      documentSource: {
+        sourceDocumentId: '55555555-5555-4555-8555-555555555555',
+        exportType: 'script',
+      },
+    });
+
+    expect(insertCalls.find((call) => call.table === 'libraries')?.values).toEqual(
+      expect.objectContaining({
+        folder_id: currentFolderId,
+        source_document_id: '55555555-5555-4555-8555-555555555555',
+        document_export_type: 'script',
+      })
+    );
+    expect(JSON.stringify(insertCalls)).not.toContain(clientFolderId);
   });
 
   it('removes a newly created library when a later value insert fails', async () => {

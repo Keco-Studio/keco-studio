@@ -25,6 +25,11 @@ import {
 import { sortAssetsForUiRow } from '@/lib/utils/assetEmptiness';
 import type { AssetRow, PropertyConfig } from '@/lib/types/libraryAssets';
 import type { ToolContext } from './types';
+import {
+  resolveDocumentLibrarySourceDisplay as resolveDocumentLibrarySourceDisplayService,
+  type DocumentLibrarySource,
+  type DocumentLibrarySourceDisplay,
+} from '@/lib/services/documentDerivedLibraryService';
 
 type AgentAccessContext = Pick<ToolContext, 'userId' | 'accessCache'>;
 
@@ -195,9 +200,24 @@ export async function createLibraryServer(
   projectId: string,
   name: string,
   folderId?: string,
-  description?: string
+  description?: string,
+  documentSource?: DocumentLibrarySource
 ): Promise<string> {
-  return createLibrary(supabase, { projectId, name, folderId, description });
+  return createLibrary(supabase, {
+    projectId,
+    name,
+    folderId,
+    description,
+    documentSource,
+  });
+}
+
+export async function resolveDocumentLibrarySourceDisplay(
+  supabase: SupabaseClient,
+  projectId: string,
+  source: DocumentLibrarySource
+): Promise<DocumentLibrarySourceDisplay> {
+  return resolveDocumentLibrarySourceDisplayService(supabase, projectId, source);
 }
 
 export async function createFolderServer(

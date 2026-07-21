@@ -1,5 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { parseDocument, validateDesignFile } from '@/lib/document-parser';
+import {
+  escapeLiteralMdxBraces,
+  parseDocument,
+  validateDesignFile,
+} from '@/lib/document-parser';
 import { getCurrentUserId } from '@/lib/services/authorizationService';
 import {
   cleanupUploadedDocumentImages,
@@ -38,7 +42,9 @@ export function buildImportedDocumentMarkdown(input: {
   const sourceText = input.text.trim();
   if (!sourceText) throw new Error('Could not extract any text from this file.');
 
-  const textParagraphs = sourceText
+  const importedText = escapeLiteralMdxBraces(sourceText);
+
+  const textParagraphs = importedText
     .replace(/\r\n?/g, '\n')
     .split(/\n+/)
     .map((line) => line.trim())
@@ -47,7 +53,7 @@ export function buildImportedDocumentMarkdown(input: {
   const body =
     extension(input.fileName) === 'txt'
       ? [`# ${documentNameFromFile(input.fileName)}`, '', textParagraphs].join('\n')
-      : sourceText;
+      : importedText;
   const images = input.imageUrls.map(
     (url, index) => `![Imported image ${index + 1}](${url})`
   );

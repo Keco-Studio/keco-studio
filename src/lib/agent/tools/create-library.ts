@@ -11,8 +11,14 @@ import {
   createLibraryServer,
   findFolderByName,
   listProjectLibraries,
+  resolveDocumentLibrarySourceDisplay,
 } from '../data-access';
-import type { AgentTool, ToolContext, ToolResult } from '../types';
+import type {
+  AgentTool,
+  ConfirmationPreparation,
+  ToolContext,
+  ToolResult,
+} from '../types';
 
 const ParamsSchema = z.object({
   name: z.string().min(1),
@@ -21,6 +27,48 @@ const ParamsSchema = z.object({
 });
 
 const norm = (s: string) => s.trim().toLowerCase();
+
+async function prepareConfirmation(
+  params: unknown,
+  ctx: ToolContext
+): Promise<ConfirmationPreparation> {
+  const parsed = ParamsSchema.safeParse(params);
+  if (!parsed.success) {
+    return { success: false, error: `Invalid parameters: ${parsed.error.message}` };
+  }
+  if (!ctx.documentExport) {
+    return { success: true, args: parsed.data };
+  }
+
+  try {
+    const source = await resolveDocumentLibrarySourceDisplay(
+      ctx.supabase,
+      ctx.projectId,
+      ctx.documentExport
+    );
+    const args = {
+      name: parsed.data.name,
+      ...(parsed.data.description !== undefined
+        ? { description: parsed.data.description }
+        : {}),
+    };
+    return {
+      success: true,
+      args,
+      preview: {
+        libraryName: parsed.data.name.trim(),
+        folderId: source.folderId,
+        folderName: source.folderName,
+        sourceDocumentName: source.documentName,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Failed to resolve source document.',
+    };
+  }
+}
 
 async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   const parsed = ParamsSchema.safeParse(params);
@@ -32,7 +80,17 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
   try {
     let folderId: string | undefined;
     let resolvedFolderName: string | undefined;
-    if (folderName) {
+    let sourceDocumentName: string | undefined;
+    if (ctx.documentExport) {
+      const source = await resolveDocumentLibrarySourceDisplay(
+        ctx.supabase,
+        ctx.projectId,
+        ctx.documentExport
+      );
+      folderId = source.folderId;
+      resolvedFolderName = source.folderName;
+      sourceDocumentName = source.documentName;
+    } else if (folderName) {
       const { folder, available } = await findFolderByName(
         ctx.supabase,
         ctx.projectId,
@@ -59,7 +117,8 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
       ctx.projectId,
       name,
       folderId,
-      description
+      description,
+      ctx.documentExport
     );
 
     return {
@@ -69,8 +128,18 @@ async function execute(params: unknown, ctx: ToolContext): Promise<ToolResult> {
         libraryId,
         libraryName: name.trim(),
         folderName: resolvedFolderName,
+        sourceDocumentName,
       },
-      invalidations: [{ type: 'library', id: libraryId }],
+      invalidations: [{
+        type: 'library',
+        id: libraryId,
+        ...(ctx.documentExport
+          ? {
+              projectId: ctx.projectId,
+              sourceDocumentId: ctx.documentExport.sourceDocumentId,
+            }
+          : {}),
+      }],
     };
   } catch (e) {
     return { success: false, error: (e as Error).message || 'Failed to create library.' };
@@ -98,4 +167,5 @@ export const createLibrary: AgentTool = {
     required: ['name'],
   },
   execute,
+  prepareConfirmation,
 };
