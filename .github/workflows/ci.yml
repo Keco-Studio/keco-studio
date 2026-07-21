@@ -106,6 +106,12 @@ jobs:
       - name: Typecheck API routes
         run: npm run typecheck:api
 
+      - name: Check MCP Edge Function types
+        run: npm run check:mcp
+
+      - name: Test MCP Edge Function
+        run: npm run test:mcp
+
       # Extract the LOCAL Supabase keys so the RLS behavior tests connect to the
       # local instance (started above), never to the remote project the build
       # step's secrets may point at. Mirrors playwright.yml's extraction.

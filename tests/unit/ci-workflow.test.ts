@@ -63,7 +63,15 @@ describe('CI workflow gates', () => {
     expect(pkg.scripts.typecheck).toBe('tsc --noEmit');
     expect(pkg.scripts['typecheck:api']).toBe('tsc --noEmit -p tsconfig.api.json');
     expect(pkg.scripts.validate).toBe(
-      'npm run lint && npm run typecheck && npm run typecheck:api && npm run test:unit && npm run build'
+      'npm run lint && npm run typecheck && npm run typecheck:api && npm run check:mcp && npm run test:mcp && npm run test:unit && npm run build'
+    );
+  });
+
+  it('runs Edge MCP checks in CI and local validate', () => {
+    expect(workflow).toContain('npm run check:mcp');
+    expect(workflow).toContain('npm run test:mcp');
+    expect(pkg.scripts.validate).toBe(
+      'npm run lint && npm run typecheck && npm run typecheck:api && npm run check:mcp && npm run test:mcp && npm run test:unit && npm run build'
     );
   });
 

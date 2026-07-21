@@ -89,7 +89,7 @@
     "typecheck": "tsc --noEmit",
     "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
     "check:mcp": "deno check --config supabase/functions/mcp/deno.json supabase/functions/mcp/index.ts",
-    "validate": "npm run lint && npm run typecheck && npm run typecheck:api && npm run test:unit && npm run build",
+    "validate": "npm run lint && npm run typecheck && npm run typecheck:api && npm run check:mcp && npm run test:mcp && npm run test:unit && npm run build",
     "test:e2e": "playwright test",
     "test:e2e:parallel": "playwright test --workers=50%",
     "test:e2e:clean": "tsx scripts/clean-remote-test-data.ts && playwright test",
