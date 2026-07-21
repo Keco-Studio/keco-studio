@@ -276,6 +276,7 @@ describe('Studio simulation source facade', () => {
   it('loads each unique selected library once and assembles sources by role', async () => {
     const sources = createValidSources();
     const ids = { ...LIBRARY_IDS, skills: LIBRARY_IDS.characters };
+    const access = { userId: 'simulation-user', cache: new Map<string, Promise<void>>() };
     const uniqueIds = [LIBRARY_IDS.characters, LIBRARY_IDS.level, LIBRARY_IDS.skillc];
     listLibrariesMock.mockResolvedValue(uniqueIds.map((id) => ({
       id,
@@ -299,12 +300,23 @@ describe('Studio simulation source facade', () => {
         : id === LIBRARY_IDS.level ? sources.level.assets : sources.skillc.assets
     ));
 
-    const result = await loadSimulationProjectSources({} as never, PROJECT_ID, ids);
+    const result = await loadSimulationProjectSources({} as never, PROJECT_ID, ids, access);
 
     expect(getSchemaMock).toHaveBeenCalledTimes(3);
     expect(getAssetsMock).toHaveBeenCalledTimes(3);
+    expect(getSchemaMock.mock.calls.every((call) => call[2] === access)).toBe(true);
+    expect(getAssetsMock.mock.calls.every((call) => call[2] === access)).toBe(true);
     expect(result.characters).toBe(result.skills);
     expect(result.level.libraryId).toBe(LIBRARY_IDS.level);
     expect(Object.isFrozen(result)).toBe(true);
+    const nameKey = FIELD_KEYS.characters.name;
+    expect(Object.isFrozen(result.characters.properties[0])).toBe(true);
+    expect(Object.isFrozen(result.characters.assets[0].propertyValues)).toBe(true);
+    expect(() => {
+      result.characters.assets[0].propertyValues[nameKey] = 'Mutated';
+    }).toThrow(TypeError);
+    expect(result.skills.assets[0].propertyValues[nameKey]).toBe('Hero');
+    expect(sources.characters.assets[0].propertyValues[nameKey]).toBe('Hero');
+    expect(Object.isFrozen(sources.characters.assets[0].propertyValues)).toBe(false);
   });
 });
