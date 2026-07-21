@@ -3,7 +3,8 @@
   "specifiers": {
     "jsr:@std/assert@1.0.14": "1.0.14",
     "jsr:@std/internal@^1.0.10": "1.0.14",
-    "npm:@modelcontextprotocol/sdk@1.29.0": "1.29.0_zod@4.4.3"
+    "npm:@modelcontextprotocol/sdk@1.29.0": "1.29.0_zod@4.4.3",
+    "npm:@supabase/supabase-js@2.87.1": "2.87.1"
   },
   "jsr": {
     "@std/assert@1.0.14": {
@@ -46,6 +47,74 @@
         "zod-to-json-schema"
       ],
       "tarball": "https://registry.npmmirror.com/@modelcontextprotocol/sdk/-/sdk-1.29.0.tgz"
+    },
+    "@supabase/auth-js@2.87.1": {
+      "integrity": "sha512-6RDeOf5TVoaXFtEstN188ykp3pXLZaU9qoAWfx8dc50FFAAqt+kcFJ96V0IvSmcpb4mDAWcpTJ7BegmVDn/WIw==",
+      "dependencies": [
+        "tslib"
+      ],
+      "tarball": "https://registry.npmmirror.com/@supabase/auth-js/-/auth-js-2.87.1.tgz"
+    },
+    "@supabase/functions-js@2.87.1": {
+      "integrity": "sha512-rWmYo4gRD0XAjMhYDlz7IH67bp4TIQ1UE4VqwIQtl1gGPwtLDq6wcRnu7jLKlXx0Gtrknw/eoiHYG9//XrCTzQ==",
+      "dependencies": [
+        "tslib"
+      ],
+      "tarball": "https://registry.npmmirror.com/@supabase/functions-js/-/functions-js-2.87.1.tgz"
+    },
+    "@supabase/postgrest-js@2.87.1": {
+      "integrity": "sha512-Yzu5eL3iGmZW0C/8x+vEojAOou63FI9oVw8HI8YOq63+5yM8g8aGh7Y1E2vbXFb7+gHGsPqLnaC6dPhrYt7qBA==",
+      "dependencies": [
+        "tslib"
+      ],
+      "tarball": "https://registry.npmmirror.com/@supabase/postgrest-js/-/postgrest-js-2.87.1.tgz"
+    },
+    "@supabase/realtime-js@2.87.1": {
+      "integrity": "sha512-XvLtEznxmYZXA7LYuy5zbSXpSYjDLJq2wQeRh3MzON2OR4U8Kq+RtPz2E2Wi8HEzvBfsc+nNu1TG8LQ9+3DRkA==",
+      "dependencies": [
+        "@types/phoenix",
+        "@types/ws",
+        "tslib",
+        "ws"
+      ],
+      "tarball": "https://registry.npmmirror.com/@supabase/realtime-js/-/realtime-js-2.87.1.tgz"
+    },
+    "@supabase/storage-js@2.87.1": {
+      "integrity": "sha512-0Uc8tNV4yzkNNmp1inpXru0RB4a7ECq05G2S6BDvSpMxTxJrDVJ4vVDwyhqB8ZZ+O9+8prHaQYoByQeuDnwpFQ==",
+      "dependencies": [
+        "iceberg-js",
+        "tslib"
+      ],
+      "tarball": "https://registry.npmmirror.com/@supabase/storage-js/-/storage-js-2.87.1.tgz"
+    },
+    "@supabase/supabase-js@2.87.1": {
+      "integrity": "sha512-tVgqZqnHZVum584KuUKSQZgcy6ZkhVd6gG8QWg2QfIXH9HmXdamauxdVsLXwaNPJxEdOyfAfwIyi5XUsiVYWtg==",
+      "dependencies": [
+        "@supabase/auth-js",
+        "@supabase/functions-js",
+        "@supabase/postgrest-js",
+        "@supabase/realtime-js",
+        "@supabase/storage-js"
+      ],
+      "tarball": "https://registry.npmmirror.com/@supabase/supabase-js/-/supabase-js-2.87.1.tgz"
+    },
+    "@types/node@26.1.1": {
+      "integrity": "sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==",
+      "dependencies": [
+        "undici-types"
+      ],
+      "tarball": "https://registry.npmmirror.com/@types/node/-/node-26.1.1.tgz"
+    },
+    "@types/phoenix@1.6.7": {
+      "integrity": "sha512-oN9ive//QSBkf19rfDv45M7eZPi0eEXylht2OLEXicu5b4KoQ1OzXIw+xDSGWxSxe1JmepRR/ZH283vsu518/Q==",
+      "tarball": "https://registry.npmmirror.com/@types/phoenix/-/phoenix-1.6.7.tgz"
+    },
+    "@types/ws@8.18.1": {
+      "integrity": "sha512-ThVF6DCVhA8kUGy+aazFQ4kXQ7E1Ty7A3ypFOe0IcJV8O/M511G99AW24irKrW56Wt44yG9+ij8FaqoBGkuBXg==",
+      "dependencies": [
+        "@types/node"
+      ],
+      "tarball": "https://registry.npmmirror.com/@types/ws/-/ws-8.18.1.tgz"
     },
     "accepts@2.0.0": {
       "integrity": "sha512-5cvg6CtKwfgdmVqY1WIiXKc3Q1bkRqGLi+2W/6ao+6Y7gu/RCwRuAhGEzh5B4KlszSuTLgZYuqFqo5bImjNKng==",
@@ -338,6 +407,10 @@
       ],
       "tarball": "https://registry.npmmirror.com/http-errors/-/http-errors-2.0.1.tgz"
     },
+    "iceberg-js@0.8.1": {
+      "integrity": "sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA==",
+      "tarball": "https://registry.npmmirror.com/iceberg-js/-/iceberg-js-0.8.1.tgz"
+    },
     "iconv-lite@0.7.3": {
       "integrity": "sha512-IKXpvIzjnC9XTAUbVBcMfGS0EPaIXtW6v+zr+RRp+hqULEpo0owZax6wyRwPOJbWbzjYspQwusTsfVr0ifh4uQ==",
       "dependencies": [
@@ -585,6 +658,10 @@
       "integrity": "sha512-o5sSPKEkg/DIQNmH43V0/uerLrpzVedkUh8tGNvaeXpfpuwjKenlSox/2O/BTlZUtEe+JG7s5YhEz608PlAHRA==",
       "tarball": "https://registry.npmmirror.com/toidentifier/-/toidentifier-1.0.1.tgz"
     },
+    "tslib@2.8.1": {
+      "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==",
+      "tarball": "https://registry.npmmirror.com/tslib/-/tslib-2.8.1.tgz"
+    },
     "type-is@2.1.0": {
       "integrity": "sha512-faYHw0anBbc/kWF3zFTEnxSFOAGUX9GFbOBthvDdLsIlEoWOFOtS0zgCiQYwIskL9iGXZL3kAXD8OoZ4GmMATA==",
       "dependencies": [
@@ -593,6 +670,10 @@
         "mime-types"
       ],
       "tarball": "https://registry.npmmirror.com/type-is/-/type-is-2.1.0.tgz"
+    },
+    "undici-types@8.3.0": {
+      "integrity": "sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==",
+      "tarball": "https://registry.npmmirror.com/undici-types/-/undici-types-8.3.0.tgz"
     },
     "unpipe@1.0.0": {
       "integrity": "sha512-pjy2bYhSsufwWlKwPc+l3cN7+wuJlK6uz0YdJEOlQDbl6jo/YlPi4mb8agUkVC8BF7V8NuzeyPNqRksA3hztKQ==",
@@ -613,6 +694,10 @@
     "wrappy@1.0.2": {
       "integrity": "sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==",
       "tarball": "https://registry.npmmirror.com/wrappy/-/wrappy-1.0.2.tgz"
+    },
+    "ws@8.21.1": {
+      "integrity": "sha512-+0NTnW77fFN/DjQi6k/Sq/Yvk4Sgajw7urW8V+asjXnRgDs9gyGkdb7EzgfhA4goXsRIZKE28fzIXBHEzhuiWw==",
+      "tarball": "https://registry.npmmirror.com/ws/-/ws-8.21.1.tgz"
     },
     "zod-to-json-schema@3.25.2_zod@4.4.3": {
       "integrity": "sha512-O/PgfnpT1xKSDeQYSCfRI5Gy3hPf91mKVDuYLUHZJMiDFptvP41MSnWofm8dnCm0256ZNfZIM7DSzuSMAFnjHA==",
