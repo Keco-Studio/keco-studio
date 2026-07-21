@@ -15,7 +15,10 @@ const CORS = {
 };
 
 export function extractBoundProjectId(url: URL): string | null {
-  const match = /^\/functions\/v1\/mcp\/([^/]+)$/.exec(url.pathname);
+  // Supabase's gateway strips `/functions/v1` before invoking the function,
+  // while local/direct requests retain the public prefix. Accept only those
+  // two exact forms; never treat an arbitrary suffix as a project endpoint.
+  const match = /^(?:\/functions\/v1)?\/mcp\/([^/]+)$/.exec(url.pathname);
   return match && UUID.test(match[1]) ? match[1] : null;
 }
 

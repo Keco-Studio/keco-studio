@@ -30,6 +30,10 @@ Deno.test("extractBoundProjectId accepts only a UUID after the mcp segment", () 
     projectId,
   );
   assertEquals(
+    extractBoundProjectId(new URL(`https://x/mcp/${projectId}`)),
+    projectId,
+  );
+  assertEquals(
     extractBoundProjectId(new URL("https://x/functions/v1/mcp/not-a-uuid")),
     null,
   );
