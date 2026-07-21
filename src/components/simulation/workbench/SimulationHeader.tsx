@@ -1,5 +1,3 @@
-import type { ChangeEvent } from 'react';
-
 import styles from './SimulationWorkbench.module.css';
 
 export interface SimulationWorkflowStep {
@@ -11,33 +9,24 @@ export interface SimulationWorkflowStep {
 
 export interface SimulationHeaderProps {
   readonly title: string;
-  readonly eyebrow?: string;
+  readonly projectName?: string;
   readonly steps: readonly SimulationWorkflowStep[];
   readonly activeStepId: string;
-  readonly searchValue?: string;
-  readonly onSearchChange?: (value: string) => void;
   readonly onStepSelect?: (id: string) => void;
 }
 
 export function SimulationHeader({
   title,
-  eyebrow = 'Simulation workspace',
+  projectName = 'Project',
   steps,
   activeStepId,
-  searchValue = '',
-  onSearchChange,
   onStepSelect,
 }: SimulationHeaderProps) {
-  const handleSearch = (event: ChangeEvent<HTMLInputElement>) => onSearchChange?.(event.target.value);
+  const isImport = activeStepId === 'import';
 
   return (
     <header className={styles.header}>
-      <div className={styles.headerTitle}>
-        <span>{eyebrow}</span>
-        <h1>{title}</h1>
-      </div>
-
-      <nav className={styles.workflowNav} aria-label="Simulation workflow">
+      {isImport ? <div className={styles.headerTitle}><span>{projectName}</span><i>/</i><h1>{title}</h1></div> : <nav className={styles.workflowNav} aria-label="Simulation workflow">
         <ol className={styles.workflowList}>
           {steps.map((step, index) => {
             const active = step.id === activeStepId;
@@ -51,7 +40,7 @@ export function SimulationHeader({
                   onClick={() => onStepSelect?.(step.id)}
                 >
                   <span className={styles.workflowNumber} aria-hidden="true">
-                    {step.complete ? '✓' : index + 1}
+                    {index + 1}
                   </span>
                   <span>{step.label}</span>
                 </button>
@@ -59,18 +48,18 @@ export function SimulationHeader({
             );
           })}
         </ol>
-      </nav>
+      </nav>}
 
       <label className={styles.search}>
         <span className={styles.searchIcon} aria-hidden="true" />
         <span className={styles.visuallyHidden}>Search simulator</span>
         <input
           type="search"
-          value={searchValue}
-          placeholder="Search roster"
-          onChange={handleSearch}
+          placeholder="Search libraries, characters, skills…"
+          readOnly
         />
       </label>
+      <span className={styles.headerAvatar} aria-label="Simulator profile">R</span>
     </header>
   );
 }

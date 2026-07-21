@@ -25,6 +25,7 @@ describe('native simulation workbench presentation', () => {
   it('uses accessible button navigation in the sidebar', () => {
     const source = read('SimulationSidebar.tsx');
     expect(source).toContain('Keco Simulator');
+    expect(source).toContain('Battle &amp; numbers sandbox for game designers.');
     expect(source).toMatch(/<nav[^>]+aria-label=/);
     expect(source).toContain('role="menu"');
     expect(source).toContain('role="menuitem"');
@@ -34,9 +35,9 @@ describe('native simulation workbench presentation', () => {
     expect(source).not.toMatch(/<(?:div|li|span)[^>]+onClick=/);
 
     const css = read('SimulationWorkbench.module.css');
-    expect(css).toMatch(/\.sidebarCollapsed \.brandMark[^}]*display:\s*none/s);
-    expect(css).toMatch(/\.sidebarCollapsed \.sidebarBrand[^}]*justify-content:\s*center[^}]*padding:\s*0/s);
-    expect(css).toMatch(/\.sidebarCollapsed \.collapseButton[^}]*margin-left:\s*0/s);
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*width:\s*228px/s);
+    expect(css).toMatch(/\.sidebar\s*\{[^}]*background:\s*var\(--simulation-surface-glass\)/s);
+    expect(css).toMatch(/\.sidebarCollapsed\s*\{[^}]*width:\s*28px/s);
   });
 
   it('exposes the workflow and a decorative Studio-native search icon', () => {
@@ -46,6 +47,7 @@ describe('native simulation workbench presentation', () => {
     expect(source).toContain('type="search"');
     expect(source).toContain('aria-hidden="true"');
     expect(source).not.toContain('<svg');
+    expect(source).toContain('Search libraries, characters, skills');
   });
 
   it('uses semantic status and battle health output', () => {
@@ -89,7 +91,11 @@ describe('native simulation workbench presentation', () => {
     const names = [...tokens.matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]);
     expect(names.length).toBeGreaterThan(8);
     expect(names.every((name) => name.startsWith('--simulation-'))).toBe(true);
-    expect(tokens).not.toMatch(/:\s*[\d.]+(?:rem|em|vh|vw)\b/);
+    expect(tokens).toContain('--simulation-blue: #0b99ff');
+    expect(tokens).toContain('--simulation-pink-strong: #ff69b4');
+    expect(tokens).toContain('--simulation-surface-3: #f6f7fb');
+    expect(tokens).toContain('--simulation-ink-900: #0f172a');
+    expect(tokens).toContain('--simulation-header-height: 64px');
   });
 
   it('defines constrained workbench regions and responsive navigation/arena layouts', () => {
